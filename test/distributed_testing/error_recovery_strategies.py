@@ -116,6 +116,11 @@ class RecoveryStrategy:
             True if recovery was successful, False otherwise
         """
         try:
+            if not self.is_applicable(error_info):
+                logger.info(f"Recovery strategy {self.name} not applicable for this error context")
+                self.attempts += 1
+                self.success_rate = self.successes / self.attempts if self.attempts > 0 else 0.0
+                return False
             # Increment attempts counter
             self.attempts += 1
             
@@ -158,6 +163,22 @@ class RecoveryStrategy:
         """
         # To be implemented by specific strategies
         raise NotImplementedError("Recovery strategy implementation not provided")
+
+    def is_applicable(self, error_info: Dict[str, Any]) -> bool:
+        """Return True if the strategy can run with the given error context."""
+        return True
+
+    def _db_table_exists(self, table_name: str) -> bool:
+        if not hasattr(self.coordinator, "db") or not self.coordinator.db:
+            return False
+        try:
+            result = self.coordinator.db.execute(
+                "SELECT 1 FROM information_schema.tables WHERE table_name = ?",
+                (table_name,),
+            ).fetchone()
+            return bool(result)
+        except Exception:
+            return False
     
     def get_strategy_info(self) -> Dict[str, Any]:
         """
@@ -191,6 +212,10 @@ class RetryStrategy(RecoveryStrategy):
         self.max_retries = max_retries
         self.initial_delay = initial_delay
         self.backoff_factor = backoff_factor
+
+    def is_applicable(self, error_info: Dict[str, Any]) -> bool:
+        operation = error_info.get("operation")
+        return bool(operation and callable(operation))
     
     async def _execute_impl(self, error_info: Dict[str, Any]) -> bool:
         """
@@ -205,7 +230,7 @@ class RetryStrategy(RecoveryStrategy):
         # Get the operation to retry
         operation = error_info.get("operation")
         if not operation or not callable(operation):
-            logger.error("Retry strategy requires a callable operation")
+            logger.info("Retry strategy skipped: no callable operation provided")
             return False
         
         # Get retry arguments
@@ -248,6 +273,9 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
             coordinator: Reference to the coordinator instance
         """
         super().__init__(coordinator, "worker", RecoveryLevel.MEDIUM)
+
+    def is_applicable(self, error_info: Dict[str, Any]) -> bool:
+        return bool(error_info.get("worker_id"))
     
     async def _execute_impl(self, error_info: Dict[str, Any]) -> bool:
         """
@@ -262,7 +290,7 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
         # Get worker ID
         worker_id = error_info.get("worker_id")
         if not worker_id:
-            logger.error("Worker recovery strategy requires a worker_id")
+            logger.info("Worker recovery strategy skipped: worker_id not provided")
             return False
         
         # Get worker information
@@ -366,7 +394,7 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
                         del self.coordinator.running_tasks[task_id]
                 
                 # Record failure in database
-                if hasattr(self.coordinator, 'db'):
+                if hasattr(self.coordinator, 'db') and self._db_table_exists("distributed_tasks"):
                     self.coordinator.db.execute(
                     """
                     UPDATE distributed_tasks
@@ -378,7 +406,8 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
                     )
                     
                     # Record task execution history
-                    self.coordinator.db.execute(
+                    if self._db_table_exists("task_execution_history"):
+                        self.coordinator.db.execute(
                     """
                     INSERT INTO task_execution_history (
                         task_id, worker_id, attempt, status, start_time,
@@ -393,7 +422,7 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
                         task.get("started", datetime.now().isoformat()),
                         datetime.now(),
                         f"Max retries exceeded due to {reason}"
-                    )
+                        )
                     )
                 
                 return
@@ -418,7 +447,7 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
                     del self.coordinator.running_tasks[task_id]
             
             # Update task in database
-            if hasattr(self.coordinator, 'db'):
+            if hasattr(self.coordinator, 'db') and self._db_table_exists("distributed_tasks"):
                 self.coordinator.db.execute(
                 """
                 UPDATE distributed_tasks
@@ -430,7 +459,8 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
                 )
                 
                 # Record task recovery in database
-                self.coordinator.db.execute(
+                if self._db_table_exists("task_recovery_history"):
+                    self.coordinator.db.execute(
                 """
                 INSERT INTO task_recovery_history (
                     task_id, worker_id, recovery_time, attempt_number,
@@ -449,7 +479,7 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
                         "requeue_time": datetime.now().isoformat(),
                         "max_retries": max_retries
                     })
-                )
+                    )
                 )
             
             # Try to assign task immediately if we have available workers
@@ -470,6 +500,9 @@ class DatabaseRecoveryStrategy(RecoveryStrategy):
             coordinator: Reference to the coordinator instance
         """
         super().__init__(coordinator, "database_recovery", RecoveryLevel.HIGH)
+
+    def is_applicable(self, error_info: Dict[str, Any]) -> bool:
+        return hasattr(self.coordinator, "db_path")
     
     async def _execute_impl(self, error_info: Dict[str, Any]) -> bool:
         """
@@ -486,7 +519,7 @@ class DatabaseRecoveryStrategy(RecoveryStrategy):
         
         # Get db_path
         if not hasattr(self.coordinator, 'db_path'):
-            logger.error("Database recovery strategy requires coordinator.db_path")
+            logger.info("Database recovery strategy skipped: coordinator.db_path not set")
             return False
         
         db_path = self.coordinator.db_path
@@ -726,6 +759,7 @@ class CoordinatorRecoveryStrategy(RecoveryStrategy):
             coordinator: Reference to the coordinator instance
         """
         super().__init__(coordinator, "coordinator_recovery", RecoveryLevel.CRITICAL)
+
     
     async def _execute_impl(self, error_info: Dict[str, Any]) -> bool:
         """
@@ -818,7 +852,7 @@ class CoordinatorRecoveryStrategy(RecoveryStrategy):
                 self.coordinator.running_tasks = {}
             
             # Also update tasks in database
-            if hasattr(self.coordinator, 'db'):
+            if hasattr(self.coordinator, 'db') and self._db_table_exists("distributed_tasks"):
                 try:
                     # Update tasks that are running but might be stalled
                     self.coordinator.db.execute(

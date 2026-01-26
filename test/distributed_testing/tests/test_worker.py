@@ -318,9 +318,9 @@ class TestDistributedTestingWorkerAsync:
         worker, _ = worker_setup
         
         # Test a healthy state
-           worker.ws_connected = True
-           with patch('worker.psutil.cpu_percent', return_value=50), \
-               patch('worker.psutil.virtual_memory', return_value=MagicMock(percent=60)):
+        worker.ws_connected = True
+        with patch('worker.psutil.cpu_percent', return_value=50), \
+            patch('worker.psutil.virtual_memory', return_value=MagicMock(percent=60)):
             
             result = await worker.check_health()
             

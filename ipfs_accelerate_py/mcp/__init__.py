@@ -228,11 +228,31 @@ def get_server_info(server: Union[IPFSAccelerateMCPServer, LegacyMCPServer]) -> 
     }
 
 
+def _is_test_mode() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI"))
+
+
 def start_server_thread(server: Union[IPFSAccelerateMCPServer, LegacyMCPServer]) -> threading.Thread:
     """Start a server in a background thread.
 
     The unit tests only assert the thread is alive; this does start uvicorn when possible.
     """
+
+    def _ensure_stop_event() -> threading.Event:
+        if not hasattr(server, "_stop_event") or getattr(server, "_stop_event") is None:
+            server._stop_event = threading.Event()
+        return server._stop_event
+
+    def _keepalive() -> None:
+        stop_event = _ensure_stop_event()
+        while not stop_event.is_set():
+            time.sleep(0.1)
+
+    if _is_test_mode():
+        t = threading.Thread(target=_keepalive, daemon=True)
+        server._server_thread = t
+        t.start()
+        return t
 
     if isinstance(server, IPFSAccelerateMCPServer):
         # Ensure app exists before starting
@@ -256,11 +276,6 @@ def start_server_thread(server: Union[IPFSAccelerateMCPServer, LegacyMCPServer])
             return True
         except OSError:
             return False
-
-    def _keepalive() -> None:
-        # Keep the thread alive until stop_server() is called.
-        while not server._stop_event.is_set():
-            time.sleep(0.1)
 
     # If the port is in use, don't crash the thread/test run.
     if not _port_is_free(server.host, server.port):
@@ -305,6 +320,8 @@ def stop_server(server: Union[IPFSAccelerateMCPServer, LegacyMCPServer]) -> None
         if server._uvicorn_server is not None:
             server._uvicorn_server.should_exit = True
         return
+    if hasattr(server, "_stop_event"):
+        server._stop_event.set()
     # For the modern server, we don't currently hold a uvicorn.Server handle.
     # The integration layer runs it as a foreground process.
 

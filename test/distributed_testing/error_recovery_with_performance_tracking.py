@@ -551,8 +551,10 @@ class PerformanceBasedErrorRecovery:
         # Get current recovery level (or start at level 1)
         recovery_level = self.error_recovery_levels.get(error_id, 1)
         
+        error_dict = self._convert_error_report(error_report)
+
         # Select best strategy based on performance history
-        strategy, strategy_id = await self._select_best_strategy(error_type, recovery_level)
+        strategy, strategy_id = await self._select_best_strategy(error_type, recovery_level, error_dict)
         
         if not strategy:
             logger.error(f"No recovery strategy available for error type: {error_type}")
@@ -581,7 +583,6 @@ class PerformanceBasedErrorRecovery:
         
         try:
             # Execute strategy with timeout
-            error_dict = self._convert_error_report(error_report)
             with anyio.fail_after(timeout):
                 success = await strategy.execute(error_dict)
             
@@ -797,7 +798,12 @@ class PerformanceBasedErrorRecovery:
             
             return False, recovery_info
     
-    async def _select_best_strategy(self, error_type: str, recovery_level: int) -> Tuple[Any, str]:
+    async def _select_best_strategy(
+        self,
+        error_type: str,
+        recovery_level: int,
+        error_info: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[Any, str]:
         """
         Select the best recovery strategy based on historical performance and level.
         
@@ -808,14 +814,18 @@ class PerformanceBasedErrorRecovery:
         Returns:
             Tuple of (strategy, strategy_id)
         """
+        error_info = error_info or {}
+
         if not self.recovery_manager or not hasattr(self.recovery_manager, 'strategies'):
             logger.warning("No recovery manager available")
             return None, ""
         
-        # Filter strategies by recovery level
+        # Filter strategies by recovery level and applicability
         candidates = {}
         for strategy_id, strategy in self.recovery_manager.strategies.items():
             level_value = getattr(strategy.level, 'value', strategy.level)
+            if hasattr(strategy, "is_applicable") and not strategy.is_applicable(error_info):
+                continue
             
             # Match strategies based on recovery level
             if recovery_level == ProgressiveRecoveryLevel.LEVEL_1.value:
@@ -836,7 +846,11 @@ class PerformanceBasedErrorRecovery:
         
         # If no candidates match level criteria, use all strategies
         if not candidates:
-            candidates = self.recovery_manager.strategies
+            candidates = {
+                strategy_id: strategy
+                for strategy_id, strategy in self.recovery_manager.strategies.items()
+                if not hasattr(strategy, "is_applicable") or strategy.is_applicable(error_info)
+            }
         
         # If still no candidates, use default retry strategy
         if not candidates:

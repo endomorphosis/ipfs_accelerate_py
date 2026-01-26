@@ -31,6 +31,11 @@ class ComprehensiveDependencyInstaller:
         self.successful_installations = []
         self.log_file = log_file
         self.system_info = self._get_system_info()
+        self.local_packages = [
+            "ipfs_kit_py",
+            "ipfs_model_manager_py",
+            "ipfs_transformers_py",
+        ]
         
         # Comprehensive dependency definitions
         self.dependencies = {
@@ -365,14 +370,162 @@ class ComprehensiveDependencyInstaller:
                 "returncode": -1
             })
             return False
-        except Exception as e:
-            logger.error(f"❌ Installation error for {package_name}: {e}")
-            self.failed_installations.append({
-                "package": package_name,
-                "error": str(e),
-                "returncode": -1
-            })
-            return False
+
+    def install_local_packages(self) -> Dict[str, bool]:
+        """Install local external packages in editable mode when present."""
+        results: Dict[str, bool] = {}
+        repo_root = Path(__file__).resolve().parents[1]
+        external_dir = repo_root / "external"
+
+        git_sources = {
+            "ipfs_kit_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_kit_py.git",
+                "branch": "known_good",
+            },
+        }
+
+        if not external_dir.exists():
+            logger.info("No external/ directory found; skipping local package installs")
+            return results
+
+        for package in self.local_packages:
+            if package in git_sources:
+                source = git_sources[package]
+                target_path = external_dir / package
+                try:
+                    if target_path.exists() and (target_path / ".git").exists():
+                        logger.info(f"Updating {package} to {source['branch']} in {target_path}")
+                        subprocess.run(
+                            ["git", "-C", str(target_path), "fetch", "origin"],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=False,
+                        )
+                        subprocess.run(
+                            ["git", "-C", str(target_path), "checkout", source["branch"]],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=False,
+                        )
+                        subprocess.run(
+                            ["git", "-C", str(target_path), "reset", "--hard", f"origin/{source['branch']}"] ,
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=False,
+                        )
+                    else:
+                        if target_path.exists():
+                            logger.warning(f"{target_path} exists but is not a git repo; reinstalling from git")
+                        logger.info(f"Cloning {package} ({source['branch']}) into {target_path}")
+                        clone_result = subprocess.run(
+                            [
+                                "git",
+                                "clone",
+                                "--depth",
+                                "1",
+                                "--branch",
+                                source["branch"],
+                                source["repo"],
+                                str(target_path),
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                        )
+                        if clone_result.returncode != 0:
+                            raise RuntimeError(clone_result.stderr.strip() or "git clone failed")
+
+                    logger.info(f"Installing {package} from {target_path}")
+                    install_result = subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "-e", str(target_path)],
+                        capture_output=True,
+                        text=True,
+                        timeout=300,
+                    )
+                    if install_result.returncode == 0:
+                        self.successful_installations.append(package)
+                        self.installation_log.append({
+                            "package": package,
+                            "status": "success",
+                            "pip_name": str(target_path),
+                            "timestamp": time.time(),
+                        })
+                        results[package] = True
+                        logger.info(f"✅ Installed {package} from git ({source['branch']})")
+                    else:
+                        raise RuntimeError(install_result.stderr.strip() or "pip install failed")
+                except subprocess.TimeoutExpired:
+                    self.failed_installations.append({
+                        "package": package,
+                        "error": "Installation timeout",
+                        "returncode": -1,
+                    })
+                    results[package] = False
+                    logger.error(f"❌ Installation timeout for {package}")
+                except Exception as e:
+                    self.failed_installations.append({
+                        "package": package,
+                        "error": str(e),
+                        "returncode": -1,
+                    })
+                    results[package] = False
+                    logger.error(f"❌ Installation error for {package}: {e}")
+                continue
+            package_path = external_dir / package
+            if not package_path.exists():
+                logger.info(f"⏭️ Skipping {package} (not found at {package_path})")
+                results[package] = False
+                continue
+
+            try:
+                logger.info(f"Installing local package {package} from {package_path}")
+                cmd = [sys.executable, "-m", "pip", "install", "-e", str(package_path)]
+                result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+                if result.returncode == 0:
+                    self.successful_installations.append(package)
+                    self.installation_log.append({
+                        "package": package,
+                        "status": "success",
+                        "pip_name": str(package_path),
+                        "timestamp": time.time(),
+                    })
+                    results[package] = True
+                    logger.info(f"✅ Installed local package {package}")
+                else:
+                    self.failed_installations.append({
+                        "package": package,
+                        "error": result.stderr,
+                        "returncode": result.returncode,
+                    })
+                    self.installation_log.append({
+                        "package": package,
+                        "status": "failed",
+                        "error": result.stderr,
+                        "timestamp": time.time(),
+                    })
+                    results[package] = False
+                    logger.error(f"❌ Failed to install {package}: {result.stderr}")
+            except subprocess.TimeoutExpired:
+                self.failed_installations.append({
+                    "package": package,
+                    "error": "Installation timeout",
+                    "returncode": -1,
+                })
+                results[package] = False
+                logger.error(f"❌ Installation timeout for {package}")
+            except Exception as e:
+                self.failed_installations.append({
+                    "package": package,
+                    "error": str(e),
+                    "returncode": -1,
+                })
+                results[package] = False
+                logger.error(f"❌ Installation error for {package}: {e}")
+
+        return results
     
     def install_fallback_packages(self, main_package: str, fallback_packages: List[str]) -> bool:
         """Install fallback packages if main package fails."""
@@ -431,6 +584,9 @@ class ComprehensiveDependencyInstaller:
         skipped_count = 0
         failed_count = 0
         
+        # Install local external packages first (if present)
+        local_results = self.install_local_packages()
+
         # Install dependencies by category priority
         category_order = ["core", "mcp", "web", "database", "ai", "testing", "dev", "performance", "media", "data", "ipfs"]
         
@@ -489,6 +645,7 @@ class ComprehensiveDependencyInstaller:
             "skipped": skipped_count,
             "failed": failed_count,
             "success_rate": (installed_count + skipped_count) / total_deps * 100,
+            "local_packages": local_results,
             "critical_dependencies_status": self._check_critical_dependencies(),
             "system_info": self.system_info,
             "failed_installations": self.failed_installations,
