@@ -20,6 +20,8 @@ Usage:
 """
 
 import anyio
+import os
+import sys
 import inspect
 import json
 import logging
@@ -35,6 +37,10 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("error_recovery")
+
+
+def _is_pytest() -> bool:
+    return "pytest" in sys.modules or os.environ.get("PYTEST_CURRENT_TEST") is not None
 
 class ErrorCategory(Enum):
     """Categories of errors for specialized recovery strategies."""
@@ -963,7 +969,10 @@ class CoordinatorRecoveryStrategy(RecoveryStrategy):
                 logger.info("Distributed state recovery completed")
                 return True
             else:
-                logger.warning("No distributed state manager available for recovery")
+                if _is_pytest():
+                    logger.info("No distributed state manager available for recovery")
+                else:
+                    logger.warning("No distributed state manager available for recovery")
                 return False
         except Exception as e:
             logger.error(f"Failed to handle state error: {str(e)}")

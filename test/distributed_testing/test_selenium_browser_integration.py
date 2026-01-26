@@ -165,6 +165,7 @@ except ImportError:
 
 class TestCase:
     """Test case for Selenium browser integration."""
+    __test__ = False
     
     def __init__(self, name: str, browser_type: BrowserType, model_type: ModelType, 
                  platform: str = "auto", failure_injection: Optional[str] = None):

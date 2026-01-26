@@ -36,6 +36,7 @@ import logging
 import anyio
 from enum import Enum
 from typing import Dict, Any, Optional, List, Union
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -44,35 +45,49 @@ logging.basicConfig(
 )
 logger = logging.getLogger("browser_failure_injector")
 
+# Ensure the test package root is on sys.path (for distributed_testing imports)
+test_root = Path(__file__).resolve().parents[1]
+if str(test_root) not in sys.path:
+    sys.path.insert(0, str(test_root))
+
 # Set more verbose logging if environment variable is set
 if os.environ.get("BROWSER_FAILURE_INJECTOR_LOG_LEVEL", "").upper() == "DEBUG":
     logger.setLevel(logging.DEBUG)
 
 # Import recovery strategies if available
 try:
-    from browser_recovery_strategies import (
+    from distributed_testing.browser_recovery_strategies import (
         BrowserType, ModelType, FailureType, RecoveryLevel
     )
 except ImportError:
-    # Define fallback enums if recovery strategies not available
-    class FailureType(Enum):
-        """Types of browser failures."""
-        CONNECTION_FAILURE = "connection_failure"
-        RESOURCE_EXHAUSTION = "resource_exhaustion"
-        GPU_ERROR = "gpu_error"
-        API_ERROR = "api_error"
-        TIMEOUT = "timeout"
-        CRASH = "crash"
-        INTERNAL_ERROR = "internal_error"
-        UNKNOWN = "unknown"
+    try:
+        from browser_recovery_strategies import (
+            BrowserType, ModelType, FailureType, RecoveryLevel
+        )
+    except ImportError:
+        # Define fallback enums if recovery strategies not available
+        class FailureType(Enum):
+            """Types of browser failures."""
+            CONNECTION_FAILURE = "connection_failure"
+            RESOURCE_EXHAUSTION = "resource_exhaustion"
+            GPU_ERROR = "gpu_error"
+            API_ERROR = "api_error"
+            TIMEOUT = "timeout"
+            CRASH = "crash"
+            INTERNAL_ERROR = "internal_error"
+            UNKNOWN = "unknown"
 
 # Import circuit breaker if available
 try:
-    from circuit_breaker import CircuitBreaker
+    from distributed_testing.circuit_breaker import CircuitBreaker
     CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
-    logger.warning("CircuitBreaker not available. Circuit breaker integration will be disabled.")
-    CIRCUIT_BREAKER_AVAILABLE = False
+    try:
+        from circuit_breaker import CircuitBreaker
+        CIRCUIT_BREAKER_AVAILABLE = True
+    except ImportError:
+        logger.warning("CircuitBreaker not available. Circuit breaker integration will be disabled.")
+        CIRCUIT_BREAKER_AVAILABLE = False
 
 class BrowserFailureInjector:
     """

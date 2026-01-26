@@ -138,6 +138,47 @@ class AdaptiveLoadBalancer:
         
         logger.info("Advanced adaptive load balancer initialized")
     
+    def select_worker_for_task(self, task: Dict[str, Any], workers: Dict[str, Any]) -> Optional[str]:
+        """Select a worker for a task using a lightweight heuristic.
+
+        Args:
+            task: Task dictionary containing configuration and requirements.
+            workers: Mapping of worker_id to worker info.
+
+        Returns:
+            Selected worker_id or None if no suitable worker found.
+        """
+        if not workers:
+            return None
+
+        hardware_req = None
+        if isinstance(task, dict):
+            hardware_req = task.get("config", {}).get("hardware")
+
+        # Prefer idle, healthy workers that match hardware requirements.
+        for worker_id, info in workers.items():
+            if not isinstance(info, dict):
+                continue
+            if info.get("status") not in ("idle", "available"):
+                continue
+            if info.get("connected") is False:
+                continue
+            health = info.get("health_status") or {}
+            if isinstance(health, dict) and health.get("is_healthy") is False:
+                continue
+            if hardware_req:
+                hardware = info.get("capabilities", {}).get("hardware", [])
+                if hardware_req not in hardware:
+                    continue
+            return worker_id
+
+        # Fallback to any connected worker.
+        for worker_id, info in workers.items():
+            if isinstance(info, dict) and info.get("connected") is not False:
+                return worker_id
+
+        return None
+    
     def _init_database_table(self):
         """Initialize database table for metrics if it doesn't exist."""
         try:

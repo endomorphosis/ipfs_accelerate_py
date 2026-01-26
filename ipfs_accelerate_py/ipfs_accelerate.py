@@ -5,17 +5,40 @@ import os
 import sys
 import anyio
 import random
-import ipfs_kit_py
-import ipfs_model_manager_py
-#import libp2p_kit_py
 import hashlib
 import time
 import logging
 import inspect
+from pathlib import Path
 
 from typing import Dict, List, Any, Optional
 
-from external.ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel
+repo_root = Path(__file__).resolve().parents[1]
+external_dir = repo_root / "external"
+if external_dir.exists():
+    for package in ("ipfs_kit_py", "ipfs_model_manager_py", "ipfs_transformers_py"):
+        candidate = external_dir / package
+        if candidate.exists() and str(candidate) not in sys.path:
+            sys.path.insert(0, str(candidate))
+
+try:
+    import ipfs_kit_py  # noqa: F401
+except Exception:
+    ipfs_kit_py = None  # type: ignore
+
+try:
+    import ipfs_model_manager_py  # noqa: F401
+except Exception:
+    ipfs_model_manager_py = None  # type: ignore
+
+try:
+    from ipfs_transformers_py.ipfs_transformers import AutoModel
+except Exception:
+    try:
+        from external.ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel
+    except Exception:
+        AutoModel = None  # type: ignore
+
 from .transformers_integration import TransformersModelProvider
 
 class ipfs_accelerate_py:
@@ -76,11 +99,21 @@ class ipfs_accelerate_py:
         self.resources["ipfs_multiformats"] = self.ipfs_multiformats
             
         if "apis" not in globals():
+            apis_cls = None
             try:
-                from .api_backends.apis import apis
-            except:
-                from api_backends.apis import apis
-            self.apis = apis(resources, metadata)
+                from .api_backends.apis import apis as apis_cls
+            except ImportError:
+                try:
+                    from api_backends.apis import apis as apis_cls
+                except ImportError:
+                    apis_cls = None
+
+            if apis_cls is None:
+                class apis_cls:  # type: ignore
+                    def __init__(self, *_args, **_kwargs):
+                        pass
+
+            self.apis = apis_cls(resources, metadata)
             self.resources["apis"] = self.apis
 
         # if "ipfs_transformers" not in globals():

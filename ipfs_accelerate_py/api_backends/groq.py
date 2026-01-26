@@ -1,4 +1,5 @@
 import os
+import sys
 import anyio
 import requests
 import json
@@ -19,6 +20,14 @@ from concurrent.futures import ThreadPoolExecutor
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("groq_api")
 
+
+def _is_pytest() -> bool:
+    return (
+        os.environ.get("PYTEST_CURRENT_TEST") is not None
+        or os.environ.get("PYTEST") is not None
+        or "pytest" in sys.modules
+    )
+
 # Global thread-local storage for API usage metrics
 _thread_local = threading.local()
 
@@ -28,7 +37,10 @@ try:
     SSECLIENT_AVAILABLE = True
 except ImportError:
     SSECLIENT_AVAILABLE = False
-    logger.warning("sseclient package not found. Streaming will not be available. Install with: pip install sseclient-py")
+    if _is_pytest():
+        logger.info("sseclient package not found. Streaming will not be available. Install with: pip install sseclient-py")
+    else:
+        logger.warning("sseclient package not found. Streaming will not be available. Install with: pip install sseclient-py")
     
 # Try to import tiktoken for token counting if available
 try:

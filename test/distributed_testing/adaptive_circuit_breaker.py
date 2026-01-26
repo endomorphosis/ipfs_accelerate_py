@@ -28,14 +28,19 @@ from typing import Dict, List, Any, Optional, Tuple, Callable, Awaitable, Union
 from pathlib import Path
 import pickle
 import warnings
+from pathlib import Path
 
 # Import the base CircuitBreaker
 try:
-    from circuit_breaker import CircuitBreaker, CircuitState
+    from distributed_testing.circuit_breaker import CircuitBreaker, CircuitState
     CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
-    CIRCUIT_BREAKER_AVAILABLE = False
-    logging.warning("Base CircuitBreaker not available, some functionality will be limited")
+    try:
+        from circuit_breaker import CircuitBreaker, CircuitState
+        CIRCUIT_BREAKER_AVAILABLE = True
+    except ImportError:
+        CIRCUIT_BREAKER_AVAILABLE = False
+        logging.warning("Base CircuitBreaker not available, some functionality will be limited")
     
     # Define a fallback CircuitState for type checking
     from enum import Enum
@@ -68,6 +73,11 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
 )
 logger = logging.getLogger("adaptive_circuit_breaker")
+
+# Ensure the test package root is on sys.path (for distributed_testing imports)
+test_root = Path(__file__).resolve().parents[1]
+if str(test_root) not in sys.path:
+    sys.path.insert(0, str(test_root))
 
 class AdaptiveCircuitBreaker:
     """

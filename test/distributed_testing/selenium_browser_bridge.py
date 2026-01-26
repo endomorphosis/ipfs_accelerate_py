@@ -24,6 +24,7 @@ import traceback
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union, Tuple
 from enum import Enum
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -31,6 +32,11 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
 )
 logger = logging.getLogger("selenium_browser_bridge")
+
+# Ensure the test package root is on sys.path (for distributed_testing imports)
+test_root = Path(__file__).resolve().parents[1]
+if str(test_root) not in sys.path:
+    sys.path.insert(0, str(test_root))
 
 # Set more verbose logging if environment variable is set
 if os.environ.get("SELENIUM_BRIDGE_LOG_LEVEL", "").upper() == "DEBUG":
@@ -140,6 +146,9 @@ try:
     CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
     try:
+        current_dir = os.path.dirname(__file__)
+        if current_dir and current_dir not in sys.path:
+            sys.path.insert(0, current_dir)
         from circuit_breaker import CircuitBreaker, CircuitState, CircuitOpenError
         CIRCUIT_BREAKER_AVAILABLE = True
     except ImportError:

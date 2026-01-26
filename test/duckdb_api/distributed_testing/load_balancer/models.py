@@ -419,6 +419,7 @@ class WorkerLoad:
 @dataclass
 class TestRequirements:
     """Test execution requirements."""
+    __test__ = False
     test_id: str
     model_id: Optional[str] = None
     model_family: Optional[str] = None

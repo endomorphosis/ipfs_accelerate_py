@@ -180,6 +180,13 @@ class ComprehensiveDependencyInstaller:
                 "category": "web", 
                 "critical": False
             },
+            "sseclient-py": {
+                "pip_name": "sseclient-py",
+                "import_name": "sseclient",
+                "description": "SSE client for streaming responses",
+                "category": "web",
+                "critical": False
+            },
             
             # IPFS and Content Addressing
             "ipfshttpclient": {

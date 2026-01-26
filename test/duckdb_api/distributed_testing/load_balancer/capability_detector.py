@@ -18,7 +18,10 @@ from typing import Dict, List, Any, Optional, Tuple
 from datetime import datetime
 import multiprocessing
 import importlib
-import pkg_resources
+try:
+    from importlib import metadata as importlib_metadata
+except ImportError:  # pragma: no cover
+    import importlib_metadata  # type: ignore
 try:
     import psutil  # type: ignore
 except ImportError:  # pragma: no cover
@@ -214,8 +217,8 @@ class WorkerCapabilityDetector:
         
         for lib in libraries:
             try:
-                versions[lib] = pkg_resources.get_distribution(lib).version
-            except (pkg_resources.DistributionNotFound, ImportError):
+                versions[lib] = importlib_metadata.version(lib)
+            except (importlib_metadata.PackageNotFoundError, ImportError):
                 pass
         
         return versions

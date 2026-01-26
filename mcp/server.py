@@ -22,7 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 def _is_pytest() -> bool:
-    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+    return (
+        os.environ.get("PYTEST_CURRENT_TEST") is not None
+        or os.environ.get("PYTEST") is not None
+        or "pytest" in sys.modules
+    )
 
 
 def _log_optional_dependency(message: str) -> None:
@@ -139,7 +143,7 @@ def create_ipfs_mcp_server(name: str, description: str = "") -> FastMCP:
         if ipfs_available:
             try:
                 # Create IPFS client
-            ipfs_client = ipfs_client_factory()
+                ipfs_client = ipfs_client_factory()
                 ipfs_context.set_ipfs_client(ipfs_client)
                 
                 # Test connection

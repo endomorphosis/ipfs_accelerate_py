@@ -196,6 +196,7 @@ class DependencyInstaller:
             "uvicorn": "uvicorn",
             "aiohttp": "aiohttp",
             "websockets": "websockets",
+            "sseclient-py": "sseclient",
         }
         
         results = {}

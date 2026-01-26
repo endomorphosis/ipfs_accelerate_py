@@ -713,9 +713,7 @@ async def test_ci_coordinator_integration():
         for dir_path in [report_dir, artifact_dir, os.path.dirname(db_path)]:
             if os.path.exists(dir_path):
                 try:
-                    for file in os.listdir(dir_path):
-                        os.unlink(os.path.join(dir_path, file))
-                    os.rmdir(dir_path)
+                    shutil.rmtree(dir_path)
                 except Exception as e:
                     logger.error(f"Error cleaning up directory {dir_path}: {str(e)}")
 

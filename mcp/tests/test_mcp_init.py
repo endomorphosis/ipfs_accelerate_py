@@ -12,8 +12,8 @@ import sys
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("mcp_init_test")
 
-# Add the parent directory to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# Add the repository root to sys.path (prefer local mcp package)
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 try:
     # Import the required modules

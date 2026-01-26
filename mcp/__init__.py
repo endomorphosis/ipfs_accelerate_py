@@ -21,7 +21,11 @@ logger = logging.getLogger("ipfs_accelerate_mcp")
 
 
 def _is_pytest() -> bool:
-    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+    return (
+        os.environ.get("PYTEST_CURRENT_TEST") is not None
+        or os.environ.get("PYTEST") is not None
+        or "pytest" in sys.modules
+    )
 
 
 def _log_optional_dependency(message: str) -> None:
