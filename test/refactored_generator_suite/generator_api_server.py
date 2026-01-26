@@ -810,13 +810,13 @@ class GeneratorTaskManager:
             "status": "running"
         }
     
-    def cleanup(self):
+    async def cleanup(self):
         """Clean up resources."""
         # Close all WebSocket connections
         for task_id in list(self.ws_connections.keys()):
             for connection in self.ws_connections[task_id]:
                 try:
-                    # TODO: Replace with task group - asyncio.create_task(connection.close())
+                    await connection.close()
                 except:
                     pass
             
@@ -890,7 +890,7 @@ async def startup_event():
 async def shutdown_event():
     """Clean up resources on shutdown."""
     if manager:
-        manager.cleanup()
+        await manager.cleanup()
     
     logger.info("Generator API Server stopped")
 

@@ -231,8 +231,8 @@ class BenchmarkManager:
                 output_dir=os.path.join(self.results_dir, run_id),
                 skillset_dir=skillset_dir,
                 specific_models=models,
-                on_progress_callback=lambda progress, step, completed, total: 
-                    # TODO: Replace with task group - asyncio.create_task(self._update_progress(run_id, progress, step, completed, total))
+                on_progress_callback=lambda progress, step, completed, total:
+                    anyio.from_thread.run(self._update_progress, run_id, progress, step, completed, total)
             )
             
             # Initialize the pipeline
@@ -595,13 +595,13 @@ class BenchmarkManager:
             logger.error(f"Error querying benchmark results: {e}")
             return []
     
-    def cleanup(self):
+    async def cleanup(self):
         """Clean up resources."""
         # Close all WebSocket connections
         for run_id in list(self.ws_connections.keys()):
             for connection in self.ws_connections[run_id]:
                 try:
-                    # TODO: Replace with task group - asyncio.create_task(connection.close())
+                    await connection.close()
                 except:
                     pass
             
@@ -655,7 +655,7 @@ async def startup_event():
 async def shutdown_event():
     """Clean up resources on shutdown."""
     if manager:
-        manager.cleanup()
+        await manager.cleanup()
     
     logger.info("Benchmark API Server stopped")
 

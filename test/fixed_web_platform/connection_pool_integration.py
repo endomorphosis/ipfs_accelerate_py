@@ -725,19 +725,14 @@ class ConnectionPoolIntegration:
         Returns:
             Tuple of (connection_id, connection_info)
         """
-        try:
-            loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-        except RuntimeError:
-            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
-            
-        return loop.run_until_complete(self.get_connection(
-            model_type=model_type, 
-            platform=platform, 
-            browser=browser, 
+        return anyio.run(
+            self.get_connection,
+            model_type=model_type,
+            platform=platform,
+            browser=browser,
             hardware_preferences=hardware_preferences,
-            model_name=model_name
-        ))
+            model_name=model_name,
+        )
     
     async def release_connection(self, connection_id: str, success: bool = True, error_type: str = None, metrics: Dict[str, Any] = None):
         """

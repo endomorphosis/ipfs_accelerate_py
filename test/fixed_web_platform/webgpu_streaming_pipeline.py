@@ -826,7 +826,7 @@ class WebGPUStreamingPipeline:
                     except Exception as e:
                         logger.warning(f"Error processing client message: {e}")
                 
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     # No message received, continue
                     pass
                 except websockets.exceptions.ConnectionClosed:
@@ -879,7 +879,9 @@ class WebGPUStreamingPipeline:
         self.shutdown_event.clear()
         
         # Start queue processor
-        queue_processor_task = # TODO: Replace with task group - asyncio.create_task(self._process_request_queue())
+        queue_processor_group = anyio.create_task_group()
+        await queue_processor_group.__aenter__()
+        queue_processor_group.start_soon(self._process_request_queue)
         
         # Define server stop handler for proper shutdown
         def server_close_handler():
@@ -917,13 +919,8 @@ class WebGPUStreamingPipeline:
         
         finally:
             # Ensure queue processor is stopped
-            queue_processor_task.cancel()
-            
-            # Wait for it to complete
-            try:
-                await queue_processor_task
-            except anyio.get_cancelled_exc_class():
-                pass
+            queue_processor_group.cancel_scope.cancel()
+            await queue_processor_group.__aexit__(None, None, None)
             
             # Clean up
             self.is_running = False
@@ -942,17 +939,11 @@ class WebGPUStreamingPipeline:
         """
         # Define thread function
         def run_server():
-            # Create new event loop for the thread
-            loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-            # TODO: Remove event loop management - asyncio.set_event_loop(loop)
-            
-            # Start server in the loop
+            # Start server in the thread
             try:
-                loop.run_until_complete(self.start_server_async(host, port))
+                anyio.run(self.start_server_async, host, port)
             except Exception as e:
                 logger.error(f"Server error: {e}")
-            finally:
-                loop.close()
         
         # Create and start thread
         self.server_thread = threading.Thread(target=run_server)

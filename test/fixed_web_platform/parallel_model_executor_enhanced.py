@@ -17,6 +17,7 @@ Key features:
 """
 
 from ipfs_accelerate_py.anyio_helpers import gather, wait_for
+from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
 import os
 import sys
 import time
@@ -24,9 +25,34 @@ import json
 import anyio
 import logging
 import traceback
+import inspect
 from pathlib import Path
 from datetime import datetime
 from typing import Dict, List, Tuple, Any, Optional, Union, Callable
+
+
+class SimpleFuture:
+    """Minimal future-like helper for AnyIO tasks."""
+
+    def __init__(self) -> None:
+        self._event = anyio.Event()
+        self._done = False
+        self._result = None
+
+    def done(self) -> bool:
+        return self._done
+
+    def set_result(self, result: Any) -> None:
+        if not self._done:
+            self._result = result
+            self._done = True
+            self._event.set()
+
+    def result(self) -> Any:
+        return self._result
+
+    async def wait(self) -> None:
+        await self._event.wait()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -97,7 +123,7 @@ class EnhancedParallelModelExecutor:
         self.initialized = False
         self.workers = {}
         self.worker_stats = {}
-        self.available_workers = # TODO: Replace with anyio.create_memory_object_stream - asyncio.Queue()
+        self.available_workers = AnyioQueue(200)
         self.result_cache = {}
         self.model_cache = {}
         self.tensor_cache = {}
@@ -136,6 +162,7 @@ class EnhancedParallelModelExecutor:
         
         # Background tasks
         self._worker_monitor_task = None
+        self._worker_monitor_group = None
         self._is_shutting_down = False
         
         # Create base parallel executor for compatibility
@@ -241,12 +268,8 @@ class EnhancedParallelModelExecutor:
             return True
         
         try:
-            # Get or create event loop
-            try:
-                self.loop = # TODO: Remove event loop management - asyncio.get_event_loop()
-            except RuntimeError:
-                self.loop = # TODO: Remove event loop management - asyncio.new_event_loop()
-                # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
+            # AnyIO handles event loop management
+            self.loop = None
             
             # Verify resource pool integration is available
             if not self.resource_pool_integration:
@@ -288,7 +311,9 @@ class EnhancedParallelModelExecutor:
             await self._initialize_worker_pool()
             
             # Start worker monitor task
-            self._worker_monitor_task = # TODO: Replace with task group - asyncio.create_task(self._monitor_workers())
+            self._worker_monitor_group = anyio.create_task_group()
+            await self._worker_monitor_group.__aenter__()
+            self._worker_monitor_group.start_soon(self._monitor_workers)
             
             self.initialized = True
             logger.info(f"Enhanced parallel model executor initialized with {len(self.workers)} workers")
@@ -304,10 +329,7 @@ class EnhancedParallelModelExecutor:
         # Clear existing workers
         self.workers.clear()
         while not self.available_workers.empty():
-            try:
-                await self.available_workers.get()
-            except asyncio.QueueEmpty:
-                break
+            await self.available_workers.get()
         
         # Create initial workers
         for i in range(self.min_workers):
@@ -786,42 +808,46 @@ class EnhancedParallelModelExecutor:
         futures = []
         
         try:
-            # Create execution tasks for each model
-            for i, (model, inputs) in enumerate(models_and_inputs):
-                # Create a future for the result
-                future = self.loop.create_future()
-                futures.append(future)
+            async with anyio.create_task_group() as task_group:
+                # Create execution tasks for each model
+                for i, (model, inputs) in enumerate(models_and_inputs):
+                    # Create a future for the result
+                    future = SimpleFuture()
+                    futures.append(future)
+                    pending_token = object()
+                    self.pending_tasks.add(pending_token)
+                    
+                    # Add a task to execute the model
+                    task_group.start_soon(
+                        self._execute_model_with_worker,
+                        model,
+                        inputs,
+                        i,
+                        future,
+                        execution_id,
+                        pending_token,
+                    )
                 
-                # Add a task to execute the model
-                task = # TODO: Replace with task group - asyncio.create_task(
-                    self._execute_model_with_worker(model, inputs, i, future, execution_id)
-                )
-                
-                # Add to pending tasks
-                self.pending_tasks.add(task)
-                
-                # Add done callback to remove from pending tasks
-                task.add_done_callback(lambda t: self.pending_tasks.remove(t) if t in self.pending_tasks else None)
-            
-            # Wait for all futures to complete or timeout
-            try:
-                await wait_for(# TODO: Replace with task group - asyncio.gather(*futures), timeout=execution_timeout)
-            except asyncio.TimeoutError:
-                logger.warning(f"Timeout waiting for models execution after {execution_timeout}s")
-                
-                # Mark incomplete futures as timeout
-                for i, future in enumerate(futures):
-                    if not future.done():
-                        model, inputs = models_and_inputs[i]
-                        model_name = getattr(model, 'model_name', 'unknown')
-                        future.set_result({
-                            'success': False,
-                            'error_type': 'timeout',
-                            'error': f'Execution timeout after {execution_timeout}s',
-                            'model_name': model_name,
-                            'execution_id': execution_id,
-                            'model_index': i
-                        })
+                # Wait for all futures to complete or timeout
+                try:
+                    await wait_for(gather(*[future.wait() for future in futures]), timeout=execution_timeout)
+                except TimeoutError:
+                    logger.warning(f"Timeout waiting for models execution after {execution_timeout}s")
+                    task_group.cancel_scope.cancel()
+                    
+                    # Mark incomplete futures as timeout
+                    for i, future in enumerate(futures):
+                        if not future.done():
+                            model, inputs = models_and_inputs[i]
+                            model_name = getattr(model, 'model_name', 'unknown')
+                            future.set_result({
+                                'success': False,
+                                'error_type': 'timeout',
+                                'error': f'Execution timeout after {execution_timeout}s',
+                                'model_name': model_name,
+                                'execution_id': execution_id,
+                                'model_index': i
+                            })
             
             # Process results
             results = []
@@ -1232,7 +1258,7 @@ class EnhancedParallelModelExecutor:
         except Exception as e:
             logger.error(f"Error storing execution metrics: {e}")
     
-    async def _execute_model_with_worker(self, model, inputs, model_index, future, execution_id):
+    async def _execute_model_with_worker(self, model, inputs, model_index, future, execution_id, pending_token=None):
         """
         Execute a model with an available worker.
         
@@ -1255,7 +1281,7 @@ class EnhancedParallelModelExecutor:
             try:
                 worker_id = await wait_for(self.available_workers.get(), timeout=30.0)
                 worker = self.workers[worker_id]
-            except (asyncio.TimeoutError, KeyError) as e:
+            except (TimeoutError, KeyError) as e:
                 # No worker available, set error result
                 model_name = getattr(model, 'model_name', 'unknown')
                 logger.error(f"Timeout waiting for worker for model {model_name}")
@@ -1406,6 +1432,8 @@ class EnhancedParallelModelExecutor:
                     await self.available_workers.put(worker_id)
                 except Exception as e:
                     logger.error(f"Error returning worker {worker_id} to pool: {e}")
+            if pending_token in self.pending_tasks:
+                self.pending_tasks.remove(pending_token)
     
     async def _execute_model(self, model, inputs, worker):
         """
@@ -1430,7 +1458,7 @@ class EnhancedParallelModelExecutor:
             result = model(inputs)
             
             # Handle async results
-            if asyncio.iscoroutine(result) or hasattr(result, "__await__"):
+            if inspect.iscoroutine(result) or hasattr(result, "__await__"):
                 result = await result
             
             # Create a standard result format if result is not a dict
@@ -1506,7 +1534,7 @@ class EnhancedParallelModelExecutor:
                 
                 # Get worker
                 recovery_worker = self.workers[recovery_worker_id]
-            except (asyncio.TimeoutError, KeyError) as e:
+            except (TimeoutError, KeyError) as e:
                 logger.error(f"Timeout waiting for recovery worker: {e}")
                 return {
                     'success': False,
@@ -1663,22 +1691,15 @@ class EnhancedParallelModelExecutor:
         logger.info("Closing enhanced parallel model executor")
         
         # Cancel worker monitor task
-        if self._worker_monitor_task:
-            self._worker_monitor_task.cancel()
-            try:
-                await self._worker_monitor_task
-            except anyio.get_cancelled_exc_class():
-                pass
-            self._worker_monitor_task = None
+        if self._worker_monitor_group:
+            self._worker_monitor_group.cancel_scope.cancel()
+            await self._worker_monitor_group.__aexit__(None, None, None)
+            self._worker_monitor_group = None
         
         # Close workers
-        close_futures = []
-        for worker_id in list(self.workers.keys()):
-            future = asyncio.ensure_future(self._remove_worker(worker_id))
-            close_futures.append(future)
-        
-        if close_futures:
-            await gather(*close_futures, return_exceptions=True)
+        close_coros = [self._remove_worker(worker_id) for worker_id in list(self.workers.keys())]
+        if close_coros:
+            await gather(*close_coros, return_exceptions=True)
         
         # Close base executor if available
         if self.base_executor:

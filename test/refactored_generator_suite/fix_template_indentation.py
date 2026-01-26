@@ -63,7 +63,7 @@ def create_simple_template():
     
     print(f"Creating simplified template: {template_path}")
     
-    template_content = """import asyncio
+    template_content = """import anyio
 import os
 import json
 import time
