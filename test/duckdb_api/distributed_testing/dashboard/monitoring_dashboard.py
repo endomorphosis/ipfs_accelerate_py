@@ -365,7 +365,7 @@ class MonitoringDashboard:
             # Keep the server running
             while True:
                 await anyio.sleep(3600)  # Sleep for an hour
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Stopping Monitoring Dashboard...")
         finally:
             # Cleanup

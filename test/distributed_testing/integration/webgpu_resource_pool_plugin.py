@@ -219,7 +219,7 @@ class WebGPUResourcePoolPlugin(Plugin):
                     except Exception as e:
                         logger.error(f"Error analyzing performance trends: {e}")
                 
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 logger.info("Metrics collection task cancelled")
                 break
             except Exception as e:

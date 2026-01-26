@@ -110,7 +110,7 @@ class CoordinatorWebSocketServer:
             self.task_manager_task.cancel()
             try:
                 await self.task_manager_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
         
         # Close all connections
@@ -599,7 +599,7 @@ class CoordinatorWebSocketServer:
                 # Sleep for a short time
                 await anyio.sleep(1.0)
         
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Task manager cancelled")
         except Exception as e:
             logger.error(f"Error in task manager: {e}")

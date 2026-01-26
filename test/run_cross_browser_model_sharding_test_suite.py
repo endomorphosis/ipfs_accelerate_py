@@ -532,7 +532,7 @@ class TestSuiteRunner:
         
         if self.args.concurrent_tests > 1:
             # Run tests concurrently
-            semaphore = asyncio.Semaphore(self.args.concurrent_tests)
+            semaphore = anyio.Semaphore(self.args.concurrent_tests)
             
             async def run_with_semaphore(test_params):
                 async with semaphore:

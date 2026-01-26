@@ -518,7 +518,7 @@ class RedundancyManager:
                 # Perform common tasks for all roles
                 await self._common_tasks()
                 
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 break
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
@@ -553,7 +553,7 @@ class RedundancyManager:
                     self.election_timeout = self._get_random_election_timeout()
                     self.last_heartbeat = time.time()
                 
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 break
             except Exception as e:
                 logger.error(f"Error in election timeout loop: {e}")

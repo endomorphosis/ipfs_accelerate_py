@@ -478,7 +478,7 @@ async def periodic_task_submission(
             if max_iterations is None or iteration < max_iterations:
                 logger.info(f"Waiting {interval} seconds until next submission")
                 await anyio.sleep(interval)
-    except asyncio.CancelledError:
+    except anyio.get_cancelled_exc_class():
         logger.info("Periodic task submission cancelled")
     except Exception as e:
         logger.error(f"Error in periodic task submission: {str(e)}")

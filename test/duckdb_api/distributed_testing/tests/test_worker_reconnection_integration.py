@@ -92,7 +92,7 @@ class CoordinatorServerProcess(multiprocessing.Process):
             # Wait for server to stop
             try:
                 await start_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
                 
         except Exception as e:
@@ -273,7 +273,7 @@ class NetworkDisruptorProxy:
                 task.cancel()
                 try:
                     await task
-                except asyncio.CancelledError:
+                except anyio.get_cancelled_exc_class():
                     pass
             
         except Exception as e:

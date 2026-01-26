@@ -145,7 +145,7 @@ class CustomSchedulerPlugin(Plugin):
             self.scheduler_task.cancel()
             try:
                 await self.scheduler_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
             
         logger.info("CustomSchedulerPlugin shutdown complete")
@@ -172,7 +172,7 @@ class CustomSchedulerPlugin(Plugin):
                 # Update worker load metrics
                 await self._update_worker_load()
                 
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Scheduler task cancelled")
             self.scheduler_running = False
         except Exception as e:

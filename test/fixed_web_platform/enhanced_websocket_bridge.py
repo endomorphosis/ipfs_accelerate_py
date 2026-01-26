@@ -172,7 +172,7 @@ class EnhancedWebSocketBridge:
         try:
             while not self.shutdown_event.is_set():
                 await anyio.sleep(1)
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Server task cancelled")
         except Exception as e:
             logger.error(f"Error in server task: {e}")
@@ -339,7 +339,7 @@ class EnhancedWebSocketBridge:
                     logger.error(f"Error processing message from queue: {e}")
                     self.stats["last_error"] = f"Queue processing error: {str(e)}"
                     
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Message processing task cancelled")
         except Exception as e:
             logger.error(f"Error in message queue processor: {e}")
@@ -373,7 +373,7 @@ class EnhancedWebSocketBridge:
                         logger.warning(f"Failed to send heartbeat: {e}")
                         self.stats["last_error"] = f"Heartbeat error: {str(e)}"
         
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Heartbeat task cancelled")
         except Exception as e:
             logger.error(f"Error in heartbeat task: {e}")
@@ -417,7 +417,7 @@ class EnhancedWebSocketBridge:
                         # Attempt reconnection
                         await self.attempt_reconnection()
         
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Health monitor task cancelled")
         except Exception as e:
             logger.error(f"Error in health monitor task: {e}")
@@ -435,7 +435,7 @@ class EnhancedWebSocketBridge:
                     task.cancel()
                     try:
                         await task
-                    except asyncio.CancelledError:
+                    except anyio.get_cancelled_exc_class():
                         pass
                 except Exception as e:
                     logger.error(f"Error cancelling task: {e}")

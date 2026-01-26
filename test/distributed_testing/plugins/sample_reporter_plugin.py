@@ -107,7 +107,7 @@ class TaskReporterPlugin(Plugin):
             self.reporting_task.cancel()
             try:
                 await self.reporting_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
         
         # Disconnect from external system
@@ -175,7 +175,7 @@ class TaskReporterPlugin(Plugin):
                 # Send report
                 await self._send_to_external_system("summary", report)
                 
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 logger.info("Periodic reporting task cancelled")
                 break
             except Exception as e:

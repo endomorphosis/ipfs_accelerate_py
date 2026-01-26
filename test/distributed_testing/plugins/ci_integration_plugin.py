@@ -111,7 +111,7 @@ class CIIntegrationPlugin(Plugin):
             self.update_task.cancel()
             try:
                 await self.update_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
         
         # Send final update to CI system
@@ -269,7 +269,7 @@ class CIIntegrationPlugin(Plugin):
                 
                 logger.debug(f"Sent update for test run {self.test_run['id']}")
                 
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 logger.info("Periodic update task cancelled")
                 break
             except Exception as e:

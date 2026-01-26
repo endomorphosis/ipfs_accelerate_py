@@ -115,7 +115,7 @@ class ResourcePoolIntegrationPlugin(Plugin):
             self.metrics_task.cancel()
             try:
                 await self.metrics_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
         
         # Shutdown resource pool
@@ -201,7 +201,7 @@ class ResourcePoolIntegrationPlugin(Plugin):
                 
                 logger.debug("Resource Pool metrics collected")
                 
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 logger.info("Metrics collection task cancelled")
                 break
             except Exception as e:

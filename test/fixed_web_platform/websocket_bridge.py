@@ -163,7 +163,7 @@ class WebSocketBridge:
         try:
             while True:
                 await anyio.sleep(1)
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Server task cancelled")
             pass
         except Exception as e:
@@ -294,7 +294,7 @@ class WebSocketBridge:
                 # Acknowledge as processed
                 self.message_queue.task_done()
                 
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Message processing task cancelled")
         except Exception as e:
             logger.error(f"Error processing message queue: {e}")
@@ -306,14 +306,14 @@ class WebSocketBridge:
             self.process_task.cancel()
             try:
                 await self.process_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
             
         if self.server_task:
             self.server_task.cancel()
             try:
                 await self.server_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
         
         # Close server

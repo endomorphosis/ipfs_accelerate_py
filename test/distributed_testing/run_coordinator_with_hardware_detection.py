@@ -128,7 +128,7 @@ async def run_coordinator_demo(args):
         while True:
             await anyio.sleep(1)
             
-    except asyncio.CancelledError:
+    except anyio.get_cancelled_exc_class():
         logger.info("Server shutting down")
     finally:
         # Stop the coordinator

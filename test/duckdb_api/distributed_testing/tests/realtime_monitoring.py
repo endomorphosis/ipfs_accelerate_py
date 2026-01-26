@@ -567,7 +567,7 @@ class RealTimeMonitor:
         try:
             # Monitor test process
             await self.monitor_test_process()
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Monitoring cancelled")
         finally:
             self.running = False

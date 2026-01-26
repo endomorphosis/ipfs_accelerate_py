@@ -145,7 +145,7 @@ class ConnectionPoolManager:
             # TODO: Remove event loop management - asyncio.set_event_loop(self.loop)
         
         # Initialize semaphore for connection control
-        self.connection_semaphore = asyncio.Semaphore(max_connections)
+        self.connection_semaphore = anyio.Semaphore(max_connections)
         
         logger.info(f"Connection Pool Manager initialized with {min_connections}-{max_connections} connections")
     
@@ -189,7 +189,7 @@ class ConnectionPoolManager:
                 try:
                     await anyio.sleep(self.health_check_interval)
                     await self._check_connection_health()
-                except asyncio.CancelledError:
+                except anyio.get_cancelled_exc_class():
                     # Task is being cancelled
                     break
                 except Exception as e:
@@ -202,7 +202,7 @@ class ConnectionPoolManager:
                 try:
                     await anyio.sleep(self.cleanup_interval)
                     await self._cleanup_connections()
-                except asyncio.CancelledError:
+                except anyio.get_cancelled_exc_class():
                     # Task is being cancelled
                     break
                 except Exception as e:

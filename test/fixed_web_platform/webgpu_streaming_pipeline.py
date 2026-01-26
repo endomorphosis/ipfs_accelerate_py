@@ -921,7 +921,7 @@ class WebGPUStreamingPipeline:
             # Wait for it to complete
             try:
                 await queue_processor_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
             
             # Clean up

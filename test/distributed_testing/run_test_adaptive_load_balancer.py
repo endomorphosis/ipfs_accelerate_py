@@ -624,12 +624,12 @@ async def run_dynamic_environment(port=8082, duration=600):
     
     try:
         await monitor_task
-    except asyncio.CancelledError:
+    except anyio.get_cancelled_exc_class():
         pass
     
     try:
         await workers_task
-    except asyncio.CancelledError:
+    except anyio.get_cancelled_exc_class():
         pass
 
 async def cleanup_processes():

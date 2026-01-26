@@ -250,7 +250,7 @@ async def monitor_cluster_status(args, coordinator_ports):
             
             # Wait before next check
             await anyio.sleep(5)
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             break
         except Exception as e:
             logger.error(f"Error in monitoring loop: {e}")
@@ -484,7 +484,7 @@ async def run_test(args):
     monitor_task.cancel()
     try:
         await monitor_task
-    except asyncio.CancelledError:
+    except anyio.get_cancelled_exc_class():
         pass
     
     # Stop workers

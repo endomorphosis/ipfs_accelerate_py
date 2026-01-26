@@ -781,7 +781,7 @@ class ResourcePoolCircuitBreaker:
             self.health_check_task.cancel()
             try:
                 await self.health_check_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
             self.health_check_task = None
             

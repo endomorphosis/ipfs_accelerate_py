@@ -206,7 +206,7 @@ class ParallelModelExecutor:
                 if self.adaptive_scaling:
                     self._adapt_worker_count()
         
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             logger.info("Worker monitor task cancelled")
         except Exception as e:
             logger.error(f"Error in worker monitor: {e}")
@@ -643,7 +643,7 @@ class ParallelModelExecutor:
             self._worker_monitor_task.cancel()
             try:
                 await self._worker_monitor_task
-            except asyncio.CancelledError:
+            except anyio.get_cancelled_exc_class():
                 pass
             self._worker_monitor_task = None
         

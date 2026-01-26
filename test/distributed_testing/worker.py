@@ -548,7 +548,7 @@ class DistributedTestingWorker:
                             self.current_task_future.cancel()
                             try:
                                 await self.current_task_future
-                            except asyncio.CancelledError:
+                            except anyio.get_cancelled_exc_class():
                                 logger.info(f"Task {task_id} cancelled")
                             finally:
                                 # Update task status
@@ -697,7 +697,7 @@ class DistributedTestingWorker:
         logger.info(f"Executing {len(tasks_data)} tasks in parallel (max concurrency: {max_concurrent})")
         
         # Create semaphore to limit concurrency
-        semaphore = asyncio.Semaphore(max_concurrent)
+        semaphore = anyio.Semaphore(max_concurrent)
         
         # Create tasks list
         tasks = []

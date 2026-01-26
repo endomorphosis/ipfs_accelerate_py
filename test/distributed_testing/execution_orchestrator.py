@@ -872,7 +872,7 @@ class ExecutionOrchestrator:
                 metadata={"execution_time": execution_time}
             )
         
-        except asyncio.CancelledError:
+        except anyio.get_cancelled_exc_class():
             # Handle task cancellation
             context.status = ExecutionStatus.FAILED
             context.error = "Execution cancelled"

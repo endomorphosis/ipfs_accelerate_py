@@ -538,6 +538,9 @@ def main(argv: List[str]) -> int:
     any_hard = False
 
     for path in _iter_python_files(DEFAULT_ROOT, args.include):
+        # rglob can yield broken symlinks; skip anything that isn't a readable file
+        if not path.is_file():
+            continue
         # Skip vendored/virtualenv folders if user points include too wide
         if any(part in {".venv", ".venv_zt_validate", ".pytest_cache", "__pycache__"} for part in path.parts):
             continue
