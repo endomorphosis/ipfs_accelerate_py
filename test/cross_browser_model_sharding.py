@@ -22,7 +22,7 @@ import anyio
     import time
     import json
     import argparse
-    import asyncio
+    import anyio
     import logging
     from typing import Dict, List, Any, Optional, Tuple, Union, Set
 
@@ -481,7 +481,7 @@ class CrossBrowserModelShardingManager:
             continue
                 
             # Create initialization task for this browser
-            task = # TODO: Replace with task group - asyncio.create_task()))))))))))))))
+            task = # TODO: Replace with task group - anyio.create_task_group()))))))))))))))
             self._initialize_browser_shards()))))))))))))))browser, shard_indices)
             )
             init_tasks.append()))))))))))))))task)
@@ -596,7 +596,7 @@ class CrossBrowserModelShardingManager:
             browser_manager = self.browser_managers[]]],,,browser]
             
             # Create inference task
-            task = # TODO: Replace with task group - asyncio.create_task()))))))))))))))
+            task = # TODO: Replace with task group - anyio.create_task_group()))))))))))))))
             self._run_browser_inference()))))))))))))))
             browser=browser,
             manager=browser_manager,
@@ -754,7 +754,7 @@ class CrossBrowserModelShardingManager:
             browser_manager = self.browser_managers[]]],,,browser]
             
             # Create shutdown task
-            task = # TODO: Replace with task group - asyncio.create_task()))))))))))))))self._shutdown_browser()))))))))))))))browser, browser_manager))
+            task = # TODO: Replace with task group - anyio.create_task_group()))))))))))))))self._shutdown_browser()))))))))))))))browser, browser_manager))
             shutdown_tasks.append()))))))))))))))task)
             
         # Wait for all shutdowns to complete

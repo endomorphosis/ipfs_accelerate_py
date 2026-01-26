@@ -20,7 +20,7 @@ Usage:
     import sys
     import json
     import time
-    import asyncio
+    import anyio
     import logging
     import argparse
     from pathlib import Path
@@ -478,8 +478,7 @@ def main()))))))):
         result = anyio.run()))))))main_async()))))))args))
     else:
         # For Python 3.6 or lower
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop())))))))
-        result = loop.run_until_complete()))))))main_async()))))))args))
+        result = anyio.run(main_async, args)
     
     # Return appropriate exit code
     if result == 0:

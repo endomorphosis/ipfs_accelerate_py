@@ -15,7 +15,7 @@ import anyio
     import sys
     import json
     import time
-    import asyncio
+    
     import logging
     import argparse
     import websockets
@@ -325,7 +325,7 @@ class WebPlatformBridge:
                 if data.get())"type") == message_type:
                     if model_name is None or data.get())"model_name") == model_name:
                     return data
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Timeout on receive, continue waiting
                     continue
             except Exception as e:
@@ -357,7 +357,7 @@ async def run_test())args):
         # Wait for browser to connect
         try:
             await wait_for())connected_event.wait())), 10)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.error())"Timeout waiting for browser to connect")
             await bridge.stop()))
             return 1

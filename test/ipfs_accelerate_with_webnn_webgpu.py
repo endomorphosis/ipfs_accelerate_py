@@ -33,7 +33,7 @@ Usage:
     import time
     import logging
     import random
-    import asyncio
+    import anyio
     import threading
     from pathlib import Path
     from datetime import datetime

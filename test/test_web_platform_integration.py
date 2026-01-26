@@ -19,7 +19,7 @@ Usage:
     import argparse
     import logging
     import datetime
-    import asyncio
+    import anyio
     from pathlib import Path
     from typing import Dict, List, Any, Optional, Tuple, Callable, Union
 
@@ -787,7 +787,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
 
                 def run_async_test()))))))))))))))))))))verbose: bool = False) -> Dict[str, Any]:,,,,,
                 """
-                Run async test using asyncio.
+                Run async test using AnyIO.
     
     Args:
         verbose: Whether to print verbose output
@@ -795,8 +795,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     Returns:
         Dictionary with test results
         """
-        loop = # TODO: Remove event loop management - asyncio.get_event_loop())))))))))))))))))))))
-        return loop.run_until_complete()))))))))))))))))))))test_async_streaming_inference()))))))))))))))))))))verbose))
+        return anyio.run(test_async_streaming_inference, verbose)
 
 def main()))))))))))))))))))))):
     """Parse arguments and run the tests."""

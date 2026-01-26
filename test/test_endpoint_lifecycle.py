@@ -418,7 +418,7 @@ class TestEndpointLifecycle:
                 if inspect.iscoroutinefunction(  # Added import inspect)endpoint_handler):
                     print()f"Invoking async endpoint handler")
                     try:
-                        # Use asyncio.wait_for to add timeout protection
+                        # Use wait_for to add timeout protection
                         result = await wait_for()
                         endpoint_handler()test_input),
                         timeout=max_test_time
@@ -430,7 +430,7 @@ class TestEndpointLifecycle:
                             "result": str()result)[]]]],,:100] + "..." if len()str()result)) > 100 else str()result),:::
                                 "time_taken": time_taken
                                 }
-                    except asyncio.TimeoutError:
+                    except TimeoutError:
                         results[]]]],,"steps"][]]]],,"endpoint_invocation"] = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
                         "status": "Error ()timeout)",
                         "method": "async",

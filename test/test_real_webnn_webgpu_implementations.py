@@ -153,7 +153,7 @@ async def test_webnn_implementation())))))))))))browser="edge", headless=False, 
     try:
         # Create a real WebNN connection
         connection = RealWebNNConnection())))))))))))browser_name=browser, headless=headless)
-        
+    return anyio.run(main_async, args)
         # Initialize connection
         logger.info())))))))))))"Initializing WebNN connection")
         init_success = await connection.initialize()))))))))))))
@@ -728,8 +728,7 @@ def main())))))))))))):
     args = parser.parse_args()))))))))))))
     
     # Run async main function
-    loop = # TODO: Remove event loop management - asyncio.get_event_loop()))))))))))))
-                    return loop.run_until_complete())))))))))))main_async())))))))))))args))
+        return anyio.run(main_async, args)
 
 
 if __name__ == "__main__":

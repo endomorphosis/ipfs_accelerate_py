@@ -20,7 +20,7 @@ generation with various precision options. It covers:
     import sys
     import json
     import time
-    import asyncio
+    import anyio
     import threading
     import logging
     import http.server
@@ -383,8 +383,8 @@ class WebSocketServerManager:
             await self.start_server())))))))
             
         def run_in_thread()))))))):
-            self.loop = # TODO: Remove event loop management - asyncio.new_event_loop())))))))
-            # TODO: Remove event loop management - asyncio.set_event_loop()))))))self.loop)
+            self.loop = # TODO: Remove event loop management - anyio.run
+            # TODO: Remove event loop management - anyio.run
             self.server_task = self.loop.create_task()))))))run_server()))))))))
             self.loop.run_forever())))))))
             

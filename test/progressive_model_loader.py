@@ -44,7 +44,7 @@ import anyio
     import sys
     import time
     import json
-    import asyncio
+    import anyio
     import logging
     from pathlib import Path
     from typing import Dict, List, Any, Optional, Union, Tuple, Set, Callable
