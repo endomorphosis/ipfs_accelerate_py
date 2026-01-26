@@ -110,6 +110,13 @@ class ComprehensiveDependencyInstaller:
                 "category": "core",
                 "critical": True
             },
+            "pytz": {
+                "pip_name": "pytz",
+                "import_name": "pytz",
+                "description": "Timezone database for date handling",
+                "category": "core",
+                "critical": False
+            },
             "scipy": {
                 "pip_name": "scipy", 
                 "import_name": "scipy",

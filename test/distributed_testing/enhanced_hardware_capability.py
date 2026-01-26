@@ -468,6 +468,17 @@ class HardwareCapabilityDetector:
                             supported_precisions.append(PrecisionType.INT2)
                             
                         # Create capability object
+                        ecc_enabled = None
+                        try:
+                            if hasattr(pynvml, "nvmlDeviceGetTotalEccErrors"):
+                                error_type = getattr(pynvml, "NVML_MEMORY_ERROR_TYPE_UNCORRECTED", None)
+                                counter_type = getattr(pynvml, "NVML_VOLATILE_ECC", None)
+                                if error_type is not None and counter_type is not None:
+                                    ecc_total = pynvml.nvmlDeviceGetTotalEccErrors(handle, error_type, counter_type)
+                                    ecc_enabled = ecc_total is not None and ecc_total >= 0
+                        except Exception:
+                            ecc_enabled = None
+
                         gpu_capability = HardwareCapability(
                             hardware_type=HardwareType.GPU,
                             vendor=HardwareVendor.NVIDIA,
@@ -481,7 +492,7 @@ class HardwareCapabilityDetector:
                                 'compute_capability': f"{compute_capability[0]}.{compute_capability[1]}",
                                 'cuda_cores': None,  # Not directly available
                                 'tensor_cores': compute_capability[0] >= 7,
-                                'ecc_enabled': pynvml.nvmlDeviceGetTotalEccErrors(handle, 0) != -1,
+                                'ecc_enabled': ecc_enabled,
                                 'tcc_driver': False,  # Default value
                                 'memory_used_gb': memory_info.used / (1024**3),
                             }
@@ -561,7 +572,7 @@ class HardwareCapabilityDetector:
                                   stderr=subprocess.PIPE)
             
             if result.returncode != 0:
-                logger.warning("rocm-smi not found, cannot detect AMD GPUs")
+                logger.info("rocm-smi not found, cannot detect AMD GPUs")
                 return []
             
             # Run rocm-smi to get GPU information

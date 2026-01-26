@@ -393,8 +393,12 @@ class ExecutionOrchestratorTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.orchestrator.visualize_execution_plan(output_format="invalid")
     
-    async def test_execute_all_tests_async(self):
+    def test_execute_all_tests_async(self):
         """Test asynchronous execution of all tests."""
+        anyio.run(self._test_execute_all_tests_async)
+
+    async def _test_execute_all_tests_async(self):
+        """Test async execution of all tests."""
         # Patch update_group_status to mark all groups as completed after first call
         original_update_group_status = self.orchestrator.update_group_status
         
@@ -424,8 +428,12 @@ class ExecutionOrchestratorTests(unittest.TestCase):
     @patch('execution_orchestrator.anyio.sleep')
     @patch('random.uniform')
     @patch('random.random')
-    async def test_execute_test_async(self, mock_random, mock_uniform, mock_sleep):
+    def test_execute_test_async(self, mock_random, mock_uniform, mock_sleep):
         """Test asynchronous execution of a single test."""
+        anyio.run(self._test_execute_test_async, mock_random, mock_uniform, mock_sleep)
+
+    async def _test_execute_test_async(self, mock_random, mock_uniform, mock_sleep):
+        """Test async execution of a single test."""
         # Mock random functions
         mock_uniform.return_value = 0.1  # Fast execution time
         mock_random.return_value = 0.95  # Success (> 0.9)
@@ -455,8 +463,12 @@ class ExecutionOrchestratorTests(unittest.TestCase):
     @patch('execution_orchestrator.anyio.sleep')
     @patch('random.uniform')
     @patch('random.random')
-    async def test_execute_test_async_failure(self, mock_random, mock_uniform, mock_sleep):
+    def test_execute_test_async_failure(self, mock_random, mock_uniform, mock_sleep):
         """Test asynchronous execution of a failing test."""
+        anyio.run(self._test_execute_test_async_failure, mock_random, mock_uniform, mock_sleep)
+
+    async def _test_execute_test_async_failure(self, mock_random, mock_uniform, mock_sleep):
+        """Test async execution of a single test with failure."""
         # Mock random functions
         mock_uniform.return_value = 0.1  # Fast execution time
         mock_random.return_value = 0.8  # Failure (< 0.9)
@@ -484,8 +496,12 @@ class ExecutionOrchestratorTests(unittest.TestCase):
         self.assertEqual(status["status"], "failed")
     
     @patch('execution_orchestrator.anyio.sleep')
-    async def test_execute_test_async_cancellation(self, mock_sleep):
+    def test_execute_test_async_cancellation(self, mock_sleep):
         """Test cancellation of asynchronous test execution."""
+        anyio.run(self._test_execute_test_async_cancellation, mock_sleep)
+
+    async def _test_execute_test_async_cancellation(self, mock_sleep):
+        """Test async execution of a single test with cancellation."""
         # Mock sleep to raise cancellation
         mock_sleep.side_effect = anyio.get_cancelled_exc_class()()
         

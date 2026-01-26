@@ -15,6 +15,8 @@ Key features:
 """
 
 import logging
+import os
+import sys
 import json
 import time
 import uuid
@@ -44,8 +46,13 @@ logging.basicConfig(
 logger = logging.getLogger("hardware_test_matcher")
 
 
+def _is_test_mode() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI") or "pytest" in sys.modules)
+
+
 class TestRequirementType(Enum):
     """Types of test requirements."""
+    __test__ = False
     COMPUTE = "compute"         # Computational requirements
     MEMORY = "memory"           # Memory requirements
     STORAGE = "storage"         # Storage requirements
@@ -57,6 +64,7 @@ class TestRequirementType(Enum):
 
 class TestType(Enum):
     """Types of tests with different resource profiles."""
+    __test__ = False
     COMPUTE_INTENSIVE = "compute_intensive"    # Tests with high computational requirements
     MEMORY_INTENSIVE = "memory_intensive"      # Tests with high memory requirements
     IO_INTENSIVE = "io_intensive"              # Tests with high I/O requirements
@@ -69,6 +77,7 @@ class TestType(Enum):
 @dataclass
 class TestRequirement:
     """Represents a requirement for a test."""
+    __test__ = False
     requirement_type: TestRequirementType
     value: Any
     importance: float = 1.0  # Importance weight (0.0-1.0)
@@ -79,6 +88,7 @@ class TestRequirement:
 @dataclass
 class TestProfile:
     """Profile of a test with its requirements."""
+    __test__ = False
     test_id: str
     test_type: TestType = TestType.GENERAL
     requirements: List[TestRequirement] = field(default_factory=list)
@@ -104,6 +114,7 @@ class HardwareTestMatch:
 @dataclass
 class TestPerformanceRecord:
     """Record of test performance on a specific hardware configuration."""
+    __test__ = False
     test_id: str
     worker_id: str
     hardware_id: str
@@ -123,6 +134,8 @@ class TestHardwareMatcher:
     resources based on test requirements, hardware capabilities, and historical
     performance data.
     """
+
+    __test__ = False
     
     def __init__(
             self, 
@@ -642,7 +655,8 @@ class TestHardwareMatcher:
                        f"({best_match.hardware_type.value}) with score {best_match.match_score:.4f}")
             return best_match
         else:
-            logger.warning(f"No suitable hardware match found for test {test_id}")
+            log_fn = logger.debug if _is_test_mode() else logger.warning
+            log_fn(f"No suitable hardware match found for test {test_id}")
             return None
     
     def _persist_match(self, match: HardwareTestMatch) -> None:

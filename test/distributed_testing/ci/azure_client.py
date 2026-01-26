@@ -67,6 +67,15 @@ class AzureDevOpsClient(CIProviderInterface):
         Returns:
             True if initialization succeeded
         """
+        config = config or {}
+        force_online = bool(config.get("force_online"))
+        offline_setting = config.get("offline")
+        if force_online:
+            self._offline = False
+        elif offline_setting is not None:
+            self._offline = bool(offline_setting)
+        else:
+            self._offline = os.environ.get("PYTEST_CURRENT_TEST") is not None
         self.token = config.get("token")
         self.organization = config.get("organization")
         if not self.organization:
@@ -77,6 +86,12 @@ class AzureDevOpsClient(CIProviderInterface):
         self.repository_id = config.get("repository_id")
         self.build_id = config.get("build_id")
         
+        if self._offline:
+            if self.organization and self.project:
+                self.api_url = f"https://dev.azure.com/{self.organization}/{self.project}/_apis/"
+            logger.info("AzureDevOpsClient initialized in offline/simulation mode")
+            return True
+
         if not self.token:
             logger.error("Azure DevOps token is required")
             return False

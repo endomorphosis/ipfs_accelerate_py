@@ -417,6 +417,8 @@ class TestResultReporter:
     """
     Reports test results to various CI/CD systems and generates reports.
     """
+
+    __test__ = False
     
     def __init__(
         self,

@@ -61,6 +61,10 @@ logging.basicConfig(
 logger = logging.getLogger("coordinator_hardware_monitoring")
 
 
+def _is_test_mode() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI") or "pytest" in sys.modules)
+
+
 class CoordinatorHardwareMonitoringIntegration:
     """
     Integrates hardware utilization monitoring with the coordinator component
@@ -360,7 +364,8 @@ class CoordinatorHardwareMonitoringIntegration:
                     # Update worker status based on utilization
                     if self._is_worker_overloaded(metrics):
                         if self.coordinator.workers[worker_id].get("status") != "overloaded":
-                            logger.warning(f"Worker {worker_id} is overloaded, updating status")
+                            log_fn = logger.debug if _is_test_mode() else logger.warning
+                            log_fn(f"Worker {worker_id} is overloaded, updating status")
                             self.coordinator.workers[worker_id]["status"] = "overloaded"
                     elif self.coordinator.workers[worker_id].get("status") == "overloaded":
                         # Reset status if no longer overloaded

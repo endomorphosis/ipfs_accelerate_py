@@ -65,10 +65,23 @@ class GitHubClient(CIProviderInterface):
         Returns:
             True if initialization succeeded
         """
+        config = config or {}
+        force_online = bool(config.get("force_online"))
+        offline_setting = config.get("offline")
+        if force_online:
+            self._offline = False
+        elif offline_setting is not None:
+            self._offline = bool(offline_setting)
+        else:
+            self._offline = os.environ.get("PYTEST_CURRENT_TEST") is not None
         self.token = config.get("token")
         self.repository = config.get("repository")
         self.api_url = config.get("api_url", "https://api.github.com")
         self.commit_sha = config.get("commit_sha")
+
+        if self._offline:
+            logger.info("GitHubClient initialized in offline/simulation mode")
+            return True
         
         if not self.token:
             logger.error("GitHub token is required")

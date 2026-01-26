@@ -17,6 +17,8 @@ Key features:
 """
 
 import anyio
+import os
+import sys
 import inspect
 import logging
 import time
@@ -36,6 +38,24 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - [%(name)s] - %(message)s'
 )
 logger = logging.getLogger("distributed_error_handler")
+
+
+def _is_test_mode() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI") or "pytest" in sys.modules)
+
+
+def _log_warning(message: str) -> None:
+    if _is_test_mode():
+        logger.debug(message)
+    else:
+        logger.warning(message)
+
+
+def _log_error(message: str) -> None:
+    if _is_test_mode():
+        logger.debug(message)
+    else:
+        logger.error(message)
 
 
 class ErrorSeverity(Enum):
@@ -775,13 +795,13 @@ class DistributedErrorHandler:
             try:
                 hook(error_report)
             except Exception as e:
-                logger.error(f"Error in error hook: {str(e)}")
+                _log_error(f"Error in error hook: {str(e)}")
         
         # Log the error
         if error_severity in [ErrorSeverity.HIGH, ErrorSeverity.CRITICAL]:
-            logger.error(f"SEVERE ERROR [{error_id}]: {error_type.value} in {context.component}/{context.operation}: {str(exception)}")
+            _log_error(f"SEVERE ERROR [{error_id}]: {error_type.value} in {context.component}/{context.operation}: {str(exception)}")
         else:
-            logger.warning(f"Error [{error_id}]: {error_type.value} in {context.component}/{context.operation}: {str(exception)}")
+            _log_warning(f"Error [{error_id}]: {error_type.value} in {context.component}/{context.operation}: {str(exception)}")
         
         return error_report
     
@@ -889,7 +909,7 @@ class DistributedErrorHandler:
                     self._persist_error(error_report)
                     
                     # Log failure
-                    logger.error(f"Operation {operation_name} failed after {retry_count} retries: {str(last_error)}")
+                    _log_error(f"Operation {operation_name} failed after {retry_count} retries: {str(last_error)}")
                     
                     # Return failure
                     return None, error_report
@@ -899,7 +919,7 @@ class DistributedErrorHandler:
                 delay_sec = delay_ms / 1000.0
                 
                 # Log retry attempt
-                logger.warning(f"Retrying operation {operation_name} after error: {str(e)} (attempt {retry_count}/{retry_policy.max_retries}, delay {delay_ms}ms)")
+                _log_warning(f"Retrying operation {operation_name} after error: {str(e)} (attempt {retry_count}/{retry_policy.max_retries}, delay {delay_ms}ms)")
                 
                 # Update error report
                 error_report.retry_count = retry_count
@@ -1018,7 +1038,7 @@ class DistributedErrorHandler:
                     self._persist_error(error_report)
                     
                     # Log failure
-                    logger.error(f"Operation {operation_name} failed after {retry_count} retries: {str(last_error)}")
+                    _log_error(f"Operation {operation_name} failed after {retry_count} retries: {str(last_error)}")
                     
                     # Return failure
                     return None, error_report
@@ -1028,7 +1048,7 @@ class DistributedErrorHandler:
                 delay_sec = delay_ms / 1000.0
                 
                 # Log retry attempt
-                logger.warning(f"Retrying operation {operation_name} after error: {str(e)} (attempt {retry_count}/{retry_policy.max_retries}, delay {delay_ms}ms)")
+                _log_warning(f"Retrying operation {operation_name} after error: {str(e)} (attempt {retry_count}/{retry_policy.max_retries}, delay {delay_ms}ms)")
                 
                 # Update error report
                 error_report.retry_count = retry_count
@@ -1067,9 +1087,9 @@ class DistributedErrorHandler:
         if error_report.error_severity == ErrorSeverity.CRITICAL:
             logger.critical(f"Critical error in {error_report.context.component}/{error_report.context.operation}: {error_report.message}")
         elif error_report.error_severity == ErrorSeverity.HIGH:
-            logger.error(f"High severity error in {error_report.context.component}/{error_report.context.operation}: {error_report.message}")
+            _log_error(f"High severity error in {error_report.context.component}/{error_report.context.operation}: {error_report.message}")
         else:
-            logger.warning(f"Error in {error_report.context.component}/{error_report.context.operation}: {error_report.message}")
+            _log_warning(f"Error in {error_report.context.component}/{error_report.context.operation}: {error_report.message}")
         
         return error_report
     

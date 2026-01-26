@@ -7,6 +7,7 @@ ensuring it can properly connect to the coordinator, handle tasks, and manage it
 """
 
 import anyio
+import hashlib
 import json
 import logging
 import os
@@ -249,6 +250,77 @@ class TestDistributedTestingWorkerAsync:
             # Verify the expected task flow
             worker._execute_benchmark_task.assert_called_once_with(task)
             worker._send_task_result.assert_called_once()
+
+    @pytest.mark.anyio
+    async def test_hash_task_execution(self, worker_setup):
+        """Test hash task execution on worker."""
+        worker, _ = worker_setup
+
+        task = {
+            "task_id": "hash_task_1",
+            "type": "hash",
+            "config": {
+                "payload": "hello world",
+                "algorithm": "sha256",
+            },
+            "status": "received",
+            "received": datetime.now().isoformat(),
+        }
+
+        expected = hashlib.sha256(b"hello world").hexdigest()
+
+        with patch.object(worker, '_send_task_result', AsyncMock()):
+            result = await worker._execute_task(task)
+
+        assert result["status"] == "completed"
+        assert result["result"]["algorithm"] == "sha256"
+        assert result["result"]["digest"] == expected
+
+    @pytest.mark.anyio
+    async def test_multi_worker_hash_tasks(self):
+        """Test multiple workers executing hash tasks concurrently."""
+        coordinator_url = "http://localhost:8080"
+        api_key = "test_api_key"
+
+        with patch('worker.SecurityManager') as mock_security_manager:
+            mock_security = mock_security_manager.return_value
+            mock_security.sign_message.side_effect = lambda msg: {**msg, "signature": "test_signature"}
+            mock_security.verify_message.return_value = True
+
+            worker_a = DistributedTestingWorker(
+                coordinator_url=coordinator_url,
+                worker_id="hash-worker-a",
+                api_key=api_key,
+            )
+            worker_b = DistributedTestingWorker(
+                coordinator_url=coordinator_url,
+                worker_id="hash-worker-b",
+                api_key=api_key,
+            )
+            worker_a.security_manager = mock_security
+            worker_b.security_manager = mock_security
+
+        results = {}
+
+        async def run_hash(worker, task_id, payload):
+            task = {
+                "task_id": task_id,
+                "type": "hash",
+                "config": {"payload": payload, "algorithm": "sha256"},
+                "status": "received",
+                "received": datetime.now().isoformat(),
+            }
+            with patch.object(worker, '_send_task_result', AsyncMock()):
+                results[task_id] = await worker._execute_task(task)
+
+        async with anyio.create_task_group() as tg:
+            tg.start_soon(run_hash, worker_a, "hash-task-a", "alpha")
+            tg.start_soon(run_hash, worker_b, "hash-task-b", "bravo")
+
+        assert results["hash-task-a"]["status"] == "completed"
+        assert results["hash-task-b"]["status"] == "completed"
+        assert results["hash-task-a"]["result"]["digest"] == hashlib.sha256(b"alpha").hexdigest()
+        assert results["hash-task-b"]["result"]["digest"] == hashlib.sha256(b"bravo").hexdigest()
     
     @pytest.mark.anyio
     async def test_task_execution_failure(self, worker_setup):

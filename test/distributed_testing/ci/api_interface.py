@@ -146,6 +146,8 @@ class TestRunResult:
     This class provides a common structure for test results, making it easier to
     generate reports and visualizations regardless of the CI system used.
     """
+
+    __test__ = False
     
     def __init__(
         self,
@@ -243,7 +245,7 @@ class CIProviderFactory:
         cls._providers[provider_type] = provider_class
     
     @classmethod
-    async def create_provider(cls, provider_type: str, config: Dict[str, Any]) -> CIProviderInterface:
+    async def create_provider(cls, provider_type: str, config: Optional[Dict[str, Any]] = None) -> CIProviderInterface:
         """
         Create a CI provider instance.
         
@@ -262,7 +264,7 @@ class CIProviderFactory:
         
         provider_class = cls._providers[provider_type]
         provider = provider_class()
-        await provider.initialize(config)
+        await provider.initialize(config or {})
         
         return provider
     

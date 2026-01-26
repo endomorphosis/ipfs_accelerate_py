@@ -470,7 +470,11 @@ class TestResultAggregatorIntegration(unittest.TestCase):
         )
     
     @patch('result_aggregator.coordinator_integration.ResultAggregatorService.store_result')
-    async def test_task_completed_hook(self, mock_store_result):
+    def test_task_completed_hook(self, mock_store_result):
+        """Test task completed hook."""
+        anyio.run(self._test_task_completed_hook, mock_store_result)
+
+    async def _test_task_completed_hook(self, mock_store_result):
         """Test task completed hook."""
         # Setup mock to return a result ID
         mock_store_result.return_value = 123
@@ -524,7 +528,11 @@ class TestResultAggregatorIntegration(unittest.TestCase):
         self.assertEqual(stored_data["metrics"]["memory_usage"], 1000.0)
     
     @patch('result_aggregator.coordinator_integration.ResultAggregatorService.store_result')
-    async def test_task_failed_hook(self, mock_store_result):
+    def test_task_failed_hook(self, mock_store_result):
+        """Test task failed hook."""
+        anyio.run(self._test_task_failed_hook, mock_store_result)
+
+    async def _test_task_failed_hook(self, mock_store_result):
         """Test task failed hook."""
         # Setup mock to return a result ID
         mock_store_result.return_value = 123
@@ -577,8 +585,11 @@ class TestResultAggregatorIntegration(unittest.TestCase):
     @patch('result_aggregator.coordinator_integration.ResultAggregatorIntegration._send_notification')
     @patch('result_aggregator.service.ResultAggregatorService.detect_anomalies')
     @patch('result_aggregator.service.ResultAggregatorService.analyze_performance_trends')
-    async def test_periodic_analysis(self, mock_analyze_trends, mock_detect_anomalies, mock_send_notification):
+    def test_periodic_analysis(self, mock_analyze_trends, mock_detect_anomalies, mock_send_notification):
         """Test periodic analysis."""
+        anyio.run(self._test_periodic_analysis, mock_analyze_trends, mock_detect_anomalies, mock_send_notification)
+
+    async def _test_periodic_analysis(self, mock_analyze_trends, mock_detect_anomalies, mock_send_notification):
         # Setup mocks
         mock_analyze_trends.return_value = {
             "throughput": {

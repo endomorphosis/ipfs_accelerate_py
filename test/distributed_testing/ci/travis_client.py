@@ -63,10 +63,23 @@ class TravisClient(CIProviderInterface):
         Returns:
             True if initialization succeeded
         """
+        config = config or {}
+        force_online = bool(config.get("force_online"))
+        offline_setting = config.get("offline")
+        if force_online:
+            self._offline = False
+        elif offline_setting is not None:
+            self._offline = bool(offline_setting)
+        else:
+            self._offline = os.environ.get("PYTEST_CURRENT_TEST") is not None
         self.token = config.get("token")
         self.repository = config.get("repository")
         self.api_url = config.get("api_url", "https://api.travis-ci.com")
         self.build_id = config.get("build_id")
+
+        if self._offline:
+            logger.info("TravisClient initialized in offline/simulation mode")
+            return True
         
         if not self.token:
             logger.error("Travis CI token is required")

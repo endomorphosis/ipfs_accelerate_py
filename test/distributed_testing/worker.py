@@ -10,6 +10,7 @@ Usage:
 """
 
 import argparse
+import hashlib
 import anyio
 import json
 import logging
@@ -162,6 +163,7 @@ class DistributedTestingWorker:
             "benchmark": self._execute_benchmark_task,
             "test": self._execute_test_task,
             "custom": self._execute_custom_task,
+            "hash": self._execute_hash_task,
         }
     
     async def _detect_hardware_capabilities(self) -> Dict[str, Any]:
@@ -257,7 +259,8 @@ class DistributedTestingWorker:
             
             # Authenticate with coordinator
             if not await self._authenticate():
-                logger.error("Authentication failed")
+                log_fn = logger.debug if self._is_test_mode() else logger.error
+                log_fn("Authentication failed")
                 self.ws_connected = False
                 await self.ws.close()
                 return False
@@ -346,11 +349,13 @@ class DistributedTestingWorker:
                 return True
             else:
                 error_msg = response.get("message", "Unknown error")
-                logger.error(f"Authentication failed: {error_msg}")
+                log_fn = logger.debug if self._is_test_mode() else logger.error
+                log_fn(f"Authentication failed: {error_msg}")
                 return False
                 
         except Exception as e:
-            logger.error(f"Error during authentication: {str(e)}")
+            log_fn = logger.debug if self._is_test_mode() else logger.error
+            log_fn(f"Error during authentication: {str(e)}")
             return False
     
     async def reconnect_to_coordinator(self):
@@ -853,7 +858,8 @@ class DistributedTestingWorker:
             # Send error to coordinator
             await self._send_task_error(task, execution_time, str(e))
             
-            logger.error(f"Task {task_id} failed after {execution_time:.2f} seconds: {str(e)}")
+            log_fn = logger.debug if self._is_test_mode() else logger.error
+            log_fn(f"Task {task_id} failed after {execution_time:.2f} seconds: {str(e)}")
         
         # Clear current task
         self.current_task = None
@@ -1149,6 +1155,45 @@ class DistributedTestingWorker:
         logger.info(f"Custom task completed: {task_name}")
         
         return results
+
+    async def _execute_hash_task(self, task: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Execute a hash task.
+
+        Args:
+            task: Task information
+
+        Returns:
+            Hash result information
+        """
+        config = task.get("config", {})
+        payload = config.get("payload", config.get("data"))
+        algorithm = config.get("algorithm", "sha256")
+        encoding = config.get("encoding", "utf-8")
+
+        if payload is None:
+            raise ValueError("Hash task requires 'payload' or 'data' in config")
+
+        try:
+            hasher = hashlib.new(algorithm)
+        except ValueError as exc:
+            raise ValueError(f"Unsupported hash algorithm: {algorithm}") from exc
+
+        if isinstance(payload, bytes):
+            data = payload
+        else:
+            data = str(payload).encode(encoding)
+
+        hasher.update(data)
+
+        result = {
+            "algorithm": algorithm,
+            "digest": hasher.hexdigest(),
+            "length": len(data),
+        }
+
+        logger.info(f"Hash task completed using {algorithm}")
+        return result
     
     async def check_health(self):
         """
@@ -1189,12 +1234,14 @@ class DistributedTestingWorker:
             
             # Log health status if not healthy
             if not self.is_healthy:
-                logger.warning(f"Worker health check failed: {self.health_metrics}")
+                log_fn = logger.debug if self._is_test_mode() else logger.warning
+                log_fn(f"Worker health check failed: {self.health_metrics}")
                 
             return self.is_healthy
         
         except Exception as e:
-            logger.error(f"Error performing health check: {str(e)}")
+            log_fn = logger.debug if self._is_test_mode() else logger.error
+            log_fn(f"Error performing health check: {str(e)}")
             self.is_healthy = False
             return False
     

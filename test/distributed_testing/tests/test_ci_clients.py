@@ -43,7 +43,7 @@ class TestGitHubClient(unittest.TestCase):
         self.token = "mock_github_token"
         self.repository = "owner/repo"
         self.client = GitHubClient()
-        assert await self.client.initialize({"token": self.token, "repository": self.repository})
+        assert await self.client.initialize({"token": self.token, "repository": self.repository, "force_online": True})
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
     
@@ -137,7 +137,7 @@ class TestGitLabClient(unittest.TestCase):
         self.token = "mock_gitlab_token"
         self.project = "group/project"
         self.client = GitLabClient()
-        assert await self.client.initialize({"token": self.token, "project": self.project})
+        assert await self.client.initialize({"token": self.token, "project": self.project, "force_online": True})
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
     
@@ -231,7 +231,7 @@ class TestJenkinsClient(unittest.TestCase):
         self.user = "jenkins_user"
         self.token = "jenkins_token"
         self.client = JenkinsClient()
-        assert await self.client.initialize({"url": self.url, "user": self.user, "token": self.token})
+        assert await self.client.initialize({"url": self.url, "user": self.user, "token": self.token, "force_online": True})
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
     
@@ -301,7 +301,7 @@ class TestAzureClient(unittest.TestCase):
         self.organization = "org"
         self.project = "project"
         self.client = AzureClient()
-        assert await self.client.initialize({"token": self.token, "organization": self.organization, "project": self.project})
+        assert await self.client.initialize({"token": self.token, "organization": self.organization, "project": self.project, "force_online": True})
         # Avoid creating a real aiohttp.ClientSession (which would need closing).
         self.client.session = MagicMock()
 

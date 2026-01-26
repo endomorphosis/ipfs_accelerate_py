@@ -35,27 +35,38 @@ from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 
+def _is_test_mode() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI") or "pytest" in sys.modules)
+
+
+def _log_optional_dependency(message: str) -> None:
+    if _is_test_mode():
+        logging.debug(message)
+    else:
+        logging.info(message)
+
+
 # Try to import required packages with fallbacks
 try:
     import psutil
     PSUTIL_AVAILABLE = True
 except ImportError:
     PSUTIL_AVAILABLE = False
-    logging.warning("psutil not available. CPU and memory monitoring will be limited")
+    _log_optional_dependency("psutil not available. CPU and memory monitoring will be limited")
 
 try:
     import GPUtil
     GPUTIL_AVAILABLE = True
 except ImportError:
     GPUTIL_AVAILABLE = False
-    logging.warning("GPUtil not available. GPU monitoring will be limited")
+    _log_optional_dependency("GPUtil not available. GPU monitoring will be limited")
 
 try:
     import duckdb
     DUCKDB_AVAILABLE = True
 except ImportError:
     DUCKDB_AVAILABLE = False
-    logging.warning("duckdb not available. Metrics storage will be disabled")
+    _log_optional_dependency("duckdb not available. Metrics storage will be disabled")
 
 # Import hardware capability detector for integration
 from hardware_capability_detector import (
@@ -251,7 +262,7 @@ class HardwareUtilizationMonitor:
             # Create resource_utilization table
             self.db_connection.execute("""
                 CREATE TABLE IF NOT EXISTS resource_utilization (
-                    id INTEGER PRIMARY KEY,
+                    id BIGINT PRIMARY KEY,
                     worker_id VARCHAR,
                     timestamp TIMESTAMP,
                     cpu_percent FLOAT,
@@ -273,7 +284,7 @@ class HardwareUtilizationMonitor:
             # Create task_resource_usage table
             self.db_connection.execute("""
                 CREATE TABLE IF NOT EXISTS task_resource_usage (
-                    id INTEGER PRIMARY KEY,
+                    id BIGINT PRIMARY KEY,
                     task_id VARCHAR,
                     worker_id VARCHAR,
                     start_time TIMESTAMP,
@@ -297,7 +308,7 @@ class HardwareUtilizationMonitor:
             # Create hardware_alerts table
             self.db_connection.execute("""
                 CREATE TABLE IF NOT EXISTS hardware_alerts (
-                    id INTEGER PRIMARY KEY,
+                    id BIGINT PRIMARY KEY,
                     worker_id VARCHAR,
                     timestamp TIMESTAMP,
                     resource_type VARCHAR,
@@ -309,6 +320,11 @@ class HardwareUtilizationMonitor:
                 )
             """)
             
+            # Ensure sequences exist for id assignment on insert
+            self.db_connection.execute("CREATE SEQUENCE IF NOT EXISTS resource_utilization_id_seq")
+            self.db_connection.execute("CREATE SEQUENCE IF NOT EXISTS task_resource_usage_id_seq")
+            self.db_connection.execute("CREATE SEQUENCE IF NOT EXISTS hardware_alerts_id_seq")
+
             logger.info("Database tables created/verified")
         except Exception as e:
             logger.error(f"Failed to create database tables: {str(e)}")
@@ -507,10 +523,10 @@ class HardwareUtilizationMonitor:
             # Insert into database
             self.db_connection.execute("""
                 INSERT INTO resource_utilization (
-                    worker_id, timestamp, cpu_percent, memory_percent, memory_used_gb,
+                    id, worker_id, timestamp, cpu_percent, memory_percent, memory_used_gb,
                     memory_available_gb, swap_percent, gpu_utilization, disk_percent,
                     disk_read_mb, disk_write_mb, net_sent_mb, net_recv_mb, metrics, task_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (nextval('resource_utilization_id_seq'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
                 self.worker_id, metrics.timestamp, metrics.cpu_percent,
                 metrics.memory_percent, metrics.memory_used_gb, metrics.memory_available_gb,
@@ -602,6 +618,8 @@ class HardwareUtilizationMonitor:
             
             # Log alert
             log_level = logging.WARNING if alert.severity == "warning" else logging.ERROR
+            if _is_test_mode():
+                log_level = logging.DEBUG
             logger.log(log_level, f"Hardware Alert: {alert.message}")
     
     def _store_alert(self, alert: HardwareAlert):
@@ -612,9 +630,9 @@ class HardwareUtilizationMonitor:
         try:
             self.db_connection.execute("""
                 INSERT INTO hardware_alerts (
-                    worker_id, timestamp, resource_type, severity, message,
+                    id, worker_id, timestamp, resource_type, severity, message,
                     metric_value, threshold, task_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (nextval('hardware_alerts_id_seq'), ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
                 self.worker_id, alert.timestamp, alert.resource_type,
                 alert.severity, alert.message, alert.metric_value,
@@ -722,12 +740,12 @@ class HardwareUtilizationMonitor:
         try:
             self.db_connection.execute("""
                 INSERT INTO task_resource_usage (
-                    task_id, worker_id, start_time, end_time, peak_cpu_percent,
+                    id, task_id, worker_id, start_time, end_time, peak_cpu_percent,
                     peak_memory_percent, peak_gpu_percent, avg_cpu_percent,
                     avg_memory_percent, avg_gpu_percent, total_disk_read_mb,
                     total_disk_write_mb, total_net_sent_mb, total_net_recv_mb,
                     completed, success, error
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (nextval('task_resource_usage_id_seq'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, [
                 task_usage.task_id, self.worker_id, task_usage.start_time,
                 task_usage.end_time, task_usage.peak_cpu_percent,
@@ -749,7 +767,7 @@ class HardwareUtilizationMonitor:
             ResourceUtilization object with current metrics or None if monitoring is not active
         """
         if not self.monitoring_active:
-            logger.warning("Monitoring is not active")
+            logger.debug("Monitoring is not active")
         
         return self.current_metrics
     

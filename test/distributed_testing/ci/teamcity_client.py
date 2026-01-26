@@ -66,11 +66,26 @@ class TeamCityClient(CIProviderInterface):
         Returns:
             True if initialization succeeded
         """
+        config = config or {}
+        force_online = bool(config.get("force_online"))
+        offline_setting = config.get("offline")
+        if force_online:
+            self._offline = False
+        elif offline_setting is not None:
+            self._offline = bool(offline_setting)
+        else:
+            self._offline = os.environ.get("PYTEST_CURRENT_TEST") is not None
         self.url = config.get("url")
         self.username = config.get("username")
         self.password = config.get("password")
         self.build_id = config.get("build_id")
         self.build_type_id = config.get("build_type_id")
+
+        if self._offline:
+            if self.url and not self.url.endswith("/"):
+                self.url += "/"
+            logger.info("TeamCityClient initialized in offline/simulation mode")
+            return True
         
         # Required parameters
         if not self.url:

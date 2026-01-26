@@ -142,7 +142,10 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
         # Stop the resource manager
         await self.resource_manager.stop()
 
-    async def test_resource_manager_provisions_initial_workers(self):
+    def test_resource_manager_provisions_initial_workers(self):
+        anyio.run(self._test_resource_manager_provisions_initial_workers)
+
+    async def _test_resource_manager_provisions_initial_workers(self):
         """Test that the resource manager provisions initial workers."""
         # Set up
         await self.async_setUp()
@@ -160,7 +163,10 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
         finally:
             await self.async_tearDown()
 
-    async def test_resource_manager_scales_up_with_high_queue(self):
+    def test_resource_manager_scales_up_with_high_queue(self):
+        anyio.run(self._test_resource_manager_scales_up_with_high_queue)
+
+    async def _test_resource_manager_scales_up_with_high_queue(self):
         """Test that the resource manager scales up when the task queue is high."""
         # Set up
         await self.async_setUp()
@@ -230,7 +236,10 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
         finally:
             await self.async_tearDown()
 
-    async def test_resource_manager_scales_down_with_low_queue(self):
+    def test_resource_manager_scales_down_with_low_queue(self):
+        anyio.run(self._test_resource_manager_scales_down_with_low_queue)
+
+    async def _test_resource_manager_scales_down_with_low_queue(self):
         """Test that the resource manager scales down when the task queue is low."""
         # Set up
         await self.async_setUp()
@@ -300,7 +309,10 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
         finally:
             await self.async_tearDown()
 
-    async def test_worker_registration_with_coordinator(self):
+    def test_worker_registration_with_coordinator(self):
+        anyio.run(self._test_worker_registration_with_coordinator)
+
+    async def _test_worker_registration_with_coordinator(self):
         """Test that workers provisioned by the resource manager properly register with the coordinator."""
         # Set up
         await self.async_setUp()
@@ -346,7 +358,10 @@ class TestDynamicResourceManagerIntegration(unittest.TestCase):
         finally:
             await self.async_tearDown()
 
-    async def test_anomaly_detection_and_recovery(self):
+    def test_anomaly_detection_and_recovery(self):
+        anyio.run(self._test_anomaly_detection_and_recovery)
+
+    async def _test_anomaly_detection_and_recovery(self):
         """Test that the resource manager detects and recovers from worker anomalies."""
         # Set up
         await self.async_setUp()

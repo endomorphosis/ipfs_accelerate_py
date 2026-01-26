@@ -129,7 +129,10 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
         # Stop the analyzer
         await self.analyzer.stop()
 
-    async def test_analyzer_connects_to_coordinator(self):
+    def test_analyzer_connects_to_coordinator(self):
+        anyio.run(self._test_analyzer_connects_to_coordinator)
+
+    async def _test_analyzer_connects_to_coordinator(self):
         """Test that the analyzer successfully connects to the coordinator."""
         # Set up
         try:
@@ -144,7 +147,10 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
             if self.analyzer.session:
                 await self.analyzer.session.close()
 
-    async def test_analyzer_collects_metrics(self):
+    def test_analyzer_collects_metrics(self):
+        anyio.run(self._test_analyzer_collects_metrics)
+
+    async def _test_analyzer_collects_metrics(self):
         """Test that the analyzer successfully collects metrics from the coordinator."""
         # Set up
         await self.async_setUp()
@@ -255,7 +261,10 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
         finally:
             await self.async_tearDown()
 
-    async def test_analyzer_detects_anomalies(self):
+    def test_analyzer_detects_anomalies(self):
+        anyio.run(self._test_analyzer_detects_anomalies)
+
+    async def _test_analyzer_detects_anomalies(self):
         """Test that the analyzer successfully detects anomalies in metrics."""
         # Set up
         await self.async_setUp()
@@ -315,7 +324,10 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
         finally:
             await self.async_tearDown()
 
-    async def test_analyzer_identifies_trends(self):
+    def test_analyzer_identifies_trends(self):
+        anyio.run(self._test_analyzer_identifies_trends)
+
+    async def _test_analyzer_identifies_trends(self):
         """Test that the analyzer successfully identifies trends in metrics."""
         # Set up
         await self.async_setUp()
@@ -369,7 +381,10 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
         finally:
             await self.async_tearDown()
 
-    async def test_analyzer_generates_visualizations(self):
+    def test_analyzer_generates_visualizations(self):
+        anyio.run(self._test_analyzer_generates_visualizations)
+
+    async def _test_analyzer_generates_visualizations(self):
         """Test that the analyzer successfully generates visualizations."""
         # Set up
         await self.async_setUp()
@@ -438,7 +453,10 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
         finally:
             await self.async_tearDown()
 
-    async def test_database_integration(self):
+    def test_database_integration(self):
+        anyio.run(self._test_database_integration)
+
+    async def _test_database_integration(self):
         """Test that the analyzer successfully stores and retrieves data from the database."""
         # Set up
         await self.async_setUp()

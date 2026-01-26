@@ -141,7 +141,12 @@ class AdaptiveLoadBalancer:
     def _init_database_table(self):
         """Initialize database table for metrics if it doesn't exist."""
         try:
-            self.coordinator.db.execute(f"""
+            db = getattr(self.coordinator, "db", None)
+            if not db:
+                logger.debug("Coordinator database not available; skipping load balancer metrics table init")
+                return
+
+            db.execute(f"""
             CREATE TABLE IF NOT EXISTS {self.db_metrics_table} (
                 id INTEGER PRIMARY KEY,
                 timestamp TIMESTAMP,

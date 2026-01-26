@@ -336,7 +336,10 @@ class TestCIIntegration(unittest.TestCase):
             self.assertIn("size_bytes", artifact)
             self.assertTrue(os.path.exists(artifact["path"]))
     
-    async def test_factory_registration(self):
+    def test_factory_registration(self):
+        anyio.run(self._test_factory_registration)
+
+    async def _test_factory_registration(self):
         """Test provider factory registration."""
         # Register providers
         register_all_providers()

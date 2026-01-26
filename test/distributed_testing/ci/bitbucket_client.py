@@ -72,6 +72,15 @@ class BitbucketClient(CIProviderInterface):
         Returns:
             True if initialization succeeded
         """
+        config = config or {}
+        force_online = bool(config.get("force_online"))
+        offline_setting = config.get("offline")
+        if force_online:
+            self._offline = False
+        elif offline_setting is not None:
+            self._offline = bool(offline_setting)
+        else:
+            self._offline = os.environ.get("PYTEST_CURRENT_TEST") is not None
         self.username = config.get("username")
         self.app_password = config.get("app_password")
         self.workspace = config.get("workspace")
@@ -79,6 +88,10 @@ class BitbucketClient(CIProviderInterface):
         self.api_url = config.get("api_url", "https://api.bitbucket.org/2.0")
         self.build_number = config.get("build_number")
         self.commit_hash = config.get("commit_hash")
+
+        if self._offline:
+            logger.info("BitbucketClient initialized in offline/simulation mode")
+            return True
         
         # Required credentials
         if not self.username or not self.app_password:

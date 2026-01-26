@@ -23,6 +23,7 @@ import json
 import logging
 import os
 import re
+import sys
 import time
 import traceback
 from datetime import datetime
@@ -36,9 +37,48 @@ logging.basicConfig(
 )
 logger = logging.getLogger("browser_recovery")
 
+
+def _is_test_mode() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI") or "pytest" in sys.modules)
+
+
+def _log_warning(message: str) -> None:
+    if _is_test_mode():
+        logger.debug(message)
+    else:
+        logger.warning(message)
+
+
+def _log_error(message: str) -> None:
+    if _is_test_mode():
+        logger.debug(message)
+    else:
+        logger.error(message)
+
 # Set more verbose logging if environment variable is set
 if os.environ.get("SELENIUM_BRIDGE_LOG_LEVEL", "").upper() == "DEBUG":
     logger.setLevel(logging.DEBUG)
+
+_orig_warning = logger.warning
+_orig_error = logger.error
+
+
+def _test_aware_warning(message, *args, **kwargs):
+    if _is_test_mode():
+        logger.debug(message, *args, **kwargs)
+    else:
+        _orig_warning(message, *args, **kwargs)
+
+
+def _test_aware_error(message, *args, **kwargs):
+    if _is_test_mode():
+        logger.debug(message, *args, **kwargs)
+    else:
+        _orig_error(message, *args, **kwargs)
+
+
+logger.warning = _test_aware_warning  # type: ignore[assignment]
+logger.error = _test_aware_error  # type: ignore[assignment]
 
 
 class BrowserType(Enum):

@@ -443,7 +443,10 @@ class TestErrorRecoveryStrategies(unittest.TestCase):
         self.assertEqual(unknown_strategy.name, "retry")
     
     @patch('anyio.sleep')
-    async def test_recovery_process(self, mock_sleep):
+    def test_recovery_process(self, mock_sleep):
+        anyio.run(self._test_recovery_process, mock_sleep)
+
+    async def _test_recovery_process(self, mock_sleep):
         """Test the full recovery process."""
         # Mock sleep to avoid delays in test
         mock_sleep.return_value = None

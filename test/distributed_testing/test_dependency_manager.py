@@ -65,6 +65,7 @@ class Dependency:
 @dataclass
 class TestDependencyInfo:
     """Dependency information for a test."""
+    __test__ = False
     test_id: str
     dependencies: List[Dependency] = field(default_factory=list)
     dependents: List[str] = field(default_factory=list)  # Tests that depend on this test
@@ -81,6 +82,8 @@ class TestDependencyManager:
     This class is responsible for tracking dependencies, validating them,
     resolving them, and generating execution orders based on them.
     """
+
+    __test__ = False
     
     def __init__(self):
         """Initialize the dependency manager."""

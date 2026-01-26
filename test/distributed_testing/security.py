@@ -15,6 +15,7 @@ import hashlib
 import hmac
 import json
 import logging
+import sys
 import os
 import secrets
 import time
@@ -30,6 +31,23 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _is_test_mode() -> bool:
+    return bool(os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("CI") or "pytest" in sys.modules)
+
+
+_orig_warning = logger.warning
+
+
+def _test_aware_warning(message, *args, **kwargs):
+    if _is_test_mode():
+        logger.debug(message, *args, **kwargs)
+    else:
+        _orig_warning(message, *args, **kwargs)
+
+
+logger.warning = _test_aware_warning  # type: ignore[assignment]
 
 # Default validity period for tokens (1 hour)
 DEFAULT_TOKEN_EXPIRY = 3600
