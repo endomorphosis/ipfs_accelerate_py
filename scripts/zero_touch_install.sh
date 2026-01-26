@@ -254,7 +254,7 @@ apply_profile_defaults() {
 print_config() {
   log "Config: PROFILE=$PROFILE BIN_DIR=$BIN_DIR VENV_DIR=$VENV_DIR TEST_VENV_DIR=$TEST_VENV_DIR"
   log "Config: OFFLINE=$OFFLINE FORCE_LOCAL_TOOLS=$FORCE_LOCAL_TOOLS"
-  log "Config: pip prefer-binary=$PIP_PREFER_BINARY retries=$PIP_RETRIES timeout=$PIP_TIMEOUT${PIP_ARGS:+ args='$PIP_ARGS'}"
+  log "Config: pip prefer-binary=$PIP_PREFER_BINARY retries=$PIP_RETRIES timeout=$PIP_TIMEOUT no-build-isolation=$PIP_NO_BUILD_ISOLATION${PIP_ARGS:+ args='$PIP_ARGS'}"
   log "Config: wheels build=$BUILD_WHEELS use-wheelhouse=$USE_WHEELHOUSE from-source=$FROM_SOURCE strict=$FROM_SOURCE_STRICT no-binary-all=$PIP_NO_BINARY_ALL rebuild=$REBUILD_WHEELS${WHEELHOUSE_DIR:+ wheelhouse='$WHEELHOUSE_DIR'}"
   log "Config: INSTALL_TEST_DEPS=$INSTALL_TEST_DEPS INSTALL_HEAVY_TEST_DEPS=$INSTALL_HEAVY_TEST_DEPS"
   log "Config: tools gh=$INSTALL_TOOL_GH ipfs=$INSTALL_TOOL_IPFS jq=$INSTALL_TOOL_JQ yq=$INSTALL_TOOL_YQ"
@@ -474,10 +474,23 @@ pip_install_with_common_args() {
 
 pip_install_requirements_wheelhouse_aware() {
   local venv_dir="$1" requirements_file="$2"
+  local constraints_file=""
+
+  # Prevent the curated base set from upgrading runtime-critical pins.
+  # In particular: ipfshttpclient requires urllib3<2.
+  if [[ "$venv_dir" == "$VENV_DIR" && "$requirements_file" == "$REPO_ROOT/install/requirements_base.txt" ]]; then
+    constraints_file="$(mktemp)"
+    echo "urllib3<2" >"$constraints_file"
+  fi
 
   # Normal path: just install the requirements file.
   if [[ "$USE_WHEELHOUSE" != "1" ]]; then
-    pip_install_with_common_args "$venv_dir" -r "$requirements_file"
+    if [[ -n "$constraints_file" ]]; then
+      pip_install_with_common_args "$venv_dir" -c "$constraints_file" -r "$requirements_file"
+      rm -f "$constraints_file"
+    else
+      pip_install_with_common_args "$venv_dir" -r "$requirements_file"
+    fi
     return 0
   fi
 
@@ -493,12 +506,11 @@ pip_install_requirements_wheelhouse_aware() {
     # strip comments and whitespace
     line="${line%%#*}"
     line="${line//$'\r'/}"
-    line="${line##+([[:space:]])}"
-    line="${line%%+([[:space:]])}"
+    line="$(echo "$line" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     [[ -z "$line" ]] && continue
 
     vcs_name=""
-    if [[ "$line" =~ ^([A-Za-z0-9_.-]+)@\ *git\+ ]]; then
+    if [[ "$line" =~ ^([A-Za-z0-9_.-]+)[[:space:]]*@[[:space:]]*git\+ ]]; then
       vcs_name="${BASH_REMATCH[1]}"
     elif [[ "$line" == git+* && "$line" == *"#egg="* ]]; then
       vcs_name="${line##*#egg=}"
@@ -513,15 +525,29 @@ pip_install_requirements_wheelhouse_aware() {
   done <"$requirements_file"
 
   if [[ -s "$tmp_req" ]]; then
-    pip_install_with_common_args "$venv_dir" -r "$tmp_req"
+    if [[ -n "$constraints_file" ]]; then
+      pip_install_with_common_args "$venv_dir" -c "$constraints_file" -r "$tmp_req"
+    else
+      pip_install_with_common_args "$venv_dir" -r "$tmp_req"
+    fi
   fi
 
   rm -f "$tmp_req"
 
   if [[ ${#vcs_pkgs[@]} -gt 0 ]]; then
     log "Wheelhouse mode: installing VCS deps from wheelhouse: ${vcs_pkgs[*]}"
-    pip_install_with_common_args "$venv_dir" "${vcs_pkgs[@]}"
+    if [[ -n "$constraints_file" ]]; then
+      pip_install_with_common_args "$venv_dir" -c "$constraints_file" "${vcs_pkgs[@]}"
+    else
+      pip_install_with_common_args "$venv_dir" "${vcs_pkgs[@]}"
+    fi
   fi
+
+  if [[ -n "$constraints_file" ]]; then
+    rm -f "$constraints_file"
+  fi
+
+  return 0
 }
 
 pip_wheel_with_common_args() {
@@ -584,16 +610,22 @@ build_wheelhouse() {
 
   if [[ -f "$REPO_ROOT/install/requirements_base.txt" ]]; then
     log "Wheel: install/requirements_base.txt"
-    if ! pip_wheel_with_common_args "$venv_dir" -r "$REPO_ROOT/install/requirements_base.txt" -w "$WHEELHOUSE_DIR"; then
+    # Keep urllib3 pinned <2 for the runtime wheelhouse.
+    local base_constraints
+    base_constraints="$(mktemp)"
+    echo "urllib3<2" >"$base_constraints"
+    if ! pip_wheel_with_common_args "$venv_dir" -c "$base_constraints" -r "$REPO_ROOT/install/requirements_base.txt" -w "$WHEELHOUSE_DIR"; then
       if [[ "$FROM_SOURCE_STRICT" == "1" ]]; then
+        rm -f "$base_constraints"
         die "From-source strict mode: failed building wheels for install/requirements_base.txt"
       fi
       warn "From-source build failed for install/requirements_base.txt; falling back to binary wheels to keep install working."
       local saved_no_binary="$PIP_NO_BINARY_ALL"
       PIP_NO_BINARY_ALL=0
-      pip_wheel_with_common_args "$venv_dir" -r "$REPO_ROOT/install/requirements_base.txt" -w "$WHEELHOUSE_DIR"
+      pip_wheel_with_common_args "$venv_dir" -c "$base_constraints" -r "$REPO_ROOT/install/requirements_base.txt" -w "$WHEELHOUSE_DIR"
       PIP_NO_BINARY_ALL="$saved_no_binary"
     fi
+    rm -f "$base_constraints"
   fi
 
   if [[ "$INSTALL_TEST_DEPS" == "1" ]]; then
