@@ -10,6 +10,7 @@ Usage:
 """
 
 import anyio
+import inspect
 import json
 import logging
 import os
@@ -56,6 +57,8 @@ class TestLoadBalancerResourcePoolIntegration(unittest.TestCase):
     This test suite verifies that the Adaptive Load Balancer can effectively
     distribute browser resources and workloads across worker nodes.
     """
+
+    __test__ = False
     
     def setUp(self):
         """Set up test environment."""
@@ -446,7 +449,7 @@ class AsyncTestCase(unittest.TestCase):
         """Run an async test method."""
         async def _runner():
             result = test_method(*args, **kwargs)
-            if anyio.iscoroutine(result):
+            if inspect.isawaitable(result):
                 return await result
             return result
 

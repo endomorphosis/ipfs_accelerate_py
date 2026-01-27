@@ -94,7 +94,10 @@ class ResourcePoolBridgeIntegration:
         
         # Initialize state manager if fault tolerance is enabled
         if self.enable_fault_tolerance:
-            from resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
+            try:
+                from .resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
+            except Exception:
+                from distributed_testing.resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
             
             # Initialize state manager
             self.state_manager = BrowserStateManager(
@@ -111,12 +114,18 @@ class ResourcePoolBridgeIntegration:
             await self.recovery_manager.initialize()
             
             # Initialize performance history tracker
-            from resource_pool_bridge_recovery import PerformanceHistoryTracker
+            try:
+                from .resource_pool_bridge_recovery import PerformanceHistoryTracker
+            except Exception:
+                from distributed_testing.resource_pool_bridge_recovery import PerformanceHistoryTracker
             self.performance_tracker = PerformanceHistoryTracker()
             await self.performance_tracker.initialize()
             
             # Initialize sharding manager
-            from model_sharding import ShardedModelManager
+            try:
+                from .model_sharding import ShardedModelManager
+            except Exception:
+                from distributed_testing.model_sharding import ShardedModelManager
             self.sharding_manager = ShardedModelManager(
                 recovery_manager=self.recovery_manager,
                 state_manager=self.state_manager,

@@ -171,6 +171,8 @@ class DependencyInstaller:
             "scipy": "scipy",
             "scikit-learn": "sklearn",
             "pynvml": "pynvml",
+            "psutil": "psutil",
+            "py-cpuinfo": "cpuinfo",
             
             # Audio processing
             "librosa": "librosa",

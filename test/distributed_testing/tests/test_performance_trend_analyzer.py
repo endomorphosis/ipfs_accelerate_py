@@ -335,7 +335,7 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
         try:
             # Inject a series of metrics with a clear trend
             now = time.time()
-            timestamps = [now - i * 10 for i in range(10)]  # 10 data points, 10 seconds apart
+            timestamps = [now + i * 10 for i in range(10)]  # 10 data points, 10 seconds apart
             
             # Create metrics for latency with an increasing trend (degradation)
             latency_metrics = [

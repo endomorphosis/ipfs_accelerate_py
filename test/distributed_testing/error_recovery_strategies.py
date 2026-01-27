@@ -281,7 +281,8 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
         super().__init__(coordinator, "worker", RecoveryLevel.MEDIUM)
 
     def is_applicable(self, error_info: Dict[str, Any]) -> bool:
-        return bool(error_info.get("worker_id"))
+        context = error_info.get("context") or {}
+        return bool(error_info.get("worker_id") or context.get("worker_id"))
     
     async def _execute_impl(self, error_info: Dict[str, Any]) -> bool:
         """
@@ -294,7 +295,8 @@ class WorkerRecoveryStrategy(RecoveryStrategy):
             True if recovery was successful, False otherwise
         """
         # Get worker ID
-        worker_id = error_info.get("worker_id")
+        context = error_info.get("context") or {}
+        worker_id = error_info.get("worker_id") or context.get("worker_id")
         if not worker_id:
             logger.info("Worker recovery strategy skipped: worker_id not provided")
             return False
@@ -1504,6 +1506,11 @@ class EnhancedErrorRecoveryManager:
         Returns:
             Recovery strategy or None if no strategy is available
         """
+        # Prefer context-aware strategies (e.g., worker-specific recovery)
+        context = error_info.get("context") or {}
+        if "worker" in context.get("component", "").lower():
+            return self.strategies.get("worker")
+
         # Get error category
         category = error_info.get("category", ErrorCategory.UNKNOWN.value)
         

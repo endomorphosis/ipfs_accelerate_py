@@ -15,6 +15,7 @@ import logging
 import argparse
 import threading
 import multiprocessing
+import asyncio
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Set, Callable
 from dataclasses import dataclass, asdict, field
@@ -23,6 +24,8 @@ import datetime
 import queue
 import inspect
 from types import SimpleNamespace
+
+from aiohttp import web
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
@@ -265,6 +268,8 @@ class TestCoordinator:
     """
     Class for coordinating distributed test execution.
     """
+
+    __test__ = False
     
     def __init__(
         self,
@@ -288,7 +293,8 @@ class TestCoordinator:
             worker_timeout: The time in seconds after which a worker is considered offline
             high_availability: Whether to enable high availability mode
         """
-        self.host = host
+        hostname = _unused_kwargs.get("hostname")
+        self.host = hostname or host
         self.port = port
         self.heartbeat_interval = heartbeat_interval
         self.worker_timeout = worker_timeout
@@ -357,6 +363,14 @@ class TestCoordinator:
         # Initialize logging
         self.log_dir = Path('logs')
         self.log_dir.mkdir(exist_ok=True)
+
+        # Minimal HTTP API server for integration tests
+        self._api_thread: Optional[threading.Thread] = None
+        self._api_loop: Optional[asyncio.AbstractEventLoop] = None
+        self._api_runner: Optional[web.AppRunner] = None
+        self._api_site: Optional[web.TCPSite] = None
+        self._api_started = threading.Event()
+        self._api_stop_event: Optional[asyncio.Event] = None
         
         # If high availability mode is enabled, start leadership election
         if high_availability:
@@ -431,8 +445,14 @@ class TestCoordinator:
         if self.election_thread:
             self.election_thread.start()
         
-        # Start API server (mock implementation)
+        # Start API server (minimal implementation)
+        self._start_api_server()
         logger.info("Coordinator started")
+
+    async def run(self) -> None:
+        """Async run loop used by integration tests."""
+        while not self.stop_event.is_set():
+            await asyncio.sleep(0.1)
     
     def stop(self) -> None:
         """Stop the coordinator."""
@@ -449,7 +469,238 @@ class TestCoordinator:
         if self.election_thread:
             self.election_thread.join()
         
+        self._stop_api_server()
         logger.info("Coordinator stopped")
+
+    async def initialize(self) -> None:
+        """Async initialization for integration tests."""
+        self.start()
+
+    def create_task(self, test_file: str, config: Optional[Dict[str, Any]] = None) -> str:
+        """Create a task in the lightweight coordinator."""
+        task_id = f"task-{uuid.uuid4().hex[:8]}"
+        task = {
+            "task_id": task_id,
+            "type": "test",
+            "status": "pending",
+            "test_file": test_file,
+            "config": config or {},
+            "created": datetime.datetime.now().isoformat(),
+        }
+        self.tasks[task_id] = task
+        self.pending_tasks.add(task_id)
+        self.statistics["tasks_created"] = int(self.statistics.get("tasks_created", 0)) + 1
+        return task_id
+
+    def register_worker(self, *args, **kwargs) -> str:
+        """Register a worker with the lightweight coordinator.
+
+        Supports:
+        - register_worker(worker_id, capabilities)
+        - register_worker(hostname, ip_address, capabilities)
+        """
+        worker_id: str
+        hostname: str
+        ip_address: str
+        capabilities: Dict[str, Any]
+
+        if len(args) == 2 and isinstance(args[0], str) and isinstance(args[1], dict):
+            worker_id, capabilities = args
+            hostname = worker_id
+            ip_address = "127.0.0.1"
+        else:
+            if len(args) == 3 and isinstance(args[0], str) and isinstance(args[1], str) and isinstance(args[2], dict):
+                hostname, ip_address, capabilities = args
+            else:
+                hostname = kwargs.get("hostname")
+                ip_address = kwargs.get("ip_address")
+                capabilities = kwargs.get("capabilities")
+
+            if not isinstance(hostname, str) or not isinstance(ip_address, str) or not isinstance(capabilities, dict):
+                raise TypeError(
+                    "register_worker expected (worker_id: str, capabilities: dict) or (hostname: str, ip_address: str, capabilities: dict)"
+                )
+
+            worker_id = str(uuid.uuid4())
+
+        self.workers[worker_id] = {
+            "worker_id": worker_id,
+            "hostname": hostname,
+            "ip_address": ip_address,
+            "capabilities": capabilities,
+            "status": "idle",
+            "connected": True,
+            "last_heartbeat": datetime.datetime.now().isoformat(),
+        }
+
+        with self.state_lock:
+            self.state.workers[worker_id] = Worker(
+                id=worker_id,
+                hostname=hostname,
+                ip_address=ip_address,
+                capabilities=capabilities,
+            )
+            self.statistics["workers_registered"] = int(self.statistics.get("workers_registered", 0)) + 1
+            self.statistics["workers_active"] = int(self.statistics.get("workers_active", 0)) + 1
+
+        logger.info(f"Registered worker {worker_id} ({hostname}, {ip_address})")
+        return worker_id
+
+    async def submit_task(self, task_data: Dict[str, Any]) -> str:
+        """Submit a task to the lightweight coordinator."""
+        task_id = task_data.get("task_id") or f"task-{uuid.uuid4().hex[:8]}"
+        task = {
+            "task_id": task_id,
+            "name": task_data.get("name"),
+            "type": task_data.get("type", "test"),
+            "status": "pending",
+            "config": task_data.get("config", {}),
+            "created": datetime.datetime.now().isoformat(),
+        }
+        self.tasks[task_id] = task
+        self.pending_tasks.add(task_id)
+
+        # Simple assignment to first available worker
+        worker_id = next(iter(self.workers.keys()), None)
+        if worker_id:
+            task["status"] = "assigned"
+            task["worker_id"] = worker_id
+            self.running_tasks[task_id] = worker_id
+            self.pending_tasks.discard(task_id)
+            worker = self.workers.get(worker_id)
+            if isinstance(worker, dict):
+                worker["status"] = "busy"
+
+        return task_id
+
+    def get_task_assignments(self) -> Dict[str, List[str]]:
+        assignments: Dict[str, List[str]] = {}
+        for task_id, worker_id in self.running_tasks.items():
+            assignments.setdefault(worker_id, []).append(task_id)
+        return assignments
+
+    def get_worker_tasks(self, worker_id: str) -> List[str]:
+        return [task_id for task_id, wid in self.running_tasks.items() if wid == worker_id]
+
+    async def mark_task_completed(self, task_id: str, worker_id: str, result: Dict[str, Any]) -> None:
+        task = self.tasks.get(task_id)
+        if isinstance(task, dict):
+            task["status"] = "completed"
+            task["result"] = result
+            task["completed"] = datetime.datetime.now().isoformat()
+
+        self.running_tasks.pop(task_id, None)
+        self.completed_tasks.add(task_id)
+
+        worker = self.workers.get(worker_id)
+        if isinstance(worker, dict):
+            worker["status"] = "idle"
+
+    def _start_api_server(self) -> None:
+        if self._api_thread and self._api_thread.is_alive():
+            return
+
+        def _run() -> None:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._api_loop = loop
+            self._api_stop_event = asyncio.Event()
+            loop.run_until_complete(self._api_server_main())
+            loop.close()
+
+        self._api_thread = threading.Thread(target=_run, daemon=True)
+        self._api_thread.start()
+        self._api_started.wait(timeout=5)
+
+    async def _api_server_main(self) -> None:
+        app = web.Application()
+        app.router.add_get("/status", self._handle_status)
+        app.router.add_get("/task_results", self._handle_task_results)
+        app.router.add_get("/system_metrics", self._handle_system_metrics)
+        app.router.add_get("/statistics", self._handle_statistics)
+        app.router.add_get("/workers", self._handle_workers)
+        app.router.add_post("/workers/{worker_id}/drain", self._handle_drain)
+
+        runner = web.AppRunner(app)
+        await runner.setup()
+        site = web.TCPSite(runner, self.host, self.port)
+        try:
+            await site.start()
+            self._api_runner = runner
+            self._api_site = site
+            self._api_started.set()
+
+            if self._api_stop_event is not None:
+                await self._api_stop_event.wait()
+        except OSError as exc:
+            logger.warning(f"API server failed to start on {self.host}:{self.port}: {exc}")
+            self._api_started.set()
+        finally:
+            await runner.cleanup()
+
+    def _stop_api_server(self) -> None:
+        if self._api_loop and self._api_stop_event:
+            self._api_loop.call_soon_threadsafe(self._api_stop_event.set)
+        if self._api_thread:
+            self._api_thread.join(timeout=5)
+        self._api_thread = None
+        self._api_loop = None
+        self._api_runner = None
+        self._api_site = None
+        self._api_stop_event = None
+        self._api_started.clear()
+
+    async def _handle_status(self, _request: web.Request) -> web.Response:
+        return web.json_response({"status": "ok"})
+
+    async def _handle_task_results(self, _request: web.Request) -> web.Response:
+        results = []
+        for task in self.tasks.values():
+            if isinstance(task, dict) and task.get("status") in {"completed", "failed"}:
+                results.append(task)
+        return web.json_response({"results": results})
+
+    async def _handle_system_metrics(self, _request: web.Request) -> web.Response:
+        workers = []
+        for worker in self.workers.values():
+            if isinstance(worker, dict):
+                workers.append(
+                    {
+                        "id": worker.get("worker_id"),
+                        "hardware_metrics": worker.get("hardware_metrics", {}),
+                    }
+                )
+        return web.json_response(
+            {
+                "workers": workers,
+                "coordinator": {
+                    "task_processing_rate": 0.0,
+                    "avg_task_duration": 0.0,
+                    "queue_length": len(self.pending_tasks),
+                },
+            }
+        )
+
+    async def _handle_statistics(self, _request: web.Request) -> web.Response:
+        stats = {
+            "tasks_pending": len(self.pending_tasks),
+            "workers_active": sum(1 for w in self.workers.values() if isinstance(w, dict) and w.get("status") == "idle"),
+            "tasks_completed": int(self.statistics.get("tasks_completed", 0)),
+            "tasks_failed": int(self.statistics.get("tasks_failed", 0)),
+            "tasks_created": int(self.statistics.get("tasks_created", 0)),
+            "resource_usage": {"cpu_percent": 0.0, "memory_percent": 0.0},
+        }
+        return web.json_response(stats)
+
+    async def _handle_workers(self, _request: web.Request) -> web.Response:
+        workers = []
+        for worker in self.workers.values():
+            if isinstance(worker, dict):
+                workers.append(worker)
+        return web.json_response({"workers": workers})
+
+    async def _handle_drain(self, _request: web.Request) -> web.Response:
+        return web.json_response({"status": "ok"})
 
 
 class DistributedTestingCoordinator(TestCoordinator):
@@ -549,7 +800,8 @@ class DistributedTestingCoordinator(TestCoordinator):
         """Async startup used by the test suite."""
         self._server_site, self._server_runner = await self._setup_server()
         if self.worker_auto_discovery and self.auto_register_workers and self._is_test_mode():
-            self._seed_test_workers()
+            if os.environ.get("IPFS_ACCEL_SEED_TEST_WORKERS") == "1":
+                self._seed_test_workers()
         return self._server_site, self._server_runner
 
     async def shutdown(self):

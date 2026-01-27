@@ -20,18 +20,25 @@ Usage:
     python run_coordinator_with_hardware_monitoring.py --workers 3 --tasks 10 --duration 60
 """
 
-from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 import os
 import sys
 import time
 import json
 import random
 import anyio
+import asyncio
 import logging
 import argparse
+import inspect
 from typing import Dict, List, Any, Optional, Set, Tuple, Union
 from datetime import datetime, timedelta
 from pathlib import Path
+try:
+    from ipfs_accelerate_py.anyio_helpers import gather, wait_for
+except ModuleNotFoundError:
+    repo_root = Path(__file__).resolve().parents[2]
+    sys.path.append(str(repo_root))
+    from ipfs_accelerate_py.anyio_helpers import gather, wait_for
 
 # Configure logging
 logging.basicConfig(
@@ -41,9 +48,63 @@ logging.basicConfig(
 logger = logging.getLogger("coordinator_hardware_demo")
 
 # Import coordinator components
-from coordinator import Coordinator
-from task_scheduler import TaskScheduler
-from worker_registry import WorkerRegistry
+try:
+    from coordinator import Coordinator
+except Exception:
+    from coordinator import TestCoordinator as Coordinator
+try:
+    from task_scheduler import TaskScheduler
+except Exception:
+    class TaskScheduler:
+        def __init__(
+            self,
+            coordinator=None,
+            prioritize_hardware_match: bool = True,
+            load_balance: bool = True,
+            consider_worker_performance: bool = True,
+            max_tasks_per_worker: int = 1,
+            enable_task_affinity: bool = True,
+            enable_worker_specialization: bool = True,
+            enable_predictive_scheduling: bool = True,
+        ):
+            self.coordinator = coordinator
+
+        async def schedule_pending_tasks(self) -> int:
+            coordinator = self.coordinator
+            if coordinator is None:
+                return 0
+            pending = list(coordinator.pending_tasks) if isinstance(coordinator.pending_tasks, (set, list)) else []
+            worker_ids = list(getattr(coordinator, "workers", {}).keys())
+            if not worker_ids:
+                return 0
+
+            assigned = 0
+            for task_id in pending:
+                worker_id = worker_ids[assigned % len(worker_ids)]
+                coordinator.running_tasks[task_id] = worker_id
+                if isinstance(coordinator.pending_tasks, set):
+                    coordinator.pending_tasks.discard(task_id)
+                else:
+                    coordinator.pending_tasks.remove(task_id)
+                if task_id in coordinator.tasks:
+                    coordinator.tasks[task_id]["status"] = "running"
+                assigned += 1
+            return assigned
+
+        def find_best_worker_for_task(self, _task, workers):
+            for worker_id in (workers or {}):
+                return worker_id
+            return None
+
+        def update_worker_performance(self, *_args, **_kwargs):
+            return None
+
+try:
+    from worker_registry import WorkerRegistry
+except Exception:
+    class WorkerRegistry:
+        def __init__(self):
+            self.workers = {}
 
 # Import hardware monitoring components
 from hardware_utilization_monitor import (
@@ -88,9 +149,13 @@ async def simulate_worker(worker_id: str, coordinator: Coordinator, hardware_cap
         "status": "active"
     }
     
-    await coordinator.register_worker(worker_id, registration_data)
+    registration_result = coordinator.register_worker(worker_id, registration_data)
+    if inspect.isawaitable(registration_result):
+        await registration_result
     
     # Simulate worker connection
+    if not hasattr(coordinator, "worker_connections") or coordinator.worker_connections is None:
+        coordinator.worker_connections = {}
     coordinator.worker_connections[worker_id] = {
         "connected": True,
         "last_seen": datetime.now().isoformat()
@@ -163,7 +228,10 @@ async def simulate_task_execution(task_id: str, worker_id: str, coordinator: Coo
         
         # Move task from running to completed
         coordinator.running_tasks.pop(task_id, None)
-        coordinator.completed_tasks.append(task_id)
+        if isinstance(coordinator.completed_tasks, set):
+            coordinator.completed_tasks.add(task_id)
+        else:
+            coordinator.completed_tasks.append(task_id)
         
         # Update worker performance
         if hasattr(coordinator, 'task_scheduler'):
@@ -193,7 +261,10 @@ async def simulate_task_execution(task_id: str, worker_id: str, coordinator: Coo
         
         # Move task from running to failed
         coordinator.running_tasks.pop(task_id, None)
-        coordinator.failed_tasks.append(task_id)
+        if isinstance(coordinator.failed_tasks, set):
+            coordinator.failed_tasks.add(task_id)
+        else:
+            coordinator.failed_tasks.append(task_id)
         
         # Update worker performance
         if hasattr(coordinator, 'task_scheduler'):
@@ -241,7 +312,10 @@ async def create_test_task(coordinator: Coordinator, task_id: str, task_type: st
     
     # Add task to coordinator
     coordinator.tasks[task_id] = task
-    coordinator.pending_tasks.append(task_id)
+    if isinstance(coordinator.pending_tasks, set):
+        coordinator.pending_tasks.add(task_id)
+    else:
+        coordinator.pending_tasks.append(task_id)
     
     logger.info(f"Created task {task_id} (type: {task_type}, priority: {priority}, requires_gpu: {requires_gpu})")
     
@@ -272,17 +346,32 @@ async def simulate_coordinator(args):
     )
     
     # Create coordinator
-    coordinator = Coordinator(
-        worker_registry=worker_registry,
-        task_scheduler=task_scheduler
-    )
+    try:
+        coordinator = Coordinator(
+            worker_registry=worker_registry,
+            task_scheduler=task_scheduler
+        )
+    except TypeError:
+        coordinator = Coordinator()
+
+    coordinator.worker_registry = worker_registry
+    coordinator.task_scheduler = task_scheduler
     
     # Set coordinator reference in task scheduler
     task_scheduler.coordinator = coordinator
     
     # Create hardware capability detector
+    detector_db_path = args.db_path
+    if detector_db_path:
+        try:
+            import duckdb
+
+            duckdb.connect(detector_db_path).close()
+        except Exception:
+            detector_db_path = None
+
     hardware_detector = HardwareCapabilityDetector(
-        db_path=args.db_path
+        db_path=detector_db_path
     )
     
     # Create hardware monitoring integration
@@ -359,10 +448,7 @@ async def simulate_coordinator(args):
                 }
             }
         
-        worker_task = # TODO: Replace with task group - anyio.create_task_group(
-            simulate_worker(worker_id, coordinator, capabilities)
-        )
-        worker_tasks.append(worker_task)
+        worker_tasks.append(simulate_worker(worker_id, coordinator, capabilities))
     
     # Wait for all workers to register
     await gather(*worker_tasks)
@@ -439,7 +525,7 @@ async def simulate_coordinator(args):
                 memory_intensive = random.random() < 0.3 # 30% chance of memory-intensive task
                 
                 # Start task execution
-                task_execution = # TODO: Replace with task group - anyio.create_task_group(
+                task_execution = asyncio.create_task(
                     simulate_task_execution(
                         task_id, worker_id, coordinator, integration,
                         execution_time=execution_time,
@@ -555,7 +641,7 @@ def main():
     print("=" * 80)
     
     # Run simulation
-    anyio.run(simulate_coordinator(args))
+    anyio.run(simulate_coordinator, args)
 
 if __name__ == "__main__":
     main()

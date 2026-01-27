@@ -5,6 +5,7 @@ Tests the Raft consensus algorithm, leader election, state replication, and fail
 """
 
 import anyio
+import asyncio
 import os
 import sys
 import unittest
@@ -110,6 +111,9 @@ class TestRedundancyManager(unittest.TestCase):
     
     def setUp(self):
         """Set up test environment."""
+        self.event_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.event_loop)
+
         # Create temporary directories for the nodes
         self.temp_dirs = [tempfile.mkdtemp() for _ in range(3)]
         
@@ -139,6 +143,8 @@ class TestRedundancyManager(unittest.TestCase):
             
     def tearDown(self):
         """Clean up after tests."""
+        if self.event_loop:
+            self.event_loop.close()
         for temp_dir in self.temp_dirs:
             try:
                 import shutil

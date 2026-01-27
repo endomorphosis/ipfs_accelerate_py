@@ -16,10 +16,14 @@ import json
 class WorkerCapabilities:
     """Worker hardware and software capabilities."""
     worker_id: str
-    hostname: str
+    hostname: str = ""
     hardware_specs: Dict[str, Any] = field(default_factory=dict)  # CPU, GPU, memory, etc.
     software_versions: Dict[str, str] = field(default_factory=dict)  # Python, libraries, etc.
     supported_backends: List[str] = field(default_factory=list)  # CUDA, CPU, etc.
+    browser_support: List[str] = field(default_factory=list)
+    has_gpu: bool = False
+    has_webgpu: bool = False
+    has_webnn: bool = False
     network_bandwidth: float = 0.0  # Mbps
     storage_capacity: float = 0.0  # GB
     available_accelerators: Dict[str, int] = field(default_factory=dict)  # Type: count
@@ -37,6 +41,10 @@ class WorkerCapabilities:
             "hardware_specs": self.hardware_specs,
             "software_versions": self.software_versions,
             "supported_backends": self.supported_backends,
+            "browser_support": self.browser_support,
+            "has_gpu": self.has_gpu,
+            "has_webgpu": self.has_webgpu,
+            "has_webnn": self.has_webnn,
             "network_bandwidth": self.network_bandwidth,
             "storage_capacity": self.storage_capacity,
             "available_accelerators": self.available_accelerators,

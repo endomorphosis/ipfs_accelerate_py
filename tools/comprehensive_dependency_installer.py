@@ -138,6 +138,20 @@ class ComprehensiveDependencyInstaller:
                 "category": "ai",
                 "critical": False
             },
+            "psutil": {
+                "pip_name": "psutil",
+                "import_name": "psutil",
+                "description": "System/process monitoring utilities",
+                "category": "core",
+                "critical": False
+            },
+            "py-cpuinfo": {
+                "pip_name": "py-cpuinfo",
+                "import_name": "cpuinfo",
+                "description": "CPU information utilities",
+                "category": "core",
+                "critical": False
+            },
             
             # Database and Storage
             "duckdb": {

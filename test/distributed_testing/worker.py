@@ -1314,6 +1314,10 @@ class Worker:
 
         return True
 
+    async def start(self) -> bool:
+        """Compatibility start hook expected by integration tests."""
+        return await self.connect()
+
 
 async def main():
     """Main function."""

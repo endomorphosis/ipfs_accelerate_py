@@ -33,11 +33,15 @@ import pytest
 # package resolves to `test/distributed_testing`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from distributed_testing.integration_mode import real_integration_enabled, integration_opt_in_message
+from distributed_testing.integration_mode import (
+    integration_opt_in_message,
+    real_integration_enabled,
+    simulated_integration_enabled,
+)
 
-if not real_integration_enabled():
+if not (real_integration_enabled() or simulated_integration_enabled()):
     pytest.skip(
-        "E2E integrated system test requires REAL integration mode; " + integration_opt_in_message(),
+        "E2E integrated system test requires integration mode; " + integration_opt_in_message(),
         allow_module_level=True,
     )
 
@@ -349,7 +353,10 @@ class TestE2EIntegratedSystem(unittest.TestCase):
             })
             
             # Register the worker with the coordinator
-            await coordinator.register_worker(worker)
+            coordinator.register_worker(
+                worker.worker_id,
+                {"hardware": worker.capabilities},
+            )
             workers.append(worker)
         
         return workers

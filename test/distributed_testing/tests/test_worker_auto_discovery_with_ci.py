@@ -159,10 +159,6 @@ class TestWorkerAutoDiscoveryWithCI(unittest.TestCase):
             artifact_dir=str(self.artifacts_dir)
         )
         
-        # Patch socket to avoid network issues in tests
-        self.socket_patcher = patch('socket.socket')
-        self.mock_socket = self.socket_patcher.start()
-        
         # Patch worker connection methods to avoid actual network connections
         self.worker_connect_patcher = patch.object(
             Worker,
@@ -197,7 +193,6 @@ class TestWorkerAutoDiscoveryWithCI(unittest.TestCase):
         await self.coordinator.shutdown()
         
         # Stop patches
-        self.socket_patcher.stop()
         self.worker_connect_patcher.stop()
         self.coordinator_start_patcher.stop()
         
