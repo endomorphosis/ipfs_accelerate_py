@@ -261,6 +261,7 @@ class PerformanceTrendAnalyzer:
         self.baseline_values: Dict[str, Dict[str, float]] = {}  # Metric baselines by group
         self.latest_trends: Dict[str, PerformanceTrend] = {}
         self.latest_alerts: List[PerformanceAlert] = []
+        self.latest_anomalies: List[PerformanceMetric] = []
         self.session = None
         self._task_group = None
         self._coordinator_connection = None
@@ -407,6 +408,11 @@ class PerformanceTrendAnalyzer:
     async def run(self) -> None:
         """Run loop used by integration tests."""
         if self.coordinator_url.startswith("ws"):
+            if self._task_group is None:
+                self._task_group = anyio.create_task_group()
+                await self._task_group.__aenter__()
+                self._task_group.start_soon(self._analysis_loop)
+
             while self.active:
                 await anyio.sleep(0.1)
             return
@@ -537,6 +543,7 @@ class PerformanceTrendAnalyzer:
                             anomalies = self._detect_anomalies(group_metrics)
                             
                             if anomalies:
+                                self.latest_anomalies = anomalies
                                 # Generate alerts for anomalies
                                 alerts = self._generate_alerts(anomalies, group_metrics)
                                 self.latest_alerts.extend(alerts)
@@ -571,7 +578,43 @@ class PerformanceTrendAnalyzer:
     async def _collect_metrics(self) -> None:
         """Collect performance metrics from the coordinator."""
         if not self.session:
-            logger.error("Not connected to coordinator")
+            if not self._coordinator:
+                logger.error("Not connected to coordinator")
+                return
+
+            try:
+                task_results = []
+                for task in self._coordinator.tasks.values():
+                    if isinstance(task, dict) and task.get("status") in {"completed", "failed"}:
+                        task_results.append(task)
+
+                metrics = self._extract_metrics_from_results(task_results)
+                self._add_metrics_to_cache(metrics)
+                self._save_metrics_to_db(metrics)
+
+                workers = []
+                for worker in self._coordinator.workers.values():
+                    if isinstance(worker, dict):
+                        workers.append(
+                            {
+                                "id": worker.get("worker_id"),
+                                "hardware_metrics": worker.get("hardware_metrics", {}),
+                            }
+                        )
+
+                system_data = {
+                    "workers": workers,
+                    "coordinator": {
+                        "task_processing_rate": 0.0,
+                        "avg_task_duration": 0.0,
+                        "queue_length": len(self._coordinator.pending_tasks),
+                    },
+                }
+                system_metrics = self._extract_system_metrics(system_data)
+                self._add_metrics_to_cache(system_metrics)
+                self._save_metrics_to_db(system_metrics)
+            except Exception as e:
+                logger.error(f"Error collecting metrics: {str(e)}")
             return
         
         try:
@@ -1617,6 +1660,21 @@ class PerformanceTrendAnalyzer:
         except Exception as e:
             logger.error(f"Error getting metrics summary: {str(e)}")
             return {}
+
+    def get_collected_metrics(self) -> List[PerformanceMetric]:
+        """Return all collected metrics from the in-memory cache."""
+        metrics: List[PerformanceMetric] = []
+        for metric_list in self.metrics_cache.values():
+            metrics.extend(metric_list)
+        return metrics
+
+    def get_detected_anomalies(self) -> List[PerformanceMetric]:
+        """Return the most recently detected anomalies."""
+        return list(self.latest_anomalies)
+
+    def get_identified_trends(self) -> List[PerformanceTrend]:
+        """Return the most recently identified trends."""
+        return list(self.latest_trends.values())
 
 
 # Backward-compatible component names referenced by some integration tests.

@@ -427,104 +427,104 @@ class TestE2EIntegratedSystem(unittest.TestCase):
             self.assertGreaterEqual(len(worker_states), 2, "Resource manager did not provision enough workers")
             
             # Simulate task completion
-        for task_id in task_ids:
-            for worker in workers:
-                if task_id in coordinator.get_worker_tasks(worker.worker_id):
-                    await coordinator.mark_task_completed(
-                        task_id=task_id,
-                        worker_id=worker.worker_id,
-                        result={
-                            "status": "success",
-                            "execution_time": 1.5,
-                            "metrics": {
-                                "cpu_percent": 50,
-                                "memory_mb": 200,
-                                "latency_ms": 150,
-                                "throughput_items_per_second": 100
+            for task_id in task_ids:
+                for worker in workers:
+                    if task_id in coordinator.get_worker_tasks(worker.worker_id):
+                        await coordinator.mark_task_completed(
+                            task_id=task_id,
+                            worker_id=worker.worker_id,
+                            result={
+                                "status": "success",
+                                "execution_time": 1.5,
+                                "metrics": {
+                                    "cpu_percent": 50,
+                                    "memory_mb": 200,
+                                    "latency_ms": 150,
+                                    "throughput_items_per_second": 100
+                                }
                             }
+                        )
+            
+            # Give time for metrics to be collected
+            await anyio.sleep(2)
+            
+            # Verify that performance analyzer collected metrics
+            metrics = performance_analyzer.get_collected_metrics()
+            self.logger.info(f"Collected metrics: {metrics}")
+            self.assertTrue(len(metrics) > 0, "No metrics were collected by the performance analyzer")
+            
+            # Submit a large batch of tasks to trigger scaling
+            self.logger.info("Submitting large batch of tasks to trigger scaling...")
+            high_priority_tasks = []
+            for i in range(10):
+                task = {
+                    "type": "benchmark",
+                    "name": f"High Priority Benchmark {i}",
+                    "priority": 20,
+                    "config": {
+                        "model": "prajjwal1/bert-tiny",
+                        "batch_sizes": [1],
+                        "precision": "fp32",
+                        "iterations": 2,
+                        "hardware_requirements": {
+                            "cpu": True
                         }
-                    )
-        
-        # Give time for metrics to be collected
-        await anyio.sleep(2)
-        
-        # Verify that performance analyzer collected metrics
-        metrics = performance_analyzer.get_collected_metrics()
-        self.logger.info(f"Collected metrics: {metrics}")
-        self.assertTrue(len(metrics) > 0, "No metrics were collected by the performance analyzer")
-        
-        # Submit a large batch of tasks to trigger scaling
-        self.logger.info("Submitting large batch of tasks to trigger scaling...")
-        high_priority_tasks = []
-        for i in range(10):
-            task = {
-                "type": "benchmark",
-                "name": f"High Priority Benchmark {i}",
-                "priority": 20,
-                "config": {
-                    "model": "prajjwal1/bert-tiny",
-                    "batch_sizes": [1],
-                    "precision": "fp32",
-                    "iterations": 2,
-                    "hardware_requirements": {
-                        "cpu": True
                     }
                 }
-            }
-            task_id = await coordinator.submit_task(task)
-            high_priority_tasks.append(task_id)
-        
-        # Give time for resource manager to detect high queue and scale up
-        self.logger.info("Waiting for resource manager to scale up...")
-        await anyio.sleep(10)
-        
-        # Verify that resource manager scaled up
-        new_worker_states = resource_manager.get_worker_states()
-        self.logger.info(f"New worker states after scaling: {new_worker_states}")
-        self.assertGreater(len(new_worker_states), len(worker_states), 
-                          "Resource manager did not scale up with high queue")
-        
-        # Complete all high priority tasks
-        for task_id in high_priority_tasks:
-            for worker in workers:
-                if task_id in coordinator.get_worker_tasks(worker.worker_id):
-                    await coordinator.mark_task_completed(
-                        task_id=task_id,
-                        worker_id=worker.worker_id,
-                        result={
-                            "status": "success",
-                            "execution_time": 0.8,
-                            "metrics": {
-                                "cpu_percent": 70,
-                                "memory_mb": 300,
-                                "latency_ms": 100,
-                                "throughput_items_per_second": 150
+                task_id = await coordinator.submit_task(task)
+                high_priority_tasks.append(task_id)
+            
+            # Give time for resource manager to detect high queue and scale up
+            self.logger.info("Waiting for resource manager to scale up...")
+            await anyio.sleep(10)
+            
+            # Verify that resource manager scaled up
+            new_worker_states = resource_manager.get_worker_states()
+            self.logger.info(f"New worker states after scaling: {new_worker_states}")
+            self.assertGreater(len(new_worker_states), len(worker_states), 
+                              "Resource manager did not scale up with high queue")
+            
+            # Complete all high priority tasks
+            for task_id in high_priority_tasks:
+                for worker in workers:
+                    if task_id in coordinator.get_worker_tasks(worker.worker_id):
+                        await coordinator.mark_task_completed(
+                            task_id=task_id,
+                            worker_id=worker.worker_id,
+                            result={
+                                "status": "success",
+                                "execution_time": 0.8,
+                                "metrics": {
+                                    "cpu_percent": 70,
+                                    "memory_mb": 300,
+                                    "latency_ms": 100,
+                                    "throughput_items_per_second": 150
+                                }
                             }
-                        }
-                    )
-        
-        # Give time for metrics to be collected and resource manager to detect low queue
-        self.logger.info("Waiting for resource manager to scale down...")
-        await anyio.sleep(20)
-        
-        # Verify that resource manager eventually scaled down
-        final_worker_states = resource_manager.get_worker_states()
-        self.logger.info(f"Final worker states after scaling down: {final_worker_states}")
-        self.assertLess(len(final_worker_states), len(new_worker_states), 
-                       "Resource manager did not scale down with low queue")
-        
-        # Check for anomalies and trends
-        anomalies = performance_analyzer.get_detected_anomalies()
-        self.logger.info(f"Detected anomalies: {anomalies}")
-        
-        trends = performance_analyzer.get_identified_trends()
-        self.logger.info(f"Identified trends: {trends}")
-        
-        # Stop all tasks
-        self.logger.info("Stopping all components...")
-        tg.cancel_scope.cancel()
-        
-        self.logger.info("End-to-end test completed successfully")
+                        )
+            
+            # Give time for metrics to be collected and resource manager to detect low queue
+            self.logger.info("Waiting for resource manager to scale down...")
+            await anyio.sleep(20)
+            
+            # Verify that resource manager eventually scaled down
+            final_worker_states = resource_manager.get_worker_states()
+            self.logger.info(f"Final worker states after scaling down: {final_worker_states}")
+            self.assertLess(len(final_worker_states), len(new_worker_states), 
+                           "Resource manager did not scale down with low queue")
+            
+            # Check for anomalies and trends
+            anomalies = performance_analyzer.get_detected_anomalies()
+            self.logger.info(f"Detected anomalies: {anomalies}")
+            
+            trends = performance_analyzer.get_identified_trends()
+            self.logger.info(f"Identified trends: {trends}")
+            
+            # Stop all tasks
+            self.logger.info("Stopping all components...")
+            tg.cancel_scope.cancel()
+            
+            self.logger.info("End-to-end test completed successfully")
 
     def test_e2e_integrated_system(self):
         """Test the complete integrated system end-to-end."""
