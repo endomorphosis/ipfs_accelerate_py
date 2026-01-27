@@ -7,7 +7,7 @@ This directory contains scripts to set up IPFS Accelerate as a system service th
 Run the complete setup script:
 
 ```bash
-./setup-complete.sh
+./scripts/setup/setup-complete.sh
 ```
 
 This will:
@@ -21,13 +21,13 @@ This will:
 ### 1. Install Service Only
 
 ```bash
-sudo ./install-service.sh
+sudo ./scripts/setup/install-service.sh
 ```
 
 ### 2. Setup Monitoring (Optional)
 
 ```bash
-sudo ./setup-cron.sh
+sudo ./scripts/setup/setup-cron.sh
 ```
 
 ### 3. Start Service

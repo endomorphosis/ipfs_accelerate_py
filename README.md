@@ -54,7 +54,7 @@ cd ipfs_accelerate_py
 pip install -e .
 ```
 
-For detailed installation instructions, see [INSTALL.md](INSTALL.md).
+For detailed installation instructions, see [INSTALL.md](docs/guides/INSTALL.md).
 
 ## 🎯 Quick Start Guide
 
@@ -93,7 +93,7 @@ ipfs-accelerate hardware status
 ipfs-accelerate github autoscaler
 ```
 
-For more examples, see [QUICKSTART.md](QUICKSTART.md).
+For more examples, see [QUICKSTART.md](docs/guides/QUICKSTART.md).
 
 ## 🏗️ Architecture
 
@@ -150,8 +150,8 @@ For the complete list, see [docs/README.md](docs/README.md#model-support).
 
 | Document | Description |
 |----------|-------------|
-| [QUICKSTART.md](QUICKSTART.md) | Quick start guide with examples |
-| [INSTALL.md](INSTALL.md) | Detailed installation instructions |
+| [QUICKSTART.md](docs/guides/QUICKSTART.md) | Quick start guide with examples |
+| [INSTALL.md](docs/guides/INSTALL.md) | Detailed installation instructions |
 | [docs/README.md](docs/README.md) | Complete documentation index |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System architecture overview |
 | [docs/API.md](docs/API.md) | API reference documentation |
@@ -161,8 +161,8 @@ For the complete list, see [docs/README.md](docs/README.md#model-support).
 | [docs/TESTING.md](docs/TESTING.md) | Testing framework guide |
 
 ### Specialized Guides
-- [AUTOSCALER.md](AUTOSCALER.md) - GitHub Actions autoscaler
-- [MCP_SETUP_GUIDE.md](MCP_SETUP_GUIDE.md) - MCP server configuration
+- [AUTOSCALER.md](docs/architecture/AUTOSCALER.md) - GitHub Actions autoscaler
+- [MCP_SETUP_GUIDE.md](docs/guides/MCP_SETUP_GUIDE.md) - MCP server configuration
 - [docs/guides/github/](docs/guides/github/) - GitHub integration guides
 - [docs/guides/docker/](docs/guides/docker/) - Docker deployment guides
 - [docs/guides/p2p/](docs/guides/p2p/) - P2P networking guides

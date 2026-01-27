@@ -93,8 +93,8 @@ RUN pip install flask>=3.0.0 flask-cors>=4.0.0 werkzeug>=3.0.0 fastmcp>=0.1.0 &&
     pip install -e ".[all,testing,mcp,webnn,viz]"
 
 # Copy startup validation and entrypoint scripts
-COPY --chown=appuser:appuser docker_startup_check.py /app/
-COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+COPY --chown=appuser:appuser deployments/docker/docker_startup_check.py /app/
+COPY --chown=appuser:appuser deployments/docker/docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
 
 USER appuser
@@ -123,8 +123,8 @@ RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.
 RUN pip install -e ".[minimal,testing,mcp]"
 
 # Copy startup validation and entrypoint scripts
-COPY --chown=appuser:appuser docker_startup_check.py /app/
-COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+COPY --chown=appuser:appuser deployments/docker/docker_startup_check.py /app/
+COPY --chown=appuser:appuser deployments/docker/docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
 
 USER appuser
@@ -181,8 +181,8 @@ RUN mkdir -p /app/data /app/logs /app/config /app/models && \
     chown -R appuser:appuser /app
 
 # Copy startup validation and entrypoint scripts
-COPY --chown=appuser:appuser docker_startup_check.py /app/
-COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+COPY --chown=appuser:appuser deployments/docker/docker_startup_check.py /app/
+COPY --chown=appuser:appuser deployments/docker/docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
 
 # Copy config files if they exist (conditional copy)
@@ -257,8 +257,8 @@ RUN pip install \
     && echo "Hardware acceleration setup complete"
 
 # Copy startup validation and entrypoint scripts  
-COPY --chown=appuser:appuser docker_startup_check.py /app/
-COPY --chown=appuser:appuser docker-entrypoint.sh /app/
+COPY --chown=appuser:appuser deployments/docker/docker_startup_check.py /app/
+COPY --chown=appuser:appuser deployments/docker/docker-entrypoint.sh /app/
 RUN chmod +x /app/docker-entrypoint.sh /app/docker_startup_check.py
 
 USER appuser
