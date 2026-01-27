@@ -22,7 +22,7 @@ Environment="PYTHONUNBUFFERED=1"
 ExecStartPre=/home/barberb/ipfs_accelerate_py/scripts/auto-update.sh
 
 # Run the launcher
-ExecStart=/home/devel/.venvs/ipfs-accelerate/bin/python /home/devel/ipfs_accelerate_py/containerized_runner_launcher.py \
+ExecStart=/home/devel/.venvs/ipfs-accelerate/bin/python /home/devel/ipfs_accelerate_py/tools/containerized_runner_launcher.py \
     --token-file=/var/lib/github-runner-autoscaler/runner_tokens.json \
     --max-containers=10 \
     --cleanup-interval=300

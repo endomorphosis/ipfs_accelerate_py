@@ -21,7 +21,7 @@ Environment=P2P_LISTEN_PORT=9000
 # Run: gh auth login
 
 # Start the autoscaler with appropriate settings
-ExecStart=/home/%i/ipfs_accelerate_py/.venv/bin/python3 /home/%i/ipfs_accelerate_py/github_autoscaler.py --interval 60
+ExecStart=/home/%i/ipfs_accelerate_py/.venv/bin/python3 /home/%i/ipfs_accelerate_py/tools/github_autoscaler.py --interval 60
 
 # Restart on failure
 Restart=on-failure
