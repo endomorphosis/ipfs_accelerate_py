@@ -10,6 +10,7 @@ import sys
 import logging
 from pathlib import Path
 import importlib.util
+import pytest
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, 
@@ -95,6 +96,30 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "ollama: mark test as Ollama API test")
     config.addinivalue_line("markers", "vllm: mark test as vLLM API test")
     config.addinivalue_line("markers", "claude: mark test as Claude API test")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Dynamically mark CUDA-capable tests based on module globals."""
+    for item in items:
+        module = getattr(item, "module", None)
+        if module is None:
+            continue
+
+        hw_caps = getattr(module, "HW_CAPABILITIES", None)
+        if isinstance(hw_caps, dict) and "cuda" in hw_caps:
+            item.add_marker(pytest.mark.cuda)
+
+
+# Ignore hyphenated filenames that are not valid importable modules.
+collect_ignore = [
+    "test_bert-base-uncased.py",
+    "test_hf_blip-2.py",
+    "test_hf_deberta-v2.py",
+    "test_hf_flan-t5.py",
+    "test_hf_pegasus-x.py",
+    "test_vit-base-patch16-224.py",
+    "test_whisper-tiny.py",
+]
 
 
 # Skip functions for specific conditions
