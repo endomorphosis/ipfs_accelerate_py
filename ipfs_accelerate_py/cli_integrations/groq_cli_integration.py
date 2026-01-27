@@ -1,53 +1,66 @@
 """
 Groq CLI Integration with Common Cache
 
-Wraps Groq CLI to use the common cache infrastructure.
+Wraps Groq API (via Groq Python SDK) to use the common cache infrastructure.
+Note: Groq does not have an official CLI tool - this uses the Python SDK directly.
 """
 
 import logging
 from typing import Any, Dict, Optional
 
-from .base_cli_wrapper import BaseCLIWrapper
 from ..common.llm_cache import LLMAPICache, get_global_llm_cache
 
 logger = logging.getLogger(__name__)
 
 
-class GroqCLIIntegration(BaseCLIWrapper):
+class GroqCLIIntegration:
     """
-    Groq CLI integration with common cache infrastructure.
+    Groq integration with common cache infrastructure.
     
-    Uses LLM cache for fast inference requests.
+    Uses Python SDK (groq) with LLM cache for fast inference requests.
+    Note: This is NOT a CLI wrapper - Groq has no official CLI.
     """
     
     def __init__(
         self,
-        groq_path: str = "groq",
+        api_key: Optional[str] = None,
         enable_cache: bool = True,
         cache: Optional[LLMAPICache] = None,
         **kwargs
     ):
         """
-        Initialize Groq CLI integration.
+        Initialize Groq integration.
         
         Args:
-            groq_path: Path to groq CLI executable
+            api_key: Groq API key (or set GROQ_API_KEY env var)
             enable_cache: Whether to enable caching
             cache: Custom cache instance (uses LLM cache if None)
-            **kwargs: Additional arguments for BaseCLIWrapper
+            **kwargs: Additional arguments
         """
+        self.api_key = api_key
+        self.enable_cache = enable_cache
+        
         if cache is None:
             cache = get_global_llm_cache()
+        self.cache = cache
         
-        super().__init__(
-            cli_path=groq_path,
-            cache=cache,
-            enable_cache=enable_cache,
-            **kwargs
-        )
+        # Lazy import groq SDK
+        self._client = None
+    
+    def _get_client(self):
+        """Lazy initialization of Groq client."""
+        if self._client is None:
+            try:
+                import groq
+                self._client = groq.Groq(api_key=self.api_key)
+            except ImportError:
+                raise ImportError(
+                    "groq SDK not installed. Install with: pip install groq"
+                )
+        return self._client
     
     def get_tool_name(self) -> str:
-        return "Groq CLI"
+        return "Groq (Python SDK)"
     
     def chat(
         self,
@@ -66,17 +79,41 @@ class GroqCLIIntegration(BaseCLIWrapper):
             **kwargs: Additional arguments
             
         Returns:
-            Command result dict with response
+            Dict with response
         """
-        args = ["chat", "--model", model, "--temperature", str(temperature), message]
+        messages = [{"role": "user", "content": message}]
         
-        return self._run_command_with_retry(
-            args,
-            "chat_completion",
-            messages=[{"role": "user", "content": message}],
+        # Check cache first
+        if self.enable_cache:
+            cached = self.cache.get_chat_completion(
+                messages=messages,
+                model=model,
+                temperature=temperature
+            )
+            if cached:
+                logger.info("Cache hit for Groq chat")
+                return {"response": cached, "cached": True}
+        
+        # Call API
+        client = self._get_client()
+        response = client.chat.completions.create(
             model=model,
+            messages=messages,
             temperature=temperature
         )
+        
+        result = response.choices[0].message.content
+        
+        # Cache response
+        if self.enable_cache:
+            self.cache.cache_chat_completion(
+                messages=messages,
+                response=result,
+                model=model,
+                temperature=temperature
+            )
+        
+        return {"response": result, "cached": False}
     
     def complete(
         self,
@@ -95,17 +132,39 @@ class GroqCLIIntegration(BaseCLIWrapper):
             **kwargs: Additional arguments
             
         Returns:
-            Command result dict with completion
+            Dict with completion
         """
-        args = ["complete", "--model", model, "--temperature", str(temperature), prompt]
+        # Check cache first
+        if self.enable_cache:
+            cached = self.cache.get_completion(
+                prompt=prompt,
+                model=model,
+                temperature=temperature
+            )
+            if cached:
+                logger.info("Cache hit for Groq completion")
+                return {"response": cached, "cached": True}
         
-        return self._run_command_with_retry(
-            args,
-            "completion",
-            prompt=prompt,
+        # Call API
+        client = self._get_client()
+        response = client.completions.create(
             model=model,
+            prompt=prompt,
             temperature=temperature
         )
+        
+        result = response.choices[0].text
+        
+        # Cache response
+        if self.enable_cache:
+            self.cache.cache_completion(
+                prompt=prompt,
+                response=result,
+                model=model,
+                temperature=temperature
+            )
+        
+        return {"response": result, "cached": False}
 
 
 # Global instance

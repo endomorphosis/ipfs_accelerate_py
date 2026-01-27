@@ -1,53 +1,67 @@
 """
 Gemini CLI Integration with Common Cache
 
-Wraps Google Gemini CLI to use the common cache infrastructure.
+Wraps Google Gemini API (via google-generativeai Python SDK) to use the common cache infrastructure.
+Note: Gemini does not have an official CLI tool - this uses the Python SDK directly.
 """
 
 import logging
 from typing import Any, Dict, Optional
 
-from .base_cli_wrapper import BaseCLIWrapper
 from ..common.llm_cache import LLMAPICache, get_global_llm_cache
 
 logger = logging.getLogger(__name__)
 
 
-class GeminiCLIIntegration(BaseCLIWrapper):
+class GeminiCLIIntegration:
     """
-    Gemini CLI integration with common cache infrastructure.
+    Gemini integration with common cache infrastructure.
     
-    Uses LLM cache for text generation.
+    Uses Python SDK (google-generativeai) with LLM cache for text generation.
+    Note: This is NOT a CLI wrapper - Gemini has no official CLI.
     """
     
     def __init__(
         self,
-        gemini_path: str = "gemini",
+        api_key: Optional[str] = None,
         enable_cache: bool = True,
         cache: Optional[LLMAPICache] = None,
         **kwargs
     ):
         """
-        Initialize Gemini CLI integration.
+        Initialize Gemini integration.
         
         Args:
-            gemini_path: Path to gemini CLI executable
+            api_key: Google API key (or set GOOGLE_API_KEY env var)
             enable_cache: Whether to enable caching
             cache: Custom cache instance (uses LLM cache if None)
-            **kwargs: Additional arguments for BaseCLIWrapper
+            **kwargs: Additional arguments
         """
+        self.api_key = api_key
+        self.enable_cache = enable_cache
+        
         if cache is None:
             cache = get_global_llm_cache()
+        self.cache = cache
         
-        super().__init__(
-            cli_path=gemini_path,
-            cache=cache,
-            enable_cache=enable_cache,
-            **kwargs
-        )
+        # Lazy import and configure google-generativeai
+        self._configured = False
+    
+    def _configure(self):
+        """Lazy configuration of Google Generative AI."""
+        if not self._configured:
+            try:
+                import google.generativeai as genai
+                genai.configure(api_key=self.api_key)
+                self._configured = True
+                self._genai = genai
+            except ImportError:
+                raise ImportError(
+                    "google-generativeai SDK not installed. Install with: pip install google-generativeai"
+                )
     
     def get_tool_name(self) -> str:
-        return "Gemini CLI"
+        return "Gemini (Google SDK)"
     
     def generate_text(
         self,
@@ -66,17 +80,41 @@ class GeminiCLIIntegration(BaseCLIWrapper):
             **kwargs: Additional arguments
             
         Returns:
-            Command result dict with generated text
+            Dict with generated text
         """
-        args = ["generate", "--model", model, "--temperature", str(temperature), prompt]
+        # Check cache first
+        if self.enable_cache:
+            cached = self.cache.get_completion(
+                prompt=prompt,
+                model=model,
+                temperature=temperature
+            )
+            if cached:
+                logger.info("Cache hit for Gemini generation")
+                return {"response": cached, "cached": True}
         
-        return self._run_command_with_retry(
-            args,
-            "completion",
-            prompt=prompt,
-            model=model,
-            temperature=temperature
+        # Call API
+        self._configure()
+        model_obj = self._genai.GenerativeModel(model)
+        response = model_obj.generate_content(
+            prompt,
+            generation_config=self._genai.types.GenerationConfig(
+                temperature=temperature
+            )
         )
+        
+        result = response.text
+        
+        # Cache response
+        if self.enable_cache:
+            self.cache.cache_completion(
+                prompt=prompt,
+                response=result,
+                model=model,
+                temperature=temperature
+            )
+        
+        return {"response": result, "cached": False}
     
     def chat(
         self,
@@ -93,16 +131,9 @@ class GeminiCLIIntegration(BaseCLIWrapper):
             **kwargs: Additional arguments
             
         Returns:
-            Command result dict with response
+            Dict with response
         """
-        args = ["chat", "--model", model, message]
-        
-        return self._run_command_with_retry(
-            args,
-            "chat_completion",
-            messages=[{"role": "user", "content": message}],
-            model=model
-        )
+        return self.generate_text(message, model=model, temperature=0.0)
 
 
 # Global instance

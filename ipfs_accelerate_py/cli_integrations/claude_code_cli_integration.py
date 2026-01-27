@@ -1,53 +1,66 @@
 """
 Claude Code CLI Integration with Common Cache
 
-Wraps Claude Code CLI (via Anthropic CLI) to use the common cache infrastructure.
+Wraps Claude API (via Anthropic Python SDK) to use the common cache infrastructure.
+Note: Claude does not have an official CLI tool - this uses the Python SDK directly.
 """
 
 import logging
 from typing import Any, Dict, Optional
 
-from .base_cli_wrapper import BaseCLIWrapper
 from ..common.llm_cache import LLMAPICache, get_global_llm_cache
 
 logger = logging.getLogger(__name__)
 
 
-class ClaudeCodeCLIIntegration(BaseCLIWrapper):
+class ClaudeCodeCLIIntegration:
     """
-    Claude Code CLI integration with common cache infrastructure.
+    Claude Code integration with common cache infrastructure.
     
-    Uses LLM cache for code generation and chat.
+    Uses Python SDK (anthropic) with LLM cache for code generation and chat.
+    Note: This is NOT a CLI wrapper - Claude has no official CLI.
     """
     
     def __init__(
         self,
-        claude_path: str = "claude",
+        api_key: Optional[str] = None,
         enable_cache: bool = True,
         cache: Optional[LLMAPICache] = None,
         **kwargs
     ):
         """
-        Initialize Claude Code CLI integration.
+        Initialize Claude Code integration.
         
         Args:
-            claude_path: Path to claude CLI executable
+            api_key: Anthropic API key (or set ANTHROPIC_API_KEY env var)
             enable_cache: Whether to enable caching
             cache: Custom cache instance (uses LLM cache if None)
-            **kwargs: Additional arguments for BaseCLIWrapper
+            **kwargs: Additional arguments
         """
+        self.api_key = api_key
+        self.enable_cache = enable_cache
+        
         if cache is None:
             cache = get_global_llm_cache()
+        self.cache = cache
         
-        super().__init__(
-            cli_path=claude_path,
-            cache=cache,
-            enable_cache=enable_cache,
-            **kwargs
-        )
+        # Lazy import anthropic SDK
+        self._client = None
+    
+    def _get_client(self):
+        """Lazy initialization of Anthropic client."""
+        if self._client is None:
+            try:
+                import anthropic
+                self._client = anthropic.Anthropic(api_key=self.api_key)
+            except ImportError:
+                raise ImportError(
+                    "anthropic SDK not installed. Install with: pip install anthropic"
+                )
+        return self._client
     
     def get_tool_name(self) -> str:
-        return "Claude Code CLI"
+        return "Claude (Anthropic SDK)"
     
     def chat(
         self,
@@ -66,17 +79,42 @@ class ClaudeCodeCLIIntegration(BaseCLIWrapper):
             **kwargs: Additional arguments
             
         Returns:
-            Command result dict with response
+            Dict with response
         """
-        args = ["chat", "--model", model, "--temperature", str(temperature), "--", message]
+        messages = [{"role": "user", "content": message}]
         
-        return self._run_command_with_retry(
-            args,
-            "chat_completion",
-            messages=[{"role": "user", "content": message}],
+        # Check cache first
+        if self.enable_cache:
+            cached = self.cache.get_chat_completion(
+                messages=messages,
+                model=model,
+                temperature=temperature
+            )
+            if cached:
+                logger.info("Cache hit for Claude chat")
+                return {"response": cached, "cached": True}
+        
+        # Call API
+        client = self._get_client()
+        response = client.messages.create(
             model=model,
-            temperature=temperature
+            messages=messages,
+            temperature=temperature,
+            max_tokens=kwargs.get("max_tokens", 4096)
         )
+        
+        result = response.content[0].text
+        
+        # Cache response
+        if self.enable_cache:
+            self.cache.cache_chat_completion(
+                messages=messages,
+                response=result,
+                model=model,
+                temperature=temperature
+            )
+        
+        return {"response": result, "cached": False}
     
     def generate_code(
         self,
@@ -93,7 +131,7 @@ class ClaudeCodeCLIIntegration(BaseCLIWrapper):
             **kwargs: Additional arguments
             
         Returns:
-            Command result dict with generated code
+            Dict with generated code
         """
         return self.chat(prompt, model=model, temperature=0.0)
 

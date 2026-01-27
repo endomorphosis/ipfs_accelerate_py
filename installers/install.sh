@@ -236,24 +236,38 @@ install_python_deps() {
     # Upgrade pip
     $PYTHON_CMD -m pip install --upgrade pip setuptools wheel || error_exit "Failed to upgrade pip"
     
-    # Install based on profile
+    # Install base package based on profile
     case "$INSTALL_PROFILE" in
         minimal)
-            $PYTHON_CMD -m pip install ipfs_accelerate_py[minimal] || error_exit "Failed to install minimal profile"
+            $PYTHON_CMD -m pip install -e ".[minimal]" || error_exit "Failed to install minimal profile"
             ;;
         standard)
-            $PYTHON_CMD -m pip install ipfs_accelerate_py[cache] || error_exit "Failed to install standard profile"
+            $PYTHON_CMD -m pip install -e ".[cache]" || error_exit "Failed to install standard profile"
             ;;
         full)
-            $PYTHON_CMD -m pip install ipfs_accelerate_py[all] || error_exit "Failed to install full profile"
+            $PYTHON_CMD -m pip install -e ".[all]" || error_exit "Failed to install full profile"
             ;;
         cli)
-            $PYTHON_CMD -m pip install ipfs_accelerate_py[cli] || error_exit "Failed to install CLI profile"
+            $PYTHON_CMD -m pip install -e ".[cli]" || error_exit "Failed to install CLI profile"
             ;;
         *)
             error_exit "Unknown profile: $INSTALL_PROFILE"
             ;;
     esac
+    
+    # Install Python SDKs for API integrations (for standard/full profiles)
+    if [ "$INSTALL_PROFILE" = "standard" ] || [ "$INSTALL_PROFILE" = "full" ]; then
+        log INFO "Installing Python SDK dependencies..."
+        
+        # LLM SDKs
+        $PYTHON_CMD -m pip install openai anthropic google-generativeai groq ollama || log WARN "Some LLM SDKs failed to install"
+        
+        # Storage/Infrastructure SDKs
+        $PYTHON_CMD -m pip install boto3 ipfshttpclient || log WARN "Some storage SDKs failed to install"
+        
+        # Additional dependencies for backends
+        $PYTHON_CMD -m pip install python-dotenv anyio numpy || log WARN "Some backend dependencies failed to install"
+    fi
     
     log SUCCESS "Python dependencies installed"
 }
@@ -293,26 +307,21 @@ install_cli_tools() {
     fi
     
     # HuggingFace CLI
-    if ! command -v huggingface-cli >/dev/null 2>&1; then
-        log INFO "Installing HuggingFace CLI..."
-        $PYTHON_CMD -m pip install huggingface-hub[cli] || log WARN "Failed to install HuggingFace CLI"
-    else
-        log INFO "HuggingFace CLI already installed"
-    fi
+    log INFO "Installing HuggingFace CLI..."
+    $PYTHON_CMD -m pip install -U "huggingface-hub[cli]" || log WARN "Failed to install HuggingFace CLI"
     
     # Vast AI CLI
-    if ! command -v vastai >/dev/null 2>&1; then
-        log INFO "Installing Vast AI CLI..."
-        $PYTHON_CMD -m pip install vastai || log WARN "Failed to install Vast AI CLI"
-    else
-        log INFO "Vast AI CLI already installed"
-    fi
+    log INFO "Installing Vast AI CLI..."
+    $PYTHON_CMD -m pip install -U vastai || log WARN "Failed to install Vast AI CLI"
     
     # GitHub Copilot CLI (requires Node.js/npm)
     if command -v npm >/dev/null 2>&1; then
         if ! command -v github-copilot-cli >/dev/null 2>&1; then
             log INFO "Installing GitHub Copilot CLI..."
-            npm install -g @githubnext/github-copilot-cli || log WARN "Failed to install GitHub Copilot CLI"
+            # Try multiple package names
+            npm install -g @githubnext/github-copilot-cli 2>/dev/null || \
+            npm install -g @github/copilot-cli 2>/dev/null || \
+            log WARN "GitHub Copilot CLI installation failed - may be integrated into gh CLI"
         else
             log INFO "GitHub Copilot CLI already installed"
         fi
@@ -320,35 +329,22 @@ install_cli_tools() {
         log WARN "npm not found - skipping GitHub Copilot CLI installation"
     fi
     
-    # OpenAI Codex CLI (requires Node.js/npm)
+    # OpenAI Codex CLI (requires Node.js/npm) - may not be publicly available
     if command -v npm >/dev/null 2>&1; then
         if ! npm list -g 2>/dev/null | grep -q "@openai/codex"; then
-            log INFO "Installing OpenAI Codex CLI..."
-            npm install -g @openai/codex 2>/dev/null || log WARN "Failed to install OpenAI Codex CLI (may not be publicly available)"
+            log INFO "Attempting to install OpenAI Codex CLI..."
+            npm install -g @openai/codex 2>/dev/null || \
+            npm install -g openai-codex 2>/dev/null || \
+            log WARN "OpenAI Codex CLI not publicly available - using Python SDK wrapper"
         else
             log INFO "OpenAI Codex CLI already installed"
         fi
     fi
     
-    # Claude Code CLI (Anthropic)
-    if ! command -v claude >/dev/null 2>&1; then
-        log INFO "Installing Claude CLI..."
-        $PYTHON_CMD -m pip install anthropic 2>/dev/null || log WARN "Failed to install Anthropic SDK (CLI wrapper available via our integration)"
-    else
-        log INFO "Claude CLI already installed"
-    fi
-    
-    # Gemini CLI (Google)
-    log INFO "Installing Google Generative AI SDK..."
-    $PYTHON_CMD -m pip install google-generativeai 2>/dev/null || log WARN "Failed to install Google Generative AI SDK"
-    
-    # Groq CLI
-    if ! command -v groq >/dev/null 2>&1; then
-        log INFO "Installing Groq SDK..."
-        $PYTHON_CMD -m pip install groq || log WARN "Failed to install Groq SDK"
-    else
-        log INFO "Groq SDK already installed"
-    fi
+    # Python SDKs (used by SDK-only integrations)
+    log INFO "Installing Python SDKs for Claude, Gemini, and Groq..."
+    $PYTHON_CMD -m pip install -U anthropic google-generativeai groq 2>/dev/null || \
+    log WARN "Failed to install some Python SDKs (Claude/Gemini/Groq) - install manually if needed"
     
     # VSCode CLI
     if ! command -v code >/dev/null 2>&1; then
