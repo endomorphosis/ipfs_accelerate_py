@@ -157,6 +157,7 @@ For the complete list, see [docs/README.md](docs/README.md#model-support).
 | [docs/API.md](docs/API.md) | API reference documentation |
 | [docs/HARDWARE.md](docs/HARDWARE.md) | Hardware optimization guide |
 | [docs/IPFS.md](docs/IPFS.md) | IPFS integration details |
+| [docs/P2P_AND_MCP.md](docs/P2P_AND_MCP.md) | P2P workflow scheduling & MCP server |
 | [docs/TESTING.md](docs/TESTING.md) | Testing framework guide |
 
 ### Specialized Guides

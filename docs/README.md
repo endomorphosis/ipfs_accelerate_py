@@ -9,6 +9,7 @@ Comprehensive documentation for the IPFS Accelerate Python framework - a complet
 - **🔧 [API Reference](API.md)** - Complete API documentation with examples
 - **⚙️ [Hardware Optimization](HARDWARE.md)** - Maximize performance across different hardware
 - **🌐 [IPFS Integration](IPFS.md)** - Leverage distributed inference and content addressing
+- **🔗 [P2P & MCP Architecture](P2P_AND_MCP.md)** - P2P workflow scheduling and MCP server guide
 - **🧪 [Testing Guide](TESTING.md)** - Comprehensive testing framework and best practices
 
 ## What is IPFS Accelerate Python?
@@ -36,7 +37,8 @@ IPFS Accelerate Python is a comprehensive framework that combines:
 ### Specialization Guides
 7. **[Hardware Optimization](HARDWARE.md)** - Platform-specific optimization strategies
 8. **[IPFS Integration](IPFS.md)** - Distributed inference and content addressing
-9. **[WebNN/WebGPU Integration](../WEBNN_WEBGPU_README.md)** - Browser-based acceleration
+9. **[P2P & MCP Architecture](P2P_AND_MCP.md)** - P2P workflow scheduling and MCP server
+10. **[WebNN/WebGPU Integration](../WEBNN_WEBGPU_README.md)** - Browser-based acceleration
 
 ## Key Features Covered
 
@@ -90,11 +92,19 @@ IPFS Accelerate Python is a comprehensive framework that combines:
 
 ## Documentation Updates
 
-This documentation was comprehensively updated to reflect the current state of the IPFS Accelerate Python framework. All examples, APIs, and features have been verified and updated for accuracy.
+This documentation was comprehensively updated to reflect the current state of the IPFS Accelerate Python framework, including recent additions such as:
 
-**Last Updated**: August 2024  
-**Framework Version**: 0.4.0+  
-**Documentation Coverage**: Complete
+- **P2P Workflow Scheduler**: Distributed task execution with merkle clocks and fibonacci heaps
+- **MCP Server**: Model Context Protocol server with 14+ tools
+- **CLI Endpoint Adapters**: Direct integration with Claude, OpenAI, Gemini, VSCode CLIs
+- **Enhanced Inference**: Multi-backend routing (local, distributed, API, CLI modes)
+- **GitHub Integration**: P2P cache, autoscaler, workflow discovery
+
+All examples, APIs, and features have been verified and updated for accuracy.
+
+**Last Updated**: January 2026  
+**Framework Version**: 0.0.45+  
+**Documentation Coverage**: Comprehensive (Core + Recent Features)
 
 ---
 
