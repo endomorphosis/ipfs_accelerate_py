@@ -171,6 +171,10 @@ class BaseAPICache(ABC):
         from .cid_index import get_global_cid_index
         self._cid_index = get_global_cid_index()
         
+        # IPFS fallback store for decentralized cache retrieval
+        from .ipfs_kit_fallback import get_global_ipfs_fallback
+        self._ipfs_fallback = get_global_ipfs_fallback()
+        
         # Statistics
         self._stats = {
             "hits": 0,
@@ -179,7 +183,9 @@ class BaseAPICache(ABC):
             "evictions": 0,
             "api_calls_saved": 0,
             "api_calls_made": 0,
-            "peer_hits": 0
+            "peer_hits": 0,
+            "ipfs_fallback_hits": 0,
+            "ipfs_fallback_misses": 0
         }
         
         # Load persistent cache if enabled
@@ -342,8 +348,46 @@ class BaseAPICache(ABC):
                 self._stats["api_calls_saved"] += 1
                 return entry.data
             
-            # Cache miss
+            # Cache miss - try IPFS fallback
             self._stats["misses"] += 1
+            
+            # Try to retrieve from IPFS fallback store
+            if self._ipfs_fallback and self._ipfs_fallback.is_available():
+                try:
+                    ipfs_data = self._ipfs_fallback.get(cache_key)
+                    if ipfs_data:
+                        # Successfully retrieved from IPFS
+                        logger.info(f"Cache retrieved from IPFS fallback for key: {cache_key[:16]}...")
+                        self._stats["ipfs_fallback_hits"] += 1
+                        self._stats["api_calls_saved"] += 1
+                        
+                        # Store in local cache for future use
+                        if isinstance(ipfs_data, dict) and "data" in ipfs_data:
+                            # Reconstruct cache entry
+                            entry = CacheEntry(
+                                data=ipfs_data.get("data"),
+                                timestamp=ipfs_data.get("timestamp", time.time()),
+                                ttl=ipfs_data.get("ttl", self.default_ttl),
+                                content_hash=ipfs_data.get("content_hash"),
+                                validation_fields=ipfs_data.get("validation_fields"),
+                                metadata=ipfs_data.get("metadata")
+                            )
+                            
+                            # Check if still valid
+                            if not entry.is_expired():
+                                self._cache[cache_key] = entry
+                                # Add to CID index
+                                self._cid_index.add(cache_key, operation, entry.metadata or {})
+                                return entry.data
+                        else:
+                            # Direct data return
+                            return ipfs_data
+                except Exception as e:
+                    logger.debug(f"IPFS fallback retrieval failed for {cache_key[:16]}...: {e}")
+                    self._stats["ipfs_fallback_misses"] += 1
+            else:
+                self._stats["ipfs_fallback_misses"] += 1
+            
             self._stats["api_calls_made"] += 1
             return None
     
@@ -408,6 +452,29 @@ class BaseAPICache(ABC):
                     "cache_name": self.cache_name
                 }
             )
+            
+            # Store to IPFS fallback if available (done outside lock to avoid blocking)
+        
+        # IPFS fallback store (outside lock)
+        if self._ipfs_fallback and self._ipfs_fallback.is_available():
+            try:
+                # Serialize entry for IPFS storage
+                ipfs_data = {
+                    "data": value,
+                    "timestamp": entry.timestamp,
+                    "ttl": ttl,
+                    "content_hash": content_hash,
+                    "validation_fields": validation_fields,
+                    "metadata": metadata,
+                    "operation": operation
+                }
+                # Store to IPFS (don't block on failure)
+                self._ipfs_fallback.put(cache_key, ipfs_data)
+                # Optionally pin important entries
+                if metadata and metadata.get("pin_to_ipfs", False):
+                    self._ipfs_fallback.pin(cache_key)
+            except Exception as e:
+                logger.debug(f"Failed to store to IPFS fallback: {e}")
         
         # Save to disk if persistence is enabled
         if self.enable_persistence:
@@ -515,6 +582,8 @@ class BaseAPICache(ABC):
                 "api_calls_saved": self._stats["api_calls_saved"],
                 "api_calls_made": self._stats["api_calls_made"],
                 "peer_hits": self._stats["peer_hits"],
+                "ipfs_fallback_hits": self._stats.get("ipfs_fallback_hits", 0),
+                "ipfs_fallback_misses": self._stats.get("ipfs_fallback_misses", 0),
                 "enable_persistence": self.enable_persistence,
                 "enable_p2p": self.enable_p2p,
                 "cid_index": cid_stats

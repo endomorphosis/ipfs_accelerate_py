@@ -307,6 +307,58 @@ install_cli_tools() {
     else
         log INFO "Vast AI CLI already installed"
     fi
+    
+    # GitHub Copilot CLI (requires Node.js/npm)
+    if command -v npm >/dev/null 2>&1; then
+        if ! command -v github-copilot-cli >/dev/null 2>&1; then
+            log INFO "Installing GitHub Copilot CLI..."
+            npm install -g @githubnext/github-copilot-cli || log WARN "Failed to install GitHub Copilot CLI"
+        else
+            log INFO "GitHub Copilot CLI already installed"
+        fi
+    else
+        log WARN "npm not found - skipping GitHub Copilot CLI installation"
+    fi
+    
+    # OpenAI Codex CLI (requires Node.js/npm)
+    if command -v npm >/dev/null 2>&1; then
+        if ! npm list -g 2>/dev/null | grep -q "@openai/codex"; then
+            log INFO "Installing OpenAI Codex CLI..."
+            npm install -g @openai/codex 2>/dev/null || log WARN "Failed to install OpenAI Codex CLI (may not be publicly available)"
+        else
+            log INFO "OpenAI Codex CLI already installed"
+        fi
+    fi
+    
+    # Claude Code CLI (Anthropic)
+    if ! command -v claude >/dev/null 2>&1; then
+        log INFO "Installing Claude CLI..."
+        $PYTHON_CMD -m pip install anthropic 2>/dev/null || log WARN "Failed to install Anthropic SDK (CLI wrapper available via our integration)"
+    else
+        log INFO "Claude CLI already installed"
+    fi
+    
+    # Gemini CLI (Google)
+    log INFO "Installing Google Generative AI SDK..."
+    $PYTHON_CMD -m pip install google-generativeai 2>/dev/null || log WARN "Failed to install Google Generative AI SDK"
+    
+    # Groq CLI
+    if ! command -v groq >/dev/null 2>&1; then
+        log INFO "Installing Groq SDK..."
+        $PYTHON_CMD -m pip install groq || log WARN "Failed to install Groq SDK"
+    else
+        log INFO "Groq SDK already installed"
+    fi
+    
+    # VSCode CLI
+    if ! command -v code >/dev/null 2>&1; then
+        log WARN "VSCode CLI not found - install VSCode to get the 'code' command"
+        log INFO "Visit: https://code.visualstudio.com/"
+    else
+        log SUCCESS "VSCode CLI already installed"
+    fi
+    
+    log SUCCESS "CLI tools installation complete"
 }
 
 # Setup cache directory
