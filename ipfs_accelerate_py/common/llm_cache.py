@@ -11,6 +11,7 @@ enabling fast lookups by hashing the query parameters.
 import hashlib
 import json
 import logging
+import threading
 from typing import Any, Dict, List, Optional
 
 from .base_cache import BaseAPICache
@@ -166,40 +167,17 @@ class LLMAPICache(BaseAPICache):
             ttl: Custom TTL (optional)
             **kwargs: Additional parameters
         """
-        cache_key = self.make_cache_key_for_prompt(
-            "completion", prompt, model, temperature, max_tokens, **kwargs
-        )
+        # Build query parameters for cache key
+        query_params = {
+            "prompt": prompt,
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        query_params.update(kwargs)
         
-        # Use the cache key directly since we already computed it
-        with self._lock:
-            # Extract validation fields and create entry
-            validation_fields = self.extract_validation_fields("completion", response)
-            content_hash = None
-            if validation_fields:
-                content_hash = self._compute_validation_hash(validation_fields)
-            
-            from .base_cache import CacheEntry
-            import time
-            
-            entry = CacheEntry(
-                data=response,
-                timestamp=time.time(),
-                ttl=ttl or self.get_default_ttl_for_operation("completion"),
-                content_hash=content_hash,
-                validation_fields=validation_fields,
-                metadata={"model": model, "temperature": temperature}
-            )
-            
-            # Evict if full
-            if len(self._cache) >= self.max_cache_size:
-                oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].timestamp)
-                del self._cache[oldest_key]
-                self._stats["evictions"] += 1
-            
-            self._cache[cache_key] = entry
-        
-        if self.enable_persistence:
-            self._save_to_disk(cache_key, entry)
+        # Use base put() method which handles CID index registration
+        self.put("completion", response, ttl=ttl, **query_params)
     
     def get_completion(
         self,
@@ -222,28 +200,17 @@ class LLMAPICache(BaseAPICache):
         Returns:
             Cached response or None
         """
-        cache_key = self.make_cache_key_for_prompt(
-            "completion", prompt, model, temperature, max_tokens, **kwargs
-        )
+        # Build query parameters for cache key
+        query_params = {
+            "prompt": prompt,
+            "model": model,
+            "temperature": temperature,
+            "max_tokens": max_tokens
+        }
+        query_params.update(kwargs)
         
-        with self._lock:
-            if cache_key in self._cache:
-                entry = self._cache[cache_key]
-                
-                if entry.is_expired():
-                    del self._cache[cache_key]
-                    self._stats["expirations"] += 1
-                    self._stats["misses"] += 1
-                    self._stats["api_calls_made"] += 1
-                    return None
-                
-                self._stats["hits"] += 1
-                self._stats["api_calls_saved"] += 1
-                return entry.data
-            
-            self._stats["misses"] += 1
-            self._stats["api_calls_made"] += 1
-            return None
+        # Use base get() method
+        return self.get("completion", **query_params)
     
     def cache_chat_completion(
         self,
@@ -255,37 +222,15 @@ class LLMAPICache(BaseAPICache):
         **kwargs
     ) -> None:
         """Cache a chat completion response."""
-        cache_key = self.make_cache_key_for_messages(
-            "chat_completion", messages, model, temperature, **kwargs
-        )
+        query_params = {
+            "messages": messages,
+            "model": model,
+            "temperature": temperature
+        }
+        query_params.update(kwargs)
         
-        with self._lock:
-            validation_fields = self.extract_validation_fields("chat_completion", response)
-            content_hash = None
-            if validation_fields:
-                content_hash = self._compute_validation_hash(validation_fields)
-            
-            from .base_cache import CacheEntry
-            import time
-            
-            entry = CacheEntry(
-                data=response,
-                timestamp=time.time(),
-                ttl=ttl or self.get_default_ttl_for_operation("chat_completion"),
-                content_hash=content_hash,
-                validation_fields=validation_fields,
-                metadata={"model": model, "temperature": temperature}
-            )
-            
-            if len(self._cache) >= self.max_cache_size:
-                oldest_key = min(self._cache.keys(), key=lambda k: self._cache[k].timestamp)
-                del self._cache[oldest_key]
-                self._stats["evictions"] += 1
-            
-            self._cache[cache_key] = entry
-        
-        if self.enable_persistence:
-            self._save_to_disk(cache_key, entry)
+        # Use base put() method
+        self.put("chat_completion", response, ttl=ttl, **query_params)
     
     def get_chat_completion(
         self,
@@ -295,28 +240,15 @@ class LLMAPICache(BaseAPICache):
         **kwargs
     ) -> Optional[Any]:
         """Get a cached chat completion response."""
-        cache_key = self.make_cache_key_for_messages(
-            "chat_completion", messages, model, temperature, **kwargs
-        )
+        query_params = {
+            "messages": messages,
+            "model": model,
+            "temperature": temperature
+        }
+        query_params.update(kwargs)
         
-        with self._lock:
-            if cache_key in self._cache:
-                entry = self._cache[cache_key]
-                
-                if entry.is_expired():
-                    del self._cache[cache_key]
-                    self._stats["expirations"] += 1
-                    self._stats["misses"] += 1
-                    self._stats["api_calls_made"] += 1
-                    return None
-                
-                self._stats["hits"] += 1
-                self._stats["api_calls_saved"] += 1
-                return entry.data
-            
-            self._stats["misses"] += 1
-            self._stats["api_calls_made"] += 1
-            return None
+        # Use base get() method
+        return self.get("chat_completion", **query_params)
 
 
 # Global LLM cache instance
