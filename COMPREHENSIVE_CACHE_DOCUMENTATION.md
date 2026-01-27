@@ -1,10 +1,10 @@
 # Complete Cache Infrastructure Documentation
 **Last Updated:** 2026-01-27
-**Status:** Production Ready ✅
+**Status:** Production Ready with Phases 3-4 Complete ✅
 
 ## Executive Summary
 
-This document provides comprehensive documentation for the complete cache infrastructure implementation, including all APIs, CLIs, IPFS fallback, installers, and testing.
+This document provides comprehensive documentation for the complete cache infrastructure implementation, including all APIs, CLIs, IPFS fallback, installers, testing, dual-mode CLI/SDK support (Phase 3), and encrypted secrets management (Phase 4).
 
 ## Table of Contents
 
@@ -15,7 +15,9 @@ This document provides comprehensive documentation for the complete cache infras
 5. [Installation](#installation)
 6. [Testing](#testing)
 7. [Performance](#performance)
-8. [Troubleshooting](#troubleshooting)
+8. [Phase 3: Dual-Mode CLI/SDK](#phase-3-dual-mode-clisdk)
+9. [Phase 4: Secrets Manager](#phase-4-secrets-manager)
+10. [Troubleshooting](#troubleshooting)
 
 ## Overview
 
@@ -29,6 +31,8 @@ A **production-ready, content-addressed cache infrastructure** that provides:
 - **IPFS fallback** for decentralized cache sharing via `ipfs_kit_py@known_good`
 - **Zero-touch installers** for all major platforms and architectures
 - **Comprehensive testing** with 85%+ test coverage
+- **NEW: Dual-mode CLI/SDK support** with automatic fallback (Phase 3)
+- **NEW: Encrypted secrets management** for API keys (Phase 4)
 
 ### Key Benefits
 
@@ -40,6 +44,8 @@ A **production-ready, content-addressed cache infrastructure** that provides:
 - **Thread-safe** operations with per-cache locks
 - **Cross-platform** support (Linux, macOS, Windows, FreeBSD)
 - **Multi-architecture** support (x86_64, ARM64, ARMv7, Apple Silicon)
+- **Secure credential storage** with Fernet encryption (Phase 4)
+- **Flexible execution modes** with CLI/SDK fallback (Phase 3)
 
 ## Architecture
 
@@ -529,6 +535,205 @@ pytest test_api_integrations_comprehensive.py -v
 3. **Use IPFS fallback** - Share cache across team
 4. **Monitor hit rates** - Aim for 70%+ for best ROI
 
+## Phase 3: Dual-Mode CLI/SDK
+
+### Overview
+
+Phase 3 introduces flexible execution modes for CLI integrations, allowing seamless fallback between CLI tools and Python SDKs.
+
+### Key Features
+
+- **Automatic CLI Detection**: Scans system PATH for CLI tools
+- **Intelligent Fallback**: Falls back to SDK if CLI unavailable or fails
+- **Configurable Preference**: Choose CLI-first or SDK-first execution
+- **Unified Caching**: Both modes use the same cache infrastructure
+- **Response Metadata**: Includes execution mode and fallback status
+
+### Supported Integrations
+
+Phase 3 dual-mode support added to:
+- **Claude (Anthropic)**: SDK primary, CLI fallback (experimental)
+- **Gemini (Google)**: SDK primary, CLI fallback (experimental)
+- **Groq**: SDK primary, CLI fallback (experimental)
+
+### Usage
+
+```python
+from ipfs_accelerate_py.cli_integrations import ClaudeCodeCLIIntegration
+
+# Initialize with automatic mode detection
+claude = ClaudeCodeCLIIntegration()
+
+# Make request (automatically tries CLI first, falls back to SDK)
+response = claude.chat(
+    message="Explain Python decorators",
+    model="claude-3-sonnet-20240229"
+)
+
+# Response includes mode information
+print(response["response"])        # The actual response
+print(response.get("mode"))        # "CLI" or "SDK"
+print(response.get("cached"))      # True if from cache
+print(response.get("fallback"))    # True if fallback was used
+```
+
+### Configuration
+
+```python
+# Prefer CLI mode (try CLI first, fall back to SDK)
+claude = ClaudeCodeCLIIntegration(prefer_cli=True)
+
+# Prefer SDK mode (default - try SDK first, fall back to CLI)
+claude = ClaudeCodeCLIIntegration(prefer_cli=False)
+```
+
+### Architecture
+
+The `DualModeWrapper` base class provides:
+1. CLI detection via `detect_cli_tool()` utility
+2. SDK client lazy loading
+3. Fallback execution logic
+4. Unified caching for both modes
+5. Secrets manager integration
+
+### Benefits
+
+- **Flexibility**: Works with or without CLI tools installed
+- **Reliability**: Automatic fallback on failure
+- **Performance**: Uses fastest available method
+- **Debugging**: Clear mode metadata in responses
+
+See [PHASES_3_4_IMPLEMENTATION.md](./PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
+
+## Phase 4: Secrets Manager
+
+### Overview
+
+Phase 4 introduces secure, encrypted credential storage for API keys and sensitive data.
+
+### Key Features
+
+- **Fernet Encryption**: Uses AES-128 with HMAC for strong encryption
+- **Environment Fallback**: Automatically checks environment variables
+- **Secure Permissions**: Restricts file access to owner only (0o600)
+- **Global Instance**: Singleton pattern for consistent access
+- **Auto-Integration**: All CLI integrations automatically retrieve credentials
+
+### Storage Locations
+
+- **Secrets file**: `~/.ipfs_accelerate/secrets.enc` (encrypted)
+- **Encryption key**: `~/.ipfs_accelerate/secrets.key` (secure)
+
+### Basic Usage
+
+```python
+from ipfs_accelerate_py.common.secrets_manager import get_global_secrets_manager
+
+# Get global secrets manager
+secrets = get_global_secrets_manager()
+
+# Store credentials (automatically encrypted)
+secrets.set_credential("anthropic_api_key", "sk-ant-...")
+secrets.set_credential("google_api_key", "AIza...")
+secrets.set_credential("groq_api_key", "gsk_...")
+
+# Retrieve credentials
+api_key = secrets.get_credential("anthropic_api_key")
+
+# List credential keys (not values)
+keys = secrets.list_credential_keys()
+
+# Delete credentials
+secrets.delete_credential("old_api_key")
+```
+
+### Integration with CLI Tools
+
+All CLI integrations automatically retrieve API keys from the secrets manager:
+
+```python
+from ipfs_accelerate_py.cli_integrations import ClaudeCodeCLIIntegration
+
+# No need to provide API key explicitly
+claude = ClaudeCodeCLIIntegration()  # Gets key from secrets manager
+
+# Can still override if needed
+claude = ClaudeCodeCLIIntegration(api_key="sk-ant-explicit-key")
+```
+
+### Environment Variable Fallback
+
+The secrets manager automatically checks environment variables with multiple naming formats:
+
+```bash
+# Set environment variables
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GOOGLE_API_KEY="AIza..."
+export GROQ_API_KEY="gsk_..."
+```
+
+```python
+# These work automatically (no explicit setup needed)
+claude = ClaudeCodeCLIIntegration()  # Uses ANTHROPIC_API_KEY from env
+gemini = GeminiCLIIntegration()      # Uses GOOGLE_API_KEY from env
+groq = GroqCLIIntegration()          # Uses GROQ_API_KEY from env
+```
+
+### Security Features
+
+1. **Encryption at Rest**: Credentials encrypted using Fernet
+2. **Separate Key Storage**: Encryption key stored separately
+3. **Secure Permissions**: Files restricted to owner only (0o600)
+4. **No Plaintext**: Credentials never stored in plaintext
+5. **Environment Fallback**: Checks environment as secondary source
+
+### Credential Priority
+
+The secrets manager checks credentials in this order:
+1. In-memory cache (previously set in session)
+2. Encrypted secrets file (`~/.ipfs_accelerate/secrets.enc`)
+3. Environment variables (multiple naming formats)
+4. Default value (if provided)
+
+### Disabling Encryption
+
+For development/testing environments only:
+
+```python
+from ipfs_accelerate_py.common.secrets_manager import SecretsManager
+
+# WARNING: Only use in secure, isolated environments
+secrets = SecretsManager(use_encryption=False)
+```
+
+### Migration Example
+
+**Before Phases 3-4:**
+```python
+from ipfs_accelerate_py.cli_integrations import ClaudeCodeCLIIntegration
+
+# Had to provide API key explicitly
+claude = ClaudeCodeCLIIntegration(api_key="sk-ant-...")
+response = claude.chat("Hello")
+```
+
+**After Phases 3-4:**
+```python
+from ipfs_accelerate_py.common.secrets_manager import get_global_secrets_manager
+from ipfs_accelerate_py.cli_integrations import ClaudeCodeCLIIntegration
+
+# One-time setup
+secrets = get_global_secrets_manager()
+secrets.set_credential("anthropic_api_key", "sk-ant-...")
+
+# Now use without explicit API key
+claude = ClaudeCodeCLIIntegration()  # API key auto-retrieved
+response = claude.chat("Hello")
+# Response now includes: {"response": "...", "mode": "SDK", "cached": False}
+```
+
+See [PHASES_3_4_IMPLEMENTATION.md](./PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
+
 ## Troubleshooting
 
 ### Common Issues
@@ -577,11 +782,14 @@ cache = get_global_llm_cache()
 ## Additional Resources
 
 - **GitHub Repository:** https://github.com/endomorphosis/ipfs_accelerate_py
+- **Pull Request #72:** Original cache infrastructure implementation
 - **Issues:** https://github.com/endomorphosis/ipfs_accelerate_py/issues
 - **Documentation:**
   - `COMMON_CACHE_INFRASTRUCTURE.md` - Base cache guide
-  - `CLI_INTEGRATIONS.md` - CLI integration guide
+  - `CLI_INTEGRATIONS.md` - CLI integration guide (updated with Phases 3-4)
   - `API_INTEGRATIONS_COMPLETE.md` - API wrapper guide
+  - `PHASES_3_4_IMPLEMENTATION.md` - Dual-mode and secrets manager guide
+  - `PHASES_3_4_COMPLETION_SUMMARY.md` - Phase 3-4 summary
   - `installers/INSTALLATION_GUIDE.md` - Installer documentation
 
 ## Conclusion
@@ -593,5 +801,15 @@ This cache infrastructure provides:
 ✅ Multi-platform support
 ✅ Performance validation
 ✅ Real cost savings ($21-42K/month for GPT-4)
+✅ **NEW: Dual-mode CLI/SDK support with fallback (Phase 3)**
+✅ **NEW: Encrypted secrets management (Phase 4)**
 
-**Status: PRODUCTION READY FOR DEPLOYMENT** 🚀
+**Phases 1-4 Complete: PRODUCTION READY FOR DEPLOYMENT** 🚀
+
+### Implementation Timeline
+
+- **Phase 1-2** (PR #72): Core cache infrastructure, CLI integrations, API wrappers
+- **Phase 3** (This PR): Dual-mode CLI/SDK support with automatic fallback
+- **Phase 4** (This PR): Encrypted secrets manager for secure credential storage
+
+All phases are complete, tested, and documented.
