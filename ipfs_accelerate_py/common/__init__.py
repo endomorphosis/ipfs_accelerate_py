@@ -9,4 +9,6 @@ __all__ = [
     "KubernetesAPICache",
     "HuggingFaceHugsCache",
     "IPFSKitFallbackStore",
+    "SecretsManager",
+    "get_global_secrets_manager",
 ]
