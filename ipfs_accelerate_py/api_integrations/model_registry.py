@@ -345,10 +345,22 @@ def get_api_models_for_pipeline(pipeline_type: str) -> List[APIModel]:
     return registry.get_models_by_pipeline_type(pipeline_type)
 
 
+def get_all_pipeline_types() -> Set[str]:
+    """
+    Convenience function to get all supported pipeline types across API models.
+    
+    Returns:
+        Set of pipeline type strings
+    """
+    registry = get_global_api_model_registry()
+    return set(registry.get_supported_pipeline_types())
+
+
 __all__ = [
     'APIProviderType',
     'APIModel',
     'APIModelRegistry',
     'get_global_api_model_registry',
     'get_api_models_for_pipeline',
+    'get_all_pipeline_types',
 ]

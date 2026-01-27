@@ -17,7 +17,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Any, Optional, Union, Tuple
+from typing import Dict, List, Any, Optional, Union, Tuple, Set
 from dataclasses import dataclass, asdict
 from enum import Enum
 
@@ -962,6 +962,215 @@ class ModelManager:
         except Exception as e:
             logger.error(f"Error exporting metadata: {e}")
             return False
+    
+    def get_models_by_pipeline_type(self, pipeline_type: str, 
+                                     include_api: bool = True,
+                                     include_self_hosted: bool = True,
+                                     provider_filter: Optional[List[str]] = None) -> List[Dict[str, Any]]:
+        """
+        Get all models (self-hosted + API) that support a specific pipeline type.
+        
+        This method provides unified access to both self-hosted models tracked in the
+        model manager and API-based models from the API model registry.
+        
+        Args:
+            pipeline_type: HuggingFace pipeline type (e.g., "text-generation", "text-classification")
+            include_api: Whether to include API models (default: True)
+            include_self_hosted: Whether to include self-hosted models (default: True)
+            provider_filter: Optional list of API providers to include (e.g., ["openai", "anthropic"])
+            
+        Returns:
+            List of model dictionaries with unified schema containing:
+                - model_id: Unique identifier
+                - model_name: Display name
+                - source_type: "self-hosted" or "api"
+                - provider: API provider name (for API models) or "self-hosted"
+                - pipeline_types: List of supported pipeline types
+                - context_length: Maximum context length (if available)
+                - architecture: Model architecture
+                - additional metadata specific to source type
+        """
+        results = []
+        
+        # Add self-hosted models
+        if include_self_hosted:
+            # Try to import pipeline types for mapping
+            try:
+                from .common.pipeline_types import PipelineTypeMapper
+                have_mapper = True
+            except ImportError:
+                have_mapper = False
+                logger.warning("Pipeline type mapper not available for self-hosted model filtering")
+            
+            for model_id, metadata in self.models.items():
+                # Check if this model supports the requested pipeline type
+                supports_pipeline = False
+                
+                if have_mapper:
+                    # Use architecture-based mapping
+                    supports_pipeline = PipelineTypeMapper.supports_pipeline(
+                        pipeline_type, 
+                        architecture=metadata.architecture
+                    )
+                else:
+                    # Fallback: basic heuristic matching
+                    arch_lower = metadata.architecture.lower()
+                    pipe_lower = pipeline_type.lower()
+                    
+                    # Simple heuristics for common cases
+                    if "causal" in pipe_lower or "text-generation" in pipe_lower:
+                        supports_pipeline = any(x in arch_lower for x in ['gpt', 'llama', 'mistral', 'falcon'])
+                    elif "classification" in pipe_lower:
+                        supports_pipeline = any(x in arch_lower for x in ['bert', 'roberta', 'distilbert'])
+                    elif "summarization" in pipe_lower or "translation" in pipe_lower:
+                        supports_pipeline = any(x in arch_lower for x in ['t5', 'bart', 'pegasus'])
+                
+                if supports_pipeline:
+                    results.append({
+                        'model_id': model_id,
+                        'model_name': metadata.model_name,
+                        'source_type': 'self-hosted',
+                        'provider': 'self-hosted',
+                        'pipeline_types': [pipeline_type],  # Could be enhanced with full type detection
+                        'context_length': metadata.huggingface_config.get('max_position_embeddings') if metadata.huggingface_config else None,
+                        'architecture': metadata.architecture,
+                        'model_type': metadata.model_type.value,
+                        'supported_backends': metadata.supported_backends,
+                        'source_url': metadata.source_url,
+                        'metadata': metadata
+                    })
+        
+        # Add API models
+        if include_api:
+            try:
+                from .api_integrations.model_registry import get_api_models_for_pipeline, APIProviderType
+                
+                api_models = get_api_models_for_pipeline(pipeline_type)
+                
+                for api_model in api_models:
+                    # Apply provider filter if specified
+                    if provider_filter and api_model.provider.value not in provider_filter:
+                        continue
+                    
+                    results.append({
+                        'model_id': api_model.model_id,
+                        'model_name': api_model.model_name,
+                        'source_type': 'api',
+                        'provider': api_model.provider.value,
+                        'pipeline_types': api_model.pipeline_types,
+                        'context_length': api_model.context_length,
+                        'architecture': 'api',  # API models don't expose architecture
+                        'cost_per_1k_input': api_model.cost_per_1k_tokens.get('input', 0) if api_model.cost_per_1k_tokens else 0,
+                        'cost_per_1k_output': api_model.cost_per_1k_tokens.get('output', 0) if api_model.cost_per_1k_tokens else 0,
+                        'supports_streaming': api_model.supports_streaming,
+                        'supports_function_calling': api_model.function_calling,
+                        'metadata': api_model
+                    })
+            except ImportError:
+                logger.warning("API model registry not available. Skipping API models.")
+        
+        # Sort results by source type (self-hosted first) and then by model name
+        results.sort(key=lambda x: (0 if x['source_type'] == 'self-hosted' else 1, x['model_name']))
+        
+        return results
+    
+    def get_all_pipeline_types(self, include_api: bool = True, include_self_hosted: bool = True) -> Set[str]:
+        """
+        Get all available pipeline types across self-hosted and API models.
+        
+        Args:
+            include_api: Whether to check API models
+            include_self_hosted: Whether to check self-hosted models
+            
+        Returns:
+            Set of pipeline type strings
+        """
+        pipeline_types = set()
+        
+        # Get pipeline types from self-hosted models
+        if include_self_hosted:
+            try:
+                from .common.pipeline_types import PipelineTypeMapper
+                
+                for metadata in self.models.values():
+                    # Get pipeline types supported by this architecture
+                    types = PipelineTypeMapper.get_pipeline_types_for_architecture(metadata.architecture)
+                    pipeline_types.update(types)
+            except ImportError:
+                logger.warning("Pipeline type mapper not available")
+        
+        # Get pipeline types from API models
+        if include_api:
+            try:
+                from .api_integrations.model_registry import get_all_pipeline_types as get_api_pipeline_types
+                api_types = get_api_pipeline_types()
+                pipeline_types.update(api_types)
+            except ImportError:
+                logger.warning("API model registry not available")
+        
+        return pipeline_types
+    
+    def get_model_recommendations(self, pipeline_type: str, 
+                                  max_cost_per_1k: Optional[float] = None,
+                                  min_context_length: Optional[int] = None,
+                                  prefer_self_hosted: bool = False) -> List[Dict[str, Any]]:
+        """
+        Get recommended models for a pipeline type with filtering and ranking.
+        
+        Args:
+            pipeline_type: HuggingFace pipeline type
+            max_cost_per_1k: Maximum cost per 1K tokens (for API models)
+            min_context_length: Minimum context length required
+            prefer_self_hosted: Rank self-hosted models higher
+            
+        Returns:
+            List of recommended models sorted by relevance
+        """
+        # Get all models for this pipeline type
+        models = self.get_models_by_pipeline_type(pipeline_type)
+        
+        # Apply filters
+        filtered = []
+        for model in models:
+            # Cost filter (API models only)
+            if model['source_type'] == 'api' and max_cost_per_1k is not None:
+                avg_cost = (model.get('cost_per_1k_input', 0) + model.get('cost_per_1k_output', 0)) / 2
+                if avg_cost > max_cost_per_1k:
+                    continue
+            
+            # Context length filter
+            if min_context_length is not None:
+                context_len = model.get('context_length')
+                if context_len is None or context_len < min_context_length:
+                    continue
+            
+            filtered.append(model)
+        
+        # Score and sort
+        for model in filtered:
+            score = 0
+            
+            # Preference for self-hosted
+            if model['source_type'] == 'self-hosted':
+                score += 10 if prefer_self_hosted else 0
+            
+            # Context length bonus
+            context_len = model.get('context_length', 0)
+            if context_len:
+                score += min(context_len / 1000, 50)  # Cap at 50 points
+            
+            # Cost penalty (lower cost is better)
+            if model['source_type'] == 'api':
+                avg_cost = (model.get('cost_per_1k_input', 0) + model.get('cost_per_1k_output', 0)) / 2
+                if avg_cost > 0:
+                    score -= avg_cost * 10  # Penalty proportional to cost
+            
+            model['recommendation_score'] = score
+        
+        # Sort by score (descending)
+        filtered.sort(key=lambda x: x['recommendation_score'], reverse=True)
+        
+        return filtered
     
     def close(self):
         """Close the model manager and save any pending changes."""

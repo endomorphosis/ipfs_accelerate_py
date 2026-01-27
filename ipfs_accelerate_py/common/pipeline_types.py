@@ -140,7 +140,7 @@ class PipelineTypeMapper:
             PipelineType.CONVERSATIONAL,
             PipelineType.TEXT_CLASSIFICATION,
             PipelineType.FEATURE_EXTRACTION,
-            PipelineType.IMAGE_GENERATION,
+            PipelineType.UNCONDITIONAL_IMAGE_GENERATION,
             PipelineType.TEXT_TO_SPEECH,
             PipelineType.AUTOMATIC_SPEECH_RECOGNITION,
         ],
@@ -175,6 +175,20 @@ class PipelineTypeMapper:
     def get_pipelines_for_architecture(cls, architecture: str) -> List[PipelineType]:
         """Get supported pipeline types for a model architecture."""
         return cls.ARCHITECTURE_TO_PIPELINES.get(architecture, [])
+    
+    @classmethod
+    def get_pipeline_types_for_architecture(cls, architecture: str) -> List[str]:
+        """
+        Get supported pipeline type strings for a model architecture.
+        
+        Args:
+            architecture: Model architecture name
+            
+        Returns:
+            List of pipeline type strings (e.g., ["text-generation", "text-classification"])
+        """
+        pipeline_enums = cls.get_pipelines_for_architecture(architecture)
+        return [pt.value for pt in pipeline_enums]
     
     @classmethod
     def get_pipelines_for_api_provider(cls, provider: str) -> List[PipelineType]:
