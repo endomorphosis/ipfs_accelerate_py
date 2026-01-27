@@ -101,6 +101,24 @@ setup(
 			"requests>=2.28.0",
 			"psutil>=5.9.0",
 		],
+		"cache": [
+			# Cache infrastructure with CLI and API integrations
+			"multiformats>=0.3.0",
+			"aiohttp>=3.8.1",
+			"requests>=2.28.0",
+			"openai>=1.0.0",
+			"anthropic",
+			"google-generativeai",
+			"huggingface-hub[cli]",
+			"boto3",
+			"psutil>=5.9.0",
+		],
+		"cli": [
+			# CLI integrations only
+			"multiformats>=0.3.0",
+			"requests>=2.28.0",
+			"huggingface-hub[cli]",
+		],
 		"full": [
 			"torch>=2.1",
 			"transformers>=4.46", 
