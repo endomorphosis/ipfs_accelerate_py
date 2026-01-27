@@ -9,17 +9,19 @@ All CLI integrations:
 - Support automatic retry with exponential backoff
 - Share common cache infrastructure
 - Provide consistent API across different tools
+- **NEW**: Support dual-mode CLI/SDK with automatic fallback
+- **NEW**: Integrate with secrets manager for secure credential storage
 
 Available CLI Wrappers:
 - GitHubCLIIntegration: GitHub CLI (gh) with caching
 - CopilotCLIIntegration: GitHub Copilot CLI with caching
 - VSCodeCLIIntegration: VSCode CLI (code) with caching
 - OpenAICodexCLIIntegration: OpenAI Codex CLI with caching
-- ClaudeCodeCLIIntegration: Claude Code CLI with caching
-- GeminiCLIIntegration: Gemini CLI with caching
+- ClaudeCodeCLIIntegration: Claude Code with dual-mode support
+- GeminiCLIIntegration: Gemini with dual-mode support
 - HuggingFaceCLIIntegration: HuggingFace CLI with caching
 - VastAICLIIntegration: Vast AI CLI with caching
-- GroqCLIIntegration: Groq CLI with caching
+- GroqCLIIntegration: Groq with dual-mode support
 
 Usage Example:
     from ipfs_accelerate_py.cli_integrations import GitHubCLIIntegration
@@ -33,6 +35,16 @@ Usage Example:
     # Second call uses cache (instant response)
     repos = gh.list_repos(owner="endomorphosis", limit=10)
 
+Dual-Mode Example (Phase 3):
+    from ipfs_accelerate_py.cli_integrations import ClaudeCodeCLIIntegration
+    
+    # Initialize with automatic credential retrieval from secrets manager
+    claude = ClaudeCodeCLIIntegration()
+    
+    # Automatically tries CLI first, falls back to SDK
+    response = claude.chat("Explain Python decorators")
+    print(f"Mode used: {response.get('mode', 'SDK')}")
+
 Cache Benefits:
 - 100-500x faster for cached responses
 - Automatic CID-based deduplication
@@ -41,6 +53,7 @@ Cache Benefits:
 """
 
 from .base_cli_wrapper import BaseCLIWrapper
+from .dual_mode_wrapper import DualModeWrapper, detect_cli_tool
 from .github_cli_integration import GitHubCLIIntegration, get_github_cli_integration
 from .copilot_cli_integration import CopilotCLIIntegration, get_copilot_cli_integration
 from .vscode_cli_integration import VSCodeCLIIntegration, get_vscode_cli_integration
@@ -52,8 +65,12 @@ from .vastai_cli_integration import VastAICLIIntegration, get_vastai_cli_integra
 from .groq_cli_integration import GroqCLIIntegration, get_groq_cli_integration
 
 __all__ = [
-    # Base class
+    # Base classes
     'BaseCLIWrapper',
+    'DualModeWrapper',
+    
+    # Utilities
+    'detect_cli_tool',
     
     # CLI Integration classes
     'GitHubCLIIntegration',

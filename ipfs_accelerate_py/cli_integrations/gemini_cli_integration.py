@@ -2,23 +2,28 @@
 Gemini CLI Integration with Common Cache
 
 Wraps Google Gemini API (via google-generativeai Python SDK) to use the common cache infrastructure.
-Note: Gemini does not have an official CLI tool - this uses the Python SDK directly.
+Supports dual-mode operation with CLI fallback and secrets manager integration.
+Note: Gemini does not have an official CLI tool - this primarily uses the Python SDK.
 """
 
 import logging
 from typing import Any, Dict, Optional
 
+from .dual_mode_wrapper import DualModeWrapper, detect_cli_tool
 from ..common.llm_cache import LLMAPICache, get_global_llm_cache
 
 logger = logging.getLogger(__name__)
 
 
-class GeminiCLIIntegration:
+class GeminiCLIIntegration(DualModeWrapper):
     """
     Gemini integration with common cache infrastructure.
     
-    Uses Python SDK (google-generativeai) with LLM cache for text generation.
-    Note: This is NOT a CLI wrapper - Gemini has no official CLI.
+    Supports dual-mode operation:
+    - SDK mode: Uses google-generativeai Python SDK (primary mode)
+    - CLI mode: Falls back to CLI if available (experimental)
+    
+    Features secrets manager integration for secure API key storage.
     """
     
     def __init__(
@@ -26,26 +31,44 @@ class GeminiCLIIntegration:
         api_key: Optional[str] = None,
         enable_cache: bool = True,
         cache: Optional[LLMAPICache] = None,
+        prefer_cli: bool = False,  # Default to SDK since no official CLI
         **kwargs
     ):
         """
         Initialize Gemini integration.
         
         Args:
-            api_key: Google API key (or set GOOGLE_API_KEY env var)
+            api_key: Google API key (from secrets manager if None)
             enable_cache: Whether to enable caching
             cache: Custom cache instance (uses LLM cache if None)
+            prefer_cli: Whether to prefer CLI over SDK (default: False)
             **kwargs: Additional arguments
         """
-        self.api_key = api_key
-        self.enable_cache = enable_cache
-        
         if cache is None:
             cache = get_global_llm_cache()
-        self.cache = cache
+        
+        super().__init__(
+            cli_path=None,  # Will be auto-detected
+            api_key=api_key,
+            cache=cache,
+            enable_cache=enable_cache,
+            prefer_cli=prefer_cli,
+            **kwargs
+        )
         
         # Lazy import and configure google-generativeai
         self._configured = False
+    
+    def get_tool_name(self) -> str:
+        return "Gemini (Google)"
+    
+    def _detect_cli_path(self) -> Optional[str]:
+        """Try to detect Gemini CLI (experimental/unofficial)."""
+        return detect_cli_tool(["gemini", "gemini-cli"])
+    
+    def _get_api_key_from_secrets(self) -> Optional[str]:
+        """Get Google API key from secrets manager."""
+        return self.secrets_manager.get_credential("google_api_key")
     
     def _configure(self):
         """Lazy configuration of Google Generative AI."""
@@ -60,8 +83,50 @@ class GeminiCLIIntegration:
                     "google-generativeai SDK not installed. Install with: pip install google-generativeai"
                 )
     
-    def get_tool_name(self) -> str:
-        return "Gemini (Google SDK)"
+    def _create_sdk_client(self):
+        """Configure and return genai module."""
+        self._configure()
+        return self._genai
+    
+    def _generate_text_sdk(
+        self,
+        prompt: str,
+        model: str,
+        temperature: float,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Execute text generation via SDK."""
+        # Check cache first
+        if self.enable_cache:
+            cached = self.cache.get_completion(
+                prompt=prompt,
+                model=model,
+                temperature=temperature
+            )
+            if cached:
+                logger.info("Cache hit for Gemini generation")
+                return {"response": cached, "cached": True}
+        
+        # Call API
+        self._configure()
+        model_obj = self._genai.GenerativeModel(model)
+        response = model_obj.generate_content(
+            prompt,
+            generation_config={"temperature": temperature}
+        )
+        
+        result = response.text
+        
+        # Cache response
+        if self.enable_cache:
+            self.cache.cache_completion(
+                prompt=prompt,
+                response=result,
+                model=model,
+                temperature=temperature
+            )
+        
+        return {"response": result, "cached": False}
     
     def generate_text(
         self,
@@ -82,39 +147,15 @@ class GeminiCLIIntegration:
         Returns:
             Dict with generated text
         """
-        # Check cache first
-        if self.enable_cache:
-            cached = self.cache.get_completion(
-                prompt=prompt,
-                model=model,
-                temperature=temperature
-            )
-            if cached:
-                logger.info("Cache hit for Gemini generation")
-                return {"response": cached, "cached": True}
-        
-        # Call API
-        self._configure()
-        model_obj = self._genai.GenerativeModel(model)
-        response = model_obj.generate_content(
-            prompt,
-            generation_config=self._genai.types.GenerationConfig(
-                temperature=temperature
-            )
+        # Use dual-mode execution (SDK primary, CLI fallback)
+        return self._execute_with_fallback(
+            sdk_func=self._generate_text_sdk,
+            operation="generate_text",
+            prompt=prompt,
+            model=model,
+            temperature=temperature,
+            **kwargs
         )
-        
-        result = response.text
-        
-        # Cache response
-        if self.enable_cache:
-            self.cache.cache_completion(
-                prompt=prompt,
-                response=result,
-                model=model,
-                temperature=temperature
-            )
-        
-        return {"response": result, "cached": False}
     
     def chat(
         self,

@@ -2,6 +2,9 @@
 
 This document describes the unified CLI integrations that use the common cache infrastructure with CID-based lookups.
 
+**Last Updated:** 2026-01-27  
+**Status:** Production Ready with Phases 3-4 Complete ✅
+
 ## Overview
 
 All CLI tools are now integrated with the common cache infrastructure, providing:
@@ -10,6 +13,34 @@ All CLI tools are now integrated with the common cache infrastructure, providing
 - **100-500x faster** responses for cached queries
 - **Unified API** across all CLI tools
 - **P2P-ready** architecture
+- **NEW: Dual-mode CLI/SDK support** with automatic fallback (Phase 3)
+- **NEW: Encrypted secrets management** for API keys (Phase 4)
+
+## New Features (Phases 3-4)
+
+### Phase 3: Dual-Mode CLI/SDK Support
+
+CLI integrations now support intelligent fallback between CLI tools and Python SDKs:
+
+- **Automatic CLI Detection**: Checks if CLI tools are installed in system PATH
+- **Seamless Fallback**: Falls back to Python SDK if CLI unavailable or fails
+- **Configurable Preference**: Choose CLI-first or SDK-first execution
+- **Unified Caching**: Both modes use the same cache infrastructure
+- **Response Metadata**: Includes which mode was used and if fallback occurred
+
+**Integrations with Dual-Mode:**
+- Claude (Anthropic) - SDK primary, CLI fallback (experimental)
+- Gemini (Google) - SDK primary, CLI fallback (experimental)  
+- Groq - SDK primary, CLI fallback (experimental)
+
+### Phase 4: Secrets Manager Integration
+
+All CLI integrations now retrieve API keys from the encrypted secrets manager:
+
+- **Encrypted Storage**: Uses Fernet (AES-128 + HMAC) encryption
+- **Environment Fallback**: Automatically checks environment variables
+- **Secure Permissions**: File permissions restricted to owner only (0o600)
+- **Global Instance**: Singleton pattern for consistent access
 
 ## Integrated CLI Tools
 
@@ -72,86 +103,180 @@ code = codex.generate_code(
 )
 ```
 
-### 5. Claude Code CLI
+### 5. Claude Code CLI (Phase 3: Dual-Mode)
 ```python
 from ipfs_accelerate_py.cli_integrations import ClaudeCodeCLIIntegration
 
+# API key automatically retrieved from secrets manager (Phase 4)
 claude = ClaudeCodeCLIIntegration(enable_cache=True)
 
 # Chat with Claude (cached for 30 minutes)
+# Automatically tries CLI first, falls back to SDK
 response = claude.chat(
     "Explain how async/await works in Python",
     model="claude-3-sonnet-20240229"
 )
 
+# Response includes mode information
+print(f"Response: {response['response']}")
+print(f"Mode used: {response.get('mode', 'SDK')}")  # "CLI" or "SDK"
+print(f"Cached: {response.get('cached', False)}")
+print(f"Fallback: {response.get('fallback', False)}")
+
 # Generate code
 code = claude.generate_code("Create a binary search tree class")
 ```
 
-### 6. Gemini CLI
+### 6. Gemini CLI (Phase 3: Dual-Mode)
 ```python
 from ipfs_accelerate_py.cli_integrations import GeminiCLIIntegration
 
+# API key automatically retrieved from secrets manager (Phase 4)
 gemini = GeminiCLIIntegration(enable_cache=True)
 
 # Generate text (cached for 1 hour with temp=0)
-text = gemini.generate_text(
+# Automatically tries CLI first, falls back to SDK
+response = gemini.generate_text(
     "Explain quantum computing in simple terms",
     model="gemini-pro",
     temperature=0.0
 )
 
-# Chat
-response = gemini.chat("What is machine learning?")
+# Access response with mode information
+print(f"Text: {response['response']}")
+print(f"Mode: {response.get('mode', 'SDK')}")
 ```
 
-### 7. HuggingFace CLI
+### 7. Groq CLI (Phase 3: Dual-Mode)
+```python
+from ipfs_accelerate_py.cli_integrations import GroqCLIIntegration
+
+# API key automatically retrieved from secrets manager (Phase 4)
+groq = GroqCLIIntegration(enable_cache=True)
+
+# Chat (cached for 30 minutes with temp=0)
+response = groq.chat(
+    "What is machine learning?",
+    model="llama3-70b-8192",
+    temperature=0.0
+)
+
+print(f"Response: {response['response']}")
+print(f"Mode: {response.get('mode', 'SDK')}")
+
+# Text completion
+completion = groq.complete(
+    prompt="Once upon a time",
+    model="llama3-70b-8192"
+)
+```
+
+### 8. HuggingFace CLI
 ```python
 from ipfs_accelerate_py.cli_integrations import HuggingFaceCLIIntegration
 
 hf = HuggingFaceCLIIntegration(enable_cache=True)
 
-# List models (cached for 10 minutes)
-models = hf.list_models(search="llama", limit=20)
+# List models (cached for 1 hour)
+models = hf.list_models(search="llama")
 
-# Get model info (cached for 1 hour)
+# Get model info
 info = hf.model_info("meta-llama/Llama-2-7b-hf")
-
-# List datasets
-datasets = hf.list_datasets(search="wikipedia", limit=10)
 ```
 
-### 8. Vast AI CLI
+### 9. Vast AI CLI
 ```python
 from ipfs_accelerate_py.cli_integrations import VastAICLIIntegration
 
 vastai = VastAICLIIntegration(enable_cache=True)
 
-# Search GPU offers (cached for 5 minutes)
-offers = vastai.search_offers("gpu_name=RTX4090")
+# List available instances (cached for 30 seconds)
+instances = vastai.list_instances()
 
-# Show all instances (cached for 30 seconds)
-instances = vastai.show_instances()
-
-# Show specific instance
-instance = vastai.show_instance("12345")
+# Search offers
+offers = vastai.search_offers(gpu_name="RTX 4090")
 ```
 
-### 9. Groq CLI
+## Using the Secrets Manager (Phase 4)
+
+### Setting Up API Keys
+
 ```python
-from ipfs_accelerate_py.cli_integrations import GroqCLIIntegration
+from ipfs_accelerate_py.common.secrets_manager import get_global_secrets_manager
 
-groq = GroqCLIIntegration(enable_cache=True)
+# Get the global secrets manager
+secrets = get_global_secrets_manager()
 
-# Chat with Groq (cached for 30 minutes)
-response = groq.chat(
-    "Explain transformers architecture",
-    model="llama3-70b-8192",
-    temperature=0.0
-)
+# Store API keys (encrypted automatically)
+secrets.set_credential("anthropic_api_key", "sk-ant-...")
+secrets.set_credential("google_api_key", "AIza...")
+secrets.set_credential("groq_api_key", "gsk_...")
+secrets.set_credential("openai_api_key", "sk-...")
 
-# Complete prompt
-completion = groq.complete("def fibonacci(n):", model="llama3-70b-8192")
+# Keys are now automatically available to all integrations
+```
+
+### Automatic Credential Retrieval
+
+All CLI integrations automatically retrieve credentials from the secrets manager:
+
+```python
+# No need to pass API key explicitly
+claude = ClaudeCodeCLIIntegration()  # Gets key from secrets manager
+gemini = GeminiCLIIntegration()      # Gets key from secrets manager
+groq = GroqCLIIntegration()          # Gets key from secrets manager
+
+# Can still override with explicit key if needed
+claude = ClaudeCodeCLIIntegration(api_key="sk-ant-explicit-key")
+```
+
+### Environment Variable Fallback
+
+The secrets manager automatically checks environment variables:
+
+```bash
+# Set environment variables (alternative to secrets manager)
+export ANTHROPIC_API_KEY="sk-ant-..."
+export GOOGLE_API_KEY="AIza..."
+export GROQ_API_KEY="gsk_..."
+```
+
+```python
+# These will work automatically
+claude = ClaudeCodeCLIIntegration()  # Uses ANTHROPIC_API_KEY from env
+gemini = GeminiCLIIntegration()      # Uses GOOGLE_API_KEY from env
+groq = GroqCLIIntegration()          # Uses GROQ_API_KEY from env
+```
+
+## Dual-Mode Configuration (Phase 3)
+
+### Prefer CLI Mode
+
+```python
+# Try CLI first, fall back to SDK
+claude = ClaudeCodeCLIIntegration(prefer_cli=True)
+response = claude.chat("Explain decorators")
+```
+
+### Prefer SDK Mode (Default)
+
+```python
+# Try SDK first, fall back to CLI
+claude = ClaudeCodeCLIIntegration(prefer_cli=False)  # Default
+response = claude.chat("Explain decorators")
+```
+
+### Response Format
+
+All dual-mode integrations return a consistent response format:
+
+```python
+{
+    "response": "...",        # The actual response content
+    "cached": False,          # Whether from cache
+    "mode": "SDK",            # Which mode was used: "CLI" or "SDK"
+    "fallback": False         # Whether fallback was triggered
+}
 ```
 
 ## Unified Access
@@ -311,5 +436,52 @@ All CLI tools now share the common cache infrastructure, providing:
 - ✅ Automatic retry logic
 - ✅ P2P-ready architecture
 - ✅ Unified API
+- ✅ **NEW: Dual-mode CLI/SDK support** (Phase 3)
+- ✅ **NEW: Encrypted secrets management** (Phase 4)
+
+## Phase 3-4 Implementation Details
+
+### Dual-Mode Architecture
+
+The dual-mode wrapper provides:
+- **Automatic CLI detection** via PATH scanning
+- **Seamless fallback** between modes
+- **Unified caching** regardless of execution mode
+- **Response metadata** for debugging and monitoring
+
+See [PHASES_3_4_IMPLEMENTATION.md](./PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
+
+### Secrets Manager Architecture
+
+The secrets manager provides:
+- **Fernet encryption** (AES-128 + HMAC)
+- **Environment fallback** with multiple naming formats
+- **Secure permissions** (0o600 file permissions)
+- **Global singleton** for consistent access
+
+**Storage locations:**
+- Secrets file: `~/.ipfs_accelerate/secrets.enc`
+- Encryption key: `~/.ipfs_accelerate/secrets.key`
+
+### Migration Guide
+
+**Before (Phases 1-2):**
+```python
+claude = ClaudeCodeCLIIntegration(api_key="sk-ant-...")
+response = claude.chat("Hello")
+```
+
+**After (Phases 3-4):**
+```python
+# One-time setup
+from ipfs_accelerate_py.common.secrets_manager import get_global_secrets_manager
+secrets = get_global_secrets_manager()
+secrets.set_credential("anthropic_api_key", "sk-ant-...")
+
+# Now use without explicit API key
+claude = ClaudeCodeCLIIntegration()  # API key auto-retrieved
+response = claude.chat("Hello")
+# Response now includes: {"response": "...", "mode": "SDK", "cached": False}
+```
 
 Start using cached CLI integrations today for immediate performance benefits!
