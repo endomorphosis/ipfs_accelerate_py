@@ -162,9 +162,11 @@ For the complete list, see [docs/README.md](docs/README.md#model-support).
 
 ### Specialized Guides
 - [AUTOSCALER.md](AUTOSCALER.md) - GitHub Actions autoscaler
-- [P2P_SETUP_GUIDE.md](P2P_SETUP_GUIDE.md) - Peer-to-peer cache setup
 - [MCP_SETUP_GUIDE.md](MCP_SETUP_GUIDE.md) - MCP server configuration
-- [DOCKER_USAGE.md](DOCKER_USAGE.md) - Docker deployment guide
+- [docs/guides/github/](docs/guides/github/) - GitHub integration guides
+- [docs/guides/docker/](docs/guides/docker/) - Docker deployment guides
+- [docs/guides/p2p/](docs/guides/p2p/) - P2P networking guides
+- [docs/guides/deployment/](docs/guides/deployment/) - Deployment guides
 
 ## 🌐 IPFS Features
 
