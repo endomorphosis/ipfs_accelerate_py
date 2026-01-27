@@ -7,9 +7,13 @@ This guide covers the basic and advanced usage of the IPFS Accelerate Python fra
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Basic Usage](#basic-usage)
+- [MCP Server Usage](#mcp-server-usage)
+- [P2P Workflow Scheduling](#p2p-workflow-scheduling)
+- [CLI Tools](#cli-tools)
 - [Configuration](#configuration)
 - [Hardware Selection](#hardware-selection)
 - [Model Types](#model-types)
+- [API Backend Selection](#api-backend-selection)
 - [Error Handling](#error-handling)
 - [Performance Optimization](#performance-optimization)
 - [Examples](#examples)
@@ -146,6 +150,278 @@ async def ipfs_inference():
     return result
 
 result = anyio.run(ipfs_inference)
+```
+
+## MCP Server Usage
+
+The Model Context Protocol (MCP) server provides a standardized interface for AI model interaction.
+
+### Starting the MCP Server
+
+```bash
+# Basic server start
+ipfs-accelerate mcp start
+
+# Start with dashboard
+ipfs-accelerate mcp dashboard
+
+# Start with custom port
+ipfs-accelerate mcp start --port 8080
+
+# Check server status
+ipfs-accelerate mcp status
+```
+
+### Using MCP Tools from Python
+
+```python
+from mcp.server import create_mcp_server
+import anyio
+
+async def use_mcp_server():
+    # Create MCP server
+    mcp = create_mcp_server(
+        resources={
+            "models": ["bert-base-uncased", "gpt2"],
+            "hardware": {"preferred": "cuda"}
+        }
+    )
+    
+    # Call MCP tool for inference
+    result = await mcp.call_tool(
+        "run_enhanced_inference",
+        {
+            "model": "bert-base-uncased",
+            "input": "Hello, world!",
+            "mode": "auto"
+        }
+    )
+    
+    print(result)
+
+anyio.run(use_mcp_server)
+```
+
+### Available MCP Tools
+
+The MCP server provides 14+ tools:
+
+**Inference Tools:**
+- `run_enhanced_inference` - Multi-backend inference with automatic routing
+- `run_inference` - Standard inference
+
+**Model Tools:**
+- `search_models` - Search HuggingFace models
+- `get_model_recommendations` - Get model recommendations for task/hardware
+- `check_model_compatibility` - Check if model works on hardware
+
+**Hardware Tools:**
+- `detect_hardware` - Detect available hardware
+- `test_hardware_capability` - Test hardware capabilities
+- `get_optimal_configuration` - Get optimal config for model
+
+**Workflow Tools:**
+- `list_workflows` - List all workflows
+- `get_workflow_status` - Get workflow status
+- `submit_p2p_workflow` - Submit P2P workflow
+
+**GitHub Tools:**
+- `gh_list_repos` - List GitHub repositories
+- `gh_workflow_runs` - List workflow runs
+- `gh_provision_runner` - Provision self-hosted runner
+
+For complete documentation, see [P2P_AND_MCP.md](P2P_AND_MCP.md#mcp-tools-reference).
+
+## P2P Workflow Scheduling
+
+Distribute tasks across peer-to-peer networks for scalable execution.
+
+### Basic P2P Workflow
+
+```python
+from ipfs_accelerate_py.p2p_workflow_scheduler import (
+    P2PWorkflowScheduler, 
+    WorkflowTag
+)
+import anyio
+
+async def p2p_inference():
+    # Create scheduler
+    scheduler = P2PWorkflowScheduler(
+        node_id="worker-01",
+        config={
+            "max_concurrent_tasks": 4,
+            "peer_discovery_interval": 30
+        }
+    )
+    
+    # Start scheduler
+    await scheduler.start()
+    
+    # Submit workflow
+    workflow_id = await scheduler.submit_workflow({
+        "name": "batch-inference",
+        "tag": WorkflowTag.P2P_ELIGIBLE,
+        "priority": 1,
+        "tasks": [
+            {"model": "bert-base", "input": "text1"},
+            {"model": "bert-base", "input": "text2"},
+            {"model": "bert-base", "input": "text3"}
+        ]
+    })
+    
+    # Monitor progress
+    while True:
+        status = await scheduler.get_workflow_status(workflow_id)
+        print(f"Progress: {status['completed']}/{status['total']}")
+        
+        if status['completed'] == status['total']:
+            break
+        
+        await anyio.sleep(1)
+    
+    print("Workflow completed!")
+
+anyio.run(p2p_inference)
+```
+
+### Workflow Tags
+
+Workflows can be tagged for different execution modes:
+
+```python
+from ipfs_accelerate_py.p2p_workflow_scheduler import WorkflowTag
+
+# Standard GitHub API workflows
+WorkflowTag.GITHUB_API
+
+# Can execute via P2P or GitHub
+WorkflowTag.P2P_ELIGIBLE
+
+# Must execute via P2P (bypasses GitHub)
+WorkflowTag.P2P_ONLY
+
+# Specific task types
+WorkflowTag.CODE_GENERATION
+WorkflowTag.WEB_SCRAPING
+WorkflowTag.DATA_PROCESSING
+```
+
+### Advanced P2P Features
+
+```python
+# Configure peer selection
+scheduler = P2PWorkflowScheduler(
+    node_id="worker-01",
+    config={
+        "enable_task_stealing": True,  # Allow tasks to move between peers
+        "priority_boost_factor": 0.9,  # Boost starved tasks
+        "heartbeat_timeout": 120       # Peer timeout (seconds)
+    }
+)
+
+# Get network status
+network_status = await scheduler.get_network_status()
+print(f"Active peers: {network_status['peer_count']}")
+print(f"Active tasks: {network_status['active_tasks']}")
+
+# Rebalance tasks across network
+await scheduler.rebalance_tasks(strategy="load")
+```
+
+For complete documentation, see [P2P_AND_MCP.md](P2P_AND_MCP.md#p2p-workflow-scheduler).
+
+## CLI Tools
+
+Comprehensive command-line interface for all operations.
+
+### Inference Commands
+
+```bash
+# Run inference via CLI
+ipfs-accelerate inference generate \
+  --model bert-base-uncased \
+  --input "Hello, world!"
+
+# Run with specific backend
+ipfs-accelerate inference generate \
+  --model llama-2-7b \
+  --backend vllm \
+  --input "Once upon a time"
+
+# Batch inference from file
+ipfs-accelerate inference batch \
+  --model gpt2 \
+  --input-file inputs.txt \
+  --output-file results.json
+```
+
+### Model Management
+
+```bash
+# List available models
+ipfs-accelerate models list
+
+# Search for models
+ipfs-accelerate models search "sentiment analysis"
+
+# Get model info
+ipfs-accelerate models info bert-base-uncased
+
+# Check compatibility
+ipfs-accelerate models check-compat \
+  --model llama-2-7b \
+  --hardware cuda
+```
+
+### Hardware Detection
+
+```bash
+# Detect available hardware
+ipfs-accelerate hardware detect
+
+# Test hardware capabilities
+ipfs-accelerate hardware test --type cuda
+
+# Get optimal configuration
+ipfs-accelerate hardware optimize \
+  --model bert-base-uncased
+```
+
+### GitHub Integration
+
+```bash
+# Start GitHub autoscaler
+ipfs-accelerate github autoscaler
+
+# List repositories
+ipfs-accelerate github repos --owner myorg
+
+# Provision self-hosted runner
+ipfs-accelerate github provision-runner \
+  --repo myorg/myrepo \
+  --labels self-hosted,gpu
+
+# Check cache stats
+ipfs-accelerate github cache-stats
+```
+
+### Network Operations
+
+```bash
+# Check IPFS network status
+ipfs-accelerate network status
+
+# Add file to IPFS
+ipfs-accelerate files add myfile.txt
+
+# Get file from IPFS
+ipfs-accelerate files get QmHash... output.txt
+```
+
+For all CLI commands, run:
+```bash
+ipfs-accelerate --help
 ```
 
 ## Configuration
@@ -346,6 +622,158 @@ multimodal_result = accelerator.process(
         "input_ids": [101, 2054, 2003, 1999, 2023, 3746, 102]
     },
     endpoint_type="multimodal"
+)
+```
+
+## API Backend Selection
+
+IPFS Accelerate supports 14+ API backends for flexible inference routing.
+
+### Supported Backends
+
+```python
+from ipfs_accelerate_py import ipfs_accelerate_py
+
+accelerator = ipfs_accelerate_py({}, {})
+
+# Available backends:
+backends = [
+    "local",       # Local model inference
+    "vllm",        # vLLM (optimized for LLMs)
+    "ollama",      # Ollama local models
+    "openai",      # OpenAI API
+    "anthropic",   # Claude API
+    "groq",        # Groq API
+    "gemini",      # Google Gemini
+    "hf_tgi",      # HuggingFace Text Generation Inference
+    "hf_tei",      # HuggingFace Text Embeddings Inference
+    "opea",        # OPEA (Open Platform for Enterprise AI)
+    "ovms",        # OpenVINO Model Server
+    "s3",          # S3-compatible storage
+    "llvm",        # LLVM-based compilation
+    "akash",       # Akash Network
+]
+```
+
+### Using Specific Backend
+
+```python
+# Use vLLM for optimized LLM inference
+result = accelerator.process(
+    model="meta-llama/Llama-2-7b-hf",
+    input_data={"prompt": "Once upon a time"},
+    endpoint_type="text_generation",
+    backend="vllm",
+    backend_config={
+        "tensor_parallel_size": 2,
+        "max_num_seqs": 256
+    }
+)
+
+# Use OpenAI API
+result = accelerator.process(
+    model="gpt-4",
+    input_data={"messages": [{"role": "user", "content": "Hello!"}]},
+    endpoint_type="chat",
+    backend="openai",
+    backend_config={
+        "api_key": "sk-...",
+        "temperature": 0.7
+    }
+)
+
+# Use Ollama for local models
+result = accelerator.process(
+    model="llama2:7b",
+    input_data={"prompt": "Explain AI"},
+    endpoint_type="text_generation",
+    backend="ollama",
+    backend_config={
+        "num_ctx": 4096,
+        "temperature": 0.8
+    }
+)
+```
+
+### Automatic Backend Selection
+
+```python
+# Let the framework choose the best backend
+result = accelerator.process(
+    model="bert-base-uncased",
+    input_data={"input_ids": [101, 2054, 2003, 102]},
+    endpoint_type="text_embedding",
+    backend="auto"  # Automatically selects optimal backend
+)
+```
+
+### Backend Configuration
+
+```python
+# Configure backends globally
+config = {
+    "backends": {
+        "vllm": {
+            "host": "localhost",
+            "port": 8000,
+            "timeout": 60
+        },
+        "openai": {
+            "api_key": "sk-...",
+            "org_id": "org-...",
+            "base_url": "https://api.openai.com/v1"
+        },
+        "anthropic": {
+            "api_key": "sk-ant-...",
+            "version": "2023-06-01"
+        },
+        "ollama": {
+            "host": "http://localhost:11434",
+            "timeout": 120
+        }
+    }
+}
+
+accelerator = ipfs_accelerate_py(config, {})
+```
+
+### Container Backends
+
+For cloud deployment:
+
+```python
+# Kubernetes backend
+result = accelerator.process(
+    model="bert-base",
+    input_data={"text": "Hello"},
+    backend="kubernetes",
+    backend_config={
+        "namespace": "ml-inference",
+        "deployment": "bert-service",
+        "replicas": 3
+    }
+)
+
+# Akash Network (decentralized cloud)
+result = accelerator.process(
+    model="llama-2-7b",
+    input_data={"prompt": "AI ethics"},
+    backend="akash",
+    backend_config={
+        "provider": "akash1...",
+        "region": "us-west"
+    }
+)
+
+# HuggingFace Spaces
+result = accelerator.process(
+    model="my-custom-model",
+    input_data={"text": "test"},
+    backend="hf_spaces",
+    backend_config={
+        "space_id": "myorg/my-space",
+        "hf_token": "hf_..."
+    }
 )
 ```
 
