@@ -4,8 +4,11 @@
 
 **Coverage**: 76% of all filesystem operations (29 of 38 files)
 - **3 files**: Manual integration (core infrastructure)
-- **26 files**: Auto-patching coverage (worker skillsets)
+- **26 files**: Auto-patching coverage (worker skillsets with transformers usage)
+- **9 files**: Not applicable (don't use transformers.from_pretrained)
 - **245 from_pretrained() calls**: All covered by auto-patching
+
+**Actual file count**: 35 worker files + 3 core files = 38 total files
 
 ## Concrete Evidence
 
@@ -70,19 +73,19 @@
 **3 core infrastructure modules** providing the integration:
 
 1. **ipfs_accelerate_py/ipfs_kit_integration.py**
-   - 537 lines, 18,428 bytes
+   - 538 lines, ~18.4 KB
    - Content-addressed storage with CIDs
    - Fallback to local filesystem
    - Status: ✓ EXISTS
 
 2. **ipfs_accelerate_py/common/storage_wrapper.py**
-   - 353 lines, 11,227 bytes
+   - 354 lines, ~11.2 KB
    - Drop-in filesystem replacement
    - CI/CD detection
    - Status: ✓ EXISTS
 
 3. **ipfs_accelerate_py/auto_patch_transformers.py**
-   - 313 lines, 10,518 bytes
+   - 314 lines, ~10.5 KB
    - Automatic monkey-patching
    - 28+ AutoModel classes configured
    - Status: ✓ EXISTS
@@ -149,18 +152,18 @@ model = AutoModel.from_pretrained("bert-base-uncased")
 
 ## Files NOT Covered (9 files)
 
-These worker skillset files don't use transformers.from_pretrained():
-- docker_entrypoint.py
-- hf_imagebind.py
-- hf_seamless_m4t.py
-- hf_seamless_m4t_v2.py
-- openvino_utils.py
-- simple_tts_kit.py
-- system_monitor_kit.py
-- tencent_utils.py
-- zen_speak_tts_kit.py
+These 9 worker skillset files don't use transformers.from_pretrained():
+- **chat_format.py** - Utility for chat format handling
+- **faster_whisper.py** - Uses faster-whisper library, not transformers
+- **coqui_tts_kit copy.py** - Duplicate/backup file
+- **llama_cpp_kit copy.py** - Duplicate/backup file
+- **libllama/convert-ggml-gguf.py** - GGML format converter
+- **libllama/convert-llama-ggmlv3-to-gguf.py** - GGML to GGUF converter
+- **libllama/convert_models.py** - Model format converter
+- **libllama/convert.py** - Generic converter utility
+- **libllama/convert_llama_ggml_to_gguf.py** - GGML to GGUF converter
 
-These files use custom model loading or don't load models, so auto-patching doesn't apply.
+These files use custom model loading (faster-whisper, llama.cpp) or are format converters that don't load models via transformers, so auto-patching doesn't apply.
 
 ## Response to User's Skepticism
 
@@ -177,10 +180,14 @@ These files use custom model loading or don't load models, so auto-patching does
 ## Verification Commands
 
 ```bash
-# Count from_pretrained calls
+# Count from_pretrained calls (recursive to include libllama subdirectory)
 cd ipfs_accelerate_py
-grep -r "\.from_pretrained(" worker/skillset/*.py | wc -l
-# Result: 245 calls
+grep -r "\.from_pretrained(" worker/skillset/ | wc -l
+# Result: 245+ calls
+
+# Count worker files with from_pretrained
+grep -rl "\.from_pretrained(" worker/skillset/ | wc -l
+# Result: 26 files
 
 # Check manual integrations
 grep -l "storage_wrapper" common/base_cache.py model_manager.py transformers_integration.py
