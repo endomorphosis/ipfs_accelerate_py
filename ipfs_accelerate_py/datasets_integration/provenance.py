@@ -310,15 +310,20 @@ class ProvenanceLogger:
         """
         Query local logs with optional filters.
         
+        Note: Returns logs in chronological order (oldest first).
+        For most recent logs, use a larger limit and slice from the end.
+        
         Args:
             filters: Dictionary of field:value filters
             limit: Maximum number of records to return
         
         Returns:
-            List of matching log records
+            List of matching log records in chronological order
         
         Example:
-            >>> logs = logger.query_logs({"type": "inference", "model": "bert-base"})
+            >>> # Get most recent inference logs
+            >>> logs = logger.query_logs({"type": "inference"}, limit=100)
+            >>> recent_logs = logs[-10:]  # Get last 10
         """
         records = []
         

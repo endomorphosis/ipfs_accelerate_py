@@ -55,8 +55,10 @@ class DatasetsManager:
         # Set up cache directory
         cache_dir = self.config.get('cache_dir')
         if not cache_dir:
-            cache_dir = os.path.expanduser('~/.cache/ipfs_accelerate')
-        self.cache_dir = Path(cache_dir)
+            cache_dir = Path.home() / '.cache' / 'ipfs_accelerate'
+        else:
+            cache_dir = Path(cache_dir).expanduser()
+        self.cache_dir = cache_dir
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
         # Try to initialize ipfs_datasets_py components

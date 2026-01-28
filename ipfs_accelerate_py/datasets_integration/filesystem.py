@@ -142,6 +142,9 @@ class FilesystemHandler:
         """
         Retrieve a file from IPFS by CID.
         
+        Note: In fallback mode (when IPFS unavailable), retrieval by CID
+        is not supported as files are stored without CID mapping.
+        
         Args:
             cid: Content identifier of the file
             output_path: Path where file should be saved
@@ -156,15 +159,14 @@ class FilesystemHandler:
             try:
                 self.unixfs_handler.get_file(cid, output_path)
                 return True
-            except Exception:
+            except Exception as e:
+                # Log specific errors for debugging
+                import warnings
+                warnings.warn(f"IPFS get_file failed: {e}. File may not be available.")
                 pass
         
-        # Fallback: Try to find in cache
-        if not cid:
-            return False
-        
-        cache_files = list(self.cache_dir.glob('*'))
-        # In fallback mode, we don't have CIDs, so we can't retrieve by CID
+        # Fallback mode: Cannot retrieve by CID in local-only mode
+        # Files added in fallback mode are only cached locally with original paths
         return False
     
     def get_directory(self, cid: str, output_path: str) -> bool:

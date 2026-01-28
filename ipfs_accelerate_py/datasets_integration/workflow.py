@@ -338,7 +338,7 @@ class WorkflowCoordinator:
             task_id: Unique task identifier
         
         Returns:
-            bool: True if cancelled successfully
+            bool: True if cancelled successfully, False if not found
         
         Example:
             >>> coordinator.cancel_task("infer-001")
@@ -351,18 +351,26 @@ class WorkflowCoordinator:
                 pass
         
         # Fallback: Remove from local queue
-        self.task_queue = [
-            t for t in self.task_queue
-            if t.get('task_id') != task_id
-        ]
+        task_found = False
+        new_queue = []
+        for t in self.task_queue:
+            if t.get('task_id') == task_id:
+                task_found = True
+            else:
+                new_queue.append(t)
         
-        # Mark as cancelled in file
-        cancellation = {
-            'task_id': task_id,
-            'status': 'cancelled'
-        }
-        self._save_task(cancellation)
-        return True
+        self.task_queue = new_queue
+        
+        # Only mark as cancelled if task was found
+        if task_found:
+            cancellation = {
+                'task_id': task_id,
+                'status': 'cancelled'
+            }
+            self._save_task(cancellation)
+            return True
+        
+        return False
     
     def get_status(self) -> Dict[str, Any]:
         """
