@@ -50,6 +50,23 @@ except ImportError:
     get_storage_wrapper = None
     logger.debug("Storage wrapper not available for model manager")
 
+# Try to import datasets integration for provenance tracking and IPFS storage
+try:
+    from .datasets_integration import (
+        is_datasets_available,
+        DatasetsManager,
+        FilesystemHandler,
+        ProvenanceLogger
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except ImportError:
+    HAVE_DATASETS_INTEGRATION = False
+    is_datasets_available = lambda: False
+    DatasetsManager = None
+    FilesystemHandler = None
+    ProvenanceLogger = None
+    logger.debug("Datasets integration not available for model manager")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -340,6 +357,23 @@ class ModelManager:
         self.storage_path = storage_path
         self.models: Dict[str, ModelMetadata] = {}
         
+        # Initialize datasets integration for provenance tracking and IPFS storage
+        self._datasets_manager = None
+        self._filesystem_handler = None
+        self._provenance_logger = None
+        if HAVE_DATASETS_INTEGRATION and is_datasets_available():
+            try:
+                self._datasets_manager = DatasetsManager({
+                    'enable_audit': True,
+                    'enable_provenance': True,
+                    'enable_p2p': False
+                })
+                self._filesystem_handler = FilesystemHandler()
+                self._provenance_logger = ProvenanceLogger()
+                logger.info("Model manager using datasets integration for provenance tracking")
+            except Exception as e:
+                logger.debug(f"Datasets integration initialization skipped: {e}")
+        
         # Initialize storage wrapper for distributed filesystem (with gating)
         self._storage_wrapper = None
         if HAVE_STORAGE_WRAPPER:
@@ -616,6 +650,23 @@ class ModelManager:
             self.models[metadata.model_id] = metadata
             self._save_data()
             logger.info(f"Added/updated model: {metadata.model_id}")
+            
+            # Track provenance for model registration
+            if self._provenance_logger:
+                try:
+                    self._provenance_logger.log_transformation(
+                        operation="model_registered",
+                        data={
+                            "model_id": metadata.model_id,
+                            "model_type": metadata.model_type.value if hasattr(metadata.model_type, 'value') else str(metadata.model_type),
+                            "input_types": [t.value if hasattr(t, 'value') else str(t) for t in metadata.input_types] if metadata.input_types else [],
+                            "output_types": [t.value if hasattr(t, 'value') else str(t) for t in metadata.output_types] if metadata.output_types else [],
+                            "timestamp": metadata.updated_at.isoformat()
+                        }
+                    )
+                except Exception as e:
+                    logger.debug(f"Provenance logging failed: {e}")
+            
             return True
         except Exception as e:
             logger.error(f"Error adding model {metadata.model_id}: {e}")
@@ -631,7 +682,24 @@ class ModelManager:
         Returns:
             ModelMetadata object or None if not found
         """
-        return self.models.get(model_id)
+        result = self.models.get(model_id)
+        
+        # Log model access for audit trail
+        if result and self._datasets_manager:
+            try:
+                self._datasets_manager.log_event(
+                    "model_accessed",
+                    {
+                        "model_id": model_id,
+                        "model_type": result.model_type.value if hasattr(result.model_type, 'value') else str(result.model_type)
+                    },
+                    level="INFO",
+                    category="GENERAL"
+                )
+            except Exception as e:
+                logger.debug(f"Event logging failed: {e}")
+        
+        return result
     
     def remove_model(self, model_id: str) -> bool:
         """

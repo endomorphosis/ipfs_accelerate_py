@@ -42,6 +42,28 @@ except (ImportError, ValueError):
         HAVE_STORAGE_WRAPPER = False
         get_storage_wrapper = None
 
+# Import datasets integration for event logging and provenance tracking
+try:
+    from .datasets_integration import (
+        is_datasets_available,
+        DatasetsManager,
+        ProvenanceLogger
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except (ImportError, ValueError):
+    try:
+        from datasets_integration import (
+            is_datasets_available,
+            DatasetsManager,
+            ProvenanceLogger
+        )
+        HAVE_DATASETS_INTEGRATION = True
+    except ImportError:
+        HAVE_DATASETS_INTEGRATION = False
+        is_datasets_available = lambda: False
+        DatasetsManager = None
+        ProvenanceLogger = None
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -131,6 +153,29 @@ class IPFSAccelerateCLI:
         self.mcp_process = None
         self.dashboard_process = None
         
+        # Initialize datasets integration for event logging
+        self._datasets_manager = None
+        self._provenance_logger = None
+        if HAVE_DATASETS_INTEGRATION and is_datasets_available():
+            try:
+                self._datasets_manager = DatasetsManager({
+                    'enable_audit': True,
+                    'enable_provenance': True,
+                    'enable_p2p': False
+                })
+                self._provenance_logger = ProvenanceLogger()
+                logger.info("CLI initialized with datasets integration")
+            except Exception as e:
+                logger.debug(f"Datasets integration initialization skipped: {e}")
+        
+    def _log_cli_event(self, event_type: str, data: dict):
+        """Log CLI command execution"""
+        if self._datasets_manager:
+            try:
+                self._datasets_manager.log_event(event_type, data, level="INFO", category="GENERAL")
+            except Exception as e:
+                logger.debug(f"Event logging failed: {e}")
+        
     def setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown"""
         def signal_handler(signum, frame):
@@ -153,6 +198,13 @@ class IPFSAccelerateCLI:
     def run_mcp_start(self, args):
         """Start MCP server with integrated dashboard, model manager, and queue monitoring"""
         logger.info("Starting IPFS Accelerate MCP Server with integrated dashboard...")
+        
+        # Log MCP start event
+        self._log_cli_event("mcp_start", {
+            "port": getattr(args, 'port', 8080),
+            "host": getattr(args, 'host', '0.0.0.0'),
+            "dashboard": getattr(args, 'dashboard', True)
+        })
         
         # Load heavy imports only when needed
         _load_heavy_imports()
