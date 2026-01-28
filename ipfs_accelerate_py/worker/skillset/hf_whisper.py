@@ -15,6 +15,14 @@ from pydub import AudioSegment
 from pydub.silence import split_on_silence, detect_nonsilent
 import pysbd
 
+try:
+    from ..common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 # Import ML libraries with fallbacks
 try:
     import torch
@@ -67,6 +75,13 @@ def load_audio_tensor(audio_file):
 
 class hf_whisper:
     def __init__(self, resources=None, metadata=None):
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
         self.resources = resources
         self.metadata = metadata    
         self.create_openvino_whisper_endpoint_handler = self.create_openvino_whisper_endpoint_handler

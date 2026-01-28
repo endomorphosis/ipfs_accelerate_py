@@ -9,6 +9,14 @@ import os
 import tempfile
 import numpy as np
 
+try:
+    from ..common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 def sample_frame_indices(clip_len, frame_sample_rate, seg_len):
     converted_len = int(clip_len * frame_sample_rate)
     end_idx = np.random.randint(converted_len, seg_len)
@@ -50,6 +58,14 @@ class hf_xclip:
             resources: Dictionary of resource modules (torch, transformers, etc.)
             metadata: Additional metadata for the model
         """
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
         self.torch = None

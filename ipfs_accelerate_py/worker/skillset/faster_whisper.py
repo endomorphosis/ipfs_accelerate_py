@@ -12,10 +12,25 @@ import io
 from io import BytesIO
 import datetime
 
+try:
+    from ..common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 tmp_model_dir = "/storage/cloudkit-models/faster-whisper-large-v3@hf/"
 
 class hf_faster_whisper():
 	def __init__(self, resources, meta):
+		if storage_wrapper:
+			try:
+				self.storage = storage_wrapper()
+			except:
+				self.storage = None
+		else:
+			self.storage = None
 		self.model = WhisperModel(resources['checkpoint'], device="cuda", compute_type="float16")
 		self.nlp = pysbd.Segmenter(language="en", clean=False)
 		self.encoding = tiktoken.get_encoding("cl100k_base")
@@ -25,8 +40,16 @@ class hf_faster_whisper():
 		self.transcription = ""
 		self.noiseThreshold = 2000
 		self.faster_whisper = self.runWhisper
-		with open(os.path.join(resources['checkpoint'], "header.bin"), "rb") as f:
-			self.header = f.read()
+		header_path = os.path.join(resources['checkpoint'], "header.bin")
+		try:
+			if self.storage:
+				self.header = self.storage.read_file(header_path, pin=True)
+			else:
+				with open(header_path, "rb") as f:
+					self.header = f.read()
+		except:
+			with open(header_path, "rb") as f:
+				self.header = f.read()
 
 	def __call__(self, method, **kwargs):
 		if method == 'transcribe':
@@ -50,8 +73,14 @@ class hf_faster_whisper():
 	def stop(self):
 		self.chunks.clear()
 		self.transcription = ""
-		if(os.path.exists(self.file_path)):
-			os.remove(self.file_path)
+		try:
+			if self.storage and hasattr(self, 'file_path'):
+				self.storage.remove_file(self.file_path)
+			elif hasattr(self, 'file_path') and os.path.exists(self.file_path):
+				os.remove(self.file_path)
+		except:
+			if hasattr(self, 'file_path') and os.path.exists(self.file_path):
+				os.remove(self.file_path)
 
 	def crop_audio_after_silence(self, audio_file, min_silence_len=500, silence_thresh=-16):
 	
@@ -225,8 +254,15 @@ class hf_faster_whisper():
 
 	def test5(self):
 		this_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base64ogg.txt")
-		with open(this_file, "r") as file:
-			base64 = file.read()
+		try:
+			if self.storage:
+				base64 = self.storage.read_file(this_file, pin=False).decode('utf-8')
+			else:
+				with open(this_file, "r") as file:
+					base64 = file.read()
+		except:
+			with open(this_file, "r") as file:
+				base64 = file.read()
 		fragment = " "
 		#fragment = "Dunkin' Donuts LLC,[1] doing business as Dunkin' since 2019, is an American multinational coffee and doughnut company, as well as a quick service restaurant. It was founded by Bill Rosenberg (1916–2002) in Quincy, Massachusetts, in 1950. The chain was acquired by Baskin-Robbins's holding company Allied Lyons in 1990; its acquisition of the Mister Donut chain and the conversion of that chain to Dunkin' Donuts facilitated the brand's growth in North America that year.[5] Dunkin' and Baskin-Robbins eventually became subsidiaries of Dunkin' Brands, headquartered in Canton, Massachusetts, in 2004, until being purchased by Inspire Brands on December 15, 2020. The chain began rebranding as a beverage-led company, and was renamed Dunkin', in January 2019; while stores in the U.S. began using the new name, the company intends to roll out the rebranding to all of its international stores eventually."
 		fragment_split = fragment.split(" ")

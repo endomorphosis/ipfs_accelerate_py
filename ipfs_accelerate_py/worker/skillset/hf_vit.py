@@ -9,6 +9,14 @@ import traceback
 from typing import Tuple, Callable, Dict, Any, Optional, Union, List
 import logging
 
+try:
+    from ..common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -25,6 +33,14 @@ class hf_vit:
             resources (dict, optional): Resource dictionary containing dependencies
             metadata (dict, optional): Metadata dictionary
         """
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
         

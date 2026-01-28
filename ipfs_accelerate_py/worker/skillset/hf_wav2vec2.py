@@ -8,6 +8,14 @@ from ..anyio_queue import AnyioQueue
 import requests
 import gc
 from pydub import AudioSegment
+
+try:
+    from ..common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
 # from datasets import Dataset, Audio
 
 def load_audio(audio_file):
@@ -72,6 +80,14 @@ class hf_wav2vec2:
             resources: Dictionary of resource modules (torch, transformers, etc.)
             metadata: Additional metadata for the model
         """
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
         self.torch = None

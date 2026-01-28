@@ -9,6 +9,14 @@ import time
 import os
 import tempfile
 
+try:
+    from ..common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
@@ -146,6 +154,14 @@ class hf_llava:
             resources (dict): Dictionary of shared resources (torch, transformers, etc.)
             metadata (dict): Configuration metadata
         """
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         self.resources = resources
         self.metadata = metadata
         
