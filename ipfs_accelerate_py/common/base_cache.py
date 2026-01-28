@@ -51,6 +51,15 @@ except ImportError:
     CID = None
     multiformats_multihash = None
 
+# Try to import storage wrapper for distributed filesystem integration
+try:
+    from .storage_wrapper import get_storage_wrapper
+    HAVE_STORAGE_WRAPPER = True
+except ImportError:
+    HAVE_STORAGE_WRAPPER = False
+    get_storage_wrapper = None
+    logger.warning("Storage wrapper not available. Using direct filesystem operations.")
+
 logger = logging.getLogger(__name__)
 
 
@@ -175,6 +184,22 @@ class BaseAPICache(ABC):
         from .ipfs_kit_fallback import get_global_ipfs_fallback
         self._ipfs_fallback = get_global_ipfs_fallback()
         
+        # Storage wrapper for distributed filesystem integration
+        self._storage_wrapper = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage_wrapper = get_storage_wrapper(
+                    cache_dir=str(self.cache_dir),
+                    auto_detect_ci=True  # Auto-disable in CI/CD
+                )
+                if self._storage_wrapper.is_distributed:
+                    logger.info(f"✓ {self.cache_name} cache using distributed storage backend")
+                else:
+                    logger.debug(f"{self.cache_name} cache using local filesystem (distributed storage unavailable or disabled)")
+            except Exception as e:
+                logger.warning(f"Failed to initialize storage wrapper: {e}")
+                self._storage_wrapper = None
+        
         # Statistics
         self._stats = {
             "hits": 0,
@@ -185,7 +210,9 @@ class BaseAPICache(ABC):
             "api_calls_made": 0,
             "peer_hits": 0,
             "ipfs_fallback_hits": 0,
-            "ipfs_fallback_misses": 0
+            "ipfs_fallback_misses": 0,
+            "distributed_storage_hits": 0,
+            "distributed_storage_writes": 0
         }
         
         # Load persistent cache if enabled
@@ -590,16 +617,12 @@ class BaseAPICache(ABC):
             }
     
     def _save_to_disk(self, cache_key: str, entry: CacheEntry) -> None:
-        """Save a cache entry to disk."""
+        """Save a cache entry to disk (or distributed storage if available)."""
         if not self.enable_persistence:
             return
         
         try:
-            # Use CID as filename (safe for filesystems)
-            # Replace : with _ for Windows compatibility
-            safe_key = cache_key.replace(":", "_")
-            cache_file = self.cache_dir / f"{safe_key}.json"
-            
+            # Prepare cache data
             data = {
                 "data": entry.data,
                 "timestamp": entry.timestamp,
@@ -609,6 +632,32 @@ class BaseAPICache(ABC):
                 "metadata": entry.metadata,
                 "cid": cache_key  # Store the original CID
             }
+            
+            # Try distributed storage first if available
+            if self._storage_wrapper and self._storage_wrapper.is_distributed:
+                try:
+                    # Store as JSON bytes with content-addressed CID
+                    json_data = json.dumps(data, indent=2)
+                    safe_key = cache_key.replace(":", "_")
+                    filename = f"{safe_key}.json"
+                    
+                    cid = self._storage_wrapper.write_file(
+                        json_data,
+                        filename=filename,
+                        pin=False  # Don't pin cache entries by default
+                    )
+                    
+                    self._stats["distributed_storage_writes"] += 1
+                    logger.debug(f"Saved cache entry to distributed storage: {cid}")
+                    return
+                except Exception as e:
+                    logger.debug(f"Failed to save to distributed storage, falling back to local: {e}")
+            
+            # Fallback to local filesystem
+            # Use CID as filename (safe for filesystems)
+            # Replace : with _ for Windows compatibility
+            safe_key = cache_key.replace(":", "_")
+            cache_file = self.cache_dir / f"{safe_key}.json"
             
             with open(cache_file, 'w') as f:
                 json.dump(data, f, indent=2)
