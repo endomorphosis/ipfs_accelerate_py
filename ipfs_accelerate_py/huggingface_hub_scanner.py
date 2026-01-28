@@ -81,6 +81,17 @@ except ImportError:
         HAVE_HF_SEARCH = False
         logger.warning("HuggingFace search engine not available - using mock implementation")
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Mock HuggingFaceModelInfo if not available
 if not HAVE_HF_SEARCH:
     @dataclass
@@ -183,6 +194,16 @@ class HuggingFaceHubScanner:
         
         self.max_workers = max_workers
         self.rate_limit_delay = rate_limit_delay
+        
+        # Initialize distributed storage wrapper
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage and hasattr(self._storage, 'is_distributed'):
+                    logger.info("Distributed storage enabled for HuggingFace Hub Scanner")
+            except Exception as e:
+                logger.debug(f"Failed to initialize storage wrapper: {e}")
         
         # Initialize search engine for detailed model info
         if HAVE_HF_SEARCH:
@@ -932,30 +953,74 @@ class HuggingFaceHubScanner:
         try:
             # Save model cache
             models_file = self.cache_dir / "scanned_models.json"
+            models_data = {
+                model_id: asdict(info) for model_id, info in self.model_cache.items()
+            }
+            
+            # Try distributed storage first
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"scanner_scanned_models"
+                    self._storage.write_file(json.dumps(models_data, indent=2, default=str), cache_key, pin=True)
+                    logger.debug("Saved models data to distributed storage")
+                except Exception as e:
+                    logger.debug(f"Failed to write models to distributed storage: {e}")
+            
+            # Always also write to local (existing behavior)
             with open(models_file, 'w') as f:
-                models_data = {
-                    model_id: asdict(info) for model_id, info in self.model_cache.items()
-                }
                 json.dump(models_data, f, indent=2, default=str)
             
             # Save performance cache
             performance_file = self.cache_dir / "model_performance.json"
+            performance_data = {
+                model_id: asdict(perf) for model_id, perf in self.performance_cache.items()
+            }
+            
+            # Try distributed storage first
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"scanner_model_performance"
+                    self._storage.write_file(json.dumps(performance_data, indent=2, default=str), cache_key, pin=True)
+                    logger.debug("Saved performance data to distributed storage")
+                except Exception as e:
+                    logger.debug(f"Failed to write performance to distributed storage: {e}")
+            
+            # Always also write to local (existing behavior)
             with open(performance_file, 'w') as f:
-                performance_data = {
-                    model_id: asdict(perf) for model_id, perf in self.performance_cache.items()
-                }
                 json.dump(performance_data, f, indent=2, default=str)
             
             # Save compatibility cache
             compatibility_file = self.cache_dir / "model_compatibility.json"
+            compatibility_data = {
+                model_id: asdict(compat) for model_id, compat in self.compatibility_cache.items()
+            }
+            
+            # Try distributed storage first
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"scanner_model_compatibility"
+                    self._storage.write_file(json.dumps(compatibility_data, indent=2, default=str), cache_key, pin=True)
+                    logger.debug("Saved compatibility data to distributed storage")
+                except Exception as e:
+                    logger.debug(f"Failed to write compatibility to distributed storage: {e}")
+            
+            # Always also write to local (existing behavior)
             with open(compatibility_file, 'w') as f:
-                compatibility_data = {
-                    model_id: asdict(compat) for model_id, compat in self.compatibility_cache.items()
-                }
                 json.dump(compatibility_data, f, indent=2, default=str)
             
             # Save scan statistics
             stats_file = self.cache_dir / "scan_stats.json"
+            
+            # Try distributed storage first
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"scanner_scan_stats"
+                    self._storage.write_file(json.dumps(self.scan_stats, indent=2, default=str), cache_key, pin=False)
+                    logger.debug("Saved scan stats to distributed storage")
+                except Exception as e:
+                    logger.debug(f"Failed to write scan stats to distributed storage: {e}")
+            
+            # Always also write to local (existing behavior)
             with open(stats_file, 'w') as f:
                 json.dump(self.scan_stats, f, indent=2, default=str)
             
@@ -982,6 +1047,16 @@ class HuggingFaceHubScanner:
             'task_distribution': self._get_task_distribution()
         }
         
+        # Try distributed storage first
+        if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+            try:
+                cache_key = f"scanner_scan_report"
+                self._storage.write_file(json.dumps(report, indent=2, default=str), cache_key, pin=True)
+                logger.debug("Saved scan report to distributed storage")
+            except Exception as e:
+                logger.debug(f"Failed to write scan report to distributed storage: {e}")
+        
+        # Always also write to local (existing behavior)
         report_file = self.cache_dir / "scan_report.json"
         with open(report_file, 'w') as f:
             json.dump(report, f, indent=2, default=str)
@@ -1707,6 +1782,16 @@ Generally achieves better performance than BERT base on most NLP benchmarks, wit
                         'message': 'Model metadata cached for offline use. Full download requires network access to HuggingFace Hub.'
                     }
                     
+                    # Try distributed storage first
+                    if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                        try:
+                            cache_key = f"scanner_model_metadata_{model_id.replace('/', '_')}"
+                            self._storage.write_file(json.dumps(metadata, indent=2), cache_key, pin=False)
+                            logger.debug(f"Saved model metadata to distributed storage: {model_id}")
+                        except Exception as e:
+                            logger.debug(f"Failed to write model metadata to distributed storage: {e}")
+                    
+                    # Always also write to local (existing behavior)
                     with open(metadata_file, 'w') as f:
                         json.dump(metadata, f, indent=2)
                     
@@ -1751,6 +1836,16 @@ Generally achieves better performance than BERT base on most NLP benchmarks, wit
                     'message': 'Download placeholder created. Full download requires network access.'
                 }
                 
+                # Try distributed storage first
+                if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                    try:
+                        cache_key = f"scanner_model_metadata_placeholder_{model_id.replace('/', '_')}"
+                        self._storage.write_file(json.dumps(metadata, indent=2), cache_key, pin=False)
+                        logger.debug(f"Saved placeholder metadata to distributed storage: {model_id}")
+                    except Exception as storage_e:
+                        logger.debug(f"Failed to write placeholder metadata to distributed storage: {storage_e}")
+                
+                # Always also write to local (existing behavior)
                 with open(metadata_file, 'w') as f:
                     json.dump(metadata, f, indent=2)
                 
