@@ -21,6 +21,17 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Any
 from pathlib import Path
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 logger = logging.getLogger(__name__)
 
 # Setup path for imports
@@ -96,6 +107,9 @@ class P2PWorkflowDiscoveryService:
         self.owner = owner
         self.poll_interval = poll_interval
         self.running = False
+        
+        # Initialize storage wrapper for distributed storage
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
         
         # Initialize GitHub CLI
         if GitHubCLI is None:
@@ -411,6 +425,15 @@ class P2PWorkflowDiscoveryService:
             'scheduler': scheduler_status,
             'timestamp': time.time()
         }
+        
+        # Try to store discovery stats in distributed storage
+        if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+            try:
+                cache_key = f"p2p_discovery_stats_{int(time.time())}"
+                self._storage.write_file(json.dumps(stats, indent=2), cache_key, pin=False)
+                logger.debug(f"Stored discovery stats in distributed storage: {cache_key}")
+            except Exception as e:
+                logger.debug(f"Failed to store discovery stats: {e}")
         
         logger.info(f"Discovery cycle complete: {len(discoveries)} discovered, {submitted} submitted")
         

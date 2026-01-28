@@ -24,6 +24,17 @@ from enum import Enum
 from typing import Dict, List, Optional, Any, Tuple
 from collections import defaultdict
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 logger = logging.getLogger(__name__)
 
 
@@ -380,6 +391,9 @@ class P2PWorkflowScheduler:
         self.peer_id = peer_id
         self.peer_id_hash = hashlib.sha256(peer_id.encode()).hexdigest()
         
+        # Initialize storage wrapper for distributed storage
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
+        
         # Merkle clock for distributed consensus
         self.merkle_clock = MerkleClock(node_id=peer_id)
         
@@ -581,7 +595,7 @@ class P2PWorkflowScheduler:
     
     def get_status(self) -> Dict[str, Any]:
         """Get scheduler status information"""
-        return {
+        status = {
             'peer_id': self.peer_id,
             'merkle_clock': self.merkle_clock.to_dict(),
             'pending_tasks': len(self.pending_tasks),
@@ -590,3 +604,14 @@ class P2PWorkflowScheduler:
             'queue_size': self.task_queue.size(),
             'known_peers': len(self.known_peers)
         }
+        
+        # Try to store scheduler status in distributed storage
+        if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+            try:
+                cache_key = f"p2p_scheduler_status_{self.peer_id}_{int(time.time())}"
+                self._storage.write_file(json.dumps(status, indent=2), cache_key, pin=False)
+                logger.debug(f"Stored scheduler status in distributed storage: {cache_key}")
+            except Exception as e:
+                logger.debug(f"Failed to store scheduler status: {e}")
+        
+        return status

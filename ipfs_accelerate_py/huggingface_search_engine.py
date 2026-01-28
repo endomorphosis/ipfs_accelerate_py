@@ -21,6 +21,17 @@ from datetime import datetime
 from dataclasses import dataclass, asdict
 from urllib.parse import quote
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Add current directory to path for imports
 sys.path.append(os.path.dirname(__file__))
 
@@ -92,6 +103,9 @@ class HuggingFaceModelSearchEngine:
         self.cache_dir = Path(cache_dir)
         self.cache_dir.mkdir(exist_ok=True)
         
+        # Initialize storage wrapper for distributed storage
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
+        
         # Cache files
         self.models_cache_file = self.cache_dir / "models_cache.json"
         self.search_index_file = self.cache_dir / "search_index.json"
@@ -109,18 +123,41 @@ class HuggingFaceModelSearchEngine:
     def _load_caches(self):
         """Load cached data from disk."""
         try:
+            # Try distributed storage first
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_data_str = self._storage.read_file("hf_models_cache")
+                    if cache_data_str:
+                        cache_data = json.loads(cache_data_str)
+                        self.models_cache = {
+                            k: HuggingFaceModelInfo(**v) 
+                            for k, v in cache_data.items()
+                        }
+                        logger.info(f"Loaded {len(self.models_cache)} models from distributed storage")
+                    
+                    index_data_str = self._storage.read_file("hf_search_index")
+                    if index_data_str:
+                        self.search_index = json.loads(index_data_str)
+                        logger.info(f"Loaded search index from distributed storage")
+                except Exception as e:
+                    logger.debug(f"Failed to load from distributed storage: {e}")
+            
+            # Always load from local filesystem
             if self.models_cache_file.exists():
                 with open(self.models_cache_file, 'r') as f:
                     cache_data = json.load(f)
-                    self.models_cache = {
-                        k: HuggingFaceModelInfo(**v) 
-                        for k, v in cache_data.items()
-                    }
+                    if not self.models_cache:
+                        self.models_cache = {
+                            k: HuggingFaceModelInfo(**v) 
+                            for k, v in cache_data.items()
+                        }
                 logger.info(f"Loaded {len(self.models_cache)} models from cache")
             
             if self.search_index_file.exists():
                 with open(self.search_index_file, 'r') as f:
-                    self.search_index = json.load(f)
+                    local_index = json.load(f)
+                    if not self.search_index:
+                        self.search_index = local_index
                 logger.info(f"Loaded search index with {len(self.search_index)} terms")
         except Exception as e:
             logger.warning(f"Error loading caches: {e}")
@@ -130,6 +167,17 @@ class HuggingFaceModelSearchEngine:
         try:
             # Save models cache
             cache_data = {k: asdict(v) for k, v in self.models_cache.items()}
+            
+            # Try distributed storage
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    self._storage.write_file(json.dumps(cache_data, indent=2), "hf_models_cache", pin=False)
+                    self._storage.write_file(json.dumps(self.search_index, indent=2), "hf_search_index", pin=False)
+                    logger.debug("Saved caches to distributed storage")
+                except Exception as e:
+                    logger.debug(f"Failed to save to distributed storage: {e}")
+            
+            # Always save to local filesystem
             with open(self.models_cache_file, 'w') as f:
                 json.dump(cache_data, f, indent=2)
             

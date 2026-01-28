@@ -11,6 +11,17 @@ from pathlib import Path
 from dataclasses import asdict, is_dataclass
 from typing import Dict, Any, List, Optional
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Try to import Flask (required for dashboard)
 try:
     from flask import Flask, render_template, jsonify, request, send_from_directory
@@ -56,6 +67,9 @@ class MCPDashboard:
         self.autoscaler_config = autoscaler_config or {}
         self.autoscaler_instance = None
         self.autoscaler_thread = None
+        
+        # Initialize storage wrapper for distributed storage
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
         
         # Set up Flask with proper template and static folders
         # __file__ is in ipfs_accelerate_py/, so use dirname(__file__) for templates/static

@@ -12,6 +12,17 @@ from typing import Dict, List, Any, Optional, Union
 from pathlib import Path
 import logging
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,6 +39,9 @@ class CaselawDatasetLoader:
         """
         self.cache_dir = Path(cache_dir or os.getenv('CASELAW_CACHE_DIR', './caselaw_cache'))
         self.cache_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize storage wrapper for distributed storage
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
         
         # Sample data for demonstration
         self.sample_cases = [
@@ -223,8 +237,33 @@ class CaselawDatasetLoader:
             if json_files:
                 logger.info(f"Found {len(json_files)} JSON files in {dataset_path}")
                 # Load first JSON file as example
+                external_data = None
+                
+                # Try distributed storage first
+                if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                    try:
+                        cache_key = f"caselaw_external_{json_files[0].name}"
+                        cached_content = self._storage.read_file(cache_key)
+                        if cached_content:
+                            external_data = json.loads(cached_content)
+                            logger.debug(f"Loaded external dataset from distributed storage: {cache_key}")
+                    except Exception as e:
+                        logger.debug(f"Failed to read from distributed storage: {e}")
+                
+                # Always load from local filesystem
                 with open(json_files[0], 'r') as f:
-                    external_data = json.load(f)
+                    local_data = json.load(f)
+                    if external_data is None:
+                        external_data = local_data
+                    
+                    # Store in distributed storage for future access
+                    if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                        try:
+                            cache_key = f"caselaw_external_{json_files[0].name}"
+                            self._storage.write_file(json.dumps(local_data, indent=2), cache_key, pin=False)
+                            logger.debug(f"Cached external dataset to distributed storage: {cache_key}")
+                        except Exception as e:
+                            logger.debug(f"Failed to write to distributed storage: {e}")
                 
                 # Convert to our format if needed
                 if isinstance(external_data, list):
