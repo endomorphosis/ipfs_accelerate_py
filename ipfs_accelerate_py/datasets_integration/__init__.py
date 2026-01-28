@@ -19,11 +19,15 @@ Environment Variables:
     IPFS_DATASETS_PATH: Path to ipfs_datasets_py submodule (default: external/ipfs_datasets_py)
 
 Example:
-    >>> from ipfs_accelerate_py.datasets_integration import is_datasets_available
-    >>> if is_datasets_available():
-    ...     from ipfs_accelerate_py.datasets_integration import DatasetsManager
-    ...     manager = DatasetsManager()
+    >>> from ipfs_accelerate_py.datasets_integration import DatasetsManager
+    >>> # Works with or without ipfs_datasets_py - graceful fallback
+    >>> manager = DatasetsManager()
+    >>> if manager.enabled:
+    ...     # IPFS features available
     ...     manager.log_event("inference_started", {"model": "bert-base"})
+    ... else:
+    ...     # Local fallback mode
+    ...     pass
 """
 
 import os
@@ -108,26 +112,39 @@ def get_datasets_status() -> Dict[str, Any]:
     
     Returns:
         Dict with status information including:
-        - available: bool
-        - path: Optional[str]
-        - enabled: bool
-        - reason: str (if unavailable)
+        - available: bool - Whether ipfs_datasets_py is available and working
+        - path: Optional[str] - Path to ipfs_datasets_py if found
+        - enabled: bool - Whether integration is enabled (not explicitly disabled)
+        - mode: str - Configuration mode ('auto', 'enabled', 'disabled')
+        - reason: str - Explanation if unavailable
     
     Example:
         >>> status = get_datasets_status()
         >>> print(f"Datasets available: {status['available']}")
     """
     available = is_datasets_available()
+    env_val = os.environ.get('IPFS_DATASETS_ENABLED', 'auto').lower()
+    
+    # Determine if enabled (not explicitly disabled)
+    is_enabled = env_val not in ('0', 'false', 'no', 'off', 'disabled')
+    
+    # Determine mode
+    if env_val in ('0', 'false', 'no', 'off', 'disabled'):
+        mode = 'disabled'
+    elif env_val in ('1', 'true', 'yes', 'on', 'enabled'):
+        mode = 'enabled'
+    else:
+        mode = 'auto'
     
     status = {
         'available': available,
         'path': _DATASETS_PATH,
-        'enabled': os.environ.get('IPFS_DATASETS_ENABLED', 'auto'),
+        'enabled': is_enabled,
+        'mode': mode,
     }
     
     if not available:
-        env_val = os.environ.get('IPFS_DATASETS_ENABLED', 'auto').lower()
-        if env_val in ('0', 'false', 'no', 'off', 'disabled'):
+        if not is_enabled:
             status['reason'] = 'Explicitly disabled via IPFS_DATASETS_ENABLED'
         else:
             status['reason'] = 'Package not found or import failed'
@@ -135,22 +152,18 @@ def get_datasets_status() -> Dict[str, Any]:
     return status
 
 
-# Lazy imports - only import when needed and available
+# Public API: always expose integration classes
+# Their internal flags handle availability, enabling graceful fallback
+from .manager import DatasetsManager
+from .filesystem import FilesystemHandler
+from .provenance import ProvenanceLogger
+from .workflow import WorkflowCoordinator
+
 __all__ = [
     'is_datasets_available',
     'get_datasets_status',
+    'DatasetsManager',
+    'FilesystemHandler',
+    'ProvenanceLogger',
+    'WorkflowCoordinator',
 ]
-
-# Only expose main classes if available
-if is_datasets_available():
-    from .manager import DatasetsManager
-    from .filesystem import FilesystemHandler
-    from .provenance import ProvenanceLogger
-    from .workflow import WorkflowCoordinator
-    
-    __all__.extend([
-        'DatasetsManager',
-        'FilesystemHandler',
-        'ProvenanceLogger',
-        'WorkflowCoordinator',
-    ])
