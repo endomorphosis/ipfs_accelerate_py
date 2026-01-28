@@ -5,6 +5,12 @@ This example demonstrates basic usage of the datasets integration layer,
 showing how to use all four main components with graceful fallbacks.
 """
 
+import sys
+import os
+
+# Add parent directory to path for imports
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from ipfs_accelerate_py.datasets_integration import (
     is_datasets_available,
     get_datasets_status,
