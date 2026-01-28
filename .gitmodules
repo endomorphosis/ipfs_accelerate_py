@@ -23,3 +23,6 @@
 [submodule "test/huggingface_doc_builder"]
 	path = test/huggingface_doc_builder
 	url = https://github.com/huggingface/doc-builder.git
+[submodule "external/ipfs_datasets_py"]
+	path = external/ipfs_datasets_py
+	url = https://github.com/endomorphosis/ipfs_datasets_py.git
