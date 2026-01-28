@@ -22,6 +22,29 @@ except ImportError:
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.inference")
 
+# Try to import datasets integration for inference logging
+try:
+    from ...datasets_integration import (
+        is_datasets_available,
+        ProvenanceLogger,
+        DatasetsManager
+    )
+    HAVE_DATASETS_INTEGRATION = True
+    # Initialize global instances for logging
+    _provenance_logger = None
+    _datasets_manager = None
+    if is_datasets_available():
+        try:
+            _provenance_logger = ProvenanceLogger()
+            _datasets_manager = DatasetsManager({'enable_audit': True, 'enable_provenance': True})
+            logger.info("MCP inference tools using datasets integration")
+        except Exception as e:
+            logger.debug(f"Datasets integration initialization failed: {e}")
+except ImportError:
+    HAVE_DATASETS_INTEGRATION = False
+    _provenance_logger = None
+    _datasets_manager = None
+
 
 def _is_pytest() -> bool:
     return os.environ.get("PYTEST_CURRENT_TEST") is not None
@@ -240,6 +263,25 @@ def register_tools(mcp):
                     "device": device,
                     "processing_time": time.time() - start_time
                 }
+                
+                # Log inference operation
+                if _provenance_logger:
+                    try:
+                        _provenance_logger.log_inference(
+                            model_name=model,
+                            data={
+                                "model_type": "embedding",
+                                "inputs_processed": len(inputs),
+                                "embedding_size": embedding_size,
+                                "device": device,
+                                "duration_ms": result["processing_time"] * 1000,
+                                "hardware": device
+                            },
+                            metadata={"endpoint_id": endpoint_id, "provider": provider} if endpoint_id else None
+                        )
+                    except Exception as e:
+                        logger.debug(f"Provenance logging failed: {e}")
+                
                 if endpoint_id:
                     try:
                         mcp.use_tool(

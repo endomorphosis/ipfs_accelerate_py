@@ -20,6 +20,36 @@ except ImportError:
         except ImportError:
             HAVE_STORAGE_WRAPPER = False
 
+# Try to import datasets integration for API tracking
+try:
+    from ...datasets_integration import (
+        is_datasets_available,
+        ProvenanceLogger,
+        DatasetsManager
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except ImportError:
+    try:
+        from ..datasets_integration import (
+            is_datasets_available,
+            ProvenanceLogger,
+            DatasetsManager
+        )
+        HAVE_DATASETS_INTEGRATION = True
+    except ImportError:
+        try:
+            from datasets_integration import (
+                is_datasets_available,
+                ProvenanceLogger,
+                DatasetsManager
+            )
+            HAVE_DATASETS_INTEGRATION = True
+        except ImportError:
+            HAVE_DATASETS_INTEGRATION = False
+            is_datasets_available = lambda: False
+            ProvenanceLogger = None
+            DatasetsManager = None
+
 if HAVE_STORAGE_WRAPPER:
     try:
         _storage = get_storage_wrapper(auto_detect_ci=True)

@@ -28,6 +28,36 @@ except ImportError:
         except ImportError:
             HAVE_STORAGE_WRAPPER = False
 
+# Try to import datasets integration for GitHub operation tracking
+try:
+    from ...datasets_integration import (
+        is_datasets_available,
+        ProvenanceLogger,
+        DatasetsManager
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except ImportError:
+    try:
+        from ..datasets_integration import (
+            is_datasets_available,
+            ProvenanceLogger,
+            DatasetsManager
+        )
+        HAVE_DATASETS_INTEGRATION = True
+    except ImportError:
+        try:
+            from datasets_integration import (
+                is_datasets_available,
+                ProvenanceLogger,
+                DatasetsManager
+            )
+            HAVE_DATASETS_INTEGRATION = True
+        except ImportError:
+            HAVE_DATASETS_INTEGRATION = False
+            is_datasets_available = lambda: False
+            ProvenanceLogger = None
+            DatasetsManager = None
+
 if HAVE_STORAGE_WRAPPER:
     try:
         _storage = get_storage_wrapper(auto_detect_ci=True)
@@ -62,6 +92,20 @@ class GitHubCLI:
             auto_refresh_token: Whether to automatically refresh GitHub token
             token_refresh_threshold: Refresh token if expires within this many seconds
         """
+        # Initialize datasets integration for GitHub operation tracking
+        self._provenance_logger = None
+        self._datasets_manager = None
+        if HAVE_DATASETS_INTEGRATION and is_datasets_available():
+            try:
+                self._provenance_logger = ProvenanceLogger()
+                self._datasets_manager = DatasetsManager({
+                    'enable_audit': True,
+                    'enable_provenance': True
+                })
+                logger.info("GitHub CLI wrapper using datasets integration for operation tracking")
+            except Exception as e:
+                logger.debug(f"Datasets integration initialization skipped: {e}")
+        
         self.gh_path = gh_path
         self.enable_cache = enable_cache
         self.cache_ttl = cache_ttl

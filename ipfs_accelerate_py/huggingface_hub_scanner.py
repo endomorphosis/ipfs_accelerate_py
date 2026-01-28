@@ -92,6 +92,28 @@ except ImportError:
         def get_storage_wrapper(*args, **kwargs):
             return None
 
+# Try to import datasets integration for scan tracking
+try:
+    from .datasets_integration import (
+        is_datasets_available,
+        ProvenanceLogger,
+        DatasetsManager
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except ImportError:
+    try:
+        from datasets_integration import (
+            is_datasets_available,
+            ProvenanceLogger,
+            DatasetsManager
+        )
+        HAVE_DATASETS_INTEGRATION = True
+    except ImportError:
+        HAVE_DATASETS_INTEGRATION = False
+        is_datasets_available = lambda: False
+        ProvenanceLogger = None
+        DatasetsManager = None
+
 # Mock HuggingFaceModelInfo if not available
 if not HAVE_HF_SEARCH:
     @dataclass

@@ -12,6 +12,28 @@ from ..common.base_cache import BaseAPICache, register_cache
 
 logger = logging.getLogger(__name__)
 
+# Try to import datasets integration for PR/issue tracking
+try:
+    from ..datasets_integration import (
+        is_datasets_available,
+        ProvenanceLogger,
+        DatasetsManager
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except ImportError:
+    try:
+        from datasets_integration import (
+            is_datasets_available,
+            ProvenanceLogger,
+            DatasetsManager
+        )
+        HAVE_DATASETS_INTEGRATION = True
+    except ImportError:
+        HAVE_DATASETS_INTEGRATION = False
+        is_datasets_available = lambda: False
+        ProvenanceLogger = None
+        DatasetsManager = None
+
 
 class GitHubCLICache(BaseAPICache):
     """Cache adapter for GitHub CLI operations."""
@@ -73,6 +95,20 @@ class GitHubCLIIntegration(BaseCLIWrapper):
             cache: Custom cache instance (creates new if None)
             **kwargs: Additional arguments for BaseCLIWrapper
         """
+        # Initialize datasets integration for PR/issue tracking
+        self._provenance_logger = None
+        self._datasets_manager = None
+        if HAVE_DATASETS_INTEGRATION and is_datasets_available():
+            try:
+                self._provenance_logger = ProvenanceLogger()
+                self._datasets_manager = DatasetsManager({
+                    'enable_audit': True,
+                    'enable_provenance': True
+                })
+                logger.info("GitHub CLI integration using datasets integration for PR/issue tracking")
+            except Exception as e:
+                logger.debug(f"Datasets integration initialization skipped: {e}")
+        
         if cache is None:
             cache = GitHubCLICache()
             register_cache("github_cli", cache)

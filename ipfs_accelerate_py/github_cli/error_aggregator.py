@@ -28,6 +28,36 @@ except ImportError:
         except ImportError:
             HAVE_STORAGE_WRAPPER = False
 
+# Try to import datasets integration for error logging
+try:
+    from ...datasets_integration import (
+        is_datasets_available,
+        ProvenanceLogger,
+        DatasetsManager
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except ImportError:
+    try:
+        from ..datasets_integration import (
+            is_datasets_available,
+            ProvenanceLogger,
+            DatasetsManager
+        )
+        HAVE_DATASETS_INTEGRATION = True
+    except ImportError:
+        try:
+            from datasets_integration import (
+                is_datasets_available,
+                ProvenanceLogger,
+                DatasetsManager
+            )
+            HAVE_DATASETS_INTEGRATION = True
+        except ImportError:
+            HAVE_DATASETS_INTEGRATION = False
+            is_datasets_available = lambda: False
+            ProvenanceLogger = None
+            DatasetsManager = None
+
 if HAVE_STORAGE_WRAPPER:
     try:
         _storage = get_storage_wrapper(auto_detect_ci=True)
@@ -70,10 +100,24 @@ class ErrorAggregator:
             min_error_count: Minimum occurrences before creating an issue
             enable_auto_issue_creation: Whether to automatically create issues
         """
-        # Initialize storage wrapper
-        if storage_wrapper:
+        # Initialize datasets integration for error logging
+        self._provenance_logger = None
+        self._datasets_manager = None
+        if HAVE_DATASETS_INTEGRATION and is_datasets_available():
             try:
-                self.storage = storage_wrapper()
+                self._provenance_logger = ProvenanceLogger()
+                self._datasets_manager = DatasetsManager({
+                    'enable_audit': True,
+                    'enable_provenance': True
+                })
+                logger.info("Error aggregator using datasets integration for error tracking")
+            except Exception as e:
+                logger.debug(f"Datasets integration initialization skipped: {e}")
+        
+        # Initialize storage wrapper
+        if _storage:
+            try:
+                self.storage = _storage
             except:
                 self.storage = None
         else:

@@ -25,6 +25,28 @@ except ImportError:
         def get_storage_wrapper(*args, **kwargs):
             return None
 
+# Try to import datasets integration for provenance tracking
+try:
+    from .datasets_integration import (
+        is_datasets_available,
+        DatasetsManager,
+        ProvenanceLogger
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except ImportError:
+    try:
+        from datasets_integration import (
+            is_datasets_available,
+            DatasetsManager,
+            ProvenanceLogger
+        )
+        HAVE_DATASETS_INTEGRATION = True
+    except ImportError:
+        HAVE_DATASETS_INTEGRATION = False
+        is_datasets_available = lambda: False
+        DatasetsManager = None
+        ProvenanceLogger = None
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -61,6 +83,20 @@ class DatabaseHandler:
             db_path: Path to DuckDB database file. If None, uses BENCHMARK_DB_PATH
                     environment variable or default path ./benchmark_db.duckdb
         """
+        # Initialize datasets integration for provenance tracking
+        self._provenance_logger = None
+        self._datasets_manager = None
+        if HAVE_DATASETS_INTEGRATION and is_datasets_available():
+            try:
+                self._provenance_logger = ProvenanceLogger()
+                self._datasets_manager = DatasetsManager({
+                    'enable_audit': True,
+                    'enable_provenance': True
+                })
+                logger.info("Database handler using datasets integration for provenance tracking")
+            except Exception as e:
+                logger.debug(f"Datasets integration initialization skipped: {e}")
+        
         # Initialize storage wrapper for distributed storage
         self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
         
@@ -81,6 +117,17 @@ class DatabaseHandler:
             # Connect to DuckDB database
             self.con = duckdb.connect(self.db_path)
             logger.info(f"Connected to DuckDB database at: {self.db_path}")
+            
+            # Log database connection event
+            if self._datasets_manager:
+                try:
+                    self._datasets_manager.log_event(
+                        "database_connected",
+                        {"db_path": self.db_path, "type": "duckdb"},
+                        level="INFO"
+                    )
+                except Exception as e:
+                    logger.debug(f"Event logging failed: {e}")
             
             # Try to store database path in distributed storage for backup
             if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
@@ -203,6 +250,23 @@ class DatabaseHandler:
             ])
             
             logger.debug(f"Stored acceleration result for {model_name} in database")
+            
+            # Track provenance for acceleration result
+            if self._provenance_logger:
+                try:
+                    self._provenance_logger.log_transformation(
+                        operation="acceleration_result_stored",
+                        data={
+                            "run_id": run_id,
+                            "model_name": model_name,
+                            "acceleration_type": acceleration_type,
+                            "success": success,
+                            "execution_time_ms": execution_time_ms
+                        }
+                    )
+                except Exception as e:
+                    logger.debug(f"Provenance logging failed: {e}")
+            
             return True
         except Exception as e:
             logger.error(f"Error storing acceleration result: {e}")

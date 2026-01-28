@@ -170,6 +170,14 @@ setup(
 			"flask-cors>=4.0.0",
 			"werkzeug>=3.0.0",
 		],
+		"datasets": [
+			# Distributed dataset manipulation via ipfs_datasets_py
+			# Note: ipfs_datasets_py is available as a git submodule at external/ipfs_datasets_py
+			# This extra provides dependencies needed for ipfs_datasets_py integration
+			"reportlab>=3.6.0",  # For PDF processing
+			"beautifulsoup4>=4.12.0",  # For web scraping
+			"lxml>=4.9.0",  # For HTML/XML parsing
+		],
 		"all": [
 			# Include all dependencies from full, testing, webnn, viz, mcp
 			"torch>=2.1",
