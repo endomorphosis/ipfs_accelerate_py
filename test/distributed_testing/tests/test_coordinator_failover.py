@@ -207,12 +207,15 @@ class FailoverSimulator:
                 
         return status
     
-    async def find_leader(self):
-        """Find the current leader in the cluster."""
-        status = await self.get_cluster_status()
-        for node in status:
-            if node.get("status") == "running" and node.get("role") == "LEADER":
-                return node
+    async def find_leader(self, timeout: float = 20.0, interval: float = 1.0):
+        """Find the current leader in the cluster, polling until timeout."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            status = await self.get_cluster_status()
+            for node in status:
+                if node.get("status") == "running" and node.get("role") == "LEADER":
+                    return node
+            await anyio.sleep(interval)
         return None
         
     async def add_worker(self, worker_id, host="worker-host", port=9000):
