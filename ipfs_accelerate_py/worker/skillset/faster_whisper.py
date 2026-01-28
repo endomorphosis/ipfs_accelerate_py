@@ -13,24 +13,27 @@ from io import BytesIO
 import datetime
 
 try:
-    from ..common.storage_wrapper import storage_wrapper
-except (ImportError, ValueError):
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
     try:
-        from common.storage_wrapper import storage_wrapper
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        storage_wrapper = None
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
 
 tmp_model_dir = "/storage/cloudkit-models/faster-whisper-large-v3@hf/"
 
 class hf_faster_whisper():
 	def __init__(self, resources, meta):
-		if storage_wrapper:
+		if HAVE_STORAGE_WRAPPER:
 			try:
-				self.storage = storage_wrapper()
-			except:
-				self.storage = None
+				self._storage = get_storage_wrapper(auto_detect_ci=True)
+			except Exception:
+				self._storage = None
 		else:
-			self.storage = None
+			self._storage = None
 		self.model = WhisperModel(resources['checkpoint'], device="cuda", compute_type="float16")
 		self.nlp = pysbd.Segmenter(language="en", clean=False)
 		self.encoding = tiktoken.get_encoding("cl100k_base")
@@ -42,12 +45,12 @@ class hf_faster_whisper():
 		self.faster_whisper = self.runWhisper
 		header_path = os.path.join(resources['checkpoint'], "header.bin")
 		try:
-			if self.storage:
-				self.header = self.storage.read_file(header_path, pin=True)
+			if self._storage and self._storage.is_distributed:
+				self.header = self._storage.read_file(header_path)
 			else:
 				with open(header_path, "rb") as f:
 					self.header = f.read()
-		except:
+		except Exception:
 			with open(header_path, "rb") as f:
 				self.header = f.read()
 
@@ -74,11 +77,15 @@ class hf_faster_whisper():
 		self.chunks.clear()
 		self.transcription = ""
 		try:
-			if self.storage and hasattr(self, 'file_path'):
-				self.storage.remove_file(self.file_path)
-			elif hasattr(self, 'file_path') and os.path.exists(self.file_path):
+			if self._storage and self._storage.is_distributed and hasattr(self, 'file_path'):
+				try:
+					self._storage.remove_file(self.file_path)
+				except Exception:
+					pass
+			# Always try local cleanup
+			if hasattr(self, 'file_path') and os.path.exists(self.file_path):
 				os.remove(self.file_path)
-		except:
+		except Exception:
 			if hasattr(self, 'file_path') and os.path.exists(self.file_path):
 				os.remove(self.file_path)
 
@@ -255,12 +262,12 @@ class hf_faster_whisper():
 	def test5(self):
 		this_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "base64ogg.txt")
 		try:
-			if self.storage:
-				base64 = self.storage.read_file(this_file, pin=False).decode('utf-8')
+			if self._storage and self._storage.is_distributed:
+				base64 = self._storage.read_file(this_file).decode('utf-8')
 			else:
 				with open(this_file, "r") as file:
 					base64 = file.read()
-		except:
+		except Exception:
 			with open(this_file, "r") as file:
 				base64 = file.read()
 		fragment = " "

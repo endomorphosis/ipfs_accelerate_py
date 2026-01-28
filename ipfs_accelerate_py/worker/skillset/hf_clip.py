@@ -8,12 +8,15 @@ import os
 import numpy as np
 
 try:
-    from ..common.storage_wrapper import storage_wrapper
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
 except (ImportError, ValueError):
     try:
-        from common.storage_wrapper import storage_wrapper
-    except ImportError:
-        storage_wrapper = None
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except (ImportError, ValueError):
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
 
 def load_image(image_file):
     """
@@ -74,13 +77,13 @@ class hf_clip:
         Returns:
             None
         """
-        if storage_wrapper:
+        if HAVE_STORAGE_WRAPPER:
             try:
-                self.storage = storage_wrapper()
-            except:
-                self.storage = None
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
         else:
-            self.storage = None
+            self._storage = None
         
         self.resources = resources
         self.metadata = metadata if metadata else {}

@@ -16,12 +16,15 @@ from TTS.utils.generic_utils import get_user_data_dir
 from TTS.utils.manage import ModelManager
 
 try:
-    from ...common.storage_wrapper import storage_wrapper
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
 except (ImportError, ValueError):
     try:
-        from common.storage_wrapper import storage_wrapper
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        storage_wrapper = None
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
 
 torch.set_num_threads(int(os.environ.get("NUM_THREADS", os.cpu_count())))
 device = torch.device("cuda" if os.environ.get("USE_CPU", "0") == "0" else "cpu")
@@ -50,25 +53,19 @@ class coqui_tts_kit:
         self.tts = self.tts
         self.stream_tts = self.stream_tts
         
-        if storage_wrapper:
+        if HAVE_STORAGE_WRAPPER:
             try:
-                self.storage = storage_wrapper()
-            except:
-                self.storage = None
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
         else:
-            self.storage = None
+            self._storage = None
         
         header_path = os.path.join(os.path.dirname(__file__), "test", "assets", "header.bin")
-        if self.storage:
+        if self._storage and self._storage.is_distributed:
             try:
-                cached_header = self.storage.get_file(header_path)
-                if cached_header:
-                    self.header = cached_header
-                else:
-                    with open(header_path, "rb") as f:
-                        self.header = f.read()
-                    self.storage.store_file(header_path, self.header, pin=True)
-            except:
+                self.header = self._storage.read_file(header_path)
+            except Exception:
                 with open(header_path, "rb") as f:
                     self.header = f.read()
         else:
@@ -85,18 +82,14 @@ class coqui_tts_kit:
             print("Loading custom model from", model_path, flush=True)
             self.config = XttsConfig()
             config_path = os.path.join(model_path, "config.json")
-            if self.storage:
+            if self._storage and self._storage.is_distributed:
                 try:
-                    cached_config = self.storage.get_file(config_path)
+                    cached_config = self._storage.read_file(config_path)
                     if cached_config:
                         import json
-                        config_data = json.loads(cached_config)
+                        config_data = json.loads(cached_config.decode('utf-8'))
                         self.config.load_json(config_path)
-                    else:
-                        self.config.load_json(config_path)
-                        with open(config_path, 'r') as f:
-                            self.storage.store_file(config_path, f.read(), pin=True)
-                except:
+                except Exception:
                     self.config.load_json(config_path)
             else:
                 self.config.load_json(config_path)
@@ -127,18 +120,14 @@ class coqui_tts_kit:
                 pass
             self.config = XttsConfig()
             config_path = os.path.join(model_path, "config.json")
-            if self.storage:
+            if self._storage and self._storage.is_distributed:
                 try:
-                    cached_config = self.storage.get_file(config_path)
+                    cached_config = self._storage.read_file(config_path)
                     if cached_config:
                         import json
-                        config_data = json.loads(cached_config)
+                        config_data = json.loads(cached_config.decode('utf-8'))
                         self.config.load_json(config_path)
-                    else:
-                        self.config.load_json(config_path)
-                        with open(config_path, 'r') as f:
-                            self.storage.store_file(config_path, f.read(), pin=True)
-                except:
+                except Exception:
                     self.config.load_json(config_path)
             else:
                 self.config.load_json(config_path)
