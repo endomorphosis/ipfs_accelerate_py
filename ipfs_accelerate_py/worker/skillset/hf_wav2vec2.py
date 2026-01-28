@@ -10,12 +10,15 @@ import gc
 from pydub import AudioSegment
 
 try:
-    from ..common.storage_wrapper import storage_wrapper
-except (ImportError, ValueError):
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
     try:
-        from common.storage_wrapper import storage_wrapper
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        storage_wrapper = None
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
 # from datasets import Dataset, Audio
 
 def load_audio(audio_file):
@@ -80,13 +83,13 @@ class hf_wav2vec2:
             resources: Dictionary of resource modules (torch, transformers, etc.)
             metadata: Additional metadata for the model
         """
-        if storage_wrapper:
+        if HAVE_STORAGE_WRAPPER:
             try:
-                self.storage = storage_wrapper()
-            except:
-                self.storage = None
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
         else:
-            self.storage = None
+            self._storage = None
         
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}

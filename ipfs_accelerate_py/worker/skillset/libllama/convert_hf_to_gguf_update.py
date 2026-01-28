@@ -38,15 +38,23 @@ from enum import IntEnum, auto
 from transformers import AutoTokenizer
 
 try:
-    from .....common.storage_wrapper import StorageWrapper
-    DISTRIBUTED_STORAGE_AVAILABLE = True
+    from .....common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
 except ImportError:
     try:
-        from ....common.storage_wrapper import StorageWrapper
-        DISTRIBUTED_STORAGE_AVAILABLE = True
+        from ....common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        DISTRIBUTED_STORAGE_AVAILABLE = False
-        StorageWrapper = None
+        try:
+            from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
 
 if DISTRIBUTED_STORAGE_AVAILABLE:
     try:

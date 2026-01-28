@@ -17,12 +17,12 @@ import json
 import hashlib
 
 try:
-    from ..common.storage_wrapper import storage_wrapper
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
 except (ImportError, ValueError):
     try:
-        from common.storage_wrapper import storage_wrapper
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        storage_wrapper = None
+        HAVE_STORAGE_WRAPPER = False
 
 try:
     from ipfs_multiformats import ipfs_multiformats_py
@@ -93,13 +93,13 @@ class worker_py:
         self.get_model_type = self.get_model_type
 
         # Initialize storage wrapper
-        if storage_wrapper:
+        if HAVE_STORAGE_WRAPPER:
             try:
-                self.storage = storage_wrapper()
-            except:
-                self.storage = None
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
         else:
-            self.storage = None
+            self._storage = None
 
         self.hardware_backends = ["llama_cpp", "qualcomm", "apple", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor", "webnn"]
         # self.hwtest = self.test_ipfs_accelerate

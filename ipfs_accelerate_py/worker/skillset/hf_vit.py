@@ -10,12 +10,15 @@ from typing import Tuple, Callable, Dict, Any, Optional, Union, List
 import logging
 
 try:
-    from ..common.storage_wrapper import storage_wrapper
-except (ImportError, ValueError):
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
     try:
-        from common.storage_wrapper import storage_wrapper
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        storage_wrapper = None
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -33,13 +36,13 @@ class hf_vit:
             resources (dict, optional): Resource dictionary containing dependencies
             metadata (dict, optional): Metadata dictionary
         """
-        if storage_wrapper:
+        if HAVE_STORAGE_WRAPPER:
             try:
-                self.storage = storage_wrapper()
-            except:
-                self.storage = None
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
         else:
-            self.storage = None
+            self._storage = None
         
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
