@@ -15,23 +15,23 @@ from pathlib import Path
 from ..common.base_cache import BaseAPICache
 
 try:
-    from ...common.storage_wrapper import StorageWrapper
-    DISTRIBUTED_STORAGE_AVAILABLE = True
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
 except ImportError:
     try:
-        from ..common.storage_wrapper import StorageWrapper
-        DISTRIBUTED_STORAGE_AVAILABLE = True
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        DISTRIBUTED_STORAGE_AVAILABLE = False
-        StorageWrapper = None
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
 
-if DISTRIBUTED_STORAGE_AVAILABLE:
+if HAVE_STORAGE_WRAPPER:
     try:
-        storage = StorageWrapper()
-    except:
-        storage = None
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
 else:
-    storage = None
+    _storage = None
 
 logger = logging.getLogger(__name__)
 
