@@ -16,6 +16,29 @@ else:
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.github_tools")
 
+# Try to import datasets integration for GitHub operation tracking
+try:
+    from ...datasets_integration import (
+        is_datasets_available,
+        ProvenanceLogger,
+        DatasetsManager
+    )
+    HAVE_DATASETS_INTEGRATION = True
+    # Initialize global instances
+    _provenance_logger = None
+    _datasets_manager = None
+    if is_datasets_available():
+        try:
+            _provenance_logger = ProvenanceLogger()
+            _datasets_manager = DatasetsManager({'enable_audit': True, 'enable_provenance': True})
+            logger.info("MCP GitHub tools using datasets integration")
+        except Exception as e:
+            logger.debug(f"Datasets integration initialization failed: {e}")
+except ImportError:
+    HAVE_DATASETS_INTEGRATION = False
+    _provenance_logger = None
+    _datasets_manager = None
+
 
 def register_tools(mcp: Any) -> None:
     """

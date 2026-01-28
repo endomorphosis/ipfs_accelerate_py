@@ -13,6 +13,28 @@ from .base_cache import BaseAPICache
 
 logger = logging.getLogger(__name__)
 
+# Try to import datasets integration for Docker operation tracking
+try:
+    from ..datasets_integration import (
+        is_datasets_available,
+        ProvenanceLogger,
+        DatasetsManager
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except ImportError:
+    try:
+        from datasets_integration import (
+            is_datasets_available,
+            ProvenanceLogger,
+            DatasetsManager
+        )
+        HAVE_DATASETS_INTEGRATION = True
+    except ImportError:
+        HAVE_DATASETS_INTEGRATION = False
+        is_datasets_available = lambda: False
+        ProvenanceLogger = None
+        DatasetsManager = None
+
 
 class DockerAPICache(BaseAPICache):
     """
