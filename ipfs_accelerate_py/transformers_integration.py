@@ -2,6 +2,7 @@
 
 import os
 import logging
+import tempfile
 from typing import Dict, Any, Optional, List, Union
 
 # Import the modified ipfs_transformers_py
@@ -39,6 +40,15 @@ except ImportError:
     HAS_IPFS_KIT = False
     logging.warning("ipfs_kit_py not available. IPFS functionality will be limited.")
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper
+    HAS_STORAGE_WRAPPER = True
+except ImportError:
+    HAS_STORAGE_WRAPPER = False
+    get_storage_wrapper = None
+    logging.debug("Storage wrapper not available for transformers integration")
+
 
 # Create a simple implementation of IPFSKitBridge if the real one doesn't exist
 class IPFSKitBridge:
@@ -48,6 +58,18 @@ class IPFSKitBridge:
         """Initialize the bridge with config."""
         self.config = config or {}
         self.ipfs_api = None
+        self._storage_wrapper = None
+
+        # Initialize storage wrapper for distributed filesystem (with gating)
+        if HAS_STORAGE_WRAPPER:
+            try:
+                self._storage_wrapper = get_storage_wrapper(auto_detect_ci=True)
+                if self._storage_wrapper.is_distributed:
+                    logging.info("Transformers bridge using distributed storage backend")
+                else:
+                    logging.debug("Transformers bridge using local filesystem")
+            except Exception as e:
+                logging.debug(f"Storage wrapper initialization skipped: {e}")
 
         if HAS_IPFS_KIT:
             try:
@@ -62,7 +84,26 @@ class IPFSKitBridge:
                 logging.error(f"Failed to initialize IPFS API: {e}")
 
     def get_from_ipfs(self, cid: str, output_dir: Optional[str] = None) -> Dict[str, Any]:
-        """Get content from IPFS by CID."""
+        """Get content from IPFS by CID (with distributed storage integration)."""
+        # Try storage wrapper first if available
+        if self._storage_wrapper and self._storage_wrapper.is_distributed:
+            try:
+                data = self._storage_wrapper.read_file(cid)
+                if data:
+                    # Create output directory and write file
+                    if output_dir is None:
+                        output_dir = tempfile.mkdtemp()
+                    
+                    output_path = os.path.join(output_dir, "content")
+                    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+                    with open(output_path, 'wb') as f:
+                        f.write(data)
+                    
+                    return {"success": True, "path": output_path, "source": "distributed_storage"}
+            except Exception as e:
+                logging.debug(f"Failed to get from distributed storage: {e}")
+        
+        # Try IPFS API fallback
         if not HAS_IPFS_KIT or not self.ipfs_api:
             return {"success": False, "error": "IPFS functionality not available"}
 
@@ -74,13 +115,29 @@ class IPFSKitBridge:
             # Download from IPFS
             path = self.ipfs_api.get_to_file(cid, output_dir)
 
-            return {"success": True, "path": path}
+            return {"success": True, "path": path, "source": "ipfs_api"}
         except Exception as e:
             logging.error(f"Error getting model from IPFS: {e}")
             return {"success": False, "error": str(e)}
 
     def add_to_ipfs(self, path: str) -> Dict[str, Any]:
-        """Add content to IPFS."""
+        """Add content to IPFS (with distributed storage integration)."""
+        # Try storage wrapper first if available
+        if self._storage_wrapper and self._storage_wrapper.is_distributed:
+            try:
+                if os.path.isfile(path):
+                    with open(path, 'rb') as f:
+                        data = f.read()
+                    cid = self._storage_wrapper.write_file(
+                        data,
+                        filename=os.path.basename(path),
+                        pin=True
+                    )
+                    return {"success": True, "cid": cid, "source": "distributed_storage"}
+            except Exception as e:
+                logging.debug(f"Failed to add to distributed storage: {e}")
+        
+        # Try IPFS API fallback
         if not HAS_IPFS_KIT or not self.ipfs_api:
             return {"success": False, "error": "IPFS functionality not available"}
 
@@ -90,7 +147,7 @@ class IPFSKitBridge:
             else:
                 cid = self.ipfs_api.add_file(path)
 
-            return {"success": True, "cid": cid}
+            return {"success": True, "cid": cid, "source": "ipfs_api"}
         except Exception as e:
             logging.error(f"Error adding to IPFS: {e}")
             return {"success": False, "error": str(e)}
