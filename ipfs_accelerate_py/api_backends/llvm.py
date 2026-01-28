@@ -24,6 +24,17 @@ import requests
 from concurrent.futures import Future
 from typing import Any, Dict, List, Optional, Union, Tuple, Callable
 
+# Try to import storage wrapper
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -118,6 +129,16 @@ class LlvmClient:
         self.request_tracking = True
         self.recent_requests = {}
         self.recent_requests_lock = threading.RLock()
+        
+        # Initialize distributed storage
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage:
+                    logger.info("LLVM: Distributed storage initialized")
+            except Exception as e:
+                logger.debug(f"LLVM: Could not initialize storage: {e}")
         
         # Start the queue processing thread if queue is enabled
         if self.queue_enabled:
@@ -1284,8 +1305,22 @@ class llvm:
             
             # Load model list if it exists
             if os.path.exists(model_list_path):
-                with open(model_list_path, 'r') as f:
-                    models = json.load(f)
+                # Try distributed storage first
+                models = None
+                if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                    try:
+                        cache_key = "llvm_model_list"
+                        data = self._storage.read_file(cache_key)
+                        if data:
+                            models = json.loads(data)
+                            logger.debug("Loaded LLVM model list from distributed storage")
+                    except Exception as e:
+                        logger.debug(f"Failed to read from distributed storage: {e}")
+                
+                # Fall back to local filesystem
+                if models is None:
+                    with open(model_list_path, 'r') as f:
+                        models = json.load(f)
                 
                 # Process models for batching support
                 for model in models:
@@ -1323,6 +1358,17 @@ class llvm:
                     }
                 ]
                 
+                # Try distributed storage first
+                if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                    try:
+                        cache_key = "llvm_model_list"
+                        data = json.dumps(default_models, indent=2)
+                        self._storage.write_file(data, cache_key, pin=True)
+                        logger.debug("Saved LLVM model list to distributed storage")
+                    except Exception as e:
+                        logger.debug(f"Failed to write to distributed storage: {e}")
+                
+                # Always maintain local filesystem
                 with open(model_list_path, 'w') as f:
                     json.dump(default_models, f, indent=2)
         except Exception as e:
@@ -1654,8 +1700,22 @@ class llvm:
             )
             
             if os.path.exists(model_list_path):
-                with open(model_list_path, 'r') as f:
-                    models = json.load(f)
+                # Try distributed storage first
+                models = None
+                if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                    try:
+                        cache_key = "llvm_model_list"
+                        data = self._storage.read_file(cache_key)
+                        if data:
+                            models = json.loads(data)
+                            logger.debug("Loaded LLVM model list from distributed storage for compatibility check")
+                    except Exception as e:
+                        logger.debug(f"Failed to read from distributed storage: {e}")
+                
+                # Fall back to local filesystem
+                if models is None:
+                    with open(model_list_path, 'r') as f:
+                        models = json.load(f)
                 
                 # Check if model is in list
                 for model in models:

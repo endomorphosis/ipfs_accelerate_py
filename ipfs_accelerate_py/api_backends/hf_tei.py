@@ -15,6 +15,17 @@ from concurrent.futures import ThreadPoolExecutor
 
 import logging
 
+# Try to import storage wrapper
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 class hf_tei:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
@@ -99,6 +110,18 @@ class hf_tei:
         
         # Initialize thread pool for async processing
         self.thread_pool = ThreadPoolExecutor(max_workers=10)
+
+        # Initialize distributed storage
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage:
+                    import logging
+                    logging.getLogger(__name__).info("HF TEI: Distributed storage initialized")
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"HF TEI: Could not initialize storage: {e}")
 
     def _get_api_token(self):
         """Get Hugging Face API token from metadata or environment"""

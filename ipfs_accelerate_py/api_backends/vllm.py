@@ -5,6 +5,17 @@ import requests
 import json
 from typing import Dict, List, Optional, Union, Any, Callable
 
+# Try to import storage wrapper
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 
 class _AnyioQueue:
     def __init__(self, max_items: int = 0):
@@ -75,6 +86,19 @@ class llvm:
         self.registered_models = {}
         # Add queue for managing requests
         self.request_queue: _AnyioQueue = _AnyioQueue(max_items=64)
+        
+        # Initialize distributed storage
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage:
+                    import logging
+                    logging.getLogger(__name__).info("vLLM: Distributed storage initialized")
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"vLLM: Could not initialize storage: {e}")
+        
         return None
     
     def init(self, endpoint_url=None, api_key=None, model_name=None, endpoint_type="completion"):
