@@ -7,6 +7,7 @@ Tools are organized by functionality into separate modules.
 
 import importlib
 import logging
+import os
 import sys
 from typing import Any, Dict, List, Optional, Set, cast
 
@@ -26,15 +27,15 @@ def _log_optional_dependency(message: str) -> None:
 
 # Try imports with fallbacks
 try:
-    from mcp.server.fastmcp import FastMCP
+    if _is_pytest():
+        raise ImportError("Using mock MCP under pytest")
+    from fastmcp import FastMCP
 except ImportError:
+    # Fall back to mock implementation
     try:
-        from fastmcp import FastMCP
+        from .mock_mcp import FastMCP
     except ImportError:
-        # Fall back to mock implementation
-        from mcp.mock_mcp import FastMCP
-
-import os
+        from mock_mcp import FastMCP
 
 # Try to import ipfs_kit_py (tolerate any import error) and allow disabling via env
 try:
@@ -86,7 +87,10 @@ except Exception as e:
     _log_optional_dependency(f"ipfs_kit_py not available or failed to import ({e!s}). Using mock implementations.")
 
 # Import the mock IPFS client
-from mcp.tools.mock_ipfs import MockIPFSClient
+try:
+    from .mock_ipfs import MockIPFSClient
+except ImportError:
+    from mock_ipfs import MockIPFSClient
 
 
 def register_all_tools(mcp: FastMCP) -> None:

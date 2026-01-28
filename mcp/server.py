@@ -54,16 +54,18 @@ except Exception:
 # Try imports with fallbacks
 try:
     # Try to import FastMCP if available
+    if _is_pytest():
+        raise ImportError("Using mock MCP under pytest")
     from fastmcp import FastMCP, Context
     fastmcp_available = True
 except ImportError:
     # Fall back to mock implementation if FastMCP is not available
-    from mcp.mock_mcp import FastMCP, Context
+    from .mock_mcp import FastMCP, Context
     fastmcp_available = False
     _log_optional_dependency("FastMCP import failed, falling back to mock implementation")
 
 # Import the IPFS context
-from mcp.types import IPFSAccelerateContext
+from .types import IPFSAccelerateContext
 
 # Try to import ipfs_kit_py (be tolerant to any import error)
 try:
