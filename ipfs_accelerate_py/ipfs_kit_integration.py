@@ -117,22 +117,25 @@ class IPFSKitStorage:
                 sys.path.insert(0, str(ipfs_kit_path))
                 logger.debug(f"Added ipfs_kit_py path: {ipfs_kit_path}")
             
-            # Try to import ipfs_kit_py modules
-            from ipfs_kit_py.backends import BackendAdapter, FilesystemBackendAdapter
-            from ipfs_kit_py.mcp.ipfs_kit.vfs import VirtualFileSystem
+            # Try to import ipfs_kit_py modules directly (avoid backends/__init__.py due to missing synapse_storage)
+            from ipfs_kit_py.backends.base_adapter import BackendAdapter
+            from ipfs_kit_py.backends.filesystem_backend import FilesystemBackendAdapter
+            from ipfs_kit_py.backends.ipfs_backend import IPFSBackendAdapter
             
             # Initialize the client with local-first configuration
-            logger.info("Successfully imported ipfs_kit_py modules")
+            logger.info("Successfully imported ipfs_kit_py modules from known_good branch")
             
             # Create a simple client wrapper
             self.ipfs_kit_client = {
                 'vfs': None,  # Will be initialized on first use
                 'backend_adapter': FilesystemBackendAdapter,
+                'ipfs_backend': IPFSBackendAdapter,
+                'base_adapter': BackendAdapter,
                 'available': True
             }
             
             self.using_fallback = False
-            logger.info("IPFS Kit integration enabled successfully")
+            logger.info("IPFS Kit integration enabled successfully (known_good branch)")
             
         except ImportError as e:
             logger.warning(
