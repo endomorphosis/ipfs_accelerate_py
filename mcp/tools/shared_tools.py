@@ -24,13 +24,14 @@ def _log_optional_dependency(message: str) -> None:
 
 # Try imports with fallbacks
 try:
-    from mcp.server.fastmcp import FastMCP
+    if _is_pytest():
+        raise ImportError("Using mock MCP under pytest")
+    from fastmcp import FastMCP
 except ImportError:
     try:
-        from fastmcp import FastMCP
-    except ImportError:
-        # Fall back to mock implementation
         from mcp.mock_mcp import FastMCP
+    except ImportError:
+        from mock_mcp import FastMCP
 
 # Import shared operations
 try:

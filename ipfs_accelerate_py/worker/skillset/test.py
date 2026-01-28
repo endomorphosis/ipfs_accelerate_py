@@ -6,6 +6,23 @@ import nncf
 import openvino as ov
 import gc
 
+# Try to import storage wrapper with comprehensive fallback
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+            def get_storage_wrapper(*args, **kwargs):
+                return None
+
+# Initialize storage wrapper at module level
+_storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
+
 core = ov.Core()
 
 from transformers import AutoProcessor, AutoConfig

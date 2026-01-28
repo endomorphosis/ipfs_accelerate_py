@@ -1,9 +1,41 @@
 import os
 import yaml
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
+
 class chat_format:
 	def __init__(self, resources, meta=None):
-		with open(os.path.join(os.path.dirname(__file__), 'templates.yml')) as f:
+		template_path = os.path.join(os.path.dirname(__file__), 'templates.yml')
+		
+		# Try distributed storage first
+		if _storage and _storage.is_distributed:
+			try:
+				content = _storage.read_file(template_path)
+				if content:
+					self.templates = yaml.load(content, Loader=yaml.Loader)
+					return
+			except Exception:
+				pass
+		
+		# Fallback to local filesystem
+		with open(template_path) as f:
 			self.templates = yaml.load(f, Loader=yaml.Loader)
 
 	def format_chat_prompt(self, template, messages):

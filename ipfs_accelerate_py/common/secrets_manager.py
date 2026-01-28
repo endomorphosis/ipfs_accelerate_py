@@ -11,6 +11,25 @@ import os
 from pathlib import Path
 from typing import Dict, Optional
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -42,6 +61,15 @@ class SecretsManager:
         self.use_encryption = use_encryption
         self._credentials: Dict[str, str] = {}
         
+        # Initialize storage wrapper
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         # Set default secrets file location
         if secrets_file is None:
             secrets_dir = Path.home() / ".ipfs_accelerate"
@@ -68,19 +96,60 @@ class SecretsManager:
                 # Try to load key from environment or key file
                 key_file = Path(self.secrets_file).parent / "secrets.key"
                 
-                if key_file.exists():
-                    with open(key_file, 'rb') as f:
-                        encryption_key = f.read()
-                elif 'IPFS_ACCELERATE_SECRETS_KEY' in os.environ:
-                    encryption_key = os.environ['IPFS_ACCELERATE_SECRETS_KEY'].encode()
+                # Try distributed storage first
+                if self.storage:
+                    try:
+                        cached_key = self.storage.get_file(str(key_file))
+                        if cached_key:
+                            encryption_key = cached_key.encode() if isinstance(cached_key, str) else cached_key
+                        elif key_file.exists():
+                            with open(key_file, 'rb') as f:
+                                encryption_key = f.read()
+                            # Cache the key (pinned as it's important)
+                            self.storage.store_file(str(key_file), encryption_key, pin=True)
+                        elif 'IPFS_ACCELERATE_SECRETS_KEY' in os.environ:
+                            encryption_key = os.environ['IPFS_ACCELERATE_SECRETS_KEY'].encode()
+                        else:
+                            # Generate new key
+                            encryption_key = Fernet.generate_key()
+                            # Save key securely
+                            with open(key_file, 'wb') as f:
+                                f.write(encryption_key)
+                            os.chmod(key_file, 0o600)  # Secure permissions
+                            # Store in distributed cache
+                            self.storage.store_file(str(key_file), encryption_key, pin=True)
+                            logger.info(f"Generated new encryption key at {key_file}")
+                    except:
+                        # Fallback to local filesystem
+                        if key_file.exists():
+                            with open(key_file, 'rb') as f:
+                                encryption_key = f.read()
+                        elif 'IPFS_ACCELERATE_SECRETS_KEY' in os.environ:
+                            encryption_key = os.environ['IPFS_ACCELERATE_SECRETS_KEY'].encode()
+                        else:
+                            # Generate new key
+                            encryption_key = Fernet.generate_key()
+                            # Save key securely
+                            with open(key_file, 'wb') as f:
+                                f.write(encryption_key)
+                            os.chmod(key_file, 0o600)  # Secure permissions
+                            logger.info(f"Generated new encryption key at {key_file}")
                 else:
-                    # Generate new key
-                    encryption_key = Fernet.generate_key()
-                    # Save key securely
-                    with open(key_file, 'wb') as f:
-                        f.write(encryption_key)
-                    os.chmod(key_file, 0o600)  # Secure permissions
-                    logger.info(f"Generated new encryption key at {key_file}")
+                    # Use local filesystem only
+                    if key_file.exists():
+                        with open(key_file, 'rb') as f:
+                            encryption_key = f.read()
+                    elif 'IPFS_ACCELERATE_SECRETS_KEY' in os.environ:
+                        encryption_key = os.environ['IPFS_ACCELERATE_SECRETS_KEY'].encode()
+                    else:
+                        # Generate new key
+                        encryption_key = Fernet.generate_key()
+                        key_b64 = encryption_key
+                        # Save key securely
+                        with open(key_file, 'wb') as f:
+                            f.write(key_b64)
+                        os.chmod(key_file, 0o600)  # Secure permissions
+                        logger.info(f"Generated new encryption key at {key_file}")
             
             self._cipher = Fernet(encryption_key)
             
@@ -99,8 +168,24 @@ class SecretsManager:
             return
         
         try:
-            with open(self.secrets_file, 'rb') as f:
-                data = f.read()
+            # Try distributed storage first
+            if self.storage:
+                try:
+                    cached_data = self.storage.get_file(self.secrets_file)
+                    if cached_data:
+                        data = cached_data.encode() if isinstance(cached_data, str) else cached_data
+                    else:
+                        with open(self.secrets_file, 'rb') as f:
+                            data = f.read()
+                        # Cache secrets file (pinned as important)
+                        self.storage.store_file(self.secrets_file, data, pin=True)
+                except:
+                    # Fallback to local filesystem
+                    with open(self.secrets_file, 'rb') as f:
+                        data = f.read()
+            else:
+                with open(self.secrets_file, 'rb') as f:
+                    data = f.read()
             
             if self.use_encryption and self._cipher:
                 # Decrypt data
@@ -133,6 +218,13 @@ class SecretsManager:
             with open(self.secrets_file, 'wb') as f:
                 f.write(write_data)
             os.chmod(self.secrets_file, 0o600)  # Secure permissions
+            
+            # Update distributed storage
+            if self.storage:
+                try:
+                    self.storage.store_file(self.secrets_file, write_data, pin=True)
+                except:
+                    pass  # Silently fail distributed storage updates
             
             logger.info(f"Saved {len(self._credentials)} secrets to {self.secrets_file}")
             

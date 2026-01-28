@@ -8,10 +8,30 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','sk
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..','..','worker')))
 from chat_format import chat_format
 import worker
+
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
 # from llama_cpp import Llama
 # from worker import TaskAbortion, should_abort
 class llama_cpp_kit:
 	def __init__(self, resources, meta=None):
+		if HAVE_STORAGE_WRAPPER:
+			try:
+				self._storage = get_storage_wrapper(auto_detect_ci=True)
+			except Exception:
+				self._storage = None
+		else:
+			self._storage = None
+		
 		if meta is not None and type(meta) is dict:
 			if "chat_template" in meta:
 				self.chat_template = "openai"

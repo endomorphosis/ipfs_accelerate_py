@@ -20,6 +20,17 @@ from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
 
+# Try to import storage wrapper
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 try:
     # Import the OpenAI API
     import openai
@@ -148,6 +159,16 @@ class openai_api:
                 }
             }
         }
+        
+        # Initialize distributed storage
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage:
+                    logger.info("OpenAI API: Distributed storage initialized")
+            except Exception as e:
+                logger.debug(f"OpenAI API: Could not initialize storage: {e}")
         
         logger.info("Enhanced OpenAI API initialized")
     

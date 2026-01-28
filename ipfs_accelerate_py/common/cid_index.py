@@ -12,6 +12,25 @@ from typing import Any, Dict, List, Optional, Set
 from pathlib import Path
 import json
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -181,11 +200,20 @@ class CIDCacheIndex:
             }
             
             try:
-                with open(filepath, 'w') as f:
-                    json.dump(data, f, indent=2)
+                if self.storage:
+                    json_data = json.dumps(data, indent=2)
+                    self.storage.write_file(str(filepath), json_data.encode('utf-8'), pin=True)
+                else:
+                    with open(filepath, 'w') as f:
+                        json.dump(data, f, indent=2)
                 logger.info(f"✓ Saved CID index to {filepath}")
             except Exception as e:
-                logger.warning(f"Failed to save CID index: {e}")
+                try:
+                    with open(filepath, 'w') as f:
+                        json.dump(data, f, indent=2)
+                    logger.info(f"✓ Saved CID index to {filepath}")
+                except Exception as e2:
+                    logger.warning(f"Failed to save CID index: {e2}")
     
     def load_from_file(self, filepath: Path) -> None:
         """
@@ -198,8 +226,12 @@ class CIDCacheIndex:
             return
         
         try:
-            with open(filepath, 'r') as f:
-                data = json.load(f)
+            if self.storage:
+                json_data = self.storage.read_file(str(filepath), pin=True)
+                data = json.loads(json_data.decode('utf-8'))
+            else:
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
             
             with self._lock:
                 self._cid_to_metadata = data.get("cid_to_metadata", {})
@@ -210,7 +242,20 @@ class CIDCacheIndex:
             
             logger.info(f"✓ Loaded {len(self._cid_to_metadata)} CIDs from {filepath}")
         except Exception as e:
-            logger.warning(f"Failed to load CID index: {e}")
+            try:
+                with open(filepath, 'r') as f:
+                    data = json.load(f)
+                
+                with self._lock:
+                    self._cid_to_metadata = data.get("cid_to_metadata", {})
+                    self._operation_to_cids = defaultdict(set)
+                    
+                    for op, cids in data.get("operation_to_cids", {}).items():
+                        self._operation_to_cids[op] = set(cids)
+                
+                logger.info(f"✓ Loaded {len(self._cid_to_metadata)} CIDs from {filepath}")
+            except Exception as e2:
+                logger.warning(f"Failed to load CID index: {e2}")
 
 
 # Global CID index instance

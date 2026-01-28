@@ -15,6 +15,20 @@ from typing import Dict, List, Any, Optional, Tuple
 
 from fastmcp.client import Client
 
+# Try to import storage wrapper with comprehensive fallback
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+            def get_storage_wrapper(*args, **kwargs):
+                return None
+
 # Constants
 VERIFICATION_RESULTS_PATH = os.path.join(os.path.dirname(__file__), "verification_results.json")
 SERVER_MODULE = "ipfs_accelerate_py.mcp.server"
@@ -32,6 +46,8 @@ class MCPVerifier:
             "prompts": [],
             "errors": []
         }
+        # Initialize storage wrapper
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
     
     def start_server(self) -> bool:
         """Start the MCP server as a subprocess"""
@@ -144,9 +160,22 @@ class MCPVerifier:
     def save_verification_results(self):
         """Save verification results to file"""
         try:
-            with open(VERIFICATION_RESULTS_PATH, 'w') as f:
-                json.dump(self.verification_results, f, indent=2)
-            print(f"\nDetailed verification results saved to: {VERIFICATION_RESULTS_PATH}")
+            results_json = json.dumps(self.verification_results, indent=2)
+            
+            # Try distributed storage first
+            if self._storage:
+                try:
+                    cid = self._storage.write_file(results_json, VERIFICATION_RESULTS_PATH, pin=True)
+                    print(f"\nDetailed verification results saved to distributed storage: {cid}")
+                except Exception as e:
+                    print(f"Distributed storage failed: {e}, using local storage")
+                    with open(VERIFICATION_RESULTS_PATH, 'w') as f:
+                        f.write(results_json)
+                    print(f"\nDetailed verification results saved to: {VERIFICATION_RESULTS_PATH}")
+            else:
+                with open(VERIFICATION_RESULTS_PATH, 'w') as f:
+                    f.write(results_json)
+                print(f"\nDetailed verification results saved to: {VERIFICATION_RESULTS_PATH}")
         except Exception as e:
             print(f"Error saving verification results: {e}")
     

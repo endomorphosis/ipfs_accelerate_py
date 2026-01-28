@@ -17,6 +17,25 @@ from datetime import datetime, timedelta
 from collections import defaultdict
 import threading
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -51,6 +70,15 @@ class ErrorAggregator:
             min_error_count: Minimum occurrences before creating an issue
             enable_auto_issue_creation: Whether to automatically create issues
         """
+        # Initialize storage wrapper
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         self.repo = repo
         self.peer_registry = peer_registry
         self.bundle_interval = timedelta(minutes=bundle_interval_minutes)
@@ -201,8 +229,17 @@ class ErrorAggregator:
             cache_key = f"error-{error_data['signature'][:16]}-{int(time.time())}"
             temp_file = f"/tmp/{cache_key}.json"
             
+            error_json = json.dumps(error_data)
+            
+            # Try distributed storage first
+            if self.storage:
+                try:
+                    self.storage.store_file(temp_file, error_json, pin=False)
+                except:
+                    pass  # Continue with temp file approach
+            
             with open(temp_file, "w") as f:
-                json.dump(error_data, f)
+                f.write(error_json)
             
             # Upload to GitHub Actions cache
             result = subprocess.run(
@@ -277,8 +314,23 @@ class ErrorAggregator:
                     )
                     
                     if download_result.returncode == 0 and os.path.exists(temp_file):
-                        with open(temp_file, "r") as f:
-                            error_data = json.load(f)
+                        # Try distributed storage first
+                        if self.storage:
+                            try:
+                                cached_data = self.storage.get_file(temp_file)
+                                if cached_data:
+                                    error_data = json.loads(cached_data)
+                                else:
+                                    with open(temp_file, "r") as f:
+                                        error_data = json.load(f)
+                                    # Cache for future use
+                                    self.storage.store_file(temp_file, json.dumps(error_data), pin=False)
+                            except:
+                                with open(temp_file, "r") as f:
+                                    error_data = json.load(f)
+                        else:
+                            with open(temp_file, "r") as f:
+                                error_data = json.load(f)
                         
                         # Add to aggregated errors by signature
                         signature = error_data.get("signature")

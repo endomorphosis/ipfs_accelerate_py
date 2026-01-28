@@ -7,6 +7,17 @@ import subprocess
 import platform
 import sys
 
+# Try to import storage wrapper with comprehensive fallback
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 class qualcomm_utils:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
@@ -14,6 +25,8 @@ class qualcomm_utils:
         self.genie_t2t_run_path_linux = "/usr/local/bin/genie-t2t-run"
         self.genie_t2t_run_path_windows = "C:\\Program Files\\genie-t2t-run\\genie-t2t-run.exe"
         self.genie_t25_run_path_android = "/data/local/tmp/genie-t2t-run"
+        # Initialize storage wrapper
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
         return None
     
     def init(self):
@@ -203,6 +216,7 @@ class qualcomm_utils:
         if os.path.isfile(path):
             os.remove(path)
             custom_tokenizer = self.transformers.AutoTokenizer(model.BPE(vocab=tokenizer.get_vocab(), merges=[]))
+            # Note: Original code has logic issues, preserving as-is per requirement
             custom_tokenizer.save(os.path.join(path, "tokenizer.json"))
         else:
             custom_tokenizer = self.transformers.AutoTokenizer(model.BPE(vocab=tokenizer.get_vocab(), merges=[]))

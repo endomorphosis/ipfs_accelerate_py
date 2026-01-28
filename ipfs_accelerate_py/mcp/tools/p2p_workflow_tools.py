@@ -7,20 +7,27 @@ the peer-to-peer network.
 """
 
 import logging
+import os
 import time
 import uuid
 from typing import Dict, List, Any, Optional
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.p2p_workflow")
 
+def _is_pytest() -> bool:
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
 # Try imports with fallbacks
 try:
-    from mcp.server.fastmcp import FastMCP
+    if _is_pytest():
+        raise ImportError("Using mock MCP under pytest")
+    from fastmcp import FastMCP
 except ImportError:
     try:
-        from fastmcp import FastMCP
-    except ImportError:
         from mcp.mock_mcp import FastMCP
+    except ImportError:
+        from ipfs_accelerate_py.mcp.mock_mcp import FastMCP
 
 # Import P2P scheduler components
 try:

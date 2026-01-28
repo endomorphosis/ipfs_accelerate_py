@@ -39,6 +39,14 @@ from pathlib import Path
 from datetime import datetime
 from typing import Dict, Any, List, Optional, Union, Tuple, Type
 
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -78,6 +86,14 @@ class WebNNWebGPUAccelerator:
             headless: Whether to run browsers in headless mode
             enable_ipfs: Whether to enable IPFS acceleration
         """
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
+        else:
+            self._storage = None
+        
         self.db_path = db_path or os.environ.get("BENCHMARK_DB_PATH")
         self.max_connections = max_connections
         self.headless = headless

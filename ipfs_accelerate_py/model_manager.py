@@ -41,6 +41,15 @@ except ImportError:
         except Exception:
             HAVE_IPFS_MULTIFORMATS = False
 
+# Try to import storage wrapper for distributed filesystem
+try:
+    from .common.storage_wrapper import get_storage_wrapper
+    HAVE_STORAGE_WRAPPER = True
+except ImportError:
+    HAVE_STORAGE_WRAPPER = False
+    get_storage_wrapper = None
+    logger.debug("Storage wrapper not available for model manager")
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -331,6 +340,18 @@ class ModelManager:
         self.storage_path = storage_path
         self.models: Dict[str, ModelMetadata] = {}
         
+        # Initialize storage wrapper for distributed filesystem (with gating)
+        self._storage_wrapper = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage_wrapper = get_storage_wrapper(auto_detect_ci=True)
+                if self._storage_wrapper.is_distributed:
+                    logger.info("Model manager using distributed storage backend")
+                else:
+                    logger.debug("Model manager using local filesystem (distributed storage disabled)")
+            except Exception as e:
+                logger.debug(f"Storage wrapper initialization skipped: {e}")
+        
         # Initialize storage backend
         if self.use_database:
             self._init_database()
@@ -529,7 +550,7 @@ class ModelManager:
             logger.error(f"Error saving to database: {e}")
     
     def _save_to_json(self):
-        """Save model metadata to JSON file."""
+        """Save model metadata to JSON file (with distributed storage when available)."""
         try:
             # Convert models to JSON-serializable format
             data = {}
@@ -547,12 +568,34 @@ class ModelManager:
                 
                 data[model_id] = model_dict
             
+            json_str = json.dumps(data, indent=2, default=str)
+            
+            # Try distributed storage first if available
+            if self._storage_wrapper and self._storage_wrapper.is_distributed:
+                try:
+                    filename = os.path.basename(self.json_path)
+                    cid = self._storage_wrapper.write_file(
+                        json_str,
+                        filename=filename,
+                        pin=True  # Pin model metadata
+                    )
+                    logger.info(f"Saved {len(self.models)} models to distributed storage (CID: {cid[:16]}...)")
+                    
+                    # Also save locally for backward compatibility
+                    os.makedirs(os.path.dirname(self.json_path) or '.', exist_ok=True)
+                    with open(self.json_path, 'w') as f:
+                        f.write(json_str)
+                    return
+                except Exception as e:
+                    logger.debug(f"Failed to save to distributed storage, using local: {e}")
+            
+            # Fallback to local filesystem
             # Create directory if it doesn't exist
             os.makedirs(os.path.dirname(self.json_path) or '.', exist_ok=True)
             
             # Write to file
             with open(self.json_path, 'w') as f:
-                json.dump(data, f, indent=2, default=str)
+                f.write(json_str)
             
             logger.info(f"Saved {len(self.models)} models to JSON file")
         except Exception as e:

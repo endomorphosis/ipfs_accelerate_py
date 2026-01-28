@@ -82,6 +82,17 @@ except ImportError:
     SELENIUM_AVAILABLE = False
     logger.warning("selenium package not available, fallback browser automation will be limited")
 
+# Try to import storage wrapper
+try:
+    from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ipfs_accelerate_py.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Constants
 DEFAULT_WEBSOCKET_PORT = 8765
 DEFAULT_HTTP_PORT = 8000
@@ -139,6 +150,16 @@ class BrowserBridge:
         self.results = {}
 
         self._task_group: anyio.abc.TaskGroup | None = None
+        
+        # Initialize distributed storage wrapper
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage and hasattr(self._storage, 'is_distributed'):
+                    logger.info("Distributed storage enabled for Browser Bridge")
+            except Exception as e:
+                logger.debug(f"Failed to initialize storage wrapper: {e}")
         
         # HTML template and other browser resources
         self._init_browser_resources()
@@ -1025,6 +1046,16 @@ class BrowserBridge:
             self.temp_dir = tempfile.mkdtemp()
             self.html_path = os.path.join(self.temp_dir, "index.html")
             
+            # Try to write to distributed storage first
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"browser_html_{self.browser_id}"
+                    self._storage.write_file(html_content, cache_key, pin=False)
+                    logger.debug(f"Saved browser HTML to distributed storage")
+                except Exception as e:
+                    logger.debug(f"Failed to write HTML to distributed storage: {e}")
+            
+            # Always also write to local (existing behavior)
             with open(self.html_path, "w") as f:
                 f.write(html_content)
                 

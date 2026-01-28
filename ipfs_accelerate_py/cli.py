@@ -30,6 +30,18 @@ import webbrowser
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
 
+# Import storage wrapper for distributed filesystem operations
+try:
+    # Attempt relative import if running as part of package
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except (ImportError, ValueError):
+    # Fall back to treating as standalone if import fails
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        get_storage_wrapper = None
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -407,6 +419,14 @@ class IPFSAccelerateCLI:
         logger.info("Integrated components: MCP Server, Web Dashboard, Model Manager, Queue Monitor")
         
         try:
+            # Initialize storage wrapper for caching templates and static files
+            storage_wrapper = None
+            if HAVE_STORAGE_WRAPPER:
+                try:
+                    storage_wrapper = get_storage_wrapper(auto_detect_ci=True)
+                except Exception:
+                    pass  # Will fall back to direct file access
+            
             # Create the integrated dashboard handler
             class IntegratedMCPHandler(BaseHTTPRequestHandler):
                 def do_GET(self):
@@ -464,8 +484,30 @@ class IPFSAccelerateCLI:
                 """Serve the integrated dashboard"""
                 try:
                     template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dashboard.html')
-                    with open(template_path, 'r', encoding='utf-8') as f:
-                        dashboard_html = f.read()
+                    dashboard_html = None
+                    
+                    # Try to read from distributed storage cache first
+                    if storage_wrapper and storage_wrapper.is_distributed:
+                        try:
+                            cache_key = "cli_dashboard_template.html"
+                            cached_data = storage_wrapper.read_file(cache_key)
+                            if cached_data:
+                                dashboard_html = cached_data if isinstance(cached_data, str) else cached_data.decode('utf-8')
+                        except Exception:
+                            pass  # Fall back to reading from file
+                    
+                    # Read from local file if not cached
+                    if dashboard_html is None:
+                        with open(template_path, 'r', encoding='utf-8') as f:
+                            dashboard_html = f.read()
+                        
+                        # Cache to distributed storage for future use
+                        if storage_wrapper and storage_wrapper.is_distributed:
+                            try:
+                                cache_key = "cli_dashboard_template.html"
+                                storage_wrapper.write_file(dashboard_html, cache_key, pin=False)
+                            except Exception:
+                                pass  # Continue even if caching fails
                     
                     self.send_response(200)
                     self.send_header('Content-type', 'text/html')
@@ -947,9 +989,28 @@ class IPFSAccelerateCLI:
                         elif file_path.endswith('.svg'):
                             content_type = 'image/svg+xml'
                         
-                        # Read and serve the file
-                        with open(static_file_path, 'rb') as f:
-                            content = f.read()
+                        content = None
+                        
+                        # Try to read from distributed storage cache first
+                        if storage_wrapper and storage_wrapper.is_distributed:
+                            try:
+                                cache_key = f"cli_static_{file_path.replace('/', '_')}"
+                                content = storage_wrapper.read_file(cache_key)
+                            except Exception:
+                                pass  # Fall back to reading from file
+                        
+                        # Read from local file if not cached
+                        if content is None:
+                            with open(static_file_path, 'rb') as f:
+                                content = f.read()
+                            
+                            # Cache to distributed storage for future use
+                            if storage_wrapper and storage_wrapper.is_distributed:
+                                try:
+                                    cache_key = f"cli_static_{file_path.replace('/', '_')}"
+                                    storage_wrapper.write_file(content, cache_key, pin=False)
+                                except Exception:
+                                    pass  # Continue even if caching fails
                         
                         self.send_response(200)
                         self.send_header('Content-type', content_type)

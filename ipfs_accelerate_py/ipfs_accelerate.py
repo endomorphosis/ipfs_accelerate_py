@@ -41,10 +41,25 @@ except Exception:
 
 from .transformers_integration import TransformersModelProvider
 
+# Import storage wrapper for distributed filesystem operations
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    HAVE_STORAGE_WRAPPER = False
+    get_storage_wrapper = None
+
 class ipfs_accelerate_py:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
         self.metadata = metadata
+
+        # Initialize storage wrapper with CI/CD auto-detection
+        self._storage_wrapper = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage_wrapper = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                pass  # Fallback to local filesystem
 
         if self.resources is None:
             self.resources = {}
@@ -337,16 +352,48 @@ class ipfs_accelerate_py:
             install_file_hash = sha256.hexdigest()
             test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
             test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
+            
+            # Try to read from distributed storage first, then fall back to local
+            cache_data = None
+            if self._storage_wrapper and self._storage_wrapper.is_distributed:
+                try:
+                    cache_key = f"test_results_{install_file_hash}.json"
+                    cache_data = self._storage_wrapper.read_file(cache_key)
+                    if cache_data:
+                        test_results = json.loads(cache_data)
+                        return test_results
+                except Exception:
+                    pass  # Fall back to local filesystem check
+            
+            # Check local filesystem if distributed storage didn't have it
             if os.path.exists(test_results_file):
                 try:
                     with open(test_results_file, "r") as f:
                         test_results = json.load(f)
                         test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
+                        
+                        # Save to distributed storage for future use
+                        if self._storage_wrapper and self._storage_wrapper.is_distributed:
+                            try:
+                                cache_key = f"test_results_{install_file_hash}.json"
+                                self._storage_wrapper.write_file(json.dumps(test_results), cache_key, pin=False)
+                            except Exception:
+                                pass  # Continue even if distributed write fails
+                        
                         return test_results
                 except Exception as e:
                     try:
                         test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "qualcomm": False, "apple": False, "webnn": False, "llama_cpp": False, "ipex": False}
                         # test_results = await self.install_depends.test_hardware()
+                        
+                        # Save to both distributed and local storage
+                        if self._storage_wrapper and self._storage_wrapper.is_distributed:
+                            try:
+                                cache_key = f"test_results_{install_file_hash}.json"
+                                self._storage_wrapper.write_file(json.dumps(test_results), cache_key, pin=False)
+                            except Exception:
+                                pass  # Continue even if distributed write fails
+                        
                         with open(test_results_file, "w") as f:
                             json.dump(test_results, f)
                         return test_results
@@ -357,6 +404,15 @@ class ipfs_accelerate_py:
                 try:
                     test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "qualcomm": False, "apple": False, "webnn": False, "llama_cpp": False, "ipex": False}
                     # test_results = await self.install_depends.test_hardware()
+                    
+                    # Save to both distributed and local storage
+                    if self._storage_wrapper and self._storage_wrapper.is_distributed:
+                        try:
+                            cache_key = f"test_results_{install_file_hash}.json"
+                            self._storage_wrapper.write_file(json.dumps(test_results), cache_key, pin=False)
+                        except Exception:
+                            pass  # Continue even if distributed write fails
+                    
                     with open(test_results_file, "w") as f:
                         json.dump(test_results, f)
                     return test_results

@@ -27,6 +27,25 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 from enum import Enum
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
+
 # Cryptography imports
 try:
     from cryptography.fernet import Fernet
@@ -146,6 +165,15 @@ class CredentialManager:
         if not HAVE_CRYPTO:
             raise RuntimeError("cryptography package required, install with: pip install cryptography")
         
+        # Initialize storage wrapper
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         # Set up storage directory
         if storage_dir:
             self.storage_dir = Path(storage_dir)
@@ -200,9 +228,28 @@ class CredentialManager:
         key_file = self.storage_dir / ".master_key"
         if key_file.exists():
             try:
-                with open(key_file, 'rb') as f:
-                    logger.info("Loaded master key from file")
-                    return base64.b64decode(f.read())
+                # Try distributed storage first
+                if self.storage:
+                    try:
+                        cached_key = self.storage.get_file(str(key_file))
+                        if cached_key:
+                            logger.info("Loaded master key from distributed storage")
+                            return base64.b64decode(cached_key)
+                        else:
+                            with open(key_file, 'rb') as f:
+                                key_data = f.read()
+                            # Cache for future use
+                            self.storage.store_file(str(key_file), key_data, pin=True)
+                            logger.info("Loaded master key from file")
+                            return base64.b64decode(key_data)
+                    except:
+                        with open(key_file, 'rb') as f:
+                            logger.info("Loaded master key from file")
+                            return base64.b64decode(f.read())
+                else:
+                    with open(key_file, 'rb') as f:
+                        logger.info("Loaded master key from file")
+                        return base64.b64decode(f.read())
             except Exception as e:
                 logger.warning(f"Failed to load key from file: {e}")
         
@@ -224,6 +271,12 @@ class CredentialManager:
             with open(key_file, 'wb') as f:
                 f.write(key_b64)
             key_file.chmod(0o600)  # Restrict permissions
+            # Store in distributed storage
+            if self.storage:
+                try:
+                    self.storage.store_file(str(key_file), key_b64, pin=True)
+                except:
+                    pass  # Silently fail distributed storage
             logger.info("Stored master key in file")
         except Exception as e:
             logger.error(f"Failed to store key in file: {e}")
@@ -257,8 +310,21 @@ class CredentialManager:
                 'details': details
             }
             
+            log_data = json.dumps(log_entry) + '\n'
+            
             with open(self.audit_log_path, 'a') as f:
-                f.write(json.dumps(log_entry) + '\n')
+                f.write(log_data)
+            
+            # Update distributed storage (async, non-blocking)
+            if self.storage:
+                try:
+                    # Read current log and append
+                    if os.path.exists(self.audit_log_path):
+                        with open(self.audit_log_path, 'r') as f:
+                            full_log = f.read()
+                        self.storage.store_file(self.audit_log_path, full_log, pin=False)
+                except:
+                    pass  # Silently fail distributed storage updates
         except Exception as e:
             logger.error(f"Failed to write audit log: {e}")
     
@@ -514,6 +580,13 @@ class CredentialManager:
             
             creds_file.chmod(0o600)  # Restrict permissions
             
+            # Update distributed storage
+            if self.storage:
+                try:
+                    self.storage.store_file(str(creds_file), encrypted, pin=True)
+                except:
+                    pass  # Silently fail distributed storage updates
+            
         except Exception as e:
             logger.error(f"Failed to save credentials: {e}")
     
@@ -526,9 +599,25 @@ class CredentialManager:
             return
         
         try:
-            # Read encrypted file
-            with open(creds_file, 'rb') as f:
-                encrypted = f.read()
+            # Try distributed storage first
+            if self.storage:
+                try:
+                    cached_data = self.storage.get_file(str(creds_file))
+                    if cached_data:
+                        encrypted = cached_data.encode() if isinstance(cached_data, str) else cached_data
+                    else:
+                        with open(creds_file, 'rb') as f:
+                            encrypted = f.read()
+                        # Cache for future use
+                        self.storage.store_file(str(creds_file), encrypted, pin=True)
+                except:
+                    # Fallback to local filesystem
+                    with open(creds_file, 'rb') as f:
+                        encrypted = f.read()
+            else:
+                # Read encrypted file
+                with open(creds_file, 'rb') as f:
+                    encrypted = f.read()
             
             # Decrypt
             json_data = self._decrypt_value(encrypted)

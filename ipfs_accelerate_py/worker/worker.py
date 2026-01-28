@@ -17,6 +17,14 @@ import json
 import hashlib
 
 try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+
+try:
     from ipfs_multiformats import ipfs_multiformats_py
 except:
     from .ipfs_multiformats import ipfs_multiformats_py
@@ -83,6 +91,15 @@ class worker_py:
         self.local_endpoints = {}
         self.dispatch_result = self.dispatch_result
         self.get_model_type = self.get_model_type
+
+        # Initialize storage wrapper
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
+        else:
+            self._storage = None
 
         self.hardware_backends = ["llama_cpp", "qualcomm", "apple", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor", "webnn"]
         # self.hwtest = self.test_ipfs_accelerate
@@ -285,24 +302,68 @@ class worker_py:
         if os.path.exists(install_depends_filename):
             ## get the sha256 hash of the file
             sha256 = hashlib.sha256()
-            with open(install_depends_filename, "rb") as f:
-                for byte_block in iter(lambda: f.read(4096),b""):
-                    sha256.update(byte_block)
+            
+            # Try distributed storage first
+            if self.storage:
+                try:
+                    cached_data = self.storage.get_file(install_depends_filename)
+                    if cached_data:
+                        file_content = cached_data.encode() if isinstance(cached_data, str) else cached_data
+                        sha256.update(file_content)
+                    else:
+                        with open(install_depends_filename, "rb") as f:
+                            file_content = f.read()
+                            for i in range(0, len(file_content), 4096):
+                                sha256.update(file_content[i:i+4096])
+                        # Cache for future use
+                        self.storage.store_file(install_depends_filename, file_content, pin=False)
+                except:
+                    # Fallback to local filesystem
+                    with open(install_depends_filename, "rb") as f:
+                        for byte_block in iter(lambda: f.read(4096),b""):
+                            sha256.update(byte_block)
+            else:
+                with open(install_depends_filename, "rb") as f:
+                    for byte_block in iter(lambda: f.read(4096),b""):
+                        sha256.update(byte_block)
+            
             install_file_hash = sha256.hexdigest()
             test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
             test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
             if os.path.exists(test_results_file):
                 try:
-                    with open(test_results_file, "r") as f:
-                        test_results = json.load(f)
-                        test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
-                        return test_results
+                    # Try distributed storage first
+                    if self.storage:
+                        try:
+                            cached_data = self.storage.get_file(test_results_file)
+                            if cached_data:
+                                test_results = json.loads(cached_data)
+                            else:
+                                with open(test_results_file, "r") as f:
+                                    test_results = json.load(f)
+                                # Cache for future use
+                                self.storage.store_file(test_results_file, json.dumps(test_results), pin=False)
+                        except:
+                            with open(test_results_file, "r") as f:
+                                test_results = json.load(f)
+                    else:
+                        with open(test_results_file, "r") as f:
+                            test_results = json.load(f)
+                    test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
+                    return test_results
                 except Exception as e:
                     try:
                         test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
                         # test_results = await self.install_depends.test_hardware()
+                        test_results_json = json.dumps(test_results)
                         with open(test_results_file, "w") as f:
-                            json.dump(test_results, f)
+                            f.write(test_results_json)
+                        # Update distributed storage
+                        if self.storage:
+                            try:
+                                self.storage.store_file(test_results_file, test_results_json, pin=False)
+                            except:
+                                pass
                         return test_results
                     except Exception as e:
                         print(e)
@@ -311,8 +372,15 @@ class worker_py:
                 try:
                     test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False, "qualcomm": False, "apple": False, "webnn": False}
                     # test_results = await self.install_depends.test_hardware()
+                    test_results_json = json.dumps(test_results)
                     with open(test_results_file, "w") as f:
-                        json.dump(test_results, f)
+                        f.write(test_results_json)
+                    # Update distributed storage
+                    if self.storage:
+                        try:
+                            self.storage.store_file(test_results_file, test_results_json, pin=False)
+                        except:
+                            pass
                     return test_results
                 except Exception as e:
                     print(e)

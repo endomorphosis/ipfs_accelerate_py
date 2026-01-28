@@ -110,6 +110,13 @@ class ComprehensiveDependencyInstaller:
                 "category": "core",
                 "critical": True
             },
+            "libp2p": {
+                "pip_name": "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main",
+                "import_name": "libp2p",
+                "description": "libp2p networking library (git main)",
+                "category": "networking",
+                "critical": False
+            },
             "pytz": {
                 "pip_name": "pytz",
                 "import_name": "pytz",
@@ -438,6 +445,14 @@ class ComprehensiveDependencyInstaller:
                 "repo": "https://github.com/endomorphosis/ipfs_kit_py.git",
                 "branch": "known_good",
             },
+            "ipfs_model_manager_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_model_manager_py.git",
+                "branch": "main",
+            },
+            "ipfs_transformers_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_transformers_py.git",
+                "branch": "main",
+            },
         }
 
         if not external_dir.exists():
@@ -536,6 +551,18 @@ class ComprehensiveDependencyInstaller:
                 results[package] = False
                 continue
 
+            if not self._has_packaging_files(package_path):
+                logger.warning(
+                    f"⏭️ Skipping {package} (no setup.py/pyproject.toml/setup.cfg found in {package_path})"
+                )
+                self.installation_log.append({
+                    "package": package,
+                    "status": "skipped",
+                    "reason": "missing packaging metadata",
+                    "timestamp": time.time(),
+                })
+                continue
+
             try:
                 logger.info(f"Installing local package {package} from {package_path}")
                 cmd = [sys.executable, "-m", "pip", "install", "-e", str(package_path)]
@@ -582,6 +609,11 @@ class ComprehensiveDependencyInstaller:
                 logger.error(f"❌ Installation error for {package}: {e}")
 
         return results
+
+    @staticmethod
+    def _has_packaging_files(package_path: Path) -> bool:
+        """Return True when a local path has Python packaging metadata."""
+        return any((package_path / name).exists() for name in ("pyproject.toml", "setup.py", "setup.cfg"))
     
     def install_fallback_packages(self, main_package: str, fallback_packages: List[str]) -> bool:
         """Install fallback packages if main package fails."""
@@ -658,7 +690,9 @@ class ComprehensiveDependencyInstaller:
             for name, dep in category_deps.items():
                 # Check if already available
                 import_name = dep.get("import_name", name)
-                if self.check_dependency(name, import_name):
+                if name == "libp2p":
+                    logger.info("🔁 Forcing libp2p install from git main")
+                elif self.check_dependency(name, import_name):
                     logger.info(f"✅ {name} already available")
                     skipped_count += 1
                     continue
@@ -670,10 +704,14 @@ class ComprehensiveDependencyInstaller:
                     continue
                 
                 # Install the package
+                pip_args = dep.get("pip_args")
+                if name == "libp2p":
+                    pip_args = ["--upgrade", "--force-reinstall"]
+
                 success = self.install_package(
                     name,
                     dep.get("pip_name"),
-                    dep.get("pip_args"),
+                    pip_args,
                     dep.get("post_install")
                 )
                 

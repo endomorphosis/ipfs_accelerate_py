@@ -11,6 +11,17 @@ import logging
 import base64
 import io
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
 # Set up logging
 logger = logging.getLogger(__name__)
 
@@ -32,6 +43,14 @@ class hf_detr:
         
         # Flag for tracking if we're using mocked dependencies
         self.using_mocks = False
+        
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
+        else:
+            self._storage = None
         
         # Check for required packages
         for pkg_name in ["torch", "transformers", "numpy"]:

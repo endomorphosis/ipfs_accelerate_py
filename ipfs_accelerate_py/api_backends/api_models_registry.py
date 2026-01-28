@@ -3,6 +3,25 @@ import json
 import logging
 from typing import Dict, Optional, List
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
+
 class api_models:
     """API Models Registry
     
@@ -28,12 +47,28 @@ class api_models:
         for filename in os.listdir(model_list_dir):
             if filename.endswith('.json'):
                 api_name = os.path.splitext(filename)[0]
-                with open(os.path.join(model_list_dir, filename), 'r') as f:
+                filepath = os.path.join(model_list_dir, filename)
+                
+                # Try distributed storage first
+                if _storage and _storage.is_distributed:
                     try:
+                        content = _storage.read_file(filepath)
+                        if content:
+                            self.model_lists[api_name] = json.loads(content)
+                            continue
+                    except Exception:
+                        pass
+                
+                # Fallback to local filesystem
+                try:
+                    with open(filepath, 'r') as f:
                         self.model_lists[api_name] = json.load(f)
-                    except json.JSONDecodeError as e:
-                        logging.error(f"Error loading {filename}: {e}")
-                        self.model_lists[api_name] = []
+                except json.JSONDecodeError as e:
+                    logging.error(f"Error loading {filename}: {e}")
+                    self.model_lists[api_name] = []
+                except Exception as e:
+                    logging.error(f"Error loading {filename}: {e}")
+                    self.model_lists[api_name] = []
 
     def get_backend_for_model(self, model_name: str) -> Optional[str]:
         """Determine which backend should handle a given model

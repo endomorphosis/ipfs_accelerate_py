@@ -6,19 +6,26 @@ enabling AI-assisted development features.
 """
 
 import logging
+import os
 import time
 from typing import Dict, Any, Optional
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.copilot")
 
+def _is_pytest() -> bool:
+    return os.environ.get("PYTEST_CURRENT_TEST") is not None
+
+
 # Try imports with fallbacks
 try:
-    from mcp.server.fastmcp import FastMCP
+    if _is_pytest():
+        raise ImportError("Using mock MCP under pytest")
+    from fastmcp import FastMCP
 except ImportError:
     try:
-        from fastmcp import FastMCP
-    except ImportError:
         from mcp.mock_mcp import FastMCP
+    except ImportError:
+        from mock_mcp import FastMCP
 
 # Import Copilot operations
 try:

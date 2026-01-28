@@ -200,6 +200,31 @@ except ImportError:
     FibonacciHeap = None
     calculate_hamming_distance = None
 
+# Add IPFS Kit integration
+try:
+    from .ipfs_kit_integration import (
+        IPFSKitStorage,
+        get_storage,
+        reset_storage,
+        StorageBackendConfig
+    )
+    export["IPFSKitStorage"] = IPFSKitStorage
+    export["get_storage"] = get_storage
+    export["reset_storage"] = reset_storage
+    export["StorageBackendConfig"] = StorageBackendConfig
+except ImportError:
+    IPFSKitStorage = None
+    get_storage = None
+    reset_storage = None
+    StorageBackendConfig = None
+
+# Add auto-patching for transformers (applies automatically on import if enabled)
+try:
+    from . import auto_patch_transformers
+    export["auto_patch_transformers"] = auto_patch_transformers
+except ImportError:
+    auto_patch_transformers = None
+
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
     'install_depends', 'worker', 'ipfs_multiformats_py',
@@ -207,7 +232,9 @@ __all__ = [
     'webnn_webgpu_available', 'ModelManager', 'get_default_model_manager',
     'model_manager_available', 'cli_main', 'get_system_logs', 'SystemLogs',
     'P2PWorkflowScheduler', 'P2PTask', 'WorkflowTag', 'MerkleClock',
-    'FibonacciHeap', 'calculate_hamming_distance'
+    'FibonacciHeap', 'calculate_hamming_distance',
+    'IPFSKitStorage', 'get_storage', 'reset_storage', 'StorageBackendConfig',
+    'auto_patch_transformers'
 ]
 
 # Package version

@@ -22,6 +22,17 @@ from concurrent.futures import Future
 from queue import Queue
 from pathlib import Path
 
+# Try to import storage wrapper
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Configure logging
 logger = logging.getLogger("ollama_api")
 
@@ -98,6 +109,16 @@ class ollama:
         self.queue_processor = threading.Thread(target=self._process_queue)
         self.queue_processor.daemon = True
         self.queue_processor.start()
+        
+        # Initialize distributed storage
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage:
+                    logger.info("Ollama: Distributed storage initialized")
+            except Exception as e:
+                logger.debug(f"Ollama: Could not initialize storage: {e}")
         
         # Initialize backoff configuration
         self.max_retries = 5

@@ -10,6 +10,17 @@ from concurrent.futures import Future
 from queue import Queue
 from dotenv import load_dotenv
 
+# Try to import storage wrapper
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 class ovms:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources if resources else {}
@@ -85,6 +96,18 @@ class ovms:
             self.thread_pool = ThreadPoolExecutor(max_workers=10)
         except ImportError:
             self.thread_pool = None
+        
+        # Initialize distributed storage
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage:
+                    import logging
+                    logging.getLogger(__name__).info("OVMS: Distributed storage initialized")
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).debug(f"OVMS: Could not initialize storage: {e}")
         
         return None
         

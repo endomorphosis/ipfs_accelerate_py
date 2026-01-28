@@ -33,6 +33,20 @@ class DependencyInstaller:
             "ipfs_model_manager_py",
             "ipfs_transformers_py",
         ]
+        self.git_sources = {
+            "ipfs_kit_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_kit_py.git",
+                "branch": "known_good",
+            },
+            "ipfs_model_manager_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_model_manager_py.git",
+                "branch": "main",
+            },
+            "ipfs_transformers_py": {
+                "repo": "https://github.com/endomorphosis/ipfs_transformers_py.git",
+                "branch": "main",
+            },
+        }
         
     def check_dependency(self, module_name: str, import_name: Optional[str] = None) -> bool:
         """
@@ -173,6 +187,7 @@ class DependencyInstaller:
             "pynvml": "pynvml",
             "psutil": "psutil",
             "py-cpuinfo": "cpuinfo",
+            "libp2p @ git+https://github.com/libp2p/py-libp2p.git@main": "libp2p",
             
             # Audio processing
             "librosa": "librosa",
@@ -205,6 +220,14 @@ class DependencyInstaller:
         
         results = {}
         for package_name, import_name in ai_packages.items():
+            if package_name.startswith("libp2p @ git+"):
+                results[package_name] = self.install_package(
+                    package_name,
+                    import_name,
+                    pip_args=["--upgrade", "--force-reinstall"],
+                )
+                continue
+
             if self.check_dependency(import_name):
                 results[package_name] = True
                 self.installation_log.append(f"✅ {package_name} already available")
@@ -221,9 +244,78 @@ class DependencyInstaller:
             return results
 
         for package in self.local_packages:
+            if package in self.git_sources:
+                source = self.git_sources[package]
+                target_path = self.external_dir / package
+                try:
+                    if target_path.exists() and (target_path / ".git").exists():
+                        logger.info(f"Updating {package} to {source['branch']} in {target_path}")
+                        subprocess.run(
+                            ["git", "-C", str(target_path), "fetch", "origin"],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=False,
+                        )
+                        subprocess.run(
+                            ["git", "-C", str(target_path), "checkout", source["branch"]],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=False,
+                        )
+                        subprocess.run(
+                            ["git", "-C", str(target_path), "reset", "--hard", f"origin/{source['branch']}"] ,
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                            check=False,
+                        )
+                    else:
+                        if target_path.exists():
+                            logger.warning(f"{target_path} exists but is not a git repo; reinstalling from git")
+                        logger.info(f"Cloning {package} ({source['branch']}) into {target_path}")
+                        clone_result = subprocess.run(
+                            [
+                                "git",
+                                "clone",
+                                "--depth",
+                                "1",
+                                "--branch",
+                                source["branch"],
+                                source["repo"],
+                                str(target_path),
+                            ],
+                            capture_output=True,
+                            text=True,
+                            timeout=300,
+                        )
+                        if clone_result.returncode != 0:
+                            error_msg = clone_result.stderr.strip() if clone_result.stderr else "Unknown error"
+                            self.failed_installations.append(package)
+                            self.installation_log.append(f"❌ {package} clone failed: {error_msg}")
+                            logger.error(f"❌ {package} clone failed: {error_msg}")
+                            results[package] = False
+                            continue
+                except Exception as e:
+                    self.failed_installations.append(package)
+                    self.installation_log.append(f"❌ {package} git sync error: {str(e)}")
+                    logger.error(f"❌ {package} git sync error: {str(e)}")
+                    results[package] = False
+                    continue
+
             package_path = self.external_dir / package
             if not package_path.exists():
                 results[package] = False
+                continue
+
+            if not self._has_packaging_files(package_path):
+                logger.warning(
+                    f"⏭️ Skipping {package} (no setup.py/pyproject.toml/setup.cfg found in {package_path})"
+                )
+                self.installation_log.append(
+                    f"⚠️ {package} skipped (missing packaging metadata)"
+                )
                 continue
 
             try:
@@ -247,6 +339,11 @@ class DependencyInstaller:
                 results[package] = False
 
         return results
+
+    @staticmethod
+    def _has_packaging_files(package_path: Path) -> bool:
+        """Return True when a local path has Python packaging metadata."""
+        return any((package_path / name).exists() for name in ("pyproject.toml", "setup.py", "setup.cfg"))
     
     def run_comprehensive_installation(self) -> Dict[str, Any]:
         """
@@ -272,8 +369,10 @@ class DependencyInstaller:
             self.installation_log.append("✅ Playwright already available")
         
         # Generate summary
-        total_packages = len(ai_results) + len(local_results) + (0 if playwright_available else 1)
-        successful_count = len(self.successful_installations) + (1 if playwright_success else 0)
+        total_packages = len(ai_results) + len(local_results) + 1
+        successful_count = sum(1 for value in ai_results.values() if value)
+        successful_count += sum(1 for value in local_results.values() if value)
+        successful_count += 1 if playwright_success else 0
         failed_count = len(self.failed_installations)
         
         summary = {

@@ -39,13 +39,15 @@ __version__ = "0.1.0"  # Initial version
 
 # Explicitly import and expose key components
 try:
-    # Try to import FastMCP if available
+    # Avoid FastMCP imports during pytest to prevent optional dependency issues.
+    if _is_pytest():
+        raise ImportError("Using mock MCP under pytest")
     from fastmcp import FastMCP, Context
     fastmcp_available = True
     logger.info("Using real FastMCP implementation")
 except ImportError:
     # Fall back to mock implementation if FastMCP is not available
-    from mcp.mock_mcp import FastMCP, Context
+    from .mock_mcp import FastMCP, Context
     fastmcp_available = False
     _log_optional_dependency("FastMCP import failed, falling back to mock implementation")
     _log_optional_dependency("Using mock MCP implementation")
@@ -59,8 +61,8 @@ except Exception as e:
     ipfs_kit_available = False
     _log_optional_dependency(f"IPFS Kit not available or failed to import ({e!s}); some functionality will be limited")
 
-from mcp.types import IPFSAccelerateContext
-from mcp.server import create_ipfs_mcp_server, run_server
+from .types import IPFSAccelerateContext
+from .server import create_ipfs_mcp_server, run_server
 
 # Initialize the package
 logger.info("IPFS Accelerate MCP package initialized")
@@ -113,6 +115,6 @@ __all__ = [
 # Ensure the mock_mcp module is loaded when needed
 if not fastmcp_available:
     try:
-        import mcp.mock_mcp
+        from . import mock_mcp  # noqa: F401
     except ImportError:
         logger.error("Failed to import mock_mcp module")

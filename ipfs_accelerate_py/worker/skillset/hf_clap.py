@@ -7,6 +7,17 @@ import io
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Union
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except (ImportError, ValueError):
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except (ImportError, ValueError):
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
 def load_audio_16khz(audio_file):
     """
     Load audio file and resample to 16kHz if necessary.
@@ -112,6 +123,14 @@ class hf_clap:
         Returns:
             None
         """
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
+        else:
+            self._storage = None
+        
         # Initialize dependencies
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}

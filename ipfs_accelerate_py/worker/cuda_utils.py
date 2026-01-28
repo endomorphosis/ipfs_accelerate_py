@@ -11,6 +11,17 @@ import traceback
 from unittest.mock import MagicMock
 import fcntl
 
+# Try to import storage wrapper with comprehensive fallback
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 class cuda_utils:
     def __init__(self, resources=None, metadata=None):
         """
@@ -22,6 +33,9 @@ class cuda_utils:
         """
         self.resources = resources
         self.metadata = metadata
+        
+        # Initialize storage wrapper
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
         
         # Initialize core resources
         self.init()

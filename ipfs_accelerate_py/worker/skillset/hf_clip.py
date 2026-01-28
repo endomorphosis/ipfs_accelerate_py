@@ -7,6 +7,17 @@ from io import BytesIO
 import os
 import numpy as np
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except (ImportError, ValueError):
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except (ImportError, ValueError):
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
 def load_image(image_file):
     """
     Load an image from a file path or URL and convert to RGB format.
@@ -66,6 +77,14 @@ class hf_clip:
         Returns:
             None
         """
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                self._storage = None
+        else:
+            self._storage = None
+        
         self.resources = resources
         self.metadata = metadata if metadata else {}
         # Initialize backend-specific utilities

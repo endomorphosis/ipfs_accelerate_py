@@ -33,6 +33,17 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ai_inference_cli")
 
+# Try to import storage wrapper
+try:
+    from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ipfs_accelerate_py.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Defer heavy imports until needed
 HAVE_MCP_SERVER = None
 ComprehensiveMCPServer = None
@@ -67,6 +78,16 @@ class AIInferenceCLI:
         """Initialize the CLI tool."""
         self.server = None
         self._server_initialized = False
+        
+        # Initialize distributed storage wrapper
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage and hasattr(self._storage, 'is_distributed'):
+                    logger.info("Distributed storage enabled for AI Inference CLI")
+            except Exception as e:
+                logger.debug(f"Failed to initialize storage wrapper: {e}")
         
         # Define all available inference types and their parameters
         self.inference_types = {
@@ -382,8 +403,31 @@ Examples:
     def _encode_file(self, file_path: str) -> str:
         """Encode file as base64 string."""
         try:
+            # Try to read from distributed storage first
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"cli_file_{os.path.basename(file_path)}"
+                    cached_data = self._storage.read_file(cache_key)
+                    if cached_data:
+                        logger.debug(f"Read file from distributed storage: {file_path}")
+                        return base64.b64encode(cached_data.encode()).decode('utf-8')
+                except Exception as e:
+                    logger.debug(f"Failed to read from distributed storage: {e}")
+            
+            # Read from local filesystem (existing behavior)
             with open(file_path, 'rb') as f:
-                return base64.b64encode(f.read()).decode('utf-8')
+                file_data = f.read()
+                
+            # Try to cache in distributed storage
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"cli_file_{os.path.basename(file_path)}"
+                    self._storage.write_file(base64.b64encode(file_data).decode('utf-8'), cache_key, pin=False)
+                    logger.debug(f"Cached file in distributed storage: {file_path}")
+                except Exception as e:
+                    logger.debug(f"Failed to cache file in distributed storage: {e}")
+            
+            return base64.b64encode(file_data).decode('utf-8')
         except Exception as e:
             logger.error(f"Error encoding file {file_path}: {e}")
             return ""
@@ -391,8 +435,31 @@ Examples:
     def _load_json_file(self, file_path: str) -> Any:
         """Load JSON data from file."""
         try:
+            # Try to read from distributed storage first
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"cli_json_{os.path.basename(file_path)}"
+                    cached_data = self._storage.read_file(cache_key)
+                    if cached_data:
+                        logger.debug(f"Read JSON from distributed storage: {file_path}")
+                        return json.loads(cached_data)
+                except Exception as e:
+                    logger.debug(f"Failed to read JSON from distributed storage: {e}")
+            
+            # Read from local filesystem (existing behavior)
             with open(file_path, 'r') as f:
-                return json.load(f)
+                json_data = json.load(f)
+            
+            # Try to cache in distributed storage
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"cli_json_{os.path.basename(file_path)}"
+                    self._storage.write_file(json.dumps(json_data, indent=2), cache_key, pin=False)
+                    logger.debug(f"Cached JSON in distributed storage: {file_path}")
+                except Exception as e:
+                    logger.debug(f"Failed to cache JSON in distributed storage: {e}")
+            
+            return json_data
         except Exception as e:
             logger.error(f"Error loading JSON file {file_path}: {e}")
             return None
@@ -690,9 +757,20 @@ Examples:
         # Save code to file if specified
         if hasattr(args, 'output_file') and args.output_file:
             try:
+                code_content = result.get('generated_code', '')
+                
+                # Try to write to distributed storage first
+                if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                    try:
+                        cache_key = f"cli_code_{os.path.basename(args.output_file)}"
+                        self._storage.write_file(code_content, cache_key, pin=False)
+                        logger.debug(f"Saved generated code to distributed storage: {args.output_file}")
+                    except Exception as e:
+                        logger.debug(f"Failed to write code to distributed storage: {e}")
+                
+                # Always also write to local (existing behavior)
                 with open(args.output_file, 'w') as f:
-                    if 'generated_code' in result:
-                        f.write(result['generated_code'])
+                    f.write(code_content)
                 result['code_saved'] = args.output_file
             except Exception as e:
                 result['save_error'] = str(e)
@@ -966,6 +1044,16 @@ Examples:
             # Save result to file if requested
             if args.save_result:
                 try:
+                    # Try to write to distributed storage first
+                    if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                        try:
+                            cache_key = f"cli_result_{os.path.basename(args.save_result)}"
+                            self._storage.write_file(json.dumps(result, indent=2, ensure_ascii=False), cache_key, pin=False)
+                            logger.debug(f"Saved result to distributed storage: {args.save_result}")
+                        except Exception as e:
+                            logger.debug(f"Failed to write result to distributed storage: {e}")
+                    
+                    # Always also write to local (existing behavior)
                     with open(args.save_result, 'w') as f:
                         json.dump(result, f, indent=2, ensure_ascii=False)
                     print(f"\n💾 Result saved to: {args.save_result}")

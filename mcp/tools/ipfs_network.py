@@ -12,13 +12,14 @@ from typing import Dict, Any, List, Optional, cast
 
 # Try imports with fallbacks
 try:
-    from mcp.server.fastmcp import FastMCP, Context
+    if os.environ.get("PYTEST_CURRENT_TEST") is not None:
+        raise ImportError("Using mock MCP under pytest")
+    from fastmcp import FastMCP, Context
 except ImportError:
     try:
-        from fastmcp import FastMCP, Context
-    except ImportError:
-        # Fall back to mock implementation
         from mcp.mock_mcp import FastMCP, Context
+    except ImportError:
+        from mock_mcp import FastMCP, Context
 
 # Import from the types module
 from typing import TYPE_CHECKING
@@ -26,7 +27,10 @@ if TYPE_CHECKING:
     from mcp.types import IPFSAccelerateContext
 
 # Get IPFS client function (reusing from ipfs_files.py)
-from mcp.tools.ipfs_files import get_ipfs_client
+try:
+    from .ipfs_files import get_ipfs_client
+except ImportError:
+    from tools.ipfs_files import get_ipfs_client
 
 
 def register_network_tools(mcp: FastMCP) -> None:

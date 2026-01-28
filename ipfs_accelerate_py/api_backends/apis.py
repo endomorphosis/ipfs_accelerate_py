@@ -3,6 +3,17 @@ import anyio
 import logging
 logger = logging.getLogger(__name__)
 
+# Try to import storage wrapper
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 try:
     from . import ovms
 except ImportError:
@@ -262,6 +273,16 @@ class apis:
         self.rm_openai_api_endpoint = self.rm_openai_api_endpoint
         self.rm_s3_endpoint = self.rm_s3_endpoint
         self.rm_opea_endpoint = self.rm_opea_endpoint
+        
+        # Initialize distributed storage
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage:
+                    logger.info("APIs: Distributed storage initialized")
+            except Exception as e:
+                logger.debug(f"APIs: Could not initialize storage: {e}")
         
         self.init()
         return None

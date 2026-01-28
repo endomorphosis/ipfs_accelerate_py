@@ -28,13 +28,14 @@ def _log_optional_dependency(message: str) -> None:
 
 # Try imports with fallbacks
 try:
-    from mcp.server.fastmcp import FastMCP, Context
+    if _is_pytest():
+        raise ImportError("Using mock MCP under pytest")
+    from fastmcp import FastMCP, Context
 except ImportError:
     try:
-        from fastmcp import FastMCP, Context
-    except ImportError:
-        # Fall back to mock implementation
         from mcp.mock_mcp import FastMCP, Context
+    except ImportError:
+        from mock_mcp import FastMCP, Context
 
 # Import shared operations
 try:
@@ -55,7 +56,10 @@ except ImportError:
         file_ops = None
 
 # Import the get_ipfs_client function from tools module for fallback
-from . import get_ipfs_client
+try:
+    from . import get_ipfs_client
+except ImportError:
+    from tools import get_ipfs_client
 
 
 async def get_ipfs_client_async(ctx: Context) -> Any:

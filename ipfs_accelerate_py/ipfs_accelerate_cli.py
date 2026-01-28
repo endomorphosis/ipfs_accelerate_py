@@ -8,6 +8,17 @@ import sys
 import os
 from pathlib import Path
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Add the package directory to the Python path
 package_dir = Path(__file__).parent
 sys.path.insert(0, str(package_dir))

@@ -14,6 +14,17 @@ from typing import Dict, List, Any, Optional
 from flask import Flask, render_template, request, jsonify, send_from_directory
 from flask_cors import CORS
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -40,6 +51,9 @@ class CaselawDashboard:
         self.port = port
         self.app = Flask(__name__)
         CORS(self.app)
+        
+        # Initialize storage wrapper for distributed storage
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
         
         # Initialize components
         self.dataset_loader = None

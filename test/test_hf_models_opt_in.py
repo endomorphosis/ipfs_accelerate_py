@@ -22,7 +22,7 @@ if os.getenv("IPFS_ACCEL_RUN_HF_MODEL_TESTS", "").lower() not in ("1", "true", "
 
 def _discover_model_test_files() -> List[Path]:
     repo_root = Path(__file__).resolve().parents[1]
-    test_dir = repo_root / "ipfs_accelerate_py" / "test"
+    test_dir = repo_root / "test"
     paths = sorted(test_dir.glob("test_hf_*.py"))
     # Skip files with hyphens (invalid module names and some contain syntax errors).
     return [path for path in paths if "-" not in path.name]

@@ -25,6 +25,25 @@ import tempfile
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,6 +72,15 @@ class P2PPeerRegistry:
             cache_prefix: Prefix for cache keys
             peer_ttl_minutes: How long peer entries are valid
         """
+        # Initialize storage wrapper
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         self.repo = repo
         self.repo_owner, self.repo_name = (repo.split("/", 1) + [""])[0:2]
         self.runner_name = runner_name or self._detect_runner_name()
@@ -92,7 +120,16 @@ class P2PPeerRegistry:
                 delete=False,
             ) as f:
                 tmp_path = f.name
-                json.dump(payload, f)
+                json_data = json.dumps(payload)
+                f.write(json_data)
+                
+            # Store in distributed storage for debugging/caching
+            if self.storage and tmp_path:
+                try:
+                    self.storage.store_file(tmp_path, json_data, pin=False)
+                except:
+                    pass  # Silently fail
+                
             args.extend(["--input", tmp_path])
         try:
             return self._run_gh(args, timeout=timeout)

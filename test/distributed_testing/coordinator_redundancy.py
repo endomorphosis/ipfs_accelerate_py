@@ -92,6 +92,7 @@ class RedundancyManager:
         sync_interval: float = 5.0,        # seconds
         state_path: Optional[str] = None,
         use_state_manager: bool = True,
+        allow_degraded_leader: bool = False,
         **kwargs,
     ):
         """
@@ -166,6 +167,7 @@ class RedundancyManager:
         self.election_timeout_max = election_timeout_max
         self.heartbeat_interval = heartbeat_interval
         self.sync_interval = sync_interval
+        self.allow_degraded_leader = allow_degraded_leader
         
         # Distributed state management
         self.use_state_manager = use_state_manager
@@ -193,6 +195,7 @@ class RedundancyManager:
         self.election_timeout = self._get_random_election_timeout()
         self.last_heartbeat = time.time()
         self.votes_received = set()
+        self._election_started_at = 0.0
         
         # Next index and match index for each node
         self.next_index = {node: 1 for node in self.cluster_nodes}
@@ -354,7 +357,17 @@ class RedundancyManager:
             return
 
         response = await self.http_request(f"{leader_url}/api/state", method="GET")
-        if isinstance(response, dict) and "state" in response and hasattr(self.coordinator, "state"):
+        if not isinstance(response, dict):
+            return
+
+        if "workers" in response and hasattr(self.coordinator, "worker_manager"):
+            try:
+                with self.coordinator.worker_manager.worker_lock:
+                    self.coordinator.worker_manager.workers = response.get("workers", {})
+            except Exception:
+                pass
+
+        if "state" in response and hasattr(self.coordinator, "state"):
             self.coordinator.state = response["state"]
 
     async def _check_leader_heartbeat(self) -> None:
@@ -594,6 +607,13 @@ class RedundancyManager:
         if len(self.votes_received) > len(self.cluster_nodes) // 2:
             # Received majority of votes, become leader
             await self._become_leader()
+            return
+
+        if self.allow_degraded_leader and self._election_started_at:
+            if time.time() - self._election_started_at > self.election_timeout_max:
+                if len(self.votes_received) >= 1:
+                    logger.info("No quorum reachable; electing leader in degraded mode")
+                    await self._become_leader()
     
     async def _follower_tasks(self):
         """Perform follower tasks."""
@@ -630,6 +650,7 @@ class RedundancyManager:
         # Reset election timeout
         self.election_timeout = self._get_random_election_timeout()
         self.last_heartbeat = time.time()
+        self._election_started_at = time.time()
         
         # Save persistent state
         self._save_persistent_state_sync()

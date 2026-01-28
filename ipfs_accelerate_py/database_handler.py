@@ -14,6 +14,17 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Union
 
+# Try to import storage wrapper
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -50,6 +61,9 @@ class DatabaseHandler:
             db_path: Path to DuckDB database file. If None, uses BENCHMARK_DB_PATH
                     environment variable or default path ./benchmark_db.duckdb
         """
+        # Initialize storage wrapper for distributed storage
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
+        
         # Skip initialization if DuckDB is not available
         if not HAVE_DUCKDB:
             self.db_path = None
@@ -67,6 +81,15 @@ class DatabaseHandler:
             # Connect to DuckDB database
             self.con = duckdb.connect(self.db_path)
             logger.info(f"Connected to DuckDB database at: {self.db_path}")
+            
+            # Try to store database path in distributed storage for backup
+            if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = "benchmark_db_path"
+                    self._storage.write_file(self.db_path, cache_key, pin=True)
+                    logger.debug(f"Stored DB path in distributed storage: {cache_key}")
+                except Exception as e:
+                    logger.debug(f"Failed to store DB path in distributed storage: {e}")
             
             # Create necessary tables
             self._create_tables()
@@ -318,14 +341,26 @@ class DatabaseHandler:
             """).fetchall()
             
             # Format the report
+            report = None
             if format.lower() == 'markdown':
-                return self._format_markdown_report(accel_results, ipfs_ops, hardware, days)
+                report = self._format_markdown_report(accel_results, ipfs_ops, hardware, days)
             elif format.lower() == 'html':
-                return self._format_html_report(accel_results, ipfs_ops, hardware, days)
+                report = self._format_html_report(accel_results, ipfs_ops, hardware, days)
             elif format.lower() == 'json':
-                return self._format_json_report(accel_results, ipfs_ops, hardware, days)
+                report = self._format_json_report(accel_results, ipfs_ops, hardware, days)
             else:
-                return f"Unsupported format: {format}"
+                report = f"Unsupported format: {format}"
+            
+            # Try to cache report in distributed storage
+            if report and self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:
+                try:
+                    cache_key = f"benchmark_report_{format}_{days}days_{int(datetime.now().timestamp())}"
+                    self._storage.write_file(report, cache_key, pin=False)
+                    logger.debug(f"Cached report in distributed storage: {cache_key}")
+                except Exception as e:
+                    logger.debug(f"Failed to cache report in distributed storage: {e}")
+            
+            return report
                 
         except Exception as e:
             logger.error(f"Error generating report: {e}")

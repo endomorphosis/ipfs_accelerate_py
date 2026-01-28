@@ -8,6 +8,17 @@ import logging
 from concurrent.futures import Future
 from dotenv import load_dotenv
 
+# Try to import storage wrapper
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 # Configure logger
 logger = logging.getLogger("s3_kit")
 if not logger.handlers:
@@ -88,6 +99,17 @@ class s3_kit:
             "errors_by_type": {},
             "operations": {}
         }
+        
+        # Initialize distributed storage
+        self._storage = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage = get_storage_wrapper()
+                if self._storage:
+                    logger.info("S3 Kit: Distributed storage initialized")
+            except Exception as e:
+                logger.debug(f"S3 Kit: Could not initialize storage: {e}")
+        
         return None
 
     def _get_s3_config(self):

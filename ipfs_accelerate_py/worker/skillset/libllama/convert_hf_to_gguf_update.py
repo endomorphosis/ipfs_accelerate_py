@@ -37,6 +37,33 @@ from hashlib import sha256
 from enum import IntEnum, auto
 from transformers import AutoTokenizer
 
+try:
+    from .....common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ....common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
+
+if DISTRIBUTED_STORAGE_AVAILABLE:
+    try:
+        storage = StorageWrapper()
+    except:
+        storage = None
+else:
+    storage = None
+
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger("convert_hf_to_gguf_update")
 sess = requests.Session()
