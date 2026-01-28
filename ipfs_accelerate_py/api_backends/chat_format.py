@@ -2,44 +2,41 @@ import os
 import yaml
 
 try:
-    from ..common.storage_wrapper import storage_wrapper
-except (ImportError, ValueError):
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
     try:
-        from common.storage_wrapper import storage_wrapper
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        storage_wrapper = None
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
 
 class chat_format:
 	def __init__(self, resources, meta=None):
-		# Initialize storage wrapper
-		if storage_wrapper:
-			try:
-				self.storage = storage_wrapper()
-			except:
-				self.storage = None
-		else:
-			self.storage = None
-		
 		template_path = os.path.join(os.path.dirname(__file__), 'templates.yml')
 		
-		# Try to load from distributed storage first
-		if self.storage:
+		# Try distributed storage first
+		if _storage and _storage.is_distributed:
 			try:
-				cached_data = self.storage.get_file(template_path)
-				if cached_data:
-					self.templates = yaml.load(cached_data, Loader=yaml.Loader)
-				else:
-					with open(template_path) as f:
-						content = f.read()
-						self.templates = yaml.load(content, Loader=yaml.Loader)
-					# Cache for future use
-					self.storage.store_file(template_path, content, pin=True)
-			except:
-				with open(template_path) as f:
-					self.templates = yaml.load(f, Loader=yaml.Loader)
-		else:
-			with open(template_path) as f:
-				self.templates = yaml.load(f, Loader=yaml.Loader)
+				content = _storage.read_file(template_path)
+				if content:
+					self.templates = yaml.load(content, Loader=yaml.Loader)
+					return
+			except Exception:
+				pass
+		
+		# Fallback to local filesystem
+		with open(template_path) as f:
+			self.templates = yaml.load(f, Loader=yaml.Loader)
 
 	def format_chat_prompt(self, template, messages):
 		templates = self.templates

@@ -18,12 +18,23 @@ from collections import defaultdict
 import threading
 
 try:
-    from ..common.storage_wrapper import storage_wrapper
-except (ImportError, ValueError):
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
     try:
-        from common.storage_wrapper import storage_wrapper
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        storage_wrapper = None
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
 
 logger = logging.getLogger(__name__)
 

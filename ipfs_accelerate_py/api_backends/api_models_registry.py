@@ -4,12 +4,23 @@ import logging
 from typing import Dict, Optional, List
 
 try:
-    from ..common.storage_wrapper import storage_wrapper
-except (ImportError, ValueError):
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
     try:
-        from common.storage_wrapper import storage_wrapper
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
-        storage_wrapper = None
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+
+if HAVE_STORAGE_WRAPPER:
+    try:
+        _storage = get_storage_wrapper(auto_detect_ci=True)
+    except Exception:
+        _storage = None
+else:
+    _storage = None
 
 class api_models:
     """API Models Registry
@@ -29,15 +40,6 @@ class api_models:
         self.resources = resources if resources else {}
         self.metadata = metadata if metadata else {}
         
-        # Initialize storage wrapper
-        if storage_wrapper:
-            try:
-                self.storage = storage_wrapper()
-            except:
-                self.storage = None
-        else:
-            self.storage = None
-        
         # Load model lists from json files
         self.model_lists = {}
         model_list_dir = os.path.join(os.path.dirname(__file__), 'model_list')
@@ -48,36 +50,25 @@ class api_models:
                 filepath = os.path.join(model_list_dir, filename)
                 
                 # Try distributed storage first
-                if self.storage:
+                if _storage and _storage.is_distributed:
                     try:
-                        cached_data = self.storage.get_file(filepath)
-                        if cached_data:
-                            self.model_lists[api_name] = json.loads(cached_data)
-                        else:
-                            with open(filepath, 'r') as f:
-                                content = f.read()
-                                self.model_lists[api_name] = json.loads(content)
-                            # Cache for future use
-                            self.storage.store_file(filepath, content, pin=True)
-                    except json.JSONDecodeError as e:
-                        logging.error(f"Error loading {filename}: {e}")
-                        self.model_lists[api_name] = []
-                    except:
-                        # Fallback to local filesystem
-                        with open(filepath, 'r') as f:
-                            try:
-                                self.model_lists[api_name] = json.load(f)
-                            except json.JSONDecodeError as e:
-                                logging.error(f"Error loading {filename}: {e}")
-                                self.model_lists[api_name] = []
-                else:
-                    # Use local filesystem only
+                        content = _storage.read_file(filepath)
+                        if content:
+                            self.model_lists[api_name] = json.loads(content)
+                            continue
+                    except Exception:
+                        pass
+                
+                # Fallback to local filesystem
+                try:
                     with open(filepath, 'r') as f:
-                        try:
-                            self.model_lists[api_name] = json.load(f)
-                        except json.JSONDecodeError as e:
-                            logging.error(f"Error loading {filename}: {e}")
-                            self.model_lists[api_name] = []
+                        self.model_lists[api_name] = json.load(f)
+                except json.JSONDecodeError as e:
+                    logging.error(f"Error loading {filename}: {e}")
+                    self.model_lists[api_name] = []
+                except Exception as e:
+                    logging.error(f"Error loading {filename}: {e}")
+                    self.model_lists[api_name] = []
 
     def get_backend_for_model(self, model_name: str) -> Optional[str]:
         """Determine which backend should handle a given model
