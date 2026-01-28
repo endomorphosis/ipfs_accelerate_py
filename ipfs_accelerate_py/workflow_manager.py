@@ -23,6 +23,13 @@ except ImportError:
     HAVE_DUCKDB = False
     raise ImportError("DuckDB is required for workflow storage. Install with: pip install duckdb")
 
+# Import storage wrapper for distributed filesystem operations
+try:
+    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    HAVE_STORAGE_WRAPPER = False
+    get_storage_wrapper = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -174,6 +181,14 @@ class WorkflowStorage:
         self.parquet_dir = str(Path(self.db_path).parent / "workflow_data")
         Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
         Path(self.parquet_dir).mkdir(parents=True, exist_ok=True)
+        
+        # Initialize storage wrapper with CI/CD auto-detection
+        self._storage_wrapper = None
+        if HAVE_STORAGE_WRAPPER:
+            try:
+                self._storage_wrapper = get_storage_wrapper(auto_detect_ci=True)
+            except Exception:
+                pass  # Fallback to local filesystem
         
         # Migrate from SQLite if it exists
         self._migrate_from_sqlite_if_needed()
@@ -364,6 +379,30 @@ class WorkflowStorage:
             
             conn.execute(f"COPY (SELECT * FROM workflows) TO '{workflows_parquet}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE)")
             conn.execute(f"COPY (SELECT * FROM tasks) TO '{tasks_parquet}' (FORMAT PARQUET, OVERWRITE_OR_IGNORE)")
+            
+            # Also save to distributed storage if available
+            if self._storage_wrapper and self._storage_wrapper.is_distributed:
+                try:
+                    # Read the parquet files and save to distributed storage
+                    with open(workflows_parquet, 'rb') as f:
+                        workflows_data = f.read()
+                    with open(tasks_parquet, 'rb') as f:
+                        tasks_data = f.read()
+                    
+                    # Save to distributed storage with descriptive names
+                    self._storage_wrapper.write_file(
+                        workflows_data,
+                        f"workflows_{workflow.workflow_id}.parquet",
+                        pin=True  # Pin workflow data for persistence
+                    )
+                    self._storage_wrapper.write_file(
+                        tasks_data,
+                        f"tasks_{workflow.workflow_id}.parquet",
+                        pin=True  # Pin task data for persistence
+                    )
+                except Exception as e:
+                    logger.debug(f"Could not save to distributed storage: {e}")
+                    pass  # Continue even if distributed write fails
     
     def load_workflow(self, workflow_id: str) -> Optional[Workflow]:
         """Load a workflow by ID"""
