@@ -16,6 +16,7 @@ import argparse
 import threading
 import multiprocessing
 import asyncio
+import anyio
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Tuple, Set, Callable
 from dataclasses import dataclass, asdict, field
@@ -336,6 +337,7 @@ class TestCoordinator:
         self.running_tasks: Dict[str, Any] = {}
         self.completed_tasks: Set[str] = set()
         self.failed_tasks: Set[str] = set()
+        self.worker_manager = SimpleNamespace(workers=self.workers, worker_lock=threading.Lock())
 
         # Plugin manager is optional; keep falsy by default so integrations can fall back
         # to method patching in minimal-dependency environments.
@@ -404,6 +406,8 @@ class TestCoordinator:
                         cluster_nodes=self.cluster_nodes,
                         node_id=self.id,
                         db_path=self.db_path,
+                        allow_degraded_leader=True,
+                        use_state_manager=False,
                     )
                 except Exception as exc:
                     logger.warning(f"Failed to initialize redundancy manager: {exc}")
@@ -653,6 +657,12 @@ class TestCoordinator:
         app = web.Application()
         app.router.add_get("/status", self._handle_status)
         app.router.add_get("/api/status", self._handle_status_api)
+        app.router.add_get("/api/state", self._handle_api_state)
+        app.router.add_post("/raft", self._handle_raft)
+        app.router.add_post("/raft/sync", self._handle_raft_sync)
+        app.router.add_post("/raft/forward", self._handle_raft_forward)
+        app.router.add_post("/api/workers/register", self._handle_api_register_worker)
+        app.router.add_get("/api/workers", self._handle_api_workers)
         app.router.add_get("/task_results", self._handle_task_results)
         app.router.add_get("/system_metrics", self._handle_system_metrics)
         app.router.add_get("/statistics", self._handle_statistics)
@@ -700,6 +710,16 @@ class TestCoordinator:
             role = getattr(self.redundancy_manager, "current_role", role)
             leader_id = getattr(self.redundancy_manager, "leader_id", leader_id)
             term = getattr(self.redundancy_manager, "current_term", term)
+            if role is not None and getattr(role, "name", "") == "LEADER":
+                try:
+                    await self._sync_state_to_followers_now()
+                except Exception:
+                    pass
+            elif role is not None and getattr(role, "name", "") == "FOLLOWER":
+                try:
+                    await self.redundancy_manager._sync_state_from_leader()
+                except Exception:
+                    pass
 
         role_value = role.name if hasattr(role, "name") else str(role) if role is not None else None
         return web.json_response(
@@ -711,6 +731,49 @@ class TestCoordinator:
                 "term": term,
             }
         )
+
+    async def _handle_raft(self, request: web.Request) -> web.Response:
+        if self.redundancy_manager is None:
+            return web.json_response({"error": "redundancy not enabled"}, status=400)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+        msg_type = payload.get("type")
+        if msg_type == "request_vote":
+            response = await self.redundancy_manager.handle_request_vote(payload)
+        elif msg_type == "append_entries":
+            response = await self.redundancy_manager.handle_append_entries(payload)
+        else:
+            response = {"error": "unknown raft message", "type": msg_type}
+
+        return web.json_response(response)
+
+    async def _handle_raft_sync(self, request: web.Request) -> web.Response:
+        if self.redundancy_manager is None:
+            return web.json_response({"error": "redundancy not enabled"}, status=400)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+        response = await self.redundancy_manager.handle_state_sync(payload)
+        return web.json_response(response)
+
+    async def _handle_raft_forward(self, request: web.Request) -> web.Response:
+        if self.redundancy_manager is None:
+            return web.json_response({"error": "redundancy not enabled"}, status=400)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+        response = await self.redundancy_manager.handle_forwarded_request(payload)
+        return web.json_response(response)
 
     def _start_redundancy_manager(self) -> None:
         if self.redundancy_manager is None or self._redundancy_thread:
@@ -778,6 +841,125 @@ class TestCoordinator:
             if isinstance(worker, dict):
                 workers.append(worker)
         return web.json_response({"workers": workers})
+
+    async def _handle_api_register_worker(self, request: web.Request) -> web.Response:
+        if self.redundancy_manager is not None:
+            has_quorum = await self._has_quorum()
+            if not has_quorum:
+                return web.json_response({"success": False, "error": "no quorum"}, status=503)
+
+            role = getattr(self.redundancy_manager, "current_role", None)
+            if role is not None and getattr(role, "name", "") != "LEADER":
+                return web.json_response({"success": False, "error": "not leader"}, status=409)
+
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+
+        worker_id = payload.get("worker_id")
+        host = payload.get("host")
+        port = payload.get("port")
+        if not worker_id:
+            return web.json_response({"success": False, "error": "worker_id required"}, status=400)
+
+        worker_info = {
+            "worker_id": worker_id,
+            "host": host,
+            "port": port,
+            "status": "idle",
+            "registered_at": time.time(),
+        }
+        if getattr(self, "worker_manager", None) is not None:
+            self.worker_manager.workers[worker_id] = worker_info
+            self.workers = self.worker_manager.workers
+        else:
+            self.workers[worker_id] = worker_info
+
+        if self.redundancy_manager is not None:
+            role = getattr(self.redundancy_manager, "current_role", None)
+            if role is not None and getattr(role, "name", "") == "LEADER":
+                try:
+                    await self._sync_state_to_followers_now()
+                except Exception:
+                    pass
+        return web.json_response({"success": True, "worker_id": worker_id})
+
+    async def _handle_api_workers(self, _request: web.Request) -> web.Response:
+        if getattr(self, "worker_manager", None) is not None:
+            self.workers = self.worker_manager.workers
+        return web.json_response(self.workers)
+
+    async def _handle_api_state(self, _request: web.Request) -> web.Response:
+        if getattr(self, "worker_manager", None) is not None:
+            self.workers = self.worker_manager.workers
+        return web.json_response({"workers": self.workers, "state": {"workers": self.workers}})
+
+    async def _sync_state_to_followers_now(self) -> None:
+        if self.redundancy_manager is None:
+            return
+
+        state = await self.redundancy_manager._get_current_state()
+        for node in list(getattr(self.redundancy_manager, "cluster_nodes", []) or []):
+            if node == getattr(self.redundancy_manager, "node_url", None):
+                continue
+            await self.redundancy_manager._send_state_sync(node, state)
+
+        worker_ids = set((state.get("workers") or {}).keys())
+        if not worker_ids:
+            return
+
+        import aiohttp
+
+        follower_nodes = [
+            node
+            for node in list(getattr(self.redundancy_manager, "cluster_nodes", []) or [])
+            if node != getattr(self.redundancy_manager, "node_url", None)
+        ]
+
+        for _ in range(8):
+            remaining = set(follower_nodes)
+            for node in list(remaining):
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(f"{node}/api/workers", timeout=2) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                if worker_ids.issubset(set(data.keys())):
+                                    remaining.discard(node)
+                except Exception:
+                    continue
+            if not remaining:
+                return
+            await asyncio.sleep(0.5)
+
+    async def _has_quorum(self) -> bool:
+        if self.redundancy_manager is None:
+            return True
+
+        import aiohttp
+
+        cluster_nodes = list(getattr(self.redundancy_manager, "cluster_nodes", []) or [])
+        if not cluster_nodes:
+            return True
+
+        majority = len(cluster_nodes) // 2 + 1
+        alive = 1  # self
+
+        for node in cluster_nodes:
+            if node == getattr(self.redundancy_manager, "node_url", None):
+                continue
+            try:
+                if not self._api_loop:
+                    continue
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{node}/api/status", timeout=2) as response:
+                        if response.status == 200:
+                            alive += 1
+            except Exception:
+                continue
+
+        return alive >= majority
 
     async def _handle_drain(self, _request: web.Request) -> web.Response:
         return web.json_response({"status": "ok"})

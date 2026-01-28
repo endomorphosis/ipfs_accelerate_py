@@ -215,6 +215,9 @@ class FailoverSimulator:
             for node in status:
                 if node.get("status") == "running" and node.get("role") == "LEADER":
                     return node
+            running_nodes = [node for node in status if node.get("status") == "running"]
+            if len(running_nodes) == 1:
+                return running_nodes[0]
             await anyio.sleep(interval)
         return None
         
@@ -241,6 +244,18 @@ class FailoverSimulator:
         
     async def get_workers(self):
         """Get the list of workers from any available node."""
+        leader = await self.find_leader()
+        if leader is not None:
+            try:
+                import aiohttp
+                url = f"http://localhost:{leader['port']}/api/workers"
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(url) as response:
+                        if response.status == 200:
+                            return await response.json()
+            except Exception:
+                pass
+
         for i in range(self.node_count):
             node_port = self.base_port + i
             url = f"http://localhost:{node_port}/api/workers"
