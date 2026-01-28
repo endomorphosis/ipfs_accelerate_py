@@ -36,6 +36,8 @@ except ImportError:
         except ImportError:
             HAVE_STORAGE_WRAPPER = False
 
+storage_wrapper = get_storage_wrapper if HAVE_STORAGE_WRAPPER else None
+
 if HAVE_STORAGE_WRAPPER:
     try:
         _storage = get_storage_wrapper(auto_detect_ci=True)
