@@ -24,6 +24,28 @@ except (ImportError, ValueError):
     except ImportError:
         HAVE_STORAGE_WRAPPER = False
 
+# Try to import datasets integration for task dispatch tracking
+try:
+    from ..datasets_integration import (
+        is_datasets_available,
+        ProvenanceLogger,
+        DatasetsManager
+    )
+    HAVE_DATASETS_INTEGRATION = True
+except (ImportError, ValueError):
+    try:
+        from datasets_integration import (
+            is_datasets_available,
+            ProvenanceLogger,
+            DatasetsManager
+        )
+        HAVE_DATASETS_INTEGRATION = True
+    except ImportError:
+        HAVE_DATASETS_INTEGRATION = False
+        is_datasets_available = lambda: False
+        ProvenanceLogger = None
+        DatasetsManager = None
+
 try:
     from ipfs_multiformats import ipfs_multiformats_py
 except:
