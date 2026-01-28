@@ -351,3 +351,8 @@ def reset_storage_wrapper():
     """Reset the singleton storage wrapper (useful for testing)."""
     global _storage_wrapper
     _storage_wrapper = None
+
+
+# Constant to indicate storage_wrapper is available
+# This is used by files that import with try/except fallback
+HAVE_STORAGE_WRAPPER = True
