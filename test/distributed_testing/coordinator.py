@@ -279,6 +279,9 @@ class TestCoordinator:
         worker_timeout: int = 30,
         high_availability: bool = False,
         db_path: Optional[str] = None,
+        enable_redundancy: bool = False,
+        cluster_nodes: Optional[List[str]] = None,
+        node_id: Optional[str] = None,
         enable_advanced_scheduler: bool = False,
         enable_plugins: bool = False,
         **_unused_kwargs,
@@ -305,8 +308,15 @@ class TestCoordinator:
         
         # Initialize state
         self.id = str(uuid.uuid4())
+        if node_id:
+            self.id = str(node_id)
         # Common alias used elsewhere in the codebase/tests
         self.coordinator_id = self.id
+        self.enable_redundancy = enable_redundancy
+        self.cluster_nodes = list(cluster_nodes) if cluster_nodes else [f"http://{self.host}:{self.port}"]
+        self.redundancy_manager = None
+        self._redundancy_thread: Optional[threading.Thread] = None
+        self._redundancy_ready = threading.Event()
         self.state = CoordinatorState(
             id=self.id,
             role=NodeRole.LEADER if not high_availability else NodeRole.CANDIDATE,
@@ -378,6 +388,26 @@ class TestCoordinator:
         else:
             self.election_thread = None
 
+        if self.enable_redundancy:
+            try:
+                from .coordinator_redundancy import RedundancyManager
+            except Exception:
+                try:
+                    from coordinator_redundancy import RedundancyManager
+                except Exception:
+                    RedundancyManager = None  # type: ignore
+
+            if RedundancyManager is not None:
+                try:
+                    self.redundancy_manager = RedundancyManager(
+                        coordinator=self,
+                        cluster_nodes=self.cluster_nodes,
+                        node_id=self.id,
+                        db_path=self.db_path,
+                    )
+                except Exception as exc:
+                    logger.warning(f"Failed to initialize redundancy manager: {exc}")
+
     def _heartbeat_loop(self) -> None:
         """Background heartbeat loop for the lightweight coordinator.
 
@@ -444,6 +474,9 @@ class TestCoordinator:
         
         if self.election_thread:
             self.election_thread.start()
+
+        if self.redundancy_manager is not None:
+            self._start_redundancy_manager()
         
         # Start API server (minimal implementation)
         self._start_api_server()
@@ -468,6 +501,10 @@ class TestCoordinator:
         
         if self.election_thread:
             self.election_thread.join()
+
+        if self._redundancy_thread:
+            self._redundancy_thread.join(timeout=5)
+            self._redundancy_thread = None
         
         self._stop_api_server()
         logger.info("Coordinator stopped")
@@ -615,6 +652,7 @@ class TestCoordinator:
     async def _api_server_main(self) -> None:
         app = web.Application()
         app.router.add_get("/status", self._handle_status)
+        app.router.add_get("/api/status", self._handle_status_api)
         app.router.add_get("/task_results", self._handle_task_results)
         app.router.add_get("/system_metrics", self._handle_system_metrics)
         app.router.add_get("/statistics", self._handle_statistics)
@@ -652,6 +690,48 @@ class TestCoordinator:
 
     async def _handle_status(self, _request: web.Request) -> web.Response:
         return web.json_response({"status": "ok"})
+
+    async def _handle_status_api(self, _request: web.Request) -> web.Response:
+        role = getattr(self.state, "role", None)
+        leader_id = getattr(self.state, "leader_id", None)
+        term = getattr(self.state, "term", 0)
+
+        if self.redundancy_manager is not None:
+            role = getattr(self.redundancy_manager, "current_role", role)
+            leader_id = getattr(self.redundancy_manager, "leader_id", leader_id)
+            term = getattr(self.redundancy_manager, "current_term", term)
+
+        role_value = role.name if hasattr(role, "name") else str(role) if role is not None else None
+        return web.json_response(
+            {
+                "status": "running",
+                "node_id": self.id,
+                "role": role_value,
+                "current_leader": leader_id,
+                "term": term,
+            }
+        )
+
+    def _start_redundancy_manager(self) -> None:
+        if self.redundancy_manager is None or self._redundancy_thread:
+            return
+
+        def _runner() -> None:
+            async def _run() -> None:
+                await self.redundancy_manager.start()
+                self._redundancy_ready.set()
+                while not self.stop_event.is_set():
+                    await asyncio.sleep(0.2)
+                await self.redundancy_manager.stop()
+
+            try:
+                anyio.run(_run)
+            except Exception as exc:
+                logger.warning(f"Redundancy manager stopped: {exc}")
+
+        self._redundancy_thread = threading.Thread(target=_runner, daemon=True)
+        self._redundancy_thread.start()
+        self._redundancy_ready.wait(timeout=5)
 
     async def _handle_task_results(self, _request: web.Request) -> web.Response:
         results = []
@@ -1780,8 +1860,21 @@ def main() -> int:
     parser.add_argument('--heartbeat-interval', type=int, default=10, help='Heartbeat interval in seconds')
     parser.add_argument('--worker-timeout', type=int, default=30, help='Worker timeout in seconds')
     parser.add_argument('--high-availability', action='store_true', help='Enable high availability mode')
+    parser.add_argument('--id', dest='node_id', help='Coordinator node id (failover tests)')
+    parser.add_argument('--db-path', dest='db_path', help='Path to coordinator DuckDB file')
+    parser.add_argument('--data-dir', dest='data_dir', help='Data directory for coordinator')
+    parser.add_argument('--enable-redundancy', action='store_true', help='Enable coordinator redundancy')
+    parser.add_argument('--peers', default='', help='Comma-separated list of peer host:port entries')
+    parser.add_argument('--log-level', default='INFO', help='Logging level')
     
     args = parser.parse_args()
+
+    log_level = getattr(logging, str(args.log_level).upper(), logging.INFO)
+    logging.getLogger().setLevel(log_level)
+
+    peers = [p.strip() for p in str(args.peers).split(',') if p.strip()]
+    node_host = "localhost" if args.host in {"0.0.0.0", "::"} else args.host
+    cluster_nodes = [f"http://{node_host}:{args.port}"] + [f"http://{peer}" for peer in peers]
     
     # Create and start the coordinator
     coordinator = TestCoordinator(
@@ -1789,7 +1882,11 @@ def main() -> int:
         port=args.port,
         heartbeat_interval=args.heartbeat_interval,
         worker_timeout=args.worker_timeout,
-        high_availability=args.high_availability
+        high_availability=args.high_availability,
+        db_path=args.db_path,
+        enable_redundancy=args.enable_redundancy,
+        cluster_nodes=cluster_nodes,
+        node_id=args.node_id,
     )
     
     try:
