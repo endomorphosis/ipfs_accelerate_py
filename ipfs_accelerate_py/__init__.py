@@ -218,6 +218,13 @@ except ImportError:
     reset_storage = None
     StorageBackendConfig = None
 
+# Add auto-patching for transformers (applies automatically on import if enabled)
+try:
+    from . import auto_patch_transformers
+    export["auto_patch_transformers"] = auto_patch_transformers
+except ImportError:
+    auto_patch_transformers = None
+
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
     'install_depends', 'worker', 'ipfs_multiformats_py',
@@ -226,7 +233,8 @@ __all__ = [
     'model_manager_available', 'cli_main', 'get_system_logs', 'SystemLogs',
     'P2PWorkflowScheduler', 'P2PTask', 'WorkflowTag', 'MerkleClock',
     'FibonacciHeap', 'calculate_hamming_distance',
-    'IPFSKitStorage', 'get_storage', 'reset_storage', 'StorageBackendConfig'
+    'IPFSKitStorage', 'get_storage', 'reset_storage', 'StorageBackendConfig',
+    'auto_patch_transformers'
 ]
 
 # Package version

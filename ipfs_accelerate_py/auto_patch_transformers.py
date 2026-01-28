@@ -1,0 +1,313 @@
+"""
+Auto-Patching System for Transformers with Distributed Storage Support
+
+This module provides automatic monkey-patching of HuggingFace transformers
+to integrate distributed filesystem support via storage_wrapper and ipfs_kit_py.
+
+Inspired by ipfs_transformers_py pattern but customized for ipfs_accelerate_py:
+- Automatically patches transformers.AutoModel classes
+- Integrates with storage_wrapper for distributed caching
+- Provides CI/CD gating and fallback
+- Zero code changes required in worker skillsets
+
+Usage:
+    # Apply patches before importing worker skillsets
+    from ipfs_accelerate_py import auto_patch_transformers
+    auto_patch_transformers.apply()
+    
+    # Now all imports of transformers will use patched versions
+    from worker.skillset import hf_bert  # Uses patched transformers automatically
+    
+    # Disable patching
+    auto_patch_transformers.disable()
+"""
+
+import os
+import sys
+import logging
+from typing import Optional, Dict, Any, Callable
+from functools import wraps
+
+logger = logging.getLogger(__name__)
+
+# Track patching state
+_patching_enabled = False
+_original_from_pretrained = {}
+_patch_applied = False
+
+
+def is_patching_enabled() -> bool:
+    """Check if patching is currently enabled."""
+    return _patching_enabled
+
+
+def should_patch() -> bool:
+    """
+    Determine if patching should be applied based on environment.
+    
+    Returns:
+        True if patching should be applied, False otherwise
+    """
+    # Check explicit disable flags
+    if os.environ.get('TRANSFORMERS_PATCH_DISABLE', '').lower() in ('1', 'true', 'yes'):
+        logger.debug("Transformers patching disabled via TRANSFORMERS_PATCH_DISABLE")
+        return False
+    
+    if os.environ.get('IPFS_KIT_DISABLE', '').lower() in ('1', 'true', 'yes'):
+        logger.debug("Transformers patching disabled via IPFS_KIT_DISABLE")
+        return False
+    
+    if os.environ.get('STORAGE_FORCE_LOCAL', '').lower() in ('1', 'true', 'yes'):
+        logger.debug("Transformers patching disabled via STORAGE_FORCE_LOCAL")
+        return False
+    
+    # Auto-detect CI/CD environment
+    if os.environ.get('CI', ''):
+        logger.debug("CI environment detected, disabling transformers patching")
+        return False
+    
+    # Default to enabled
+    return True
+
+
+def create_patched_from_pretrained(original_from_pretrained: Callable, class_name: str) -> Callable:
+    """
+    Create a patched version of from_pretrained that uses distributed storage.
+    
+    Args:
+        original_from_pretrained: Original from_pretrained method
+        class_name: Name of the class being patched (for logging)
+    
+    Returns:
+        Patched from_pretrained method
+    """
+    @wraps(original_from_pretrained)
+    def patched_from_pretrained(pretrained_model_name_or_path, *args, **kwargs):
+        """
+        Patched from_pretrained that integrates with storage_wrapper.
+        
+        This method:
+        1. Checks if storage_wrapper is available and distributed storage is enabled
+        2. If yes, modifies cache_dir to use storage_wrapper's cache directory
+        3. Falls back to original behavior if storage_wrapper unavailable
+        """
+        # Try to use storage_wrapper for cache_dir
+        try:
+            from .common.storage_wrapper import get_storage_wrapper
+            
+            storage = get_storage_wrapper(auto_detect_ci=True)
+            
+            if storage and storage.is_distributed:
+                # Get the distributed cache directory
+                cache_dir = str(storage.get_cache_dir())
+                
+                # If user didn't specify cache_dir, use ours
+                if 'cache_dir' not in kwargs:
+                    kwargs['cache_dir'] = cache_dir
+                    logger.debug(
+                        f"{class_name}.from_pretrained using distributed cache: {cache_dir}"
+                    )
+                else:
+                    # User specified cache_dir, respect it but log
+                    logger.debug(
+                        f"{class_name}.from_pretrained using user-specified cache_dir: {kwargs['cache_dir']}"
+                    )
+            else:
+                logger.debug(
+                    f"{class_name}.from_pretrained using standard cache (distributed storage unavailable)"
+                )
+        except ImportError:
+            # storage_wrapper not available, use original behavior
+            logger.debug(
+                f"{class_name}.from_pretrained using standard cache (storage_wrapper not available)"
+            )
+        except Exception as e:
+            # Any other error, fall back gracefully
+            logger.debug(
+                f"{class_name}.from_pretrained storage_wrapper error (falling back): {e}"
+            )
+        
+        # Call original from_pretrained with potentially modified kwargs
+        return original_from_pretrained(pretrained_model_name_or_path, *args, **kwargs)
+    
+    return patched_from_pretrained
+
+
+def patch_transformers_class(cls, class_name: str) -> None:
+    """
+    Patch a single transformers class to use distributed storage.
+    
+    Args:
+        cls: The class to patch
+        class_name: Name of the class (for logging and tracking)
+    """
+    if hasattr(cls, 'from_pretrained') and callable(cls.from_pretrained):
+        # Store original method
+        if class_name not in _original_from_pretrained:
+            _original_from_pretrained[class_name] = cls.from_pretrained
+        
+        # Apply patch
+        cls.from_pretrained = classmethod(
+            create_patched_from_pretrained(
+                _original_from_pretrained[class_name].__func__,
+                class_name
+            )
+        )
+        logger.info(f"Patched {class_name}.from_pretrained for distributed storage")
+
+
+def apply() -> bool:
+    """
+    Apply patches to transformers classes.
+    
+    This method patches all AutoModel classes in the transformers library
+    to automatically use distributed storage when available.
+    
+    Returns:
+        True if patches were applied, False otherwise
+    """
+    global _patching_enabled, _patch_applied
+    
+    # Check if we should patch
+    if not should_patch():
+        logger.info("Transformers auto-patching disabled by environment")
+        return False
+    
+    # Check if already patched
+    if _patch_applied:
+        logger.debug("Transformers already patched, skipping")
+        return True
+    
+    try:
+        import transformers
+    except ImportError:
+        logger.warning("transformers not available, cannot apply patches")
+        return False
+    
+    # List of classes to patch
+    classes_to_patch = [
+        'AutoModel',
+        'AutoModelForCausalLM',
+        'AutoModelForSeq2SeqLM',
+        'AutoModelForSequenceClassification',
+        'AutoModelForTokenClassification',
+        'AutoModelForQuestionAnswering',
+        'AutoModelForMaskedLM',
+        'AutoModelForImageClassification',
+        'AutoModelForObjectDetection',
+        'AutoModelForImageSegmentation',
+        'AutoModelForSemanticSegmentation',
+        'AutoModelForInstanceSegmentation',
+        'AutoModelForUniversalSegmentation',
+        'AutoModelForZeroShotImageClassification',
+        'AutoModelForDepthEstimation',
+        'AutoModelForVideoClassification',
+        'AutoModelForVision2Seq',
+        'AutoModelForVisualQuestionAnswering',
+        'AutoModelForDocumentQuestionAnswering',
+        'AutoModelForMaskedImageModeling',
+        'AutoModelForAudioClassification',
+        'AutoModelForAudioFrameClassification',
+        'AutoModelForCTC',
+        'AutoModelForSpeechSeq2Seq',
+        'AutoModelForAudioXVector',
+        'AutoModelForTextToSpectrogram',
+        'AutoModelForTextToWaveform',
+        'AutoModelForTableQuestionAnswering',
+        'AutoTokenizer',
+        'AutoProcessor',
+        'AutoConfig',
+        'AutoFeatureExtractor',
+        'AutoImageProcessor',
+    ]
+    
+    patched_count = 0
+    for class_name in classes_to_patch:
+        if hasattr(transformers, class_name):
+            cls = getattr(transformers, class_name)
+            try:
+                patch_transformers_class(cls, f"transformers.{class_name}")
+                patched_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to patch {class_name}: {e}")
+        else:
+            logger.debug(f"{class_name} not found in transformers, skipping")
+    
+    _patching_enabled = True
+    _patch_applied = True
+    
+    logger.info(
+        f"Successfully patched {patched_count} transformers classes for distributed storage"
+    )
+    return True
+
+
+def restore() -> bool:
+    """
+    Restore original transformers methods.
+    
+    This undoes the patching and restores the original behavior.
+    
+    Returns:
+        True if restoration was successful, False otherwise
+    """
+    global _patching_enabled, _patch_applied
+    
+    if not _patch_applied:
+        logger.debug("No patches to restore")
+        return False
+    
+    try:
+        import transformers
+    except ImportError:
+        logger.warning("transformers not available, cannot restore")
+        return False
+    
+    restored_count = 0
+    for class_full_name, original_method in _original_from_pretrained.items():
+        # Parse class name
+        if '.' in class_full_name:
+            class_name = class_full_name.split('.')[-1]
+        else:
+            class_name = class_full_name
+        
+        if hasattr(transformers, class_name):
+            cls = getattr(transformers, class_name)
+            cls.from_pretrained = classmethod(original_method)
+            restored_count += 1
+            logger.debug(f"Restored {class_full_name}.from_pretrained")
+    
+    _patching_enabled = False
+    _patch_applied = False
+    _original_from_pretrained.clear()
+    
+    logger.info(f"Restored {restored_count} transformers classes to original state")
+    return True
+
+
+def disable() -> None:
+    """Disable patching and restore original behavior."""
+    restore()
+
+
+def get_status() -> Dict[str, Any]:
+    """
+    Get current patching status.
+    
+    Returns:
+        Dictionary with patching status information
+    """
+    return {
+        'enabled': _patching_enabled,
+        'applied': _patch_applied,
+        'patched_classes': list(_original_from_pretrained.keys()),
+        'should_patch': should_patch(),
+    }
+
+
+# Auto-apply patches on import if environment allows
+if should_patch():
+    try:
+        apply()
+    except Exception as e:
+        logger.warning(f"Failed to auto-apply transformers patches: {e}")
