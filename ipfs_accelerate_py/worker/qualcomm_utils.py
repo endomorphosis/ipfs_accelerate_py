@@ -216,34 +216,11 @@ class qualcomm_utils:
         if os.path.isfile(path):
             os.remove(path)
             custom_tokenizer = self.transformers.AutoTokenizer(model.BPE(vocab=tokenizer.get_vocab(), merges=[]))
-            tokenizer_json = custom_tokenizer.to_json()
-            tokenizer_path = os.path.join(path, "tokenizer.json")
-            
-            # Try distributed storage first
-            if self._storage:
-                try:
-                    self._storage.write_file(tokenizer_json, tokenizer_path, pin=True)
-                except Exception:
-                    with open(tokenizer_path, 'w') as f:
-                        f.write(tokenizer_json)
-            else:
-                with open(tokenizer_path, 'w') as f:
-                    f.write(tokenizer_json)
+            # Note: Original code has logic issues, preserving as-is per requirement
+            custom_tokenizer.save(os.path.join(path, "tokenizer.json"))
         else:
             custom_tokenizer = self.transformers.AutoTokenizer(model.BPE(vocab=tokenizer.get_vocab(), merges=[]))
-            tokenizer_json = custom_tokenizer.to_json()
-            tokenizer_path = os.path.join(os.path.dirname(path),"tokenizer.json")
-            
-            # Try distributed storage first
-            if self._storage:
-                try:
-                    self._storage.write_file(tokenizer_json, tokenizer_path, pin=True)
-                except Exception:
-                    with open(tokenizer_path, 'w') as f:
-                        f.write(tokenizer_json)
-            else:
-                with open(tokenizer_path, 'w') as f:
-                    f.write(tokenizer_json)
+            custom_tokenizer.save(os.path.join(os.path.dirname(path),"tokenizer.json"))
         return None
     
     def genie_t2t_run(self, config=None, text=None):
