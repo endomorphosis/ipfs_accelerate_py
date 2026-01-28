@@ -20,6 +20,14 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
+try:
+    from ..common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,6 +53,15 @@ class SimplePeerBootstrap:
             cache_dir: Directory for peer registry (defaults to ~/.cache/p2p_peers)
             peer_ttl_minutes: How long peer entries are valid
         """
+        # Initialize storage wrapper
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         if cache_dir is None:
             # Allow overriding for hardened environments (e.g., systemd ProtectHome)
             env_dir = os.environ.get("IPFS_ACCELERATE_P2P_CACHE_DIR")
@@ -139,8 +156,22 @@ class SimplePeerBootstrap:
             
             # Store peer info in local file
             peer_file = self.cache_dir / f"peer_{self.runner_name}.json"
-            with open(peer_file, "w") as f:
-                json.dump(peer_info, f, indent=2)
+            peer_data = json.dumps(peer_info, indent=2)
+            
+            # Try distributed storage first
+            if self.storage:
+                try:
+                    self.storage.store_file(str(peer_file), peer_data, pin=False)
+                    # Also write locally
+                    with open(peer_file, "w") as f:
+                        f.write(peer_data)
+                except:
+                    # Fallback to local filesystem only
+                    with open(peer_file, "w") as f:
+                        f.write(peer_data)
+            else:
+                with open(peer_file, "w") as f:
+                    f.write(peer_data)
             
             logger.info(f"✓ Registered peer: {peer_id[:16]}... on {self.public_ip}:{listen_port}")
             logger.info(f"  Registry file: {peer_file}")
@@ -170,8 +201,24 @@ class SimplePeerBootstrap:
                     continue
                 
                 try:
-                    with open(peer_file, "r") as f:
-                        peer_info = json.load(f)
+                    # Try distributed storage first
+                    if self.storage:
+                        try:
+                            cached_data = self.storage.get_file(str(peer_file))
+                            if cached_data:
+                                peer_info = json.loads(cached_data)
+                            else:
+                                with open(peer_file, "r") as f:
+                                    peer_info = json.load(f)
+                                # Cache for future use
+                                self.storage.store_file(str(peer_file), json.dumps(peer_info), pin=False)
+                        except:
+                            # Fallback to local filesystem
+                            with open(peer_file, "r") as f:
+                                peer_info = json.load(f)
+                    else:
+                        with open(peer_file, "r") as f:
+                            peer_info = json.load(f)
                     
                     # Check if peer is still active (within TTL)
                     last_seen = datetime.fromisoformat(peer_info["last_seen"])
@@ -265,8 +312,21 @@ class SimplePeerBootstrap:
             
             for peer_file in self.cache_dir.glob("peer_*.json"):
                 try:
-                    with open(peer_file, "r") as f:
-                        peer_info = json.load(f)
+                    # Try distributed storage first
+                    if self.storage:
+                        try:
+                            cached_data = self.storage.get_file(str(peer_file))
+                            if cached_data:
+                                peer_info = json.loads(cached_data)
+                            else:
+                                with open(peer_file, "r") as f:
+                                    peer_info = json.load(f)
+                        except:
+                            with open(peer_file, "r") as f:
+                                peer_info = json.load(f)
+                    else:
+                        with open(peer_file, "r") as f:
+                            peer_info = json.load(f)
                     
                     last_seen = datetime.fromisoformat(peer_info["last_seen"])
                     if datetime.utcnow() - last_seen > self.peer_ttl:

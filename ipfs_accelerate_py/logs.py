@@ -15,6 +15,14 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
 import logging
 
+try:
+    from .common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -29,6 +37,15 @@ class SystemLogs:
             service_name: Name of the systemd service to query logs for
         """
         self.service_name = service_name
+        
+        # Initialize storage wrapper
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
     
     def get_logs(
         self,
@@ -205,8 +222,25 @@ class SystemLogs:
         for log_path in log_paths:
             if os.path.exists(log_path):
                 try:
-                    with open(log_path, 'r') as f:
-                        log_lines = f.readlines()[-lines:]
+                    # Try distributed storage first
+                    if self.storage:
+                        try:
+                            cached_data = self.storage.get_file(log_path)
+                            if cached_data:
+                                log_lines = cached_data.split('\n')[-lines:]
+                            else:
+                                with open(log_path, 'r') as f:
+                                    content = f.read()
+                                    log_lines = content.split('\n')[-lines:]
+                                # Cache logs (temporary, not pinned)
+                                self.storage.store_file(log_path, content, pin=False)
+                        except:
+                            # Fallback to local filesystem
+                            with open(log_path, 'r') as f:
+                                log_lines = f.readlines()[-lines:]
+                    else:
+                        with open(log_path, 'r') as f:
+                            log_lines = f.readlines()[-lines:]
                     
                     logs = []
                     for line in log_lines:

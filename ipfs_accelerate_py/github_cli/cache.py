@@ -25,6 +25,14 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Set
 from threading import Lock
 
+try:
+    from ..common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 # Try to import cryptography for message encryption
 try:
     from cryptography.fernet import Fernet
@@ -149,6 +157,15 @@ class GitHubAPICache:
             enable_peer_discovery: Whether to use GitHub cache API for peer discovery
             enable_universal_connectivity: Whether to enable universal connectivity patterns
         """
+        # Initialize storage wrapper
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         self.default_ttl = default_ttl
         self.max_cache_size = max_cache_size
         self.enable_persistence = enable_persistence
@@ -1118,8 +1135,16 @@ class GitHubAPICache:
                 "validation_fields": entry.validation_fields
             }
             
+            cache_json = json.dumps(cache_data)
             with open(cache_file, 'w') as f:
-                json.dump(cache_data, f)
+                f.write(cache_json)
+            
+            # Update distributed storage
+            if self.storage:
+                try:
+                    self.storage.store_file(str(cache_file), cache_json, pin=False)
+                except:
+                    pass  # Silently fail distributed storage updates
             
             logger.debug(f"Saved cache entry to {cache_file}")
         except Exception as e:
@@ -1136,8 +1161,23 @@ class GitHubAPICache:
         try:
             for cache_file in self.cache_dir.glob("*.json"):
                 try:
-                    with open(cache_file, 'r') as f:
-                        cache_data = json.load(f)
+                    # Try distributed storage first
+                    if self.storage:
+                        try:
+                            cached_data = self.storage.get_file(str(cache_file))
+                            if cached_data:
+                                cache_data = json.loads(cached_data)
+                            else:
+                                with open(cache_file, 'r') as f:
+                                    cache_data = json.load(f)
+                                # Cache for future use
+                                self.storage.store_file(str(cache_file), json.dumps(cache_data), pin=False)
+                        except:
+                            with open(cache_file, 'r') as f:
+                                cache_data = json.load(f)
+                    else:
+                        with open(cache_file, 'r') as f:
+                            cache_data = json.load(f)
                     
                     entry = CacheEntry(
                         data=cache_data["data"],

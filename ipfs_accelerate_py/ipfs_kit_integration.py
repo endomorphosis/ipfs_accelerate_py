@@ -38,6 +38,14 @@ from pathlib import Path
 from typing import Optional, Union, Dict, Any, List, BinaryIO
 from dataclasses import dataclass
 
+try:
+    from .common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,6 +93,15 @@ class IPFSKitStorage:
         self.config = config or {}
         self.force_fallback = force_fallback or os.environ.get('IPFS_KIT_DISABLE', '').lower() in ('1', 'true', 'yes')
         self.enable_ipfs_kit = enable_ipfs_kit and not self.force_fallback
+        
+        # Initialize storage wrapper
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
         
         # Set up cache directory
         if cache_dir:
@@ -211,8 +228,23 @@ class IPFSKitStorage:
             if isinstance(data, str):
                 data_bytes = data.encode('utf-8')
             elif isinstance(data, Path):
-                with open(data, 'rb') as f:
-                    data_bytes = f.read()
+                # Try distributed storage first
+                if self.storage:
+                    try:
+                        cached_data = self.storage.get_file(str(data))
+                        if cached_data:
+                            data_bytes = cached_data.encode() if isinstance(cached_data, str) else cached_data
+                        else:
+                            with open(data, 'rb') as f:
+                                data_bytes = f.read()
+                            # Cache for future use
+                            self.storage.store_file(str(data), data_bytes, pin=pin)
+                    except:
+                        with open(data, 'rb') as f:
+                            data_bytes = f.read()
+                else:
+                    with open(data, 'rb') as f:
+                        data_bytes = f.read()
             else:
                 data_bytes = data
             
@@ -224,11 +256,25 @@ class IPFSKitStorage:
             with open(storage_path, 'wb') as f:
                 f.write(data_bytes)
             
+            # Store in distributed storage
+            if self.storage:
+                try:
+                    self.storage.store_file(str(storage_path), data_bytes, pin=pin)
+                except:
+                    pass  # Silently fail distributed storage
+            
             # Store metadata
             if filename:
                 metadata_path = self.cache_dir / f"{cid}.meta"
+                metadata_json = json.dumps({'filename': filename, 'pinned': pin})
                 with open(metadata_path, 'w') as f:
-                    json.dump({'filename': filename, 'pinned': pin}, f)
+                    f.write(metadata_json)
+                # Store metadata in distributed storage
+                if self.storage:
+                    try:
+                        self.storage.store_file(str(metadata_path), metadata_json, pin=pin)
+                    except:
+                        pass
             
             logger.info(f"Stored content with CID: {cid}")
             return cid
@@ -250,8 +296,23 @@ class IPFSKitStorage:
             if isinstance(data, str):
                 data_bytes = data.encode('utf-8')
             elif isinstance(data, Path):
-                with open(data, 'rb') as f:
-                    data_bytes = f.read()
+                # Try distributed storage first
+                if self.storage:
+                    try:
+                        cached_data = self.storage.get_file(str(data))
+                        if cached_data:
+                            data_bytes = cached_data.encode() if isinstance(cached_data, str) else cached_data
+                        else:
+                            with open(data, 'rb') as f:
+                                data_bytes = f.read()
+                            # Cache for future use
+                            self.storage.store_file(str(data), data_bytes, pin=pin)
+                    except:
+                        with open(data, 'rb') as f:
+                            data_bytes = f.read()
+                else:
+                    with open(data, 'rb') as f:
+                        data_bytes = f.read()
             else:
                 data_bytes = data
             
@@ -263,11 +324,25 @@ class IPFSKitStorage:
             with open(storage_path, 'wb') as f:
                 f.write(data_bytes)
             
+            # Store in distributed storage
+            if self.storage:
+                try:
+                    self.storage.store_file(str(storage_path), data_bytes, pin=pin)
+                except:
+                    pass  # Silently fail distributed storage
+            
             # Store metadata if filename provided
             if filename:
                 metadata_path = self.cache_dir / f"{cid}.meta"
+                metadata_json = json.dumps({'filename': filename, 'fallback': True, 'pinned': pin})
                 with open(metadata_path, 'w') as f:
-                    json.dump({'filename': filename, 'fallback': True, 'pinned': pin}, f)
+                    f.write(metadata_json)
+                # Store metadata in distributed storage
+                if self.storage:
+                    try:
+                        self.storage.store_file(str(metadata_path), metadata_json, pin=pin)
+                    except:
+                        pass
             
             logger.debug(f"Stored content locally with CID: {cid}")
             return cid
