@@ -7,9 +7,23 @@ from os.path import isfile, join
 from os import walk
 import toml
 
+# Try to import storage wrapper with comprehensive fallback
+try:
+    from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        HAVE_STORAGE_WRAPPER = False
+        def get_storage_wrapper(*args, **kwargs):
+            return None
+
 class config():
     def __init__(self, collection=None, meta=None):
         this_dir = os.path.dirname(os.path.realpath(__file__))
+        # Initialize storage wrapper
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
+        
         if meta is not None:
             if "config" in meta:
                 self.toml_file = meta["config"]
@@ -26,6 +40,19 @@ class config():
         if not isinstance(overrides, dict):
             if isinstance(overrides, str):
                 if os.path.exists(overrides):
+                    # Try distributed storage first
+                    if self._storage:
+                        try:
+                            content = self._storage.read_file(overrides)
+                            if content:
+                                content_str = content if isinstance(content, str) else content.decode()
+                                for key, value in toml.loads(content_str).items():
+                                    base[key] = value
+                                return base
+                        except Exception:
+                            pass
+                    
+                    # Fallback to local file
                     with open(overrides) as f:
                         for key, value in toml.load(f).items():
                             base[key] = value
@@ -66,6 +93,22 @@ class config():
     def loadConfig(self, configPath, overrides = None):
         if configPath is None and "findConfig" in dir(self):
             configPath = self.findConfig()
+        
+        # Try distributed storage first
+        if self._storage:
+            try:
+                content = self._storage.read_file(configPath)
+                if content:
+                    content_str = content if isinstance(content, str) else content.decode()
+                    config = toml.loads(content_str)
+                    if overrides is None:
+                        return config
+                    else:
+                        return self.overrideToml(config, overrides)
+            except Exception:
+                pass
+        
+        # Fallback to local file
         with open(configPath) as f:
             config = toml.load(f)
             if overrides is None:

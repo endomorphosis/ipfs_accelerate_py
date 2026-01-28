@@ -17,6 +17,20 @@ from typing import Any, Dict, List, Optional
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
+# Try to import storage wrapper with comprehensive fallback
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+            def get_storage_wrapper(*args, **kwargs):
+                return None
+
 
 class MCPVerifier:
     """Verify IPFS Accelerate MCP Server registration and accessibility"""
@@ -34,6 +48,8 @@ class MCPVerifier:
             "prompts": {},
             "summary": {}
         }
+        # Initialize storage wrapper
+        self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
         
     async def start_server(self):
         """Start the MCP server"""
@@ -218,8 +234,18 @@ class MCPVerifier:
                 try:
                     content, mime_type = await session.read_resource("ipfs://config")
                     config = json.loads(content)
+                    config_json = json.dumps(config, indent=2)
                     print(f"  Successfully accessed ipfs://config (mime-type: {mime_type})")
                     print(f"  Config keys: {', '.join(config.keys()) if isinstance(config, dict) else 'N/A'}")
+                    
+                    # Try to save config to distributed storage
+                    if self._storage:
+                        try:
+                            cid = self._storage.write_file(config_json, "mcp_server_config.json", pin=False)
+                            print(f"  Config saved to distributed storage: {cid}")
+                        except Exception as e:
+                            print(f"  Could not save to distributed storage: {e}")
+                    
                     self.results["resources"]["config_access_test"] = "success"
                 except Exception as e:
                     print(f"  Error accessing ipfs://config: {e}")
@@ -339,10 +365,23 @@ async def main():
     
     # Save results to file
     results_path = "ipfs_accelerate_py/mcp/tests/verification_results.json"
-    with open(results_path, "w") as f:
-        json.dump(results, f, indent=2)
+    results_json = json.dumps(results, indent=2)
     
-    print(f"\nDetailed verification results saved to: {results_path}")
+    # Try distributed storage first
+    storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
+    if storage:
+        try:
+            cid = storage.write_file(results_json, results_path, pin=True)
+            print(f"\nDetailed verification results saved to distributed storage: {cid}")
+        except Exception as e:
+            print(f"Distributed storage failed: {e}, using local storage")
+            with open(results_path, "w") as f:
+                f.write(results_json)
+            print(f"\nDetailed verification results saved to: {results_path}")
+    else:
+        with open(results_path, "w") as f:
+            f.write(results_json)
+        print(f"\nDetailed verification results saved to: {results_path}")
     
     # Return overall status
     if "summary" in results and results["summary"]["completion_percentage"] >= 100:

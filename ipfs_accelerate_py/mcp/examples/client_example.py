@@ -8,12 +8,29 @@ import json
 import requests
 import sys
 
+# Try to import storage wrapper with comprehensive fallback
+try:
+    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+except ImportError:
+    try:
+        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    except ImportError:
+        try:
+            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        except ImportError:
+            HAVE_STORAGE_WRAPPER = False
+            def get_storage_wrapper(*args, **kwargs):
+                return None
+
 def main():
     """
     Main function demonstrating the MCP client
     """
     print("IPFS Accelerate MCP Client Example")
     print("----------------------------------\n")
+    
+    # Initialize storage wrapper
+    storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
     
     # Server URL
     base_url = "http://localhost:8000"
@@ -48,8 +65,21 @@ def main():
             print(f"  - GPU: {hardware_info.get('gpu', {}).get('name', 'Unknown')}\n")
             
             # Save hardware info to file for reference
-            with open("hardware_info.json", "w") as f:
-                json.dump(hardware_info, f, indent=2)
+            hardware_json = json.dumps(hardware_info, indent=2)
+            
+            # Try distributed storage first
+            if storage:
+                try:
+                    cid = storage.write_file(hardware_json, "hardware_info.json", pin=True)
+                    print(f"  - Hardware information saved to distributed storage: {cid}\n")
+                except Exception as e:
+                    print(f"  - Distributed storage failed: {e}, using local storage")
+                    with open("hardware_info.json", "w") as f:
+                        f.write(hardware_json)
+                    print("  - Hardware information saved to hardware_info.json\n")
+            else:
+                with open("hardware_info.json", "w") as f:
+                    f.write(hardware_json)
                 print("  - Hardware information saved to hardware_info.json\n")
         else:
             print(f"✗ Failed to get hardware information: Status code {response.status_code}")
@@ -81,8 +111,21 @@ def main():
                     print(f"    - {model.get('name', 'Unknown')}: {model.get('description', 'No description')}")
             
             # Save model info to file for reference
-            with open("supported_models.json", "w") as f:
-                json.dump(model_info, f, indent=2)
+            models_json = json.dumps(model_info, indent=2)
+            
+            # Try distributed storage first
+            if storage:
+                try:
+                    cid = storage.write_file(models_json, "supported_models.json", pin=True)
+                    print(f"\n  - Supported models information saved to distributed storage: {cid}\n")
+                except Exception as e:
+                    print(f"\n  - Distributed storage failed: {e}, using local storage")
+                    with open("supported_models.json", "w") as f:
+                        f.write(models_json)
+                    print("  - Supported models information saved to supported_models.json\n")
+            else:
+                with open("supported_models.json", "w") as f:
+                    f.write(models_json)
                 print("\n  - Supported models information saved to supported_models.json\n")
         else:
             print(f"✗ Failed to get supported models: Status code {response.status_code}")
