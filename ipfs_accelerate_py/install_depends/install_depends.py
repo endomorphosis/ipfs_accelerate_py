@@ -6,6 +6,14 @@ import hashlib
 import platform
 import tempfile
 
+try:
+    from ..common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 class install_depends_py():
     def __init__(self, resources, metadata):
         self.resources = resources
@@ -14,7 +22,16 @@ class install_depends_py():
         self.stdout = {}
         self.stderr = {}
         self.install_results = {}
-        self.test_hardware = self.test_hardware   
+        self.test_hardware = self.test_hardware
+        
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
         if "test_ipfs_accelerate" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
             import test.test_ipfs_accelerate as test_ipfs_accelerate
             self.test_ipfs_accelerate = test_ipfs_accelerate.test_ipfs_accelerate(resources, metadata)
@@ -38,14 +55,37 @@ class install_depends_py():
             # test_results_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),"test", install_file_hash + ".json")
             if os.path.exists(test_results_file):
                 try:
+                    if self.storage:
+                        try:
+                            cached_results = self.storage.get_file(test_results_file)
+                            if cached_results:
+                                test_results = json.loads(cached_results)
+                                return test_results
+                        except:
+                            pass
+                    
                     with open(test_results_file, "r") as f:
                         test_results = json.load(f)
-                        return test_results
+                        
+                    if self.storage:
+                        try:
+                            self.storage.store_file(test_results_file, json.dumps(test_results), pin=False)
+                        except:
+                            pass
+                    
+                    return test_results
                 except Exception as e:
                     try:
                         test_results = await self.install_depends.test_hardware()
                         with open(test_results_file, "w") as f:
                             json.dump(test_results, f)
+                        
+                        if self.storage:
+                            try:
+                                self.storage.store_file(test_results_file, json.dumps(test_results), pin=False)
+                            except:
+                                pass
+                        
                         return test_results
                     except Exception as e:
                         print(e)
@@ -55,6 +95,13 @@ class install_depends_py():
                     test_results = await self.install_depends.test_hardware()
                     with open(test_results_file, "w") as f:
                         json.dump(test_results, f)
+                    
+                    if self.storage:
+                        try:
+                            self.storage.store_file(test_results_file, json.dumps(test_results), pin=False)
+                        except:
+                            pass
+                    
                     return test_results
                 except Exception as e:
                     print(e)

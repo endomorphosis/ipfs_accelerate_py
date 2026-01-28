@@ -15,6 +15,14 @@ from TTS.tts.models.xtts import Xtts
 from TTS.utils.generic_utils import get_user_data_dir
 from TTS.utils.manage import ModelManager
 
+try:
+    from ...common.storage_wrapper import storage_wrapper
+except (ImportError, ValueError):
+    try:
+        from common.storage_wrapper import storage_wrapper
+    except ImportError:
+        storage_wrapper = None
+
 torch.set_num_threads(int(os.environ.get("NUM_THREADS", os.cpu_count())))
 device = torch.device("cuda" if os.environ.get("USE_CPU", "0") == "0" else "cpu")
 if not torch.cuda.is_available() and device == "cuda":
@@ -41,8 +49,31 @@ class coqui_tts_kit:
     def __init__(self, resources, meta=None):
         self.tts = self.tts
         self.stream_tts = self.stream_tts
-        with open(os.path.join(os.path.dirname(__file__), "test", "assets", "header.bin"), "rb") as f:
-            self.header = f.read()
+        
+        if storage_wrapper:
+            try:
+                self.storage = storage_wrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
+        
+        header_path = os.path.join(os.path.dirname(__file__), "test", "assets", "header.bin")
+        if self.storage:
+            try:
+                cached_header = self.storage.get_file(header_path)
+                if cached_header:
+                    self.header = cached_header
+                else:
+                    with open(header_path, "rb") as f:
+                        self.header = f.read()
+                    self.storage.store_file(header_path, self.header, pin=True)
+            except:
+                with open(header_path, "rb") as f:
+                    self.header = f.read()
+        else:
+            with open(header_path, "rb") as f:
+                self.header = f.read()
         self.dataPreprocess = lambda x: base64.b64decode(x.split(",")[1])
         self.embed = self.predict_speaker
         if "checkpoint" in resources.keys():
@@ -53,7 +84,22 @@ class coqui_tts_kit:
             model_path = self.custom_model_path
             print("Loading custom model from", model_path, flush=True)
             self.config = XttsConfig()
-            self.config.load_json(os.path.join(model_path, "config.json"))
+            config_path = os.path.join(model_path, "config.json")
+            if self.storage:
+                try:
+                    cached_config = self.storage.get_file(config_path)
+                    if cached_config:
+                        import json
+                        config_data = json.loads(cached_config)
+                        self.config.load_json(config_path)
+                    else:
+                        self.config.load_json(config_path)
+                        with open(config_path, 'r') as f:
+                            self.storage.store_file(config_path, f.read(), pin=True)
+                except:
+                    self.config.load_json(config_path)
+            else:
+                self.config.load_json(config_path)
             self.model = model = Xtts.init_from_config(self.config)
             self.model.load_checkpoint(self.config, checkpoint_dir=model_path , eval=True, use_deepspeed=True if device == "cuda" else False)
             self.model.to(device)
@@ -80,7 +126,22 @@ class coqui_tts_kit:
                 model_path = os.path.join(get_user_data_dir("tts"), self.custom_model_path.replace("/", "--"))
                 pass
             self.config = XttsConfig()
-            self.config.load_json(os.path.join(model_path, "config.json"))
+            config_path = os.path.join(model_path, "config.json")
+            if self.storage:
+                try:
+                    cached_config = self.storage.get_file(config_path)
+                    if cached_config:
+                        import json
+                        config_data = json.loads(cached_config)
+                        self.config.load_json(config_path)
+                    else:
+                        self.config.load_json(config_path)
+                        with open(config_path, 'r') as f:
+                            self.storage.store_file(config_path, f.read(), pin=True)
+                except:
+                    self.config.load_json(config_path)
+            else:
+                self.config.load_json(config_path)
             self.model = model = Xtts.init_from_config(self.config)
             self.model.load_checkpoint(self.config, checkpoint_dir=model_path , eval=True, use_deepspeed=True if device == "cuda" else False)
             self.model.to(device)
