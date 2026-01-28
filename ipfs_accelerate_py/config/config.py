@@ -7,6 +7,25 @@ from os.path import isfile, join
 from os import walk
 import toml
 
+try:
+    from ..common.storage_wrapper import StorageWrapper
+    DISTRIBUTED_STORAGE_AVAILABLE = True
+except ImportError:
+    try:
+        from ...common.storage_wrapper import StorageWrapper
+        DISTRIBUTED_STORAGE_AVAILABLE = True
+    except ImportError:
+        DISTRIBUTED_STORAGE_AVAILABLE = False
+        StorageWrapper = None
+
+if DISTRIBUTED_STORAGE_AVAILABLE:
+    try:
+        storage = StorageWrapper()
+    except:
+        storage = None
+else:
+    storage = None
+
 class config():
     def __init__(self, collection=None, meta=None):
         this_dir = os.path.dirname(os.path.realpath(__file__))

@@ -11,6 +11,25 @@ Cache-enabled wrappers for inference engine APIs:
 from typing import Any, Dict, List, Optional
 import logging
 
+try:
+    from ...common.storage_wrapper import StorageWrapper
+    DISTRIBUTED_STORAGE_AVAILABLE = True
+except ImportError:
+    try:
+        from ..common.storage_wrapper import StorageWrapper
+        DISTRIBUTED_STORAGE_AVAILABLE = True
+    except ImportError:
+        DISTRIBUTED_STORAGE_AVAILABLE = False
+        StorageWrapper = None
+
+if DISTRIBUTED_STORAGE_AVAILABLE:
+    try:
+        storage = StorageWrapper()
+    except:
+        storage = None
+else:
+    storage = None
+
 logger = logging.getLogger(__name__)
 
 try:

@@ -12,6 +12,17 @@ import numpy as np
 import torch
 from torchvision.transforms import InterpolationMode, Compose, Lambda, Resize, ToTensor, Normalize
 
+try:
+    from ...common.storage_wrapper import StorageWrapper
+    DISTRIBUTED_STORAGE_AVAILABLE = True
+except ImportError:
+    try:
+        from ..common.storage_wrapper import StorageWrapper
+        DISTRIBUTED_STORAGE_AVAILABLE = True
+    except ImportError:
+        DISTRIBUTED_STORAGE_AVAILABLE = False
+        StorageWrapper = None
+
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
@@ -162,6 +173,14 @@ class hf_llava_next:
         
         # Hardware-specific utilities
         self.coreml_utils = None  # Apple CoreML utils
+        
+        if DISTRIBUTED_STORAGE_AVAILABLE:
+            try:
+                self.storage = StorageWrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
 
     def init(self):
         if "torch" not in list(self.resources.keys()):

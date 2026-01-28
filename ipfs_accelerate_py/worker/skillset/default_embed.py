@@ -4,6 +4,17 @@ import os
 import json
 import time
 
+try:
+    from ...common.storage_wrapper import StorageWrapper
+    DISTRIBUTED_STORAGE_AVAILABLE = True
+except ImportError:
+    try:
+        from ..common.storage_wrapper import StorageWrapper
+        DISTRIBUTED_STORAGE_AVAILABLE = True
+    except ImportError:
+        DISTRIBUTED_STORAGE_AVAILABLE = False
+        StorageWrapper = None
+
 class hf_embed:
     def __init__(self, resources=None, metadata=None):
         self.resources = resources
@@ -19,6 +30,14 @@ class hf_embed:
         self.init = self.init
         self.__test__ = self.__test__
         self.snpe_utils = None
+        
+        if DISTRIBUTED_STORAGE_AVAILABLE:
+            try:
+                self.storage = StorageWrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
         return None
     
     def init(self):

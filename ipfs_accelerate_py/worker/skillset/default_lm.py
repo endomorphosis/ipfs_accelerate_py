@@ -10,6 +10,17 @@ import os
 import time
 from unittest.mock import MagicMock
 import numpy as np
+
+try:
+    from ...common.storage_wrapper import StorageWrapper
+    DISTRIBUTED_STORAGE_AVAILABLE = True
+except ImportError:
+    try:
+        from ..common.storage_wrapper import StorageWrapper
+        DISTRIBUTED_STORAGE_AVAILABLE = True
+    except ImportError:
+        DISTRIBUTED_STORAGE_AVAILABLE = False
+        StorageWrapper = None
     
 class hf_lm:
     def __init__(self, resources=None, metadata=None):
@@ -18,6 +29,14 @@ class hf_lm:
         self.init = self.init
         self.coreml_utils = None
         self.snpe_utils = None
+        
+        if DISTRIBUTED_STORAGE_AVAILABLE:
+            try:
+                self.storage = StorageWrapper()
+            except:
+                self.storage = None
+        else:
+            self.storage = None
 
     def init(self):
         if "torch" not in list(self.resources.keys()):

@@ -16,6 +16,25 @@ from typing import Any, Dict, List, Optional
 
 from .base_cache import BaseAPICache
 
+try:
+    from ..storage_wrapper import StorageWrapper
+    DISTRIBUTED_STORAGE_AVAILABLE = True
+except ImportError:
+    try:
+        from ...common.storage_wrapper import StorageWrapper
+        DISTRIBUTED_STORAGE_AVAILABLE = True
+    except ImportError:
+        DISTRIBUTED_STORAGE_AVAILABLE = False
+        StorageWrapper = None
+
+if DISTRIBUTED_STORAGE_AVAILABLE:
+    try:
+        storage = StorageWrapper()
+    except:
+        storage = None
+else:
+    storage = None
+
 logger = logging.getLogger(__name__)
 
 
