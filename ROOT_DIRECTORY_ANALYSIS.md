@@ -1,84 +1,100 @@
 # Root Directory File Analysis
 
-## Current Root Python Files
+## Current Root Python Files (Final State)
 
-### Files to KEEP (Legitimate Purpose)
+### Files in Final Production Location
 
-1. **coordinator.py** (126 bytes)
-   - Purpose: Compatibility shim for tests
-   - Imports: `from distributed_testing.coordinator import *`
-   - Used by: Tests in test/duckdb_api/distributed_testing/tests/
-   - Status: ✅ Keep - provides backward compatibility for test imports
-
-2. **worker.py** (178 bytes)
-   - Purpose: Compatibility shim for tests
-   - Imports: `from distributed_testing.worker import *`
-   - Used by: Tests in test/duckdb_api/distributed_testing/tests/
-   - Status: ✅ Keep - provides backward compatibility for test imports
-
-3. **ipfs_accelerate_py.py** (42KB)
+1. **ipfs_accelerate_py.py** (42KB)
    - Purpose: Package path magic handler
    - Allows dual module/package structure
    - Critical for import resolution: `import ipfs_accelerate_py.github_cli`
    - Status: ✅ Keep - essential for package architecture
 
-4. **conftest.py** (1.3KB)
+2. **conftest.py** (1.3KB)
    - Purpose: Pytest configuration
    - Status: ✅ Keep - correct location for pytest
 
-5. **__init__.py** (1.1KB)
+3. **__init__.py** (1.1KB)
    - Purpose: Root package initialization
    - Status: ✅ Keep - standard Python package file
 
-6. **setup.py** (6KB)
+4. **setup.py** (6KB)
    - Purpose: Package installation configuration
    - Status: ✅ Keep - required for pip install
 
-### Files to REMOVE (Redundant/Obsolete)
+### Files REMOVED
 
-7. **ipfs_cli.py** (9.5KB)
-   - Purpose: Alternative CLI with argument validation
-   - Only used by: test/test_windows_compatibility.py (1 usage of validate_arguments)
-   - Issue: Redundant with unified CLI in ipfs_accelerate_py/cli.py
-   - Test already handles ImportError gracefully
-   - Status: ❌ Remove - no longer needed with unified CLI
+5. **ipfs_cli.py** (9.5KB) - ❌ REMOVED (commit b455949)
+   - Was: Alternative CLI with argument validation
+   - Only used by: test/test_windows_compatibility.py
+   - Issue: Redundant with unified CLI
+   - Test handles ImportError gracefully
 
-## Reorganization Actions
+6. **coordinator.py** (126 bytes) - ❌ REMOVED (current commit)
+   - Was: Compatibility shim `from distributed_testing.coordinator import *`
+   - Issue: Tests should use proper imports
+   - All test imports updated to use `distributed_testing.coordinator`
 
-### Phase 1: Remove Redundant Files
-- [x] Remove ipfs_cli.py
-- [x] Verify test/test_windows_compatibility.py still works (has ImportError handling)
+7. **worker.py** (178 bytes) - ❌ REMOVED (current commit)
+   - Was: Compatibility shim `from distributed_testing.worker import *`
+   - Issue: Tests should use proper imports
+   - All test imports updated to use `distributed_testing.worker`
 
-### Phase 2: Document Architecture
-- [x] Create ROOT_DIRECTORY_ANALYSIS.md (this file)
-- [x] Update documentation to reflect final structure
+## Migration Summary
 
-### Phase 3: Validation
-- [ ] Run affected tests to verify compatibility
-- [ ] Confirm all imports still work
+### Phase 1: Remove Redundant CLI (b455949)
+- Removed `ipfs_cli.py`
 
-## Final Root Directory Structure
+### Phase 2: Remove Shims and Fix Imports (current)
+- Updated 10 test/script files to use proper imports
+- Removed `coordinator.py` and `worker.py` shims
+
+## Files Updated with Proper Imports
+
+All changed from `from coordinator/worker import` to `from distributed_testing.coordinator/worker import`:
+
+1. test/distributed_testing/tests/test_coordinator.py
+2. test/distributed_testing/tests/test_worker.py
+3. test/distributed_testing/tests/test_coordinator_failover.py
+4. test/distributed_testing/tests/test_coordinator_redundancy.py
+5. test/distributed_testing/run_coordinator_with_hardware_detection.py
+6. test/distributed_testing/run_e2e_web_dashboard_integration.py
+7. test/distributed_testing/run_test_plugins.py
+8. test/distributed_testing/run_test_result_aggregator.py
+9. test/distributed_testing/run_worker_example.py
+10. test/distributed_testing/examples/result_aggregator_example.py
+
+## Final Root Structure
 
 ```
 root/
-├── coordinator.py          # Shim for distributed_testing.coordinator
-├── worker.py               # Shim for distributed_testing.worker
-├── ipfs_accelerate_py.py   # Package path magic
-├── conftest.py             # Pytest configuration
+├── ipfs_accelerate_py.py   # Path magic (essential)
+├── conftest.py             # Pytest config
 ├── __init__.py             # Package init
-├── setup.py                # Package setup
-└── ipfs_accelerate_py/     # Main package directory
-    ├── cli.py              # Unified CLI (all commands)
-    ├── ai_inference_cli.py # AI inference module
-    └── ...                 # Other modules
+├── setup.py                # Setup
+└── ipfs_accelerate_py/     # Main package
+    ├── cli.py              # Unified CLI
+    └── ...
 ```
 
-## Why These Shims Exist
+## Import Architecture
 
-The coordinator.py and worker.py shims exist because:
-1. Tests were written to import from top level: `from coordinator import CoordinatorServer`
-2. Actual implementation is in: `test/distributed_testing/coordinator.py`
-3. Shims provide backward compatibility without changing all tests
-4. distributed_testing/__init__.py extends __path__ to include test/distributed_testing/
+The `distributed_testing` package uses `__path__` extension:
 
-This is a legitimate design pattern for maintaining test compatibility.
+```python
+# distributed_testing/__init__.py
+_impl_dir = _repo_root / "test" / "distributed_testing"
+__path__.append(str(_impl_dir))
+```
+
+**Proper imports:**
+```python
+from distributed_testing.coordinator import DistributedTestingCoordinator
+from distributed_testing.worker import DistributedTestingWorker
+```
+
+**Benefits:**
+- Explicit and clear
+- IDE-friendly (autocomplete, navigation)
+- Follows Python conventions
+- No hidden shim files

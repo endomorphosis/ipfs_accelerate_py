@@ -20,7 +20,7 @@ websockets = pytest.importorskip("websockets")
 pytest.importorskip("aiohttp")
 from aiohttp import web
 
-from coordinator import DistributedTestingCoordinator
+from distributed_testing.coordinator import DistributedTestingCoordinator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
