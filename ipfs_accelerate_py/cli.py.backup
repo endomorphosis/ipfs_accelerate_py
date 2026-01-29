@@ -48,14 +48,6 @@ queue_ops = None
 test_ops = None
 IPFSAccelerateMCPServer = None
 
-# Import AI Inference CLI for unified interface
-try:
-    from ipfs_accelerate_py.ai_inference_cli import AIInferenceCLI
-    HAVE_AI_INFERENCE_CLI = True
-except ImportError:
-    HAVE_AI_INFERENCE_CLI = False
-    logger.warning("AI Inference CLI not available - AI inference commands will be disabled")
-
 def _load_heavy_imports():
     """Load heavy imports only when needed for actual command execution"""
     global HAVE_CORE, shared_core, inference_ops, file_ops, model_ops, network_ops, queue_ops, test_ops, IPFSAccelerateMCPServer
@@ -1758,29 +1750,6 @@ Examples:
         sdk_destroy_parser.add_argument('session_id', help='Session ID to destroy')
         sdk_destroy_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
         
-        # Add AI Inference commands if available
-        if HAVE_AI_INFERENCE_CLI:
-            # Text processing commands
-            text_parser = subparsers.add_parser('text', help='AI text processing (generation, classification, embeddings, etc.)')
-            text_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI text command help')
-            
-            # Audio processing commands
-            audio_parser = subparsers.add_parser('audio', help='AI audio processing (transcription, synthesis, etc.)')
-            audio_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI audio command help')
-            
-            # Vision processing commands
-            vision_parser = subparsers.add_parser('vision', help='AI vision processing (classification, detection, etc.)')
-            vision_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI vision command help')
-            
-            # Multimodal processing commands
-            multimodal_parser = subparsers.add_parser('multimodal', help='AI multimodal processing (captioning, VQA, etc.)')
-            multimodal_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI multimodal command help')
-            
-            # Specialized AI commands
-            specialized_parser = subparsers.add_parser('specialized', help='Specialized AI tasks (code generation, timeseries, etc.)')
-            specialized_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI specialized command help')
-        
-        
         # Parse arguments
         args = parser.parse_args()
         
@@ -1857,51 +1826,6 @@ Examples:
             else:
                 copilot_sdk_parser.print_help()
                 return 1
-        
-        # Handle AI inference commands by delegating to AIInferenceCLI
-        elif args.command in ['text', 'audio', 'vision', 'multimodal', 'specialized']:
-            if not HAVE_AI_INFERENCE_CLI:
-                logger.error("AI Inference CLI not available. Please ensure ai_inference_cli.py is present.")
-                return 1
-            
-            # Check if user wants AI help
-            if hasattr(args, 'ai_help') and args.ai_help:
-                # Show the AI CLI help by invoking it with the category
-                ai_cli = AIInferenceCLI()
-                ai_parser = ai_cli.create_parser()
-                # Show help for this specific category
-                print(f"\n=== AI Inference: {args.command.upper()} Commands ===\n")
-                ai_parser.parse_args([args.command, '--help'])
-                return 0
-            
-            # Delegate to AI CLI - reconstruct args for AI CLI
-            # The AI CLI expects sys.argv format, so we need to rebuild it
-            ai_argv = [args.command]  # Start with the category
-            
-            # Add all other arguments from the original command line
-            # Skip the first few args that are already parsed
-            original_argv = sys.argv[1:]  # Skip program name
-            
-            # Find where our command starts in the original argv
-            try:
-                cmd_index = original_argv.index(args.command)
-                # Everything after the command should be passed to AI CLI
-                ai_argv.extend(original_argv[cmd_index + 1:])
-            except ValueError:
-                # If we can't find it, just pass what we have
-                pass
-            
-            # Temporarily replace sys.argv and call AI CLI
-            original_argv_backup = sys.argv
-            try:
-                sys.argv = ['ipfs-accelerate'] + ai_argv
-                ai_cli = AIInferenceCLI()
-                ai_parser = ai_cli.create_parser()
-                ai_args = ai_parser.parse_args(ai_argv)
-                return ai_cli.run(ai_args)
-            finally:
-                sys.argv = original_argv_backup
-        
         
         else:
             parser.print_help()
