@@ -1,1 +1,1 @@
-python3 -m fastapi run main.py
+python3 -m ipfs_accelerate_py.main
