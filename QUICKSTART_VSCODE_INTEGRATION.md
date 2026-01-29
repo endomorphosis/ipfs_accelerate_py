@@ -28,10 +28,13 @@ Set up 45+ one-click development tasks in VSCode for the ipfs_accelerate_py proj
 ### Step 1: Create .vscode Directory (5 minutes)
 
 ```bash
-cd /home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py
+# Navigate to your ipfs_accelerate_py repository root
+cd /path/to/your/ipfs_accelerate_py
 mkdir -p .vscode
 cd .vscode
 ```
+
+**Note:** Replace `/path/to/your/ipfs_accelerate_py` with your actual repository path.
 
 ### Step 2: Download tasks.json Template (10 minutes)
 
@@ -408,8 +411,11 @@ Recommend useful extensions:
 
 1. **Open VSCode**
    ```bash
-   code /home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py
+   # Open the repository in VSCode
+   code /path/to/your/ipfs_accelerate_py
    ```
+   
+   Or simply use VSCode's File → Open Folder and navigate to your repository.
 
 2. **Test Task Runner**
    - Press `Ctrl+Shift+P` (Windows/Linux) or `Cmd+Shift+P` (Mac)
