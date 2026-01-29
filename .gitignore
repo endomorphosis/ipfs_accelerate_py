@@ -1,4 +1,6 @@
 *.json
+# Allow .vscode configuration files
+!.vscode/*.json
 *.duckdb
 .venv-wsl
 .venv-win311
