@@ -28,7 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger("coordinator_hardware_run")
 
 # Import coordinator and hardware capability components
-from coordinator import DistributedTestingCoordinator
+from distributed_testing.coordinator import DistributedTestingCoordinator
 from coordinator_hardware_integration import CoordinatorHardwareIntegration
 from hardware_capability_detector import (
     HardwareCapabilityDetector,

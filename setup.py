@@ -172,7 +172,7 @@ setup(
 		],
 		"datasets": [
 			# Distributed dataset manipulation via ipfs_datasets_py
-			# Note: ipfs_datasets_py is available as a git submodule at external/ipfs_datasets_py
+			# Note: ipfs_datasets_py is available as a git submodule at ipfs_datasets_py
 			# This extra provides dependencies needed for ipfs_datasets_py integration
 			"reportlab>=3.6.0",  # For PDF processing
 			"beautifulsoup4>=4.12.0",  # For web scraping
@@ -223,7 +223,7 @@ setup(
 	},
 	entry_points={
 		'console_scripts': [
-			'ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main',
+			'ipfs_accelerate=ipfs_accelerate_py.cli:main',
 			'ipfs-accelerate=ipfs_accelerate_py.cli:main',
 		],
 	}

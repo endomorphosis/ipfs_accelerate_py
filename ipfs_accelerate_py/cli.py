@@ -30,40 +30,6 @@ import webbrowser
 from typing import Dict, Any, List, Optional, Union
 from pathlib import Path
 
-# Import storage wrapper for distributed filesystem operations
-try:
-    # Attempt relative import if running as part of package
-    from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-except (ImportError, ValueError):
-    # Fall back to treating as standalone if import fails
-    try:
-        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-    except ImportError:
-        HAVE_STORAGE_WRAPPER = False
-        get_storage_wrapper = None
-
-# Import datasets integration for event logging and provenance tracking
-try:
-    from .datasets_integration import (
-        is_datasets_available,
-        DatasetsManager,
-        ProvenanceLogger
-    )
-    HAVE_DATASETS_INTEGRATION = True
-except (ImportError, ValueError):
-    try:
-        from datasets_integration import (
-            is_datasets_available,
-            DatasetsManager,
-            ProvenanceLogger
-        )
-        HAVE_DATASETS_INTEGRATION = True
-    except ImportError:
-        HAVE_DATASETS_INTEGRATION = False
-        is_datasets_available = lambda: False
-        DatasetsManager = None
-        ProvenanceLogger = None
-
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -81,6 +47,14 @@ network_ops = None
 queue_ops = None
 test_ops = None
 IPFSAccelerateMCPServer = None
+
+# Import AI Inference CLI for unified interface
+try:
+    from ipfs_accelerate_py.ai_inference_cli import AIInferenceCLI
+    HAVE_AI_INFERENCE_CLI = True
+except ImportError:
+    HAVE_AI_INFERENCE_CLI = False
+    logger.warning("AI Inference CLI not available - AI inference commands will be disabled")
 
 def _load_heavy_imports():
     """Load heavy imports only when needed for actual command execution"""
@@ -130,6 +104,32 @@ def _load_heavy_imports():
         except ImportError as e2:
             logger.warning(f"Alternative import also failed: {e2}")
             HAVE_CORE = False
+        
+    except ImportError as e:
+        logger.warning(f"Core modules not available: {e}")
+        try:
+            # Try alternative import paths
+            import sys
+            import os
+            sys.path.append(os.path.dirname(__file__))
+            from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
+            from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
+            
+            IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
+            HAVE_CORE = True
+            
+            # Initialize core components
+            shared_core = SharedCore()
+            inference_ops = InferenceOperations(shared_core)
+            file_ops = FileOperations(shared_core)
+            model_ops = ModelOperations(shared_core)
+            network_ops = NetworkOperations(shared_core)
+            queue_ops = QueueOperations(shared_core)
+            test_ops = TestOperations(shared_core)
+            
+        except ImportError as e2:
+            logger.warning(f"Alternative import also failed: {e2}")
+            HAVE_CORE = False
             
             # Fallback shared core for when imports fail
             class SharedCore:
@@ -145,6 +145,8 @@ def _load_heavy_imports():
             network_ops = None
             queue_ops = None
             test_ops = None
+            
+            # GitHub and Copilot operations will be initialized lazily
 
 class IPFSAccelerateCLI:
     """Main CLI class for IPFS Accelerate"""
@@ -152,29 +154,50 @@ class IPFSAccelerateCLI:
     def __init__(self):
         self.mcp_process = None
         self.dashboard_process = None
+        self._github_ops = None
+        self._copilot_ops = None
         
-        # Initialize datasets integration for event logging
-        self._datasets_manager = None
-        self._provenance_logger = None
-        if HAVE_DATASETS_INTEGRATION and is_datasets_available():
+    @property
+    def github_ops(self):
+        """Lazy load GitHub operations"""
+        if self._github_ops is None:
+            _load_heavy_imports()
             try:
-                self._datasets_manager = DatasetsManager({
-                    'enable_audit': True,
-                    'enable_provenance': True,
-                    'enable_p2p': False
-                })
-                self._provenance_logger = ProvenanceLogger()
-                logger.info("CLI initialized with datasets integration")
+                from shared import GitHubOperations
+                self._github_ops = GitHubOperations(shared_core)
             except Exception as e:
-                logger.debug(f"Datasets integration initialization skipped: {e}")
+                logger.warning(f"Failed to load GitHub operations: {e}")
+                self._github_ops = None
+        return self._github_ops
+    
+    @property
+    def copilot_ops(self):
+        """Lazy load Copilot operations"""
+        if self._copilot_ops is None:
+            _load_heavy_imports()
+            try:
+                from shared import CopilotOperations
+                self._copilot_ops = CopilotOperations(shared_core)
+            except Exception as e:
+                logger.warning(f"Failed to load Copilot operations: {e}")
+                self._copilot_ops = None
+        return self._copilot_ops
+    
+    @property
+    def copilot_sdk_ops(self):
+        """Lazy load Copilot SDK operations"""
+        if not hasattr(self, '_copilot_sdk_ops'):
+            self._copilot_sdk_ops = None
         
-    def _log_cli_event(self, event_type: str, data: dict):
-        """Log CLI command execution"""
-        if self._datasets_manager:
+        if self._copilot_sdk_ops is None:
+            _load_heavy_imports()
             try:
-                self._datasets_manager.log_event(event_type, data, level="INFO", category="GENERAL")
+                from shared import CopilotSDKOperations
+                self._copilot_sdk_ops = CopilotSDKOperations(shared_core)
             except Exception as e:
-                logger.debug(f"Event logging failed: {e}")
+                logger.warning(f"Failed to load Copilot SDK operations: {e}")
+                self._copilot_sdk_ops = None
+        return self._copilot_sdk_ops
         
     def setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown"""
@@ -199,25 +222,42 @@ class IPFSAccelerateCLI:
         """Start MCP server with integrated dashboard, model manager, and queue monitoring"""
         logger.info("Starting IPFS Accelerate MCP Server with integrated dashboard...")
         
-        # Log MCP start event
-        self._log_cli_event("mcp_start", {
-            "port": getattr(args, 'port', 8080),
-            "host": getattr(args, 'host', '0.0.0.0'),
-            "dashboard": getattr(args, 'dashboard', True)
-        })
-        
         # Load heavy imports only when needed
         _load_heavy_imports()
         
         # Always enable dashboard integration
         args.dashboard = True
+
+        # Allow forcing the integrated HTTP dashboard (useful for environments without Flask,
+        # or for testing endpoint parity).
+        if os.environ.get("IPFS_ACCELERATE_FORCE_INTEGRATED_DASHBOARD", "").lower() in ("1", "true", "yes"):
+            logger.info("Forcing integrated HTTP dashboard via IPFS_ACCELERATE_FORCE_INTEGRATED_DASHBOARD")
+            return self._start_integrated_mcp_server(args)
         
         # Preferred path: Flask-based dashboard if available
         try:
             from ipfs_accelerate_py.mcp_dashboard import MCPDashboard  # requires Flask
 
             logger.info(f"Starting MCP Dashboard on port {args.port}")
-            dashboard = MCPDashboard(port=args.port, host=args.host)
+            
+            # Prepare autoscaler configuration
+            autoscaler_config = {
+                'owner': getattr(args, 'autoscaler_owner', None),
+                'interval': getattr(args, 'autoscaler_interval', 60),
+                'since_days': getattr(args, 'autoscaler_since_days', 1),
+                'max_runners': getattr(args, 'autoscaler_max_runners', None),
+                'filter_by_arch': True,
+                'enable_p2p': not getattr(args, 'no_p2p', False)
+            }
+            
+            # Create dashboard with autoscaler enabled by default
+            enable_autoscaler = not getattr(args, 'disable_autoscaler', False)
+            dashboard = MCPDashboard(
+                port=args.port, 
+                host=args.host,
+                enable_autoscaler=enable_autoscaler,
+                autoscaler_config=autoscaler_config
+            )
 
             # Open browser if requested
             if getattr(args, 'open_browser', False):
@@ -290,175 +330,358 @@ class IPFSAccelerateCLI:
             logger.error(f"✗ Error checking MCP server status: {e}")
             return 1
     
-    def run_mcp_user_info(self, args):
-        """Get GitHub user information"""
-        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
-        
-        try:
-            user_info = get_user_info()
-            
-            if args.json:
-                print(json.dumps(user_info, indent=2))
-            else:
-                if user_info.get('authenticated'):
-                    logger.info("✓ GitHub User Information:")
-                    logger.info(f"  Username: {user_info.get('username', 'Unknown')}")
-                    if user_info.get('name'):
-                        logger.info(f"  Name: {user_info.get('name')}")
-                    if user_info.get('email'):
-                        logger.info(f"  Email: {user_info.get('email')}")
-                    logger.info(f"  Token Type: {user_info.get('token_type', 'unknown')}")
-                    if user_info.get('public_repos') is not None:
-                        logger.info(f"  Public Repos: {user_info.get('public_repos')}")
-                else:
-                    logger.warning("✗ Not authenticated with GitHub")
-                    if user_info.get('error'):
-                        logger.warning(f"  Error: {user_info['error']}")
-            return 0
-        except Exception as e:
-            logger.error(f"Error getting user info: {e}")
+    def run_github_auth(self, args):
+        """Check GitHub authentication status"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
             return 1
-    
-    def run_mcp_cache_stats(self, args):
-        """Get cache statistics"""
-        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_cache_stats
         
-        try:
-            cache_stats = get_cache_stats()
-            
-            if args.json:
-                print(json.dumps(cache_stats, indent=2))
+        result = self.github_ops.get_auth_status()
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get("authenticated"):
+                logger.info("✓ GitHub CLI is authenticated")
+                logger.info(f"  {result.get('output', '')}")
             else:
-                if cache_stats.get('available'):
-                    logger.info("✓ GitHub API Cache Statistics:")
-                    logger.info(f"  Total Entries: {cache_stats.get('total_entries', 0)}")
-                    logger.info(f"  Cache Size: {cache_stats.get('total_size_mb', 0):.2f} MB")
-                    logger.info(f"  Hit Rate: {cache_stats.get('hit_rate', 0)*100:.1f}%")
-                    logger.info(f"  Total Hits: {cache_stats.get('total_hits', 0)}")
-                    logger.info(f"  Total Misses: {cache_stats.get('total_misses', 0)}")
-                    logger.info(f"  P2P Enabled: {'Yes' if cache_stats.get('p2p_enabled') else 'No'}")
-                    if cache_stats.get('p2p_enabled'):
-                        logger.info(f"  P2P Peers: {cache_stats.get('p2p_peers', 0)}")
-                else:
-                    logger.warning("✗ Cache not available")
-                    if cache_stats.get('error'):
-                        logger.warning(f"  Error: {cache_stats['error']}")
-            return 0
-        except Exception as e:
-            logger.error(f"Error getting cache stats: {e}")
-            return 1
+                logger.error("✗ GitHub CLI is not authenticated")
+                logger.error(f"  {result.get('error', '')}")
+        return 0 if result.get("authenticated") else 1
     
-    def run_mcp_peer_status(self, args):
-        """Get P2P peer system status"""
-        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status
+    def run_github_repos(self, args):
+        """List GitHub repositories"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
         
-        try:
-            peer_status = get_peer_status()
-            
-            if args.json:
-                print(json.dumps(peer_status, indent=2))
+        result = self.github_ops.list_repos(owner=args.owner, limit=args.limit)
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            logger.info(f"Found {result.get('count', 0)} repositories:")
+            for repo in result.get('repos', []):
+                print(f"  {repo['owner']['login']}/{repo['name']} - {repo['url']}")
+        return 0
+    
+    def run_github_workflows(self, args):
+        """List workflow runs for a repository"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        result = self.github_ops.list_workflow_runs(
+            repo=args.repo,
+            status=args.status,
+            limit=args.limit
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            logger.info(f"Found {result.get('count', 0)} workflow runs for {args.repo}:")
+            for run in result.get('runs', []):
+                status = run.get('status', 'unknown')
+                conclusion = run.get('conclusion', 'pending')
+                print(f"  #{run.get('databaseId')} - {run.get('workflowName')} - {status}/{conclusion}")
+        return 0
+    
+    def run_github_queues(self, args):
+        """Create workflow queues for repositories"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        logger.info(f"Creating workflow queues for repos updated in the last {args.since_days} day(s)...")
+        result = self.github_ops.create_workflow_queues(
+            owner=args.owner,
+            since_days=args.since_days
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            logger.info(f"✓ Created queues for {result.get('repo_count', 0)} repositories")
+            logger.info(f"  Total workflows: {result.get('total_workflows', 0)}")
+            for repo, workflows in result.get('queues', {}).items():
+                running = sum(1 for w in workflows if w.get('status') == 'in_progress')
+                failed = sum(1 for w in workflows if w.get('conclusion') in ['failure', 'timed_out'])
+                print(f"  {repo}: {len(workflows)} workflows ({running} running, {failed} failed)")
+        return 0
+    
+    def run_github_runners(self, args):
+        """Manage self-hosted runners"""
+        if not self.github_ops:
+            logger.error("GitHub CLI not available")
+            return 1
+        
+        if args.action == 'list':
+            result = self.github_ops.list_runners(repo=args.repo, org=args.org)
+            if args.output_json:
+                print(json.dumps(result, indent=2))
             else:
-                logger.info("P2P Peer System Status:")
-                logger.info(f"  Enabled: {'Yes' if peer_status.get('enabled') else 'No'}")
-                logger.info(f"  Active: {'Yes' if peer_status.get('active') else 'No'}")
-                logger.info(f"  Peer Count: {peer_status.get('peer_count', 0)}")
-                
-                if peer_status.get('peers'):
-                    logger.info("  Connected Peers:")
-                    for peer in peer_status['peers']:
-                        logger.info(f"    - {peer.get('peer_id')} ({peer.get('runner_name')})")
-                elif not peer_status.get('enabled'):
-                    logger.info("  (P2P cache sharing is not enabled)")
-            return 0
-        except Exception as e:
-            logger.error(f"Error getting peer status: {e}")
-            return 1
-    
-    def run_mcp_metrics(self, args):
-        """Get system metrics"""
-        from ipfs_accelerate_py.mcp.tools.dashboard_data import get_system_metrics
+                logger.info(f"Found {result.get('count', 0)} self-hosted runners:")
+                for runner in result.get('runners', []):
+                    print(f"  {runner.get('name')} - {runner.get('status')}")
         
-        try:
-            metrics = get_system_metrics()
-            
-            if args.json:
-                print(json.dumps(metrics, indent=2))
-            else:
-                logger.info("✓ System Metrics:")
-                logger.info(f"  CPU Usage: {metrics.get('cpu_percent', 0)}%")
-                logger.info(f"  Memory Usage: {metrics.get('memory_percent', 0)}%")
-                logger.info(f"  Memory Used: {metrics.get('memory_used_gb', 0):.2f} GB / {metrics.get('memory_total_gb', 0):.2f} GB")
-                logger.info(f"  Uptime: {metrics.get('uptime', 'unknown')}")
-                logger.info(f"  Active Connections: {metrics.get('active_connections', 0)}")
-                logger.info(f"  Process ID: {metrics.get('pid', 0)}")
-            return 0
-        except Exception as e:
-            logger.error(f"Error getting system metrics: {e}")
-            return 1
-    
-    def run_mcp_logs(self, args):
-        """Get system logs"""
-        from ipfs_accelerate_py.logs import SystemLogs
-        
-        try:
-            logs_manager = SystemLogs(args.service)
-            
-            if args.stats:
-                # Show log statistics
-                stats = logs_manager.get_stats()
-                if args.json:
-                    print(json.dumps(stats, indent=2))
-                else:
-                    logger.info(f"\n📊 Log Statistics (last hour):")
-                    logger.info(f"Total logs: {stats['total']}")
-                    logger.info(f"\nBy level:")
-                    for level, count in stats['by_level'].items():
-                        if count > 0:
-                            logger.info(f"  {level}: {count}")
-                return 0
-            
-            if args.errors:
-                # Show recent errors
-                logs = logs_manager.get_recent_errors()
-                if args.json:
-                    print(json.dumps(logs, indent=2))
-                else:
-                    logger.info(f"\n🚨 Recent Errors (last 24 hours): {len(logs)} found\n")
-                    for log in logs:
-                        logger.info(f"[{log['timestamp']}] {log['level']}: {log['message']}")
-                return 0
-            
-            # Get logs
-            # Ensure level is a string or None, not a list
-            level = args.level
-            if isinstance(level, list):
-                level = level[0] if level else None
-            
-            logs = logs_manager.get_logs(
-                lines=args.lines,
-                since=args.since,
-                level=level,
-                follow=args.follow
+        elif args.action == 'provision':
+            logger.info("Provisioning self-hosted runners based on workflow queues...")
+            result = self.github_ops.provision_runners(
+                owner=args.owner,
+                since_days=args.since_days,
+                max_runners=args.max_runners
             )
             
-            if args.json:
-                print(json.dumps(logs, indent=2))
+            if args.output_json:
+                print(json.dumps(result, indent=2))
             else:
-                if not args.follow:
-                    logger.info(f"\n📝 System Logs ({len(logs)} entries):\n")
-                for log in logs:
-                    level_emoji = {
-                        'ERROR': '❌',
-                        'CRITICAL': '🔥',
-                        'WARNING': '⚠️',
-                        'INFO': 'ℹ️',
-                        'DEBUG': '🔍'
-                    }.get(log['level'], '📝')
-                    logger.info(f"{level_emoji} [{log['timestamp']}] {log['level']}: {log['message']}")
+                logger.info(f"✓ Provisioned runners for {result.get('runners_provisioned', 0)} repositories")
+                for repo, status in result.get('provisioning', {}).items():
+                    if status.get('status') == 'token_generated':
+                        logger.info(f"  {repo}: Token generated ({status.get('total_workflows', 0)} workflows)")
+                    else:
+                        logger.error(f"  {repo}: Failed - {status.get('error')}")
+        
+        return 0
+    
+    def run_copilot_suggest(self, args):
+        """Get command suggestions from Copilot"""
+        if not self.copilot_ops:
+            logger.error("Copilot CLI not available")
+            return 1
+        
+        result = self.copilot_ops.suggest_command(args.prompt, shell=args.shell)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Suggested command:\n{result.get('suggestion', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_explain(self, args):
+        """Get explanation for a command"""
+        if not self.copilot_ops:
+            logger.error("Copilot CLI not available")
+            return 1
+        
+        result = self.copilot_ops.explain_command(args.command)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Explanation:\n{result.get('explanation', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_git(self, args):
+        """Get Git command suggestions from Copilot"""
+        if not self.copilot_ops:
+            logger.error("Copilot CLI not available")
+            return 1
+        
+        result = self.copilot_ops.suggest_git_command(args.prompt)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Suggested Git command:\n{result.get('suggestion', '')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_create_session(self, args):
+        """Create a new Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.create_session(
+            model=args.model,
+            streaming=args.streaming
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Session created successfully")
+                print(f"Session ID: {result.get('session_id')}")
+                print(f"Model: {result.get('model')}")
+                print(f"Streaming: {result.get('streaming')}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_send_message(self, args):
+        """Send a message to a Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.send_message(
+            session_id=args.session_id,
+            prompt=args.prompt,
+            use_cache=not args.no_cache
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Response from session {args.session_id}:")
+                for msg in result.get('messages', []):
+                    print(f"\n[{msg.get('type')}]:")
+                    print(msg.get('content', ''))
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_stream_message(self, args):
+        """Stream a message response from a Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.stream_message(
+            session_id=args.session_id,
+            prompt=args.prompt
+        )
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Streaming response from session {args.session_id}:")
+                print(result.get('full_text', ''))
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_list_sessions(self, args):
+        """List all active Copilot SDK sessions"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.list_sessions()
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                sessions = result.get('sessions', [])
+                print(f"Active sessions: {result.get('count', 0)}")
+                for session_id in sessions:
+                    print(f"  - {session_id}")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_copilot_sdk_destroy_session(self, args):
+        """Destroy a Copilot SDK session"""
+        if not self.copilot_sdk_ops:
+            logger.error("Copilot SDK not available")
+            return 1
+        
+        result = self.copilot_sdk_ops.destroy_session(args.session_id)
+        
+        if args.output_json:
+            print(json.dumps(result, indent=2))
+        else:
+            if result.get('success'):
+                print(f"Session {args.session_id} destroyed successfully")
+            else:
+                logger.error(f"Error: {result.get('error', 'Unknown error')}")
+        return 0 if result.get('success') else 1
+    
+    def run_github_autoscaler(self, args):
+        """Start the GitHub Actions runner autoscaler service"""
+        logger.info("Starting GitHub Actions Runner Autoscaler...")
+        
+        # Import and run the autoscaler
+        try:
+            from github_autoscaler import GitHubRunnerAutoscaler
             
+            autoscaler = GitHubRunnerAutoscaler(
+                owner=args.owner,
+                poll_interval=args.interval,
+                since_days=args.since_days,
+                max_runners=args.max_runners,
+                enable_p2p=not args.no_p2p if hasattr(args, 'no_p2p') else True
+            )
+            
+            autoscaler.start()
+            return 0
+            
+        except KeyboardInterrupt:
+            logger.info("Autoscaler stopped by user")
             return 0
         except Exception as e:
-            logger.error(f"Error getting system logs: {e}")
+            logger.error(f"Failed to start autoscaler: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+    
+    def run_p2p_discovery(self, args):
+        """Start P2P workflow discovery service"""
+        logger.info("Starting P2P Workflow Discovery Service...")
+        
+        try:
+            from ipfs_accelerate_py.p2p_workflow_discovery import P2PWorkflowDiscoveryService
+            
+            service = P2PWorkflowDiscoveryService(
+                owner=args.owner,
+                poll_interval=args.interval
+            )
+            
+            service.start()
+            return 0
+            
+        except KeyboardInterrupt:
+            logger.info("Discovery service stopped by user")
+            return 0
+        except Exception as e:
+            logger.error(f"Failed to start discovery service: {e}")
+            import traceback
+            traceback.print_exc()
+            return 1
+    
+    def run_p2p_discover_once(self, args):
+        """Run P2P workflow discovery once"""
+        try:
+            from ipfs_accelerate_py.p2p_workflow_discovery import P2PWorkflowDiscoveryService
+            
+            service = P2PWorkflowDiscoveryService(
+                owner=args.owner,
+                poll_interval=300
+            )
+            
+            logger.info("Running discovery cycle...")
+            stats = service.run_discovery_cycle()
+            
+            print(f"\nDiscovery Results:")
+            print(f"  Workflows discovered: {stats['discovered']}")
+            print(f"  Workflows submitted: {stats['submitted']}")
+            print(f"\nScheduler Status:")
+            print(f"  Pending tasks: {stats['scheduler']['pending_tasks']}")
+            print(f"  Assigned tasks: {stats['scheduler']['assigned_tasks']}")
+            print(f"  Completed tasks: {stats['scheduler']['completed_tasks']}")
+            print(f"  Known peers: {stats['scheduler']['known_peers']}")
+            
+            if args.output_json:
+                print(json.dumps(stats, indent=2))
+            
+            return 0
+            
+        except Exception as e:
+            logger.error(f"Failed to run discovery: {e}")
+            import traceback
+            traceback.print_exc()
             return 1
     
     def _start_integrated_mcp_server(self, args):
@@ -469,16 +692,18 @@ class IPFSAccelerateCLI:
         
         logger.info(f"Starting integrated MCP server on port {args.port}")
         logger.info("Integrated components: MCP Server, Web Dashboard, Model Manager, Queue Monitor")
+
+        # Resolve asset roots from the installed package if possible.
+        try:
+            import ipfs_accelerate_py as _ipfs_pkg
+            _pkg_root = os.path.dirname(os.path.abspath(_ipfs_pkg.__file__))
+        except Exception:
+            _pkg_root = os.path.join(os.path.dirname(__file__), "ipfs_accelerate_py")
+
+        dashboard_template_path = os.path.join(_pkg_root, "templates", "dashboard.html")
+        static_root_path = os.path.join(_pkg_root, "static")
         
         try:
-            # Initialize storage wrapper for caching templates and static files
-            storage_wrapper = None
-            if HAVE_STORAGE_WRAPPER:
-                try:
-                    storage_wrapper = get_storage_wrapper(auto_detect_ci=True)
-                except Exception:
-                    pass  # Will fall back to direct file access
-            
             # Create the integrated dashboard handler
             class IntegratedMCPHandler(BaseHTTPRequestHandler):
                 def do_GET(self):
@@ -511,6 +736,12 @@ class IPFSAccelerateCLI:
                         # Avoid 404 for favicon requests
                         self.send_response(204)
                         self.end_headers()
+                    elif self.path == '/api/mcp/cache/stats':
+                        self._handle_cache_stats_api()
+                    elif self.path == '/api/mcp/peers':
+                        self._handle_peers_api()
+                    elif self.path == '/api/mcp/user':
+                        self._handle_user_api()
                     elif self.path.startswith('/api/mcp/models/'):
                         self._handle_model_api()
                     elif self.path.startswith('/api/mcp/'):
@@ -519,6 +750,8 @@ class IPFSAccelerateCLI:
                         self._handle_model_api()
                     elif self.path.startswith('/api/queue/'):
                         self._handle_queue_api()
+                    elif self.path.startswith('/api/github/'):
+                        self._handle_github_api()
                     elif self.path.startswith('/static/'):
                         self._serve_static()
                     else:
@@ -535,31 +768,8 @@ class IPFSAccelerateCLI:
             def _serve_dashboard(self):
                 """Serve the integrated dashboard"""
                 try:
-                    template_path = os.path.join(os.path.dirname(__file__), 'templates', 'dashboard.html')
-                    dashboard_html = None
-                    
-                    # Try to read from distributed storage cache first
-                    if storage_wrapper and storage_wrapper.is_distributed:
-                        try:
-                            cache_key = "cli_dashboard_template.html"
-                            cached_data = storage_wrapper.read_file(cache_key)
-                            if cached_data:
-                                dashboard_html = cached_data if isinstance(cached_data, str) else cached_data.decode('utf-8')
-                        except Exception:
-                            pass  # Fall back to reading from file
-                    
-                    # Read from local file if not cached
-                    if dashboard_html is None:
-                        with open(template_path, 'r', encoding='utf-8') as f:
-                            dashboard_html = f.read()
-                        
-                        # Cache to distributed storage for future use
-                        if storage_wrapper and storage_wrapper.is_distributed:
-                            try:
-                                cache_key = "cli_dashboard_template.html"
-                                storage_wrapper.write_file(dashboard_html, cache_key, pin=False)
-                            except Exception:
-                                pass  # Continue even if caching fails
+                    with open(dashboard_template_path, 'r', encoding='utf-8') as f:
+                        dashboard_html = f.read()
                     
                     self.send_response(200)
                     self.send_header('Content-type', 'text/html')
@@ -574,6 +784,41 @@ class IPFSAccelerateCLI:
 <html><head><title>MCP Dashboard</title></head>
 <body><h1>MCP Server Dashboard</h1><p>Template loading error: """ + str(e) + """</p></body></html>"""
                     self.wfile.write(fallback_html.encode())
+
+            def _send_json(self, payload: Dict[str, Any], status: int = 200):
+                try:
+                    self.send_response(status)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(payload).encode())
+                except Exception:
+                    # Last-resort: avoid throwing from handler
+                    try:
+                        self.send_response(500)
+                        self.end_headers()
+                    except Exception:
+                        pass
+
+            def _handle_cache_stats_api(self):
+                try:
+                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_cache_stats
+                    self._send_json(get_cache_stats(), status=200)
+                except Exception as e:
+                    self._send_json({"error": str(e), "endpoint": "/api/mcp/cache/stats"}, status=500)
+
+            def _handle_peers_api(self):
+                try:
+                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_peer_status
+                    self._send_json(get_peer_status(), status=200)
+                except Exception as e:
+                    self._send_json({"error": str(e), "endpoint": "/api/mcp/peers"}, status=500)
+
+            def _handle_user_api(self):
+                try:
+                    from ipfs_accelerate_py.mcp.tools.dashboard_data import get_user_info
+                    self._send_json(get_user_info(), status=200)
+                except Exception as e:
+                    self._send_json({"error": str(e), "endpoint": "/api/mcp/user"}, status=500)
             
             def _handle_mcp_api(self):
                 """Handle MCP-related API calls"""
@@ -1012,18 +1257,68 @@ class IPFSAccelerateCLI:
                 response = {
                     "queue_status": "active",
                     "pending_jobs": 0,
-                    "completed_jobs": 0,
-                    "failed_jobs": 0,
-                    "workers": 1
+                    "running_jobs": 0,
+                    "completed_jobs": 0
                 }
                 self.wfile.write(json.dumps(response).encode())
+            
+            def _handle_github_api(self):
+                """Handle GitHub workflows and runners API calls"""
+                from urllib.parse import urlparse, parse_qs
+                
+                parsed = urlparse(self.path)
+                path_parts = parsed.path.split('/')
+                
+                # Get GitHub operations
+                _load_heavy_imports()
+                try:
+                    from shared import GitHubOperations
+                    github_ops = GitHubOperations(shared_core)
+                except Exception as e:
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({
+                        "error": f"GitHub operations not available: {str(e)}"
+                    }).encode())
+                    return
+                
+                if 'workflows' in self.path:
+                    # Get workflow queues
+                    result = github_ops.create_workflow_queues(since_days=1)
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(result.get('queues', {})).encode())
+                
+                elif 'runners' in self.path:
+                    # Get runners (try org-level first)
+                    result = github_ops.list_runners(org=None)
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps(result.get('runners', [])).encode())
+                
+                else:
+                    self.send_response(404)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json.dumps({"error": "Unknown GitHub API endpoint"}).encode())
             
             def _serve_static(self):
                 """Serve static files (CSS, JS, images)"""
                 try:
                     # Extract the file path from the URL
                     file_path = self.path[8:]  # Remove '/static/'
-                    static_file_path = os.path.join(os.path.dirname(__file__), 'static', file_path)
+                    safe_rel = os.path.normpath(file_path).lstrip("/\\")
+                    if safe_rel.startswith(".."):
+                        self.send_response(400)
+                        self.send_header('Content-type', 'text/plain')
+                        self.end_headers()
+                        self.wfile.write(b"Invalid path")
+                        return
+
+                    static_file_path = os.path.join(static_root_path, safe_rel)
                     
                     if os.path.exists(static_file_path) and os.path.isfile(static_file_path):
                         # Determine content type based on file extension
@@ -1041,28 +1336,9 @@ class IPFSAccelerateCLI:
                         elif file_path.endswith('.svg'):
                             content_type = 'image/svg+xml'
                         
-                        content = None
-                        
-                        # Try to read from distributed storage cache first
-                        if storage_wrapper and storage_wrapper.is_distributed:
-                            try:
-                                cache_key = f"cli_static_{file_path.replace('/', '_')}"
-                                content = storage_wrapper.read_file(cache_key)
-                            except Exception:
-                                pass  # Fall back to reading from file
-                        
-                        # Read from local file if not cached
-                        if content is None:
-                            with open(static_file_path, 'rb') as f:
-                                content = f.read()
-                            
-                            # Cache to distributed storage for future use
-                            if storage_wrapper and storage_wrapper.is_distributed:
-                                try:
-                                    cache_key = f"cli_static_{file_path.replace('/', '_')}"
-                                    storage_wrapper.write_file(content, cache_key, pin=False)
-                                except Exception:
-                                    pass  # Continue even if caching fails
+                        # Read and serve the file
+                        with open(static_file_path, 'rb') as f:
+                            content = f.read()
                         
                         self.send_response(200)
                         self.send_header('Content-type', content_type)
@@ -1074,7 +1350,7 @@ class IPFSAccelerateCLI:
                         self.send_response(404)
                         self.send_header('Content-type', 'text/html')
                         self.end_headers()
-                        error_html = f"<html><body><h1>404 Not Found</h1><p>Static file not found: {file_path}</p></body></html>"
+                        error_html = f"<html><body><h1>404 Not Found</h1><p>Static file not found: {safe_rel}</p></body></html>"
                         self.wfile.write(error_html.encode())
                         
                 except Exception as e:
@@ -1200,6 +1476,10 @@ class IPFSAccelerateCLI:
             
             # Bind helper functions as methods on the handler class
             IntegratedMCPHandler._serve_dashboard = _serve_dashboard
+            IntegratedMCPHandler._send_json = _send_json
+            IntegratedMCPHandler._handle_cache_stats_api = _handle_cache_stats_api
+            IntegratedMCPHandler._handle_peers_api = _handle_peers_api
+            IntegratedMCPHandler._handle_user_api = _handle_user_api
             IntegratedMCPHandler._handle_mcp_api = _handle_mcp_api
             IntegratedMCPHandler._handle_model_api = _handle_model_api
             IntegratedMCPHandler._handle_model_search = _handle_model_search
@@ -1236,12 +1516,9 @@ class IPFSAccelerateCLI:
             logger.info(f"Dashboard accessible at http://{args.host}:{bound_port}/dashboard")
 
             # Start GitHub Actions autoscaler in background thread
-            # Only attempt if not in a container environment (gh CLI typically not in containers)
             autoscaler_thread = None
             autoscaler_instance = None
-            in_container = os.path.exists('/.dockerenv') or os.path.exists('/run/.containerenv')
-            
-            if not getattr(args, 'disable_autoscaler', False) and not in_container:
+            if not getattr(args, 'disable_autoscaler', False):  # Enabled by default
                 try:
                     from github_autoscaler import GitHubRunnerAutoscaler
                     
@@ -1254,7 +1531,7 @@ class IPFSAccelerateCLI:
                         logger.info("Starting GitHub Actions autoscaler in background...")
                         autoscaler_instance = GitHubRunnerAutoscaler(
                             owner=getattr(args, 'autoscaler_owner', None),
-                            poll_interval=getattr(args, 'autoscaler_interval', 120),  # Increased from 60s to 120s
+                            poll_interval=getattr(args, 'autoscaler_interval', 60),
                             since_days=getattr(args, 'autoscaler_since_days', 1),
                             max_runners=getattr(args, 'autoscaler_max_runners', None),
                             filter_by_arch=True
@@ -1264,17 +1541,18 @@ class IPFSAccelerateCLI:
                             try:
                                 autoscaler_instance.start(setup_signals=False)
                             except Exception as e:
-                                logger.error(f"Autoscaler error: {e}", exc_info=True)
+                                logger.error(f"Autoscaler error: {e}")
                         
                         autoscaler_thread = threading.Thread(target=run_autoscaler, daemon=True)
                         autoscaler_thread.start()
                         logger.info("✓ GitHub Actions autoscaler started")
                     else:
-                        logger.warning(f"GitHub CLI not authenticated - autoscaler disabled (user: {auth_status.get('username', 'none')})")
+                        logger.warning("GitHub CLI not authenticated - autoscaler disabled")
+                        logger.warning("  To enable: gh auth login")
                 except ImportError as e:
                     logger.warning(f"GitHub autoscaler not available: {e}")
                 except Exception as e:
-                    logger.error(f"Could not start autoscaler: {e}", exc_info=True)
+                    logger.warning(f"Could not start autoscaler: {e}")
 
             if getattr(args, 'open_browser', False):
                 import webbrowser
@@ -1296,221 +1574,6 @@ class IPFSAccelerateCLI:
         except Exception as e:
             logger.error(f"Error creating advanced dashboard: {e}")
             raise
-    
-    def run_p2p_status(self, args):
-        """Get P2P scheduler status"""
-        try:
-            from ipfs_accelerate_py.p2p_workflow_scheduler import P2PWorkflowScheduler
-            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
-            
-            scheduler = get_scheduler()
-            if scheduler is None:
-                logger.error("✗ P2P scheduler not available")
-                return 1
-            
-            status = scheduler.get_status()
-            
-            if args.json:
-                print(json.dumps(status, indent=2))
-            else:
-                logger.info("✓ P2P Workflow Scheduler Status:")
-                logger.info(f"  Peer ID: {status['peer_id']}")
-                logger.info(f"  Pending Tasks: {status['pending_tasks']}")
-                logger.info(f"  Assigned Tasks: {status['assigned_tasks']}")
-                logger.info(f"  Completed Tasks: {status['completed_tasks']}")
-                logger.info(f"  Queue Size: {status['queue_size']}")
-                logger.info(f"  Known Peers: {status['known_peers']}")
-                logger.info(f"  Merkle Clock Hash: {status['merkle_clock']['merkle_root']}")
-            
-            return 0
-            
-        except Exception as e:
-            logger.error(f"Error getting P2P scheduler status: {e}")
-            return 1
-    
-    def run_p2p_submit(self, args):
-        """Submit a task to P2P scheduler"""
-        try:
-            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
-            from ipfs_accelerate_py.p2p_workflow_scheduler import P2PTask, WorkflowTag
-            
-            scheduler = get_scheduler()
-            if scheduler is None:
-                logger.error("✗ P2P scheduler not available")
-                return 1
-            
-            # Convert string tags to WorkflowTag enums
-            workflow_tags = []
-            for tag_str in args.tags:
-                try:
-                    enum_name = tag_str.upper().replace('-', '_')
-                    workflow_tags.append(WorkflowTag[enum_name])
-                except (KeyError, AttributeError):
-                    logger.warning(f"Unknown tag: {tag_str}, skipping")
-            
-            # Create and submit task
-            task = P2PTask(
-                task_id=args.task_id,
-                workflow_id=args.workflow_id,
-                name=args.name,
-                tags=workflow_tags,
-                priority=args.priority,
-                created_at=time.time()
-            )
-            
-            success = scheduler.submit_task(task)
-            
-            if success:
-                logger.info("✓ Task submitted successfully")
-                logger.info(f"  Task ID: {task.task_id}")
-                logger.info(f"  Task Hash: {task.task_hash}")
-                logger.info(f"  Priority: {task.priority}")
-                return 0
-            else:
-                logger.error("✗ Failed to submit task")
-                return 1
-                
-        except Exception as e:
-            logger.error(f"Error submitting task: {e}")
-            return 1
-    
-    def run_p2p_next(self, args):
-        """Get next task to execute"""
-        try:
-            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
-            
-            scheduler = get_scheduler()
-            if scheduler is None:
-                logger.error("✗ P2P scheduler not available")
-                return 1
-            
-            task = scheduler.get_next_task()
-            
-            if task is None:
-                if args.json:
-                    print(json.dumps({"task": None, "message": "No tasks available"}))
-                else:
-                    logger.info("No tasks available for this peer")
-                return 0
-            
-            task_info = {
-                "task_id": task.task_id,
-                "workflow_id": task.workflow_id,
-                "name": task.name,
-                "tags": [tag.value for tag in task.tags],
-                "priority": task.priority,
-                "task_hash": task.task_hash,
-                "assigned_peer": task.assigned_peer
-            }
-            
-            if args.json:
-                print(json.dumps({"task": task_info}, indent=2))
-            else:
-                logger.info("✓ Next task:")
-                logger.info(f"  Task ID: {task.task_id}")
-                logger.info(f"  Workflow ID: {task.workflow_id}")
-                logger.info(f"  Name: {task.name}")
-                logger.info(f"  Tags: {', '.join(tag.value for tag in task.tags)}")
-                logger.info(f"  Priority: {task.priority}")
-                logger.info(f"  Assigned Peer: {task.assigned_peer}")
-            
-            return 0
-            
-        except Exception as e:
-            logger.error(f"Error getting next task: {e}")
-            return 1
-    
-    def run_p2p_complete(self, args):
-        """Mark task as complete"""
-        try:
-            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
-            
-            scheduler = get_scheduler()
-            if scheduler is None:
-                logger.error("✗ P2P scheduler not available")
-                return 1
-            
-            success = scheduler.mark_task_complete(args.task_id)
-            
-            if success:
-                logger.info(f"✓ Task {args.task_id} marked complete")
-                return 0
-            else:
-                logger.error(f"✗ Task {args.task_id} not found")
-                return 1
-                
-        except Exception as e:
-            logger.error(f"Error marking task complete: {e}")
-            return 1
-    
-    def run_p2p_check_tags(self, args):
-        """Check if tags should bypass GitHub"""
-        try:
-            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
-            from ipfs_accelerate_py.p2p_workflow_scheduler import WorkflowTag
-            
-            scheduler = get_scheduler()
-            if scheduler is None:
-                logger.error("✗ P2P scheduler not available")
-                return 1
-            
-            # Convert string tags to WorkflowTag enums
-            workflow_tags = []
-            for tag_str in args.tags:
-                try:
-                    enum_name = tag_str.upper().replace('-', '_')
-                    workflow_tags.append(WorkflowTag[enum_name])
-                except (KeyError, AttributeError):
-                    pass
-            
-            should_bypass = scheduler.should_bypass_github(workflow_tags)
-            is_p2p_only = scheduler.is_p2p_only(workflow_tags)
-            
-            result = {
-                "should_bypass_github": should_bypass,
-                "is_p2p_only": is_p2p_only,
-                "tags": args.tags
-            }
-            
-            if args.json:
-                print(json.dumps(result, indent=2))
-            else:
-                logger.info("✓ Tag Check Results:")
-                logger.info(f"  Tags: {', '.join(args.tags)}")
-                logger.info(f"  Should Bypass GitHub: {'Yes' if should_bypass else 'No'}")
-                logger.info(f"  P2P Only: {'Yes' if is_p2p_only else 'No'}")
-            
-            return 0
-            
-        except Exception as e:
-            logger.error(f"Error checking tags: {e}")
-            return 1
-    
-    def run_p2p_clock(self, args):
-        """Get merkle clock state"""
-        try:
-            from ipfs_accelerate_py.mcp.tools.p2p_workflow_tools import get_scheduler
-            
-            scheduler = get_scheduler()
-            if scheduler is None:
-                logger.error("✗ P2P scheduler not available")
-                return 1
-            
-            clock_data = scheduler.merkle_clock.to_dict()
-            
-            if args.json:
-                print(json.dumps(clock_data, indent=2))
-            else:
-                logger.info("✓ Merkle Clock State:")
-                logger.info(f"  Node ID: {clock_data['node_id']}")
-                logger.info(f"  Merkle Root: {clock_data['merkle_root']}")
-                logger.info(f"  Vector Clock: {clock_data['vector']}")
-            
-            return 0
-            
-        except Exception as e:
-            logger.error(f"Error getting clock state: {e}")
-            return 1
 
 
 def main():
@@ -1562,6 +1625,8 @@ Examples:
                                  help='Monitor repos updated in last N days (default: 1)')
         start_parser.add_argument('--autoscaler-max-runners', type=int,
                                  help='Max runners for autoscaler (default: system cores)')
+        start_parser.add_argument('--no-p2p', action='store_true',
+                                 help='Disable P2P workflow monitoring in autoscaler')
         
         # MCP dashboard command
         dashboard_parser = mcp_subparsers.add_parser('dashboard', help='Start dashboard only')
@@ -1574,65 +1639,147 @@ Examples:
         status_parser.add_argument('--host', default='0.0.0.0', help='Server host (default: 0.0.0.0)')
         status_parser.add_argument('--port', type=int, default=9000, help='Server port (default: 9000)')
         
-        # Dashboard data commands
-        user_info_parser = mcp_subparsers.add_parser('user-info', help='Get GitHub user information')
-        user_info_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        # GitHub commands
+        github_parser = subparsers.add_parser('github', help='GitHub CLI operations')
+        github_subparsers = github_parser.add_subparsers(dest='github_command', help='GitHub commands')
         
-        cache_stats_parser = mcp_subparsers.add_parser('cache-stats', help='Get cache statistics')
-        cache_stats_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        # GitHub auth command
+        github_auth_parser = github_subparsers.add_parser('auth', help='Check authentication status')
         
-        peer_status_parser = mcp_subparsers.add_parser('peer-status', help='Get P2P peer system status')
-        peer_status_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        # GitHub repos command
+        github_repos_parser = github_subparsers.add_parser('repos', help='List repositories')
+        github_repos_parser.add_argument('--owner', help='Repository owner (user or org)')
+        github_repos_parser.add_argument('--limit', type=int, default=30, help='Maximum repos to list')
         
-        metrics_parser = mcp_subparsers.add_parser('metrics', help='Get system metrics')
-        metrics_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        # GitHub workflows command
+        github_workflows_parser = github_subparsers.add_parser('workflows', help='List workflow runs')
+        github_workflows_parser.add_argument('repo', help='Repository (owner/repo)')
+        github_workflows_parser.add_argument('--status', choices=['queued', 'in_progress', 'completed'], 
+                                            help='Filter by status')
+        github_workflows_parser.add_argument('--limit', type=int, default=20, help='Maximum runs to list')
         
-        # Logs command
-        logs_parser = mcp_subparsers.add_parser('logs', help='Get system logs')
-        logs_parser.add_argument('--service', default='ipfs-accelerate', help='Service name (default: ipfs-accelerate)')
-        logs_parser.add_argument('--lines', '-n', type=int, default=100, help='Number of lines (default: 100)')
-        logs_parser.add_argument('--since', help='Show logs since time (e.g., "1 hour ago")')
-        logs_parser.add_argument('--level', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], 
-                               help='Filter by log level')
-        logs_parser.add_argument('--follow', '-f', action='store_true', help='Follow log output')
-        logs_parser.add_argument('--errors', action='store_true', help='Show only errors from last 24 hours')
-        logs_parser.add_argument('--stats', action='store_true', help='Show log statistics')
-        logs_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        # GitHub queues command
+        github_queues_parser = github_subparsers.add_parser('queues', 
+                                                           help='Create workflow queues for recent repos')
+        github_queues_parser.add_argument('--owner', help='Repository owner (user or org)')
+        github_queues_parser.add_argument('--since-days', type=int, default=1, 
+                                         help='Include repos updated in last N days')
         
-        # P2P Workflow commands
-        p2p_parser = subparsers.add_parser('p2p-workflow', help='P2P workflow scheduler management')
-        p2p_subparsers = p2p_parser.add_subparsers(dest='p2p_command', help='P2P workflow commands')
+        # GitHub runners command
+        github_runners_parser = github_subparsers.add_parser('runners', help='Manage self-hosted runners')
+        github_runners_parser.add_argument('action', choices=['list', 'provision'], 
+                                          help='Runner action')
+        github_runners_parser.add_argument('--repo', help='Repository (owner/repo)')
+        github_runners_parser.add_argument('--org', help='Organization name')
+        github_runners_parser.add_argument('--owner', help='Owner for provisioning')
+        github_runners_parser.add_argument('--since-days', type=int, default=1, 
+                                          help='Include workflows from last N days')
+        github_runners_parser.add_argument('--max-runners', type=int, 
+                                          help='Max runners to provision (default: system cores)')
         
-        # P2P status command
-        p2p_status_parser = p2p_subparsers.add_parser('status', help='Get P2P scheduler status')
-        p2p_status_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        # GitHub autoscaler command
+        github_autoscaler_parser = github_subparsers.add_parser('autoscaler', 
+                                                                help='Auto-scale runners based on workflow demand')
+        github_autoscaler_parser.add_argument('--owner', help='Owner to monitor (user or org)')
+        github_autoscaler_parser.add_argument('--interval', type=int, default=60,
+                                             help='Poll interval in seconds (default: 60)')
+        github_autoscaler_parser.add_argument('--since-days', type=int, default=1,
+                                             help='Monitor repos updated in last N days (default: 1)')
+        github_autoscaler_parser.add_argument('--max-runners', type=int,
+                                             help='Max runners to provision (default: system cores)')
+        github_autoscaler_parser.add_argument('--no-p2p', action='store_true',
+                                             help='Disable P2P workflow monitoring')
         
-        # P2P submit task command
-        p2p_submit_parser = p2p_subparsers.add_parser('submit', help='Submit a task to P2P scheduler')
-        p2p_submit_parser.add_argument('--task-id', required=True, help='Task ID')
-        p2p_submit_parser.add_argument('--workflow-id', required=True, help='Workflow ID')
-        p2p_submit_parser.add_argument('--name', required=True, help='Task name')
-        p2p_submit_parser.add_argument('--tags', nargs='+', default=['p2p-eligible'], 
-                                      help='Task tags (e.g., p2p-only, code-generation, web-scraping)')
-        p2p_submit_parser.add_argument('--priority', type=int, default=5, 
-                                      help='Task priority 1-10 (default: 5)')
+        # GitHub P2P discovery command
+        github_p2p_parser = github_subparsers.add_parser('p2p-discover',
+                                                        help='Discover P2P workflows across repositories')
+        github_p2p_subparsers = github_p2p_parser.add_subparsers(dest='p2p_action', help='P2P discovery actions')
         
-        # P2P get next task command
-        p2p_next_parser = p2p_subparsers.add_parser('next', help='Get next task to execute')
-        p2p_next_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        # P2P monitor command (continuous)
+        p2p_monitor_parser = github_p2p_subparsers.add_parser('monitor',
+                                                              help='Continuously monitor for P2P workflows')
+        p2p_monitor_parser.add_argument('--owner', help='Owner to monitor (user or org)')
+        p2p_monitor_parser.add_argument('--interval', type=int, default=300,
+                                       help='Poll interval in seconds (default: 300)')
         
-        # P2P mark task complete command
-        p2p_complete_parser = p2p_subparsers.add_parser('complete', help='Mark task as complete')
-        p2p_complete_parser.add_argument('--task-id', required=True, help='Task ID')
+        # P2P discover once command
+        p2p_once_parser = github_p2p_subparsers.add_parser('once',
+                                                           help='Run discovery once and exit')
+        p2p_once_parser.add_argument('--owner', help='Owner to monitor (user or org)')
+        p2p_once_parser.add_argument('--output-json', action='store_true',
+                                    help='Output results as JSON')
         
-        # P2P check tags command
-        p2p_check_parser = p2p_subparsers.add_parser('check-tags', help='Check if tags should bypass GitHub')
-        p2p_check_parser.add_argument('--tags', nargs='+', required=True, help='Tags to check')
-        p2p_check_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        # Copilot commands
+        copilot_parser = subparsers.add_parser('copilot', help='GitHub Copilot CLI operations')
+        copilot_subparsers = copilot_parser.add_subparsers(dest='copilot_command', help='Copilot commands')
         
-        # P2P clock command
-        p2p_clock_parser = p2p_subparsers.add_parser('clock', help='Get merkle clock state')
-        p2p_clock_parser.add_argument('--json', action='store_true', help='Output as JSON')
+        # Copilot suggest command
+        copilot_suggest_parser = copilot_subparsers.add_parser('suggest', help='Get command suggestions')
+        copilot_suggest_parser.add_argument('prompt', help='Natural language description')
+        copilot_suggest_parser.add_argument('--shell', help='Shell type (bash, zsh, powershell)')
+        
+        # Copilot explain command
+        copilot_explain_parser = copilot_subparsers.add_parser('explain', help='Explain a command')
+        copilot_explain_parser.add_argument('command', help='Command to explain')
+        
+        # Copilot git command
+        copilot_git_parser = copilot_subparsers.add_parser('git', help='Get Git command suggestions')
+        copilot_git_parser.add_argument('prompt', help='Natural language description')
+        
+        # Copilot SDK commands
+        copilot_sdk_parser = subparsers.add_parser('copilot-sdk', help='GitHub Copilot SDK operations')
+        copilot_sdk_subparsers = copilot_sdk_parser.add_subparsers(dest='copilot_sdk_command', help='Copilot SDK commands')
+        
+        # Copilot SDK create session command
+        sdk_create_parser = copilot_sdk_subparsers.add_parser('create-session', help='Create a Copilot SDK session')
+        sdk_create_parser.add_argument('--model', help='Model to use (e.g., gpt-4o, gpt-5)', default=None)
+        sdk_create_parser.add_argument('--streaming', action='store_true', help='Enable streaming responses')
+        sdk_create_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK send message command
+        sdk_send_parser = copilot_sdk_subparsers.add_parser('send', help='Send message to session')
+        sdk_send_parser.add_argument('session_id', help='Session ID')
+        sdk_send_parser.add_argument('prompt', help='Message to send')
+        sdk_send_parser.add_argument('--no-cache', action='store_true', help='Disable caching')
+        sdk_send_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK stream message command
+        sdk_stream_parser = copilot_sdk_subparsers.add_parser('stream', help='Stream message response')
+        sdk_stream_parser.add_argument('session_id', help='Session ID')
+        sdk_stream_parser.add_argument('prompt', help='Message to send')
+        sdk_stream_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK list sessions command
+        sdk_list_parser = copilot_sdk_subparsers.add_parser('list-sessions', help='List active sessions')
+        sdk_list_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Copilot SDK destroy session command
+        sdk_destroy_parser = copilot_sdk_subparsers.add_parser('destroy-session', help='Destroy a session')
+        sdk_destroy_parser.add_argument('session_id', help='Session ID to destroy')
+        sdk_destroy_parser.add_argument('--output-json', action='store_true', help='Output as JSON')
+        
+        # Add AI Inference commands if available
+        if HAVE_AI_INFERENCE_CLI:
+            # Text processing commands
+            text_parser = subparsers.add_parser('text', help='AI text processing (generation, classification, embeddings, etc.)')
+            text_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI text command help')
+            
+            # Audio processing commands
+            audio_parser = subparsers.add_parser('audio', help='AI audio processing (transcription, synthesis, etc.)')
+            audio_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI audio command help')
+            
+            # Vision processing commands
+            vision_parser = subparsers.add_parser('vision', help='AI vision processing (classification, detection, etc.)')
+            vision_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI vision command help')
+            
+            # Multimodal processing commands
+            multimodal_parser = subparsers.add_parser('multimodal', help='AI multimodal processing (captioning, VQA, etc.)')
+            multimodal_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI multimodal command help')
+            
+            # Specialized AI commands
+            specialized_parser = subparsers.add_parser('specialized', help='Specialized AI tasks (code generation, timeseries, etc.)')
+            specialized_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI specialized command help')
+        
         
         # Parse arguments
         args = parser.parse_args()
@@ -1656,35 +1803,106 @@ Examples:
                 return cli.run_mcp_dashboard(args)
             elif args.mcp_command == 'status':
                 return cli.run_mcp_status(args)
-            elif args.mcp_command == 'user-info':
-                return cli.run_mcp_user_info(args)
-            elif args.mcp_command == 'cache-stats':
-                return cli.run_mcp_cache_stats(args)
-            elif args.mcp_command == 'peer-status':
-                return cli.run_mcp_peer_status(args)
-            elif args.mcp_command == 'metrics':
-                return cli.run_mcp_metrics(args)
-            elif args.mcp_command == 'logs':
-                return cli.run_mcp_logs(args)
             else:
                 mcp_parser.print_help()
                 return 1
-        elif args.command == 'p2p-workflow':
-            if args.p2p_command == 'status':
-                return cli.run_p2p_status(args)
-            elif args.p2p_command == 'submit':
-                return cli.run_p2p_submit(args)
-            elif args.p2p_command == 'next':
-                return cli.run_p2p_next(args)
-            elif args.p2p_command == 'complete':
-                return cli.run_p2p_complete(args)
-            elif args.p2p_command == 'check-tags':
-                return cli.run_p2p_check_tags(args)
-            elif args.p2p_command == 'clock':
-                return cli.run_p2p_clock(args)
+        
+        elif args.command == 'github':
+            if args.github_command == 'auth':
+                return cli.run_github_auth(args)
+            elif args.github_command == 'repos':
+                return cli.run_github_repos(args)
+            elif args.github_command == 'workflows':
+                return cli.run_github_workflows(args)
+            elif args.github_command == 'queues':
+                return cli.run_github_queues(args)
+            elif args.github_command == 'runners':
+                return cli.run_github_runners(args)
+            elif args.github_command == 'autoscaler':
+                return cli.run_github_autoscaler(args)
+            elif args.github_command == 'p2p-discover':
+                if args.p2p_action == 'monitor':
+                    return cli.run_p2p_discovery(args)
+                elif args.p2p_action == 'once':
+                    return cli.run_p2p_discover_once(args)
+                else:
+                    github_p2p_parser.print_help()
+                    return 1
             else:
-                p2p_parser.print_help()
+                github_parser.print_help()
                 return 1
+        
+        elif args.command == 'copilot':
+            if args.copilot_command == 'suggest':
+                return cli.run_copilot_suggest(args)
+            elif args.copilot_command == 'explain':
+                return cli.run_copilot_explain(args)
+            elif args.copilot_command == 'git':
+                return cli.run_copilot_git(args)
+            else:
+                copilot_parser.print_help()
+                return 1
+        
+        elif args.command == 'copilot-sdk':
+            if args.copilot_sdk_command == 'create-session':
+                return cli.run_copilot_sdk_create_session(args)
+            elif args.copilot_sdk_command == 'send':
+                return cli.run_copilot_sdk_send_message(args)
+            elif args.copilot_sdk_command == 'stream':
+                return cli.run_copilot_sdk_stream_message(args)
+            elif args.copilot_sdk_command == 'list-sessions':
+                return cli.run_copilot_sdk_list_sessions(args)
+            elif args.copilot_sdk_command == 'destroy-session':
+                return cli.run_copilot_sdk_destroy_session(args)
+            else:
+                copilot_sdk_parser.print_help()
+                return 1
+        
+        # Handle AI inference commands by delegating to AIInferenceCLI
+        elif args.command in ['text', 'audio', 'vision', 'multimodal', 'specialized']:
+            if not HAVE_AI_INFERENCE_CLI:
+                logger.error("AI Inference CLI not available. Please ensure ai_inference_cli.py is present.")
+                return 1
+            
+            # Check if user wants AI help
+            if hasattr(args, 'ai_help') and args.ai_help:
+                # Show the AI CLI help by invoking it with the category
+                ai_cli = AIInferenceCLI()
+                ai_parser = ai_cli.create_parser()
+                # Show help for this specific category
+                print(f"\n=== AI Inference: {args.command.upper()} Commands ===\n")
+                ai_parser.parse_args([args.command, '--help'])
+                return 0
+            
+            # Delegate to AI CLI - reconstruct args for AI CLI
+            # The AI CLI expects sys.argv format, so we need to rebuild it
+            ai_argv = [args.command]  # Start with the category
+            
+            # Add all other arguments from the original command line
+            # Skip the first few args that are already parsed
+            original_argv = sys.argv[1:]  # Skip program name
+            
+            # Find where our command starts in the original argv
+            try:
+                cmd_index = original_argv.index(args.command)
+                # Everything after the command should be passed to AI CLI
+                ai_argv.extend(original_argv[cmd_index + 1:])
+            except ValueError:
+                # If we can't find it, just pass what we have
+                pass
+            
+            # Temporarily replace sys.argv and call AI CLI
+            original_argv_backup = sys.argv
+            try:
+                sys.argv = ['ipfs-accelerate'] + ai_argv
+                ai_cli = AIInferenceCLI()
+                ai_parser = ai_cli.create_parser()
+                ai_args = ai_parser.parse_args(ai_argv)
+                return ai_cli.run(ai_args)
+            finally:
+                sys.argv = original_argv_backup
+        
+        
         else:
             parser.print_help()
             return 1

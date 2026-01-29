@@ -121,7 +121,7 @@ def main():
         print("Note: Running in fallback mode (local filesystem)")
         print("To enable distributed storage:")
         print("  1. Initialize the ipfs_kit_py submodule:")
-        print("     git submodule update --init external/ipfs_kit_py")
+        print("     git submodule update --init ipfs_kit_py")
         print("  2. Re-run this example")
     else:
         print("Note: Running with ipfs_kit_py integration enabled")

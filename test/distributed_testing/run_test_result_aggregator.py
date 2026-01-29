@@ -39,7 +39,7 @@ logging.basicConfig(
 logger = logging.getLogger("run_test_result_aggregator")
 
 # Import coordinator and result aggregator
-from coordinator import DistributedTestingCoordinator
+from distributed_testing.coordinator import DistributedTestingCoordinator
 from result_aggregator.coordinator_integration import ResultAggregatorIntegration
 from result_aggregator.service import ResultAggregatorService
 

@@ -151,7 +151,7 @@ deploy_local() {
     pip install -r requirements.txt
     
     # Run application in background
-    nohup python main.py > /tmp/ipfs_accelerate.log 2>&1 &
+    nohup python -m ipfs_accelerate_py.main > /tmp/ipfs_accelerate.log 2>&1 &
     echo $! > /tmp/ipfs_accelerate.pid
     
     # Wait and verify

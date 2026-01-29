@@ -7,11 +7,11 @@ from typing import Dict, Any, Optional, List, Union
 
 # Import the modified ipfs_transformers_py
 try:
-    from external.ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel
-    #from external.ipfs_transformers_py.ipfs_transformers_py.ipfs_kit_bridge import IPFSKitBridge
-    from external.ipfs_kit_py.ipfs_kit_py.high_level_api import IPFSSimpleAPI
+    from ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel
+    #from ipfs_transformers_py.ipfs_transformers_py.ipfs_kit_bridge import IPFSKitBridge
+    from ipfs_kit_py.ipfs_kit_py.high_level_api import IPFSSimpleAPI
     TRANSFORMERS_AVAILABLE = True
-    print("`from external.ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel` is successful")
+    print("`from ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel` is successful")
 except ImportError:
     try:
         # Try alternative import paths

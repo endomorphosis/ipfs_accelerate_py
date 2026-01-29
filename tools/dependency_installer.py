@@ -237,7 +237,7 @@ class DependencyInstaller:
         return results
 
     def install_local_packages(self) -> Dict[str, bool]:
-        """Install bundled local packages from external/ when present."""
+        """Install bundled local packages from root directory when present."""
         results: Dict[str, bool] = {}
         if not self.external_dir.exists():
             logger.info("No external directory found; skipping local package installs")
