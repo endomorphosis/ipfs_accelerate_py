@@ -16,7 +16,7 @@ Key features:
 
 Environment Variables:
     IPFS_DATASETS_ENABLED: Enable/disable ipfs_datasets_py integration (default: auto-detect)
-    IPFS_DATASETS_PATH: Path to ipfs_datasets_py submodule (default: external/ipfs_datasets_py)
+    IPFS_DATASETS_PATH: Path to ipfs_datasets_py submodule (default: ipfs_datasets_py)
 
 Example:
     >>> from ipfs_accelerate_py.datasets_integration import DatasetsManager

@@ -456,7 +456,7 @@ class ComprehensiveDependencyInstaller:
         }
 
         if not external_dir.exists():
-            logger.info("No external/ directory found; skipping local package installs")
+            logger.info("No root directory directory found; skipping local package installs")
             return results
 
         for package in self.local_packages:

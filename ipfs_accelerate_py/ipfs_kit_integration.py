@@ -126,7 +126,7 @@ class IPFSKitStorage:
         Falls back to local mode if unavailable.
         """
         try:
-            # Add the external/ipfs_kit_py directory to the path
+            # Add the ipfs_kit_py directory to the path
             repo_root = Path(__file__).parent.parent.parent
             ipfs_kit_path = repo_root / "external" / "ipfs_kit_py"
             

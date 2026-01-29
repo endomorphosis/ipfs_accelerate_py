@@ -35,7 +35,7 @@ try:
     from ipfs_transformers_py.ipfs_transformers import AutoModel
 except Exception:
     try:
-        from external.ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel
+        from ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel
     except Exception:
         AutoModel = None  # type: ignore
 

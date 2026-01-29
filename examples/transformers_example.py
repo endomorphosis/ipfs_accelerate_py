@@ -11,19 +11,19 @@ import time
 import logging
 
 
-# Get the absolute path to the external directory
-# Assuming the script is being run from a location where "external" is a subdirectory
-external_ipfs_model_manager_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../external/ipfs_model_manager_py/ipfs_model_manager_py"))
-print(f"external_ipfs_model_manager_path = {external_ipfs_model_manager_path}")
-sys.path.append(external_ipfs_model_manager_path)
+# Get the absolute path to the submodule directories
+# These submodules are now in the project root
+ipfs_model_manager_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_model_manager_py/ipfs_model_manager_py"))
+print(f"ipfs_model_manager_path = {ipfs_model_manager_path}")
+sys.path.append(ipfs_model_manager_path)
 
-external_ipfs_kit_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../external/ipfs_kit_py/ipfs_kit_py"))
-print(f"external_ipfs_kit_path = {external_ipfs_kit_path}")
-sys.path.append(external_ipfs_kit_path)
+ipfs_kit_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_kit_py/ipfs_kit_py"))
+print(f"ipfs_kit_path = {ipfs_kit_path}")
+sys.path.append(ipfs_kit_path)
 
-external_ipfs_transformers_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../external/ipfs_transformers_py/ipfs_transformers_py"))
-print(f"external_ipfs_transformers_path = {external_ipfs_transformers_path}")
-sys.path.append(external_ipfs_transformers_path)
+ipfs_transformers_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_transformers_py/ipfs_transformers_py"))
+print(f"ipfs_transformers_path = {ipfs_transformers_path}")
+sys.path.append(ipfs_transformers_path)
 
 
 from ipfs_accelerate_py import ipfs_accelerate_py
