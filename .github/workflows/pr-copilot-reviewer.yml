@@ -1,0 +1,255 @@
+name: Auto-Assign Copilot to PRs
+
+on:
+  pull_request:
+    types: [opened, reopened, ready_for_review]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: 'PR number to assign Copilot'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  assign-copilot-to-pr:
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.draft == false || github.event.action == 'ready_for_review'
+    
+    steps:
+      - name: Debug PR information
+        run: |
+          echo "## 🤖 Auto-Assign Copilot to PR" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Event Information" >> $GITHUB_STEP_SUMMARY
+          echo "- **Event Name**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Action**: ${{ github.event.action }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR Number**: ${{ github.event.pull_request.number || github.event.inputs.pr_number }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR Title**: ${{ github.event.pull_request.title }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR Author**: ${{ github.event.pull_request.user.login }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Is Draft**: ${{ github.event.pull_request.draft }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+          token: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Set up Python environment
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install PyYAML requests
+      
+      - name: Get PR details
+        id: get_pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Get the PR number
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PR_NUMBER="${{ github.event.inputs.pr_number }}"
+          else
+            PR_NUMBER="${{ github.event.pull_request.number }}"
+          fi
+          
+          echo "Processing PR #$PR_NUMBER"
+          
+          # Get PR details
+          PR_DATA=$(gh pr view "$PR_NUMBER" --repo ${{ github.repository }} --json title,body,number,author,isDraft,headRefName)
+          
+          PR_TITLE=$(echo "$PR_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['title'])")
+          PR_AUTHOR=$(echo "$PR_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['author']['login'])")
+          PR_BODY=$(echo "$PR_DATA" | python -c "import sys, json; print(json.load(sys.stdin).get('body', ''))")
+          IS_DRAFT=$(echo "$PR_DATA" | python -c "import sys, json; print(str(json.load(sys.stdin)['isDraft']).lower())")
+          PR_BRANCH=$(echo "$PR_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['headRefName'])")
+          
+          echo "pr_number=$PR_NUMBER" >> $GITHUB_OUTPUT
+          echo "pr_title=$PR_TITLE" >> $GITHUB_OUTPUT
+          echo "pr_author=$PR_AUTHOR" >> $GITHUB_OUTPUT
+          echo "is_draft=$IS_DRAFT" >> $GITHUB_OUTPUT
+          echo "pr_branch=$PR_BRANCH" >> $GITHUB_OUTPUT
+          
+          # Save PR body for analysis
+          echo "$PR_BODY" > /tmp/pr_body.txt
+          
+          echo "## PR Details" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **PR Number**: #$PR_NUMBER" >> $GITHUB_STEP_SUMMARY
+          echo "- **Title**: $PR_TITLE" >> $GITHUB_STEP_SUMMARY
+          echo "- **Author**: @$PR_AUTHOR" >> $GITHUB_STEP_SUMMARY
+          echo "- **Branch**: \`$PR_BRANCH\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Is Draft**: $IS_DRAFT" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Check if Copilot already mentioned
+        id: check_copilot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.get_pr.outputs.pr_number }}"
+          
+          # Check if @copilot is already mentioned in PR body or comments
+          PR_BODY=$(cat /tmp/pr_body.txt)
+          
+          if echo "$PR_BODY" | grep -q "@copilot"; then
+            echo "✓ @copilot already mentioned in PR body"
+            echo "already_mentioned=true" >> $GITHUB_OUTPUT
+            echo "mention_location=body" >> $GITHUB_OUTPUT
+            
+            echo "## ⏭️ Copilot Already Assigned" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "@copilot is already mentioned in the PR body." >> $GITHUB_STEP_SUMMARY
+            echo "- **PR**: #$PR_NUMBER" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          
+          # Check comments
+          COMMENTS=$(gh pr view "$PR_NUMBER" --repo ${{ github.repository }} --json comments --jq '.comments[].body')
+          
+          if echo "$COMMENTS" | grep -q "@copilot"; then
+            echo "✓ @copilot already mentioned in comments"
+            echo "already_mentioned=true" >> $GITHUB_OUTPUT
+            echo "mention_location=comments" >> $GITHUB_OUTPUT
+            
+            echo "## ⏭️ Copilot Already Assigned" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "@copilot is already mentioned in PR comments." >> $GITHUB_STEP_SUMMARY
+            echo "- **PR**: #$PR_NUMBER" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          
+          echo "already_mentioned=false" >> $GITHUB_OUTPUT
+      
+      - name: Analyze PR and classify task type
+        id: analyze_pr
+        if: steps.check_copilot.outputs.already_mentioned != 'true'
+        run: |
+          PR_TITLE="${{ steps.get_pr.outputs.pr_title }}"
+          PR_BRANCH="${{ steps.get_pr.outputs.pr_branch }}"
+          
+          # Classify task type based on title and branch
+          python3 << 'PYTHON_EOF'
+          import re
+          
+          pr_title = '''${{ steps.get_pr.outputs.pr_title }}'''.lower()
+          pr_branch = '''${{ steps.get_pr.outputs.pr_branch }}'''.lower()
+          
+          # Read PR body
+          with open('/tmp/pr_body.txt', 'r') as f:
+              pr_body = f.read().lower()
+          
+          # Classify the task
+          task_type = 'implement'  # default
+          copilot_command = ''  # default, just @copilot
+          
+          # Check for fix/bug keywords
+          fix_keywords = ['fix', 'bug', 'error', 'broken', 'crash', 'issue', 'problem']
+          if any(kw in pr_title or kw in pr_branch for kw in fix_keywords):
+              task_type = 'fix'
+              copilot_command = '/fix'
+          
+          # Check for auto-heal markers
+          if 'auto-heal' in pr_branch or 'auto-fix' in pr_branch:
+              task_type = 'fix'
+              copilot_command = '/fix'
+          
+          # Check for review/refactor keywords
+          review_keywords = ['review', 'refactor', 'cleanup', 'improve', 'optimize']
+          if any(kw in pr_title for kw in review_keywords):
+              task_type = 'review'
+              copilot_command = '/review'
+          
+          # Check for feature keywords
+          feature_keywords = ['feature', 'add', 'implement', 'new', 'support']
+          if any(kw in pr_title for kw in feature_keywords):
+              task_type = 'implement'
+              copilot_command = ''  # Just @copilot for implementation
+          
+          print(f'task_type={task_type}')
+          print(f'copilot_command={copilot_command}')
+          
+          # Save to output
+          import os
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as f:
+              f.write(f'task_type={task_type}\n')
+              f.write(f'copilot_command={copilot_command}\n')
+          PYTHON_EOF
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "## Task Classification" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Task Type**: $(cat $GITHUB_OUTPUT | grep 'task_type=' | cut -d= -f2)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Copilot Command**: \`@copilot $(cat $GITHUB_OUTPUT | grep 'copilot_command=' | cut -d= -f2)\`" >> $GITHUB_STEP_SUMMARY
+      
+      - name: Create Copilot assignment comment
+        id: assign_copilot
+        if: steps.check_copilot.outputs.already_mentioned != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PR_NUMBER="${{ steps.get_pr.outputs.pr_number }}"
+          TASK_TYPE="${{ steps.analyze_pr.outputs.task_type }}"
+          COPILOT_COMMAND="${{ steps.analyze_pr.outputs.copilot_command }}"
+          
+          # Create task-specific message
+          case "$TASK_TYPE" in
+            fix)
+              TASK_DESC="This appears to be a bug fix or error resolution."
+              INSTRUCTIONS="Please analyze the issue and implement the necessary fixes."
+              ;;
+            implement)
+              TASK_DESC="This appears to be a new feature or implementation task."
+              INSTRUCTIONS="Please analyze the requirements and implement the necessary changes."
+              ;;
+            review)
+              TASK_DESC="This appears to be a code review or refactoring task."
+              INSTRUCTIONS="Please review the changes and provide feedback or improvements."
+              ;;
+            *)
+              TASK_DESC="This PR requires automated assistance."
+              INSTRUCTIONS="Please analyze and implement the necessary changes."
+              ;;
+          esac
+          
+          # Create comment body
+          cat > /tmp/copilot_comment.md << COMMENT_EOF
+          ## 🤖 Automated Copilot Assignment
+          
+          $TASK_DESC
+          
+          @copilot $COPILOT_COMMAND
+          
+          $INSTRUCTIONS
+          
+          ### Focus Areas
+          1. Understand the requirements and context
+          2. Make minimal, focused changes
+          3. Ensure all tests pass
+          4. Follow project coding conventions
+          5. Update documentation if needed
+          
+          ---
+          
+          *🤖 This comment was auto-generated by the PR Copilot Reviewer workflow*
+          COMMENT_EOF
+          
+          # Post the comment
+          gh pr comment "$PR_NUMBER" --body-file /tmp/copilot_comment.md
+          
+          echo "## ✅ Copilot Assigned" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "@copilot has been assigned to PR #$PR_NUMBER with task type: **$TASK_TYPE**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Copilot will analyze the PR and provide automated assistance." >> $GITHUB_STEP_SUMMARY
