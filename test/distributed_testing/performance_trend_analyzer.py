@@ -1302,6 +1302,7 @@ class PerformanceTrendAnalyzer:
                 plt.figure(figsize=(12, 6))
                 
                 # Plot each group
+                has_series = False
                 for group_key, group_metrics in grouped_metrics.items():
                     if len(group_metrics) < 5:
                         continue
@@ -1315,13 +1316,15 @@ class PerformanceTrendAnalyzer:
                     
                     # Plot the data
                     plt.plot(timestamps, values, marker='o', linestyle='-', label=group_key)
+                    has_series = True
                 
                 # Add chart elements
                 plt.title(f"{metric_name} Performance Trend")
                 plt.xlabel("Time")
                 plt.ylabel(metric_name)
                 plt.grid(True, linestyle='--', alpha=0.7)
-                plt.legend()
+                if has_series:
+                    plt.legend()
                 
                 # Format the x-axis to show readable timestamps
                 plt.gcf().autofmt_xdate()

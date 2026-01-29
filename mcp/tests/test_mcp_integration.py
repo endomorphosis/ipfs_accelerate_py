@@ -14,7 +14,7 @@ import json
 import httpx
 import anyio
 import pytest
-from multiprocessing import Process
+from multiprocessing import get_context
 import time
 
 # Configure logging
@@ -68,7 +68,7 @@ def start_server():
 async def test_mcp_server():
     """Test the MCP server by making requests to it."""
     # Start server in a separate process
-    server_process = Process(target=start_server)
+    server_process = get_context("spawn").Process(target=start_server)
     server_process.start()
 
     try:
@@ -156,7 +156,7 @@ import json
 import httpx
 import anyio
 import pytest
-from multiprocessing import Process
+from multiprocessing import get_context
 import time
 
 # Configure logging
@@ -208,7 +208,7 @@ def start_server():
 async def test_mcp_server():
     """Test the MCP server by making requests to it."""
     # Start server in a separate process
-    server_process = Process(target=start_server)
+    server_process = get_context("spawn").Process(target=start_server)
     server_process.start()
     
     try:
