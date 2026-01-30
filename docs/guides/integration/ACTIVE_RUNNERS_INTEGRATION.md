@@ -222,7 +222,7 @@ The frontend is now ready to work with the backend GitHub MCP tools:
 
 ## Screenshots
 
-See `screenshots/active-runners-ui.png` for the final UI implementation showing:
+See `docs/images/active-runners-ui.png` for the final UI implementation showing:
 - The Active Runners section header with input fields
 - The Track button with tooltip
 - Example runner cards (once data is available)
