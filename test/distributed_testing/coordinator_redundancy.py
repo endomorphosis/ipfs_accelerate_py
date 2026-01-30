@@ -282,7 +282,13 @@ class RedundancyManager:
         if match:
             index = int(match.group(1)) - 1
             if 0 <= index < len(cluster_nodes):
-                return cluster_nodes[index]
+                def _port_value(url: str) -> int:
+                    match_port = re.search(r":(\d+)$", url or "")
+                    return int(match_port.group(1)) if match_port else 0
+
+                ordered_nodes = sorted(cluster_nodes, key=_port_value)
+                if 0 <= index < len(ordered_nodes):
+                    return ordered_nodes[index]
 
         # If node_id is not found in URLs, use the first one
         return cluster_nodes[0] if cluster_nodes else None

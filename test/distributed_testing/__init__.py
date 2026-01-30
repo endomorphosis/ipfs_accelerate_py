@@ -20,7 +20,7 @@ import sys as _sys
 
 # Ensure the test package is also visible as the top-level `distributed_testing`
 # module so patching paths in tests resolve to the same module objects.
-_sys.modules.setdefault("distributed_testing", _sys.modules[__name__])
+_sys.modules["distributed_testing"] = _sys.modules[__name__]
 
 try:
 	from . import browser_recovery_strategies as _browser_recovery_strategies

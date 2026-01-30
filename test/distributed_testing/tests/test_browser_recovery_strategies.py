@@ -13,6 +13,7 @@ import anyio
 from unittest.mock import MagicMock, patch, AsyncMock
 from datetime import datetime
 import logging
+import sys as _sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, 
@@ -30,6 +31,10 @@ from ..browser_recovery_strategies import (
     ModelSpecificRecoveryStrategy, ProgressiveRecoveryManager,
     detect_browser_type, detect_model_type, categorize_browser_failure, recover_browser
 )
+from .. import browser_recovery_strategies as _browser_recovery_strategies
+
+# Ensure the browser recovery module is reachable via the legacy alias used in patches.
+_sys.modules["distributed_testing.browser_recovery_strategies"] = _browser_recovery_strategies
 
 
 class MockBrowserAutomationBridge:
@@ -894,14 +899,14 @@ class TestUtilityFunctions(unittest.TestCase):
         error = Exception("WebGPU adapter creation failed: GPU process crashed")
         
         # Test successful recovery
-        with patch('distributed_testing.browser_recovery_strategies.ProgressiveRecoveryManager.execute_progressive_recovery',
-                 new_callable=AsyncMock, return_value=True):
+        with patch.object(ProgressiveRecoveryManager, 'execute_progressive_recovery',
+             new_callable=AsyncMock, return_value=True):
             result = await recover_browser(bridge, error)
             self.assertTrue(result)
         
         # Test failed recovery
-        with patch('distributed_testing.browser_recovery_strategies.ProgressiveRecoveryManager.execute_progressive_recovery',
-                 new_callable=AsyncMock, return_value=False):
+        with patch.object(ProgressiveRecoveryManager, 'execute_progressive_recovery',
+             new_callable=AsyncMock, return_value=False):
             result = await recover_browser(bridge, error)
             self.assertFalse(result)
     
