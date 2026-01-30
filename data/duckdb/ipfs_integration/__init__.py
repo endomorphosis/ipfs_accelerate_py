@@ -44,6 +44,14 @@ except ImportError as e:
     print(f"Warning: Could not import cache_manager: {e}")
     IPFSCacheManager = None
 
+try:
+    from .ipfs_db_backend import IPFSDBBackend, IPFSDBMigration, create_ipfs_backend
+except ImportError as e:
+    print(f"Warning: Could not import ipfs_db_backend: {e}")
+    IPFSDBBackend = None
+    IPFSDBMigration = None
+    create_ipfs_backend = None
+
 __all__ = [
     'IPFSStorage',
     'IPFSStorageBackend',
@@ -54,6 +62,9 @@ __all__ = [
     'DistributedOperations',
     'BenchmarkKnowledgeGraph',
     'IPFSCacheManager',
+    'IPFSDBBackend',
+    'IPFSDBMigration',
+    'create_ipfs_backend',
 ]
 
-__version__ = '1.0.0'
+__version__ = '2.0.0'
