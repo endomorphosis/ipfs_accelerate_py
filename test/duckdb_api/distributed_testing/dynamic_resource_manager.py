@@ -14,7 +14,7 @@ Core responsibilities:
 
 Usage:
     # Import and initialize
-    from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
+    from data.duckdb.distributed_testing.dynamic_resource_manager import DynamicResourceManager
     
     # Create resource manager
     resource_mgr = DynamicResourceManager(

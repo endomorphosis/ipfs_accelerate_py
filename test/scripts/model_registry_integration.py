@@ -26,8 +26,8 @@ sys.path.append())))))))))))))))str())))))))))))))))Path())))))))))))))))__file_
 
 # Local imports
 try::::
-    from duckdb_api.core.benchmark_db_api import get_db_connection
-    from duckdb_api.core.benchmark_db_query import query_database
+    from data.duckdb.core.benchmark_db_api import get_db_connection
+    from data.duckdb.core.benchmark_db_query import query_database
     from hardware_selector import select_hardware
     from model_family_classifier import classify_model
 except ImportError:

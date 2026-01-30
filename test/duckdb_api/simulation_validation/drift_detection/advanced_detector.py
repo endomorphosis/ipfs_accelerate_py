@@ -26,7 +26,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import base classes
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult,
@@ -34,7 +34,7 @@ from duckdb_api.simulation_validation.core.base import (
 )
 
 # Import basic detector for fallback and utilities
-from duckdb_api.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
+from data.duckdb.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
 
 # Optional imports for advanced methods
 try:

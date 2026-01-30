@@ -26,7 +26,7 @@ parent_dir = str(Path(__file__).parent.parent.parent.parent)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from duckdb_api.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
+from data.duckdb.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
 
 class TestPerformanceTrendAnalyzer(unittest.TestCase):
     """Test cases for the Performance Trend Analyzer."""

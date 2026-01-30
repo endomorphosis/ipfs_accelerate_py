@@ -12,16 +12,16 @@ This package includes various visualization components:
 - MonitorDashboardIntegration: Integration with Monitoring Dashboard for centralized visualization
 """
 
-from duckdb_api.visualization.advanced_visualization.base import BaseVisualization
-from duckdb_api.visualization.advanced_visualization.viz_heatmap import HardwareHeatmapVisualization
-from duckdb_api.visualization.advanced_visualization.viz_time_series import TimeSeriesVisualization
-from duckdb_api.visualization.advanced_visualization.viz_3d import Visualization3D
-from duckdb_api.visualization.advanced_visualization.viz_animated_time_series import AnimatedTimeSeriesVisualization
-from duckdb_api.visualization.advanced_visualization.viz_customizable_dashboard import CustomizableDashboard
+from data.duckdb.visualization.advanced_visualization.base import BaseVisualization
+from data.duckdb.visualization.advanced_visualization.viz_heatmap import HardwareHeatmapVisualization
+from data.duckdb.visualization.advanced_visualization.viz_time_series import TimeSeriesVisualization
+from data.duckdb.visualization.advanced_visualization.viz_3d import Visualization3D
+from data.duckdb.visualization.advanced_visualization.viz_animated_time_series import AnimatedTimeSeriesVisualization
+from data.duckdb.visualization.advanced_visualization.viz_customizable_dashboard import CustomizableDashboard
 
 # Import dashboard integration
 try:
-    from duckdb_api.visualization.advanced_visualization.monitor_dashboard_integration import (
+    from data.duckdb.visualization.advanced_visualization.monitor_dashboard_integration import (
         MonitorDashboardIntegration,
         MonitorDashboardIntegrationMixin
     )

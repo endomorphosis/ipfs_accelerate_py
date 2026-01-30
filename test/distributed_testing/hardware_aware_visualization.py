@@ -38,7 +38,7 @@ from .hardware_workload_management import (
     HardwareTaxonomy, WorkloadExecutionPlan
 )
 from .hardware_aware_scheduler import HardwareAwareScheduler
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareCapabilityProfile, HardwareClass, SoftwareBackend, PrecisionType
 )
 

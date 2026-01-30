@@ -28,8 +28,8 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.simulation_validation.simulation_validation_framework import get_framework_instance
-from duckdb_api.simulation_validation.core.base import SimulationResult, HardwareResult
+from data.duckdb.simulation_validation.simulation_validation_framework import get_framework_instance
+from data.duckdb.simulation_validation.core.base import SimulationResult, HardwareResult
 
 # Create output directory
 OUTPUT_DIR = Path(__file__).parent / "output"
@@ -179,8 +179,8 @@ def test_validation_basic(framework, output_dir):
     # Skip if comparison pipeline doesn't exist
     try:
         # Run validation - using direct comparison pipeline to avoid database dependencies
-        from duckdb_api.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
-        from duckdb_api.simulation_validation.statistical.statistical_validator import StatisticalValidator
+        from data.duckdb.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
+        from data.duckdb.simulation_validation.statistical.statistical_validator import StatisticalValidator
         
         # Create pipeline and validator
         pipeline = ComparisonPipeline()
@@ -245,9 +245,9 @@ def test_validation_by_hardware(framework, output_dir):
     # Skip if comparison pipeline doesn't exist
     try:
         # Import required components
-        from duckdb_api.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
-        from duckdb_api.simulation_validation.statistical.statistical_validator import StatisticalValidator
-        from duckdb_api.simulation_validation.methodology import ValidationMethodology
+        from data.duckdb.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
+        from data.duckdb.simulation_validation.statistical.statistical_validator import StatisticalValidator
+        from data.duckdb.simulation_validation.methodology import ValidationMethodology
         
         # Create components
         pipeline = ComparisonPipeline()
@@ -307,8 +307,8 @@ def test_confidence_scoring(framework, output_dir):
     # Skip if statistical validator doesn't exist
     try:
         # Import required components
-        from duckdb_api.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
-        from duckdb_api.simulation_validation.statistical.statistical_validator import StatisticalValidator
+        from data.duckdb.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
+        from data.duckdb.simulation_validation.statistical.statistical_validator import StatisticalValidator
         
         # Create components
         pipeline = ComparisonPipeline()
@@ -382,9 +382,9 @@ def test_validation_plan(framework, output_dir):
     # Skip if methodology doesn't exist
     try:
         # Import required components
-        from duckdb_api.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
-        from duckdb_api.simulation_validation.methodology import ValidationMethodology
-        from duckdb_api.simulation_validation.statistical.statistical_validator import StatisticalValidator
+        from data.duckdb.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
+        from data.duckdb.simulation_validation.methodology import ValidationMethodology
+        from data.duckdb.simulation_validation.statistical.statistical_validator import StatisticalValidator
         
         # Create components
         pipeline = ComparisonPipeline()
@@ -500,8 +500,8 @@ def test_check_calibration(framework, output_dir):
     # Skip if methodology doesn't exist
     try:
         # Import required components
-        from duckdb_api.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
-        from duckdb_api.simulation_validation.methodology import ValidationMethodology
+        from data.duckdb.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
+        from data.duckdb.simulation_validation.methodology import ValidationMethodology
         
         # Create components
         pipeline = ComparisonPipeline()

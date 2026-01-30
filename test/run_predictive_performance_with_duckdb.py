@@ -27,8 +27,8 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 try:
-    from duckdb_api.predictive_performance.predictor_repository import DuckDBPredictorRepository
-    from duckdb_api.predictive_performance.repository_adapter import (
+    from data.duckdb.predictive_performance.predictor_repository import DuckDBPredictorRepository
+    from data.duckdb.predictive_performance.repository_adapter import (
         HardwareModelPredictorDuckDBAdapter,
         ModelPerformancePredictorDuckDBAdapter
     )

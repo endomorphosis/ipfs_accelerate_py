@@ -37,7 +37,7 @@ except ImportError:
 
 # Import dashboard integration
 try:
-    from duckdb_api.visualization.advanced_visualization.monitor_dashboard_integration import (
+    from data.duckdb.visualization.advanced_visualization.monitor_dashboard_integration import (
         MonitorDashboardIntegration
     )
     HAS_DASHBOARD_INTEGRATION = True
@@ -47,8 +47,8 @@ except ImportError as e:
 
 # Import database API and visualization system
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
-    from duckdb_api.visualization.advanced_visualization import AdvancedVisualizationSystem
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.visualization.advanced_visualization import AdvancedVisualizationSystem
     HAS_VISUALIZATION_SYSTEM = True
 except ImportError as e:
     logger.error(f"Error importing visualization system: {e}")

@@ -17,7 +17,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple, Set
 import duckdb
 import pandas as pd
 
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     BenchmarkResult,
     ValidationResult,
     ValidationStatus,

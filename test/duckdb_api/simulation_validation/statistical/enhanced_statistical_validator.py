@@ -30,8 +30,8 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import base classes and statistical validator
-from duckdb_api.simulation_validation.statistical.statistical_validator import StatisticalValidator
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.statistical.statistical_validator import StatisticalValidator
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult

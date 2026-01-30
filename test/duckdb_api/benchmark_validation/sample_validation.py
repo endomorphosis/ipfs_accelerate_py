@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("benchmark_validation_demo")
 
-from duckdb_api.benchmark_validation import (
+from data.duckdb.benchmark_validation import (
     ValidationLevel,
     BenchmarkType,
     ValidationStatus,
@@ -29,11 +29,11 @@ from duckdb_api.benchmark_validation import (
     ValidationResult,
     BenchmarkValidationFramework
 )
-from duckdb_api.benchmark_validation.validation_protocol import StandardBenchmarkValidator
-from duckdb_api.benchmark_validation.outlier_detection import StatisticalOutlierDetector
-from duckdb_api.benchmark_validation.reproducibility import ReproducibilityValidator
-from duckdb_api.benchmark_validation.certification import BenchmarkCertificationSystem
-from duckdb_api.benchmark_validation.framework import ComprehensiveBenchmarkValidation
+from data.duckdb.benchmark_validation.validation_protocol import StandardBenchmarkValidator
+from data.duckdb.benchmark_validation.outlier_detection import StatisticalOutlierDetector
+from data.duckdb.benchmark_validation.reproducibility import ReproducibilityValidator
+from data.duckdb.benchmark_validation.certification import BenchmarkCertificationSystem
+from data.duckdb.benchmark_validation.framework import ComprehensiveBenchmarkValidation
 
 def create_sample_benchmark_results(num_results=5, add_outlier=False):
     """

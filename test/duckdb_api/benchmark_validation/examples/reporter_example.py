@@ -16,14 +16,14 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent))
 
 # Import validation components
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationLevel,
     BenchmarkType,
     ValidationStatus,
     BenchmarkResult,
     ValidationResult
 )
-from duckdb_api.benchmark_validation.visualization.reporter import ValidationReporterImpl
+from data.duckdb.benchmark_validation.visualization.reporter import ValidationReporterImpl
 
 def create_sample_validation_results(num_results=20):
     """Create sample validation results for demonstration."""

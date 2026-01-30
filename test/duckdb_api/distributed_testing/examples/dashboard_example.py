@@ -24,15 +24,15 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import dashboard components
-from duckdb_api.distributed_testing.dashboard.dashboard_generator import DashboardGenerator
-from duckdb_api.distributed_testing.dashboard.dashboard_server import DashboardServer
-from duckdb_api.distributed_testing.dashboard.visualization import VisualizationEngine
+from data.duckdb.distributed_testing.dashboard.dashboard_generator import DashboardGenerator
+from data.duckdb.distributed_testing.dashboard.dashboard_server import DashboardServer
+from data.duckdb.distributed_testing.dashboard.visualization import VisualizationEngine
 
 # Import result aggregator
-from duckdb_api.distributed_testing.result_aggregator.service import ResultAggregatorService
+from data.duckdb.distributed_testing.result_aggregator.service import ResultAggregatorService
 
 # Import database manager
-from duckdb_api.core.db_manager import BenchmarkDBManager
+from data.duckdb.core.db_manager import BenchmarkDBManager
 
 
 def generate_sample_dashboard(result_aggregator, output_dir):

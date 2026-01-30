@@ -33,11 +33,11 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 # Import necessary components
 try:
-    from duckdb_api.distributed_testing.dashboard.enhanced_visualization_dashboard import EnhancedVisualizationDashboard
-    from duckdb_api.distributed_testing.dashboard.regression_detection import RegressionDetector
-    from duckdb_api.distributed_testing.dashboard.regression_visualization import RegressionVisualization
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
-    from duckdb_api.distributed_testing.tests.test_dashboard_regression_integration import generate_performance_data_with_regressions
+    from data.duckdb.distributed_testing.dashboard.enhanced_visualization_dashboard import EnhancedVisualizationDashboard
+    from data.duckdb.distributed_testing.dashboard.regression_detection import RegressionDetector
+    from data.duckdb.distributed_testing.dashboard.regression_visualization import RegressionVisualization
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.distributed_testing.tests.test_dashboard_regression_integration import generate_performance_data_with_regressions
     HAS_REQUIRED_COMPONENTS = True
 except ImportError as e:
     logger.error(f"Error importing required components: {e}")

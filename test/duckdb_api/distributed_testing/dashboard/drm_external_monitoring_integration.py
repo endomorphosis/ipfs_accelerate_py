@@ -13,7 +13,7 @@ Key components:
 
 Usage:
     # Import the module
-    from duckdb_api.distributed_testing.dashboard.drm_external_monitoring_integration import ExternalMonitoringBridge
+    from data.duckdb.distributed_testing.dashboard.drm_external_monitoring_integration import ExternalMonitoringBridge
     
     # Create a bridge instance
     bridge = ExternalMonitoringBridge(
@@ -1540,8 +1540,8 @@ def main():
     
     try:
         # Import DRM dashboard for integration
-        from duckdb_api.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
-        from duckdb_api.distributed_testing.testing.mock_drm import MockDynamicResourceManager
+        from data.duckdb.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
+        from data.duckdb.distributed_testing.testing.mock_drm import MockDynamicResourceManager
         
         # Create mock DRM for testing
         logger.info("Creating mock DRM for testing")

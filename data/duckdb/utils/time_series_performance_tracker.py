@@ -28,8 +28,8 @@ sys.path.append()))))))str()))))))Path()))))))__file__).resolve()))))))).parent.
 
 # Local imports
 try:
-    from duckdb_api.core.benchmark_db_api import get_db_connection
-    from duckdb_api.core.benchmark_db_query import query_database
+    from data.duckdb.core.benchmark_db_api import get_db_connection
+    from data.duckdb.core.benchmark_db_query import query_database
     from benchmark_regression_analyzer import analyze_regressions
 except ImportError:
     print()))))))"Warning: Some local modules could not be imported.")

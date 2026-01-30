@@ -20,14 +20,14 @@ logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("benchmark_validation_cli")
 
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationLevel,
     BenchmarkType,
     ValidationStatus,
     BenchmarkResult,
     ValidationResult
 )
-from duckdb_api.benchmark_validation.framework import ComprehensiveBenchmarkValidation, get_validation_framework
+from data.duckdb.benchmark_validation.framework import ComprehensiveBenchmarkValidation, get_validation_framework
 
 def load_benchmark_result(input_path: str) -> BenchmarkResult:
     """

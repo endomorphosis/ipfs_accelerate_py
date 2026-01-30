@@ -22,13 +22,13 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("monitoring_dashboard_connector")
 
 # Import the validation visualizer db connector
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from data.duckdb.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
 
 # Import the visualization system
-from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+from data.duckdb.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
 
 # Import base class for the database performance optimization
-from duckdb_api.simulation_validation.db_performance_optimizer import DatabasePerformanceOptimizer
+from data.duckdb.simulation_validation.db_performance_optimizer import DatabasePerformanceOptimizer
 
 class MonitoringDashboardConnector:
     """

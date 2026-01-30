@@ -20,10 +20,10 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import circuit breaker visualization components
-from duckdb_api.distributed_testing.dashboard.circuit_breaker_visualization import (
+from data.duckdb.distributed_testing.dashboard.circuit_breaker_visualization import (
     CircuitBreakerVisualization, CircuitBreakerDashboardIntegration
 )
-from duckdb_api.distributed_testing.circuit_breaker import (
+from data.duckdb.distributed_testing.circuit_breaker import (
     CircuitBreaker, CircuitState
 )
 

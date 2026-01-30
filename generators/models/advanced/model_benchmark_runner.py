@@ -33,7 +33,7 @@ import random
 
 # Add DuckDB database support
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
     BENCHMARK_DB_AVAILABLE = True
 except ImportError:
     BENCHMARK_DB_AVAILABLE = False

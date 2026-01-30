@@ -34,9 +34,9 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import required modules
-from duckdb_api.distributed_testing.coordinator import CoordinatorServer
-from duckdb_api.distributed_testing.multi_device_orchestrator import SplitStrategy
-from duckdb_api.distributed_testing.coordinator_orchestrator_integration import (
+from data.duckdb.distributed_testing.coordinator import CoordinatorServer
+from data.duckdb.distributed_testing.multi_device_orchestrator import SplitStrategy
+from data.duckdb.distributed_testing.coordinator_orchestrator_integration import (
     integrate_orchestrator_with_coordinator
 )
 

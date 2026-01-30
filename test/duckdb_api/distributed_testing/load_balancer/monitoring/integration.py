@@ -20,8 +20,8 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import monitoring components
-from duckdb_api.distributed_testing.load_balancer.monitoring.metrics_collector import MetricsCollector
-from duckdb_api.distributed_testing.load_balancer.monitoring.dashboard_server import DashboardServer
+from data.duckdb.distributed_testing.load_balancer.monitoring.metrics_collector import MetricsCollector
+from data.duckdb.distributed_testing.load_balancer.monitoring.dashboard_server import DashboardServer
 
 # Setup logging
 logging.basicConfig(

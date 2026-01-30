@@ -46,13 +46,13 @@ from tqdm import tqdm
 # Add parent directory to path to ensure imports work properly
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 
-from duckdb_api.distributed_testing.coordinator.coordinator_service import CoordinatorService
-from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
-from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_result_aggregator_integration import ResultAggregatorIntegration
-from duckdb_api.distributed_testing.fault_tolerance.fault_tolerance_manager import FaultToleranceManager
-from duckdb_api.distributed_testing.load_balancer.load_balancer_service import LoadBalancerService
-from duckdb_api.distributed_testing.result_aggregator.result_aggregator_service import ResultAggregatorService
-from duckdb_api.distributed_testing.worker.worker_node import WorkerNode
+from data.duckdb.distributed_testing.coordinator.coordinator_service import CoordinatorService
+from data.duckdb.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
+from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_result_aggregator_integration import ResultAggregatorIntegration
+from data.duckdb.distributed_testing.fault_tolerance.fault_tolerance_manager import FaultToleranceManager
+from data.duckdb.distributed_testing.load_balancer.load_balancer_service import LoadBalancerService
+from data.duckdb.distributed_testing.result_aggregator.result_aggregator_service import ResultAggregatorService
+from data.duckdb.distributed_testing.worker.worker_node import WorkerNode
 
 # Configure logging
 logging.basicConfig(

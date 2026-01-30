@@ -26,8 +26,8 @@ sys.path.append())str())Path())__file__).resolve())).parent.parent))
 
 # Local imports
 try:
-    from duckdb_api.core.benchmark_db_api import get_db_connection
-    from duckdb_api.core.benchmark_db_query import query_database
+    from data.duckdb.core.benchmark_db_api import get_db_connection
+    from data.duckdb.core.benchmark_db_query import query_database
     from qualcomm_quantization_support import get_supported_methods
     from qualcomm_hardware_optimizations import get_supported_optimizations
 except ImportError:

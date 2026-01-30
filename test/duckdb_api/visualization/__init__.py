@@ -9,7 +9,7 @@ Submodules:
 """
 
 # Import advanced visualization components for easier access
-from duckdb_api.visualization.advanced_visualization import (
+from data.duckdb.visualization.advanced_visualization import (
     BaseVisualization,
     HardwareHeatmapVisualization, 
     TimeSeriesVisualization,

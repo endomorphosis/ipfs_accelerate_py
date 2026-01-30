@@ -33,7 +33,7 @@ from tqdm import tqdm
 
 # Add DuckDB database support
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
     BENCHMARK_DB_AVAILABLE = True
 except ImportError:
     BENCHMARK_DB_AVAILABLE = False
@@ -383,7 +383,7 @@ if not DEPRECATE_JSON_OUTPUT:
                 with open(output_file, 'r') as f:
 # Try database first, fall back to JSON if necessary
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
     db_api = BenchmarkDBAPI(db_path=os.environ.get("BENCHMARK_DB_PATH", "./benchmark_db.duckdb"))
     results = db_api.get_benchmark_results()
     logger.info("Successfully loaded results from database")

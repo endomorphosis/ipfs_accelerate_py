@@ -16,7 +16,7 @@ import pandas as pd
 import plotly.graph_objects as go
 
 # Import export utilities
-from duckdb_api.visualization.advanced_visualization.export_utils import (
+from data.duckdb.visualization.advanced_visualization.export_utils import (
     export_figure,
     export_animation,
     export_data,

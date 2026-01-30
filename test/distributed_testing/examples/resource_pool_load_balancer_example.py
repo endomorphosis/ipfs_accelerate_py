@@ -32,7 +32,7 @@ try:
         LoadBalancerResourcePoolBridge, 
         create_bridge
     )
-    from duckdb_api.distributed_testing.load_balancer.models import TestRequirements
+    from data.duckdb.distributed_testing.load_balancer.models import TestRequirements
 except ImportError as e:
     logger.error(f"Import error: {e}")
     logger.error("Please make sure the required modules are installed")

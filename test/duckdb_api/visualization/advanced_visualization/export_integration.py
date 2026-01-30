@@ -14,7 +14,7 @@ import pandas as pd
 from plotly.graph_objects import Figure
 
 # Import export utilities
-from duckdb_api.visualization.advanced_visualization.export_manager import ExportManager
+from data.duckdb.visualization.advanced_visualization.export_manager import ExportManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,

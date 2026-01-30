@@ -22,7 +22,7 @@ if parent_dir not in sys.path:
 
 try:
     # Import the monitoring dashboard
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
     
     # Check dependencies
     try:

@@ -29,14 +29,14 @@ import heapq
 import math
 
 # Import hardware taxonomy components
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareClass, HardwareArchitecture, HardwareVendor,
     SoftwareBackend, PrecisionType, AcceleratorFeature,
     HardwareCapabilityProfile, HardwareTaxonomy
 )
 
 # Import existing load balancer components
-from duckdb_api.distributed_testing.load_balancer.models import (
+from data.duckdb.distributed_testing.load_balancer.models import (
     WorkerCapabilities, WorkerLoad, TestRequirements, WorkerAssignment
 )
 

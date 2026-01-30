@@ -21,13 +21,13 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import coordinator server
-from duckdb_api.distributed_testing.coordinator_websocket_server import (
+from data.duckdb.distributed_testing.coordinator_websocket_server import (
     CoordinatorWebSocketServer, run_server
 )
 
 # Import circuit breaker integration
 try:
-    from duckdb_api.distributed_testing.coordinator_integration import (
+    from data.duckdb.distributed_testing.coordinator_integration import (
         integrate_circuit_breaker_with_coordinator
     )
     CIRCUIT_BREAKER_AVAILABLE = True

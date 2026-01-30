@@ -18,14 +18,14 @@ from datetime import datetime
 sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent))
 
 # Import validation components
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationLevel,
     BenchmarkType,
     ValidationStatus,
     BenchmarkResult,
     ValidationResult
 )
-from duckdb_api.benchmark_validation.visualization.reporter import ValidationReporterImpl
+from data.duckdb.benchmark_validation.visualization.reporter import ValidationReporterImpl
 
 class TestValidationReporter(unittest.TestCase):
     """Test cases for the ValidationReporterImpl class."""

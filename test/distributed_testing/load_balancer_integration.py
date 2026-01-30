@@ -10,8 +10,8 @@ import logging
 from typing import Optional, Dict, Any, List, Set, Tuple
 
 # Import load balancer components
-from duckdb_api.distributed_testing.load_balancer.service import LoadBalancerService
-from duckdb_api.distributed_testing.load_balancer.scheduling_algorithms import (
+from data.duckdb.distributed_testing.load_balancer.service import LoadBalancerService
+from data.duckdb.distributed_testing.load_balancer.scheduling_algorithms import (
     SchedulingAlgorithm, CompositeScheduler, AdaptiveScheduler
 )
 

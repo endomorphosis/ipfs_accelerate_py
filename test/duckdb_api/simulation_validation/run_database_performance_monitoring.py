@@ -29,13 +29,13 @@ logger = logging.getLogger("db_performance_monitoring")
 
 # Import required components
 try:
-    from duckdb_api.simulation_validation.db_performance_optimizer import DBPerformanceOptimizer
-    from duckdb_api.simulation_validation.visualization.monitoring_dashboard_connector import MonitoringDashboardConnector
-    from duckdb_api.simulation_validation.automated_optimization_manager import (
+    from data.duckdb.simulation_validation.db_performance_optimizer import DBPerformanceOptimizer
+    from data.duckdb.simulation_validation.visualization.monitoring_dashboard_connector import MonitoringDashboardConnector
+    from data.duckdb.simulation_validation.automated_optimization_manager import (
         AutomatedOptimizationManager, 
         get_optimization_manager
     )
-    from duckdb_api.simulation_validation.database_predictive_analytics import DatabasePredictiveAnalytics
+    from data.duckdb.simulation_validation.database_predictive_analytics import DatabasePredictiveAnalytics
 except ImportError:
     logger.error("Failed to import required modules. Make sure duckdb_api is properly installed.")
     sys.exit(1)

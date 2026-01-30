@@ -38,22 +38,22 @@ import re
 
 # Import the new components
 try:
-    from duckdb_api.distributed_testing.auto_recovery import AutoRecovery
+    from data.duckdb.distributed_testing.auto_recovery import AutoRecovery
     AUTO_RECOVERY_AVAILABLE = True
 except ImportError:
     logger.warning("Auto Recovery system not available. High availability features disabled.")
     AUTO_RECOVERY_AVAILABLE = False
 
 try:
-    from duckdb_api.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
+    from data.duckdb.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
     PERFORMANCE_ANALYZER_AVAILABLE = True
 except ImportError:
     logger.warning("Performance Trend Analyzer not available. Performance analysis features disabled.")
     PERFORMANCE_ANALYZER_AVAILABLE = False
 
 try:
-    from duckdb_api.distributed_testing.result_aggregator.service import ResultAggregatorService
-    from duckdb_api.distributed_testing.result_aggregator.aggregator import ResultAggregator as DetailedResultAggregator
+    from data.duckdb.distributed_testing.result_aggregator.service import ResultAggregatorService
+    from data.duckdb.distributed_testing.result_aggregator.aggregator import ResultAggregator as DetailedResultAggregator
     RESULT_AGGREGATOR_AVAILABLE = True
 except ImportError:
     logger.warning("Result Aggregator not available. Intelligent result aggregation features disabled.")
@@ -61,22 +61,22 @@ except ImportError:
 
 # Dynamic Resource Management components
 try:
-    from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
+    from data.duckdb.distributed_testing.dynamic_resource_manager import DynamicResourceManager
     DYNAMIC_RESOURCE_MANAGER_AVAILABLE = True
 except ImportError:
     logger.warning("Dynamic Resource Manager not available. Advanced resource management features disabled.")
     DYNAMIC_RESOURCE_MANAGER_AVAILABLE = False
 
 try:
-    from duckdb_api.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
+    from data.duckdb.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
     RESOURCE_PREDICTOR_AVAILABLE = True
 except ImportError:
     logger.warning("Resource Performance Predictor not available. Resource prediction features disabled.")
     RESOURCE_PREDICTOR_AVAILABLE = False
 
 try:
-    from duckdb_api.distributed_testing.cloud_provider_manager import CloudProviderManager
-    from duckdb_api.distributed_testing.cloud_provider_integration import (
+    from data.duckdb.distributed_testing.cloud_provider_manager import CloudProviderManager
+    from data.duckdb.distributed_testing.cloud_provider_integration import (
         AWSCloudProvider, 
         GCPCloudProvider, 
         DockerLocalProvider

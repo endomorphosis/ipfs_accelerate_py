@@ -17,7 +17,7 @@ from typing import Dict, List, Any, Optional, Set, Tuple, Union
 import logging
 from dataclasses import dataclass, field
 
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareTaxonomy, HardwareCapabilityProfile, HardwareClass,
     HardwareArchitecture, HardwareVendor, SoftwareBackend,
     PrecisionType, AcceleratorFeature

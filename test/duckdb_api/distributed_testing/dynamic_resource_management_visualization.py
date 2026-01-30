@@ -12,7 +12,7 @@ effectiveness, and identifying optimization opportunities.
 
 Usage:
     # Import the module
-    from duckdb_api.distributed_testing.dynamic_resource_management_visualization import DRMVisualization
+    from data.duckdb.distributed_testing.dynamic_resource_management_visualization import DRMVisualization
     
     # Create a visualization instance with a reference to the DRM
     visualization = DRMVisualization(dynamic_resource_manager)

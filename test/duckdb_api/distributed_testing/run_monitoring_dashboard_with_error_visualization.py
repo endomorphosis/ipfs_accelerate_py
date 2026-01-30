@@ -28,7 +28,7 @@ parent_dir = str(Path(__file__).parent.parent.parent)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
+from data.duckdb.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
 
 async def main():
     """Run the monitoring dashboard with error visualization integration."""

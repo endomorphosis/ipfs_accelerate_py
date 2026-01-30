@@ -55,9 +55,9 @@ if parent_dir not in sys.path:
 
 # Try to import from distributed_testing package
 try:
-    from duckdb_api.distributed_testing.coordinator import CoordinatorServer
-    from duckdb_api.distributed_testing.worker import WorkerClient
-    from duckdb_api.distributed_testing.dashboard_server import DashboardServer
+    from data.duckdb.distributed_testing.coordinator import CoordinatorServer
+    from data.duckdb.distributed_testing.worker import WorkerClient
+    from data.duckdb.distributed_testing.dashboard_server import DashboardServer
     DIRECT_IMPORT = True
 except ImportError:
     logger.warning("Could not import directly from distributed_testing modules, will use subprocess")

@@ -30,7 +30,7 @@ from typing import Dict, List, Any, Optional, Tuple, Set, Union
 from collections import defaultdict, Counter
 
 # Import fault tolerance components
-from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
+from data.duckdb.distributed_testing.hardware_aware_fault_tolerance import (
     FailureType, RecoveryStrategy, FailureContext, RecoveryAction
 )
 

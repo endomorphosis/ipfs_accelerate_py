@@ -31,7 +31,7 @@ logger = logging.getLogger("simulation_validation_db_optimization")
 
 # Import the database integration module
 try:
-    from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
+    from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
 except ImportError:
     logger.error("Failed to import SimulationValidationDBIntegration. Make sure duckdb_api is properly installed.")
     sys.exit(1)
@@ -1102,7 +1102,7 @@ class DatabaseBackupManager:
                     shutil.copy(backup_path, temp_db_path)
                 
                 # Connect to the temporary database
-                from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+                from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
                 temp_db_api = BenchmarkDBAPI(db_path=temp_db_path)
                 
                 # Run some basic checks
@@ -1566,8 +1566,8 @@ python3 {script_path}
 To restore from a backup, use the SimulationValidationDBIntegration class with the DatabaseBackupManager:
 
 ```python
-from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
-from duckdb_api.simulation_validation.db_performance_optimization import DatabaseBackupManager
+from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
+from data.duckdb.simulation_validation.db_performance_optimization import DatabaseBackupManager
 
 # Initialize the database integration
 db_integration = SimulationValidationDBIntegration(db_path="./benchmark_db.duckdb")

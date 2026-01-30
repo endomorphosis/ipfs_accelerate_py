@@ -28,9 +28,9 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import the components we're testing
-from duckdb_api.simulation_validation.calibration.advanced_calibrator import AdvancedSimulationCalibrator
-from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.calibration.advanced_calibrator import AdvancedSimulationCalibrator
+from data.duckdb.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult

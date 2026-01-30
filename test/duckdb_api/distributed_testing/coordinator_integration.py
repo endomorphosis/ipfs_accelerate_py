@@ -12,7 +12,7 @@ import sys
 from typing import Dict, List, Any, Optional, Union
 
 # Import coordinator circuit breaker integration
-from duckdb_api.distributed_testing.coordinator_circuit_breaker_integration import (
+from data.duckdb.distributed_testing.coordinator_circuit_breaker_integration import (
     CoordinatorCircuitBreakerIntegration
 )
 

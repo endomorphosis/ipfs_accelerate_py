@@ -43,7 +43,7 @@ logger = logging.getLogger("dashboard_example")
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 
 # Import base classes
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationResult,
     BenchmarkResult,
     ValidationLevel,
@@ -52,7 +52,7 @@ from duckdb_api.benchmark_validation.core.base import (
 )
 
 # Import dashboard component
-from duckdb_api.benchmark_validation.visualization.dashboard import ValidationDashboard
+from data.duckdb.benchmark_validation.visualization.dashboard import ValidationDashboard
 
 def create_sample_validation_results(count: int = 50) -> List[ValidationResult]:
     """
@@ -311,7 +311,7 @@ def register_with_monitoring():
         
         # Check for availability of monitoring integration
         try:
-            from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
+            from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
                 VisualizationDashboardIntegration
             )
             logger.info("Monitoring integration is available but registration failed")

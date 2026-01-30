@@ -19,8 +19,8 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.distributed_testing.coordinator import DatabaseManager
-from duckdb_api.distributed_testing.task_scheduler import TaskScheduler
+from data.duckdb.distributed_testing.coordinator import DatabaseManager
+from data.duckdb.distributed_testing.task_scheduler import TaskScheduler
 
 
 class TaskSchedulerTest(unittest.TestCase):

@@ -18,11 +18,11 @@ import uuid
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 # Import load balancer components
-from duckdb_api.distributed_testing.load_balancer.models import (
+from data.duckdb.distributed_testing.load_balancer.models import (
     TestRequirements, WorkerCapabilities, WorkerLoad, WorkerPerformance, WorkerAssignment
 )
-from duckdb_api.distributed_testing.load_balancer.scheduling_algorithms import SchedulingAlgorithm
-from duckdb_api.distributed_testing.load_balancer.service import LoadBalancerService
+from data.duckdb.distributed_testing.load_balancer.scheduling_algorithms import SchedulingAlgorithm
+from data.duckdb.distributed_testing.load_balancer.service import LoadBalancerService
 
 # Import hardware workload management components
 from .hardware_workload_management import (

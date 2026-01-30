@@ -31,7 +31,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import test module
-from duckdb_api.distributed_testing.tests.test_end_to_end_fault_tolerance import (
+from data.duckdb.distributed_testing.tests.test_end_to_end_fault_tolerance import (
     FaultToleranceTestHarness, main as test_main
 )
 
@@ -212,7 +212,7 @@ def main():
 
 def generate_dashboard_only(args):
     """Generate dashboard from existing metrics."""
-    from duckdb_api.distributed_testing.dashboard.circuit_breaker_visualization import (
+    from data.duckdb.distributed_testing.dashboard.circuit_breaker_visualization import (
         CircuitBreakerVisualization
     )
     

@@ -30,21 +30,21 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import test data generator
-from duckdb_api.simulation_validation.test.test_data_generator import TestDataGenerator
+from data.duckdb.simulation_validation.test.test_data_generator import TestDataGenerator
 
 # Import framework components
-from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
-from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
-from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicCalibrator
-from duckdb_api.simulation_validation.calibration.advanced_calibrator import AdvancedCalibrator
-from duckdb_api.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
-from duckdb_api.simulation_validation.drift_detection.advanced_detector import AdvancedDriftDetector
-from duckdb_api.simulation_validation.statistical.basic_validator import BasicValidator
-from duckdb_api.simulation_validation.statistical.statistical_validator import StatisticalValidator
-from duckdb_api.simulation_validation.simulation_validation_framework import SimulationValidationFramework
-from duckdb_api.simulation_validation.methodology import ValidationMethodology
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
+from data.duckdb.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+from data.duckdb.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from data.duckdb.simulation_validation.calibration.basic_calibrator import BasicCalibrator
+from data.duckdb.simulation_validation.calibration.advanced_calibrator import AdvancedCalibrator
+from data.duckdb.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
+from data.duckdb.simulation_validation.drift_detection.advanced_detector import AdvancedDriftDetector
+from data.duckdb.simulation_validation.statistical.basic_validator import BasicValidator
+from data.duckdb.simulation_validation.statistical.statistical_validator import StatisticalValidator
+from data.duckdb.simulation_validation.simulation_validation_framework import SimulationValidationFramework
+from data.duckdb.simulation_validation.methodology import ValidationMethodology
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult,
@@ -1231,7 +1231,7 @@ The framework is ready for production use, with all critical functionality worki
     def test_25_database_predictive_analytics_parameter_persistence(self):
         """Test parameter persistence in the database predictive analytics component."""
         # Import the database predictive analytics module
-        from duckdb_api.simulation_validation.database_predictive_analytics import DatabasePredictiveAnalytics
+        from data.duckdb.simulation_validation.database_predictive_analytics import DatabasePredictiveAnalytics
         
         # Setup test environment
         temp_dir = tempfile.mkdtemp(dir=self.temp_dir)

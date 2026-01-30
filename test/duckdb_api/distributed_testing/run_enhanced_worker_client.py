@@ -25,7 +25,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import enhanced worker reconnection module
-from duckdb_api.distributed_testing.worker_reconnection_enhancements import (
+from data.duckdb.distributed_testing.worker_reconnection_enhancements import (
     EnhancedWorkerReconnectionManager, EnhancedWorkerReconnectionPlugin,
     create_enhanced_worker_reconnection_plugin, MessagePriority
 )

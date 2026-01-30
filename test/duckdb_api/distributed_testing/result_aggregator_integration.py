@@ -25,14 +25,14 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import core components
-from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
-from duckdb_api.core.aggregation_db_extensions import extend_benchmark_db_api
-from duckdb_api.schema.aggregation_schema import create_aggregation_tables
-from duckdb_api.distributed_testing.result_aggregator import ResultAggregatorService
-from duckdb_api.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
+from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
+from data.duckdb.core.aggregation_db_extensions import extend_benchmark_db_api
+from data.duckdb.schema.aggregation_schema import create_aggregation_tables
+from data.duckdb.distributed_testing.result_aggregator import ResultAggregatorService
+from data.duckdb.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
 
 # Constants from result_aggregator for convenience
-from duckdb_api.distributed_testing.result_aggregator import (
+from data.duckdb.distributed_testing.result_aggregator import (
     RESULT_TYPE_PERFORMANCE,
     RESULT_TYPE_COMPATIBILITY,
     RESULT_TYPE_INTEGRATION,

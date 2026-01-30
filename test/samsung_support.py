@@ -41,7 +41,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 # Local imports
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
     from mobile_thermal_monitoring import (
         ThermalZone,
         CoolingPolicy,

@@ -45,7 +45,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 # Local imports
 try:
     from test.android_test_harness.android_test_harness import AndroidTestHarness
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
 except ImportError as e:
     logger.error(f"Import error: {e}")
     logger.error("Make sure you're running from the project root directory")

@@ -33,12 +33,12 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.distributed_testing.coordinator import CoordinatorServer, DatabaseManager, SecurityManager
-from duckdb_api.distributed_testing.task_scheduler import TaskScheduler
-from duckdb_api.distributed_testing.load_balancer import LoadBalancer
-from duckdb_api.distributed_testing.health_monitor import HealthMonitor
-from duckdb_api.distributed_testing.dashboard_server import DashboardServer
-from duckdb_api.distributed_testing.run_test import generate_security_config
+from data.duckdb.distributed_testing.coordinator import CoordinatorServer, DatabaseManager, SecurityManager
+from data.duckdb.distributed_testing.task_scheduler import TaskScheduler
+from data.duckdb.distributed_testing.load_balancer import LoadBalancer
+from data.duckdb.distributed_testing.health_monitor import HealthMonitor
+from data.duckdb.distributed_testing.dashboard_server import DashboardServer
+from data.duckdb.distributed_testing.run_test import generate_security_config
 
 
 class DistributedFrameworkIntegrationTest(unittest.TestCase):

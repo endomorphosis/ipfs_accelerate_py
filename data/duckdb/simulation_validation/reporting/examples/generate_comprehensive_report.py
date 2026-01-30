@@ -15,8 +15,8 @@ from typing import Dict, Any
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../..')))
 
-from duckdb_api.simulation_validation.reporting.report_manager import ReportManager
-from duckdb_api.simulation_validation.reporting.report_generator import ReportType, ReportFormat
+from data.duckdb.simulation_validation.reporting.report_manager import ReportManager
+from data.duckdb.simulation_validation.reporting.report_generator import ReportType, ReportFormat
 
 def load_sample_results(filename: str) -> Dict[str, Any]:
     """Load sample validation results from a JSON file."""

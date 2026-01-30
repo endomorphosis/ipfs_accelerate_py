@@ -27,7 +27,7 @@ if str(parent_dir) not in sys.path:
 
 # Import the dashboard integration module
 try:
-    from duckdb_api.visualization.advanced_visualization.monitor_dashboard_integration import (
+    from data.duckdb.visualization.advanced_visualization.monitor_dashboard_integration import (
         MonitorDashboardIntegration, 
         MonitorDashboardIntegrationMixin
     )
@@ -39,7 +39,7 @@ except ImportError as e:
 
 # Import the visualization system
 try:
-    from duckdb_api.visualization.advanced_visualization import AdvancedVisualizationSystem
+    from data.duckdb.visualization.advanced_visualization import AdvancedVisualizationSystem
     HAS_ADVANCED_VISUALIZATION = True
 except ImportError as e:
     logger.error(f"Error importing AdvancedVisualizationSystem: {e}")
@@ -47,7 +47,7 @@ except ImportError as e:
 
 # Import database API
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
     HAS_DB_API = True
 except ImportError as e:
     logger.error(f"Error importing BenchmarkDBAPI: {e}")

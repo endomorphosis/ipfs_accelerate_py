@@ -7,5 +7,5 @@ interactive visualization and monitoring integration.
 """
 
 # Import components for easy access
-from duckdb_api.benchmark_validation.visualization.reporter import ValidationReporterImpl
-from duckdb_api.benchmark_validation.visualization.dashboard import ValidationDashboard
+from data.duckdb.benchmark_validation.visualization.reporter import ValidationReporterImpl
+from data.duckdb.benchmark_validation.visualization.dashboard import ValidationDashboard

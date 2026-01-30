@@ -39,9 +39,9 @@ async def main():
     
     # Import needed modules
     try:
-        from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
-        from duckdb_api.distributed_testing.dashboard.drm_visualization_integration import DRMVisualizationIntegration
-        from duckdb_api.distributed_testing.dynamic_resource_management_visualization import DRMVisualization
+        from data.duckdb.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
+        from data.duckdb.distributed_testing.dashboard.drm_visualization_integration import DRMVisualizationIntegration
+        from data.duckdb.distributed_testing.dynamic_resource_management_visualization import DRMVisualization
     except ImportError as e:
         logger.error(f"Error importing required modules: {e}")
         logger.error("Make sure the duckdb_api.distributed_testing package is installed and in your PYTHONPATH.")
@@ -126,7 +126,7 @@ async def main():
     else:
         # Try to import the real resource manager
         try:
-            from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
+            from data.duckdb.distributed_testing.dynamic_resource_manager import DynamicResourceManager
             resource_manager = DynamicResourceManager()
             logger.info("Using real DynamicResourceManager instance")
         except (ImportError, Exception) as e:

@@ -5,4 +5,4 @@ This package provides repositories for storing and retrieving benchmark validati
 enabling persistent storage and query capabilities for validation results.
 """
 
-from duckdb_api.benchmark_validation.repository.duckdb_repository import DuckDBValidationRepository
+from data.duckdb.benchmark_validation.repository.duckdb_repository import DuckDBValidationRepository

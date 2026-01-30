@@ -52,8 +52,8 @@ except ImportError:
 
 # Try to import the dashboard generator and visualization engine
 try:
-    from duckdb_api.distributed_testing.dashboard.dashboard_generator import DashboardGenerator
-    from duckdb_api.distributed_testing.dashboard.visualization import VisualizationEngine
+    from data.duckdb.distributed_testing.dashboard.dashboard_generator import DashboardGenerator
+    from data.duckdb.distributed_testing.dashboard.visualization import VisualizationEngine
     DASHBOARD_COMPONENTS_AVAILABLE = True
 except ImportError:
     logger.warning("Dashboard components not available. Dashboard functionality will be limited.")

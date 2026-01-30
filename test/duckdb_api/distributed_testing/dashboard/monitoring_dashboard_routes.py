@@ -13,7 +13,7 @@ from aiohttp import web
 
 # Import circuit breaker visualization
 try:
-    from duckdb_api.distributed_testing.dashboard.circuit_breaker_visualization import (
+    from data.duckdb.distributed_testing.dashboard.circuit_breaker_visualization import (
         CircuitBreakerDashboardIntegration
     )
     CIRCUIT_BREAKER_VISUALIZATION_AVAILABLE = True
@@ -1129,7 +1129,7 @@ async def handle_drm_dashboard(request: web.Request) -> web.Response:
     
     # Import DRMVisualizationIntegration
     try:
-        from duckdb_api.distributed_testing.dashboard.drm_visualization_integration import DRMVisualizationIntegration
+        from data.duckdb.distributed_testing.dashboard.drm_visualization_integration import DRMVisualizationIntegration
     except ImportError:
         # If import fails, return error page
         return web.Response(

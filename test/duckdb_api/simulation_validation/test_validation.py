@@ -32,8 +32,8 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.simulation_validation.simulation_validation_framework import get_framework_instance
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.simulation_validation_framework import get_framework_instance
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult, 
     HardwareResult, 
     ValidationResult
@@ -41,44 +41,44 @@ from duckdb_api.simulation_validation.core.base import (
 
 # Optional imports for testing specific components
 try:
-    from duckdb_api.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
+    from data.duckdb.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
     comparison_pipeline_available = True
 except ImportError:
     comparison_pipeline_available = False
     logger.warning("ComparisonPipeline not available, some tests will be skipped")
 
 try:
-    from duckdb_api.simulation_validation.statistical.statistical_validator import StatisticalValidator
+    from data.duckdb.simulation_validation.statistical.statistical_validator import StatisticalValidator
     statistical_validator_available = True
 except ImportError:
     statistical_validator_available = False
     logger.warning("StatisticalValidator not available, some tests will be skipped")
 
 try:
-    from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
-    from duckdb_api.simulation_validation.calibration.advanced_calibrator import AdvancedSimulationCalibrator
+    from data.duckdb.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
+    from data.duckdb.simulation_validation.calibration.advanced_calibrator import AdvancedSimulationCalibrator
     calibrator_available = True
 except ImportError:
     calibrator_available = False
     logger.warning("Calibrators not available, calibration tests will be skipped")
 
 try:
-    from duckdb_api.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
-    from duckdb_api.simulation_validation.drift_detection.advanced_detector import AdvancedDriftDetector
+    from data.duckdb.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
+    from data.duckdb.simulation_validation.drift_detection.advanced_detector import AdvancedDriftDetector
     drift_detector_available = True
 except ImportError:
     drift_detector_available = False
     logger.warning("DriftDetectors not available, drift detection tests will be skipped")
 
 try:
-    from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+    from data.duckdb.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
     visualizer_available = True
 except ImportError:
     visualizer_available = False
     logger.warning("ValidationVisualizer not available, visualization tests will be skipped")
 
 try:
-    from duckdb_api.simulation_validation.methodology import ValidationMethodology
+    from data.duckdb.simulation_validation.methodology import ValidationMethodology
     methodology_available = True
 except ImportError:
     methodology_available = False

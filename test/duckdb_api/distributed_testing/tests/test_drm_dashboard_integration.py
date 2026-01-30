@@ -19,10 +19,10 @@ from aiohttp import web
 
 # Import the necessary modules
 try:
-    from duckdb_api.distributed_testing.dynamic_resource_management_visualization import DRMVisualization
-    from duckdb_api.distributed_testing.dashboard.drm_visualization_integration import DRMVisualizationIntegration
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_routes import handle_drm_dashboard
+    from data.duckdb.distributed_testing.dynamic_resource_management_visualization import DRMVisualization
+    from data.duckdb.distributed_testing.dashboard.drm_visualization_integration import DRMVisualizationIntegration
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_routes import handle_drm_dashboard
     DRM_VISUALIZATION_AVAILABLE = True
 except ImportError:
     DRM_VISUALIZATION_AVAILABLE = False

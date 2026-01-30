@@ -49,11 +49,11 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import distributed testing components
-from duckdb_api.distributed_testing.fault_tolerance_visualization import FaultToleranceVisualization
-from duckdb_api.distributed_testing.monitoring_dashboard import DashboardMetrics
-from duckdb_api.distributed_testing.result_aggregator.service import ResultAggregatorService
-from duckdb_api.distributed_testing.circuit_breaker import CircuitBreakerRegistry
-from duckdb_api.distributed_testing.dashboard.visualization import create_visualization
+from data.duckdb.distributed_testing.fault_tolerance_visualization import FaultToleranceVisualization
+from data.duckdb.distributed_testing.monitoring_dashboard import DashboardMetrics
+from data.duckdb.distributed_testing.result_aggregator.service import ResultAggregatorService
+from data.duckdb.distributed_testing.circuit_breaker import CircuitBreakerRegistry
+from data.duckdb.distributed_testing.dashboard.visualization import create_visualization
 
 
 class ComprehensiveMonitoringDashboard:

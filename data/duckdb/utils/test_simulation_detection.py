@@ -211,7 +211,7 @@ def test_database_integration():
     """Test database integration with simulation flags"""
     # Skip test if database integration not available
     try:
-        from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+        from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
         HAS_DB_API = True
     except ImportError:
         logger.warning("Skipping database integration test: BenchmarkDBAPI not available")

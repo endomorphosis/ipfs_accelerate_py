@@ -16,11 +16,11 @@ import os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from duckdb_api.distributed_testing.distributed_error_handler import (
+from data.duckdb.distributed_testing.distributed_error_handler import (
     DistributedErrorHandler,
     ErrorCategory
 )
-from duckdb_api.distributed_testing.coordinator_error_integration import (
+from data.duckdb.distributed_testing.coordinator_error_integration import (
     integrate_error_handler,
     reschedule_task,
     execute_recovery_action,

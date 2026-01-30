@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 
 # Try different import paths
 try:
-    from duckdb_api.simulation_validation.api_metrics import DuckDBAPIMetricsRepository, APIMetricsValidator
+    from data.duckdb.simulation_validation.api_metrics import DuckDBAPIMetricsRepository, APIMetricsValidator
 except ImportError:
     try:
         from ipfs_accelerate_py.duckdb_api.simulation_validation.api_metrics import DuckDBAPIMetricsRepository, APIMetricsValidator

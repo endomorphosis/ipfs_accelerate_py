@@ -38,16 +38,16 @@ def test_duckdb_api_imports():
     print("\nTesting duckdb_api imports...")
     try:
         # Test importing from duckdb_api
-        from duckdb_api import duckdb_api.core.benchmark_db_api as benchmark_db_api
+        from duckdb_api import data.duckdb.core.benchmark_db_api as benchmark_db_api
         print("✅ Successfully imported duckdb_api.benchmark_db_api")
         
-        from duckdb_api.schema import check_database_schema
+        from data.duckdb.schema import check_database_schema
         print("✅ Successfully imported duckdb_api.schema.check_database_schema")
         
-        from duckdb_api.core import duckdb_api.core.benchmark_db_query as benchmark_db_query
+        from data.duckdb.core import data.duckdb.core.benchmark_db_query as benchmark_db_query
         print("✅ Successfully imported duckdb_api.core.benchmark_db_query")
         
-        from duckdb_api.utils import cleanup_stale_reports
+        from data.duckdb.utils import cleanup_stale_reports
         print("✅ Successfully imported duckdb_api.utils.cleanup_stale_reports")
         
     return True

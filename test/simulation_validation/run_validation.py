@@ -25,7 +25,7 @@ if parent_dir not in sys.path:
 
 try:
     # Import database API
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
     HAS_DB_API = True
 except ImportError:
     logger.warning("DuckDB API not available. Some features may be limited.")

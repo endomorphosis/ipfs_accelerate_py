@@ -20,13 +20,13 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import circuit breaker and coordinator integration
-from duckdb_api.distributed_testing.circuit_breaker import (
+from data.duckdb.distributed_testing.circuit_breaker import (
     CircuitBreaker, CircuitState, CircuitOpenError, CircuitBreakerRegistry
 )
-from duckdb_api.distributed_testing.coordinator_circuit_breaker_integration import (
+from data.duckdb.distributed_testing.coordinator_circuit_breaker_integration import (
     CoordinatorCircuitBreakerIntegration
 )
-from duckdb_api.distributed_testing.coordinator_integration import (
+from data.duckdb.distributed_testing.coordinator_integration import (
     integrate_circuit_breaker_with_coordinator
 )
 

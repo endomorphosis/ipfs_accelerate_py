@@ -12,7 +12,7 @@ This package provides tools for:
 - Quality assessment and monitoring
 """
 
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationLevel,
     BenchmarkType,
     ValidationStatus,

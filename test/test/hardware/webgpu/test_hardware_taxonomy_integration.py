@@ -13,23 +13,23 @@ import uuid
 from typing import Dict, Any, List, Set
 from unittest.mock import MagicMock, patch
 
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareVendor,
     HardwareArchitecture
 )
-from duckdb_api.distributed_testing.enhanced_hardware_taxonomy import (
+from data.duckdb.distributed_testing.enhanced_hardware_taxonomy import (
     EnhancedHardwareTaxonomy,
     HardwareCapabilityProfile,
     CapabilityDefinition
 )
-from duckdb_api.distributed_testing.heterogeneous_scheduler import (
+from data.duckdb.distributed_testing.heterogeneous_scheduler import (
     HeterogeneousScheduler,
     WorkerState,
     TestTask,
     WorkloadProfile
 )
-from duckdb_api.distributed_testing.hardware_taxonomy_integrator import (
+from data.duckdb.distributed_testing.hardware_taxonomy_integrator import (
     HardwareTaxonomyIntegrator
 )
 

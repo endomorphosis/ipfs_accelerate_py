@@ -31,14 +31,14 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 # Import dependencies conditionally to handle missing dependencies
 try:
-    from duckdb_api.distributed_testing.dashboard.regression_detection import RegressionDetector
+    from data.duckdb.distributed_testing.dashboard.regression_detection import RegressionDetector
     HAS_REGRESSION_DETECTION = True
 except ImportError as e:
     logger.error(f"Error importing RegressionDetector: {e}")
     HAS_REGRESSION_DETECTION = False
 
 try:
-    from duckdb_api.distributed_testing.dashboard.enhanced_visualization_dashboard import EnhancedVisualizationDashboard
+    from data.duckdb.distributed_testing.dashboard.enhanced_visualization_dashboard import EnhancedVisualizationDashboard
     HAS_DASHBOARD = True
 except ImportError as e:
     logger.error(f"Error importing EnhancedVisualizationDashboard: {e}")

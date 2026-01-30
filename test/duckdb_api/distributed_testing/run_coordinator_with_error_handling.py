@@ -19,8 +19,8 @@ parent_dir = str(Path(__file__).parent.parent.parent)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from duckdb_api.distributed_testing.coordinator import Coordinator
-from duckdb_api.distributed_testing.coordinator_error_integration import integrate_error_handler
+from data.duckdb.distributed_testing.coordinator import Coordinator
+from data.duckdb.distributed_testing.coordinator_error_integration import integrate_error_handler
 
 # Setup logging
 logging.basicConfig(
@@ -66,7 +66,7 @@ def main():
     if args.load_balancer:
         logger.info("Enabling load balancer integration...")
         try:
-            from duckdb_api.distributed_testing.coordinator_load_balancer_integration import integrate_load_balancer
+            from data.duckdb.distributed_testing.coordinator_load_balancer_integration import integrate_load_balancer
             integrate_load_balancer(coordinator)
             logger.info("Load balancer integration enabled")
         except ImportError:
@@ -75,7 +75,7 @@ def main():
     if args.result_aggregator:
         logger.info("Enabling result aggregator integration...")
         try:
-            from duckdb_api.distributed_testing.result_aggregator_integration import integrate_result_aggregator
+            from data.duckdb.distributed_testing.result_aggregator_integration import integrate_result_aggregator
             integrate_result_aggregator(coordinator)
             logger.info("Result aggregator integration enabled")
         except ImportError:
@@ -84,7 +84,7 @@ def main():
     if args.dashboard:
         logger.info("Enabling monitoring dashboard...")
         try:
-            from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_integration import integrate_dashboard
+            from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_integration import integrate_dashboard
             integrate_dashboard(coordinator)
             logger.info("Monitoring dashboard enabled")
         except ImportError:

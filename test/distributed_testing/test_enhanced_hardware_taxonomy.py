@@ -23,7 +23,7 @@ from .enhanced_hardware_taxonomy import (
     HardwareRelationship
 )
 
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareArchitecture,
     HardwareVendor,

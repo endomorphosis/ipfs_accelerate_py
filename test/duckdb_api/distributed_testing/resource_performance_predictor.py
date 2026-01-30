@@ -13,7 +13,7 @@ Core responsibilities:
 
 Usage:
     # Import and initialize
-    from duckdb_api.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
+    from data.duckdb.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
     
     # Create predictor
     predictor = ResourcePerformancePredictor()

@@ -23,8 +23,8 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("analysis.advanced_statistical")
 
 # Import base class
-from duckdb_api.simulation_validation.analysis.base import AnalysisMethod
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.analysis.base import AnalysisMethod
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult

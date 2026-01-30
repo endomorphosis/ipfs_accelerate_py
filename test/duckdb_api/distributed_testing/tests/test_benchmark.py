@@ -26,12 +26,12 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.distributed_testing.coordinator import (
+from data.duckdb.distributed_testing.coordinator import (
     DatabaseManager, CoordinatorServer, SecurityManager
 )
-from duckdb_api.distributed_testing.task_scheduler import TaskScheduler
-from duckdb_api.distributed_testing.load_balancer import LoadBalancer
-from duckdb_api.distributed_testing.health_monitor import HealthMonitor
+from data.duckdb.distributed_testing.task_scheduler import TaskScheduler
+from data.duckdb.distributed_testing.load_balancer import LoadBalancer
+from data.duckdb.distributed_testing.health_monitor import HealthMonitor
 
 
 class BenchmarkTimer:

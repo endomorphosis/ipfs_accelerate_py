@@ -33,13 +33,13 @@ if str(parent_dir) not in sys.path:
 # Import components to test
 try:
     # Import the web components
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_routes import (
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_routes import (
         handle_dashboard_management,
         handle_results,
         handle_index
     )
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
         VisualizationDashboardIntegration
     )
     

@@ -5,4 +5,4 @@ This package provides tools for certifying benchmark results, ensuring they meet
 quality standards for reliability, reproducibility, and accuracy.
 """
 
-from duckdb_api.benchmark_validation.certification.certifier import BenchmarkCertificationSystem
+from data.duckdb.benchmark_validation.certification.certifier import BenchmarkCertificationSystem

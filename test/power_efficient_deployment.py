@@ -62,7 +62,7 @@ except ImportError:
 
 try::
     # Import database components
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
     HAS_DB_API = True
 except ImportError:
     logger.warning())))))))))"Warning: benchmark_db_api could not be imported. Database functionality will be limited.")

@@ -44,7 +44,7 @@ Features:
 
 # Local imports
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
 except ImportError:
     logger.warning()))))))))))))))))))))))))))))))"Warning: benchmark_db_api could not be imported. Database functionality will be limited.")
 
@@ -865,7 +865,7 @@ class MobileThermalMonitor:
         :
         if self.db_path:
             try:
-                from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+                from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
                 self.db_api = BenchmarkDBAPI()))))))))))))))))))))))))))))))self.db_path)
                 logger.info()))))))))))))))))))))))))))))))f"Connected to benchmark database at {}}}}}}}}}}}}}}}}}}}}}self.db_path}")
             except ()))))))))))))))))))))))))))))))ImportError, Exception) as e:

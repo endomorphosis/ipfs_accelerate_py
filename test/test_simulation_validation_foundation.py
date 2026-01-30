@@ -22,13 +22,13 @@ sys.path.append(str(Path(__file__).parent))
 
 # Import core components
 try:
-    from duckdb_api.simulation_validation.core.base import (
+    from data.duckdb.simulation_validation.core.base import (
         SimulationResult,
         HardwareResult,
         ValidationResult,
         SimulationAccuracyFramework
     )
-    from duckdb_api.simulation_validation.core.schema import SimulationValidationSchema
+    from data.duckdb.simulation_validation.core.schema import SimulationValidationSchema
     HAS_FRAMEWORK = True
 except ImportError as e:
     logger.error(f"Error importing Simulation Validation Framework: {e}")

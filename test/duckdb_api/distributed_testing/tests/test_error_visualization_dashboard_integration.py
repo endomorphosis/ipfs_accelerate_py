@@ -30,8 +30,8 @@ try:
 except ImportError:
     aiohttp_available = False
 
-from duckdb_api.distributed_testing.dashboard.error_visualization_integration import ErrorVisualizationIntegration
-from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
+from data.duckdb.distributed_testing.dashboard.error_visualization_integration import ErrorVisualizationIntegration
+from data.duckdb.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
 
 # Check if we should skip the tests that require aiohttp
 # These tests are more comprehensive and test actual server functionality
@@ -107,7 +107,7 @@ class TestDashboardRoutes(unittest.TestCase):
         self.dashboard.error_viz.report_error = AsyncMock(return_value=True)
 
         # Import the route handler
-        from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_routes import api_report_error
+        from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_routes import api_report_error
 
         # Call the handler
         response = await api_report_error(request)
@@ -144,7 +144,7 @@ class TestDashboardRoutes(unittest.TestCase):
         self.dashboard.error_viz.get_error_data = AsyncMock(return_value=mock_error_data)
 
         # Import the route handler
-        from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_routes import api_get_errors
+        from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_routes import api_get_errors
 
         # Call the handler
         response = await api_get_errors(request)
@@ -262,7 +262,7 @@ class TestDashboardServer(unittest.TestCase):
         request.app = {"dashboard": self.dashboard}
 
         # Import the WebSocket handler
-        from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_routes import websocket_handler
+        from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_routes import websocket_handler
 
         # Patch the dashboard.websocket_manager.register method
         self.dashboard.websocket_manager.register = AsyncMock()

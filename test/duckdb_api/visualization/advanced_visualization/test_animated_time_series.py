@@ -28,8 +28,8 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import visualization components
-from duckdb_api.visualization.advanced_visualization.base import BaseVisualization, PLOTLY_AVAILABLE, MATPLOTLIB_AVAILABLE
-from duckdb_api.visualization.advanced_visualization.viz_animated_time_series import AnimatedTimeSeriesVisualization
+from data.duckdb.visualization.advanced_visualization.base import BaseVisualization, PLOTLY_AVAILABLE, MATPLOTLIB_AVAILABLE
+from data.duckdb.visualization.advanced_visualization.viz_animated_time_series import AnimatedTimeSeriesVisualization
 
 # Create output directory
 OUTPUT_DIR = Path(__file__).parent / "output"

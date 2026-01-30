@@ -38,7 +38,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import required modules
-from duckdb_api.distributed_testing.multi_device_orchestrator import (
+from data.duckdb.distributed_testing.multi_device_orchestrator import (
     MultiDeviceOrchestrator, SplitStrategy, TaskStatus
 )
 

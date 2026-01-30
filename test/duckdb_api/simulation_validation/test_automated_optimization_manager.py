@@ -27,11 +27,11 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import modules to test
-from duckdb_api.simulation_validation.automated_optimization_manager import (
+from data.duckdb.simulation_validation.automated_optimization_manager import (
     AutomatedOptimizationManager,
     get_optimization_manager
 )
-from duckdb_api.simulation_validation.db_performance_optimizer import DBPerformanceOptimizer
+from data.duckdb.simulation_validation.db_performance_optimizer import DBPerformanceOptimizer
 
 
 class TestAutomatedOptimizationManager(unittest.TestCase):

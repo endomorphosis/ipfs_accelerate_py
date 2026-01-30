@@ -107,7 +107,7 @@ def generate_default_security_config(output_path=None):
 def start_terminal_dashboard(coordinator, load_balancer, refresh_interval=1.0):
     """Start a terminal-based dashboard for monitoring."""
     try:
-        from duckdb_api.distributed_testing.load_balancer_live_dashboard import TerminalDashboard
+        from data.duckdb.distributed_testing.load_balancer_live_dashboard import TerminalDashboard
         
         # Create and start the terminal dashboard
         dashboard = TerminalDashboard(
@@ -494,7 +494,7 @@ def main():
     # Import the modules we need
     try:
         # Apply coordinator patches for integrations
-        from duckdb_api.distributed_testing.coordinator_patch import apply_patches, remove_patches
+        from data.duckdb.distributed_testing.coordinator_patch import apply_patches, remove_patches
         
         # Apply patches if load balancer is enabled
         if not args.disable_load_balancer:
@@ -502,44 +502,44 @@ def main():
             logger.info("Applied coordinator load balancer integration patches")
         
         # Import coordinator 
-        from duckdb_api.distributed_testing.coordinator import CoordinatorServer
+        from data.duckdb.distributed_testing.coordinator import CoordinatorServer
         
         # Import Multi-Device Orchestrator
-        from duckdb_api.distributed_testing.multi_device_orchestrator import MultiDeviceOrchestrator
-        from duckdb_api.distributed_testing.coordinator_orchestrator_integration import CoordinatorOrchestratorIntegration
+        from data.duckdb.distributed_testing.multi_device_orchestrator import MultiDeviceOrchestrator
+        from data.duckdb.distributed_testing.coordinator_orchestrator_integration import CoordinatorOrchestratorIntegration
         
         # Import Fault Tolerance System
-        from duckdb_api.distributed_testing.fault_tolerance_system import FaultToleranceSystem
+        from data.duckdb.distributed_testing.fault_tolerance_system import FaultToleranceSystem
         
         # Import Comprehensive Monitoring Dashboard
-        from duckdb_api.distributed_testing.comprehensive_monitoring_dashboard import ComprehensiveMonitoringDashboard
-        from duckdb_api.distributed_testing.fault_tolerance_visualization import FaultToleranceVisualization
+        from data.duckdb.distributed_testing.comprehensive_monitoring_dashboard import ComprehensiveMonitoringDashboard
+        from data.duckdb.distributed_testing.fault_tolerance_visualization import FaultToleranceVisualization
         
         # Import additional components based on options
         if args.high_availability:
-            from duckdb_api.distributed_testing.auto_recovery import AutoRecoverySystem
+            from data.duckdb.distributed_testing.auto_recovery import AutoRecoverySystem
             logger.info("Imported High Availability components")
             
         if args.enable_web_integration:
-            from duckdb_api.distributed_testing.hardware_taxonomy import EnhancedHardwareTaxonomy
-            from duckdb_api.distributed_testing.enhanced_hardware_detector import EnhancedHardwareDetector
+            from data.duckdb.distributed_testing.hardware_taxonomy import EnhancedHardwareTaxonomy
+            from data.duckdb.distributed_testing.enhanced_hardware_detector import EnhancedHardwareDetector
             logger.info("Imported Web Platform Integration components")
             
         if args.performance_analytics:
-            from duckdb_api.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
-            from duckdb_api.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
+            from data.duckdb.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
+            from data.duckdb.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
             logger.info("Imported Performance Analytics components")
             
         if args.dynamic_resource_management:
-            from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
+            from data.duckdb.distributed_testing.dynamic_resource_manager import DynamicResourceManager
             logger.info("Imported Dynamic Resource Management components")
             
         if args.enable_result_aggregation:
-            from duckdb_api.distributed_testing.result_aggregator.service import ResultAggregatorService
+            from data.duckdb.distributed_testing.result_aggregator.service import ResultAggregatorService
             logger.info("Imported Result Aggregation components")
             
         if args.health_monitoring:
-            from duckdb_api.distributed_testing.health_monitor import HealthMonitor
+            from data.duckdb.distributed_testing.health_monitor import HealthMonitor
             logger.info("Imported Health Monitoring components")
         
     except ImportError as e:
@@ -841,7 +841,7 @@ def main():
                     # Fall back to basic monitoring dashboard if available
                     try:
                         # Import monitoring integration
-                        from duckdb_api.distributed_testing.load_balancer.monitoring.integration import MonitoringIntegration
+                        from data.duckdb.distributed_testing.load_balancer.monitoring.integration import MonitoringIntegration
                         
                         # Create monitoring integration
                         dashboard_integration = MonitoringIntegration(

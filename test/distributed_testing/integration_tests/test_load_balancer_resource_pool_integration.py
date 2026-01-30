@@ -48,7 +48,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 # Import components
 from .resource_pool_bridge import ResourcePoolBridgeIntegration
 from .model_sharding import ShardedModelExecution
-from duckdb_api.distributed_testing.load_balancer import LoadBalancerService, WorkerCapabilities, TestRequirements
+from data.duckdb.distributed_testing.load_balancer import LoadBalancerService, WorkerCapabilities, TestRequirements
 
 class TestLoadBalancerResourcePoolIntegration(unittest.TestCase):
     """

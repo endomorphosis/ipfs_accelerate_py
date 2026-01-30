@@ -24,7 +24,7 @@ from .load_balancer_integration import (
 )
 
 # Import load balancer components
-from duckdb_api.distributed_testing.load_balancer.models import (
+from data.duckdb.distributed_testing.load_balancer.models import (
     TestRequirements, WorkerCapabilities, WorkerLoad, WorkerPerformance
 )
 

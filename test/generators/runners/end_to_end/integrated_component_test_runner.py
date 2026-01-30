@@ -657,7 +657,7 @@ The implementation uses HuggingFace's `AutoModel` and appropriate tokenizer/proc
 # Try to import DB integration
 try:
     sys.path.append(os.path.join(test_dir, "../duckdb_api"))
-    from duckdb_api.core.benchmark_db_updater import store_test_result, initialize_db
+    from data.duckdb.core.benchmark_db_updater import store_test_result, initialize_db
     HAS_DB_API = True
 except ImportError:
     HAS_DB_API = False

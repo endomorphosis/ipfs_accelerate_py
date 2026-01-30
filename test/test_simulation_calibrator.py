@@ -23,13 +23,13 @@ sys.path.append(str(Path(__file__).parent))
 
 # Import components
 try:
-    from duckdb_api.simulation_validation.core.base import (
+    from data.duckdb.simulation_validation.core.base import (
         SimulationResult,
         HardwareResult,
         ValidationResult
     )
-    from duckdb_api.simulation_validation.statistical.basic_validator import BasicStatisticalValidator
-    from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
+    from data.duckdb.simulation_validation.statistical.basic_validator import BasicStatisticalValidator
+    from data.duckdb.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
     HAS_COMPONENTS = True
 except ImportError as e:
     logger.error(f"Error importing simulation validation components: {e}")

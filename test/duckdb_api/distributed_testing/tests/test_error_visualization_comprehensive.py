@@ -23,8 +23,8 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import the modules to test
-from duckdb_api.distributed_testing.dashboard.error_visualization_integration import ErrorVisualizationIntegration
-from duckdb_api.distributed_testing.dashboard.static.sounds.generate_sound_files import (
+from data.duckdb.distributed_testing.dashboard.error_visualization_integration import ErrorVisualizationIntegration
+from data.duckdb.distributed_testing.dashboard.static.sounds.generate_sound_files import (
     generate_critical_sound,
     generate_warning_sound,
     generate_info_sound,

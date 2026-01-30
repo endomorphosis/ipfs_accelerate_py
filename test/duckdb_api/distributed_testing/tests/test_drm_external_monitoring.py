@@ -22,7 +22,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import mock DRM for testing
-from duckdb_api.distributed_testing.testing.mock_drm import MockDynamicResourceManager
+from data.duckdb.distributed_testing.testing.mock_drm import MockDynamicResourceManager
 
 # Check dependencies
 try:
@@ -39,12 +39,12 @@ except ImportError:
 
 # Try to import the modules to test
 try:
-    from duckdb_api.distributed_testing.dashboard.drm_external_monitoring_integration import (
+    from data.duckdb.distributed_testing.dashboard.drm_external_monitoring_integration import (
         PrometheusExporter,
         GrafanaDashboardGenerator,
         ExternalMonitoringBridge
     )
-    from duckdb_api.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
+    from data.duckdb.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
     
     MODULES_AVAILABLE = True
 except ImportError as e:

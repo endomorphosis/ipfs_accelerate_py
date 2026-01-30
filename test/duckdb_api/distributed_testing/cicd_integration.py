@@ -39,11 +39,11 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 # Local imports
 try:
-    from duckdb_api.distributed_testing.run_test import Client
+    from data.duckdb.distributed_testing.run_test import Client
 except ImportError:
     # Handle case when running directly
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-    from duckdb_api.distributed_testing.run_test import Client
+    from data.duckdb.distributed_testing.run_test import Client
 
 
 class CICDIntegration:

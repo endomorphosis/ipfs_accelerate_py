@@ -84,7 +84,7 @@ def generate_default_security_config(output_path=None):
 def start_terminal_dashboard(coordinator, load_balancer, refresh_interval=1.0):
     """Start a terminal-based dashboard for monitoring."""
     try:
-        from duckdb_api.distributed_testing.load_balancer_live_dashboard import TerminalDashboard
+        from data.duckdb.distributed_testing.load_balancer_live_dashboard import TerminalDashboard
         
         # Create and start the terminal dashboard
         dashboard = TerminalDashboard(
@@ -348,7 +348,7 @@ def main():
     # Apply the patches to integrate the load balancer
     try:
         # Import coordinator patch (applies patches automatically)
-        from duckdb_api.distributed_testing.coordinator_patch import apply_patches, remove_patches
+        from data.duckdb.distributed_testing.coordinator_patch import apply_patches, remove_patches
         
         # Apply patches if load balancer is enabled
         if not args.disable_load_balancer:
@@ -360,7 +360,7 @@ def main():
     
     # Import coordinator 
     try:
-        from duckdb_api.distributed_testing.coordinator import CoordinatorServer
+        from data.duckdb.distributed_testing.coordinator import CoordinatorServer
     except ImportError:
         logger.error("Failed to import CoordinatorServer. Make sure it exists in the distributed_testing directory.")
         sys.exit(1)
@@ -453,7 +453,7 @@ def main():
                 # Start web-based dashboard
                 try:
                     # Import monitoring integration
-                    from duckdb_api.distributed_testing.load_balancer.monitoring.integration import MonitoringIntegration
+                    from data.duckdb.distributed_testing.load_balancer.monitoring.integration import MonitoringIntegration
                     
                     # Create monitoring integration
                     dashboard_integration = MonitoringIntegration(

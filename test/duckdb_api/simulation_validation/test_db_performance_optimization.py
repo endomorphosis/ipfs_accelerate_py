@@ -33,13 +33,13 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult
 )
-from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
-from duckdb_api.simulation_validation.db_performance_optimization import (
+from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
+from data.duckdb.simulation_validation.db_performance_optimization import (
     QueryCache,
     BatchOperations,
     QueryOptimizer,
@@ -48,7 +48,7 @@ from duckdb_api.simulation_validation.db_performance_optimization import (
     OptimizedSimulationValidationDBIntegration,
     get_optimized_db_integration
 )
-from duckdb_api.simulation_validation.test_validator import generate_sample_data
+from data.duckdb.simulation_validation.test_validator import generate_sample_data
 
 
 class TestQueryCache(unittest.TestCase):
@@ -229,12 +229,12 @@ class TestDatabaseOptimization(unittest.TestCase):
             
             if not tables_exist:
                 # Create tables based on schema
-                from duckdb_api.simulation_validation.core.schema import SimulationValidationSchema
+                from data.duckdb.simulation_validation.core.schema import SimulationValidationSchema
                 SimulationValidationSchema.create_tables(conn)
                 logger.info("Created database schema for testing")
             
             # Store some data for testing
-            from duckdb_api.simulation_validation.core.schema import SIMULATION_VALIDATION_SCHEMA
+            from data.duckdb.simulation_validation.core.schema import SIMULATION_VALIDATION_SCHEMA
             schema = SIMULATION_VALIDATION_SCHEMA
             
             # Add a store_data method to db_integration if it doesn't exist

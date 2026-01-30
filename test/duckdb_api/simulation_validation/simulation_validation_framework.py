@@ -23,7 +23,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("simulation_validation_framework")
 
 # Import base classes
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult, 
     HardwareResult, 
     ValidationResult,
@@ -35,13 +35,13 @@ from duckdb_api.simulation_validation.core.base import (
 )
 
 # Import core methodology and components
-from duckdb_api.simulation_validation.methodology import ValidationMethodology
-from duckdb_api.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
-from duckdb_api.simulation_validation.statistical.statistical_validator import StatisticalValidator
+from data.duckdb.simulation_validation.methodology import ValidationMethodology
+from data.duckdb.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
+from data.duckdb.simulation_validation.statistical.statistical_validator import StatisticalValidator
 
 # Import enhanced statistical validator
 try:
-    from duckdb_api.simulation_validation.statistical.enhanced_statistical_validator import EnhancedStatisticalValidator
+    from data.duckdb.simulation_validation.statistical.enhanced_statistical_validator import EnhancedStatisticalValidator
     enhanced_validator_available = True
 except ImportError:
     logger.warning("EnhancedStatisticalValidator not available, using basic statistical validator")
@@ -49,42 +49,42 @@ except ImportError:
 
 # Optional imports - these may not exist yet but will be implemented later
 try:
-    from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
+    from data.duckdb.simulation_validation.calibration.basic_calibrator import BasicSimulationCalibrator
     calibrator_available = True
 except ImportError:
     logger.warning("BasicSimulationCalibrator not available, calibration functions will be limited")
     calibrator_available = False
 
 try:
-    from duckdb_api.simulation_validation.calibration.advanced_calibrator import AdvancedSimulationCalibrator
+    from data.duckdb.simulation_validation.calibration.advanced_calibrator import AdvancedSimulationCalibrator
     advanced_calibrator_available = True
 except ImportError:
     logger.warning("AdvancedSimulationCalibrator not available, advanced calibration functions will be limited")
     advanced_calibrator_available = False
 
 try:
-    from duckdb_api.simulation_validation.calibration.parameter_discovery import AutomaticParameterDiscovery
+    from data.duckdb.simulation_validation.calibration.parameter_discovery import AutomaticParameterDiscovery
     parameter_discovery_available = True
 except ImportError:
     logger.warning("AutomaticParameterDiscovery not available, parameter discovery functions will be limited")
     parameter_discovery_available = False
 
 try:
-    from duckdb_api.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
+    from data.duckdb.simulation_validation.drift_detection.basic_detector import BasicDriftDetector
     drift_detector_available = True
 except ImportError:
     logger.warning("BasicDriftDetector not available, drift detection functions will be limited")
     drift_detector_available = False
 
 try:
-    from duckdb_api.simulation_validation.visualization.validation_reporter import ValidationReporterImpl
+    from data.duckdb.simulation_validation.visualization.validation_reporter import ValidationReporterImpl
     reporter_available = True
 except ImportError:
     logger.warning("ValidationReporterImpl not available, reporting functions will be limited")
     reporter_available = False
 
 try:
-    from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+    from data.duckdb.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
     visualizer_available = True
 except ImportError:
     logger.warning("ValidationVisualizer not available, visualization functions will be limited")
@@ -983,7 +983,7 @@ class SimulationValidationFramework:
             db_config = self.config["database"]
             
             # Import database API
-            from duckdb_api.core.db_api import BenchmarkDBAPI
+            from data.duckdb.core.db_api import BenchmarkDBAPI
             
             # Create database connection
             self.db_api = BenchmarkDBAPI(
@@ -992,7 +992,7 @@ class SimulationValidationFramework:
             )
             
             # Create tables if they don't exist
-            from duckdb_api.simulation_validation.core.schema import SimulationValidationSchema
+            from data.duckdb.simulation_validation.core.schema import SimulationValidationSchema
             SimulationValidationSchema.create_tables(self.db_api.conn)
             
             logger.info("Database initialized successfully")
@@ -1012,7 +1012,7 @@ class SimulationValidationFramework:
             return
         
         try:
-            from duckdb_api.simulation_validation.core.schema import SimulationValidationSchema as schema
+            from data.duckdb.simulation_validation.core.schema import SimulationValidationSchema as schema
             
             for val_result in validation_results:
                 # Store simulation result
@@ -1101,7 +1101,7 @@ class SimulationValidationFramework:
                 hardware_id = "unknown"
                 model_id = "unknown"
             
-            from duckdb_api.simulation_validation.core.schema import SimulationValidationSchema as schema
+            from data.duckdb.simulation_validation.core.schema import SimulationValidationSchema as schema
             
             # Prepare calibration record
             cal_record = schema.calibration_to_db_dict(
@@ -1145,7 +1145,7 @@ class SimulationValidationFramework:
             return
         
         try:
-            from duckdb_api.simulation_validation.core.schema import SimulationValidationSchema as schema
+            from data.duckdb.simulation_validation.core.schema import SimulationValidationSchema as schema
             
             # Extract hardware and model types
             hardware_type = drift_results.get("hardware_type", "unknown")

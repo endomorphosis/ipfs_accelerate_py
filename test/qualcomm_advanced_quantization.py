@@ -179,7 +179,7 @@ class AdvancedQuantizer:
     def store_metrics_in_db()))))))))))))self, metrics):
         """Store metrics in the benchmark database."""
         try:
-            from duckdb_api.core.benchmark_db_api import BenchmarkDB
+            from data.duckdb.core.benchmark_db_api import BenchmarkDB
             db = BenchmarkDB()))))))))))))db_path="./benchmark_db.duckdb")
             db.store_quantization_metrics()))))))))))))
             model_name=os.path.basename()))))))))))))self.model_path),

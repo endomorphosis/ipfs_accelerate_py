@@ -32,9 +32,9 @@ logger = logging.getLogger("drm_integration_test")
 sys.path.insert(0, str(Path(__file__).parent))
 
 # Import required modules
-from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager, ScalingDecision
-from duckdb_api.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
-from duckdb_api.distributed_testing.cloud_provider_manager import CloudProviderManager
+from data.duckdb.distributed_testing.dynamic_resource_manager import DynamicResourceManager, ScalingDecision
+from data.duckdb.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
+from data.duckdb.distributed_testing.cloud_provider_manager import CloudProviderManager
 
 
 class MockCloudProvider:

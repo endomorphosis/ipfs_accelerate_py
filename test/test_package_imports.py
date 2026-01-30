@@ -24,7 +24,7 @@ def test_imports():
         print(f"\1{str(e)}\3")
     
     try:
-        import duckdb_api
+        import data.duckdb
         print(f"\1{duckdb_api.__file__}\3")
     except ImportError as e:
         print(f"\1{str(e)}\3")
@@ -43,13 +43,13 @@ def test_imports():
         print(f"\1{str(e)}\3")
         
     try:
-        from duckdb_api.core import duckdb_api.core.benchmark_db_api as benchmark_db_api
+        from data.duckdb.core import data.duckdb.core.benchmark_db_api as benchmark_db_api
         print(f"\1{benchmark_db_api.__file__}\3")
     except ImportError as e:
         print(f"\1{str(e)}\3")
         
     try:
-        from duckdb_api.utils import cleanup_stale_reports
+        from data.duckdb.utils import cleanup_stale_reports
         print(f"\1{cleanup_stale_reports.__file__}\3")
     except ImportError as e:
         print(f"\1{str(e)}\3")
@@ -62,7 +62,7 @@ def test_imports():
         print(f"\1{str(e)}\3")
     
     try:
-        from duckdb_api.schema.creation import create_benchmark_schema
+        from data.duckdb.schema.creation import create_benchmark_schema
         print(f"✅ Imported create_benchmark_schema module")
     except ImportError as e:
         print(f"\1{str(e)}\3")

@@ -41,7 +41,7 @@ Features:
 
 # Local imports
 try::::
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
     from mobile_thermal_monitoring import ()))))))))))))))))))))))))))))))))
     ThermalZone,
     CoolingPolicy,
@@ -1006,7 +1006,7 @@ class MediaTekBenchmarkRunner:
         :
         if self.db_path:
             try::::
-                from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+                from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
                 self.db_api = BenchmarkDBAPI()))))))))))))))))))))))))))))))))self.db_path)
                 logger.info()))))))))))))))))))))))))))))))))f"Connected to benchmark database at {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}self.db_path}")
             except ()))))))))))))))))))))))))))))))))ImportError, Exception) as e:

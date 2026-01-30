@@ -19,10 +19,10 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("test_dashboard_integration")
 
 # Import the components to test
-from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
-from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
+from data.duckdb.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+from data.duckdb.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult,

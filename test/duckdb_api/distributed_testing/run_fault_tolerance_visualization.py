@@ -33,7 +33,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import fault tolerance components
-from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
+from data.duckdb.distributed_testing.hardware_aware_fault_tolerance import (
     HardwareAwareFaultToleranceManager,
     FailureType,
     RecoveryStrategy,
@@ -42,7 +42,7 @@ from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
     visualize_fault_tolerance,
     create_recovery_manager
 )
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareArchitecture,
     HardwareVendor,
@@ -51,7 +51,7 @@ from duckdb_api.distributed_testing.hardware_taxonomy import (
     HardwareCapabilityProfile,
     MemoryProfile
 )
-from duckdb_api.distributed_testing.ml_pattern_detection import (
+from data.duckdb.distributed_testing.ml_pattern_detection import (
     MLPatternDetector
 )
 

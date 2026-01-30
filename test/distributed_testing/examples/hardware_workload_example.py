@@ -40,14 +40,14 @@ try:
     )
 except ImportError:
     # Try alternative import path
-    from duckdb_api.distributed_testing.hardware_workload_management import (
+    from data.duckdb.distributed_testing.hardware_workload_management import (
         WorkloadType, WorkloadProfileMetric, WorkloadProfile, WorkloadExecutionPlan,
         HardwareWorkloadManager, MultiDeviceOrchestrator, SubtaskDefinition, SubtaskStatus,
         WorkloadExecutionGraph, create_workload_profile
     )
 
 # Import hardware taxonomy components
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareClass, HardwareArchitecture, HardwareVendor,
     SoftwareBackend, PrecisionType, AcceleratorFeature,
     HardwareCapabilityProfile, HardwareTaxonomy,

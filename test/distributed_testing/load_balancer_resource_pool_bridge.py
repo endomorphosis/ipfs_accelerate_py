@@ -40,12 +40,12 @@ except ImportError:
     from .model_sharding import ShardedModelExecution
 
 try:
-    from duckdb_api.distributed_testing.load_balancer import LoadBalancerService, WorkerCapabilities, TestRequirements
-    from duckdb_api.distributed_testing.load_balancer.models import WorkerCapabilities, TestRequirements, WorkerLoad
+    from data.duckdb.distributed_testing.load_balancer import LoadBalancerService, WorkerCapabilities, TestRequirements
+    from data.duckdb.distributed_testing.load_balancer.models import WorkerCapabilities, TestRequirements, WorkerLoad
 except ImportError:
     # Try alternative import path
-    from duckdb_api.distributed_testing.load_balancer.service import LoadBalancerService
-    from duckdb_api.distributed_testing.load_balancer.models import WorkerCapabilities, TestRequirements, WorkerLoad
+    from data.duckdb.distributed_testing.load_balancer.service import LoadBalancerService
+    from data.duckdb.distributed_testing.load_balancer.models import WorkerCapabilities, TestRequirements, WorkerLoad
 
 
 class ResourcePoolWorker:

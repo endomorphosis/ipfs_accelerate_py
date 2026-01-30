@@ -19,7 +19,7 @@ logger = logging.getLogger("dashboard_visualization_integration")
 
 # Try to import visualization components
 try:
-    from duckdb_api.visualization.advanced_visualization import CustomizableDashboard
+    from data.duckdb.visualization.advanced_visualization import CustomizableDashboard
     VISUALIZATION_AVAILABLE = True
 except ImportError:
     logger.warning("CustomizableDashboard not available. Advanced visualizations will be disabled.")

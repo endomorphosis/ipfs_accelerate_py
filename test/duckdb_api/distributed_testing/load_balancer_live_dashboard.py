@@ -33,7 +33,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import load balancer components
-from duckdb_api.distributed_testing.load_balancer import (
+from data.duckdb.distributed_testing.load_balancer import (
     LoadBalancerService,
     WorkerCapabilities,
     WorkerLoad,
@@ -585,7 +585,7 @@ def monitor_running_load_balancer(args: argparse.Namespace) -> None:
 
 def run_stress_test_with_monitor(args: argparse.Namespace) -> None:
     """Run a stress test with monitoring."""
-    from duckdb_api.distributed_testing.test_load_balancer_stress import LoadBalancerStressTest
+    from data.duckdb.distributed_testing.test_load_balancer_stress import LoadBalancerStressTest
     
     # Create load balancer service
     load_balancer = LoadBalancerService()
@@ -639,7 +639,7 @@ def run_stress_test_with_monitor(args: argparse.Namespace) -> None:
 
 def run_scenario_with_monitor(args: argparse.Namespace) -> None:
     """Run a specific scenario with monitoring."""
-    from duckdb_api.distributed_testing.test_load_balancer_stress import LoadBalancerStressTest, load_config, get_scenario_configuration
+    from data.duckdb.distributed_testing.test_load_balancer_stress import LoadBalancerStressTest, load_config, get_scenario_configuration
     
     # Load configuration
     config = load_config(args.config)

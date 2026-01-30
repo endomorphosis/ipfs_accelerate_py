@@ -21,22 +21,22 @@ import uuid
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import calibration components
-from duckdb_api.simulation_validation.calibration.basic_calibrator import BasicCalibrator
-from duckdb_api.simulation_validation.calibration.advanced_calibrator import (
+from data.duckdb.simulation_validation.calibration.basic_calibrator import BasicCalibrator
+from data.duckdb.simulation_validation.calibration.advanced_calibrator import (
     AdvancedCalibrator, 
     MultiParameterCalibrator, 
     BayesianOptimizationCalibrator,
     NeuralNetworkCalibrator,
     EnsembleCalibrator
 )
-from duckdb_api.simulation_validation.calibration.parameter_discovery import (
+from data.duckdb.simulation_validation.calibration.parameter_discovery import (
     ParameterDiscovery, 
     AdaptiveCalibrationScheduler
 )
-from duckdb_api.simulation_validation.calibration.cross_validation import CalibrationCrossValidator
-from duckdb_api.simulation_validation.calibration.uncertainty_quantification import UncertaintyQuantifier
-from duckdb_api.simulation_validation.calibration.calibration_repository import DuckDBCalibrationRepository
-from duckdb_api.simulation_validation.calibration.repository_adapter import (
+from data.duckdb.simulation_validation.calibration.cross_validation import CalibrationCrossValidator
+from data.duckdb.simulation_validation.calibration.uncertainty_quantification import UncertaintyQuantifier
+from data.duckdb.simulation_validation.calibration.calibration_repository import DuckDBCalibrationRepository
+from data.duckdb.simulation_validation.calibration.repository_adapter import (
     CalibratorDuckDBAdapter,
     CrossValidatorDuckDBAdapter, 
     ParameterDiscoveryDuckDBAdapter,

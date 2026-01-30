@@ -29,15 +29,15 @@ if str(parent_dir) not in sys.path:
 # Import components to test
 try:
     # Import visualization dashboard integration
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
         VisualizationDashboardIntegration
     )
     
     # Import monitoring dashboard
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
     
     # Import visualization components
-    from duckdb_api.visualization.advanced_visualization.viz_customizable_dashboard import CustomizableDashboard
+    from data.duckdb.visualization.advanced_visualization.viz_customizable_dashboard import CustomizableDashboard
     
     # Check if test should be skipped due to missing dependencies
     SKIP_TEST = False
@@ -245,7 +245,7 @@ class TestVisualizationDashboardIntegration(unittest.TestCase):
         # Setup mock CustomizableDashboard if needed
         try:
             # Try to import the real CustomizableDashboard
-            from duckdb_api.visualization.advanced_visualization.viz_customizable_dashboard import CustomizableDashboard
+            from data.duckdb.visualization.advanced_visualization.viz_customizable_dashboard import CustomizableDashboard
             # Test if we can instantiate it
             test_dashboard = CustomizableDashboard(db_connection=None, output_dir=cls.dashboard_dir)
             cls.mock_dashboard = False
@@ -269,7 +269,7 @@ class TestVisualizationDashboardIntegration(unittest.TestCase):
             sys.modules["duckdb_api.visualization.advanced_visualization.viz_customizable_dashboard"] = mock_module
             
             # Re-import the visualization dashboard integration
-            from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import VisualizationDashboardIntegration
+            from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import VisualizationDashboardIntegration
     
     @classmethod
     def tearDownClass(cls):
@@ -619,8 +619,8 @@ class TestMonitoringDashboardWithVisualization(unittest.TestCase):
         
         try:
             # Try to import required components
-            from duckdb_api.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
-            from duckdb_api.visualization.advanced_visualization.viz_customizable_dashboard import CustomizableDashboard
+            from data.duckdb.distributed_testing.dashboard.monitoring_dashboard import MonitoringDashboard
+            from data.duckdb.visualization.advanced_visualization.viz_customizable_dashboard import CustomizableDashboard
             
             # Test if we can instantiate CustomizableDashboard
             test_dashboard = CustomizableDashboard(db_connection=None, output_dir=cls.dashboard_dir)

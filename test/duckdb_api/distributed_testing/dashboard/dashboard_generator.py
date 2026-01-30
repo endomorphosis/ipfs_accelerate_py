@@ -37,7 +37,7 @@ if parent_dir not in sys.path:
 
 # Try to import the visualization engine
 try:
-    from duckdb_api.distributed_testing.dashboard.visualization import VisualizationEngine
+    from data.duckdb.distributed_testing.dashboard.visualization import VisualizationEngine
     VISUALIZATION_ENGINE_AVAILABLE = True
 except ImportError:
     logger.warning("VisualizationEngine not available. Using basic dashboard generation.")

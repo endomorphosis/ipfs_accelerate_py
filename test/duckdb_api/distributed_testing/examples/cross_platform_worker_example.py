@@ -18,7 +18,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import the CrossPlatformWorkerSupport module
-from duckdb_api.distributed_testing.cross_platform_worker_support import CrossPlatformWorkerSupport
+from data.duckdb.distributed_testing.cross_platform_worker_support import CrossPlatformWorkerSupport
 
 
 def detect_platform_and_hardware():
