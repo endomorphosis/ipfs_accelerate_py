@@ -41,13 +41,13 @@ This implementation provides a complete AI-powered Model Manager MCP (Model Cont
    - Enhanced `fetch_huggingface_repo_structure()` with CID generation
    - New methods: `get_model_file_ipfs_cid()`, `get_models_with_ipfs_cids()`, `get_ipfs_gateway_urls()`
 
-2. **`ipfs_mcp/ai_model_server.py`** (New)
+2. **`ipfs_accelerate_py/mcp/ai_model_server.py`** (New)
    - Main MCP server with FastMCP integration
    - Model discovery and recommendation tools
    - IPFS content addressing tools
    - Comprehensive model management
 
-3. **`ipfs_mcp/inference_tools.py`** (New)
+3. **`ipfs_accelerate_py/mcp/inference_tools.py`** (New)
    - Inference engine with smart model selection
    - Mock implementations for demonstration
    - Feedback integration for learning
@@ -75,16 +75,16 @@ pip install sentence-transformers numpy duckdb requests
 
 ```bash
 # Basic usage
-python ipfs_mcp/ai_model_server.py
+python ipfs_accelerate_py/mcp/ai_model_server.py
 
 # With custom paths
-python ipfs_mcp/ai_model_server.py \
+python ipfs_accelerate_py/mcp/ai_model_server.py \
   --model-manager-path ./my_models.db \
   --bandit-storage-path ./my_bandit.json \
   --doc-index-path ./my_docs.json
 
 # Network mode (instead of stdio)
-python ipfs_mcp/ai_model_server.py \
+python ipfs_accelerate_py/mcp/ai_model_server.py \
   --transport sse \
   --host 0.0.0.0 \
   --port 8000
@@ -118,7 +118,7 @@ python ipfs_mcp/ai_model_server.py \
 ### Programmatic Usage
 
 ```python
-from ipfs_mcp.ai_model_server import create_ai_model_server
+from ipfs_accelerate_py.mcp.ai_model_server import create_ai_model_server
 from ipfs_accelerate_py.model_manager import RecommendationContext, DataType
 
 # Create server

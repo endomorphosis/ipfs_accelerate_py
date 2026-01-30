@@ -120,7 +120,7 @@ docker run --rm -it \
 1. **Test host-to-container connectivity**
    ```bash
    # Start MCP server on host
-   python ipfs_mcp/mcp_server.py
+   python ipfs_accelerate_py/mcp/mcp_server.py
    
    # Test from container
    docker run --rm --network host nicolaka/netshoot \
@@ -243,7 +243,7 @@ version: '3.8'
 services:
   mcp-server:
     build: .
-    command: python ipfs_mcp/mcp_server.py
+    command: python ipfs_accelerate_py/mcp/mcp_server.py
     ports:
       - "9100:9100"
     environment:

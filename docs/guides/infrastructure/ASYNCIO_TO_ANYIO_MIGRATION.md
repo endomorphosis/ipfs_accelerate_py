@@ -57,7 +57,7 @@ item = await receive_stream.receive()
 ### Phase 4: MCP Integration
 - [ ] mcp/server.py
 - [ ] mcp/tools/*.py
-- [ ] ipfs_mcp/ai_model_server.py
+- [ ] ipfs_accelerate_py/mcp/ai_model_server.py
 
 ### Phase 5: Test Files
 - [ ] test_*.py files

@@ -82,7 +82,7 @@ version: '3.8'
 services:
   mcp-server:
     build: .
-    command: python ipfs_mcp/mcp_server.py
+    command: python ipfs_accelerate_py/mcp/mcp_server.py
     ports:
       - "9100:9100"
     environment:

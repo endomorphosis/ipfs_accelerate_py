@@ -69,7 +69,7 @@ These are strategic integration points where datasets functionality COULD be add
 | **Inference Logging** | `ai_inference_cli.py` | Inference events | MEDIUM |
 | **GitHub Operations** | `cli_integrations/github_cli_integration.py` | PR/Issue tracking | MEDIUM |
 | **Copilot Integration** | `cli_integrations/copilot_cli_integration.py` | Copilot logs | MEDIUM |
-| **MCP Server** | `ipfs_mcp/server.py` | MCP operations | MEDIUM |
+| **MCP Server** | `ipfs_accelerate_py/mcp/server.py` | MCP operations | MEDIUM |
 | **Worker Coordination** | `test/distributed_testing/coordinator.py` | Task distribution | LOW |
 | **HuggingFace Caching** | `huggingface_hub_scanner.py` | Cache operations | LOW |
 
@@ -165,7 +165,7 @@ These are enhancement opportunities identified during analysis:
    - Track Copilot suggestions
 
 4. **MCP Server** (MEDIUM priority)
-   - `ipfs_mcp/server.py` - MCP operation logging
+   - `ipfs_accelerate_py/mcp/server.py` - MCP operation logging
    - Track tool invocations
    - Performance monitoring
 
