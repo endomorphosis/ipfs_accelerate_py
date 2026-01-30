@@ -694,7 +694,7 @@ def profile_inference():
 profiled_result = profile_inference()
 ```
 
-For more benchmarking tools and examples, see the [benchmarks directory](../benchmarks/).
+For more benchmarking tools and examples, see the [benchmarks directory](../data/benchmarks/).
 
 ## Hardware-Specific Tips
 
@@ -760,4 +760,4 @@ diagnose_hardware()
 - [API Reference](API.md) - Complete API documentation  
 - [IPFS Integration](IPFS.md) - IPFS-specific features
 - [WebNN/WebGPU README](../WEBNN_WEBGPU_README.md) - Browser acceleration
-- [Benchmarks](../benchmarks/README.md) - Performance benchmarking tools
+- [Benchmarks](../data/benchmarks/README.md) - Performance benchmarking tools

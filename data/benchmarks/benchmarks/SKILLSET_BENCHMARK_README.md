@@ -46,7 +46,7 @@ The benchmark system supports multiple hardware backends:
 To generate benchmark files for skillset implementations:
 
 ```bash
-python generate_skillset_benchmarks.py --skillset-dir ../ipfs_accelerate_py/worker/skillset --output-dir benchmarks/skillset
+python generate_skillset_benchmarks.py --skillset-dir ../ipfs_accelerate_py/worker/skillset --output-dir data/benchmarks/skillset
 ```
 
 ### Running Individual Benchmarks
@@ -55,10 +55,10 @@ To run a benchmark for a specific model:
 
 ```bash
 # For inference benchmark
-python benchmarks/skillset/benchmark_bert.py --type inference --hardware cpu
+python data/benchmarks/skillset/benchmark_bert.py --type inference --hardware cpu
 
 # For throughput benchmark
-python benchmarks/skillset/benchmark_bert.py --type throughput --hardware cpu --concurrent-workers 4
+python data/benchmarks/skillset/benchmark_bert.py --type throughput --hardware cpu --concurrent-workers 4
 ```
 
 ### Running All Benchmarks

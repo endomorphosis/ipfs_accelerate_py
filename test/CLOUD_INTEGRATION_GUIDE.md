@@ -63,7 +63,7 @@ python test/multi_node_cloud_integration.py benchmark --models bert-base-uncased
 
 ```bash
 # Generate comparison report from benchmark results
-python test/multi_node_cloud_integration.py report --results ./distributed_benchmarks/benchmark_results_*.json
+python test/multi_node_cloud_integration.py report --results ./distributed_data/benchmarks/benchmark_results_*.json
 ```
 
 #### Deploying Models

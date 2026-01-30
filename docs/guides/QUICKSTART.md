@@ -338,7 +338,7 @@ pytest
 pytest --cov=ipfs_accelerate_py
 
 # Run benchmarks
-python benchmarks/run_benchmarks.py
+python data/benchmarks/run_benchmarks.py
 ```
 
 ### Community

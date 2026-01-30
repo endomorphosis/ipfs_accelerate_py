@@ -201,7 +201,7 @@ Create `.vscode/tasks.json` with ipfs_accelerate_py-specific tasks:
 			"args": [
 				"-m",
 				"pytest",
-				"benchmarks/",
+				"data/benchmarks/",
 				"-v"
 			],
 			"group": "test",

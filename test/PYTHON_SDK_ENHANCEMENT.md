@@ -910,7 +910,7 @@ benchmark_generator.generate_benchmark_suites(
 webgpu_benchmark_generator = BenchmarkGenerator(
     model_families=["bert", "t5", "vit"],
     hardware_backends=["webgpu"],
-    output_dir="test/generated_benchmarks/web",
+    output_dir="test/generated_data/benchmarks/web",
     template_db_path="templates/benchmark_templates.duckdb",
     db_storage=DuckDBStorage(db_path="./web_benchmark.duckdb")
 )

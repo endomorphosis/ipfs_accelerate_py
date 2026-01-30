@@ -34,7 +34,7 @@ Updated the following files to reference the docker group requirement:
    - Referenced comprehensive setup guide
    - Included quick-start docker group configuration
 
-2. **benchmarks/BENCHMARK_CI_INTEGRATION.md**
+2. **data/benchmarks/BENCHMARK_CI_INTEGRATION.md**
    - Added "Self-Hosted Runner Requirements" section at the beginning
    - Included docker group configuration command
    - Referenced comprehensive setup guide
@@ -75,7 +75,7 @@ test/
   └── docs/
       └── CICD_INTEGRATION_GUIDE.md (UPDATED)
 
-benchmarks/
+data/benchmarks/
   └── BENCHMARK_CI_INTEGRATION.md (UPDATED)
 
 generators/

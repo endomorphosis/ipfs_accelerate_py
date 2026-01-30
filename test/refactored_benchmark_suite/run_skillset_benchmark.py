@@ -33,7 +33,7 @@ try:
     from benchmark_core import BenchmarkRunner, BenchmarkRegistry
     
     # Import benchmark_skillset module directly to ensure it's registered
-    from benchmarks.benchmark_skillset import SkillsetInferenceBenchmark, SkillsetThroughputBenchmark
+    from data.benchmarks.benchmark_skillset import SkillsetInferenceBenchmark, SkillsetThroughputBenchmark
     
 except ImportError as e:
     logger.error(f"Error importing required modules: {e}")

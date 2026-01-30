@@ -62,7 +62,7 @@ This is the central documentation index for the IPFS Accelerate Python framework
 - **[CI/CD Integration](CI_CD_UPDATES_SUMMARY.md)** - Continuous integration setup
 
 ### **Advanced Components**
-- **[Benchmarks](../benchmarks/README.md)** - Performance benchmarking framework
+- **[Benchmarks](../data/benchmarks/README.md)** - Performance benchmarking framework
 - **[Database Integration](../duckdb_api/README.md)** - Analytics and data management
 - **[Utils](../utils/README.md)** - Utility functions and helpers
 

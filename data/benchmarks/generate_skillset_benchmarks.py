@@ -686,7 +686,7 @@ def main():
     parser.add_argument(
         "--output-dir", 
         type=str, 
-        default="benchmarks/skillset",
+        default="data/benchmarks/skillset",
         help="Directory to write benchmark files to"
     )
     parser.add_argument(

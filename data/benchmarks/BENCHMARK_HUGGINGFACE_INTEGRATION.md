@@ -15,7 +15,7 @@ This guide outlines the process for benchmarking all 300+ HuggingFace model clas
 
 ## Prerequisites
 
-- Configured DuckDB database (see `/benchmarks/BENCHMARK_DATABASE_GUIDE.md`)
+- Configured DuckDB database (see `/data/benchmarks/BENCHMARK_DATABASE_GUIDE.md`)
 - Access to the refactored benchmark suite in `/test/refactored_benchmark_suite/`
 - Model skillset generator (see `/test/CLAUDE.md` for details)
 
@@ -64,7 +64,7 @@ Generate benchmark files for all model skillsets:
 
 ```bash
 cd /path/to/ipfs_accelerate_py/test/refactored_benchmark_suite
-python generate_skillset_benchmarks.py --all-models --output-dir /path/to/ipfs_accelerate_py/benchmarks/skillset/
+python generate_skillset_benchmarks.py --all-models --output-dir /path/to/ipfs_accelerate_py/data/benchmarks/skillset/
 ```
 
 This will create benchmark scripts for each model class with configuration for all supported hardware backends.
@@ -534,7 +534,7 @@ By following this guide and leveraging the optimized strategies, you can efficie
 The implementation combines our refactored benchmark suite, distributed testing framework, DuckDB database integration, and FastAPI server to create a scalable, efficient, and comprehensive benchmarking solution with real-time monitoring capabilities.
 
 For more information, refer to:
-- `/benchmarks/BENCHMARK_DATABASE_GUIDE.md` - Database system details
+- `/data/benchmarks/BENCHMARK_DATABASE_GUIDE.md` - Database system details
 - `/test/CLAUDE.md` - Model skillset generation details
 - `/test/DISTRIBUTED_TESTING_GUIDE.md` - Distributed testing framework
 - `/test/refactored_benchmark_suite/README.md` - Refactored benchmark suite details
