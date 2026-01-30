@@ -1,6 +1,17 @@
-# Test Screenshots
+# Test Screenshots (Legacy Location)
 
-This directory contains screenshots captured during Playwright testing of the MCP Dashboard.
+**NOTE**: This directory is deprecated. New screenshots are now saved to `data/test_screenshots/` to reduce root directory clutter.
+
+This directory contains screenshots captured during Playwright testing of the MCP Dashboard from earlier test runs.
+
+## Current Screenshot Location
+
+New test screenshots are saved to:
+- `data/test_screenshots/` - General test screenshots
+- `data/test_screenshots/workflow/` - HuggingFace workflow test screenshots
+- `data/test_screenshots/validation/` - Comprehensive validation screenshots
+- `data/test_screenshots/ui_test/` - UI test screenshots
+- `data/test_screenshots/model_manager/` - Model manager test screenshots
 
 ## Screenshots
 
@@ -63,14 +74,14 @@ These screenshots verify:
 
 ## Regenerating Screenshots
 
-To regenerate these screenshots:
+To regenerate screenshots (they will now be saved to `data/test_screenshots/`):
 
 ```bash
 cd /home/runner/work/ipfs_accelerate_py/ipfs_accelerate_py
 python test_mcp_dashboard_playwright.py
 ```
 
-New screenshots will be saved to this directory, overwriting the existing ones.
+New screenshots will be saved to `data/test_screenshots/` directory.
 
 ## Notes
 
