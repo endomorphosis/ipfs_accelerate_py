@@ -11,7 +11,7 @@ from fastapi import FastAPI, APIRouter, Request, Response, BackgroundTasks
 from fastapi.responses import JSONResponse
 
 from ipfs_accelerate_py import ipfs_accelerate_py
-from mcp.server import create_mcp_server, get_mcp_server_instance
+from ipfs_accelerate_py.mcp.server import create_mcp_server, get_mcp_server_instance
 
 logger = logging.getLogger("ipfs_accelerate_mcp.integration")
 

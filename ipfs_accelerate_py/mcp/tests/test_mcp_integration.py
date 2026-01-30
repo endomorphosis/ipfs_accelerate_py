@@ -29,8 +29,8 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 # Import the required modules
 from ipfs_accelerate_py import ipfs_accelerate_py
-from mcp.server import create_mcp_server, get_mcp_server_instance
-from mcp.integration import initialize_mcp_server
+from ipfs_accelerate_py.mcp.server import create_mcp_server, get_mcp_server_instance
+from ipfs_accelerate_py.mcp.integration import initialize_mcp_server
 from fastapi import FastAPI
 import uvicorn
 
@@ -171,8 +171,8 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import the required modules
 from ipfs_accelerate_py import ipfs_accelerate_py
-from mcp.server import create_mcp_server, get_mcp_server_instance
-from mcp.integration import initialize_mcp_server
+from ipfs_accelerate_py.mcp.server import create_mcp_server, get_mcp_server_instance
+from ipfs_accelerate_py.mcp.integration import initialize_mcp_server
 from fastapi import FastAPI
 import uvicorn
 

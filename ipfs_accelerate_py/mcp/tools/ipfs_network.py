@@ -17,14 +17,14 @@ try:
     from fastmcp import FastMCP, Context
 except ImportError:
     try:
-        from mcp.mock_mcp import FastMCP, Context
+        from ipfs_accelerate_py.mcp.mock_mcp import FastMCP, Context
     except ImportError:
         from mock_mcp import FastMCP, Context
 
 # Import from the types module
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from mcp.types import IPFSAccelerateContext
+    from ipfs_accelerate_py.mcp.types import IPFSAccelerateContext
 
 # Get IPFS client function (reusing from ipfs_files.py)
 try:

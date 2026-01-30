@@ -29,7 +29,7 @@ def test_github_mcp_tools_registration():
 
     # Try to import FastMCP, use mock if not available
     try:
-        from mcp.server.fastmcp import FastMCP
+        from ipfs_accelerate_py.mcp.server.fastmcp import FastMCP
     except ImportError:
         try:
             from fastmcp import FastMCP

@@ -100,7 +100,7 @@
 				"-m",
 				"pytest",
 				"-v",
-				"mcp/tests/",
+				"ipfs_accelerate_py/mcp/tests/",
 				"ipfs_mcp/tests/"
 			],
 			"group": "test",

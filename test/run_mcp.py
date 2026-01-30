@@ -22,7 +22,7 @@ logger = logging.getLogger("ipfs_accelerate_mcp")
 
 # Import the server module
 try:
-    from mcp.server import run_server
+    from ipfs_accelerate_py.mcp.server import run_server
 except ImportError as e:
     logger.error(f"Error importing MCP server: {str(e)}")
     logger.error("Make sure the IPFS Accelerate MCP package is installed or in your PYTHONPATH")

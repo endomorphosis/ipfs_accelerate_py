@@ -23,7 +23,7 @@ try:
     from fastmcp import FastMCP
 except ImportError:
     try:
-        from mcp.mock_mcp import FastMCP
+        from ipfs_accelerate_py.mcp.mock_mcp import FastMCP
     except ImportError:
         from mock_mcp import FastMCP
 

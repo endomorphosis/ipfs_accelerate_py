@@ -19,7 +19,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 # Import the required modules
 from ipfs_accelerate_py import ipfs_accelerate_py
-from mcp.server import create_mcp_server
+from ipfs_accelerate_py.mcp.server import create_mcp_server
 
 
 class TestMCPComponents(unittest.TestCase):
@@ -148,7 +148,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import the required modules
 from ipfs_accelerate_py import ipfs_accelerate_py
-from mcp.server import create_mcp_server
+from ipfs_accelerate_py.mcp.server import create_mcp_server
 
 class TestMCPComponents(unittest.TestCase):
     """Test individual components of the MCP server."""

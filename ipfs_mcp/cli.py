@@ -55,7 +55,7 @@ def main():
     
     # Import MCP components (import here to avoid circular imports)
     from ipfs_accelerate_py import ipfs_accelerate_py
-    from mcp.server import create_mcp_server
+    from ipfs_accelerate_py.mcp.server import create_mcp_server
     
     try:
         # Create IPFS Accelerate instance

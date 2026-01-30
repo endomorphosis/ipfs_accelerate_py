@@ -19,9 +19,9 @@ sys.path.insert(0, parent_dir)
 
 # Try to import mcp, fall back to simple implementation if not available
 try:
-    from mcp.server import Server
-    from mcp.server.stdio import stdio_server
-    from mcp.types import Tool, TextContent
+    from ipfs_accelerate_py.mcp.server import Server
+    from ipfs_accelerate_py.mcp.server.stdio import stdio_server
+    from ipfs_accelerate_py.mcp.types import Tool, TextContent
     MCP_AVAILABLE = True
 except ImportError:
     MCP_AVAILABLE = False

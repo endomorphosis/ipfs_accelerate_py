@@ -98,7 +98,7 @@ def test_mcp_tools():
         # Try to import and check tool registration
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         
-        from mcp.tools import github_tools, copilot_tools
+        from ipfs_accelerate_py.mcp.tools import github_tools, copilot_tools
         
         # Check if registration functions exist
         tests = [

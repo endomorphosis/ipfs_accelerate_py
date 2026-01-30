@@ -88,7 +88,7 @@ print_server_info()
 def test_mcp_client():
     """Test mock client operations to diagnose the issue"""
     try:
-        from mcp.server.lowlevel.types import (
+        from ipfs_accelerate_py.mcp.server.lowlevel.types import (
             ListToolsRequest, ListToolsResponse,
             ListResourcesRequest, ListResourcesResponse,
             ListPromptsRequest, ListPromptsResponse

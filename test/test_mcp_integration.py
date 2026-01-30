@@ -16,10 +16,10 @@ from unittest.mock import patch, MagicMock
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import MCP components
-from mcp.mock_mcp import FastMCP, Context
-from mcp.types import IPFSAccelerateContext
-from mcp.tools.mock_ipfs import MockIPFSClient
-from mcp.server import create_ipfs_mcp_server, register_tools
+from ipfs_accelerate_py.mcp.mock_mcp import FastMCP, Context
+from ipfs_accelerate_py.mcp.types import IPFSAccelerateContext
+from ipfs_accelerate_py.mcp.tools.mock_ipfs import MockIPFSClient
+from ipfs_accelerate_py.mcp.server import create_ipfs_mcp_server, register_tools
 
 
 class TestMCPIntegration(unittest.TestCase):
@@ -61,7 +61,7 @@ class TestMCPIntegration(unittest.TestCase):
         mock_get_client.return_value = mock_client
         
         # Import the tool registration function
-        from mcp.tools.ipfs_files import register_files_tools
+        from ipfs_accelerate_py.mcp.tools.ipfs_files import register_files_tools
         
         # Register the file tools
         register_files_tools(self.mcp_server)
@@ -94,7 +94,7 @@ class TestMCPIntegration(unittest.TestCase):
         mock_get_client.return_value = mock_client
         
         # Import the tool registration function
-        from mcp.tools.ipfs_files import register_files_tools
+        from ipfs_accelerate_py.mcp.tools.ipfs_files import register_files_tools
         
         # Register the file tools
         register_files_tools(self.mcp_server)
@@ -117,7 +117,7 @@ class TestMCPIntegration(unittest.TestCase):
         mock_get_client.return_value = mock_client
         
         # Import the tool registration function
-        from mcp.tools.ipfs_files import register_files_tools
+        from ipfs_accelerate_py.mcp.tools.ipfs_files import register_files_tools
         
         # Register the file tools
         register_files_tools(self.mcp_server)

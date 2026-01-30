@@ -8,7 +8,7 @@ import logging
 import anyio
 from fastmcp import FastMCP
 from ipfs_accelerate_py import ipfs_accelerate_py
-from mcp.server import create_mcp_server
+from ipfs_accelerate_py.mcp.server import create_mcp_server
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

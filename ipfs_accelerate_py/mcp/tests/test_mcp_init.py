@@ -24,7 +24,7 @@ try:
     accelerate = ipfs_accelerate_py()
     
     logger.info("Importing MCP server...")
-    from mcp.server import create_mcp_server
+    from ipfs_accelerate_py.mcp.server import create_mcp_server
     
     logger.info("Creating MCP server...")
     mcp_server = create_mcp_server(

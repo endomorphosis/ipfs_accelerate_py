@@ -14,8 +14,8 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
+from ipfs_accelerate_py.mcp import ClientSession, StdioServerParameters
+from ipfs_accelerate_py.mcp.client.stdio import stdio_client
 
 # Try to import storage wrapper with comprehensive fallback
 try:

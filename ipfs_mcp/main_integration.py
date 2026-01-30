@@ -7,7 +7,7 @@ with the main FastAPI application in main.py.
 import logging
 from fastapi import FastAPI
 from ipfs_accelerate_py import ipfs_accelerate_py 
-from mcp.fastapi_integration import integrate_mcp_with_fastapi
+from ipfs_accelerate_py.mcp.fastapi_integration import integrate_mcp_with_fastapi
 
 logger = logging.getLogger("ipfs_accelerate_mcp.integration_main")
 
