@@ -17,7 +17,7 @@ from typing import Dict, List, Any, Optional, Set, Tuple, Union
 import logging
 from dataclasses import dataclass, field
 
-from data.duckdb.distributed_testing.hardware_taxonomy import (
+from duckdb_api.distributed_testing.hardware_taxonomy import (
     HardwareTaxonomy, HardwareCapabilityProfile, HardwareClass,
     HardwareArchitecture, HardwareVendor, SoftwareBackend,
     PrecisionType, AcceleratorFeature
@@ -471,6 +471,9 @@ class EnhancedHardwareTaxonomy(HardwareTaxonomy):
             Dictionary of inferred capability_id -> properties
         """
         inferred_capabilities = {}
+        feature_values = {getattr(feature, "value", feature) for feature in hardware_profile.features}
+        precision_values = {getattr(precision, "value", precision) for precision in hardware_profile.supported_precisions}
+        hardware_class_value = getattr(hardware_profile.hardware_class, "value", hardware_profile.hardware_class)
         
         # Infer compute capabilities
         if hardware_profile.compute_units > 0:
@@ -479,7 +482,7 @@ class EnhancedHardwareTaxonomy(HardwareTaxonomy):
             }
         
         # Infer tensor core acceleration
-        if AcceleratorFeature.TENSOR_CORES in hardware_profile.features:
+        if AcceleratorFeature.TENSOR_CORES.value in feature_values:
             inferred_capabilities["compute.tensor_core_acceleration"] = {
                 "performance_multiplier": 4.0
             }
@@ -496,30 +499,40 @@ class EnhancedHardwareTaxonomy(HardwareTaxonomy):
             }
         
         # Infer precision capabilities
-        if len(hardware_profile.supported_precisions) >= 3:
+        if len(precision_values) >= 3:
             inferred_capabilities["precision.mixed"] = {
-                "supported_precisions": [p.value for p in hardware_profile.supported_precisions]
+                "supported_precisions": sorted(precision_values)
             }
         
-        if (PrecisionType.INT8 in hardware_profile.supported_precisions or
-            PrecisionType.INT4 in hardware_profile.supported_precisions):
+        if (PrecisionType.INT8.value in precision_values or
+            PrecisionType.INT4.value in precision_values):
             inferred_capabilities["precision.quantization"] = {
-                "supported_precisions": [p.value for p in hardware_profile.supported_precisions 
-                                      if p in [PrecisionType.INT8, PrecisionType.INT4, PrecisionType.INT2, PrecisionType.INT1]]
+                "supported_precisions": sorted(
+                    {
+                        precision
+                        for precision in precision_values
+                        if precision in {
+                            PrecisionType.INT8.value,
+                            PrecisionType.INT4.value,
+                            PrecisionType.INT2.value,
+                            PrecisionType.INT1.value,
+                        }
+                    }
+                )
             }
         
         # Infer specialized capabilities
-        if hardware_profile.hardware_class == HardwareClass.GPU and hardware_profile.compute_units > 20:
+        if hardware_class_value == HardwareClass.GPU.value and hardware_profile.compute_units > 20:
             inferred_capabilities["specialized.vision"] = {
                 "effectiveness": min(1.0, hardware_profile.compute_units / 100.0)
             }
             
-            if AcceleratorFeature.TENSOR_CORES in hardware_profile.features:
+            if AcceleratorFeature.TENSOR_CORES.value in feature_values:
                 inferred_capabilities["specialized.nlp"] = {
                     "effectiveness": min(1.0, hardware_profile.compute_units / 80.0)
                 }
         
-        if hardware_profile.hardware_class == HardwareClass.CPU and AcceleratorFeature.AVX2 in hardware_profile.features:
+        if hardware_class_value == HardwareClass.CPU.value and AcceleratorFeature.AVX2.value in feature_values:
             inferred_capabilities["specialized.audio"] = {
                 "effectiveness": 0.8
             }

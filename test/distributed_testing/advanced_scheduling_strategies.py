@@ -52,10 +52,10 @@ from enhanced_hardware_taxonomy import (
 )
 
 # Import load balancer components
-from data.duckdb.distributed_testing.load_balancer.models import (
+from duckdb_api.distributed_testing.load_balancer.models import (
     TestRequirements, WorkerCapabilities, WorkerLoad, WorkerPerformance
 )
-from data.duckdb.distributed_testing.load_balancer.scheduling_algorithms import SchedulingAlgorithm
+from duckdb_api.distributed_testing.load_balancer.scheduling_algorithms import SchedulingAlgorithm
 
 # Setup logging
 logging.basicConfig(
