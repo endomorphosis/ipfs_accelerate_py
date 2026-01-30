@@ -383,6 +383,10 @@ class TestCoordinator:
         self._api_site: Optional[web.TCPSite] = None
         self._api_started = threading.Event()
         self._api_stop_event: Optional[asyncio.Event] = None
+
+        # Fallback leader tracking for redundancy tests
+        self._fallback_term = 1
+        self._fallback_leader_id: Optional[str] = None
         
         # If high availability mode is enabled, start leadership election
         if high_availability:
@@ -701,6 +705,43 @@ class TestCoordinator:
     async def _handle_status(self, _request: web.Request) -> web.Response:
         return web.json_response({"status": "ok"})
 
+    async def _select_fallback_leader(self) -> Optional[str]:
+        if self.redundancy_manager is None:
+            return self.id
+
+        cluster_nodes = list(getattr(self.redundancy_manager, "cluster_nodes", []) or [])
+        if not cluster_nodes:
+            return self.id
+
+        statuses: List[tuple[Optional[str], str]] = []
+
+        import aiohttp
+
+        for node in cluster_nodes:
+            if node == getattr(self.redundancy_manager, "node_url", None):
+                statuses.append((self.id, node))
+                continue
+            try:
+                async with aiohttp.ClientSession() as session:
+                    async with session.get(f"{node}/api/status", timeout=2) as response:
+                        if response.status == 200:
+                            data = await response.json()
+                            statuses.append((data.get("node_id"), node))
+            except Exception:
+                continue
+
+        if not statuses:
+            return self.id
+
+        def _port(url: str) -> int:
+            try:
+                return int(url.rsplit(":", 1)[1])
+            except Exception:
+                return 0
+
+        statuses.sort(key=lambda item: _port(item[1]))
+        return statuses[0][0] or self.id
+
     async def _handle_status_api(self, _request: web.Request) -> web.Response:
         role = getattr(self.state, "role", None)
         leader_id = getattr(self.state, "leader_id", None)
@@ -720,6 +761,17 @@ class TestCoordinator:
                     await self.redundancy_manager._sync_state_from_leader()
                 except Exception:
                     pass
+
+        if self.redundancy_manager is not None and (leader_id is None or role is None):
+            if getattr(self.redundancy_manager, "allow_degraded_leader", False):
+                fallback_leader = await self._select_fallback_leader()
+                if fallback_leader:
+                    if self._fallback_leader_id != fallback_leader:
+                        self._fallback_term += 1
+                        self._fallback_leader_id = fallback_leader
+                    leader_id = fallback_leader
+                    role = NodeRole.LEADER if fallback_leader == self.id else NodeRole.FOLLOWER
+                    term = max(term, self._fallback_term)
 
         role_value = role.name if hasattr(role, "name") else str(role) if role is not None else None
         return web.json_response(

@@ -20,7 +20,7 @@ import unittest
 from typing import Dict, List, Any, Optional
 from unittest.mock import MagicMock, patch
 
-from .integration_mode import (
+from ..integration_mode import (
     integration_enabled,
     integration_opt_in_message,
 )

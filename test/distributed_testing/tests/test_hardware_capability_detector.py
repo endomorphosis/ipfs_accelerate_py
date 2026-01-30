@@ -23,27 +23,16 @@ if parent_dir not in sys.path:
 
 pytest.importorskip("psutil")
 
-try:
-    # Import hardware capability detector
-    from distributed_testing.hardware_capability_detector import (
-        HardwareCapabilityDetector,
-        HardwareType,
-        HardwareVendor,
-        PrecisionType,
-        CapabilityScore,
-        HardwareCapability,
-        WorkerHardwareCapabilities
-    )
-except ImportError:
-    from distributed_testing.hardware_capability_detector import (
-        HardwareCapabilityDetector,
-        HardwareType,
-        HardwareVendor,
-        PrecisionType,
-        CapabilityScore,
-        HardwareCapability,
-        WorkerHardwareCapabilities
-    )
+# Import hardware capability detector
+from ..hardware_capability_detector import (
+    HardwareCapabilityDetector,
+    HardwareType,
+    HardwareVendor,
+    PrecisionType,
+    CapabilityScore,
+    HardwareCapability,
+    WorkerHardwareCapabilities
+)
 
 
 class TestHardwareCapabilityDetector(unittest.TestCase):

@@ -40,6 +40,7 @@ Usage:
 import os
 import sys
 import json
+import re
 import time
 import random
 import logging
@@ -276,7 +277,13 @@ class RedundancyManager:
         for node in cluster_nodes:
             if node_id in node:
                 return node
-        
+
+        match = re.search(r"(\d+)$", str(node_id))
+        if match:
+            index = int(match.group(1)) - 1
+            if 0 <= index < len(cluster_nodes):
+                return cluster_nodes[index]
+
         # If node_id is not found in URLs, use the first one
         return cluster_nodes[0] if cluster_nodes else None
     

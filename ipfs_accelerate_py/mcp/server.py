@@ -708,6 +708,7 @@ class MCPServerWrapper:
         self.state = SimpleNamespace(accelerate=accelerate_instance)
 
         self.mcp = StandaloneMCP(name=self.name)
+        self.mcp.state = SimpleNamespace(accelerate=accelerate_instance)
         self.app = self.mcp.create_fastapi_app(
             title="IPFS Accelerate MCP API",
             description=self.description or "IPFS Accelerate MCP",
@@ -722,6 +723,83 @@ class MCPServerWrapper:
 
         register_all_tools(self.mcp)
         register_all_resources(self.mcp)
+
+        # Compatibility aliases expected by legacy tests
+        try:
+            from ipfs_accelerate_py.mcp.tools.hardware import get_hardware_info, recommend_hardware
+
+            if "detect_hardware" not in self.mcp.tools:
+                self.mcp.register_tool(
+                    name="detect_hardware",
+                    function=get_hardware_info,
+                    description="Detect available hardware",
+                    input_schema={"type": "object", "properties": {}, "required": []},
+                )
+
+            if "get_optimal_hardware" not in self.mcp.tools:
+                self.mcp.register_tool(
+                    name="get_optimal_hardware",
+                    function=recommend_hardware,
+                    description="Get optimal hardware for a model",
+                    input_schema={
+                        "type": "object",
+                        "properties": {
+                            "model_name": {"type": "string", "description": "Model name"},
+                            "task": {
+                                "type": "string",
+                                "description": "Task type",
+                                "enum": ["inference", "training", "fine-tuning"],
+                                "default": "inference",
+                            },
+                            "consider_available_only": {
+                                "type": "boolean",
+                                "description": "Only consider available hardware",
+                                "default": True,
+                            },
+                        },
+                        "required": ["model_name"],
+                    },
+                )
+        except Exception:
+            pass
+
+        try:
+            import platform
+
+            if "system://info" not in self.mcp.resources:
+                self.mcp.register_resource(
+                    uri="system://info",
+                    function=lambda: {
+                        "platform": platform.platform(),
+                        "python_version": platform.python_version(),
+                    },
+                    description="Basic system information",
+                )
+
+            if "system://capabilities" not in self.mcp.resources:
+                self.mcp.register_resource(
+                    uri="system://capabilities",
+                    function=lambda: {"accelerators": {}, "features": {}},
+                    description="System capabilities",
+                )
+
+            if "models://available" not in self.mcp.resources:
+                from ipfs_accelerate_py.mcp.resources.model_info import get_default_supported_models
+
+                def _available_models():
+                    data = get_default_supported_models()
+                    models = []
+                    for category in data.get("categories", {}).values():
+                        models.extend(category.get("models", []))
+                    return models
+
+                self.mcp.register_resource(
+                    uri="models://available",
+                    function=_available_models,
+                    description="Available models",
+                )
+        except Exception:
+            pass
 
         # Register prompts (best-effort)
         try:

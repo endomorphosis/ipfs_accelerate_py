@@ -99,7 +99,7 @@ def register_tools(mcp: Any) -> None:
                 'error': str(e),
                 'runners': []
             }
-    
+
     @mcp.tool()
     def gh_create_workflow_queues(
         owner: Optional[str] = None,
@@ -336,3 +336,8 @@ def register_tools(mcp: Any) -> None:
             }
     
     logger.debug("Registered 7 GitHub CLI tools")
+
+
+def register_github_tools(mcp: Any) -> None:
+    """Compatibility alias for registering GitHub MCP tools."""
+    register_tools(mcp)

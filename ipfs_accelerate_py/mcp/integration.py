@@ -124,6 +124,15 @@ def setup_extended_handlers(server: Any) -> None:
         logger.error(f"Error setting up extended handlers: {e}")
         raise
 
+
+def initialize_mcp_server(app: Any, accelerate_instance: Any, mount_path: str = "/mcp") -> Any:
+    """Initialize and mount the MCP server into a FastAPI app."""
+    from ipfs_accelerate_py.mcp.server import create_mcp_server
+
+    mcp_server = create_mcp_server(accelerate_instance=accelerate_instance)
+    app.mount(mount_path, mcp_server.app, name="mcp_server")
+    return mcp_server
+
 def register_custom_tool(
     server: Any,
     name: str,
