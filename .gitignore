@@ -63,6 +63,11 @@ test_outputs
 transformers_docs_build
 test/doc-builder
 
+# Refactored screenshot/test output directories in data folder
+data/test_screenshots/
+data/screenshots/
+data/final_screenshot_summary/
+
 # Auto-heal system temporary files
 failure_analysis.json
 failure_report.md

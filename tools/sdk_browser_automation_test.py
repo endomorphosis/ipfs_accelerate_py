@@ -33,7 +33,7 @@ class SDKBrowserTester:
         self.dashboard_process = None
         self.dashboard_url = "http://localhost:8080"
         self.jsonrpc_url = "http://localhost:8000"
-        self.screenshots_dir = Path("sdk_dashboard_screenshots")
+        self.screenshots_dir = Path("data/screenshots/sdk_dashboard")
         
         # Create screenshots directory
         self.screenshots_dir.mkdir(exist_ok=True)

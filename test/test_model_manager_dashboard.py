@@ -42,7 +42,7 @@ class ModelManagerDashboardTest:
     def __init__(self):
         self.server_process: Optional[subprocess.Popen] = None
         self.server_url = "http://127.0.0.1:3001"
-        self.screenshots_dir = Path("test_screenshots")
+        self.screenshots_dir = Path("data/test_screenshots/model_manager")
         self.test_results = {}
         
         # Create screenshots directory

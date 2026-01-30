@@ -34,7 +34,7 @@ class KitchenSinkUITester:
     def __init__(self):
         self.server_process = None
         self.server_url = "http://127.0.0.1:8080"
-        self.screenshots_dir = Path("ui_test_screenshots")
+        self.screenshots_dir = Path("data/test_screenshots/ui_test")
         self.console_logs = []
         self.error_logs = []
         self.test_results = {}

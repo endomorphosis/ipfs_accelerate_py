@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 MCP_SERVER_HOST = "localhost"
 MCP_SERVER_PORT = 3001
 DASHBOARD_URL = f"http://{MCP_SERVER_HOST}:{MCP_SERVER_PORT}/"
-SCREENSHOTS_DIR = Path("./test_screenshots")
+SCREENSHOTS_DIR = Path("./data/test_screenshots")
 SERVER_STARTUP_TIMEOUT = 30  # seconds
 
 

@@ -45,7 +45,7 @@ class HuggingFaceWorkflowTest:
     def __init__(self):
         self.server_process: Optional[subprocess.Popen] = None
         self.server_url = "http://127.0.0.1:8899"
-        self.screenshots_dir = Path("test_screenshots_workflow")
+        self.screenshots_dir = Path("data/test_screenshots/workflow")
         self.test_results = {}
         
         # Create screenshots directory

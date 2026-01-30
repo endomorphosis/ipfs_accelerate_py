@@ -14,7 +14,7 @@ from pathlib import Path
 def create_screenshot_summary():
     """Create a comprehensive screenshot summary."""
     
-    summary_dir = Path("./final_screenshot_summary")
+    summary_dir = Path("./data/final_screenshot_summary")
     summary_dir.mkdir(exist_ok=True)
     
     print("📸 Creating Final Screenshot Summary...")
@@ -302,7 +302,7 @@ def main():
     
     if success:
         print("\n✅ Screenshot summary generation completed!")
-        print("📁 Summary saved to: ./final_screenshot_summary/")
+        print("📁 Summary saved to: ./data/final_screenshot_summary/")
         print("📄 Documents created:")
         print("   - SCREENSHOT_SUMMARY.md")
         print("   - INTERFACE_LAYOUT_DIAGRAM.md")

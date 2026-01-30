@@ -134,7 +134,7 @@ def capture_with_selenium():
         time.sleep(5)
         
         # Create screenshots directory
-        screenshots_dir = Path("./kitchen_sink_screenshots")
+        screenshots_dir = Path("./data/screenshots/kitchen_sink")
         screenshots_dir.mkdir(exist_ok=True)
         
         # Capture main page
