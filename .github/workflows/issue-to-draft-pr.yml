@@ -17,6 +17,11 @@ permissions:
 
 env:
   PYTHON_VERSION: '3.11'
+  # GitHub CLI P2P caching configuration
+  CACHE_ENABLE_P2P: 'true'
+  CACHE_LISTEN_PORT: '9100'
+  CACHE_DEFAULT_TTL: '300'
+  CACHE_DIR: '/tmp/github_cli_cache'
 
 jobs:
   create-draft-pr-with-copilot:
@@ -49,6 +54,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install PyYAML requests
+          # Install cache dependencies
+          pip install cryptography multiformats-cid
+          # Try to install libp2p (optional for P2P sharing)
+          pip install libp2p-stubs || true
       
       - name: Get issue details
         id: get_issue
@@ -64,8 +73,8 @@ jobs:
           
           echo "Processing issue #$ISSUE_NUMBER"
           
-          # Get issue details
-          ISSUE_DATA=$(gh issue view "$ISSUE_NUMBER" --repo ${{ github.repository }} --json title,body,number,author,labels)
+          # Get issue details using cached gh API
+          ISSUE_DATA=$(python tools/gh_api_cached.py "repos/${{ github.repository }}/issues/$ISSUE_NUMBER")
           
           ISSUE_TITLE=$(echo "$ISSUE_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['title'])")
           ISSUE_AUTHOR=$(echo "$ISSUE_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['author']['login'])")
@@ -112,7 +121,8 @@ jobs:
           
           # Check if there's already a PR for this issue
           echo "Searching for existing PRs for issue #$ISSUE_NUMBER"
-          EXISTING_PRS=$(gh pr list --repo ${{ github.repository }} --search "Fixes #$ISSUE_NUMBER in:body" --state all --json number --jq 'length' 2>&1 || echo "0")
+          # Use cached API call for PR search
+          EXISTING_PRS=$(python tools/gh_api_cached.py "search/issues?q=Fixes+%23$ISSUE_NUMBER+repo:${{ github.repository }}+is:pr" --jq '.total_count' 2>&1 || echo "0")
           
           echo "Found $EXISTING_PRS existing PRs"
           

@@ -17,6 +17,11 @@ permissions:
 
 env:
   PYTHON_VERSION: '3.11'
+  # GitHub CLI P2P caching configuration
+  CACHE_ENABLE_P2P: 'true'
+  CACHE_LISTEN_PORT: '9100'
+  CACHE_DEFAULT_TTL: '300'
+  CACHE_DIR: '/tmp/github_cli_cache'
 
 jobs:
   assign-copilot-to-pr:
@@ -52,6 +57,10 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install PyYAML requests
+          # Install cache dependencies
+          pip install cryptography multiformats-cid
+          # Try to install libp2p (optional for P2P sharing)
+          pip install libp2p-stubs || true
       
       - name: Get PR details
         id: get_pr
@@ -67,8 +76,8 @@ jobs:
           
           echo "Processing PR #$PR_NUMBER"
           
-          # Get PR details
-          PR_DATA=$(gh pr view "$PR_NUMBER" --repo ${{ github.repository }} --json title,body,number,author,isDraft,headRefName)
+          # Get PR details using cached gh API
+          PR_DATA=$(python tools/gh_api_cached.py "repos/${{ github.repository }}/pulls/$PR_NUMBER")
           
           PR_TITLE=$(echo "$PR_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['title'])")
           PR_AUTHOR=$(echo "$PR_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['author']['login'])")
@@ -115,8 +124,8 @@ jobs:
             exit 0
           fi
           
-          # Check comments
-          COMMENTS=$(gh pr view "$PR_NUMBER" --repo ${{ github.repository }} --json comments --jq '.comments[].body')
+          # Check comments using cached API
+          COMMENTS=$(python tools/gh_api_cached.py "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" --jq '.[].body')
           
           if echo "$COMMENTS" | grep -q "@copilot"; then
             echo "✓ @copilot already mentioned in comments"
