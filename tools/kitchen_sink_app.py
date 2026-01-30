@@ -26,7 +26,7 @@ try:
         VectorDocumentationIndex, BanditModelRecommender,
         RecommendationContext, create_model_from_huggingface
     )
-    from ipfs_mcp.ai_model_server import create_ai_model_server
+    from ipfs_accelerate_py.mcp.ai_model_server import create_ai_model_server
     from huggingface_search_engine import HuggingFaceModelSearchEngine
     HAVE_MODEL_MANAGER = True
 except ImportError as e:

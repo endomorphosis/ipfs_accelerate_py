@@ -46,8 +46,8 @@ class ComprehensiveInferenceVerifier:
         
         try:
             # Import the MCP server
-            from ipfs_mcp.ai_model_server import create_ai_model_server
-            from ipfs_mcp.inference_tools import create_inference_tools
+            from ipfs_accelerate_py.mcp.ai_model_server import create_ai_model_server
+            from ipfs_accelerate_py.mcp.inference_tools import create_inference_tools
             from ipfs_accelerate_py.model_manager import ModelManager, BanditModelRecommender
             
             # Create MCP server instance

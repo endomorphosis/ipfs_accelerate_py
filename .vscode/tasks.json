@@ -101,7 +101,7 @@
 				"pytest",
 				"-v",
 				"ipfs_accelerate_py/mcp/tests/",
-				"ipfs_mcp/tests/"
+				"ipfs_accelerate_py/mcp/tests/"
 			],
 			"group": "test",
 			"problemMatcher": [],
