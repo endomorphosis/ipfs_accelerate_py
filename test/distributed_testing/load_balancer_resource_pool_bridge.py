@@ -35,9 +35,9 @@ try:
     from model_sharding import ShardedModelExecution
 except ImportError:
     # Try with full path
-    from distributed_testing.resource_pool_bridge import ResourcePoolBridgeIntegration
-    from distributed_testing.resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
-    from distributed_testing.model_sharding import ShardedModelExecution
+    from .resource_pool_bridge import ResourcePoolBridgeIntegration
+    from .resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
+    from .model_sharding import ShardedModelExecution
 
 try:
     from duckdb_api.distributed_testing.load_balancer import LoadBalancerService, WorkerCapabilities, TestRequirements

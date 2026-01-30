@@ -16,7 +16,7 @@ import sys
 # Add the parent directory to the Python path so we can import the modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from distributed_testing.external_systems.register_connectors import create_connector, get_available_connectors
+from .external_systems.register_connectors import create_connector, get_available_connectors
 
 # Configure logging
 logging.basicConfig(

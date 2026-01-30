@@ -15,9 +15,9 @@ import tempfile
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from distributed_testing.ci.api_interface import CIProviderInterface, CIProviderFactory
-from distributed_testing.ci.register_providers import register_all_providers
-from distributed_testing.ci.artifact_handler import get_artifact_handler
+from .ci.api_interface import CIProviderInterface, CIProviderFactory
+from .ci.register_providers import register_all_providers
+from .ci.artifact_handler import get_artifact_handler
 
 # Configure logging
 logging.basicConfig(

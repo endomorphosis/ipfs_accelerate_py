@@ -25,7 +25,7 @@ pytest.importorskip("psutil")
 
 try:
     # Import hardware capability detector
-    from distributed_testing.hardware_capability_detector import (
+    from .hardware_capability_detector import (
         HardwareCapabilityDetector,
         HardwareType,
         HardwareVendor,

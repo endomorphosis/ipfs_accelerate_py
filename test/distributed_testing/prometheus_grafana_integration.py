@@ -22,7 +22,7 @@ from typing import Dict, List, Optional, Any, Union, Tuple
 from prometheus_client import start_http_server, Counter, Gauge, Histogram, Summary
 from prometheus_client.registry import CollectorRegistry
 
-from distributed_testing.ml_anomaly_detection import MLAnomalyDetection
+from .ml_anomaly_detection import MLAnomalyDetection
 
 # Configure logging
 logging.basicConfig(

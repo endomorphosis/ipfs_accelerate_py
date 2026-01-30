@@ -88,8 +88,8 @@ except ImportError:  # pragma: no cover
     aiohttp = None
 import hashlib
 
-from distributed_testing.ci.api_interface import CIProviderInterface
-from distributed_testing.ci.artifact_metadata import ArtifactMetadata, ArtifactDiscovery
+from .ci.api_interface import CIProviderInterface
+from .ci.artifact_metadata import ArtifactMetadata, ArtifactDiscovery
 
 # Configure logging
 logging.basicConfig(

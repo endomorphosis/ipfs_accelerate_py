@@ -21,7 +21,7 @@ from duckdb_api.distributed_testing.load_balancer.models import (
 from duckdb_api.distributed_testing.load_balancer.scheduling_algorithms import SchedulingAlgorithm
 
 # Import hardware workload management components
-from distributed_testing.hardware_workload_management import (
+from .hardware_workload_management import (
     HardwareWorkloadManager, WorkloadProfile, WorkloadType, WorkloadProfileMetric,
     create_workload_profile
 )

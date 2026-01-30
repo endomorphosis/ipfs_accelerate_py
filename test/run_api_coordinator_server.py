@@ -26,8 +26,8 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import needed modules
 try:
-    from distributed_testing.coordinator import TestCoordinator
-    from distributed_testing.task import Task, TaskResult, TaskStatus
+    from test.distributed_testing.coordinator import TestCoordinator
+    from test.distributed_testing.task import Task, TaskResult, TaskStatus
     from api_unified_testing_interface import (
         APIProvider, 
         APITestType, 
@@ -43,8 +43,8 @@ except ImportError:
     # Add test directory to path
     sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "test"))
     # Try import again
-    from distributed_testing.coordinator import TestCoordinator
-    from distributed_testing.task import Task, TaskResult, TaskStatus
+    from test.distributed_testing.coordinator import TestCoordinator
+    from test.distributed_testing.task import Task, TaskResult, TaskStatus
     from api_unified_testing_interface import (
         APIProvider, 
         APITestType, 

@@ -23,9 +23,9 @@ from typing import Dict, List, Tuple, Set, Any, Optional, Union, Callable, Type,
 
 # Import API-specific modules and distributed testing framework components
 try:
-    from distributed_testing.coordinator import CoordinatorClient
-    from distributed_testing.task import Task, TaskResult, TaskStatus
-    from distributed_testing.worker import WorkerNode
+    from test.distributed_testing.coordinator import CoordinatorClient
+    from test.distributed_testing.task import Task, TaskResult, TaskStatus
+    from test.distributed_testing.worker import WorkerNode
     from api_anomaly_detection import AnomalyDetector
     from api_predictive_analytics import TimeSeriesPredictor, AnomalyPredictor
     from api_monitoring_dashboard import APIMonitoringDashboard

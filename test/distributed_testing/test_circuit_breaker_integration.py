@@ -38,7 +38,7 @@ if os.environ.get("CIRCUIT_BREAKER_LOG_LEVEL", "").upper() == "DEBUG":
 
 # Import required components
 try:
-    from distributed_testing.selenium_browser_bridge import (
+    from .selenium_browser_bridge import (
         BrowserConfiguration, SeleniumBrowserBridge, SELENIUM_AVAILABLE
     )
 except ImportError:
@@ -51,7 +51,7 @@ except ImportError:
         SELENIUM_AVAILABLE = False
 
 try:
-    from distributed_testing.browser_failure_injector import (
+    from .browser_failure_injector import (
         BrowserFailureInjector, FailureType
     )
     INJECTOR_AVAILABLE = True
@@ -79,7 +79,7 @@ except ImportError:
         UNKNOWN = "unknown"
 
 try:
-    from distributed_testing.circuit_breaker import CircuitBreaker
+    from .circuit_breaker import CircuitBreaker
     CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
     try:

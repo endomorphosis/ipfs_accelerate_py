@@ -12,7 +12,7 @@ import unittest
 import anyio
 from unittest.mock import AsyncMock, patch, MagicMock
 
-from distributed_testing.{{ component_var_name }} import {{ component_name }}
+from .{{ component_var_name }} import {{ component_name }}
 
 class {{ test_name }}(unittest.TestCase):
     """{{ test_description }}"""

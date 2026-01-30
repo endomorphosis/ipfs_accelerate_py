@@ -11,50 +11,50 @@ import logging
 import anyio
 from typing import Dict, Any, Optional
 
-from distributed_testing.ci.api_interface import CIProviderFactory, CIProviderInterface
+from .ci.api_interface import CIProviderFactory, CIProviderInterface
 
 # Optional provider implementations (may require extra deps like aiohttp).
 try:
-    from distributed_testing.ci.github_client import GitHubClient
+    from .ci.github_client import GitHubClient
 except Exception:  # pragma: no cover
     GitHubClient = None  # type: ignore[assignment]
 
 try:
-    from distributed_testing.ci.jenkins_client import JenkinsClient
+    from .ci.jenkins_client import JenkinsClient
 except Exception:  # pragma: no cover
     JenkinsClient = None  # type: ignore[assignment]
 
 try:
-    from distributed_testing.ci.gitlab_client import GitLabClient
+    from .ci.gitlab_client import GitLabClient
 except Exception:  # pragma: no cover
     GitLabClient = None  # type: ignore[assignment]
 
 try:
-    from distributed_testing.ci.azure_client import AzureDevOpsClient
+    from .ci.azure_client import AzureDevOpsClient
 except Exception:  # pragma: no cover
     AzureDevOpsClient = None  # type: ignore[assignment]
 
 try:
-    from distributed_testing.ci.circleci_client import CircleCIClient
+    from .ci.circleci_client import CircleCIClient
 except Exception:  # pragma: no cover
     CircleCIClient = None  # type: ignore[assignment]
 
 try:
-    from distributed_testing.ci.bitbucket_client import BitbucketClient
+    from .ci.bitbucket_client import BitbucketClient
 except Exception:  # pragma: no cover
     BitbucketClient = None  # type: ignore[assignment]
 
 try:
-    from distributed_testing.ci.teamcity_client import TeamCityClient
+    from .ci.teamcity_client import TeamCityClient
 except Exception:  # pragma: no cover
     TeamCityClient = None  # type: ignore[assignment]
 
 try:
-    from distributed_testing.ci.travis_client import TravisClient
+    from .ci.travis_client import TravisClient
 except Exception:  # pragma: no cover
     TravisClient = None  # type: ignore[assignment]
-from distributed_testing.ci.artifact_handler import get_artifact_handler
-from distributed_testing.ci.artifact_retriever import ArtifactRetriever
+from .ci.artifact_handler import get_artifact_handler
+from .ci.artifact_retriever import ArtifactRetriever
 
 # Configure logging
 logging.basicConfig(

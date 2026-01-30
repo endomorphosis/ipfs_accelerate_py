@@ -28,7 +28,7 @@ parent_dir = os.path.dirname(os.path.dirname(current_dir))
 sys.path.append(parent_dir)
 
 try:
-    from distributed_testing.load_balancer_resource_pool_bridge import (
+    from .load_balancer_resource_pool_bridge import (
         LoadBalancerResourcePoolBridge, 
         create_bridge
     )

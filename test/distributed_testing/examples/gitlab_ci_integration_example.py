@@ -27,10 +27,10 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Import CI specific modules
-from distributed_testing.ci.api_interface import CIProviderFactory, TestRunResult
-from distributed_testing.ci.gitlab_client import GitLabClient
-from distributed_testing.ci.result_reporter import TestResultReporter
-from distributed_testing.ci.register_providers import register_all_providers
+from .ci.api_interface import CIProviderFactory, TestRunResult
+from .ci.gitlab_client import GitLabClient
+from .ci.result_reporter import TestResultReporter
+from .ci.register_providers import register_all_providers
 
 
 async def run_example(gitlab_token=None, project_id=None, commit_sha=None, mr_iid=None):

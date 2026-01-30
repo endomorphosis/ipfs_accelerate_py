@@ -19,7 +19,7 @@ from datetime import datetime
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import plugin architecture
-from distributed_testing.plugin_architecture import Plugin, PluginType, HookType, PluginManager
+from .plugin_architecture import Plugin, PluginType, HookType, PluginManager
 
 # Configure logging
 logging.basicConfig(

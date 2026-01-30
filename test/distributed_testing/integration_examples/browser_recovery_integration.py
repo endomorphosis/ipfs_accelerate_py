@@ -22,7 +22,7 @@ from typing import Dict, List, Any, Optional
 
 # Import browser recovery strategies
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
-from distributed_testing.browser_recovery_strategies import (
+from .browser_recovery_strategies import (
     recover_browser, ProgressiveRecoveryManager, 
     BrowserType, ModelType, RecoveryLevel,
     categorize_browser_failure
@@ -187,7 +187,7 @@ except ImportError:
 
 # Try to import the CircuitBreaker
 try:
-    from distributed_testing.circuit_breaker import (
+    from .circuit_breaker import (
         CircuitBreaker, CircuitState, CircuitOpenError, CircuitBreakerRegistry
     )
     CIRCUIT_BREAKER_AVAILABLE = True
@@ -375,7 +375,7 @@ class BrowserRecoveryDemo:
         self.show_statistics = show_statistics
         
         # Determine model type
-        from distributed_testing.browser_recovery_strategies import detect_model_type
+        from .browser_recovery_strategies import detect_model_type
         self.model_type = detect_model_type(model_name)
         
         # Set browser options based on model type
@@ -641,7 +641,7 @@ class BrowserRecoveryDemo:
     
     def _get_failure_type(self, test_index):
         """Get failure type based on test index."""
-        from distributed_testing.browser_recovery_strategies import FailureType
+        from .browser_recovery_strategies import FailureType
         
         # Different failure types for different tests
         failure_types = [

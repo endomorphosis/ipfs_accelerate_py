@@ -37,7 +37,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Import coordinator and the integrated analysis system
-from distributed_testing.coordinator import DistributedTestingCoordinator
+from .coordinator import DistributedTestingCoordinator
 from result_aggregator.integrated_analysis_system import IntegratedAnalysisSystem
 
 # Configure logging

@@ -22,7 +22,7 @@ import pytest
 # Add /test to sys.path so that `distributed_testing` resolves to `test/distributed_testing`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from distributed_testing.integration_mode import integration_enabled, integration_opt_in_message
+from .integration_mode import integration_enabled, integration_opt_in_message
 
 if not integration_enabled():
     pytest.skip(integration_opt_in_message(), allow_module_level=True)
@@ -30,14 +30,14 @@ if not integration_enabled():
 pytest.importorskip("aiohttp")
 
 # Import the components to test
-from distributed_testing.dynamic_resource_manager import (
+from .dynamic_resource_manager import (
     DynamicResourceManager, 
     ScalingStrategy, 
     ProviderType, 
     ResourceState,
     WorkerTemplate
 )
-from distributed_testing.coordinator import TestCoordinator
+from .coordinator import TestCoordinator
 
 
 class TestDynamicResourceManagerIntegration(unittest.TestCase):

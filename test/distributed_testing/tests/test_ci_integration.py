@@ -30,9 +30,9 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Import necessary modules
-from distributed_testing.ci.api_interface import CIProviderFactory, CIProviderInterface, TestRunResult
-from distributed_testing.ci.result_reporter import TestResultReporter
-from distributed_testing.ci.register_providers import register_all_providers
+from .ci.api_interface import CIProviderFactory, CIProviderInterface, TestRunResult
+from .ci.result_reporter import TestResultReporter
+from .ci.register_providers import register_all_providers
 
 
 class MockCIProvider(CIProviderInterface):

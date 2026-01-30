@@ -16,12 +16,12 @@ from duckdb_api.distributed_testing.load_balancer.scheduling_algorithms import (
 )
 
 # Import hardware workload management components
-from distributed_testing.hardware_workload_management import (
+from .hardware_workload_management import (
     HardwareWorkloadManager, HardwareTaxonomy
 )
 
 # Import hardware-aware scheduler
-from distributed_testing.hardware_aware_scheduler import HardwareAwareScheduler
+from .hardware_aware_scheduler import HardwareAwareScheduler
 
 # Setup logging
 logging.basicConfig(

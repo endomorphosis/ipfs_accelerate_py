@@ -15,11 +15,11 @@ import time
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import components to test
-from distributed_testing.hardware_workload_management import (
+from .hardware_workload_management import (
     HardwareWorkloadManager, HardwareTaxonomy, WorkloadProfile, WorkloadType
 )
-from distributed_testing.hardware_aware_scheduler import HardwareAwareScheduler
-from distributed_testing.load_balancer_integration import (
+from .hardware_aware_scheduler import HardwareAwareScheduler
+from .load_balancer_integration import (
     create_hardware_aware_load_balancer, register_type_specific_schedulers, shutdown_integration
 )
 

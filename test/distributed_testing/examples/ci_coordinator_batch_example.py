@@ -36,12 +36,12 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Import necessary modules
-from distributed_testing.coordinator import DistributedTestingCoordinator
-from distributed_testing.worker import Worker
-from distributed_testing.create_task import create_benchmark_task
-from distributed_testing.ci.api_interface import CIProviderFactory, TestRunResult
-from distributed_testing.ci.result_reporter import TestResultReporter
-from distributed_testing.ci.register_providers import register_all_providers
+from .coordinator import DistributedTestingCoordinator
+from .worker import Worker
+from .create_task import create_benchmark_task
+from .ci.api_interface import CIProviderFactory, TestRunResult
+from .ci.result_reporter import TestResultReporter
+from .ci.register_providers import register_all_providers
 
 
 async def run_example(ci_provider_type=None, ci_config=None):

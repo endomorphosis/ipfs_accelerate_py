@@ -12,7 +12,7 @@ import logging
 
 import pytest
 
-from distributed_testing.ci import (
+from .ci import (
     AzureDevOpsClient,
     CIProviderFactory,
     CIProviderInterface,

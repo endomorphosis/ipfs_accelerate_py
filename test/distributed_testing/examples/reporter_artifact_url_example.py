@@ -23,9 +23,9 @@ from typing import Dict, Any, Optional, List
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
 
 # Import CI system components
-from distributed_testing.ci.api_interface import CIProviderFactory, TestRunResult
-from distributed_testing.ci.result_reporter import TestResultReporter
-from distributed_testing.ci.register_providers import register_all_providers
+from .ci.api_interface import CIProviderFactory, TestRunResult
+from .ci.result_reporter import TestResultReporter
+from .ci.register_providers import register_all_providers
 
 # Configure logging
 logging.basicConfig(
