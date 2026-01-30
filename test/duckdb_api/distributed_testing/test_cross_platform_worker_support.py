@@ -23,7 +23,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import the module to test
-from duckdb_api.distributed_testing.cross_platform_worker_support import (
+from data.duckdb.distributed_testing.cross_platform_worker_support import (
     CrossPlatformWorkerSupport,
     LinuxPlatformHandler,
     WindowsPlatformHandler,

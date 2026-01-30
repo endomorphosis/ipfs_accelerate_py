@@ -20,7 +20,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("benchmark_validation_reporter")
 
 # Import base classes
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationLevel,
     ValidationStatus,
     BenchmarkResult,
@@ -30,10 +30,10 @@ from duckdb_api.benchmark_validation.core.base import (
 
 # Import Advanced Visualization System components if available
 try:
-    from duckdb_api.visualization.advanced_visualization.viz_heatmap import HardwareHeatmapVisualization
-    from duckdb_api.visualization.advanced_visualization.viz_time_series import TimeSeriesVisualization
-    from duckdb_api.visualization.advanced_visualization.viz_3d import ThreeDVisualization
-    from duckdb_api.visualization.advanced_visualization.export_integration import ExportIntegration
+    from data.duckdb.visualization.advanced_visualization.viz_heatmap import HardwareHeatmapVisualization
+    from data.duckdb.visualization.advanced_visualization.viz_time_series import TimeSeriesVisualization
+    from data.duckdb.visualization.advanced_visualization.viz_3d import ThreeDVisualization
+    from data.duckdb.visualization.advanced_visualization.export_integration import ExportIntegration
     ADVANCED_VIZ_AVAILABLE = True
 except ImportError:
     logger.warning("Advanced visualization components not available. Falling back to basic visualizations.")

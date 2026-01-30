@@ -120,19 +120,19 @@ The Cross-Platform Analysis Tool works with data from both the Android and iOS T
 ### Basic Comparison
 
 ```bash
-python test/cross_platform_analysis.py compare --db-path benchmarks/benchmark.duckdb --output cross_platform_report.md
+python test/cross_platform_analysis.py compare --db-path data/benchmarks/benchmark.duckdb --output cross_platform_report.md
 ```
 
 ### Model-Specific Analysis
 
 ```bash
-python test/cross_platform_analysis.py analyze --db-path benchmarks/benchmark.duckdb --model bert-base-uncased --output bert_analysis.json
+python test/cross_platform_analysis.py analyze --db-path data/benchmarks/benchmark.duckdb --model bert-base-uncased --output bert_analysis.json
 ```
 
 ### HTML Report with Visualization
 
 ```bash
-python test/cross_platform_analysis.py compare --db-path benchmarks/benchmark.duckdb --model vit-base-patch16 --output vit_report.html --format html
+python test/cross_platform_analysis.py compare --db-path data/benchmarks/benchmark.duckdb --model vit-base-patch16 --output vit_report.html --format html
 ```
 
 ## Troubleshooting

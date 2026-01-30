@@ -25,10 +25,10 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import components to test
-from duckdb_api.distributed_testing.multi_device_orchestrator import (
+from data.duckdb.distributed_testing.multi_device_orchestrator import (
     MultiDeviceOrchestrator, SplitStrategy, TaskStatus, SubtaskStatus
 )
-from duckdb_api.distributed_testing.coordinator_orchestrator_integration import (
+from data.duckdb.distributed_testing.coordinator_orchestrator_integration import (
     CoordinatorOrchestratorIntegration, integrate_orchestrator_with_coordinator
 )
 

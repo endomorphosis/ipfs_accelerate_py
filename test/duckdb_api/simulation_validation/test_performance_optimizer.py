@@ -41,7 +41,7 @@ class TestPerformanceOptimizer:
         self.db_integration = MockDBIntegration(db_path="/tmp/test.duckdb")
         
         # Load the actual implementation
-        from duckdb_api.simulation_validation.db_performance_optimizer import DBPerformanceOptimizer
+        from data.duckdb.simulation_validation.db_performance_optimizer import DBPerformanceOptimizer
         
         # Initialize the optimizer with our mocks
         with patch('os.path.exists', return_value=True), \

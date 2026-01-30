@@ -10,7 +10,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: testing
-    command: python ipfs_mcp/mcp_server.py
+    command: python ipfs_accelerate_py/mcp/server.py
     ports:
       - "9100:9100"
     environment:

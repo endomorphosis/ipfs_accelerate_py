@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 # Add /test to sys.path so that `distributed_testing` resolves to `test/distributed_testing`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from distributed_testing.integration_mode import integration_enabled, integration_opt_in_message
+from .integration_mode import integration_enabled, integration_opt_in_message
 
 if not integration_enabled():
     pytest.skip(integration_opt_in_message(), allow_module_level=True)
@@ -39,10 +39,10 @@ if not integration_enabled():
 pytest.importorskip("aiohttp")
 
 # Import necessary modules
-from distributed_testing.coordinator import DistributedTestingCoordinator
-from distributed_testing.worker import Worker
-from distributed_testing.ci.api_interface import CIProviderFactory, CIProviderInterface, TestRunResult
-from distributed_testing.ci.result_reporter import TestResultReporter
+from .coordinator import DistributedTestingCoordinator
+from .worker import Worker
+from .ci.api_interface import CIProviderFactory, CIProviderInterface, TestRunResult
+from .ci.result_reporter import TestResultReporter
 
 
 class MockCIProvider(CIProviderInterface):

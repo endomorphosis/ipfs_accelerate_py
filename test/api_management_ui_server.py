@@ -149,7 +149,7 @@ def initialize_dashboard(
         try:
             # Import DuckDBAPIMetricsRepository
             try:
-                from duckdb_api.api_management import DuckDBAPIMetricsRepository
+                from data.duckdb.api_management import DuckDBAPIMetricsRepository
             except ImportError:
                 from test.duckdb_api.api_management import DuckDBAPIMetricsRepository
                 

@@ -32,7 +32,7 @@ if os.environ.get("SELENIUM_BRIDGE_LOG_LEVEL", "").upper() == "DEBUG":
     logger.setLevel(logging.DEBUG)
 
 try:
-    from distributed_testing.selenium_browser_bridge import (
+    from .selenium_browser_bridge import (
         BrowserConfiguration, SeleniumBrowserBridge, SELENIUM_AVAILABLE
     )
 except ImportError:
@@ -45,7 +45,7 @@ except ImportError:
         SELENIUM_AVAILABLE = False
 
 try:
-    from distributed_testing.browser_failure_injector import (
+    from .browser_failure_injector import (
         BrowserFailureInjector, FailureType
     )
     INJECTOR_AVAILABLE = True

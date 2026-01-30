@@ -15,7 +15,7 @@ import os
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from duckdb_api.distributed_testing.distributed_error_handler import (
+from data.duckdb.distributed_testing.distributed_error_handler import (
     DistributedErrorHandler,
     ErrorCategory,
     RetryPolicy,

@@ -87,7 +87,7 @@ The MCP server will integrate with existing IPFS Accelerate components:
 1. **hardware_detection.py**: Use for hardware capability detection
 2. **webgpu_platform.py**, **webnn_webgpu.py**: Leverage for model acceleration
 3. **ipfs_accelerate_py.py**: Main functionality to expose through MCP
-4. **benchmarks/**: Utilize for performance testing and optimization
+4. **data/benchmarks/**: Utilize for performance testing and optimization
 
 ## Milestones and Timeline
 

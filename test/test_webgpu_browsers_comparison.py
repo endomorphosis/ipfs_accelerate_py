@@ -31,7 +31,7 @@ Usage:
 
 # Import database utilities if available:::
 try:
-    from duckdb_api.core.benchmark_db_api import store_webgpu_comparison_result
+    from data.duckdb.core.benchmark_db_api import store_webgpu_comparison_result
     HAS_DB_API = True
 except ImportError:
     HAS_DB_API = False

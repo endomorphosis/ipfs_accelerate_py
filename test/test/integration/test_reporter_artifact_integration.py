@@ -18,12 +18,12 @@ import unittest
 # Add the parent directory to the path
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
 
-from distributed_testing.ci.api_interface import CIProviderFactory, TestRunResult
-from distributed_testing.ci.result_reporter import TestResultReporter
-from distributed_testing.ci.register_providers import register_all_providers
+from test.distributed_testing.ci.api_interface import CIProviderFactory, TestRunResult
+from test.distributed_testing.ci.result_reporter import TestResultReporter
+from test.distributed_testing.ci.register_providers import register_all_providers
 
 # Import mock CI providers for testing
-from distributed_testing.test_artifact_url_retrieval import (
+from test.distributed_testing.test_artifact_url_retrieval import (
     MockGitHubClient, 
     MockJenkinsClient,
     MockCircleCIClient,
@@ -564,7 +564,7 @@ async def test_ci_coordinator_integration():
     # Skip if CI coordinator is not available
     try:
         # Try to import the coordinator
-        from distributed_testing.coordinator import DistributedTestingCoordinator
+        from test.distributed_testing.coordinator import DistributedTestingCoordinator
     except ImportError:
         logger.warning("DistributedTestingCoordinator not available, skipping CI coordinator integration test")
         return

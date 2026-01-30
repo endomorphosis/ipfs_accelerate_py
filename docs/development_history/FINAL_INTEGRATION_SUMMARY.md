@@ -124,7 +124,7 @@ self._log_cli_event("mcp_start", {...})
 - `ai_inference_cli.py` - Inference operation logging
 - `cli_integrations/github_cli_integration.py` - PR/Issue tracking
 - `cli_integrations/copilot_cli_integration.py` - Copilot suggestions
-- `ipfs_mcp/server.py` - MCP operation logging
+- `ipfs_accelerate_py/mcp/server.py` - MCP operation logging
 
 ### LOW Priority (Future)
 - `test/distributed_testing/coordinator.py` - Worker coordination

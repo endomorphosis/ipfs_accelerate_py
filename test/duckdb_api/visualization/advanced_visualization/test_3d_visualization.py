@@ -15,7 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent.parent))
 
 # Import the 3D visualization component
-from duckdb_api.visualization.advanced_visualization.viz_3d import Visualization3D
+from data.duckdb.visualization.advanced_visualization.viz_3d import Visualization3D
 
 def main():
     """Demonstrate the 3D visualization component capabilities."""

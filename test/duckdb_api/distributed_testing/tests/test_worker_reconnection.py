@@ -28,13 +28,13 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import worker reconnection module
-from duckdb_api.distributed_testing.worker_reconnection import (
+from data.duckdb.distributed_testing.worker_reconnection import (
     ConnectionState, ConnectionStats, WorkerReconnectionManager,
     WorkerReconnectionPlugin, create_worker_reconnection_plugin
 )
 
 # Import hardware fault tolerance for integration testing
-from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
+from data.duckdb.distributed_testing.hardware_aware_fault_tolerance import (
     RecoveryAction, RecoveryStrategy, FailureType
 )
 

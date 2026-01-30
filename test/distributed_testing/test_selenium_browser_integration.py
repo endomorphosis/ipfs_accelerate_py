@@ -48,7 +48,7 @@ try:
 except ImportError:
     try:
         # Try to import using relative path if we're importing from elsewhere
-        from distributed_testing.selenium_browser_bridge import (
+        from .selenium_browser_bridge import (
             BrowserConfiguration, SeleniumBrowserBridge, SELENIUM_AVAILABLE
         )
     except ImportError:
@@ -65,7 +65,7 @@ try:
 except ImportError:
     try:
         # Try to import using relative path if we're importing from elsewhere
-        from distributed_testing.browser_recovery_strategies import (
+        from .browser_recovery_strategies import (
             BrowserType, ModelType, FailureType, RecoveryLevel, 
             detect_browser_type, detect_model_type
         )

@@ -26,7 +26,7 @@ if _PARENT_DIR not in sys.path:
 
 from security import SecurityManager
 
-from distributed_testing.worker import DistributedTestingWorker
+from .worker import DistributedTestingWorker
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

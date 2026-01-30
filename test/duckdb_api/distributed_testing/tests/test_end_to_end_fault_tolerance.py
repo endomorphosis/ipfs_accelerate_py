@@ -36,25 +36,25 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import circuit breaker and coordinator
-from duckdb_api.distributed_testing.circuit_breaker import (
+from data.duckdb.distributed_testing.circuit_breaker import (
     CircuitBreaker, CircuitState, CircuitOpenError, CircuitBreakerRegistry
 )
-from duckdb_api.distributed_testing.coordinator_websocket_server import (
+from data.duckdb.distributed_testing.coordinator_websocket_server import (
     CoordinatorWebSocketServer
 )
-from duckdb_api.distributed_testing.coordinator_integration import (
+from data.duckdb.distributed_testing.coordinator_integration import (
     integrate_circuit_breaker_with_coordinator
 )
-from duckdb_api.distributed_testing.coordinator_circuit_breaker_integration import (
+from data.duckdb.distributed_testing.coordinator_circuit_breaker_integration import (
     CoordinatorCircuitBreakerIntegration
 )
-from duckdb_api.distributed_testing.fault_tolerance_integration import (
+from data.duckdb.distributed_testing.fault_tolerance_integration import (
     CircuitBreakerIntegration
 )
-from duckdb_api.distributed_testing.dashboard.circuit_breaker_visualization import (
+from data.duckdb.distributed_testing.dashboard.circuit_breaker_visualization import (
     CircuitBreakerDashboardIntegration
 )
-from duckdb_api.distributed_testing.worker import WorkerClient
+from data.duckdb.distributed_testing.worker import WorkerClient
 
 # Import browser automation bridge
 try:

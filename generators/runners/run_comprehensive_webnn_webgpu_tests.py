@@ -51,7 +51,7 @@ try:
     from fixed_web_platform.webgpu_quantization import create_quantized_model
     
     # Import database integration
-    from duckdb_api.core.benchmark_db_api import BenchmarkDatabase, store_benchmark_result
+    from data.duckdb.core.benchmark_db_api import BenchmarkDatabase, store_benchmark_result
 except ImportError as e:
     print(f"Error importing required modules: {str(e)}")
     print("Make sure you're running from the correct directory and all dependencies are installed.")

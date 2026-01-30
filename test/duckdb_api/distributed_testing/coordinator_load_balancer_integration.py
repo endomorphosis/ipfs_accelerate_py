@@ -22,14 +22,14 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import from load balancer
-from duckdb_api.distributed_testing.load_balancer.service import LoadBalancerService, create_load_balancer
-from duckdb_api.distributed_testing.load_balancer.coordinator_integration import LoadBalancerCoordinatorBridge
-from duckdb_api.distributed_testing.load_balancer.models import (
+from data.duckdb.distributed_testing.load_balancer.service import LoadBalancerService, create_load_balancer
+from data.duckdb.distributed_testing.load_balancer.coordinator_integration import LoadBalancerCoordinatorBridge
+from data.duckdb.distributed_testing.load_balancer.models import (
     WorkerCapabilities,
     TestRequirements,
     WorkerLoad
 )
-from duckdb_api.distributed_testing.load_balancer.task_analyzer import TaskRequirementsAnalyzer
+from data.duckdb.distributed_testing.load_balancer.task_analyzer import TaskRequirementsAnalyzer
 
 # Setup logging
 logging.basicConfig(

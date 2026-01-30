@@ -23,13 +23,13 @@ from datetime import datetime, timedelta
 from enum import Enum, auto
 
 # Import circuit breaker
-from duckdb_api.distributed_testing.circuit_breaker import (
+from data.duckdb.distributed_testing.circuit_breaker import (
     CircuitBreaker, CircuitState, CircuitOpenError, CircuitBreakerRegistry,
     create_worker_circuit_breaker, create_endpoint_circuit_breaker
 )
 
 # Import hardware-aware fault tolerance
-from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
+from data.duckdb.distributed_testing.hardware_aware_fault_tolerance import (
     HardwareAwareFaultToleranceManager, FailureContext, RecoveryAction, RecoveryStrategy, FailureType
 )
 

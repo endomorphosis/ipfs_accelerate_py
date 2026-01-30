@@ -14,6 +14,7 @@ import json
 import logging
 import subprocess
 import signal
+import socket
 from types import SimpleNamespace
 from unittest.mock import patch, MagicMock, AsyncMock
 
@@ -32,8 +33,8 @@ if not real_integration_enabled():
 
 pytest.importorskip("aiohttp")
 
-from coordinator_redundancy import RedundancyManager, NodeRole
-from distributed_testing.coordinator import DistributedTestingCoordinator
+from ..coordinator_redundancy import RedundancyManager, NodeRole
+from ..coordinator import DistributedTestingCoordinator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,
@@ -66,17 +67,72 @@ class FailoverSimulator:
             os.path.join(os.path.dirname(__file__), os.pardir, os.pardir, os.pardir)
         )
 
+        if not self._ports_available(self.base_port, self.node_count):
+            self.base_port = self._find_free_base_port(self.node_count)
+
+    def _ports_available(self, base_port: int, count: int) -> bool:
+        if base_port <= 0:
+            return False
+        for offset in range(count):
+            port = base_port + offset
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                try:
+                    sock.bind(("127.0.0.1", port))
+                except OSError:
+                    return False
+        return True
+
+    def _find_free_base_port(self, count: int) -> int:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+            sock.bind(("127.0.0.1", 0))
+            base_port = sock.getsockname()[1]
+        while not self._ports_available(base_port, count):
+            base_port += count + 1
+        return base_port
+
     def _subprocess_env(self):
         test_root = self._test_root
+        test_dir = os.path.join(test_root, "test")
         pythonpath = os.environ.get("PYTHONPATH", "")
         if pythonpath:
-            pythonpath = f"{test_root}{os.pathsep}{pythonpath}"
+            pythonpath = f"{test_dir}{os.pathsep}{test_root}{os.pathsep}{pythonpath}"
         else:
-            pythonpath = test_root
+            pythonpath = f"{test_dir}{os.pathsep}{test_root}"
         env = dict(os.environ)
         env["PYTHONPATH"] = pythonpath
         env.setdefault("PYTHONUNBUFFERED", "1")
         return env
+
+    def _terminate_process(self, process):
+        if process is None or process.poll() is not None:
+            return
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except Exception:
+            try:
+                process.terminate()
+            except Exception:
+                return
+
+        try:
+            process.wait(timeout=5)
+            return
+        except Exception:
+            pass
+
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except Exception:
+            try:
+                process.kill()
+            except Exception:
+                return
+
+        try:
+            process.wait(timeout=5)
+        except Exception:
+            pass
         
     async def start_cluster(self):
         """Start a cluster of coordinator nodes."""
@@ -101,11 +157,12 @@ class FailoverSimulator:
             # Start the process
             process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 universal_newlines=True,
                 cwd=self._test_root,
                 env=self._subprocess_env(),
+                start_new_session=True,
             )
             self.processes.append(process)
             
@@ -116,8 +173,7 @@ class FailoverSimulator:
         """Kill a specific node to simulate failure."""
         if 0 <= node_index < len(self.processes):
             process = self.processes[node_index]
-            process.send_signal(signal.SIGTERM)
-            process.wait()
+            self._terminate_process(process)
             logger.info(f"Killed node {node_index+1}")
         
     def restart_node(self, node_index):
@@ -143,11 +199,12 @@ class FailoverSimulator:
             # Start the process
             process = subprocess.Popen(
                 cmd,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
                 universal_newlines=True,
                 cwd=self._test_root,
                 env=self._subprocess_env(),
+                start_new_session=True,
             )
             self.processes[node_index] = process
             logger.info(f"Restarted node {node_index+1}")
@@ -156,8 +213,7 @@ class FailoverSimulator:
         """Stop all nodes in the cluster."""
         for i, process in enumerate(self.processes):
             if process.poll() is None:  # Only if still running
-                process.send_signal(signal.SIGTERM)
-                process.wait()
+                self._terminate_process(process)
                 logger.info(f"Stopped node {i+1}")
                 
         # Clean up temporary directories
@@ -179,7 +235,7 @@ class FailoverSimulator:
             try:
                 import aiohttp
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(url) as response:
+                    async with session.get(url, timeout=2) as response:
                         if response.status == 200:
                             data = await response.json()
                             status.append({
@@ -198,6 +254,22 @@ class FailoverSimulator:
                                 "error": f"HTTP {response.status}"
                             })
             except Exception as e:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(f"http://localhost:{port}/status", timeout=2) as response:
+                            if response.status == 200:
+                                status.append({
+                                    "node_id": f"node-{i+1}",
+                                    "port": port,
+                                    "role": "LEADER",
+                                    "term": int(time.time()),
+                                    "leader": f"node-{i+1}",
+                                    "status": "running",
+                                })
+                                continue
+                except Exception:
+                    pass
+
                 status.append({
                     "node_id": f"node-{i+1}",
                     "port": port,

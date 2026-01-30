@@ -21,11 +21,11 @@ parent_dir = str(Path(__file__).parent.parent.parent.parent)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from duckdb_api.distributed_testing.distributed_error_handler import (
+from data.duckdb.distributed_testing.distributed_error_handler import (
     DistributedErrorHandler,
     ErrorCategory
 )
-from duckdb_api.distributed_testing.coordinator_error_integration import (
+from data.duckdb.distributed_testing.coordinator_error_integration import (
     integrate_error_handler,
     execute_recovery_action
 )

@@ -71,7 +71,7 @@ except ImportError:
     IPFS_ACCELERATE_AVAILABLE = False
 
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
     BENCHMARK_DB_AVAILABLE = True
 except ImportError:
     logger.warning("Benchmark database API not available. Results will be saved as JSON.")

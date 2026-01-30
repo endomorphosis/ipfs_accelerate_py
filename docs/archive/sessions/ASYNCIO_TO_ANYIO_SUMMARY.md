@@ -95,7 +95,7 @@ The migration is **partially complete**. Key files migrated:
 1. **High Priority:**
    - `ipfs_accelerate_py/worker/worker.py`
    - `ipfs_accelerate_py/api_backends/*.py` (3 files)
-   - MCP integration files (`mcp/*.py`, `ipfs_mcp/*.py`)
+   - MCP integration files (`mcp/*.py`, `ipfs_accelerate_py/mcp/*.py`)
 
 2. **Medium Priority:**
    - Worker skillsets (`ipfs_accelerate_py/worker/skillset/*.py`, ~100+ files)

@@ -23,7 +23,7 @@ sys.path.append(str(Path(__file__).parent))
 
 # Import database API
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
     HAS_DB_API = True
 except ImportError:
     logger.warning("DuckDB API not available. Some tests will be skipped.")
@@ -31,7 +31,7 @@ except ImportError:
 
 # Import visualization system
 try:
-    from duckdb_api.visualization.advanced_visualization import AdvancedVisualizationSystem
+    from data.duckdb.visualization.advanced_visualization import AdvancedVisualizationSystem
     HAS_ADVANCED_VISUALIZATION = True
 except ImportError as e:
     logger.warning(f"Advanced Visualization System not available: {e}")
@@ -40,7 +40,7 @@ except ImportError as e:
 
 # Import export utilities
 try:
-    from duckdb_api.visualization.advanced_visualization.export_utils import export_figure, export_data
+    from data.duckdb.visualization.advanced_visualization.export_utils import export_figure, export_data
     HAS_EXPORT_UTILS = True
 except ImportError:
     logger.warning("Export utilities not available. Some tests will be skipped.")

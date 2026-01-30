@@ -56,11 +56,11 @@ async def main():
     
     try:
         # Import dashboard class
-        from duckdb_api.distributed_testing.dashboard.enhanced_visualization_dashboard import EnhancedVisualizationDashboard
+        from data.duckdb.distributed_testing.dashboard.enhanced_visualization_dashboard import EnhancedVisualizationDashboard
         
         # Check if the regression visualization module is available
         try:
-            from duckdb_api.distributed_testing.dashboard.regression_visualization import RegressionVisualization
+            from data.duckdb.distributed_testing.dashboard.regression_visualization import RegressionVisualization
             has_regression_visualization = True
             logger.info("Enhanced regression visualization module is available")
         except ImportError:

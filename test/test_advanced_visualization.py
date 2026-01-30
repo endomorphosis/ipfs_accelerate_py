@@ -23,11 +23,11 @@ logger = logging.getLogger("test_advanced_viz")
 sys.path.append(str(Path(__file__).parent))
 
 # Import database API
-from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
 
 # Import visualization system
 try:
-    from duckdb_api.visualization.advanced_visualization import AdvancedVisualizationSystem
+    from data.duckdb.visualization.advanced_visualization import AdvancedVisualizationSystem
     HAS_ADVANCED_VISUALIZATION = True
 except ImportError as e:
     logger.error(f"Error importing AdvancedVisualizationSystem: {e}")

@@ -22,7 +22,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import mock DRM for testing
-from duckdb_api.distributed_testing.testing.mock_drm import MockDynamicResourceManager
+from data.duckdb.distributed_testing.testing.mock_drm import MockDynamicResourceManager
 
 # Check if dash is available
 try:
@@ -34,7 +34,7 @@ except ImportError:
 
 # Import the dashboard module
 try:
-    from duckdb_api.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
+    from data.duckdb.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
     DASHBOARD_AVAILABLE = True
 except ImportError:
     DASHBOARD_AVAILABLE = False

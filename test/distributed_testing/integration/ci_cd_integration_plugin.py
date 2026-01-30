@@ -33,7 +33,7 @@ import uuid
 import re
 
 # Import plugin base class
-from distributed_testing.plugin_architecture import Plugin, PluginType, HookType
+from .plugin_architecture import Plugin, PluginType, HookType
 
 # Configure logging
 logging.basicConfig(
@@ -684,7 +684,7 @@ class CICDIntegrationPlugin(Plugin):
         # Create standardized CI client based on CI system
         if ci_system == "github":
             if token:
-                from distributed_testing.ci import GitHubClient
+                from .ci import GitHubClient
                 return await StandardizedCIClient.create(
                     client_impl=GitHubClient(
                         token=token,
@@ -701,7 +701,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "jenkins":
             if token:
-                from distributed_testing.ci import JenkinsClient
+                from .ci import JenkinsClient
                 user = os.environ.get("JENKINS_USER") or self.config.get("jenkins_user", "")
                 return await StandardizedCIClient.create(
                     client_impl=JenkinsClient(
@@ -719,7 +719,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "gitlab":
             if token:
-                from distributed_testing.ci import GitLabClient
+                from .ci import GitLabClient
                 return await StandardizedCIClient.create(
                     client_impl=GitLabClient(
                         token=token,
@@ -736,7 +736,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "azure":
             if token:
-                from distributed_testing.ci import AzureClient
+                from .ci import AzureClient
                 return await StandardizedCIClient.create(
                     client_impl=AzureClient(
                         token=token,
@@ -753,7 +753,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "circle":
             if token:
-                from distributed_testing.ci import CircleCIClient
+                from .ci import CircleCIClient
                 return await StandardizedCIClient.create(
                     client_impl=CircleCIClient(
                         token=token,
@@ -770,7 +770,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "travis":
             if token:
-                from distributed_testing.ci import TravisCIClient
+                from .ci import TravisCIClient
                 return await StandardizedCIClient.create(
                     client_impl=TravisCIClient(
                         token=token,
@@ -787,7 +787,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "bitbucket":
             if token:
-                from distributed_testing.ci import BitbucketClient
+                from .ci import BitbucketClient
                 return await StandardizedCIClient.create(
                     client_impl=BitbucketClient(
                         token=token,
@@ -804,7 +804,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "teamcity":
             if token:
-                from distributed_testing.ci import TeamCityClient
+                from .ci import TeamCityClient
                 return await StandardizedCIClient.create(
                     client_impl=TeamCityClient(
                         token=token,
@@ -821,7 +821,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "local":
             # Create a local CI client with file-based storage
-            from distributed_testing.ci import LocalCIClient
+            from .ci import LocalCIClient
             return await StandardizedCIClient.create(
                 client_impl=LocalCIClient(
                     storage_dir=self.config["artifact_dir"],

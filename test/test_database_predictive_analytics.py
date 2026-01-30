@@ -34,9 +34,9 @@ os.makedirs("./visualizations", exist_ok=True)
 os.makedirs("./output", exist_ok=True)
 
 try:
-    from duckdb_api.simulation_validation.db_performance_optimizer import get_db_optimizer
-    from duckdb_api.simulation_validation.automated_optimization_manager import get_optimization_manager
-    from duckdb_api.simulation_validation.database_predictive_analytics import DatabasePredictiveAnalytics
+    from data.duckdb.simulation_validation.db_performance_optimizer import get_db_optimizer
+    from data.duckdb.simulation_validation.automated_optimization_manager import get_optimization_manager
+    from data.duckdb.simulation_validation.database_predictive_analytics import DatabasePredictiveAnalytics
 except ImportError:
     logger.error("Failed to import required modules. Make sure duckdb_api is properly installed.")
     sys.exit(1)

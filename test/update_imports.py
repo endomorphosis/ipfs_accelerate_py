@@ -12,10 +12,10 @@ from pathlib import Path
 # Mapping of old imports to new imports
 IMPORT_MAPPINGS = {
     # Direct imports to package imports
-    "from benchmark_db_api import": "from duckdb_api.core.benchmark_db_api import",
-    "import benchmark_db_api": "import duckdb_api.core.benchmark_db_api as benchmark_db_api",
-    "from benchmark_db_query import": "from duckdb_api.core.benchmark_db_query import",
-    "import benchmark_db_query": "import duckdb_api.core.benchmark_db_query as benchmark_db_query",
+    "from benchmark_db_api import": "from data.duckdb.core.benchmark_db_api import",
+    "import benchmark_db_api": "import data.duckdb.core.benchmark_db_api as benchmark_db_api",
+    "from benchmark_db_query import": "from data.duckdb.core.benchmark_db_query import",
+    "import benchmark_db_query": "import data.duckdb.core.benchmark_db_query as benchmark_db_query",
     "from merged_test_generator import": "from generators.test_generators.merged_test_generator import",
     "import merged_test_generator": "import generators.test_generators.merged_test_generator as merged_test_generator",
     "from fixed_merged_test_generator_clean import": "from generators.test_generators.fixed_merged_test_generator_clean import",

@@ -16,9 +16,9 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.simulation_validation.visualization.validation_reporter import ValidationReporterImpl
-from duckdb_api.simulation_validation.test_validator import generate_sample_data
-from duckdb_api.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
+from data.duckdb.simulation_validation.visualization.validation_reporter import ValidationReporterImpl
+from data.duckdb.simulation_validation.test_validator import generate_sample_data
+from data.duckdb.simulation_validation.comparison.comparison_pipeline import ComparisonPipeline
 
 # Create output directory
 OUTPUT_DIR = Path(parent_dir) / "duckdb_api" / "simulation_validation" / "output"

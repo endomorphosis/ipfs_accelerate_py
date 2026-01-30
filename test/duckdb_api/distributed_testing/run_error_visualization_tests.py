@@ -18,8 +18,8 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import the test modules
-from tests.test_error_visualization import TestErrorVisualization
-from tests.test_error_visualization_comprehensive import (
+from test.test_error_visualization import TestErrorVisualization
+from test.test_error_visualization_comprehensive import (
     TestSoundGeneration,
     TestSeverityDetection,
     TestJavaScriptSeverityDetection,
@@ -27,7 +27,7 @@ from tests.test_error_visualization_comprehensive import (
     TestErrorVisualizationIntegration,
     TestErrorExtraction
 )
-from tests.test_error_visualization_dashboard_integration import (
+from test.test_error_visualization_dashboard_integration import (
     TestDashboardRoutes,
     TestDashboardServer,
     TestErrorVisualizationHTML

@@ -15,19 +15,19 @@ from dataclasses import dataclass, field
 import math
 
 # Import load balancer components
-from duckdb_api.distributed_testing.load_balancer.models import (
+from data.duckdb.distributed_testing.load_balancer.models import (
     TestRequirements, WorkerCapabilities, WorkerLoad, WorkerPerformance
 )
-from duckdb_api.distributed_testing.load_balancer.scheduling_algorithms import SchedulingAlgorithm
+from data.duckdb.distributed_testing.load_balancer.scheduling_algorithms import SchedulingAlgorithm
 
 # Import hardware workload management components
-from distributed_testing.hardware_workload_management import (
+from .hardware_workload_management import (
     HardwareWorkloadManager, WorkloadProfile, WorkloadType, WorkloadProfileMetric,
     create_workload_profile
 )
 
 # Import hardware taxonomy
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareTaxonomy, HardwareCapabilityProfile, HardwareClass,
     SoftwareBackend, PrecisionType, AcceleratorFeature
 )

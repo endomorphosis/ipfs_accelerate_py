@@ -20,13 +20,13 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import circuit breaker and fault tolerance
-from duckdb_api.distributed_testing.circuit_breaker import (
+from data.duckdb.distributed_testing.circuit_breaker import (
     CircuitBreaker, CircuitState, CircuitOpenError, CircuitBreakerRegistry
 )
-from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
+from data.duckdb.distributed_testing.hardware_aware_fault_tolerance import (
     HardwareAwareFaultToleranceManager, FailureContext, RecoveryAction, RecoveryStrategy, FailureType
 )
-from duckdb_api.distributed_testing.fault_tolerance_integration import (
+from data.duckdb.distributed_testing.fault_tolerance_integration import (
     CircuitBreakerIntegration, create_fault_tolerance_integration, apply_recovery_with_circuit_breaker
 )
 

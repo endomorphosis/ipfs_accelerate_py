@@ -165,10 +165,10 @@ jobs:
         
         # Run pytest in isolated container
         docker run --rm --platform linux/amd64 $IMAGE_TAG bash -c "
-        if [ -d tests ]; then
-          python -m pytest tests/ -v --timeout=300 --tb=short || echo 'Some tests may have failed'
+        if [ -d test ]; then
+          python -m pytest test/ -v --timeout=300 --tb=short || echo 'Some tests may have failed'
         else
-          echo 'ℹ️ No tests directory found'
+          echo 'ℹ️ No test directory found'
         fi
         "
         
@@ -392,7 +392,7 @@ jobs:
         fi
         
         docker run --rm $GPU_FLAGS ipfs-accelerate-py:gpu-test bash -c "
-        python -m pytest tests/ -v --timeout=600 -k 'gpu or cuda or inference' || echo 'Some GPU tests may have failed or been skipped'
+        python -m pytest test/ -v --timeout=600 -k 'gpu or cuda or inference' || echo 'Some GPU tests may have failed or been skipped'
         "
 
   # Docker Compose testing - runs all services in containers

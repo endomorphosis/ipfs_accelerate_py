@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 sys.path.append(str(Path(__file__).parent.parent.parent.parent.parent))
 
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationLevel,
     BenchmarkType,
     ValidationStatus,
@@ -24,10 +24,10 @@ from duckdb_api.benchmark_validation.core.base import (
     ValidationResult,
     BenchmarkValidationFramework
 )
-from duckdb_api.benchmark_validation.validation_protocol import StandardBenchmarkValidator
-from duckdb_api.benchmark_validation.outlier_detection import StatisticalOutlierDetector
-from duckdb_api.benchmark_validation.reproducibility import ReproducibilityValidator
-from duckdb_api.benchmark_validation.certification import BenchmarkCertificationSystem
+from data.duckdb.benchmark_validation.validation_protocol import StandardBenchmarkValidator
+from data.duckdb.benchmark_validation.outlier_detection import StatisticalOutlierDetector
+from data.duckdb.benchmark_validation.reproducibility import ReproducibilityValidator
+from data.duckdb.benchmark_validation.certification import BenchmarkCertificationSystem
 
 class TestBenchmarkValidation(unittest.TestCase):
     """Test case for benchmark validation."""

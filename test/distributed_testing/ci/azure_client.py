@@ -21,7 +21,7 @@ except Exception:  # pragma: no cover
     aiohttp = None  # type: ignore
 
 # Import the standardized interface
-from distributed_testing.ci.api_interface import CIProviderInterface, TestRunResult
+from .api_interface import CIProviderInterface, TestRunResult
 
 # Configure logging
 logging.basicConfig(

@@ -51,11 +51,11 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import hardware taxonomy and heterogeneous scheduler
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareClass, HardwareArchitecture, HardwareVendor, 
     SoftwareBackend, PrecisionType, HardwareCapabilityProfile
 )
-from duckdb_api.distributed_testing.heterogeneous_scheduler import (
+from data.duckdb.distributed_testing.heterogeneous_scheduler import (
     HeterogeneousScheduler, WorkloadProfile, TestTask, WorkerState
 )
 

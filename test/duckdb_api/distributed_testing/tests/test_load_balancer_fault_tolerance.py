@@ -27,9 +27,9 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.distributed_testing.coordinator import CoordinatorServer
-from duckdb_api.distributed_testing.coordinator_load_balancer_integration import CoordinatorLoadBalancerIntegration
-from duckdb_api.distributed_testing.run_test import generate_security_config
+from data.duckdb.distributed_testing.coordinator import CoordinatorServer
+from data.duckdb.distributed_testing.coordinator_load_balancer_integration import CoordinatorLoadBalancerIntegration
+from data.duckdb.distributed_testing.run_test import generate_security_config
 
 
 class LoadBalancerFaultToleranceTest(unittest.TestCase):
@@ -120,7 +120,7 @@ class LoadBalancerFaultToleranceTest(unittest.TestCase):
         try:
             async def coordinator_task():
                 # Import and apply patches
-                from duckdb_api.distributed_testing.coordinator_patch import apply_patches, remove_patches
+                from data.duckdb.distributed_testing.coordinator_patch import apply_patches, remove_patches
                 apply_patches()
 
                 # Load balancer configuration with fault tolerance enabled

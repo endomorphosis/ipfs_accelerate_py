@@ -31,10 +31,10 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 
 # Import core components
-from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
+from data.duckdb.distributed_testing.hardware_aware_fault_tolerance import (
     FailureContext, RecoveryAction, RecoveryStrategy, FailureType
 )
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareClass, HardwareArchitecture, HardwareVendor, 
     SoftwareBackend, PrecisionType, HardwareCapabilityProfile
 )

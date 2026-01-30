@@ -16,14 +16,14 @@ from typing import Dict, List, Any, Set, Tuple
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import components
-from distributed_testing.enhanced_hardware_taxonomy import (
+from .enhanced_hardware_taxonomy import (
     EnhancedHardwareTaxonomy,
     CapabilityDefinition,
     HardwareHierarchy,
     HardwareRelationship
 )
 
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareArchitecture,
     HardwareVendor,

@@ -10,18 +10,18 @@ import logging
 from typing import Optional, Dict, Any, List, Set, Tuple
 
 # Import load balancer components
-from duckdb_api.distributed_testing.load_balancer.service import LoadBalancerService
-from duckdb_api.distributed_testing.load_balancer.scheduling_algorithms import (
+from data.duckdb.distributed_testing.load_balancer.service import LoadBalancerService
+from data.duckdb.distributed_testing.load_balancer.scheduling_algorithms import (
     SchedulingAlgorithm, CompositeScheduler, AdaptiveScheduler
 )
 
 # Import hardware workload management components
-from distributed_testing.hardware_workload_management import (
+from .hardware_workload_management import (
     HardwareWorkloadManager, HardwareTaxonomy
 )
 
 # Import hardware-aware scheduler
-from distributed_testing.hardware_aware_scheduler import HardwareAwareScheduler
+from .hardware_aware_scheduler import HardwareAwareScheduler
 
 # Setup logging
 logging.basicConfig(

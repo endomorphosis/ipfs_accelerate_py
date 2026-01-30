@@ -63,11 +63,11 @@ from fixed_web_platform.model_sharding import (
 
 # Import core components from the distributed testing framework
 try:
-    from distributed_testing.consensus import RaftConsensus
-    from distributed_testing.circuit_breaker import CircuitBreaker
-    from distributed_testing.transaction_log import TransactionLog
-    from distributed_testing.state_manager import StateManager
-    from distributed_testing.worker_registry import WorkerRegistry
+    from test.distributed_testing.consensus import RaftConsensus
+    from test.distributed_testing.circuit_breaker import CircuitBreaker
+    from test.distributed_testing.transaction_log import TransactionLog
+    from test.distributed_testing.state_manager import StateManager
+    from test.distributed_testing.worker_registry import WorkerRegistry
     
     DISTRIBUTED_TESTING_AVAILABLE = True
 except ImportError:

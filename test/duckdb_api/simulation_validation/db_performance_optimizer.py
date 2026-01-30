@@ -33,14 +33,14 @@ logger = logging.getLogger("db_performance_optimizer")
 
 # Import the database integration module
 try:
-    from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
 except ImportError:
     logger.error("Failed to import SimulationValidationDBIntegration. Make sure duckdb_api is properly installed.")
     sys.exit(1)
 
 # Import base classes for type checking
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult
@@ -439,7 +439,7 @@ class DBPerformanceOptimizer:
             return
         
         try:
-            from duckdb_api.simulation_validation.core.schema import SimulationValidationSchema as schema
+            from data.duckdb.simulation_validation.core.schema import SimulationValidationSchema as schema
             
             for val_result in results:
                 # Prepare simulation result record

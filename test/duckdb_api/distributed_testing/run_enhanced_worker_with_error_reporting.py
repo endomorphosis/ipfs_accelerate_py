@@ -28,14 +28,14 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import enhanced worker reconnection and error reporting modules
-from duckdb_api.distributed_testing.worker_reconnection_enhancements import (
+from data.duckdb.distributed_testing.worker_reconnection_enhancements import (
     EnhancedWorkerReconnectionManager, EnhancedWorkerReconnectionPlugin,
     create_enhanced_worker_reconnection_plugin, MessagePriority
 )
-from duckdb_api.distributed_testing.worker_error_reporting import (
+from data.duckdb.distributed_testing.worker_error_reporting import (
     EnhancedErrorReporter, integrate_error_reporting
 )
-from duckdb_api.distributed_testing.distributed_error_handler import ErrorCategory
+from data.duckdb.distributed_testing.distributed_error_handler import ErrorCategory
 
 # Configure logging
 logging.basicConfig(

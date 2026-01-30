@@ -19,10 +19,10 @@ from typing import List, Dict, Any
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..')))
 
 # Import the components to test
-from duckdb_api.benchmark_validation.visualization.dashboard import ValidationDashboard
+from data.duckdb.benchmark_validation.visualization.dashboard import ValidationDashboard
 
 # Import base classes
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationResult,
     BenchmarkResult,
     ValidationLevel,

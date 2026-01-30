@@ -63,7 +63,7 @@
 			"request": "launch",
 			"module": "pytest",
 			"args": [
-				"mcp/tests/",
+				"ipfs_accelerate_py/mcp/tests/",
 				"-v",
 				"-s"
 			],

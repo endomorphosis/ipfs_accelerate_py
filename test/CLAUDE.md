@@ -390,7 +390,7 @@ cd /path/to/ipfs_accelerate_py/test/refactored_benchmark_suite
 python generate_skillset_benchmarks.py --skillset-dir ../ipfs_accelerate_py/worker/skillset/
 ```
 
-This will generate benchmark files for all 300+ skillset implementations in the `benchmarks/skillset/` directory.
+This will generate benchmark files for all 300+ skillset implementations in the `data/benchmarks/skillset/` directory.
 
 To generate a benchmark for a specific model:
 

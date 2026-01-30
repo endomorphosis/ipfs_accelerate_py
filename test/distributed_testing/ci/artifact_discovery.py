@@ -15,9 +15,9 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Set, Tuple
 
-from distributed_testing.ci.artifact_metadata import ArtifactMetadata, ArtifactDiscovery
-from distributed_testing.ci.artifact_handler import ArtifactHandler, get_artifact_handler
-from distributed_testing.ci.api_interface import CIProviderInterface, CIProviderFactory
+from .artifact_metadata import ArtifactMetadata, ArtifactDiscovery
+from .artifact_handler import ArtifactHandler, get_artifact_handler
+from .api_interface import CIProviderInterface, CIProviderFactory
 
 # Configure logging
 logging.basicConfig(

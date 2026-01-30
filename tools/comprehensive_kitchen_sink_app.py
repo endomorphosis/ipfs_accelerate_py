@@ -149,7 +149,7 @@ class ComprehensiveKitchenSinkApp:
         @self.app.route('/static/<path:filename>')
         def static_files(filename):
             """Serve static files."""
-            return send_from_directory('static', filename)
+            return send_from_directory(os.path.join(os.path.dirname(__file__), '..', 'ipfs_accelerate_py', 'static'), filename)
         
         # Model Management API Routes
         @self.app.route('/api/models')

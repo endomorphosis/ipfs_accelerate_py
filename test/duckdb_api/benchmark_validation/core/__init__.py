@@ -5,7 +5,7 @@ This package provides the core components and interfaces for the Benchmark Valid
 including data structures, validation protocols, and base classes.
 """
 
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationLevel,
     BenchmarkType,
     ValidationStatus,
@@ -21,4 +21,4 @@ from duckdb_api.benchmark_validation.core.base import (
     BenchmarkValidationFramework
 )
 
-from duckdb_api.benchmark_validation.core.schema import BenchmarkValidationSchema
+from data.duckdb.benchmark_validation.core.schema import BenchmarkValidationSchema

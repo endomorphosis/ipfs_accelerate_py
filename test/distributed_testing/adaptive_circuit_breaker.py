@@ -32,7 +32,7 @@ from pathlib import Path
 
 # Import the base CircuitBreaker
 try:
-    from distributed_testing.circuit_breaker import CircuitBreaker, CircuitState
+    from .circuit_breaker import CircuitBreaker, CircuitState
     CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
     try:

@@ -27,17 +27,17 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult
 )
-from duckdb_api.simulation_validation.simulation_validation_framework import (
+from data.duckdb.simulation_validation.simulation_validation_framework import (
     SimulationValidationFramework,
     get_framework_instance
 )
-from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
-from duckdb_api.simulation_validation.test_validator import generate_sample_data
+from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
+from data.duckdb.simulation_validation.test_validator import generate_sample_data
 
 
 class TestSimulationValidationDBIntegration(unittest.TestCase):

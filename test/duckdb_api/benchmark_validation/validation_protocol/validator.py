@@ -10,7 +10,7 @@ import logging
 import numpy as np
 from typing import Dict, List, Any, Optional, Union, Tuple, Set
 
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     BenchmarkResult,
     ValidationResult,
     ValidationStatus,

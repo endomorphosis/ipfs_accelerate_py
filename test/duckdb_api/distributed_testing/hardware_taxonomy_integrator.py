@@ -10,17 +10,17 @@ import logging
 from typing import Dict, Set, Any, List, Optional, Tuple
 from dataclasses import dataclass, field
 
-from duckdb_api.distributed_testing.enhanced_hardware_taxonomy import (
+from data.duckdb.distributed_testing.enhanced_hardware_taxonomy import (
     EnhancedHardwareTaxonomy,
     HardwareCapabilityProfile,
     CapabilityDefinition
 )
-from duckdb_api.distributed_testing.heterogeneous_scheduler import (
+from data.duckdb.distributed_testing.heterogeneous_scheduler import (
     WorkerState,
     TestTask,
     WorkloadProfile
 )
-from duckdb_api.distributed_testing.hardware_taxonomy import (
+from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareVendor,
     HardwareArchitecture

@@ -20,11 +20,11 @@ import sys
 # Add the parent directory to the path
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
 
-from distributed_testing.ci.api_interface import CIProviderInterface, CIProviderFactory
-from distributed_testing.ci.artifact_metadata import ArtifactMetadata, ArtifactDiscovery
-from distributed_testing.ci.artifact_retriever import ArtifactRetriever
-from distributed_testing.ci.artifact_handler import ArtifactHandler, get_artifact_handler
-from distributed_testing.ci.github_client import GitHubClient
+from .ci.api_interface import CIProviderInterface, CIProviderFactory
+from .ci.artifact_metadata import ArtifactMetadata, ArtifactDiscovery
+from .ci.artifact_retriever import ArtifactRetriever
+from .ci.artifact_handler import ArtifactHandler, get_artifact_handler
+from .ci.github_client import GitHubClient
 
 # Configure logging
 logging.basicConfig(
@@ -742,9 +742,9 @@ async def test_provider_artifact_url_retrieval():
     logger.info("Testing CI provider artifact URL retrieval...")
     
     # Import the CI provider clients
-    from distributed_testing.ci.jenkins_client import JenkinsClient
-    from distributed_testing.ci.circleci_client import CircleCIClient
-    from distributed_testing.ci.azure_client import AzureDevOpsClient
+    from .ci.jenkins_client import JenkinsClient
+    from .ci.circleci_client import CircleCIClient
+    from .ci.azure_client import AzureDevOpsClient
     
     # Create a temporary directory for test files
     temp_dir = tempfile.mkdtemp()

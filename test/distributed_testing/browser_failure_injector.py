@@ -56,7 +56,7 @@ if os.environ.get("BROWSER_FAILURE_INJECTOR_LOG_LEVEL", "").upper() == "DEBUG":
 
 # Import recovery strategies if available
 try:
-    from distributed_testing.browser_recovery_strategies import (
+    from .browser_recovery_strategies import (
         BrowserType, ModelType, FailureType, RecoveryLevel
     )
 except ImportError:
@@ -79,7 +79,7 @@ except ImportError:
 
 # Import circuit breaker if available
 try:
-    from distributed_testing.circuit_breaker import CircuitBreaker
+    from .circuit_breaker import CircuitBreaker
     CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
     try:

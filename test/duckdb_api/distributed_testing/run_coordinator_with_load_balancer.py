@@ -46,7 +46,7 @@ def main():
     # Apply the patches to integrate the load balancer
     try:
         # Import coordinator patch (applies patches automatically)
-        from duckdb_api.distributed_testing.coordinator_patch import apply_patches, remove_patches
+        from data.duckdb.distributed_testing.coordinator_patch import apply_patches, remove_patches
         logger.info("Applied coordinator load balancer integration patches")
     except ImportError:
         logger.error("Failed to import coordinator_patch module. Make sure it exists in the distributed_testing directory.")
@@ -54,7 +54,7 @@ def main():
     
     # Import coordinator 
     try:
-        from duckdb_api.distributed_testing.coordinator import CoordinatorServer
+        from data.duckdb.distributed_testing.coordinator import CoordinatorServer
     except ImportError:
         logger.error("Failed to import CoordinatorServer. Make sure it exists in the distributed_testing directory.")
         sys.exit(1)

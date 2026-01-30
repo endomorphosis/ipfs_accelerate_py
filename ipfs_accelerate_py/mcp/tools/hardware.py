@@ -130,6 +130,10 @@ def get_hardware_info(include_detailed: bool = False) -> Dict[str, Any]:
                 
                 # Return hardware info if available
                 if isinstance(hardware_info, dict):
+                    if "cpu" not in hardware_info:
+                        accelerators = hardware_info.get("accelerators")
+                        if isinstance(accelerators, dict) and "cpu" in accelerators:
+                            hardware_info["cpu"] = accelerators["cpu"]
                     logger.debug("Hardware information retrieved from IPFS Accelerate")
                     return hardware_info
         except ImportError:
@@ -140,6 +144,10 @@ def get_hardware_info(include_detailed: bool = False) -> Dict[str, Any]:
         
         logger.debug("Hardware information retrieved")
         
+        if isinstance(hardware_info, dict) and "cpu" not in hardware_info:
+            accelerators = hardware_info.get("accelerators")
+            if isinstance(accelerators, dict) and "cpu" in accelerators:
+                hardware_info["cpu"] = accelerators["cpu"]
         return hardware_info
     
     except Exception as e:

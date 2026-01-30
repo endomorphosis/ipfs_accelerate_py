@@ -26,7 +26,7 @@ try:
         VectorDocumentationIndex, BanditModelRecommender,
         RecommendationContext, create_model_from_huggingface
     )
-    from ipfs_mcp.ai_model_server import create_ai_model_server
+    from ipfs_accelerate_py.mcp.ai_model_server import create_ai_model_server
     from huggingface_search_engine import HuggingFaceModelSearchEngine
     HAVE_MODEL_MANAGER = True
 except ImportError as e:
@@ -84,7 +84,7 @@ class KitchenSinkApp:
         @self.app.route('/static/<path:filename>')
         def static_files(filename):
             """Serve static files."""
-            return send_from_directory('static', filename)
+            return send_from_directory(os.path.join(os.path.dirname(__file__), '..', 'ipfs_accelerate_py', 'static'), filename)
         
         # API Routes
         @self.app.route('/api/models')

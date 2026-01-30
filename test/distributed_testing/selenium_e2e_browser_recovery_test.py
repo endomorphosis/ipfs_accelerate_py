@@ -39,7 +39,7 @@ if os.environ.get("SELENIUM_BRIDGE_LOG_LEVEL", "").upper() == "DEBUG":
 
 # Import core components
 try:
-    from distributed_testing.selenium_browser_bridge import (
+    from .selenium_browser_bridge import (
         BrowserConfiguration, SeleniumBrowserBridge, SELENIUM_AVAILABLE
     )
 except ImportError:
@@ -47,7 +47,7 @@ except ImportError:
     SELENIUM_AVAILABLE = False
 
 try:
-    from distributed_testing.browser_recovery_strategies import (
+    from .browser_recovery_strategies import (
         BrowserType, ModelType, FailureType, RecoveryLevel,
         detect_browser_type, detect_model_type, categorize_browser_failure, recover_browser,
         ProgressiveRecoveryManager
@@ -59,7 +59,7 @@ except ImportError:
 
 # Circuit breaker import
 try:
-    from distributed_testing.circuit_breaker import (
+    from .circuit_breaker import (
         CircuitBreaker, CircuitState, CircuitOpenError
     )
     CIRCUIT_BREAKER_AVAILABLE = True

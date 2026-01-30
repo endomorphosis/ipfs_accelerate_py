@@ -309,7 +309,7 @@ class QuantizationComparison:
         return
         
         try:
-            from duckdb_api.core.benchmark_db_api import BenchmarkDB
+            from data.duckdb.core.benchmark_db_api import BenchmarkDB
             db = BenchmarkDB())))))db_path="./benchmark_db.duckdb")
             
             model_name = os.path.splitext())))))os.path.basename())))))self.model_path))[]]],,,0]

@@ -15,7 +15,7 @@ Core responsibilities:
 
 Usage:
     # Import and initialize
-    from duckdb_api.distributed_testing.cloud_provider_integration import CloudProviderManager
+    from data.duckdb.distributed_testing.cloud_provider_integration import CloudProviderManager
     
     # Create cloud manager for AWS
     cloud_mgr = CloudProviderManager(provider="aws", region="us-west-2")

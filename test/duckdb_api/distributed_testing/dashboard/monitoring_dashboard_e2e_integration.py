@@ -5,7 +5,7 @@ This module provides integration between the Monitoring Dashboard and the End-to
 Testing Framework, displaying test results in the dashboard.
 
 Usage:
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_e2e_integration import E2ETestResultsIntegration
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_e2e_integration import E2ETestResultsIntegration
     
     # Create integration
     e2e_integration = E2ETestResultsIntegration()

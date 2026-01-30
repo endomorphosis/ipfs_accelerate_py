@@ -32,7 +32,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import load balancer components
-from duckdb_api.distributed_testing.load_balancer import (
+from data.duckdb.distributed_testing.load_balancer import (
     LoadBalancerService,
     WorkerCapabilities,
     WorkerLoad,

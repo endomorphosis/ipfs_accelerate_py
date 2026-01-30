@@ -31,7 +31,7 @@ if parent_dir not in sys.path:
 
 # Import TestGeneratorIntegration class
 try:
-    from duckdb_api.distributed_testing.test_generator_integration import TestGeneratorIntegration
+    from data.duckdb.distributed_testing.test_generator_integration import TestGeneratorIntegration
 except ImportError:
     logger.error("Cannot import TestGeneratorIntegration. Make sure the module is in your Python path.")
     sys.exit(1)

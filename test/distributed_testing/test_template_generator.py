@@ -129,7 +129,7 @@ def generate_integration_test(
     # Prepare context
     context = {
         "components": ",".join(full_component_names),
-        "component_imports": "\n".join([f"from distributed_testing.{comp.lower()} import {COMPONENT_MAP.get(comp, comp)}" 
+        "component_imports": "\n".join([f"from .{comp.lower()} import {COMPONENT_MAP.get(comp, comp)}" 
                                        for comp in components]),
         "test_name": f"Test{''.join([COMPONENT_MAP.get(comp, comp) for comp in components])}Integration",
         "test_description": f"Integration tests for {', '.join(full_component_names)} components"

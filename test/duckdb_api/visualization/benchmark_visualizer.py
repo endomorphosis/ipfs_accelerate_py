@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 
 # Add parent directory to path for module imports
 sys.path.append(str(Path(__file__).parent.parent.parent))
-from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
 
 class BenchmarkVisualizer:
     """

@@ -15,7 +15,7 @@ from typing import Dict, List, Any, Optional, Union
 import aiohttp
 
 # Import the standardized interface
-from distributed_testing.external_systems.api_interface import (
+from .external_systems.api_interface import (
     ExternalSystemInterface,
     ConnectorCapabilities,
     ExternalSystemResult,

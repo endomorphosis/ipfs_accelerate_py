@@ -20,8 +20,8 @@ import aiohttp
 import jinja2
 from aiohttp import web
 
-from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_routes import setup_routes
-from duckdb_api.distributed_testing.dashboard.websocket_handlers import WebSocketManager, setup_websocket_routes
+from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_routes import setup_routes
+from data.duckdb.distributed_testing.dashboard.websocket_handlers import WebSocketManager, setup_websocket_routes
 
 logger = logging.getLogger(__name__)
 
@@ -113,7 +113,7 @@ class MonitoringDashboard:
         if self.enable_visualization_integration and self.visualization_integration is None:
             try:
                 # Import the visualization integration
-                from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
+                from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
                     VisualizationDashboardIntegration
                 )
                 
@@ -147,7 +147,7 @@ class MonitoringDashboard:
         if self.enable_error_visualization and self.error_visualization_integration is None:
             try:
                 # Import the error visualization integration
-                from duckdb_api.distributed_testing.dashboard.error_visualization_integration import (
+                from data.duckdb.distributed_testing.dashboard.error_visualization_integration import (
                     ErrorVisualizationIntegration
                 )
                 

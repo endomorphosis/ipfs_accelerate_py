@@ -21,7 +21,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import circuit breaker
-from duckdb_api.distributed_testing.circuit_breaker import (
+from data.duckdb.distributed_testing.circuit_breaker import (
     CircuitBreaker, CircuitState, CircuitOpenError, CircuitBreakerRegistry,
     circuit_breaker, create_worker_circuit_breaker, create_endpoint_circuit_breaker,
     worker_circuit_breaker, endpoint_circuit_breaker

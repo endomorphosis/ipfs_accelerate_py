@@ -33,7 +33,7 @@ logger = logging.getLogger("automated_optimization_manager")
 
 # Import the performance optimizer
 try:
-    from duckdb_api.simulation_validation.db_performance_optimizer import DBPerformanceOptimizer
+    from data.duckdb.simulation_validation.db_performance_optimizer import DBPerformanceOptimizer
 except ImportError:
     logger.error("Failed to import DBPerformanceOptimizer. Make sure duckdb_api is properly installed.")
     sys.exit(1)
@@ -967,7 +967,7 @@ if __name__ == "__main__":
     
     try:
         # Create DBPerformanceOptimizer instance
-        from duckdb_api.simulation_validation.db_performance_optimizer import get_db_optimizer
+        from data.duckdb.simulation_validation.db_performance_optimizer import get_db_optimizer
         db_optimizer = get_db_optimizer(db_path=args.db_path)
         
         # Create AutomatedOptimizationManager instance

@@ -252,10 +252,10 @@ async def run_integrated_example():
     
     try:
         # Import required components
-        from duckdb_api.distributed_testing.coordinator import CoordinatorServer
-        from duckdb_api.distributed_testing.multi_device_orchestrator import MultiDeviceOrchestrator
-        from duckdb_api.distributed_testing.fault_tolerance_system import FaultToleranceSystem
-        from duckdb_api.distributed_testing.comprehensive_monitoring_dashboard import ComprehensiveMonitoringDashboard
+        from data.duckdb.distributed_testing.coordinator import CoordinatorServer
+        from data.duckdb.distributed_testing.multi_device_orchestrator import MultiDeviceOrchestrator
+        from data.duckdb.distributed_testing.fault_tolerance_system import FaultToleranceSystem
+        from data.duckdb.distributed_testing.comprehensive_monitoring_dashboard import ComprehensiveMonitoringDashboard
         
         # Set up paths and configuration
         db_dir = os.path.join(current_dir, "data")

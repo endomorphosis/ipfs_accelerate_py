@@ -71,7 +71,7 @@ except ImportError:
 
 # Import dashboard integration
 try:
-    from duckdb_api.visualization.advanced_visualization.monitor_dashboard_integration import (
+    from data.duckdb.visualization.advanced_visualization.monitor_dashboard_integration import (
         MonitorDashboardIntegrationMixin
     )
     HAS_DASHBOARD_INTEGRATION = True

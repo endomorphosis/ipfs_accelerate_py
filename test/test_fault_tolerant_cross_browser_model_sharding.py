@@ -61,7 +61,7 @@ except ImportError as e:
 
 # Import distributed testing framework if available
 try:
-    from distributed_testing.test_coordinator import TestCoordinator
+    from test.distributed_testing.test_coordinator import TestCoordinator
     DISTRIBUTED_TESTING_AVAILABLE = True
 except ImportError as e:
     logger.error(f"TestCoordinator not available: {e}")

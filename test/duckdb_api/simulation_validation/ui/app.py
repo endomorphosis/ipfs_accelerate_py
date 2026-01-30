@@ -46,9 +46,9 @@ except ImportError:
 
 # Import the Simulation Validation Framework
 try:
-    from duckdb_api.simulation_validation.simulation_validation_framework import SimulationValidationFramework
-    from duckdb_api.simulation_validation.core.base import SimulationResult, HardwareResult
-    from duckdb_api.simulation_validation.db_integration import SimulationDBIntegration
+    from data.duckdb.simulation_validation.simulation_validation_framework import SimulationValidationFramework
+    from data.duckdb.simulation_validation.core.base import SimulationResult, HardwareResult
+    from data.duckdb.simulation_validation.db_integration import SimulationDBIntegration
     
     FRAMEWORK_AVAILABLE = True
 except ImportError:

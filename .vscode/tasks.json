@@ -100,8 +100,8 @@
 				"-m",
 				"pytest",
 				"-v",
-				"mcp/tests/",
-				"ipfs_mcp/tests/"
+				"ipfs_accelerate_py/mcp/tests/",
+				"ipfs_accelerate_py/mcp/tests/"
 			],
 			"group": "test",
 			"problemMatcher": [],
@@ -230,7 +230,7 @@
 			},
 			"args": [
 				"ipfs_accelerate_py/",
-				"tests/",
+				"test/",
 				"--line-length=120"
 			],
 			"group": "build",

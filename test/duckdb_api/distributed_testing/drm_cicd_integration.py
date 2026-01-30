@@ -29,11 +29,11 @@ from typing import Dict, List, Optional, Set, Tuple, Union
 
 # Local imports
 try:
-    from duckdb_api.distributed_testing.cicd_integration import CICDIntegration
+    from data.duckdb.distributed_testing.cicd_integration import CICDIntegration
 except ImportError:
     # Handle case when running directly
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
-    from duckdb_api.distributed_testing.cicd_integration import CICDIntegration
+    from data.duckdb.distributed_testing.cicd_integration import CICDIntegration
 
 
 class DRMCICDIntegration(CICDIntegration):

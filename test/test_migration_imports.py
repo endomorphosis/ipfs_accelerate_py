@@ -48,7 +48,7 @@ def test_duckdb_api_imports(skip_duckdb=True):
     
     try:
         # First try to check if the base module exists
-        import duckdb_api
+        import data.duckdb
         logger.info("Base duckdb_api module exists"):
     except ImportError:
         logger.error("Base duckdb_api module does not exist!")

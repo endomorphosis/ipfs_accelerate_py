@@ -16,34 +16,23 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 
-# Add parent directory to path for imports
-parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
+# Add /test to sys.path so that `distributed_testing` resolves to `test/distributed_testing`.
+parent_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..'))
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 pytest.importorskip("psutil")
 
-try:
-    # Import hardware capability detector
-    from distributed_testing.hardware_capability_detector import (
-        HardwareCapabilityDetector,
-        HardwareType,
-        HardwareVendor,
-        PrecisionType,
-        CapabilityScore,
-        HardwareCapability,
-        WorkerHardwareCapabilities
-    )
-except ImportError:
-    from test.distributed_testing.hardware_capability_detector import (
-        HardwareCapabilityDetector,
-        HardwareType,
-        HardwareVendor,
-        PrecisionType,
-        CapabilityScore,
-        HardwareCapability,
-        WorkerHardwareCapabilities
-    )
+# Import hardware capability detector
+from ..hardware_capability_detector import (
+    HardwareCapabilityDetector,
+    HardwareType,
+    HardwareVendor,
+    PrecisionType,
+    CapabilityScore,
+    HardwareCapability,
+    WorkerHardwareCapabilities
+)
 
 
 class TestHardwareCapabilityDetector(unittest.TestCase):

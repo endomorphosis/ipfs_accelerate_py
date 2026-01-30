@@ -282,7 +282,7 @@ ipfs_accelerate_py/
 │   ├── container_backends/
 │   ├── utils/
 │   └── worker/
-├── benchmarks/               # Performance benchmarking
+├── data/benchmarks/               # Performance benchmarking
 │   ├── README.md
 │   ├── benchmark_core/
 │   ├── examples/

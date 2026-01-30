@@ -46,7 +46,7 @@ if parent_dir not in sys.path:
 try:
     # Try both import paths for flexibility
     try:
-        from distributed_testing.enhanced_hardware_capability import (
+        from .enhanced_hardware_capability import (
             HardwareCapabilityDetector as BaseHardwareCapabilityDetector,
             HardwareType, HardwareVendor, PrecisionType, CapabilityScore,
             HardwareCapability, WorkerHardwareCapabilities

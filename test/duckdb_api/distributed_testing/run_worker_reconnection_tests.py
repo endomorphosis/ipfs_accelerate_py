@@ -74,7 +74,7 @@ def run_tests(test_type: str = "all", test_name: Optional[str] = None,
     """
     # Import test module
     try:
-        from tests.test_worker_reconnection import (
+        from test.test_worker_reconnection import (
             TestConnectionStats, 
             TestWorkerReconnectionManager,
             TestWorkerReconnectionIntegration,

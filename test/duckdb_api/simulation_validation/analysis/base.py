@@ -16,7 +16,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("analysis.base")
 
 # Import base validation classes
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult

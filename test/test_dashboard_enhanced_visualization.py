@@ -21,14 +21,14 @@ sys.path.append(str(Path(__file__).parent))
 
 # Import dependencies
 try:
-    from duckdb_api.visualization.dashboard_enhanced_visualization import DashboardEnhancedVisualizationSystem
+    from data.duckdb.visualization.dashboard_enhanced_visualization import DashboardEnhancedVisualizationSystem
     HAS_DASHBOARD_VISUALIZATION = True
 except ImportError as e:
     logger.error(f"Error importing DashboardEnhancedVisualizationSystem: {e}")
     HAS_DASHBOARD_VISUALIZATION = False
 
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
     HAS_DB_API = True
 except ImportError as e:
     logger.error(f"Error importing BenchmarkDBAPI: {e}")
@@ -225,7 +225,7 @@ def test_regression_detection_integration(db_path, output_dir, dashboard_url=Non
     
     # Attempt to import RegressionDetector
     try:
-        from duckdb_api.distributed_testing.dashboard.regression_detection import RegressionDetector
+        from data.duckdb.distributed_testing.dashboard.regression_detection import RegressionDetector
         HAS_REGRESSION_DETECTION = True
     except ImportError as e:
         logger.error(f"Error importing RegressionDetector: {e}")

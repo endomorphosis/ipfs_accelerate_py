@@ -31,10 +31,10 @@ sys.path.append(parent_dir)
 
 # Try to import the CustomizableDashboard
 try:
-    from duckdb_api.visualization.advanced_visualization import CustomizableDashboard
-    from duckdb_api.visualization.advanced_visualization.viz_animated_time_series import AnimatedTimeSeriesVisualization
-    from duckdb_api.visualization.advanced_visualization.viz_3d import Visualization3D
-    from duckdb_api.visualization.advanced_visualization.viz_heatmap import HardwareHeatmapVisualization
+    from data.duckdb.visualization.advanced_visualization import CustomizableDashboard
+    from data.duckdb.visualization.advanced_visualization.viz_animated_time_series import AnimatedTimeSeriesVisualization
+    from data.duckdb.visualization.advanced_visualization.viz_3d import Visualization3D
+    from data.duckdb.visualization.advanced_visualization.viz_heatmap import HardwareHeatmapVisualization
     DASHBOARD_AVAILABLE = True
 except ImportError as e:
     logger.error(f"Error importing CustomizableDashboard: {e}")

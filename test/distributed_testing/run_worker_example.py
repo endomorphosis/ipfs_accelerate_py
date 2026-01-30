@@ -40,7 +40,7 @@ from typing import Dict, List, Optional, Any, Set
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # Import the worker implementation
-from distributed_testing.worker import DistributedTestingWorker
+from .worker import DistributedTestingWorker
 
 # Configure logging
 logging.basicConfig(

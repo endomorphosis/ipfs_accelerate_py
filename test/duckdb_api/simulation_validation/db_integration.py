@@ -22,19 +22,19 @@ logger = logging.getLogger("simulation_validation_db_integration")
 
 # Import the database API
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
 except ImportError:
     logger.error("Failed to import BenchmarkDBAPI. Make sure duckdb_api is properly installed.")
     sys.exit(1)
 
 # Import the core schema module
-from duckdb_api.simulation_validation.core.schema import (
+from data.duckdb.simulation_validation.core.schema import (
     SIMULATION_VALIDATION_SCHEMA,
     SimulationValidationSchema
 )
 
 # Import base classes
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult

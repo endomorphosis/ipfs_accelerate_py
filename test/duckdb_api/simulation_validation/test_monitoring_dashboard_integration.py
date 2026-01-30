@@ -21,14 +21,14 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("test_monitoring_dashboard_integration")
 
 # Import the component to test
-from duckdb_api.simulation_validation.visualization.monitoring_dashboard_connector import (
+from data.duckdb.simulation_validation.visualization.monitoring_dashboard_connector import (
     MonitoringDashboardConnector,
     get_monitoring_dashboard_connector
 )
 
 # Import related components
-from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
-from duckdb_api.simulation_validation.db_performance_optimizer import DatabasePerformanceOptimizer
+from data.duckdb.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+from data.duckdb.simulation_validation.db_performance_optimizer import DatabasePerformanceOptimizer
 
 class MockResponse:
     """Mock HTTP response for testing API calls."""

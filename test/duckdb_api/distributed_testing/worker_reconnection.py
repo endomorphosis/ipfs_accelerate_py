@@ -49,7 +49,7 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import from hardware-aware fault tolerance
-from duckdb_api.distributed_testing.hardware_aware_fault_tolerance import (
+from data.duckdb.distributed_testing.hardware_aware_fault_tolerance import (
     RecoveryAction, RecoveryStrategy, FailureType
 )
 

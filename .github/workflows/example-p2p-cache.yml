@@ -64,7 +64,7 @@ jobs:
           -e CACHE_BOOTSTRAP_PEERS="${CACHE_BOOTSTRAP_PEERS}" \
           -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
           myapp:test \
-          python -m pytest tests/ -v
+          python -m pytest test/ -v
     
     - name: Check Cache Statistics
       run: |
@@ -140,7 +140,7 @@ jobs:
           -e CACHE_BOOTSTRAP_PEERS="${{ steps.bootstrap.outputs.BOOTSTRAP_PEERS }}" \
           -e GITHUB_TOKEN="${{ secrets.GITHUB_TOKEN }}" \
           myapp:test \
-          python -m pytest tests/ -v
+          python -m pytest test/ -v
 
   # Option 3: Without P2P (Fallback)
   test-without-p2p:
@@ -172,7 +172,7 @@ jobs:
         docker run --rm \
           -e CACHE_ENABLE_P2P=false \
           myapp:test \
-          python -m pytest tests/ -v
+          python -m pytest test/ -v
 
   # Option 4: Docker Compose (Multiple Services)
   test-with-docker-compose:

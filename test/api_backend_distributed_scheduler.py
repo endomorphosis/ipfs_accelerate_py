@@ -32,9 +32,9 @@ from datetime import datetime, timedelta
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import distributed testing framework components
-from distributed_testing.advanced_scheduling import AdvancedScheduler, Task, Worker
-from distributed_testing.load_balancer import LoadBalancer
-from distributed_testing.circuit_breaker import CircuitBreaker
+from test.distributed_testing.advanced_scheduling import AdvancedScheduler, Task, Worker
+from test.distributed_testing.load_balancer import LoadBalancer
+from test.distributed_testing.circuit_breaker import CircuitBreaker
 
 # Configure logging
 logging.basicConfig(

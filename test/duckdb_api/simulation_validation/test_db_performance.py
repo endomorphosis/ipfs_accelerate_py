@@ -26,7 +26,7 @@ logger = logging.getLogger("test_db_performance")
 
 # Import the database optimization module
 try:
-    from duckdb_api.simulation_validation.db_performance_optimizer import (
+    from data.duckdb.simulation_validation.db_performance_optimizer import (
         DBPerformanceOptimizer,
         get_db_optimizer
     )
@@ -36,13 +36,13 @@ except ImportError:
 
 # Import the database integration module
 try:
-    from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
+    from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
 except ImportError:
     logger.error("Failed to import SimulationValidationDBIntegration. Make sure duckdb_api is properly installed.")
     sys.exit(1)
 
 # Import base classes for creating test data
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult

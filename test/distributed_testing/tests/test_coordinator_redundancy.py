@@ -29,8 +29,8 @@ if not integration_enabled():
 
 pytest.importorskip("aiohttp")
 
-from coordinator_redundancy import RedundancyManager, NodeRole
-from distributed_testing.coordinator import DistributedTestingCoordinator
+from ..coordinator_redundancy import RedundancyManager, NodeRole
+from ..coordinator import DistributedTestingCoordinator
 
 # Configure logging
 logging.basicConfig(level=logging.INFO,

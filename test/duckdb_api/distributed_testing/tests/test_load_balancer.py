@@ -22,9 +22,9 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.distributed_testing.coordinator import DatabaseManager
-from duckdb_api.distributed_testing.load_balancer import LoadBalancer
-from duckdb_api.distributed_testing.coordinator import WORKER_STATUS_ACTIVE, WORKER_STATUS_BUSY
+from data.duckdb.distributed_testing.coordinator import DatabaseManager
+from data.duckdb.distributed_testing.load_balancer import LoadBalancer
+from data.duckdb.distributed_testing.coordinator import WORKER_STATUS_ACTIVE, WORKER_STATUS_BUSY
 
 
 class LoadBalancerTest(unittest.TestCase):

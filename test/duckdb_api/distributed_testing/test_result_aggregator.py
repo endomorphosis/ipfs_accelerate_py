@@ -21,7 +21,7 @@ parent_dir = str(Path(__file__).parent.parent.parent)
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
-from duckdb_api.distributed_testing.result_aggregator import (
+from data.duckdb.distributed_testing.result_aggregator import (
     ResultAggregatorService,
     RESULT_TYPE_PERFORMANCE,
     RESULT_TYPE_COMPATIBILITY,

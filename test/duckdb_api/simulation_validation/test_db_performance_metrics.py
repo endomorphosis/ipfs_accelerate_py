@@ -56,7 +56,7 @@ class MockDBIntegration:
 SimulationValidationDBIntegration = MockDBIntegration
 
 # Import just the db_performance_optimizer module to test our implementation
-from duckdb_api.simulation_validation.db_performance_optimizer import (
+from data.duckdb.simulation_validation.db_performance_optimizer import (
     DBPerformanceOptimizer,
     get_db_optimizer
 )

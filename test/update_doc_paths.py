@@ -39,8 +39,8 @@ Usage:
     (r'python\s+test/(run_web_platform_tests_with_db\.py)', r'python duckdb_api/web/\1'),
     
     # Import statements
-    (r'from\s+time_series_performance\s+import', r'from duckdb_api.core.time_series_performance import'),
-    (r'from\s+benchmark_db_[],^\s]+\s+import', lambda match: f'from duckdb_api.core.{match.group(0).split(" ")[],1]} import'),
+    (r'from\s+time_series_performance\s+import', r'from data.duckdb.core.time_series_performance import'),
+    (r'from\s+benchmark_db_[],^\s]+\s+import', lambda match: f'from data.duckdb.core.{match.group(0).split(" ")[],1]} import'),
     
     # Schema files
     (r'test/db_schema/([],^\.]+\.sql)', r'duckdb_api/schema/\1'),

@@ -216,7 +216,7 @@ pytest test/test_inference.py
 pytest --cov=ipfs_accelerate_py
 
 # Run benchmarks
-python benchmarks/run_benchmarks.py
+python data/benchmarks/run_benchmarks.py
 ```
 
 For comprehensive testing guide, see [docs/TESTING.md](docs/TESTING.md).

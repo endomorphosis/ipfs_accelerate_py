@@ -43,7 +43,7 @@ except ImportError:
 
 # Import result aggregator constants
 try:
-    from duckdb_api.distributed_testing.result_aggregator.service import (
+    from data.duckdb.distributed_testing.result_aggregator.service import (
         RESULT_TYPE_PERFORMANCE, RESULT_TYPE_COMPATIBILITY,
         RESULT_TYPE_INTEGRATION, RESULT_TYPE_WEB_PLATFORM,
         AGGREGATION_LEVEL_TEST_RUN, AGGREGATION_LEVEL_MODEL,
@@ -1668,7 +1668,7 @@ def main():
     
     # Create database manager
     try:
-        from duckdb_api.core.db_manager import BenchmarkDBManager
+        from data.duckdb.core.db_manager import BenchmarkDBManager
         db_manager = BenchmarkDBManager(args.db_path)
         print(f"Connected to database at {args.db_path}")
     except ImportError:
@@ -1677,7 +1677,7 @@ def main():
     
     # Create result aggregator
     try:
-        from duckdb_api.distributed_testing.result_aggregator.service import ResultAggregatorService
+        from data.duckdb.distributed_testing.result_aggregator.service import ResultAggregatorService
         result_aggregator = ResultAggregatorService(db_manager=db_manager)
         print("Result aggregator created successfully")
     except ImportError:

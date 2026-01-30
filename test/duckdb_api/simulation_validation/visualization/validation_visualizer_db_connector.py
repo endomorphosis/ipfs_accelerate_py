@@ -20,13 +20,13 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("validation_visualizer_db_connector")
 
 # Import the database integration
-from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
+from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
 
 # Import the visualizer
-from duckdb_api.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
+from data.duckdb.simulation_validation.visualization.validation_visualizer import ValidationVisualizer
 
 # Import base classes
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult

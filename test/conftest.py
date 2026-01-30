@@ -99,8 +99,18 @@ def pytest_configure(config):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Dynamically mark CUDA-capable tests based on module globals."""
+    """Dynamically mark CUDA-capable tests based on module globals and skip standalone scripts."""
+    skip_standalone = pytest.mark.skip(reason="Standalone script, not a pytest test")
+    
     for item in items:
+        # Skip tests that are actually standalone scripts (migrated from tests/)
+        if item.nodeid.startswith("test/test_single_import.py"):
+            item.add_marker(skip_standalone)
+        elif item.nodeid.startswith("test/test_comprehensive_validation.py"):
+            item.add_marker(skip_standalone)
+        elif item.nodeid.startswith("test/test_hf_api_integration.py"):
+            item.add_marker(skip_standalone)
+        
         module = getattr(item, "module", None)
         if module is None:
             continue

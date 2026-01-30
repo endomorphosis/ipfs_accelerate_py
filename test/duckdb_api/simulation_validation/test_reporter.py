@@ -14,12 +14,12 @@ from typing import Dict, List, Any, Optional, Union, Tuple
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
 
 # Import necessary classes
-from duckdb_api.simulation_validation.core.base import (
+from data.duckdb.simulation_validation.core.base import (
     SimulationResult,
     HardwareResult,
     ValidationResult
 )
-from duckdb_api.simulation_validation.visualization.validation_reporter import ValidationReporterImpl
+from data.duckdb.simulation_validation.visualization.validation_reporter import ValidationReporterImpl
 
 def create_simple_test_data():
     """Create simple test data for the reporter."""

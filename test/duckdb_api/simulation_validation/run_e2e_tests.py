@@ -63,10 +63,10 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import test modules
-from duckdb_api.simulation_validation.test_db_integration import TestSimulationValidationDBIntegration
-from duckdb_api.simulation_validation.test_visualization_db_connector import TestValidationVisualizerDBConnector
-from duckdb_api.simulation_validation.test_e2e_visualization_db_integration import TestE2EVisualizationDBIntegration
-from duckdb_api.simulation_validation.test.test_comprehensive_e2e import TestComprehensiveEndToEnd
+from data.duckdb.simulation_validation.test_db_integration import TestSimulationValidationDBIntegration
+from data.duckdb.simulation_validation.test_visualization_db_connector import TestValidationVisualizerDBConnector
+from data.duckdb.simulation_validation.test_e2e_visualization_db_integration import TestE2EVisualizationDBIntegration
+from data.duckdb.simulation_validation.test.test_comprehensive_e2e import TestComprehensiveEndToEnd
 
 # Set up argument parser
 parser = argparse.ArgumentParser(description="Run end-to-end tests for the Simulation Validation Framework")
@@ -306,12 +306,12 @@ def run_tests():
     if args.run_validation or args.run_calibration or args.run_drift or args.run_dashboard or args.run_visualization:
         try:
             # Import additional test modules
-            from duckdb_api.simulation_validation.test_validation import TestValidation
-            from duckdb_api.simulation_validation.test_validator import TestValidator 
-            from duckdb_api.simulation_validation.test_calibration import TestCalibration
-            from duckdb_api.simulation_validation.test_drift_detection import TestDriftDetection
-            from duckdb_api.simulation_validation.test_visualization import TestVisualization
-            from duckdb_api.simulation_validation.test_dashboard_integration import TestDashboardIntegration
+            from data.duckdb.simulation_validation.test_validation import TestValidation
+            from data.duckdb.simulation_validation.test_validator import TestValidator 
+            from data.duckdb.simulation_validation.test_calibration import TestCalibration
+            from data.duckdb.simulation_validation.test_drift_detection import TestDriftDetection
+            from data.duckdb.simulation_validation.test_visualization import TestVisualization
+            from data.duckdb.simulation_validation.test_dashboard_integration import TestDashboardIntegration
         except ImportError as e:
             print(f"Warning: Cannot import all component test modules: {e}")
             print("Some test modules might not be available. Only importing what's available.")
@@ -546,7 +546,7 @@ def run_tests():
     if args.performance_report:
         try:
             # Import the performance reporter
-            from duckdb_api.simulation_validation.test.test_comprehensive_e2e import TestComprehensiveEndToEnd
+            from data.duckdb.simulation_validation.test.test_comprehensive_e2e import TestComprehensiveEndToEnd
             
             # Create an instance of the test class
             test_instance = TestComprehensiveEndToEnd("test_24_generate_performance_report")
@@ -653,8 +653,8 @@ def generate_html_report(output_path):
             # Add component-specific tests if requested
             if args.run_validation:
                 try:
-                    from duckdb_api.simulation_validation.test_validation import TestValidation
-                    from duckdb_api.simulation_validation.test_validator import TestValidator
+                    from data.duckdb.simulation_validation.test_validation import TestValidation
+                    from data.duckdb.simulation_validation.test_validator import TestValidator
                     suites.append(unittest.defaultTestLoader.loadTestsFromTestCase(TestValidation))
                     suites.append(unittest.defaultTestLoader.loadTestsFromTestCase(TestValidator))
                 except (ImportError, NameError):
@@ -662,28 +662,28 @@ def generate_html_report(output_path):
             
             if args.run_calibration:
                 try:
-                    from duckdb_api.simulation_validation.test_calibration import TestCalibration
+                    from data.duckdb.simulation_validation.test_calibration import TestCalibration
                     suites.append(unittest.defaultTestLoader.loadTestsFromTestCase(TestCalibration))
                 except (ImportError, NameError):
                     pass
             
             if args.run_drift:
                 try:
-                    from duckdb_api.simulation_validation.test_drift_detection import TestDriftDetection
+                    from data.duckdb.simulation_validation.test_drift_detection import TestDriftDetection
                     suites.append(unittest.defaultTestLoader.loadTestsFromTestCase(TestDriftDetection))
                 except (ImportError, NameError):
                     pass
             
             if args.run_visualization:
                 try:
-                    from duckdb_api.simulation_validation.test_visualization import TestVisualization
+                    from data.duckdb.simulation_validation.test_visualization import TestVisualization
                     suites.append(unittest.defaultTestLoader.loadTestsFromTestCase(TestVisualization))
                 except (ImportError, NameError):
                     pass
             
             if args.run_dashboard or args.dashboard_integration:
                 try:
-                    from duckdb_api.simulation_validation.test_dashboard_integration import TestDashboardIntegration
+                    from data.duckdb.simulation_validation.test_dashboard_integration import TestDashboardIntegration
                     suites.append(unittest.defaultTestLoader.loadTestsFromTestCase(TestDashboardIntegration))
                 except (ImportError, NameError):
                     pass
@@ -811,9 +811,9 @@ def create_report_index(report_dir):
 def generate_example_visualizations(output_dir):
     """Generate example visualizations for documentation and demos."""
     try:
-        from duckdb_api.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
-        from duckdb_api.simulation_validation.test.test_data_generator import TestDataGenerator
-        from duckdb_api.simulation_validation.db_integration import SimulationValidationDBIntegration
+        from data.duckdb.simulation_validation.visualization.validation_visualizer_db_connector import ValidationVisualizerDBConnector
+        from data.duckdb.simulation_validation.test.test_data_generator import TestDataGenerator
+        from data.duckdb.simulation_validation.db_integration import SimulationValidationDBIntegration
         
         print("  Setting up test data generator and database...")
         # Create a temporary database with sample data
@@ -955,7 +955,7 @@ def generate_example_visualizations(output_dir):
 def generate_test_data():
     """Generate test data for evaluation and testing purposes."""
     try:
-        from duckdb_api.simulation_validation.test.test_data_generator import TestDataGenerator
+        from data.duckdb.simulation_validation.test.test_data_generator import TestDataGenerator
         
         print("Generating comprehensive test dataset...")
         # Create test data generator

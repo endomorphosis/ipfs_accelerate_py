@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("benchmark_validation_framework")
 
 # Import core components
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationLevel,
     BenchmarkType,
     ValidationStatus,
@@ -39,42 +39,42 @@ from duckdb_api.benchmark_validation.core.base import (
 
 # Import implementations (these will be created next)
 try:
-    from duckdb_api.benchmark_validation.validation_protocol.validator import StandardBenchmarkValidator
+    from data.duckdb.benchmark_validation.validation_protocol.validator import StandardBenchmarkValidator
     validator_available = True
 except ImportError:
     logger.warning("StandardBenchmarkValidator not available, validation functions will be limited")
     validator_available = False
 
 try:
-    from duckdb_api.benchmark_validation.outlier_detection.detector import StatisticalOutlierDetector
+    from data.duckdb.benchmark_validation.outlier_detection.detector import StatisticalOutlierDetector
     outlier_detector_available = True
 except ImportError:
     logger.warning("StatisticalOutlierDetector not available, outlier detection will be limited")
     outlier_detector_available = False
 
 try:
-    from duckdb_api.benchmark_validation.reproducibility.validator import ReproducibilityValidator
+    from data.duckdb.benchmark_validation.reproducibility.validator import ReproducibilityValidator
     reproducibility_validator_available = True
 except ImportError:
     logger.warning("ReproducibilityValidator not available, reproducibility validation will be limited")
     reproducibility_validator_available = False
 
 try:
-    from duckdb_api.benchmark_validation.certification.certifier import BenchmarkCertificationSystem
+    from data.duckdb.benchmark_validation.certification.certifier import BenchmarkCertificationSystem
     certifier_available = True
 except ImportError:
     logger.warning("BenchmarkCertificationSystem not available, certification will be limited")
     certifier_available = False
 
 try:
-    from duckdb_api.benchmark_validation.visualization.reporter import ValidationReporterImpl
+    from data.duckdb.benchmark_validation.visualization.reporter import ValidationReporterImpl
     reporter_available = True
 except ImportError:
     logger.warning("ValidationReporterImpl not available, reporting will be limited")
     reporter_available = False
 
 try:
-    from duckdb_api.benchmark_validation.repository.duckdb_repository import DuckDBValidationRepository
+    from data.duckdb.benchmark_validation.repository.duckdb_repository import DuckDBValidationRepository
     repository_available = True
 except ImportError:
     logger.warning("DuckDBValidationRepository not available, data persistence will be limited")

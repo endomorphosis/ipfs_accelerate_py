@@ -229,7 +229,7 @@ jobs:
         # Run unit tests in isolated container
         docker run --rm --platform $PLATFORM $IMAGE_TAG bash -c "
         if [ -d tests ]; then
-          python -m pytest tests/ -v --timeout=600 --tb=short -x || echo 'Some tests may have failed'
+          python -m pytest test/ -v --timeout=600 --tb=short -x || echo 'Some tests may have failed'
         fi
         "
 

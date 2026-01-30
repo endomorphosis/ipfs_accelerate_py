@@ -44,8 +44,8 @@ except ImportError:
 
 # Import DuckDB components
 try:
-    from duckdb_api.predictive_performance.predictor_repository import DuckDBPredictorRepository
-    from duckdb_api.predictive_performance.repository_adapter import (
+    from data.duckdb.predictive_performance.predictor_repository import DuckDBPredictorRepository
+    from data.duckdb.predictive_performance.repository_adapter import (
         HardwareModelPredictorDuckDBAdapter,
         ModelPerformancePredictorDuckDBAdapter
     )

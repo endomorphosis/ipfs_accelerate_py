@@ -19,8 +19,8 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import the coordinator and load balancer integration
-from duckdb_api.distributed_testing.coordinator import CoordinatorServer
-from duckdb_api.distributed_testing.coordinator_load_balancer_integration import CoordinatorLoadBalancerIntegration
+from data.duckdb.distributed_testing.coordinator import CoordinatorServer
+from data.duckdb.distributed_testing.coordinator_load_balancer_integration import CoordinatorLoadBalancerIntegration
 
 # Setup logging
 logging.basicConfig(
@@ -105,7 +105,7 @@ def patched_stop(self):
 
 # Patch the TaskManager.get_next_task method to use the load balancer
 # Store the original get_next_task method
-from duckdb_api.distributed_testing.coordinator import TaskManager
+from data.duckdb.distributed_testing.coordinator import TaskManager
 original_get_next_task = TaskManager.get_next_task
 
 def patched_get_next_task(self, worker_id: str, worker_capabilities: Dict[str, Any]) -> Optional[Dict[str, Any]]:

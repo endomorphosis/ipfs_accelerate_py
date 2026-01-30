@@ -23,7 +23,7 @@ def main():
     sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
     
     # Import the tests
-    from tests.test_dashboard_integration import TestDashboardIntegration
+    from test.test_dashboard_integration import TestDashboardIntegration
     
     # Create a test suite
     suite = unittest.TestLoader().loadTestsFromTestCase(TestDashboardIntegration)

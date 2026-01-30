@@ -46,10 +46,10 @@ if parent_dir not in sys.path:
     sys.path.append(parent_dir)
 
 # Import framework components
-from distributed_testing.integration import DistributedTestingFramework, create_distributed_testing_framework
-from distributed_testing.advanced_scheduling import Task, Worker
-from distributed_testing.ml_anomaly_detection import MLAnomalyDetection
-from distributed_testing.prometheus_grafana_integration import PrometheusGrafanaIntegration
+from test.distributed_testing.integration import DistributedTestingFramework, create_distributed_testing_framework
+from test.distributed_testing.advanced_scheduling import Task, Worker
+from test.distributed_testing.ml_anomaly_detection import MLAnomalyDetection
+from test.distributed_testing.prometheus_grafana_integration import PrometheusGrafanaIntegration
 
 # Import API backends
 try:

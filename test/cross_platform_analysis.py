@@ -46,7 +46,7 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 # Local imports for database access
 try:
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI, get_db_connection
     DUCKDB_AVAILABLE = True
 except ImportError:
     logger.warning("Could not import benchmark_db_api. Database functionality will be limited.")

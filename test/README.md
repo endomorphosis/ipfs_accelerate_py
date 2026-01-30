@@ -214,3 +214,65 @@ When contributing to the test framework:
 ## License
 
 This project is licensed under the MIT License - see the LICENSE file for details.
+
+---
+
+## 📦 Legacy Tests Migration (January 2026)
+
+The `tests/` directory has been deprecated and all test files have been migrated to the `test/` directory.
+
+### Migrated Files
+
+The following test files were moved from `tests/` to `test/`:
+
+- **Core Tests**: test_accelerate.py, test_integration.py, test_comprehensive.py, test_smoke_basic.py
+- **MCP Tests**: test_mcp_*.py (client, installation, setup, dashboard, etc.)
+- **P2P Tests**: test_p2p_*.py (integration, bootstrap, cache, networking, production, etc.)
+- **Model Tests**: test_model_*.py (discovery, manager, etc.)
+- **Advanced Feature Tests**: test_advanced_features.py, test_hardware_mocking.py, test_real_world_models.py
+- **GitHub Integration Tests**: test_github_*.py (copilot, cache, cli, actions, etc.)
+- **Cache Tests**: test_cache_*.py (enhancements, thread safety, common, smart validation, etc.)
+- **Dashboard Tests**: test_dashboard*.py
+- **CLI Tests**: test_cli_*.py
+- **API Tests**: test_api_*.py
+- **Dataset Tests**: test_datasets_integration.py
+- **Docker Tests**: test_docker_*.py
+- **Workflow Tests**: test_workflow_*.py, test_huggingface_workflow.py
+- **Entry Point Tests**: test_entry_point.py, test_single_import.py
+- **Repository Tests**: test_repo_structure*.py
+- **Error Handling**: test_error_reporter.py, test_retry_and_cache.py
+- **Phase Tests**: test_phase*.py
+- **Playwright Tests**: test_playwright_*.py
+- **Sync/Async Tests**: test_sync_async_usage.py, test_anyio_migration.py
+- And many more...
+
+### Supporting Files Migrated
+
+- **Scripts**: run_all_tests.py, run_mcp.py, ui_test_script.py, playwright_pipeline_screenshots.py
+- **Databases**: test_models.db, verification_models.db, kitchen_sink_models.db
+- **Screenshots**: playwright_screenshots_legacy/, playwright_screenshots_functional_legacy/
+- **Documentation**: README_LEGACY_TESTS.md, README_WORKFLOW_TESTS.md, and other markdown files
+
+### Running Migrated Tests
+
+All migrated tests can be run using pytest from the test directory:
+
+```bash
+# Run all tests
+pytest test/
+
+# Run specific migrated test
+pytest test/test_accelerate.py
+
+# Run tests with markers
+pytest test/ -m "integration"
+pytest test/ -m "mcp"
+pytest test/ -m "p2p"
+```
+
+### Deprecation Notice
+
+The `tests/` directory is now deprecated and contains only a DEPRECATED.md file explaining the migration. All future tests should be added to the `test/` directory following the new structured organization.
+
+For more information about the old tests, see `test/README_LEGACY_TESTS.md`.
+

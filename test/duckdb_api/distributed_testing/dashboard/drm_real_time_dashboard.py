@@ -13,7 +13,7 @@ Management component of the Distributed Testing Framework. It provides:
 
 Usage:
     # Import the module
-    from duckdb_api.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
+    from data.duckdb.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
     
     # Create a dashboard instance
     dashboard = DRMRealTimeDashboard(
@@ -81,14 +81,14 @@ if parent_dir not in sys.path:
 
 # Try to import required modules with fallbacks
 try:
-    from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
+    from data.duckdb.distributed_testing.dynamic_resource_manager import DynamicResourceManager
     DRM_AVAILABLE = True
 except ImportError:
     logger.warning("DynamicResourceManager not available, some features will be limited")
     DRM_AVAILABLE = False
 
 try:
-    from duckdb_api.distributed_testing.dashboard.regression_detection import RegressionDetector
+    from data.duckdb.distributed_testing.dashboard.regression_detection import RegressionDetector
     REGRESSION_AVAILABLE = True
 except ImportError:
     logger.warning("RegressionDetector not available, regression analysis will be disabled")

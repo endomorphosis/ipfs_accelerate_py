@@ -11,7 +11,7 @@ Usage:
     python benchmark_db_api.py --serve
 
     # Programmatic usage
-    from duckdb_api.core.benchmark_db_api import BenchmarkDBAPI
+    from data.duckdb.core.benchmark_db_api import BenchmarkDBAPI
     api = BenchmarkDBAPI()
     api.store_performance_result(model_name="bert-base-uncased", hardware_type="cuda", ...)
 """

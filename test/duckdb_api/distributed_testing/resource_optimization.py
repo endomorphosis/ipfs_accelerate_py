@@ -14,7 +14,7 @@ Core responsibilities:
 
 Usage:
     # Import and initialize
-    from duckdb_api.distributed_testing.resource_optimization import ResourceOptimizer
+    from data.duckdb.distributed_testing.resource_optimization import ResourceOptimizer
     
     # Create optimizer
     optimizer = ResourceOptimizer(
@@ -63,21 +63,21 @@ if parent_dir not in sys.path:
 
 # Try to import required components
 try:
-    from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager, ScalingDecision
+    from data.duckdb.distributed_testing.dynamic_resource_manager import DynamicResourceManager, ScalingDecision
     DRM_AVAILABLE = True
 except ImportError:
     logger.warning("Dynamic Resource Manager not available. Limited optimization capabilities.")
     DRM_AVAILABLE = False
 
 try:
-    from duckdb_api.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
+    from data.duckdb.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
     PREDICTOR_AVAILABLE = True
 except ImportError:
     logger.warning("Resource Performance Predictor not available. Using default resource predictions.")
     PREDICTOR_AVAILABLE = False
 
 try:
-    from duckdb_api.distributed_testing.cloud_provider_manager import CloudProviderManager
+    from data.duckdb.distributed_testing.cloud_provider_manager import CloudProviderManager
     CLOUD_MANAGER_AVAILABLE = True
 except ImportError:
     logger.warning("Cloud Provider Manager not available. Limited provider capabilities.")
@@ -893,8 +893,8 @@ class ResourceOptimizer:
 if __name__ == "__main__":
     """Run standalone test of the Resource Optimizer."""
     # Import DRM components
-    from duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager
-    from duckdb_api.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
+    from data.duckdb.distributed_testing.dynamic_resource_manager import DynamicResourceManager
+    from data.duckdb.distributed_testing.resource_performance_predictor import ResourcePerformancePredictor
     
     # Create components
     resource_manager = DynamicResourceManager()

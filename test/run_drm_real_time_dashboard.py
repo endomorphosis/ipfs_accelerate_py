@@ -112,7 +112,7 @@ def main():
     
     try:
         # Import dashboard class
-        from duckdb_api.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
+        from data.duckdb.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
         
         # Ensure output directory exists
         os.makedirs(os.path.dirname(args.db_path), exist_ok=True)
@@ -121,7 +121,7 @@ def main():
         drm_instance = None
         if args.drm_url and args.api_key:
             try:
-                from duckdb_api.distributed_testing.drm_api_client import DRMAPIClient
+                from data.duckdb.distributed_testing.drm_api_client import DRMAPIClient
                 logger.info(f"Connecting to DRM coordinator at {args.drm_url}")
                 drm_instance = DRMAPIClient(args.drm_url, args.api_key)
             except ImportError:
@@ -131,7 +131,7 @@ def main():
             logger.info("Running in standalone mode with simulated data")
             try:
                 # Try to use mock DRM for testing
-                from duckdb_api.distributed_testing.testing.mock_drm import MockDynamicResourceManager
+                from data.duckdb.distributed_testing.testing.mock_drm import MockDynamicResourceManager
                 drm_instance = MockDynamicResourceManager()
                 logger.info("Using mock DRM instance for testing")
             except ImportError:

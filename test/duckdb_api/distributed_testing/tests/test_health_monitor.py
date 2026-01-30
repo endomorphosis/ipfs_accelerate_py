@@ -21,9 +21,9 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import framework components
-from duckdb_api.distributed_testing.coordinator import DatabaseManager
-from duckdb_api.distributed_testing.health_monitor import HealthMonitor
-from duckdb_api.distributed_testing.coordinator import WORKER_STATUS_ACTIVE, WORKER_STATUS_UNAVAILABLE
+from data.duckdb.distributed_testing.coordinator import DatabaseManager
+from data.duckdb.distributed_testing.health_monitor import HealthMonitor
+from data.duckdb.distributed_testing.coordinator import WORKER_STATUS_ACTIVE, WORKER_STATUS_UNAVAILABLE
 
 
 class HealthMonitorTest(unittest.TestCase):

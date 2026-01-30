@@ -24,11 +24,11 @@ if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
 
 # Import the base AdvancedVisualizationSystem
-from duckdb_api.visualization.advanced_visualization import AdvancedVisualizationSystem
+from data.duckdb.visualization.advanced_visualization import AdvancedVisualizationSystem
 
 # Import dashboard integration
 try:
-    from duckdb_api.visualization.advanced_visualization.monitor_dashboard_integration import (
+    from data.duckdb.visualization.advanced_visualization.monitor_dashboard_integration import (
         MonitorDashboardIntegration,
         MonitorDashboardIntegrationMixin
     )

@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Import CI specific modules
-from distributed_testing.ci.api_interface import CIProviderFactory, TestRunResult
-from distributed_testing.ci.result_reporter import TestResultReporter
-from distributed_testing.ci.register_providers import register_all_providers
+from .ci.api_interface import CIProviderFactory, TestRunResult
+from .ci.result_reporter import TestResultReporter
+from .ci.register_providers import register_all_providers
 
 
 async def run_example(provider_type, provider_config, test_artifacts_dir=None):

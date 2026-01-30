@@ -19,7 +19,7 @@ import logging
 logger = logging.getLogger("time_series_visualization")
 
 # Import base visualization class
-from duckdb_api.visualization.advanced_visualization.base import BaseVisualization, PLOTLY_AVAILABLE, MATPLOTLIB_AVAILABLE
+from data.duckdb.visualization.advanced_visualization.base import BaseVisualization, PLOTLY_AVAILABLE, MATPLOTLIB_AVAILABLE
 
 # Check for plotly
 if PLOTLY_AVAILABLE:

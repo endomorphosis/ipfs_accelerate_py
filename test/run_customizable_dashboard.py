@@ -24,7 +24,7 @@ sys.path.append(str(Path(__file__).parent))
 
 # Try to import the CustomizableDashboard
 try:
-    from duckdb_api.visualization.advanced_visualization import CustomizableDashboard
+    from data.duckdb.visualization.advanced_visualization import CustomizableDashboard
     HAS_DASHBOARD = True
 except ImportError as e:
     logger.error(f"Error importing CustomizableDashboard: {e}")

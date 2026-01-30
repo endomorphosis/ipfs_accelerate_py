@@ -15,7 +15,7 @@ Core responsibilities:
 
 Usage:
     # Import and initialize
-    from duckdb_api.distributed_testing.cloud_provider_manager import CloudProviderManager
+    from data.duckdb.distributed_testing.cloud_provider_manager import CloudProviderManager
     
     # Create manager with config file
     manager = CloudProviderManager(config_path="/path/to/cloud_config.json")

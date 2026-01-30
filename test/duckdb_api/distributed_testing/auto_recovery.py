@@ -1412,7 +1412,7 @@ class AutoRecoverySystem:
         if self.db_path:
             try:
                 # Import DuckDB integration
-                from duckdb_api.distributed_testing.coordinator_duckdb_integration import CoordinatorDuckDBManager
+                from data.duckdb.distributed_testing.coordinator_duckdb_integration import CoordinatorDuckDBManager
                 
                 # Create database manager
                 self.db_manager = CoordinatorDuckDBManager(self.db_path)
@@ -1871,7 +1871,7 @@ class AutoRecoverySystem:
         """
         try:
             # Try to import the enhanced hardware detector
-            from duckdb_api.distributed_testing.enhanced_hardware_detector import EnhancedHardwareDetector
+            from data.duckdb.distributed_testing.enhanced_hardware_detector import EnhancedHardwareDetector
             
             # Create detector and get capabilities
             detector = EnhancedHardwareDetector()

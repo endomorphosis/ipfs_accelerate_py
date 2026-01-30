@@ -30,7 +30,7 @@ sys.path.append(str(Path(__file__).parent.parent.parent.parent))
 
 # Import dependencies conditionally to handle missing dependencies
 try:
-    from duckdb_api.distributed_testing.dashboard.regression_visualization import RegressionVisualization
+    from data.duckdb.distributed_testing.dashboard.regression_visualization import RegressionVisualization
     HAS_REGRESSION_VISUALIZATION = True
 except ImportError as e:
     logger.error(f"Error importing RegressionVisualization: {e}")

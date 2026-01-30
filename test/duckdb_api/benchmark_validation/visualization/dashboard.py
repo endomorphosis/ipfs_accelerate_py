@@ -16,7 +16,7 @@ The ValidationDashboard component offers the following key features:
 7. Basic HTML dashboards with fallback when advanced visualization is unavailable
 
 Usage:
-    from duckdb_api.benchmark_validation.visualization import ValidationDashboard
+    from data.duckdb.benchmark_validation.visualization import ValidationDashboard
     
     # Create dashboard instance
     dashboard = ValidationDashboard(config={...})
@@ -59,7 +59,7 @@ logging.basicConfig(level=logging.INFO,
 logger = logging.getLogger("benchmark_validation_dashboard")
 
 # Import base classes
-from duckdb_api.benchmark_validation.core.base import (
+from data.duckdb.benchmark_validation.core.base import (
     ValidationLevel,
     ValidationStatus,
     BenchmarkResult,
@@ -67,7 +67,7 @@ from duckdb_api.benchmark_validation.core.base import (
 )
 
 # Import reporter for visualization capabilities
-from duckdb_api.benchmark_validation.visualization.reporter import ValidationReporterImpl
+from data.duckdb.benchmark_validation.visualization.reporter import ValidationReporterImpl
 
 # Import visualization dependencies if available
 try:
@@ -79,10 +79,10 @@ except ImportError:
 
 # Import Advanced Visualization System components if available
 try:
-    from duckdb_api.visualization.advanced_visualization.viz_customizable_dashboard import (
+    from data.duckdb.visualization.advanced_visualization.viz_customizable_dashboard import (
         CustomizableDashboard
     )
-    from duckdb_api.visualization.advanced_visualization.export_integration import (
+    from data.duckdb.visualization.advanced_visualization.export_integration import (
         ExportIntegration
     )
     ADVANCED_VIZ_AVAILABLE = True
@@ -92,7 +92,7 @@ except ImportError:
 
 # Import Monitoring Dashboard integration if available
 try:
-    from duckdb_api.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
+    from data.duckdb.distributed_testing.dashboard.monitoring_dashboard_visualization_integration import (
         VisualizationDashboardIntegration
     )
     MONITORING_DASHBOARD_AVAILABLE = True

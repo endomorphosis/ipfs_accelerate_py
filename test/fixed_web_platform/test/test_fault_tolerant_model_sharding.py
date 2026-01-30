@@ -45,9 +45,9 @@ except ImportError as e:
 
 # Try to import distributed testing components
 try:
-    from distributed_testing.plugins.resource_pool_plugin import ResourcePoolPlugin
-    from distributed_testing.worker_registry import WorkerRegistry
-    from distributed_testing.circuit_breaker import CircuitBreaker
+    from test.distributed_testing.plugins.resource_pool_plugin import ResourcePoolPlugin
+    from test.distributed_testing.worker_registry import WorkerRegistry
+    from test.distributed_testing.circuit_breaker import CircuitBreaker
     DISTRIBUTED_TESTING_AVAILABLE = True
 except ImportError:
     logger.warning("Distributed testing framework not available, some tests will be limited")

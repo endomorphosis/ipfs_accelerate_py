@@ -58,7 +58,7 @@ Still compatible with legacy methods:
 python run_comprehensive_webnn_webgpu_tests.py --browser chrome --platform webgpu --model bert --db-path ./benchmark_db.duckdb
 
 # Set database path through environment variable
-export BENCHMARK_DB_PATH=./benchmarks/webnn_webgpu_results.duckdb
+export BENCHMARK_DB_PATH=./data/benchmarks/webnn_webgpu_results.duckdb
 python run_comprehensive_webnn_webgpu_tests.py --browser chrome --platform webgpu --model bert --db-only
 ```
 

@@ -48,7 +48,7 @@ except ImportError:
     sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
     
     try:
-        from distributed_testing.hardware_capability_detector import (
+        from .hardware_capability_detector import (
             HardwareCapabilityDetector, 
             HardwareType, 
             HardwareVendor,
@@ -783,7 +783,7 @@ def create_simulated_workers_in_db(detector: HardwareCapabilityDetector) -> None
     
     # Create sample workers with hardware profiles
     try:
-        from distributed_testing.enhanced_hardware_capability import (
+        from .enhanced_hardware_capability import (
             WorkerHardwareCapabilities,
             HardwareCapability
         )

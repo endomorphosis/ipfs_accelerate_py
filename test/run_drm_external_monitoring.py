@@ -122,8 +122,8 @@ def main():
     
     try:
         # Import modules
-        from duckdb_api.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
-        from duckdb_api.distributed_testing.dashboard.drm_external_monitoring_integration import ExternalMonitoringBridge
+        from data.duckdb.distributed_testing.dashboard.drm_real_time_dashboard import DRMRealTimeDashboard
+        from data.duckdb.distributed_testing.dashboard.drm_external_monitoring_integration import ExternalMonitoringBridge
         
         # Determine DRM instance
         drm_instance = None
@@ -131,7 +131,7 @@ def main():
         if args.drm_url and args.api_key:
             # Try to connect to real DRM
             try:
-                from duckdb_api.distributed_testing.drm_api_client import DRMAPIClient
+                from data.duckdb.distributed_testing.drm_api_client import DRMAPIClient
                 logger.info(f"Connecting to DRM coordinator at {args.drm_url}")
                 drm_instance = DRMAPIClient(args.drm_url, args.api_key)
                 logger.info("Connected to DRM coordinator")
@@ -140,7 +140,7 @@ def main():
         
         if not drm_instance or args.simulation:
             # Use mock DRM for testing
-            from duckdb_api.distributed_testing.testing.mock_drm import MockDynamicResourceManager
+            from data.duckdb.distributed_testing.testing.mock_drm import MockDynamicResourceManager
             logger.info("Using simulated DRM data")
             drm_instance = MockDynamicResourceManager()
         

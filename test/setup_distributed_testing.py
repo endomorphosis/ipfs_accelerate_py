@@ -197,10 +197,10 @@ This package provides a complete framework for distributed test execution
 with advanced scheduling, monitoring, and anomaly detection.
 """
 
-from distributed_testing.integration import DistributedTestingFramework, create_distributed_testing_framework
-from distributed_testing.advanced_scheduling import AdvancedScheduler, Task, Worker
-from distributed_testing.ml_anomaly_detection import MLAnomalyDetection
-from distributed_testing.prometheus_grafana_integration import PrometheusGrafanaIntegration
+from test.distributed_testing.integration import DistributedTestingFramework, create_distributed_testing_framework
+from test.distributed_testing.advanced_scheduling import AdvancedScheduler, Task, Worker
+from test.distributed_testing.ml_anomaly_detection import MLAnomalyDetection
+from test.distributed_testing.prometheus_grafana_integration import PrometheusGrafanaIntegration
 
 __all__ = [
     'DistributedTestingFramework',

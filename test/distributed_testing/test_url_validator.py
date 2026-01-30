@@ -24,7 +24,7 @@ from typing import Dict, List, Optional, Any, Tuple
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
 
 # Import the URL validator
-from distributed_testing.ci.url_validator import (
+from .ci.url_validator import (
     ArtifactURLValidator,
     get_validator,
     validate_url,
@@ -34,8 +34,8 @@ from distributed_testing.ci.url_validator import (
 )
 
 # Import TestResultReporter for integration testing
-from distributed_testing.ci.result_reporter import TestResultReporter
-from distributed_testing.ci.api_interface import TestRunResult
+from .ci.result_reporter import TestResultReporter
+from .ci.api_interface import TestRunResult
 
 # Configure logging
 logging.basicConfig(
@@ -269,7 +269,7 @@ class _TestURLValidatorBase(unittest.TestCase):
     async def test_global_validator_functions(self):
         """Test global validator functions."""
         # Override the session in the global validator (must set module global).
-        import distributed_testing.ci.url_validator as url_validator_module
+        import test.distributed_testing.ci.url_validator as url_validator_module
 
         if url_validator_module._global_validator:
             await url_validator_module._global_validator.close()
@@ -314,7 +314,7 @@ class _TestURLValidatorBase(unittest.TestCase):
         await validator.initialize()
         
         # Override the global validator
-        import distributed_testing.ci.url_validator as url_validator_module
+        import test.distributed_testing.ci.url_validator as url_validator_module
         if url_validator_module._global_validator:
             await url_validator_module._global_validator.close()
 

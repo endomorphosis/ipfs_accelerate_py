@@ -13,7 +13,7 @@ The plugin provides:
 5. Metrics collection and reporting
 
 Usage:
-    from distributed_testing.plugins.resource_pool_plugin import ResourcePoolPlugin
+    from .plugins.resource_pool_plugin import ResourcePoolPlugin
     
     # Create plugin with resource pool integration
     plugin = ResourcePoolPlugin(
@@ -57,11 +57,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import distributed testing framework components
-from distributed_testing.plugin_base import PluginBase
-from distributed_testing.circuit_breaker import CircuitBreaker
-from distributed_testing.state_manager import StateManager
-from distributed_testing.worker_registry import WorkerRegistry
-from distributed_testing.transaction_log import TransactionLog
+from .plugin_base import PluginBase
+from .circuit_breaker import CircuitBreaker
+from .state_manager import StateManager
+from .worker_registry import WorkerRegistry
+from .transaction_log import TransactionLog
 
 class ResourcePoolPlugin(PluginBase):
     """
