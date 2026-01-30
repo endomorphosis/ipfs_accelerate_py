@@ -1,0 +1,522 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Run All Tests",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"pytest",
+				"-v"
+			],
+			"group": {
+				"kind": "test",
+				"isDefault": true
+			},
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			}
+		},
+		{
+			"label": "Run Unit Tests",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"pytest",
+				"-v",
+				"-m",
+				"not integration and not slow"
+			],
+			"group": "test",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Run Integration Tests",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"pytest",
+				"-v",
+				"-m",
+				"integration"
+			],
+			"group": "test",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Run Benchmarks",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"pytest",
+				"-v",
+				"-m",
+				"benchmark",
+				"benchmarks/"
+			],
+			"group": "test",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Run MCP Tests",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"pytest",
+				"-v",
+				"mcp/tests/",
+				"ipfs_mcp/tests/"
+			],
+			"group": "test",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Run Distributed Tests",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-m",
+				"pytest",
+				"-v",
+				"-m",
+				"distributed",
+				"test/distributed_testing/"
+			],
+			"group": "test",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Install Dependencies",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/pip",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\pip.exe"
+			},
+			"args": [
+				"install",
+				"-r",
+				"requirements.txt"
+			],
+			"group": "build",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Install Dev Dependencies",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/pip",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\pip.exe"
+			},
+			"args": [
+				"install",
+				"-e",
+				".[dev]"
+			],
+			"group": "build",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Lint Code (Flake8)",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/flake8",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\flake8.exe"
+			},
+			"args": [
+				"ipfs_accelerate_py/",
+				"--max-line-length=120",
+				"--exclude=.venv,venv,build,dist,*.egg-info"
+			],
+			"group": "test",
+			"problemMatcher": {
+				"owner": "python",
+				"fileLocation": ["relative", "${workspaceFolder}"],
+				"pattern": {
+					"regexp": "^(.+):(\\d+):(\\d+):\\s+(.+)$",
+					"file": 1,
+					"line": 2,
+					"column": 3,
+					"message": 4
+				}
+			},
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Type Check (mypy)",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/mypy",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\mypy.exe"
+			},
+			"args": [
+				"ipfs_accelerate_py/",
+				"--ignore-missing-imports"
+			],
+			"group": "test",
+			"problemMatcher": {
+				"owner": "python",
+				"fileLocation": ["relative", "${workspaceFolder}"],
+				"pattern": {
+					"regexp": "^(.+):(\\d+):\\s+(.+):\\s+(.+)$",
+					"file": 1,
+					"line": 2,
+					"severity": 3,
+					"message": 4
+				}
+			},
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Format Code (Black)",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/black",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\black.exe"
+			},
+			"args": [
+				"ipfs_accelerate_py/",
+				"tests/",
+				"--line-length=120"
+			],
+			"group": "build",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Check Code Coverage",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/pytest",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\pytest.exe"
+			},
+			"args": [
+				"--cov=ipfs_accelerate_py",
+				"--cov-report=html",
+				"--cov-report=term",
+				"-v"
+			],
+			"group": "test",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Build Docker Image",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"build",
+				"-t",
+				"ipfs-accelerate-py:latest",
+				"."
+			],
+			"group": "build",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Start Docker Compose",
+			"type": "shell",
+			"command": "docker-compose",
+			"args": [
+				"up",
+				"-d"
+			],
+			"group": "build",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Stop Docker Compose",
+			"type": "shell",
+			"command": "docker-compose",
+			"args": [
+				"down"
+			],
+			"group": "build",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Start Docker CI Services",
+			"type": "shell",
+			"command": "docker-compose",
+			"args": [
+				"-f",
+				"docker-compose.ci.yml",
+				"up",
+				"-d"
+			],
+			"group": "build",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Stop Docker CI Services",
+			"type": "shell",
+			"command": "docker-compose",
+			"args": [
+				"-f",
+				"docker-compose.ci.yml",
+				"down"
+			],
+			"group": "build",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Test IPFS Connection",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"-c",
+				"import ipfshttpclient; client = ipfshttpclient.connect(); print(f'✓ Connected to IPFS: {client.id()[\"ID\"]}'); client.close()"
+			],
+			"group": "test",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			},
+			"presentation": {
+				"echo": true,
+				"reveal": "always",
+				"focus": false,
+				"panel": "shared"
+			}
+		},
+		{
+			"label": "Clean Build Artifacts",
+			"type": "shell",
+			"command": "bash",
+			"args": [
+				"-c",
+				"find . -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null; find . -type f -name '*.pyc' -delete; rm -rf build/ dist/ *.egg-info .pytest_cache .coverage htmlcov/ || true"
+			],
+			"group": "build",
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Dev Tools: Check Python Compilation",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/dev_tools/compile_checker.py",
+				"${input:compileCheckPath}",
+				"--verbose"
+			],
+			"group": "test",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			},
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Dev Tools: Check Imports",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/dev_tools/comprehensive_import_checker.py",
+				"--directory",
+				"${input:importCheckPath}",
+				"--verbose"
+			],
+			"group": "test",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			},
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Dev Tools: Python Code Quality Check",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/dev_tools/comprehensive_python_checker.py",
+				"--directory",
+				"${input:pythonCheckPath}",
+				"--verbose"
+			],
+			"group": "test",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			},
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Dev Tools: Audit Docstrings",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/dev_tools/docstring_audit.py",
+				"--directory",
+				"${input:docstringAuditPath}",
+				"--output",
+				"docstring_report.json",
+				"--verbose"
+			],
+			"group": "test",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			},
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		},
+		{
+			"label": "Dev Tools: Find Documentation",
+			"type": "shell",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
+			"args": [
+				"scripts/dev_tools/find_documentation.py",
+				"--directory",
+				"${input:findDocsPath}",
+				"--format",
+				"json"
+			],
+			"group": "test",
+			"presentation": {
+				"reveal": "always",
+				"panel": "new"
+			},
+			"problemMatcher": [],
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		}
+	],
+	"inputs": [
+		{
+			"id": "compileCheckPath",
+			"description": "Path to check for compilation errors",
+			"default": "ipfs_accelerate_py",
+			"type": "promptString"
+		},
+		{
+			"id": "importCheckPath",
+			"description": "Directory to check imports",
+			"default": "ipfs_accelerate_py",
+			"type": "promptString"
+		},
+		{
+			"id": "pythonCheckPath",
+			"description": "Directory to check Python code",
+			"default": "ipfs_accelerate_py",
+			"type": "promptString"
+		},
+		{
+			"id": "docstringAuditPath",
+			"description": "Directory to audit docstrings",
+			"default": "ipfs_accelerate_py",
+			"type": "promptString"
+		},
+		{
+			"id": "findDocsPath",
+			"description": "Directory to find documentation",
+			"default": ".",
+			"type": "promptString"
+		}
+	]
+}

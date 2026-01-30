@@ -1,4 +1,6 @@
 *.json
+# Allow .vscode configuration files
+!.vscode/*.json
 *.duckdb
 .venv-wsl
 .venv-win311
@@ -90,3 +92,6 @@ bin/*
 
 # Codemod backups
 .migrate_backups/
+
+# GitHub CLI cache (P2P/IPFS)
+.cache/github_cli/
