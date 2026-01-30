@@ -15,7 +15,7 @@ def create_screenshot_summary():
     """Create a comprehensive screenshot summary."""
     
     summary_dir = Path("./data/final_screenshot_summary")
-    summary_dir.mkdir(exist_ok=True)
+    summary_dir.mkdir(parents=True, exist_ok=True)
     
     print("📸 Creating Final Screenshot Summary...")
     

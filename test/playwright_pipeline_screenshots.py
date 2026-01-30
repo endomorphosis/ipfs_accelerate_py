@@ -37,7 +37,7 @@ class KitchenSinkScreenshotTester:
         self.server_process = None
         self.server_url = "http://127.0.0.1:8080"
         self.screenshots_dir = Path("./data/screenshots/kitchen_sink")
-        self.screenshots_dir.mkdir(exist_ok=True)
+        self.screenshots_dir.mkdir(parents=True, exist_ok=True)
         self.test_results = {}
         
     async def setup_server(self):

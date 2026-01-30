@@ -135,7 +135,7 @@ def capture_with_selenium():
         
         # Create screenshots directory
         screenshots_dir = Path("./data/screenshots/kitchen_sink")
-        screenshots_dir.mkdir(exist_ok=True)
+        screenshots_dir.mkdir(parents=True, exist_ok=True)
         
         # Capture main page
         driver.save_screenshot(str(screenshots_dir / "00_overview.png"))

@@ -206,7 +206,7 @@ def validate_phase4_gui_with_playwright():
     
     base_url = "http://127.0.0.1:8899"
     screenshots_dir = Path("data/test_screenshots/validation")
-    screenshots_dir.mkdir(exist_ok=True)
+    screenshots_dir.mkdir(parents=True, exist_ok=True)
     
     print(f"\n📋 Step 4.1: Opening browser and loading dashboard...")
     

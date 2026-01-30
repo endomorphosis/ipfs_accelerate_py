@@ -36,7 +36,7 @@ class SDKBrowserTester:
         self.screenshots_dir = Path("data/screenshots/sdk_dashboard")
         
         # Create screenshots directory
-        self.screenshots_dir.mkdir(exist_ok=True)
+        self.screenshots_dir.mkdir(parents=True, exist_ok=True)
         
         # Test results
         self.test_results = {

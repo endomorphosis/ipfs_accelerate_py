@@ -100,7 +100,7 @@ def test_mcp_dashboard_workflows_and_runners():
     Main test function that verifies the MCP dashboard workflows and runners display
     """
     # Create screenshots directory
-    SCREENSHOTS_DIR.mkdir(exist_ok=True)
+    SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
     logger.info(f"Screenshots will be saved to: {SCREENSHOTS_DIR}")
     
     # Start MCP server
