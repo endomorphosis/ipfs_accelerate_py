@@ -15,7 +15,7 @@ Key features:
 
 Usage:
     # Import in other modules
-    from fixed_web_platform.webgpu_4bit_inference import WebGPU4BitOptimizer
+    from test.web_platform.webgpu_4bit_inference import WebGPU4BitOptimizer
 """
 
 import os

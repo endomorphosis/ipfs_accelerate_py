@@ -52,7 +52,7 @@ Usage:
 
 # Try to import web platform modules
 try:
-    from fixed_web_platform.webgpu_quantization import ())))))))))))))))))))
+    from test.web_platform.webgpu_quantization import ())))))))))))))))))))
     WebGPUQuantizer,
     setup_4bit_inference,
     quantize_model_weights
@@ -64,7 +64,7 @@ except ImportError:
 
 # Try to import ultra-low precision modules
 try:
-    from fixed_web_platform.webgpu_ultra_low_precision import ())))))))))))))))))))
+    from test.web_platform.webgpu_ultra_low_precision import ())))))))))))))))))))
     setup_ultra_low_precision,
     create_2bit_compute_shaders,
     create_3bit_compute_shaders,
@@ -80,7 +80,7 @@ except ImportError:
 
 # Try to import KV cache optimization modules
 try:
-    from fixed_web_platform.webgpu_kv_cache_optimization import ())))))))))))))))))))
+    from test.web_platform.webgpu_kv_cache_optimization import ())))))))))))))))))))
     create_optimized_kv_cache,
     simulate_context_extension
     )

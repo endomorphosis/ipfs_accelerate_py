@@ -10,7 +10,7 @@ This module provides shader precompilation optimizations for WebGPU, enabling:
 - Cache management for compiled shaders
 
 Usage:
-    from fixed_web_platform.webgpu_shader_precompilation import (
+    from test.web_platform.webgpu_shader_precompilation import (
         ShaderPrecompiler,
         setup_shader_precompilation,
         precompile_model_shaders

@@ -30,10 +30,10 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 # Import the modules to test
 try:
-    from predictive_performance.multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
-    from predictive_performance.web_resource_pool_adapter import WebResourcePoolAdapter
-    from predictive_performance.multi_model_execution import MultiModelPredictor
-    from predictive_performance.multi_model_empirical_validation import MultiModelEmpiricalValidator
+    from ipfs_accelerate_py.predictive_performance.multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
+    from ipfs_accelerate_py.predictive_performance.web_resource_pool_adapter import WebResourcePoolAdapter
+    from ipfs_accelerate_py.predictive_performance.multi_model_execution import MultiModelPredictor
+    from ipfs_accelerate_py.predictive_performance.multi_model_empirical_validation import MultiModelEmpiricalValidator
 except ImportError as e:
     logger.error(f"Import error: {e}")
     logger.error("Make sure the necessary modules are available")

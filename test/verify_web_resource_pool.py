@@ -32,7 +32,7 @@ Usage:
 
 # Import required modules
 try:
-    from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
     RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
     logger.error()))f"ResourcePoolBridge not available: {}}}e}")

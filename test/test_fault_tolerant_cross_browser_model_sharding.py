@@ -37,7 +37,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 # Import required modules
 try:
-    from fixed_web_platform.cross_browser_model_sharding import ModelShardingManager
+    from test.web_platform.cross_browser_model_sharding import ModelShardingManager
     SHARDING_AVAILABLE = True
 except ImportError as e:
     logger.error(f"CrossBrowserModelSharding not available: {e}")
@@ -45,7 +45,7 @@ except ImportError as e:
 
 # Import resource pool bridge extensions if available
 try:
-    from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
+    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
     RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
     logger.error(f"ResourcePoolBridgeIntegration not available: {e}")
@@ -53,7 +53,7 @@ except ImportError as e:
 
 # Import browser performance history if available
 try:
-    from fixed_web_platform.browser_performance_history import BrowserPerformanceHistory
+    from test.web_platform.browser_performance_history import BrowserPerformanceHistory
     PERFORMANCE_HISTORY_AVAILABLE = True
 except ImportError as e:
     logger.error(f"BrowserPerformanceHistory not available: {e}")

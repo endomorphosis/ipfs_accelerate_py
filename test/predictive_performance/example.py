@@ -26,9 +26,9 @@ sys.path.append()))))))))))))str()))))))))))))Path()))))))))))))__file__).parent
 
 # Import the modules
 try:
-    from predictive_performance.predict import PerformancePredictor
-    from predictive_performance.active_learning import ActiveLearningSystem
-    from predictive_performance.benchmark_integration import BenchmarkScheduler
+    from ipfs_accelerate_py.predictive_performance.predict import PerformancePredictor
+    from ipfs_accelerate_py.predictive_performance.active_learning import ActiveLearningSystem
+    from ipfs_accelerate_py.predictive_performance.benchmark_integration import BenchmarkScheduler
 except ImportError as e:
     print()))))))))))))f"Error importing predictive performance modules: {}}}e}")
     sys.exit()))))))))))))1)

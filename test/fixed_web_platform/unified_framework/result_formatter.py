@@ -11,7 +11,7 @@ different model types and browsers:
 - Error handling integration
 
 Usage:
-    from fixed_web_platform.unified_framework.result_formatter import (
+    from test.web_platform.unified_framework.result_formatter import (
         ResultFormatter,
         format_inference_result,
         format_error_response

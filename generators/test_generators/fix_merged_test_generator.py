@@ -206,7 +206,7 @@ def fix_import_templates(file_path):
     # Check if database template import is present
     if "import generators.templates.template_database as template_database as db" not in content and "from hardware_test_templates import generators.templates.template_database as template_database" not in content:
         # Add import for hardware templates
-        try_import_pattern = r'try:\s+from fixed_web_platform import '
+        try_import_pattern = r'try:\s+from test.web_platform import '
         try_import_replacement = r'''try:
     # Try to import hardware templates
     try:
@@ -218,7 +218,7 @@ def fix_import_templates(file_path):
         print("Template database not available - falling back to static templates")
     
     # Import web platform support
-    from fixed_web_platform import '''
+    from test.web_platform import '''
         
         content = content.replace(try_import_pattern, try_import_replacement)
     

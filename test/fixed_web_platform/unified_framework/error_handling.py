@@ -13,7 +13,7 @@ Key features:
 - Easy-to-use decorators for both sync and async functions
 
 Usage example:
-    from fixed_web_platform.unified_framework.error_handling import (
+    from test.web_platform.unified_framework.error_handling import (
         ErrorHandler, handle_errors, handle_async_errors, with_retry,
         validate_dependencies, ErrorCategories
     )

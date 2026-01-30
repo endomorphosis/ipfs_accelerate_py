@@ -11,7 +11,7 @@ This module implements progressive loading for ML models on web platforms:
 - Report detailed loading telemetry
 
 Usage:
-    from fixed_web_platform.progressive_model_loader import (
+    from test.web_platform.progressive_model_loader import (
         ProgressiveModelLoader,
         load_model_progressively,
         optimize_loading_strategy

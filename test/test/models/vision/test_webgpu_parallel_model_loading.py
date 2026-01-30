@@ -86,10 +86,10 @@ def setup_web_platform_handler())))))))))))):
     try:
         # Try to import fixed_web_platform from the current directory
         sys.path.append())))))))))))'.')
-        from fixed_web_platform.web_platform_handler import ())))))))))))
+        from test.web_platform.web_platform_handler import ())))))))))))
         process_for_web, init_webgpu, create_mock_processors
         )
-        logger.info())))))))))))"Successfully imported web platform handler from fixed_web_platform")
+        logger.info())))))))))))"Successfully imported web platform handler from test.web_platform")
         return {}}}}}}}}}}}}}
         "process_for_web": process_for_web,
         "init_webgpu": init_webgpu,
@@ -99,7 +99,7 @@ def setup_web_platform_handler())))))))))))):
         # Try to import from the test directory
         try:
             sys.path.append())))))))))))'test')
-            from fixed_web_platform.web_platform_handler import ())))))))))))
+            from test.web_platform.web_platform_handler import ())))))))))))
             process_for_web, init_webgpu, create_mock_processors
             )
             logger.info())))))))))))"Successfully imported web platform handler from test/fixed_web_platform")
@@ -109,7 +109,7 @@ def setup_web_platform_handler())))))))))))):
         "create_mock_processors": create_mock_processors
         }
         except ImportError:
-            logger.error())))))))))))"Failed to import web platform handler from fixed_web_platform")
+            logger.error())))))))))))"Failed to import web platform handler from test.web_platform")
         return None
 
 def enhance_parallel_loading_tracker())))))))))))):

@@ -18,7 +18,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 # Import visualization module
-from predictive_performance.visualization import AdvancedVisualization, create_visualization_report
+from ipfs_accelerate_py.predictive_performance.visualization import AdvancedVisualization, create_visualization_report
 
 class TestAdvancedVisualization(unittest.TestCase):
     """Test cases for the AdvancedVisualization class."""

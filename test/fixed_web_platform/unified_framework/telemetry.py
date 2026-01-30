@@ -10,7 +10,7 @@ capturing detailed information about:
 - Recovery success rates
 
 Usage:
-    from fixed_web_platform.unified_framework.telemetry import (
+    from test.web_platform.unified_framework.telemetry import (
         TelemetryCollector, register_collector, TelemetryReporter
     )
     

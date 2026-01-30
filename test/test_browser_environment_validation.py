@@ -20,7 +20,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 sys.path.append(str(Path(__file__).resolve().parent))
 
 # Import the browser validation functionality
-from fixed_web_platform.browser_automation import (
+from test.web_platform.browser_automation import (
     find_browser_executable,
     get_browser_args,
     create_test_html,
@@ -251,7 +251,7 @@ async def test_check_browser_capabilities(mock_browser_automation, mock_create_h
     mock_automation.close = AsyncMock()
     
     # For this test, we need to mock the entire check_browser_capabilities function
-    # since its implementation uses BrowserAutomation from fixed_web_platform
+    # since its implementation uses BrowserAutomation from test.web_platform
     with patch("check_browser_webnn_webgpu.check_browser_capabilities", new=AsyncMock()) as mock_check:
         mock_check.return_value = {
             "success": True,

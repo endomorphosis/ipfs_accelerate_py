@@ -28,8 +28,8 @@ try:
     implementation_type = "unified"
 except ImportError:
     try:
-        from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
-        from fixed_web_platform.webnn_implementation import RealWebNNImplementation
+        from test.web_platform.webgpu_implementation import RealWebGPUImplementation
+        from test.web_platform.webnn_implementation import RealWebNNImplementation
         implementation_type = "direct"
     except ImportError:
         logger.error("Could not import WebNN/WebGPU implementations")

@@ -19,7 +19,7 @@ script_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.append(script_dir)
 
 # Import the visualization module directly
-from predictive_performance.visualization_minimal import AdvancedVisualization, create_visualization_report
+from ipfs_accelerate_py.predictive_performance.visualization_minimal import AdvancedVisualization, create_visualization_report
 
 class TestAdvancedVisualization(unittest.TestCase):
     """Test cases for the AdvancedVisualization class."""

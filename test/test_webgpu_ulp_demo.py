@@ -31,7 +31,7 @@ def test_ultra_low_precision(model_name, model_type, precision_bits, browser, ex
         extended_context: Whether to enable extended context window
     """
     try:
-        from fixed_web_platform.webgpu_ultra_low_precision import setup_ultra_low_precision
+        from test.web_platform.webgpu_ultra_low_precision import setup_ultra_low_precision
         
         # Set up ultra-low precision
         result = setup_ultra_low_precision(
@@ -100,7 +100,7 @@ def test_context_extension(model_name, target_length=32768, browser='chrome'):
         browser: Browser to use
     """
     try:
-        from fixed_web_platform.webgpu_ultra_low_precision import extend_context_window
+        from test.web_platform.webgpu_ultra_low_precision import extend_context_window
         
         # Try to extend the context window
         context_config = extend_context_window(
@@ -143,7 +143,7 @@ def test_resource_pool_with_ulp(model_name, model_type, precision_bits=2, browse
         browser: Browser to use (or None for automatic selection)
     """
     try:
-        from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+        from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
         
         # Create resource pool integration
         integration = ResourcePoolBridgeIntegration(

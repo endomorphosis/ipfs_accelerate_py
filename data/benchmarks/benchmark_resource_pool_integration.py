@@ -284,7 +284,7 @@ class ResourcePoolBenchmark:
         """
         try:
             # Import necessary modules
-            from fixed_web_platform.browser_automation import BrowserAutomation
+            from test.web_platform.browser_automation import BrowserAutomation
             
             # Get default browser from arguments
             browser = self.args.browser if self.args.browser else "chrome"
@@ -406,7 +406,7 @@ class ResourcePoolBenchmark:
         """
         try:
             # Import resource pool integration
-            from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+            from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
             
             # Create integration with specified parameters
             max_connections = self.args.max_connections if self.args.max_connections else 4
@@ -902,7 +902,7 @@ class ResourcePoolBenchmark:
         try:
             # Import model sharding utilities
             try:
-                from fixed_web_platform.model_sharding import ModelShardingManager
+                from test.web_platform.model_sharding import ModelShardingManager
                 sharding_available = True
             except ImportError:
                 logger.error("Model sharding not available - implement fixed_web_platform/model_sharding.py first")

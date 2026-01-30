@@ -12,7 +12,7 @@ functionality rather than failing completely:
 - Browser compatibility issues handling with feature detection and alternatives
 
 Usage:
-    from fixed_web_platform.unified_framework.graceful_degradation import (
+    from test.web_platform.unified_framework.graceful_degradation import (
         GracefulDegradationManager, apply_degradation_strategy
     )
     

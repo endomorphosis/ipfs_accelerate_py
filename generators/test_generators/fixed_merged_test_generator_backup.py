@@ -302,7 +302,7 @@ class MockHandler:
 
 # Import fixed WebNN and WebGPU platform support
 try:
-    from fixed_web_platform import process_for_web, init_webnn, init_webgpu, create_mock_processors
+    from test.web_platform import process_for_web, init_webnn, init_webgpu, create_mock_processors
     WEB_PLATFORM_SUPPORT = True
 except ImportError:
     WEB_PLATFORM_SUPPORT = False

@@ -32,7 +32,7 @@ Usage:
     ,
 # Import modules to test
 try:
-    from fixed_web_platform.webgpu_low_latency_optimizer import ())
+    from test.web_platform.webgpu_low_latency_optimizer import ())
     optimize_for_low_latency,
     BrowserLatencyOptimizer,
     TokenBufferManager,
@@ -44,7 +44,7 @@ except ImportError:
 
 # Import streaming inference for integration tests
 try:
-    from fixed_web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+    from test.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
 except ImportError:
     logger.warning())"WebGPU streaming inference not available. Some tests will be skipped.")
     WebGPUStreamingInference = None

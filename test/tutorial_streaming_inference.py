@@ -40,13 +40,13 @@ generation with various precision options. It covers:
     ,
 # Import the streaming inference module:
 try:
-    from fixed_web_platform.webgpu_streaming_inference import ()))))))
+    from test.web_platform.webgpu_streaming_inference import ()))))))
     WebGPUStreamingInference,
     create_streaming_endpoint,
     optimize_for_streaming
     )
-    from fixed_web_platform.webgpu_kv_cache_optimization import create_optimized_kv_cache
-    from fixed_web_platform.unified_web_framework import WebPlatformAccelerator
+    from test.web_platform.webgpu_kv_cache_optimization import create_optimized_kv_cache
+    from test.web_platform.unified_web_framework import WebPlatformAccelerator
 except ImportError:
     logger.error()))))))"Failed to import WebGPU modules. Make sure you have the fixed_web_platform directory available.")
     raise

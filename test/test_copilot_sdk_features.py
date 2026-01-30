@@ -373,8 +373,8 @@ class TestSDKIntegrationWithOperations:
     
     def test_operations_session_tracking(self):
         """Test that operations layer properly tracks sessions"""
-        from shared.operations import CopilotSDKOperations
-        from shared.core import SharedCore
+        from scripts.shared.operations import CopilotSDKOperations
+        from scripts.shared.core import SharedCore
         
         with patch('ipfs_accelerate_py.copilot_sdk.wrapper.HAVE_COPILOT_SDK', True):
             with patch('ipfs_accelerate_py.copilot_sdk.wrapper._CopilotClient'):

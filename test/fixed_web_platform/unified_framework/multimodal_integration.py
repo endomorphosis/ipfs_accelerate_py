@@ -14,7 +14,7 @@ Key features:
 - Performance tracking and reporting
 
 Usage:
-    from fixed_web_platform.unified_framework.multimodal_integration import (
+    from test.web_platform.unified_framework.multimodal_integration import (
         optimize_model_for_browser,
         run_multimodal_inference,
         get_best_multimodal_config,
@@ -43,7 +43,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple
 import anyio
 
 # Import core multimodal optimizer
-from fixed_web_platform.multimodal_optimizer import (
+from test.web_platform.multimodal_optimizer import (
     MultimodalOptimizer,
     optimize_multimodal_model,
     configure_for_browser,
@@ -52,8 +52,8 @@ from fixed_web_platform.multimodal_optimizer import (
 )
 
 # Import unified framework components
-from fixed_web_platform.unified_framework.platform_detector import detect_platform, detect_browser_features
-from fixed_web_platform.unified_framework.configuration_manager import ConfigurationManager
+from test.web_platform.unified_framework.platform_detector import detect_platform, detect_browser_features
+from test.web_platform.unified_framework.configuration_manager import ConfigurationManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

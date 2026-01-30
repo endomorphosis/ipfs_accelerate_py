@@ -36,9 +36,9 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 # Import required modules
 try:
-    from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
-    from fixed_web_platform.fault_tolerant_model_sharding import FaultTolerantModelSharding
-    from fixed_web_platform.fault_tolerance_validation import FaultToleranceValidator
+    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
+    from test.web_platform.fault_tolerant_model_sharding import FaultTolerantModelSharding
+    from test.web_platform.fault_tolerance_validation import FaultToleranceValidator
     RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
     logger.error(f"ResourcePool components not available: {e}")

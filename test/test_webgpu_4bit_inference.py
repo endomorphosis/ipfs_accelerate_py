@@ -33,13 +33,13 @@ Key features:
 
 # Try to import web platform modules
 try:
-    from fixed_web_platform.webgpu_quantization import ()))))
+    from test.web_platform.webgpu_quantization import ()))))
     WebGPUQuantizer,
     setup_4bit_inference,
     quantize_model_weights,
     WebGPU4BitInferenceHandler
     )
-    from fixed_web_platform import process_for_web
+    from test.web_platform import process_for_web
     WEBGPU_QUANTIZATION_AVAILABLE = True
 except ImportError:
     logger.warning()))))"WebGPU quantization modules not available")
@@ -255,7 +255,7 @@ def is_platform_available()))))platform):
 def setup_webgpu_4bit_handler()))))model_path, model_type, args):
     """Set up a WebGPU 4-bit handler for inference."""
     try:
-        from fixed_web_platform.webgpu_adaptive_precision import ()))))
+        from test.web_platform.webgpu_adaptive_precision import ()))))
         WebGPUAdaptivePrecision,
         optimize_model_with_adaptive_precision
         )

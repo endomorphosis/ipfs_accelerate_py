@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Try to import web platform support
 try:
-    from fixed_web_platform import process_for_web, create_mock_processors
+    from test.web_platform import process_for_web, create_mock_processors
     HAS_WEB_PLATFORM = True
     logger.info("Web platform support available")
 except ImportError:
@@ -260,7 +260,7 @@ class TestHFBert:
         # Check if enhanced web platform support is available
         if HAS_WEB_PLATFORM:
             model_path = self.get_model_path_or_name()
-            # Use the enhanced WebNN handler from fixed_web_platform
+            # Use the enhanced WebNN handler from test.web_platform
             web_processors = create_mock_processors()
             # Create a WebNN-compatible handler with the right implementation type
             handler = lambda x: {
@@ -278,7 +278,7 @@ class TestHFBert:
         # Check if enhanced web platform support is available
         if HAS_WEB_PLATFORM:
             model_path = self.get_model_path_or_name()
-            # Use the enhanced WebGPU handler from fixed_web_platform
+            # Use the enhanced WebGPU handler from test.web_platform
             web_processors = create_mock_processors()
             # Create a WebGPU-compatible handler with the right implementation type
             handler = lambda x: {

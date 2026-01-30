@@ -12,7 +12,7 @@ WEBNN_WEBGPU_RESOURCE_POOL_AVAILABLE = False
 try:
     # Check if the module exists first
     if importlib.util.find_spec("fixed_web_platform.resource_pool_bridge_integration") is not None:
-        from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+        from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
         WEBNN_WEBGPU_RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
     logging.getLogger("ResourcePool").debug(f"WebNN/WebGPU Resource Pool not available: {e}")

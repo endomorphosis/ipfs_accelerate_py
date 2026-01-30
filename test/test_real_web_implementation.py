@@ -31,14 +31,14 @@ Usage:
 
 # Import implementations
 try:
-    from fixed_web_platform.real_webgpu_connection import RealWebGPUConnection
-    from fixed_web_platform.real_webnn_connection import RealWebNNConnection
+    from test.web_platform.real_webgpu_connection import RealWebGPUConnection
+    from test.web_platform.real_webnn_connection import RealWebNNConnection
     logger.info()))))))"Successfully imported RealWebImplementation - using REAL hardware acceleration when available")
 except ImportError:
     logger.error()))))))"Failed to import RealWebImplementation - trying fallback to old implementation")
     try:
-        from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation as RealWebGPUConnection
-        from fixed_web_platform.webnn_implementation import RealWebNNImplementation as RealWebNNConnection
+        from test.web_platform.webgpu_implementation import RealWebGPUImplementation as RealWebGPUConnection
+        from test.web_platform.webnn_implementation import RealWebNNImplementation as RealWebNNConnection
     except ImportError:
         logger.error()))))))"Failed to import fallback implementation")
         sys.exit()))))))1)

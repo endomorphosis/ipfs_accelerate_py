@@ -11,7 +11,7 @@ capabilities, bridging the browser_capability_detector with the unified framewor
 - Supports runtime adaptation based on platform conditions
 
 Usage:
-    from fixed_web_platform.unified_framework.platform_detector import (
+    from test.web_platform.unified_framework.platform_detector import (
         PlatformDetector,
         get_browser_capabilities,
         get_hardware_capabilities,

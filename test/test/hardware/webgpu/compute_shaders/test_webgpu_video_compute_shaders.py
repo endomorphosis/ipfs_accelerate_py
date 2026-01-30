@@ -89,7 +89,7 @@ def import_webgpu_video_compute_shaders()))))))))))))))):
     """:
     try:
         # Try to import from the fixed_web_platform directory
-        from fixed_web_platform.webgpu_video_compute_shaders import ()))))))))))))))
+        from test.web_platform.webgpu_video_compute_shaders import ()))))))))))))))
         setup_video_compute_shaders, get_supported_video_models
         )
         logger.info()))))))))))))))"Successfully imported WebGPU video compute shaders module")

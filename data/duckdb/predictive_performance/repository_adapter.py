@@ -18,9 +18,9 @@ from .predictor_repository import DuckDBPredictorRepository
 
 # Try to import from the predictive_performance package
 try:
-    from predictive_performance.hardware_model_predictor import HardwareModelPredictor
+    from ipfs_accelerate_py.predictive_performance.hardware_model_predictor import HardwareModelPredictor
     HARDWARE_MODEL_PREDICTOR_AVAILABLE = True
-    from predictive_performance.model_performance_predictor import (
+    from ipfs_accelerate_py.predictive_performance.model_performance_predictor import (
         load_prediction_models, predict_performance, generate_prediction_matrix
     )
     MODEL_PERFORMANCE_PREDICTOR_AVAILABLE = True

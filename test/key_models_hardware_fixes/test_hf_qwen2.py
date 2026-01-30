@@ -71,7 +71,7 @@ except ImportError:
 
 # Try to import web platform support
 try:
-    from fixed_web_platform import create_mock_processors, process_for_web
+    from test.web_platform import create_mock_processors, process_for_web
     HAS_WEB_PLATFORM = True
 except ImportError:
     HAS_WEB_PLATFORM = False
@@ -471,7 +471,7 @@ class Qwen2TestBase:
         # Check if enhanced web platform support is available
         if HAS_WEB_PLATFORM:
             model_path = self.get_model_path_or_name()
-            # Use the enhanced WebNN handler from fixed_web_platform
+            # Use the enhanced WebNN handler from test.web_platform
             web_processors = create_mock_processors()
             # Create a WebNN-compatible handler with the right implementation type
             handler = lambda x: {
@@ -489,7 +489,7 @@ class Qwen2TestBase:
         # Check if enhanced web platform support is available
         if HAS_WEB_PLATFORM:
             model_path = self.get_model_path_or_name()
-            # Use the enhanced WebGPU handler from fixed_web_platform
+            # Use the enhanced WebGPU handler from test.web_platform
             web_processors = create_mock_processors()
             # Create a WebGPU-compatible handler with the right implementation type
             handler = lambda x: {

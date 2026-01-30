@@ -22,7 +22,7 @@ except (ImportError, ValueError):
         from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
         try:
-            from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+            from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
         except ImportError:
             HAVE_STORAGE_WRAPPER = False
 

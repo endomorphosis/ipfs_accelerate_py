@@ -42,7 +42,7 @@ try:
     from .common.storage_wrapper import storage_wrapper
 except (ImportError, ValueError):
     try:
-        from common.storage_wrapper import storage_wrapper
+        from test.common.storage_wrapper import storage_wrapper
     except ImportError:
         storage_wrapper = None
 

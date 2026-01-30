@@ -20,7 +20,7 @@ Key features:
 - Adaptive browser selection for different model types (text, vision, audio)
 
 Usage:
-    from fixed_web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
+    from test.web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
     
     # Create enhanced pool with recovery
     pool = ResourcePoolBridgeIntegrationEnhanced(
@@ -51,37 +51,37 @@ import traceback
 from typing import Any, Dict, List, Optional, Tuple, Union, Callable, Set
 
 # Import circuit breaker
-from fixed_web_platform.circuit_breaker import CircuitBreaker, BrowserCircuitBreakerManager
+from test.web_platform.circuit_breaker import CircuitBreaker, BrowserCircuitBreakerManager
 CIRCUIT_BREAKER_AVAILABLE = True
 
 # Import performance trend analyzer
-from fixed_web_platform.performance_trend_analyzer import PerformanceTrendAnalyzer, TrendDirection, RegressionSeverity
+from test.web_platform.performance_trend_analyzer import PerformanceTrendAnalyzer, TrendDirection, RegressionSeverity
 PERFORMANCE_ANALYZER_AVAILABLE = True
 
 # Import connection pooling and health monitoring
 try:
-    from fixed_web_platform.connection_pool_manager import ConnectionPoolManager
+    from test.web_platform.connection_pool_manager import ConnectionPoolManager
     ADVANCED_POOLING_AVAILABLE = True
 except ImportError:
     ADVANCED_POOLING_AVAILABLE = False
 
 # Import tensor sharing
 try:
-    from fixed_web_platform.cross_model_tensor_sharing import TensorSharingManager
+    from test.web_platform.cross_model_tensor_sharing import TensorSharingManager
     TENSOR_SHARING_AVAILABLE = True
 except ImportError:
     TENSOR_SHARING_AVAILABLE = False
     
 # Import ultra-low precision support
 try:
-    from fixed_web_platform.webgpu_ultra_low_precision import UltraLowPrecisionManager
+    from test.web_platform.webgpu_ultra_low_precision import UltraLowPrecisionManager
     ULTRA_LOW_PRECISION_AVAILABLE = True
 except ImportError:
     ULTRA_LOW_PRECISION_AVAILABLE = False
 
 # Import browser performance history tracking
 try:
-    from fixed_web_platform.browser_performance_history import BrowserPerformanceHistory
+    from test.web_platform.browser_performance_history import BrowserPerformanceHistory
     BROWSER_HISTORY_AVAILABLE = True
 except ImportError:
     BROWSER_HISTORY_AVAILABLE = False
@@ -237,7 +237,7 @@ class ResourcePoolBridgeIntegrationEnhanced:
         """
         try:
             # Import core bridge implementation
-            from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+            from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
             
             # Create base bridge
             self.bridge = ResourcePoolBridgeIntegration(

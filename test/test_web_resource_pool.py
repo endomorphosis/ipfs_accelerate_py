@@ -36,7 +36,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 # Import required modules
 try:
-    from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
     RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
     logger.error(f"ResourcePoolBridge not available: {e}")
@@ -47,8 +47,8 @@ except Exception as e:
 
 # Import enhanced implementation (May 2025)
 try:
-    from fixed_web_platform.resource_pool_integration_enhanced import EnhancedResourcePoolIntegration
-    from fixed_web_platform.enhanced_resource_pool_tester import EnhancedWebResourcePoolTester
+    from test.web_platform.resource_pool_integration_enhanced import EnhancedResourcePoolIntegration
+    from test.web_platform.enhanced_resource_pool_tester import EnhancedWebResourcePoolTester
     ENHANCED_INTEGRATION_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Enhanced Resource Pool Integration not available: {e}")
@@ -1422,11 +1422,11 @@ async def main_async():
         logger.info("Using Enhanced Resource Pool Integration (May 2025)")
         # Import the tester class if available, otherwise use local implementation
         try:
-            from fixed_web_platform.enhanced_resource_pool_tester import EnhancedWebResourcePoolTester
+            from test.web_platform.enhanced_resource_pool_tester import EnhancedWebResourcePoolTester
             tester = EnhancedWebResourcePoolTester(args)
         except ImportError:
             logger.info("Using mock EnhancedWebResourcePoolTester")
-            from fixed_web_platform.enhanced_resource_pool_tester_mock import EnhancedWebResourcePoolTester
+            from test.web_platform.enhanced_resource_pool_tester_mock import EnhancedWebResourcePoolTester
             tester = EnhancedWebResourcePoolTester(args)
     else:
         tester = WebResourcePoolTester(args)

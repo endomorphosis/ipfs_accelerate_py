@@ -218,7 +218,7 @@ class StaleReportCleaner:
                     # Try to import string utils for better regex handling
                     try:
                         sys.path.append(str(Path(__file__).parent.parent.parent))
-                        from fixed_web_platform.unified_framework.string_utils import is_valid_regex
+                        from test.web_platform.unified_framework.string_utils import is_valid_regex
                         
                         # Validate regex pattern
                         if not is_valid_regex(body_tag_pattern):

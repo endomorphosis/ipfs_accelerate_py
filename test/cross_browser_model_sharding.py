@@ -27,14 +27,14 @@ import anyio
     from typing import Dict, List, Any, Optional, Tuple, Union, Set
 
 # Import base model sharding functionality
-    from fixed_web_platform.model_sharding import ()))))))))))))))
+    from test.web_platform.model_sharding import ()))))))))))))))
     ModelShardingManager,
     create_model_shards,
     shard_model_for_inference,
     create_sharding_config
     )
 
-    from fixed_web_platform.unified_framework.model_sharding import ()))))))))))))))
+    from test.web_platform.unified_framework.model_sharding import ()))))))))))))))
     ModelShardingManager as UnifiedModelShardingManager,
     ShardConfiguration,
     BrowserTabShardingIntegration

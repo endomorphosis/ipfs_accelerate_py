@@ -11,7 +11,7 @@ This module provides dynamic thread management based on available browser CPU re
 - Worker thread management for parallel processing
 
 Usage:
-    from fixed_web_platform.browser_cpu_detection import (
+    from test.web_platform.browser_cpu_detection import (
         BrowserCPUDetector,
         create_thread_pool,
         optimize_workload_for_cores,

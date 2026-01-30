@@ -23,13 +23,13 @@ Usage:
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logger = logging.getLogger(__name__)
 
-# Add parent directory to path so we can import from fixed_web_platform
+# Add parent directory to path so we can import from test.web_platform
     sys.path.insert(0, str(Path(__file__).parent))
 
 # Import implementations
 try:
-    from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
-    from fixed_web_platform.webnn_implementation import RealWebNNImplementation
+    from test.web_platform.webgpu_implementation import RealWebGPUImplementation
+    from test.web_platform.webnn_implementation import RealWebNNImplementation
     HAS_IMPLEMENTATIONS = True
 except ImportError:
     logger.error("Failed to import WebGPU/WebNN implementations")

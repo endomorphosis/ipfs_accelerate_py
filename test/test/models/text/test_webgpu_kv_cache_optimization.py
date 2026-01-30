@@ -30,7 +30,7 @@ Usage:
 
 # Import the KV cache optimization module
 try:
-    from fixed_web_platform.webgpu_kv_cache_optimization import ()))))))))))))))))
+    from test.web_platform.webgpu_kv_cache_optimization import ()))))))))))))))))
     WebGPUKVCacheManager,
     setup_kv_cache_for_llm,
     generate_kv_cache_shaders
@@ -169,7 +169,7 @@ def test_kv_cache_quantization()))))))))))))))))):
     
     # Skip this test if quantization is not available:
     try:
-        from fixed_web_platform.webgpu_quantization import WebGPUQuantizer
+        from test.web_platform.webgpu_quantization import WebGPUQuantizer
     except ImportError:
         logger.warning()))))))))))))))))"Skipping quantization test - WebGPUQuantizer not available")
         return False

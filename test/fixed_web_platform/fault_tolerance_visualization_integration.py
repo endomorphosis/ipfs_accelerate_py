@@ -6,7 +6,7 @@ This module integrates the fault tolerance validation system with visualization 
 providing a unified interface for validation testing, analysis, and reporting.
 
 Usage:
-    from fixed_web_platform.fault_tolerance_visualization_integration import FaultToleranceValidationSystem
+    from test.web_platform.fault_tolerance_visualization_integration import FaultToleranceValidationSystem
     
     # Create validation system
     validation_system = FaultToleranceValidationSystem(model_manager, output_dir="./reports")
@@ -39,8 +39,8 @@ logger = logging.getLogger(__name__)
 
 # Import local modules
 try:
-    from fixed_web_platform.fault_tolerance_validation import FaultToleranceValidator
-    from fixed_web_platform.visualization.fault_tolerance_visualizer import FaultToleranceVisualizer
+    from test.web_platform.fault_tolerance_validation import FaultToleranceValidator
+    from test.web_platform.visualization.fault_tolerance_visualizer import FaultToleranceVisualizer
     MODULES_AVAILABLE = True
 except ImportError as e:
     logger.error(f"Required modules not available: {e}")

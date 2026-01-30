@@ -36,7 +36,7 @@ logger = logging.getLogger("ultra_low_precision_example")
 
 # Try to import the ultra-low precision module
 try:
-    from fixed_web_platform.webgpu_ultra_low_precision import (
+    from test.web_platform.webgpu_ultra_low_precision import (
         setup_ultra_low_precision,
         create_2bit_compute_shaders,
         create_3bit_compute_shaders,

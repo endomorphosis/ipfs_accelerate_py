@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 # Try to import required components
 try:
     # Import enhanced WebSocket bridge
-    from fixed_web_platform.enhanced_websocket_bridge import EnhancedWebSocketBridge, create_enhanced_websocket_bridge
+    from test.web_platform.enhanced_websocket_bridge import EnhancedWebSocketBridge, create_enhanced_websocket_bridge
     HAS_WEBSOCKET = True
 except ImportError:
     logger.warning("Enhanced WebSocket bridge not available")

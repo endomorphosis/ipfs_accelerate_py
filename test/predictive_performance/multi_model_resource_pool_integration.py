@@ -37,7 +37,7 @@ if parent_dir not in sys.path:
 
 # Import multi-model execution predictor
 try:
-    from predictive_performance.multi_model_execution import MultiModelPredictor
+    from ipfs_accelerate_py.predictive_performance.multi_model_execution import MultiModelPredictor
 except ImportError as e:
     logger.error(f"Error importing MultiModelPredictor: {e}")
     logger.error("Make sure multi_model_execution.py is available in the predictive_performance directory")
@@ -45,7 +45,7 @@ except ImportError as e:
 
 # Import empirical validation
 try:
-    from predictive_performance.multi_model_empirical_validation import MultiModelEmpiricalValidator
+    from ipfs_accelerate_py.predictive_performance.multi_model_empirical_validation import MultiModelEmpiricalValidator
     VALIDATOR_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Error importing MultiModelEmpiricalValidator: {e}")
@@ -54,7 +54,7 @@ except ImportError as e:
 
 # Import resource pool integration
 try:
-    from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
     RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Error importing ResourcePoolBridgeIntegrationWithRecovery: {e}")

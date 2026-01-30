@@ -19,8 +19,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import from test directory
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
-from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
-from fixed_web_platform.cross_model_tensor_sharing import TensorSharingManager
+from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+from test.web_platform.cross_model_tensor_sharing import TensorSharingManager
 
 async def run_tensor_sharing_demo(
     enable_tensor_sharing: bool = True,

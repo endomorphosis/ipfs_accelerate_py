@@ -41,7 +41,7 @@ if os.environ.get("SELENIUM_BRIDGE_LOG_LEVEL", "").upper() == "DEBUG":
     
 # Try to import the BrowserAutomationBridge
 try:
-    from fixed_web_platform.browser_automation import BrowserAutomationBridge
+    from test.web_platform.browser_automation import BrowserAutomationBridge
     BRIDGE_AVAILABLE = True
 except ImportError:
     logger.warning("BrowserAutomationBridge not available, using mock implementation")

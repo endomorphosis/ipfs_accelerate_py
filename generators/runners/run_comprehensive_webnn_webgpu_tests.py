@@ -44,11 +44,11 @@ sys.path.append(str(Path(__file__).resolve().parent))
 # Import necessary modules
 try:
     from centralized_hardware_detection.hardware_detection import detect_web_platform_capabilities
-    from fixed_web_platform.browser_automation import BrowserAutomation
-    from fixed_web_platform.unified_web_framework import UnifiedWebPlatform
+    from test.web_platform.browser_automation import BrowserAutomation
+    from test.web_platform.unified_web_framework import UnifiedWebPlatform
     from implement_real_webnn_webgpu import implement_webnn_webgpu_with_selenium
     from webnn_webgpu_quantization_test import test_webnn_webgpu_quantization
-    from fixed_web_platform.webgpu_quantization import create_quantized_model
+    from test.web_platform.webgpu_quantization import create_quantized_model
     
     # Import database integration
     from data.duckdb.core.benchmark_db_api import BenchmarkDatabase, store_benchmark_result
@@ -212,7 +212,7 @@ class WebPrecisionTester:
                     return {"status": "skipped", "reason": f"{precision}-bit not supported in {platform}"}
                 
                 # Import specific module for ultra-low precision
-                from fixed_web_platform.webgpu_ultra_low_precision import test_ultra_low_precision
+                from test.web_platform.webgpu_ultra_low_precision import test_ultra_low_precision
                 results = test_ultra_low_precision(
                     model_name=model,
                     bit_width=precision,

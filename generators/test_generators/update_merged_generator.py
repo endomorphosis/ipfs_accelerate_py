@@ -97,7 +97,7 @@ def update_imports():
             content = f.read()
             
         # Check if the import already exists
-        if "from fixed_web_platform import" in content:
+        if "from test.web_platform import" in content:
             print("Import already exists - skipping")
             return True
             
@@ -113,7 +113,7 @@ def update_imports():
             import_pos = last_import.end()
             
         # Add our import after the last one
-        new_import = "\n\n# Import fixed WebNN and WebGPU platform support\nfrom fixed_web_platform import process_for_web, init_webnn, init_webgpu, create_mock_processors"
+        new_import = "\n\n# Import fixed WebNN and WebGPU platform support\nfrom test.web_platform import process_for_web, init_webnn, init_webgpu, create_mock_processors"
         content = content[:import_pos] + new_import + content[import_pos:]
         
         # Write the updated file
@@ -257,7 +257,7 @@ def update_init_methods():
         current_init_webgpu = init_webgpu_match.group(0)
         
         # Check if we've already updated them
-        if "Using the fixed version from fixed_web_platform" in current_init_webnn:
+        if "Using the fixed version from test.web_platform" in current_init_webnn:
             print("init methods already updated - skipping")
             return True
             
@@ -266,7 +266,7 @@ def update_init_methods():
         """
         Initialize the model for WebNN inference.
         
-        Using the fixed version from fixed_web_platform.
+        Using the fixed version from test.web_platform.
         
         Args:
             model_name: Name of the model to load
@@ -288,7 +288,7 @@ def update_init_methods():
         """
         Initialize the model for WebGPU inference.
         
-        Using the fixed version from fixed_web_platform.
+        Using the fixed version from test.web_platform.
         
         Args:
             model_name: Name of the model to load

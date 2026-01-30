@@ -1909,8 +1909,8 @@ class MCPJSONRPCServer:
     async def _gh_list_repos(self, params: Dict) -> Dict:
         """List GitHub repositories."""
         try:
-            from shared.core import SharedCore
-            from shared.operations import GitHubOperations
+            from scripts.shared.core import SharedCore
+            from scripts.shared.operations import GitHubOperations
             shared_core = SharedCore()
             github_ops = GitHubOperations(shared_core)
             
@@ -1930,8 +1930,8 @@ class MCPJSONRPCServer:
     async def _gh_create_workflow_queues(self, params: Dict) -> Dict:
         """Create workflow queues for repositories with recent activity."""
         try:
-            from shared.core import SharedCore
-            from shared.operations import GitHubOperations
+            from scripts.shared.core import SharedCore
+            from scripts.shared.operations import GitHubOperations
             shared_core = SharedCore()
             github_ops = GitHubOperations(shared_core)
             
@@ -1954,8 +1954,8 @@ class MCPJSONRPCServer:
     async def _gh_list_runners(self, params: Dict) -> Dict:
         """List GitHub self-hosted runners."""
         try:
-            from shared.core import SharedCore
-            from shared.operations import GitHubOperations
+            from scripts.shared.core import SharedCore
+            from scripts.shared.operations import GitHubOperations
             shared_core = SharedCore()
             github_ops = GitHubOperations(shared_core)
             
@@ -1978,8 +1978,8 @@ class MCPJSONRPCServer:
     async def _gh_list_all_issues(self, params: Dict) -> Dict:
         """List issues across all accessible repositories."""
         try:
-            from shared.core import SharedCore
-            from shared.operations import GitHubOperations
+            from scripts.shared.core import SharedCore
+            from scripts.shared.operations import GitHubOperations
             shared_core = SharedCore()
             github_ops = GitHubOperations(shared_core)
             
@@ -2003,8 +2003,8 @@ class MCPJSONRPCServer:
     async def _gh_list_all_pull_requests(self, params: Dict) -> Dict:
         """List pull requests across all accessible repositories."""
         try:
-            from shared.core import SharedCore
-            from shared.operations import GitHubOperations
+            from scripts.shared.core import SharedCore
+            from scripts.shared.operations import GitHubOperations
             shared_core = SharedCore()
             github_ops = GitHubOperations(shared_core)
             
@@ -2053,8 +2053,8 @@ class MCPJSONRPCServer:
     async def _gh_get_rate_limit(self, params: Dict) -> Dict:
         """Get GitHub API rate limit information."""
         try:
-            from shared.core import SharedCore
-            from shared.operations import GitHubOperations
+            from scripts.shared.core import SharedCore
+            from scripts.shared.operations import GitHubOperations
             shared_core = SharedCore()
             github_ops = GitHubOperations(shared_core)
             

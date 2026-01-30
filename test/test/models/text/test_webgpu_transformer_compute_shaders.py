@@ -117,7 +117,7 @@ def import_webgpu_transformer_compute_shaders()))))))))))))))):
     """:
     try:
         # Try to import from the fixed_web_platform directory
-        from fixed_web_platform.webgpu_transformer_compute_shaders import ()))))))))))))))
+        from test.web_platform.webgpu_transformer_compute_shaders import ()))))))))))))))
         setup_transformer_compute_shaders, get_supported_transformer_models
         )
         logger.info()))))))))))))))"Successfully imported WebGPU transformer compute shaders module")
