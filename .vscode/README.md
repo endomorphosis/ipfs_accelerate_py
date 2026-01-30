@@ -2,6 +2,25 @@
 
 This directory contains VSCode configuration files for the ipfs_accelerate_py project.
 
+## GitHub CLI P2P Caching
+
+This project uses an advanced GitHub CLI caching system with P2P sharing via libp2p/IPFS. This reduces GitHub API rate limiting and speeds up development workflows.
+
+**Cache Features:**
+- ✅ Content-addressed caching with multiformats
+- ✅ P2P cache sharing between developers (encrypted)
+- ✅ Automatic fallback to stale cache on rate limit
+- ✅ IPFS-backed distributed cache storage
+
+**Cache Configuration:**
+The cache is automatically configured via environment variables in `settings.json`:
+- `CACHE_ENABLE_P2P`: Enable P2P cache sharing (default: true)
+- `CACHE_LISTEN_PORT`: P2P listen port (default: 9100)
+- `CACHE_DEFAULT_TTL`: Cache TTL in seconds (default: 300)
+- `CACHE_DIR`: Cache directory (default: `.cache/github_cli/`)
+
+All terminals opened in VSCode will have these variables set automatically.
+
 ## Files
 
 ### tasks.json

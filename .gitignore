@@ -92,3 +92,6 @@ bin/*
 
 # Codemod backups
 .migrate_backups/
+
+# GitHub CLI cache (P2P/IPFS)
+.cache/github_cli/

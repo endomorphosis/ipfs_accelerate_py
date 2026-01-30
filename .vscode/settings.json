@@ -43,13 +43,25 @@
 		"**/*.egg-info": true
 	},
 	"terminal.integrated.env.linux": {
-		"PYTHONPATH": "${workspaceFolder}"
+		"PYTHONPATH": "${workspaceFolder}",
+		"CACHE_ENABLE_P2P": "true",
+		"CACHE_LISTEN_PORT": "9100",
+		"CACHE_DEFAULT_TTL": "300",
+		"CACHE_DIR": "${workspaceFolder}/.cache/github_cli"
 	},
 	"terminal.integrated.env.osx": {
-		"PYTHONPATH": "${workspaceFolder}"
+		"PYTHONPATH": "${workspaceFolder}",
+		"CACHE_ENABLE_P2P": "true",
+		"CACHE_LISTEN_PORT": "9100",
+		"CACHE_DEFAULT_TTL": "300",
+		"CACHE_DIR": "${workspaceFolder}/.cache/github_cli"
 	},
 	"terminal.integrated.env.windows": {
-		"PYTHONPATH": "${workspaceFolder}"
+		"PYTHONPATH": "${workspaceFolder}",
+		"CACHE_ENABLE_P2P": "true",
+		"CACHE_LISTEN_PORT": "9100",
+		"CACHE_DEFAULT_TTL": "300",
+		"CACHE_DIR": "${workspaceFolder}/.cache/github_cli"
 	},
 	"editor.rulers": [120],
 	"editor.tabSize": 4,
