@@ -20,7 +20,7 @@ class KitchenSinkPipelineDocumenter:
     def __init__(self):
         """Initialize the documenter."""
         self.server_url = "http://127.0.0.1:8080"
-        self.docs_dir = Path("./kitchen_sink_pipeline_docs")
+        self.docs_dir = Path("./docs")
         self.docs_dir.mkdir(exist_ok=True)
         self.test_results = {}
         self.interface_features = {}
