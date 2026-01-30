@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Set, Tuple, Union, Callable
 
 # Import the Result Aggregator Service
-from result_aggregator.service import ResultAggregatorService
+from .service import ResultAggregatorService
 
 # Configure logging
 logging.basicConfig(
@@ -624,6 +624,6 @@ class ResultAggregatorIntegration:
 if __name__ == "__main__":
     print("This module should be imported, not run directly.")
     print("Example usage:")
-    print("    from result_aggregator.coordinator_integration import ResultAggregatorIntegration")
+    print("    from test.distributed_testing.result_aggregator.coordinator_integration import ResultAggregatorIntegration")
     print("    integration = ResultAggregatorIntegration(coordinator)")
     print("    integration.register_with_coordinator()")

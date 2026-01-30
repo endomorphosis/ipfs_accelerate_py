@@ -26,8 +26,8 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 # Import the Result Aggregator Service
-from result_aggregator.service import ResultAggregatorService
-from result_aggregator.visualization import ResultVisualizer
+from .service import ResultAggregatorService
+from .visualization import ResultVisualizer
 
 # Flask for web server
 try:

@@ -7,7 +7,7 @@ in distributed testing results, including Isolation Forest, DBSCAN clustering,
 and One-Class SVM approaches.
 
 Usage:
-    from result_aggregator.ml_detection.ml_anomaly_detector import MLAnomalyDetector
+    from test.distributed_testing.result_aggregator.ml_detection.ml_anomaly_detector import MLAnomalyDetector
     
     detector = MLAnomalyDetector(db_path='path/to/benchmark_db.duckdb')
     

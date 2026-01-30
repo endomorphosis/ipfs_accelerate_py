@@ -8,7 +8,7 @@ data processing pipeline. It offers a high-level API for storing, retrieving, an
 and visualizing test results from the distributed testing framework.
 
 Usage:
-    from result_aggregator.integrated_analysis_system import IntegratedAnalysisSystem
+    from test.distributed_testing.result_aggregator.integrated_analysis_system import IntegratedAnalysisSystem
     
     # Initialize the system
     analysis_system = IntegratedAnalysisSystem(db_path='./benchmark_db.duckdb')
@@ -88,7 +88,7 @@ except ImportError:
 
 # Core service import (required for most functionality)
 try:
-    from result_aggregator.service import ResultAggregatorService
+    from test.distributed_testing.result_aggregator.service import ResultAggregatorService
 except ImportError:
     ResultAggregatorService = None
     _emit_warning("ResultAggregatorService couldn't be imported. Functionality will be limited.")
@@ -96,7 +96,7 @@ except ImportError:
 # Optional analysis functions (require pandas/numpy via result_aggregator.analysis.analysis)
 if DATA_ANALYSIS_AVAILABLE:
     try:
-        from result_aggregator.analysis.analysis import (
+        from test.distributed_testing.result_aggregator.analysis.analysis import (
             analyze_trend, detect_anomalies, compare_groups, calculate_efficiency_metrics,
             analyze_workload_distribution, analyze_failure_patterns, analyze_recovery_performance,
             analyze_circuit_breaker_performance, analyze_multi_dimensional_performance,
@@ -130,7 +130,7 @@ else:
 
 # Coordinator integration (should not depend on pandas/numpy)
 try:
-    from result_aggregator.coordinator_integration import ResultAggregatorIntegration
+    from test.distributed_testing.result_aggregator.coordinator_integration import ResultAggregatorIntegration
 except ImportError:
     ResultAggregatorIntegration = None
     warnings.warn(
@@ -138,8 +138,8 @@ except ImportError:
     )
 
 try:
-    from result_aggregator.pipeline.pipeline import DataSource, ProcessingPipeline
-    from result_aggregator.pipeline.transforms import (
+    from test.distributed_testing.result_aggregator.pipeline.pipeline import DataSource, ProcessingPipeline
+    from test.distributed_testing.result_aggregator.pipeline.transforms import (
         FilterTransform, TimeWindowTransform, AggregateTransform,
         PivotTransform, CalculatedMetricTransform
     )
@@ -149,7 +149,7 @@ except ImportError:
     warnings.warn("Pipeline components not available. Data processing pipeline will be disabled.")
 
 try:
-    from result_aggregator.ml_detection.ml_anomaly_detector import MLAnomalyDetector
+    from test.distributed_testing.result_aggregator.ml_detection.ml_anomaly_detector import MLAnomalyDetector
     ML_AVAILABLE = True
 except ImportError:
     ML_AVAILABLE = False
@@ -255,7 +255,7 @@ class IntegratedAnalysisSystem:
         integration_cls = ResultAggregatorIntegration
         if integration_cls is None:
             try:
-                from result_aggregator.coordinator_integration import ResultAggregatorIntegration as integration_cls
+                from test.distributed_testing.result_aggregator.coordinator_integration import ResultAggregatorIntegration as integration_cls
             except ImportError as e:
                 raise ImportError(
                     "Coordinator integration is not available in this environment"
