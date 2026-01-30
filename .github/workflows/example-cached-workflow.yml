@@ -129,7 +129,7 @@ jobs:
         run: |
           # Example: tests that make GitHub API calls
           # These will be cached, reducing API rate limit usage
-          pytest tests/ -v -k "github" || true
+          pytest test/ -v -k "github" || true
       
       - name: Show cache statistics
         run: |

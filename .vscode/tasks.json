@@ -230,7 +230,7 @@
 			},
 			"args": [
 				"ipfs_accelerate_py/",
-				"tests/",
+				"test/",
 				"--line-length=120"
 			],
 			"group": "build",

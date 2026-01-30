@@ -93,7 +93,7 @@ def run_tests(test_name: Optional[str] = None, no_websocket: bool = False,
     
     # Import test module
     try:
-        from tests.test_worker_reconnection_integration import (
+        from test.test_worker_reconnection_integration import (
             TestWorkerReconnectionWithRealCoordinator
         )
     except ImportError as e:
