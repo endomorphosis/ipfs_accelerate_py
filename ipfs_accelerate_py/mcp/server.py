@@ -10,6 +10,8 @@ import json
 import json
 import logging
 import argparse
+from dataclasses import dataclass
+from types import SimpleNamespace
 from typing import Dict, Any, Optional, List, Union, Callable
 
 # Set up logging
@@ -659,6 +661,157 @@ def main() -> None:
     except Exception as e:
         logger.error(f"Error running server: {e}")
         sys.exit(1)
+
+
+@dataclass
+class MCPToolInfo:
+    name: str
+    function: Callable
+    description: str
+    input_schema: Dict[str, Any]
+
+
+@dataclass
+class MCPResourceInfo:
+    path: str
+    function: Callable
+    description: str
+
+
+@dataclass
+class MCPPromptInfo:
+    name: str
+    template: str
+    description: str
+    input_schema: Dict[str, Any]
+
+
+class MCPServerWrapper:
+    """Compatibility wrapper for legacy/tests/CLI usage."""
+
+    def __init__(
+        self,
+        name: str,
+        description: str,
+        accelerate_instance: Any,
+        host: str = "0.0.0.0",
+        port: int = 9000,
+        mount_path: str = "/mcp",
+        debug: bool = False,
+    ) -> None:
+        self.name = name
+        self.description = description
+        self.host = host
+        self.port = port
+        self.mount_path = mount_path
+        self.debug = debug
+        self.state = SimpleNamespace(accelerate=accelerate_instance)
+
+        self.mcp = StandaloneMCP(name=self.name)
+        self.app = self.mcp.create_fastapi_app(
+            title="IPFS Accelerate MCP API",
+            description=self.description or "IPFS Accelerate MCP",
+            version="0.1.0",
+            docs_url="/docs",
+            redoc_url="/redoc",
+            mount_path=self.mount_path,
+        )
+
+        from ipfs_accelerate_py.mcp.tools import register_all_tools
+        from ipfs_accelerate_py.mcp.resources import register_all_resources
+
+        register_all_tools(self.mcp)
+        register_all_resources(self.mcp)
+
+        # Register prompts (best-effort)
+        try:
+            self.mcp.register_prompt(
+                name="ipfs_help",
+                template="IPFS Accelerate MCP help",
+                description="Get help with IPFS Accelerate",
+                input_schema={"type": "object", "properties": {}, "required": []},
+            )
+        except Exception:
+            pass
+
+    @property
+    def tools(self) -> List[MCPToolInfo]:
+        return [
+            MCPToolInfo(
+                name=name,
+                function=tool.get("function"),
+                description=tool.get("description", ""),
+                input_schema=tool.get("input_schema", {}),
+            )
+            for name, tool in (self.mcp.tools or {}).items()
+        ]
+
+    @property
+    def resources(self) -> List[MCPResourceInfo]:
+        return [
+            MCPResourceInfo(
+                path=uri,
+                function=resource.get("function"),
+                description=resource.get("description", ""),
+            )
+            for uri, resource in (self.mcp.resources or {}).items()
+        ]
+
+    @property
+    def prompts(self) -> List[MCPPromptInfo]:
+        return [
+            MCPPromptInfo(
+                name=name,
+                template=prompt.get("template", ""),
+                description=prompt.get("description", ""),
+                input_schema=prompt.get("input_schema", {}),
+            )
+            for name, prompt in (self.mcp.prompts or {}).items()
+        ]
+
+    def run(self, host: Optional[str] = None, port: Optional[int] = None, reload: bool = False) -> None:
+        """Run the MCP server via uvicorn."""
+        import uvicorn
+
+        uvicorn.run(
+            self.app,
+            host=host or self.host,
+            port=port or self.port,
+            log_level="debug" if self.debug else "info",
+            reload=reload,
+        )
+
+
+_MCP_SERVER_INSTANCE: Optional[MCPServerWrapper] = None
+
+
+def create_mcp_server(
+    name: str = "ipfs-accelerate",
+    description: str = "",
+    accelerate_instance: Optional[Any] = None,
+    host: str = "0.0.0.0",
+    port: int = 9000,
+    mount_path: str = "/mcp",
+    debug: bool = False,
+) -> MCPServerWrapper:
+    """Create a compatibility MCP server wrapper."""
+    global _MCP_SERVER_INSTANCE
+    server = MCPServerWrapper(
+        name=name,
+        description=description,
+        accelerate_instance=accelerate_instance,
+        host=host,
+        port=port,
+        mount_path=mount_path,
+        debug=debug,
+    )
+    _MCP_SERVER_INSTANCE = server
+    return server
+
+
+def get_mcp_server_instance() -> Optional[MCPServerWrapper]:
+    """Return the last created MCP server instance, if any."""
+    return _MCP_SERVER_INSTANCE
 
 if __name__ == "__main__":
     main()

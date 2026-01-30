@@ -24,14 +24,14 @@ import pathlib
 # Ensure the module directory is in the path for imports
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 
-from .error_recovery_with_performance_tracking import (
+from distributed_testing.error_recovery_with_performance_tracking import (
     PerformanceBasedErrorRecovery,
     RecoveryPerformanceRecord,
     RecoveryPerformanceMetric,
     ProgressiveRecoveryLevel
 )
 
-from .distributed_error_handler import (
+from distributed_testing.distributed_error_handler import (
     DistributedErrorHandler,
     ErrorReport,
     ErrorContext,
@@ -39,7 +39,7 @@ from .distributed_error_handler import (
     ErrorSeverity
 )
 
-from .error_recovery_strategies import (
+from distributed_testing.error_recovery_strategies import (
     EnhancedErrorRecoveryManager,
     RecoveryStrategy,
     ErrorCategory
