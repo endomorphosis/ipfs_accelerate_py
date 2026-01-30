@@ -11,10 +11,10 @@ import argparse
 import ast
 import json
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Any
 
 
-def audit_file_docstrings(file_path: Path) -> Dict[str, any]:
+def audit_file_docstrings(file_path: Path) -> Dict[str, Any]:
     """Audit docstrings in a single Python file."""
     results = {
         'file': str(file_path),

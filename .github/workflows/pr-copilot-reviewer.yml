@@ -57,10 +57,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install PyYAML requests
-          # Install cache dependencies
-          pip install cryptography multiformats-cid
-          # Try to install libp2p (optional for P2P sharing)
-          pip install libp2p-stubs || true
+          # Install cache dependencies including libp2p for P2P sharing
+          pip install cryptography multiformats-cid anyio
+          pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main'
       
       - name: Get PR details
         id: get_pr

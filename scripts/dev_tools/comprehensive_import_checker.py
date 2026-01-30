@@ -10,11 +10,11 @@ import sys
 import argparse
 import ast
 from pathlib import Path
-from typing import List, Set
+from typing import List, Set, Tuple
 import importlib.util
 
 
-def check_imports(file_path: Path) -> tuple[bool, List[str]]:
+def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
     """Check if all imports in a file are valid."""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:

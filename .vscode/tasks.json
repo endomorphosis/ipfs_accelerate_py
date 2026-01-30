@@ -372,7 +372,10 @@
 		{
 			"label": "Dev Tools: Check Python Compilation",
 			"type": "shell",
-			"command": "python",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
 			"args": [
 				"scripts/dev_tools/compile_checker.py",
 				"${input:compileCheckPath}",
@@ -391,7 +394,10 @@
 		{
 			"label": "Dev Tools: Check Imports",
 			"type": "shell",
-			"command": "python",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
 			"args": [
 				"scripts/dev_tools/comprehensive_import_checker.py",
 				"--directory",
@@ -411,7 +417,10 @@
 		{
 			"label": "Dev Tools: Python Code Quality Check",
 			"type": "shell",
-			"command": "python",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
 			"args": [
 				"scripts/dev_tools/comprehensive_python_checker.py",
 				"--directory",
@@ -431,7 +440,10 @@
 		{
 			"label": "Dev Tools: Audit Docstrings",
 			"type": "shell",
-			"command": "python",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
 			"args": [
 				"scripts/dev_tools/docstring_audit.py",
 				"--directory",
@@ -453,7 +465,10 @@
 		{
 			"label": "Dev Tools: Find Documentation",
 			"type": "shell",
-			"command": "python",
+			"command": "${workspaceFolder}/.venv/bin/python",
+			"windows": {
+				"command": "${workspaceFolder}\\.venv\\Scripts\\python.exe"
+			},
 			"args": [
 				"scripts/dev_tools/find_documentation.py",
 				"--directory",

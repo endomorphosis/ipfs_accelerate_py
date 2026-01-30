@@ -11,11 +11,11 @@ import argparse
 import py_compile
 import ast
 from pathlib import Path
-from typing import List
+from typing import List, Tuple
 import time
 
 
-def compile_file(file_path: Path) -> tuple[bool, str]:
+def compile_file(file_path: Path) -> Tuple[bool, str]:
     """Attempt to compile a single Python file."""
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
