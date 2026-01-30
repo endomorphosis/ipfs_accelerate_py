@@ -52,7 +52,29 @@ except ImportError as e:
     IPFSDBMigration = None
     create_ipfs_backend = None
 
+# Phase 2C & 2D imports
+try:
+    from .distributed_query_executor import DistributedQueryExecutor, P2PSynchronizer
+except ImportError as e:
+    print(f"Warning: Could not import distributed_query_executor: {e}")
+    DistributedQueryExecutor = None
+    P2PSynchronizer = None
+
+try:
+    from .knowledge_graph_populator import KnowledgeGraphPopulator
+except ImportError as e:
+    print(f"Warning: Could not import knowledge_graph_populator: {e}")
+    KnowledgeGraphPopulator = None
+
+try:
+    from .query_optimizer import QueryOptimizer, PerformanceMonitor
+except ImportError as e:
+    print(f"Warning: Could not import query_optimizer: {e}")
+    QueryOptimizer = None
+    PerformanceMonitor = None
+
 __all__ = [
+    # Phase 2A - Core Infrastructure
     'IPFSStorage',
     'IPFSStorageBackend',
     'IPFSConfig',
@@ -62,9 +84,17 @@ __all__ = [
     'DistributedOperations',
     'BenchmarkKnowledgeGraph',
     'IPFSCacheManager',
+    # Phase 2B - Storage Integration
     'IPFSDBBackend',
     'IPFSDBMigration',
     'create_ipfs_backend',
+    # Phase 2C - Distributed Features
+    'DistributedQueryExecutor',
+    'P2PSynchronizer',
+    'KnowledgeGraphPopulator',
+    # Phase 2D - Advanced Features
+    'QueryOptimizer',
+    'PerformanceMonitor',
 ]
 
-__version__ = '2.0.0'
+__version__ = '2.2.0'  # Phase 2C & 2D Complete
