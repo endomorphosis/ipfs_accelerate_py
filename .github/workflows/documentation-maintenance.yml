@@ -51,7 +51,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           # Install P2P cache dependencies first
-          pip install cryptography multiformats-cid anyio
+          pip install cryptography multiformats anyio
           pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main'
           # Install project dependencies
           pip install -r requirements.txt

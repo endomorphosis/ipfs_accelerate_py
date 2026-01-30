@@ -55,7 +55,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install PyYAML requests
           # Install cache dependencies including libp2p for P2P sharing
-          pip install cryptography multiformats-cid anyio
+          pip install cryptography multiformats anyio
           pip install 'libp2p @ git+https://github.com/libp2p/py-libp2p@main'
       
       - name: Get issue details
