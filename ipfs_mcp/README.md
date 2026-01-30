@@ -107,7 +107,7 @@ The server provides the following resources:
 To run the test suite:
 
 ```bash
-python -m unittest discover -s mcp/tests
+python -m unittest discover -s ipfs_accelerate_py/mcp/tests
 ```
 
 ### Adding New Components

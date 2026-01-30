@@ -104,7 +104,7 @@ You can use the MCP server with Anthropic Claude by:
 To verify the MCP server is functioning correctly, run the test suite:
 
 ```bash
-python -m unittest discover -s mcp/tests
+python -m unittest discover -s ipfs_accelerate_py/mcp/tests
 ```
 
 ## Troubleshooting
