@@ -360,7 +360,8 @@ class MCPJSONRPCServer:
         # Mount static files
         try:
             import os
-            static_path = os.path.join(os.path.dirname(__file__), "static")
+            # Point to ipfs_accelerate_py/static directory
+            static_path = os.path.join(os.path.dirname(__file__), "..", "ipfs_accelerate_py", "static")
             if os.path.exists(static_path):
                 self.app.mount("/static", StaticFiles(directory=static_path), name="static")
                 logger.info(f"Mounted static files from {static_path}")
@@ -496,7 +497,10 @@ class MCPJSONRPCServer:
         
         # Serve static files
         try:
-            self.app.mount("/static", StaticFiles(directory="static"), name="static")
+            # Point to ipfs_accelerate_py/static directory
+            static_path = os.path.join(os.path.dirname(__file__), "..", "ipfs_accelerate_py", "static")
+            if os.path.exists(static_path):
+                self.app.mount("/static", StaticFiles(directory=static_path), name="static")
         except Exception as e:
             logger.warning(f"Could not mount static files: {e}")
     
