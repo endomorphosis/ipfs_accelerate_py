@@ -416,13 +416,14 @@ We **welcome contributions**! Here's how to get started:
 - 🌍 **Translations** - Translate docs to other languages
 - 💡 **Features** - Suggest or implement new features
 
-### Community
+### Community & Guidelines
 
 - 💬 **[GitHub Discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)** - Ask questions, share ideas
 - 🐛 **[Issue Tracker](https://github.com/endomorphosis/ipfs_accelerate_py/issues)** - Report bugs, request features
+- 🔐 **[Security Policy](SECURITY.md)** - Report security vulnerabilities
 - 📧 **Email**: starworks5@gmail.com
 
-📖 **Full guide**: [CONTRIBUTING.md](CONTRIBUTING.md) | [Code of Conduct](CODE_OF_CONDUCT.md)
+📖 **Full guides**: [CONTRIBUTING.md](CONTRIBUTING.md) | [Code of Conduct](CONTRIBUTING.md#community-guidelines) | [Security Policy](SECURITY.md)
 
 ---
 
@@ -451,6 +452,13 @@ Built with amazing open source technologies:
 - [**FastAPI**](https://fastapi.tiangolo.com/) - Modern web framework
 
 Special thanks to all [contributors](https://github.com/endomorphosis/ipfs_accelerate_py/graphs/contributors) who make this project possible! 🌟
+
+### Project Information
+
+- 📋 **[Changelog](CHANGELOG.md)** - Version history and release notes
+- 🔐 **[Security Policy](SECURITY.md)** - Security reporting and best practices
+- 🤝 **[Contributing Guide](CONTRIBUTING.md)** - How to contribute
+- 📄 **[License](LICENSE)** - AGPLv3+ license details
 
 ---
 

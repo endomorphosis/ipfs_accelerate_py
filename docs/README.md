@@ -16,6 +16,12 @@
 - 🏗️ **[Architecture Overview](ARCHITECTURE.md)** - System design and components
 - ❓ **[FAQ](FAQ.md)** - Frequently asked questions and troubleshooting
 
+### **Project Information**
+- 📋 **[Changelog](../CHANGELOG.md)** - Version history and release notes
+- 🔐 **[Security Policy](../SECURITY.md)** - Security reporting and best practices
+- 🤝 **[Contributing Guide](../CONTRIBUTING.md)** - How to contribute to the project
+- 📄 **[License](../LICENSE)** - AGPLv3+ license details
+
 ### **Platform-Specific**
 - ⚙️ **[Hardware Optimization](HARDWARE.md)** - Maximize performance across different hardware
 - 🌐 **[IPFS Integration](IPFS.md)** - Leverage distributed inference and content addressing
@@ -123,9 +129,10 @@ IPFS Accelerate Python is a **comprehensive, enterprise-grade framework** that c
 - **Examples**: Browse the [examples directory](../examples/) for inspiration
 
 ### Contributing
-- **Contributing Guide**: See [CONTRIBUTING.md](../CONTRIBUTING.md)
-- **Code of Conduct**: Review our community guidelines
-- **Development Setup**: Follow the [Testing Guide](TESTING.md#development-setup)
+- **[Contributing Guide](../CONTRIBUTING.md)** - Detailed contribution guidelines
+- **[Security Policy](../SECURITY.md)** - Security reporting and best practices
+- **[Code of Conduct](../CONTRIBUTING.md#community-guidelines)** - Community guidelines
+- **[Development Setup](TESTING.md#development-setup)** - Follow the Testing Guide
 
 ## Documentation Organization
 
