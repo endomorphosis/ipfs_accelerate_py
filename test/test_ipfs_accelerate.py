@@ -232,15 +232,15 @@ class IPFSAccelerateTest:
                 print("Successfully imported ipfs_accelerate_py module")
             except ImportError:
                 # If direct import fails, try to import dynamically
-                module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_accelerate_py.py"))
+                module_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_accelerate_py/ipfs_accelerate_py_legacy.py"))
                 
                 if not os.path.exists(module_path):
                     print(f"Warning: Could not find ipfs_accelerate_py.py at {module_path}")
                     # Try to find it elsewhere by checking common locations
                     possible_paths = [
-                        os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_accelerate_py/ipfs_accelerate_py.py")),
-                        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../ipfs_accelerate_py.py")),
-                        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../ipfs_accelerate_py/ipfs_accelerate_py.py"))
+                        os.path.abspath(os.path.join(os.path.dirname(__file__), "../ipfs_accelerate_py/ipfs_accelerate_py_legacy.py")),
+                        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../ipfs_accelerate_py/ipfs_accelerate_py_legacy.py")),
+                        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../ipfs_accelerate_py/ipfs_accelerate_py_legacy.py"))
                     ]
                     
                     for path in possible_paths:
