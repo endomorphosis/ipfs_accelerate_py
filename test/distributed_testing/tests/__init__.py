@@ -28,3 +28,4 @@ _sys.modules[__name__ + ".dynamic_resource_manager"] = _dynamic_resource_manager
 _sys.modules[__name__ + ".integration_mode"] = _integration_mode
 _sys.modules[__name__ + ".performance_trend_analyzer"] = _performance_trend_analyzer
 _sys.modules[__name__ + ".worker"] = _worker
+_sys.modules["worker"] = _worker

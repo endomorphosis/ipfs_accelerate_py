@@ -55,14 +55,15 @@ except Exception:  # pragma: no cover
 from dataclasses import dataclass, field
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(f"trend_analyzer_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    ]
-)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(f"trend_analyzer_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        ]
+    )
 logger = logging.getLogger(__name__)
 
 if matplotlib is None:

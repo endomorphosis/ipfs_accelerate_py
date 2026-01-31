@@ -34,14 +34,15 @@ from unittest.mock import AsyncMock
 from dataclasses import dataclass, field, asdict
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(f"resource_manager_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
-    ]
-)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler(f"resource_manager_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log")
+        ]
+    )
 logger = logging.getLogger(__name__)
 
 

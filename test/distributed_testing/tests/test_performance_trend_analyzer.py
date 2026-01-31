@@ -32,6 +32,7 @@ if not integration_enabled():
 pytest.importorskip("aiohttp")
 
 # Import the components to test
+from . import performance_trend_analyzer as pta
 from .performance_trend_analyzer import (
     PerformanceTrendAnalyzer,
     PerformanceMetric,
@@ -382,6 +383,8 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
             await self.async_tearDown()
 
     def test_analyzer_generates_visualizations(self):
+        if pta.matplotlib is None or pta.plt is None:
+            self.skipTest("Matplotlib not available")
         anyio.run(self._test_analyzer_generates_visualizations)
 
     async def _test_analyzer_generates_visualizations(self):

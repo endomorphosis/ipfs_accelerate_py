@@ -19,6 +19,7 @@ import platform
 import signal
 import sys
 import uuid
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set, Tuple, Callable
@@ -35,14 +36,15 @@ except Exception:  # pragma: no cover
     from security import SecurityManager
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler("worker.log")
-    ]
-)
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        handlers=[
+            logging.StreamHandler(),
+            logging.FileHandler("worker.log")
+        ]
+    )
 logger = logging.getLogger(__name__)
 
 try:
@@ -52,6 +54,21 @@ try:
 except ImportError:
     torch = None
     HAS_TORCH = False
+
+
+def _cuda_available() -> bool:
+    if not HAS_TORCH:
+        return False
+    try:
+        with warnings.catch_warnings():
+            warnings.filterwarnings(
+                "ignore",
+                message="Can't initialize NVML",
+                category=UserWarning,
+            )
+            return torch.cuda.is_available()
+    except Exception:
+        return False
 
 try:
     # Try to import OpenVINO if available
@@ -189,7 +206,7 @@ class DistributedTestingWorker:
         
         # Detect GPU capabilities if PyTorch is available
         if HAS_TORCH:
-            cuda_available = torch.cuda.is_available()
+            cuda_available = _cuda_available()
             if cuda_available:
                 capabilities["hardware"].append("cuda")
                 device_count = torch.cuda.device_count()
@@ -1016,7 +1033,7 @@ class DistributedTestingWorker:
         }
         
         # Collect GPU metrics if available
-        if HAS_TORCH and torch.cuda.is_available():
+        if _cuda_available():
             try:
                 gpu_metrics = []
                 for i in range(torch.cuda.device_count()):
