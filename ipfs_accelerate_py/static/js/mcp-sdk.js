@@ -11,6 +11,8 @@ class MCPClient {
         this.options = {
             timeout: 30000,
             retries: 3,
+            reportErrors: false,  // Enable error reporting to server
+            errorReportEndpoint: '/report-error',
             ...options
         };
         this.requestId = 0;
@@ -40,7 +42,12 @@ class MCPClient {
             const response = await this._makeHttpRequest(requestBody);
             
             if (response.error) {
-                throw new MCPError(response.error.code, response.error.message, response.error.data);
+                const mcpError = new MCPError(response.error.code, response.error.message, response.error.data);
+                // Report error if enabled
+                if (this.options.reportErrors) {
+                    this._reportError(mcpError, { method, params });
+                }
+                throw mcpError;
             }
             
             return response.result;
@@ -48,7 +55,12 @@ class MCPClient {
             if (error instanceof MCPError) {
                 throw error;
             }
-            throw new MCPError(-32603, "Internal error", error.message);
+            const internalError = new MCPError(-32603, "Internal error", error.message);
+            // Report error if enabled
+            if (this.options.reportErrors) {
+                this._reportError(internalError, { method, params, originalError: error });
+            }
+            throw internalError;
         }
     }
 
@@ -167,6 +179,45 @@ class MCPClient {
         
         console.error('[MCP SDK] All retry attempts failed:', lastError);
         throw lastError;
+    }
+
+    /**
+     * Report an error to the server for auto-healing
+     */
+    async _reportError(error, context = {}) {
+        // Don't report if error reporting is disabled
+        if (!this.options.reportErrors) {
+            return;
+        }
+
+        try {
+            const errorData = {
+                error_type: error.name || error.constructor.name || 'Error',
+                error_message: error.message || String(error),
+                stack_trace: error.stack || new Error().stack,
+                context: {
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent,
+                    url: window.location.href,
+                    ...context
+                }
+            };
+
+            // Send error report to server (fire-and-forget, don't await)
+            fetch(this.options.errorReportEndpoint, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(errorData)
+            }).catch(err => {
+                // Silently ignore reporting failures to avoid infinite loops
+                console.debug('[MCP SDK] Failed to report error:', err);
+            });
+        } catch (e) {
+            // Silently ignore any errors in error reporting
+            console.debug('[MCP SDK] Error in _reportError:', e);
+        }
     }
 
     /**

@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP SDK Auto-Healing Example</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        
+        .section {
+            margin: 20px 0;
+            padding: 20px;
+            background: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+        }
+        
+        .code {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+        }
+        
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            margin: 5px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        button:hover {
+            background: #45a049;
+        }
+        
+        button.danger {
+            background: #f44336;
+        }
+        
+        button.danger:hover {
+            background: #da190b;
+        }
+        
+        .output {
+            background: #2d2d2d;
+            color: #0f0;
+            padding: 15px;
+            border-radius: 4px;
+            min-height: 100px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            white-space: pre-wrap;
+        }
+        
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        
+        .status.success {
+            background: #d4edda;
+            color: #155724;
+            border: 1px solid #c3e6cb;
+        }
+        
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        
+        .status.info {
+            background: #d1ecf1;
+            color: #0c5460;
+            border: 1px solid #bee5eb;
+        }
+        
+        .toggle {
+            display: inline-block;
+            margin: 10px 0;
+        }
+        
+        .toggle input {
+            margin-right: 8px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 MCP SDK Auto-Healing Example</h1>
+        
+        <div class="section">
+            <h2>Configuration</h2>
+            <div class="toggle">
+                <label>
+                    <input type="checkbox" id="enableErrorReporting" checked>
+                    <strong>Enable Auto-Healing Error Reporting</strong>
+                </label>
+                <p style="margin: 5px 0 0 24px; color: #666; font-size: 14px;">
+                    When enabled, errors are automatically reported to the server and GitHub issues are created.
+                </p>
+            </div>
+            
+            <div class="status info">
+                <strong>ℹ️ Info:</strong> Error reporting sends error details to the MCP server at <code>/report-error</code>. 
+                The server then creates GitHub issues with stack traces and context for auto-healing.
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>Test Error Reporting</h2>
+            <p>Click the buttons below to test different scenarios:</p>
+            
+            <button onclick="testSuccess()">✅ Test Successful Call</button>
+            <button onclick="testValidationError()" class="danger">❌ Test Validation Error</button>
+            <button onclick="testNetworkError()" class="danger">🌐 Test Network Error</button>
+            <button onclick="testUnknownError()" class="danger">⚠️ Test Unknown Error</button>
+            
+            <h3>Output:</h3>
+            <div id="output" class="output">Ready. Click a button to test...</div>
+        </div>
+        
+        <div class="section">
+            <h2>How It Works</h2>
+            <ol>
+                <li><strong>Error Occurs:</strong> JavaScript code encounters an error (network, validation, etc.)</li>
+                <li><strong>SDK Captures:</strong> MCP SDK captures error details including stack trace</li>
+                <li><strong>Report to Server:</strong> Error is sent to <code>/report-error</code> endpoint</li>
+                <li><strong>Server Processes:</strong> MCP server forwards to error handler</li>
+                <li><strong>GitHub Issue:</strong> Auto-healing system creates GitHub issue</li>
+                <li><strong>Draft PR:</strong> System generates draft PR (if enabled)</li>
+                <li><strong>Copilot Fix:</strong> GitHub Copilot analyzes and suggests fixes</li>
+            </ol>
+        </div>
+        
+        <div class="section">
+            <h2>Example Error Report</h2>
+            <div class="code">
+{
+  "error_type": "NetworkError",
+  "error_message": "Failed to fetch model data",
+  "stack_trace": "Error: Failed to fetch...",
+  "context": {
+    "timestamp": "2024-01-31T12:34:56.789Z",
+    "userAgent": "Mozilla/5.0...",
+    "url": "https://example.com/dashboard",
+    "method": "getModel",
+    "params": {"model_id": "bert-base"}
+  }
+}
+            </div>
+        </div>
+        
+        <div class="section">
+            <h2>GitHub Issue Created</h2>
+            <p>When an error is reported, a GitHub issue like this is created:</p>
+            <div class="code">
+Title: [Auto-Generated] RuntimeError: [JavaScript SDK] NetworkError
+
+Body:
+# Auto-Generated Error Report
+
+**Error Type:** RuntimeError
+**Error Source:** mcp_javascript_sdk
+**Timestamp:** 2024-01-31T12:34:56.789Z
+
+## Error Message
+[JavaScript SDK] NetworkError: Failed to fetch model data
+
+## Client Stack Trace
+Error: Failed to fetch...
+  at MCPClient._makeHttpRequest (mcp-sdk.js:145)
+  at MCPClient.request (mcp-sdk.js:42)
+
+## Client Context
+{
+  "timestamp": "2024-01-31T12:34:56.789Z",
+  "userAgent": "Mozilla/5.0...",
+  "url": "https://example.com/dashboard",
+  "method": "getModel"
+}
+
+Labels: auto-generated, bug, mcp-sdk
+            </div>
+        </div>
+    </div>
+
+    <!-- Include the MCP SDK -->
+    <script src="/static/js/mcp-sdk.js"></script>
+    
+    <script>
+        // Initialize MCP client
+        let client;
+        
+        function initClient() {
+            const reportErrors = document.getElementById('enableErrorReporting').checked;
+            
+            client = new MCPClient('/jsonrpc', {
+                reportErrors: reportErrors,
+                errorReportEndpoint: '/report-error',
+                timeout: 30000,
+                retries: 3
+            });
+            
+            log(`✓ MCP Client initialized (error reporting: ${reportErrors ? 'ON' : 'OFF'})`);
+        }
+        
+        // Initialize on page load
+        initClient();
+        
+        // Re-initialize when checkbox changes
+        document.getElementById('enableErrorReporting').addEventListener('change', initClient);
+        
+        function log(message, isError = false) {
+            const output = document.getElementById('output');
+            const timestamp = new Date().toLocaleTimeString();
+            const prefix = isError ? '❌ ERROR' : '✓';
+            output.textContent += `\n[${timestamp}] ${prefix} ${message}`;
+            output.scrollTop = output.scrollHeight;
+        }
+        
+        async function testSuccess() {
+            log('Testing successful API call...');
+            try {
+                // Simulate a successful call
+                // In real usage, this would be: await client.listModels()
+                log('Mock API call succeeded');
+                log('No error to report');
+            } catch (error) {
+                log(error.message, true);
+            }
+        }
+        
+        async function testValidationError() {
+            log('Testing validation error...');
+            try {
+                // Simulate a validation error
+                throw new Error('ValidationError: Invalid model ID format');
+            } catch (error) {
+                log(`Error occurred: ${error.message}`, true);
+                
+                // Manually report error (SDK does this automatically in real usage)
+                if (document.getElementById('enableErrorReporting').checked) {
+                    log('Reporting error to server for auto-healing...');
+                    await reportError(error, {
+                        method: 'getModel',
+                        params: {model_id: 'invalid@id'}
+                    });
+                    log('✓ Error reported to server');
+                    log('✓ GitHub issue will be created (if enabled)');
+                }
+            }
+        }
+        
+        async function testNetworkError() {
+            log('Testing network error...');
+            try {
+                // Simulate a network error
+                throw new Error('NetworkError: Failed to fetch - connection timeout');
+            } catch (error) {
+                log(`Error occurred: ${error.message}`, true);
+                
+                if (document.getElementById('enableErrorReporting').checked) {
+                    log('Reporting network error to server...');
+                    await reportError(error, {
+                        method: 'listModels',
+                        params: {}
+                    });
+                    log('✓ Error reported for auto-healing');
+                }
+            }
+        }
+        
+        async function testUnknownError() {
+            log('Testing unknown error...');
+            try {
+                // Simulate an unknown error
+                throw new Error('UnexpectedError: Something went wrong in model processing');
+            } catch (error) {
+                log(`Error occurred: ${error.message}`, true);
+                
+                if (document.getElementById('enableErrorReporting').checked) {
+                    log('Reporting unknown error to server...');
+                    await reportError(error, {
+                        method: 'processModel',
+                        params: {model_id: 'bert-base', batch_size: 32}
+                    });
+                    log('✓ Error reported - auto-healing will investigate');
+                }
+            }
+        }
+        
+        async function reportError(error, context) {
+            const errorData = {
+                error_type: error.name || 'Error',
+                error_message: error.message,
+                stack_trace: error.stack || new Error().stack,
+                context: {
+                    timestamp: new Date().toISOString(),
+                    userAgent: navigator.userAgent,
+                    url: window.location.href,
+                    ...context
+                }
+            };
+            
+            try {
+                const response = await fetch('/report-error', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(errorData)
+                });
+                
+                if (response.ok) {
+                    const result = await response.json();
+                    log(`Server response: ${result.message || 'Error reported successfully'}`);
+                } else {
+                    log(`Server returned ${response.status}`, true);
+                }
+            } catch (reportError) {
+                log(`Failed to report error: ${reportError.message}`, true);
+            }
+        }
+    </script>
+</body>
+</html>
