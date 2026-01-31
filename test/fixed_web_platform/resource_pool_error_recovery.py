@@ -974,7 +974,7 @@ if __name__ == "__main__":
         try:
             # Import resource pool bridge
             sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-            from fixed_web_platform.resource_pool_bridge import ResourcePoolBridge
+            from test.web_platform.resource_pool_bridge import ResourcePoolBridge
             
             # Create resource pool bridge instance
             bridge = ResourcePoolBridge(max_connections=2)

@@ -73,7 +73,7 @@ jobs:
           echo "Processing issue #$ISSUE_NUMBER"
           
           # Get issue details using cached gh API
-          ISSUE_DATA=$(python tools/gh_api_cached.py "repos/${{ github.repository }}/issues/$ISSUE_NUMBER")
+          ISSUE_DATA=$(python scripts/utils/gh_api_cached.py "repos/${{ github.repository }}/issues/$ISSUE_NUMBER")
           
           ISSUE_TITLE=$(echo "$ISSUE_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['title'])")
           ISSUE_AUTHOR=$(echo "$ISSUE_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['author']['login'])")
@@ -121,7 +121,7 @@ jobs:
           # Check if there's already a PR for this issue
           echo "Searching for existing PRs for issue #$ISSUE_NUMBER"
           # Use cached API call for PR search
-          EXISTING_PRS=$(python tools/gh_api_cached.py "search/issues?q=Fixes+%23$ISSUE_NUMBER+repo:${{ github.repository }}+is:pr" --jq '.total_count' 2>&1 || echo "0")
+          EXISTING_PRS=$(python scripts/utils/gh_api_cached.py "search/issues?q=Fixes+%23$ISSUE_NUMBER+repo:${{ github.repository }}+is:pr" --jq '.total_count' 2>&1 || echo "0")
           
           echo "Found $EXISTING_PRS existing PRs"
           

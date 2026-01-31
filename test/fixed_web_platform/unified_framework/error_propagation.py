@@ -9,7 +9,7 @@ of the web platform framework, ensuring:
 - Cross-component communication for related errors
 
 Usage:
-    from fixed_web_platform.unified_framework.error_propagation import (
+    from test.web_platform.unified_framework.error_propagation import (
         ErrorPropagationManager, ErrorTelemetryCollector, register_handler
     )
     
@@ -35,7 +35,7 @@ import json
 from typing import Dict, List, Any, Optional, Union, Callable, Tuple
 
 # Import error handling
-from fixed_web_platform.unified_framework.error_handling import (
+from test.web_platform.unified_framework.error_handling import (
     ErrorHandler, WebPlatformError, RuntimeError, HardwareError
 )
 

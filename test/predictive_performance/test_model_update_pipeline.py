@@ -29,7 +29,7 @@ warnings.filterwarnings("ignore")
 sys.path.append(str(Path(__file__).parent.parent))
 
 # Import the model update pipeline module
-from predictive_performance.model_update_pipeline import ModelUpdatePipeline
+from ipfs_accelerate_py.predictive_performance.model_update_pipeline import ModelUpdatePipeline
 
 # Try to import scikit-learn for model creation
 try:
@@ -43,7 +43,7 @@ except ImportError:
 
 # Try to import the active learning module
 try:
-    from predictive_performance.active_learning import ActiveLearningSystem
+    from ipfs_accelerate_py.predictive_performance.active_learning import ActiveLearningSystem
     ACTIVE_LEARNING_AVAILABLE = True
 except ImportError:
     warnings.warn("active_learning module not available, some tests will be skipped")

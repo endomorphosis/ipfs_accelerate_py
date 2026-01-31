@@ -34,8 +34,8 @@ if parent_dir not in sys.path:
 
 # Import resource pool components
 try:
-    from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
-    from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
     RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Error importing ResourcePoolBridge components: {e}")

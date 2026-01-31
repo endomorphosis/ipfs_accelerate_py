@@ -493,7 +493,7 @@ def main():
             
             # Import metrics collector here to avoid circular imports
             sys.path.append(str(Path(__file__).parent))
-            from fixed_web_platform.cross_browser_metrics_collector import MetricsCollector
+            from test.web_platform.cross_browser_metrics_collector import MetricsCollector
             
             # Create metrics collector with database in output directory
             db_path = os.path.join(args.output_dir, "cross_browser_metrics.duckdb")

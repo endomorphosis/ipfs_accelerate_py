@@ -37,7 +37,7 @@ python3 tests/test_comprehensive_validation.py  # Terminal 2
 
 **Output:**
 - Phase-by-phase validation results
-- Screenshots in `test_screenshots_validation/` directory
+- Screenshots in `data/test_screenshots/validation/` directory
 - Clear indication of which layers work
 
 ---
@@ -88,7 +88,7 @@ python3 tests/test_huggingface_workflow.py
 
 **Output:**
 - Console output showing each step
-- Screenshots saved to `test_screenshots_workflow/` directory
+- Screenshots saved to `data/test_screenshots/workflow/` directory
 - Browser window shows the actual interactions (runs in headed mode)
 
 ---
@@ -179,7 +179,7 @@ Each layer can be tested independently, then integrated.
 
 ### GUI tests fail (Phase 4)
 - Install Playwright: `pip install playwright && playwright install`
-- Check screenshots in `test_screenshots_validation/` for debugging
+- Check screenshots in `data/test_screenshots/validation/` for debugging
 - Verify JavaScript console in browser (F12)
 
 ### Search returns no results

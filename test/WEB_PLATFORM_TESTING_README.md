@@ -50,9 +50,9 @@ To simplify testing with web platforms, the `run_web_platform_tests.sh` script s
 ./run_web_platform_tests.sh [your_test_command]
 
 # Examples
-./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webnn
-./run_web_platform_tests.sh python generators/generators/skill_generators/integrated_skillset_generator.py --model bert --hardware webnn,webgpu
-./run_web_platform_tests.sh python generators/validators/verify_key_models.py --platform webgpu
+./run_web_platform_tests.sh python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --hardware webnn
+./run_web_platform_tests.sh python scripts/generators/scripts/generators/skill_scripts/generators/integrated_skillset_generator.py --model bert --hardware webnn,webgpu
+./run_web_platform_tests.sh python scripts/generators/validators/verify_key_models.py --platform webgpu
 ```
 
 ### Advanced Features (March 2025)
@@ -79,16 +79,16 @@ The helper script now supports real browser automation for testing in actual bro
 
 ```bash
 # Test with real browser automation using Chrome
-./run_web_platform_tests.sh --use-browser-automation --browser chrome python generators/runners/web/web_platform_test_runner.py --model bert
+./run_web_platform_tests.sh --use-browser-automation --browser chrome python scripts/generators/runners/web/web_platform_test_runner.py --model bert
 
 # Test WebNN with Edge browser
-./run_web_platform_tests.sh --webnn-only --use-browser-automation --browser edge python generators/runners/web/web_platform_test_runner.py --model bert
+./run_web_platform_tests.sh --webnn-only --use-browser-automation --browser edge python scripts/generators/runners/web/web_platform_test_runner.py --model bert
 
 # Test WebGPU with Firefox browser
-./run_web_platform_tests.sh --webgpu-only --use-browser-automation --browser firefox python generators/runners/web/web_platform_test_runner.py --model vit
+./run_web_platform_tests.sh --webgpu-only --use-browser-automation --browser firefox python scripts/generators/runners/web/web_platform_test_runner.py --model vit
 
 # Combine browser automation with advanced features
-./run_web_platform_tests.sh --use-browser-automation --browser chrome --enable-compute-shaders python generators/runners/web/web_platform_test_runner.py --model whisper
+./run_web_platform_tests.sh --use-browser-automation --browser chrome --enable-compute-shaders python scripts/generators/runners/web/web_platform_test_runner.py --model whisper
 ```
 
 This script automatically sets these environment variables by default:
@@ -114,41 +114,41 @@ The browser automation flags add these environment variables:
 
 ```bash
 # Generate a test for BERT with WebNN support
-./run_web_platform_tests.sh python generators/generators/skill_generators/integrated_skillset_generator.py --model bert --hardware webnn
+./run_web_platform_tests.sh python scripts/generators/scripts/generators/skill_scripts/generators/integrated_skillset_generator.py --model bert --hardware webnn
 
 # Generate tests for vision models with WebGPU support
-./run_web_platform_tests.sh python generators/generators/skill_generators/integrated_skillset_generator.py --model vit --hardware webgpu
+./run_web_platform_tests.sh python scripts/generators/scripts/generators/skill_scripts/generators/integrated_skillset_generator.py --model vit --hardware webgpu
 ```
 
 ### Running Benchmarks
 
 ```bash
 # Run benchmarks with WebNN simulation
-./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webnn --output-dir ./benchmark_results
+./run_web_platform_tests.sh python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --hardware webnn --output-dir ./benchmark_results
 
 # Test multiple web platforms
-./run_web_platform_tests.sh python generators/benchmark_generators/run_model_benchmarks.py --hardware webnn,webgpu --models-set small
+./run_web_platform_tests.sh python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --hardware webnn,webgpu --models-set small
 ```
 
 ### Validating Implementation
 
 ```bash
 # Verify model functionality with WebNN
-./run_web_platform_tests.sh python generators/validators/verify_model_functionality.py --models bert t5 vit --hardware webnn
+./run_web_platform_tests.sh python scripts/generators/validators/verify_model_functionality.py --models bert t5 vit --hardware webnn
 
 # Verify that web platform implementation types are reporting correctly
-./run_web_platform_tests.sh python generators/validators/verify_key_models.py --platform webnn
-./run_web_platform_tests.sh python generators/validators/verify_key_models.py --platform webgpu
+./run_web_platform_tests.sh python scripts/generators/validators/verify_key_models.py --platform webnn
+./run_web_platform_tests.sh python scripts/generators/validators/verify_key_models.py --platform webgpu
 ```
 
 ### Running Specific Tests
 
 ```bash
 # Test template functionality with web platforms
-./run_web_platform_tests.sh python generators/templates/template_inheritance_system.py --platform webnn
+./run_web_platform_tests.sh python scripts/generators/templates/template_inheritance_system.py --platform webnn
 
 # Test hardware model integration
-./run_web_platform_tests.sh python generators/run_integrated_hardware_model_test.py --platform webgpu
+./run_web_platform_tests.sh python scripts/generators/run_integrated_hardware_model_test.py --platform webgpu
 ```
 
 ## Fixing Web Platform Implementation Types
@@ -156,10 +156,10 @@ The browser automation flags add these environment variables:
 If you have inconsistently named implementation types, use the provided fix script:
 
 ```bash
-# Fix implementation types in generators/test_generators/merged_test_generator.py and all test files
+# Fix implementation types in scripts/generators/test_scripts/generators/merged_test_generator.py and all test files
 python fix_test_files.py --fix-all
 
-# Fix only the generators/test_generators/merged_test_generator.py file
+# Fix only the scripts/generators/test_scripts/generators/merged_test_generator.py file
 python fix_test_files.py --fix-generator
 
 # Fix only test files in a specific directory
@@ -621,12 +621,12 @@ The `verify_web_platform_integration.py` script provides a comprehensive verific
 
 ```bash
 # Run the verification script
-python generators/verify_web_platform_integration.py
+python scripts/generators/verify_web_platform_integration.py
 ```
 
 This script checks:
 
-1. Whether the fixed_web_platform module is properly imported in generators/test_generators/merged_test_generator.py
+1. Whether the fixed_web_platform module is properly imported in scripts/generators/test_scripts/generators/merged_test_generator.py
 2. Whether all required functions (process_for_web, init_webnn, init_webgpu) are available
 3. Whether advanced features like shader compilation and parallel loading are implemented
 4. Whether the template database includes all necessary web platform entries

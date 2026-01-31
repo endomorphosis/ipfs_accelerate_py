@@ -44,7 +44,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 # Import BrowserAutomation if available
 try:
-    from fixed_web_platform.browser_automation import (
+    from test.web_platform.browser_automation import (
         BrowserAutomation,
         find_browser_executable
     )

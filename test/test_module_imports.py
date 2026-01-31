@@ -18,13 +18,13 @@ def test_generator_imports():
         from generators import utils
         print("✅ Successfully imported generators.utils")
         
-        from generators.test_generators import sample_test_generator
+        from scripts.generators.test_generators import sample_test_generator
         print("✅ Successfully imported generators.test_generators.sample_test_generator")
         
-        from generators.models import skill_hf_bert
+        from scripts.generators.models import skill_hf_bert
         print("✅ Successfully imported generators.models.skill_hf_bert")
         
-        from generators.templates.model_templates import template_bert
+        from scripts.generators.templates.model_templates import template_bert
         print("✅ Successfully imported generators.templates.model_templates.template_bert")
         
     return True

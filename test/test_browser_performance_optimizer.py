@@ -23,7 +23,7 @@ if parent_dir not in sys.path:
 
 # Import the module to test
 try:
-    from fixed_web_platform.browser_performance_optimizer import (
+    from test.web_platform.browser_performance_optimizer import (
         BrowserPerformanceOptimizer,
         OptimizationPriority,
         BrowserCapabilityScore,

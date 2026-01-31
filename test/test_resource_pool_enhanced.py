@@ -350,7 +350,7 @@ resource_pool_bridge_recovery_mock.RecoveryStrategy = MagicMock()
 
 # Import enhanced resource pool bridge integration with mocked dependencies
 try:
-    from fixed_web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
+    from test.web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
     ENHANCED_BRIDGE_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Enhanced bridge integration not available: {e}")
@@ -358,7 +358,7 @@ except ImportError as e:
 
 # Import original resource pool bridge integration for comparison
 try:
-    from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
     ORIGINAL_BRIDGE_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Original bridge integration not available: {e}")

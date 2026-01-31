@@ -23,14 +23,14 @@ Example usage:
     sys.path.append())))))))))os.path.dirname())))))))))os.path.dirname())))))))))os.path.abspath())))))))))__file__))))
 
 # Import the multimodal optimizer and integration modules
-    from fixed_web_platform.multimodal_optimizer import ())))))))))
+    from test.web_platform.multimodal_optimizer import ())))))))))
     MultimodalOptimizer,
     optimize_multimodal_model,
     configure_for_browser,
     Browser
     )
 
-    from fixed_web_platform.unified_framework.multimodal_integration import ())))))))))
+    from test.web_platform.unified_framework.multimodal_integration import ())))))))))
     optimize_model_for_browser,
     run_multimodal_inference,
     get_best_multimodal_config,
@@ -38,7 +38,7 @@ Example usage:
     MultimodalWebRunner
     )
 
-    from fixed_web_platform.unified_framework.platform_detector import detect_browser_features
+    from test.web_platform.unified_framework.platform_detector import detect_browser_features
 
 # Define sample test models
     TEST_MODELS = {}}}}}}}}}}}}

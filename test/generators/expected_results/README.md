@@ -36,7 +36,7 @@ The files in this directory should not be modified manually. They are generated 
 
 To update expected results after model or hardware changes:
 ```bash
-python generators/runners/end_to_end/run_e2e_tests.py --model bert --hardware cuda --update-expected
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert --hardware cuda --update-expected
 ```
 
 ## Validation Process

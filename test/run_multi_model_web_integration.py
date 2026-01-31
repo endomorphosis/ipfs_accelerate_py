@@ -32,7 +32,7 @@ if str(parent_dir) not in sys.path:
 
 # Import the necessary modules
 try:
-    from predictive_performance.multi_model_web_integration import MultiModelWebIntegration
+    from ipfs_accelerate_py.predictive_performance.multi_model_web_integration import MultiModelWebIntegration
 except ImportError as e:
     logger.error(f"Import error: {e}")
     logger.error("Make sure the predictive_performance module is available")

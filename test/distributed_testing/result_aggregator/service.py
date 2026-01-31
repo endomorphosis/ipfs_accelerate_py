@@ -56,7 +56,7 @@ except ImportError:
 
 # Import performance analyzer if available
 try:
-    from result_aggregator.performance_analyzer import PerformanceAnalyzer
+    from .performance_analyzer import PerformanceAnalyzer
     PERFORMANCE_ANALYZER_AVAILABLE = True
 except ImportError:
     PERFORMANCE_ANALYZER_AVAILABLE = False

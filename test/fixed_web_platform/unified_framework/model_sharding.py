@@ -12,7 +12,7 @@ of a single browser context:
 - Memory optimization across shards
 
 Usage:
-    from fixed_web_platform.unified_framework.model_sharding import (
+    from test.web_platform.unified_framework.model_sharding import (
         ModelShardingManager, ShardConfiguration 
     )
     

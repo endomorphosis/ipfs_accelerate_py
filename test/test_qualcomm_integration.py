@@ -80,7 +80,7 @@ class TestQualcommIntegration(unittest.TestCase):
         try:
             # Try to import centralized_hardware_detection
             sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-            from generators.hardware.hardware_detection import get_capabilities
+            from scripts.generators.hardware.hardware_detection import get_capabilities
             
             # Get capabilities 
             capabilities = get_capabilities()

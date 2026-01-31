@@ -13,7 +13,7 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 # Import visualization module (just for testing class existence, no actual rendering)
-from predictive_performance.visualization_minimal import AdvancedVisualization
+from ipfs_accelerate_py.predictive_performance.visualization_minimal import AdvancedVisualization
 
 class TestAdvancedVisualizationMinimal(unittest.TestCase):
     """Minimal test cases for the AdvancedVisualization class."""

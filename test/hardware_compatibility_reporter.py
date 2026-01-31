@@ -186,7 +186,7 @@ def _validate_data_authenticity()))))))))))))))))))))))))))))))))))self, df):
         
         try::
             # Import hardware detector
-            from generators.hardware.hardware_detection import HardwareDetector
+            from scripts.generators.hardware.hardware_detection import HardwareDetector
             detector = HardwareDetector())))))))))))))))))))))))))))))))))))
             
             # Get hardware detection errors
@@ -568,7 +568,7 @@ def _validate_data_authenticity()))))))))))))))))))))))))))))))))))self, df):
         
         try::
             # Import hardware detector with comprehensive checks
-            from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
+            from scripts.generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
             
             # Get comprehensive hardware info
             hw_info = detect_hardware_with_comprehensive_checks())))))))))))))))))))))))))))))))))))
@@ -612,12 +612,12 @@ def _validate_data_authenticity()))))))))))))))))))))))))))))))))))self, df):
                     return collected_errors
             
         except ImportError as e:
-            logger.error()))))))))))))))))))))))))))))))))))f"Could not import generators.hardware.hardware_detection as hardware_detection: {}}}}}}}}}}}}}}}}}e}")
+            logger.error()))))))))))))))))))))))))))))))))))f"Could not import scripts.generators.hardware.hardware_detection as hardware_detection: {}}}}}}}}}}}}}}}}}e}")
             error_data = self.add_error()))))))))))))))))))))))))))))))))))
             hardware_type="all",
             error_type="import_error",
             severity="critical",
-            message=f"Could not import generators.hardware.hardware_detection as hardware_detection for stack testing: {}}}}}}}}}}}}}}}}}e}",
+            message=f"Could not import scripts.generators.hardware.hardware_detection as hardware_detection for stack testing: {}}}}}}}}}}}}}}}}}e}",
             component="hardware_compatibility_reporter"
             )
                     return []]]]]]]]]]]]]]]]]]]]]]]]],,,,,,,,,,,,,,,,,,,,,,,,,error_data]

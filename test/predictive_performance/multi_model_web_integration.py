@@ -36,7 +36,7 @@ if parent_dir not in sys.path:
 
 # Import multi-model execution predictor
 try:
-    from predictive_performance.multi_model_execution import MultiModelPredictor
+    from ipfs_accelerate_py.predictive_performance.multi_model_execution import MultiModelPredictor
 except ImportError as e:
     logger.error(f"Error importing MultiModelPredictor: {e}")
     logger.error("Make sure multi_model_execution.py is available in the predictive_performance directory")
@@ -44,7 +44,7 @@ except ImportError as e:
 
 # Import empirical validation
 try:
-    from predictive_performance.multi_model_empirical_validation import MultiModelEmpiricalValidator
+    from ipfs_accelerate_py.predictive_performance.multi_model_empirical_validation import MultiModelEmpiricalValidator
     VALIDATOR_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Error importing MultiModelEmpiricalValidator: {e}")
@@ -53,7 +53,7 @@ except ImportError as e:
 
 # Import resource pool integration
 try:
-    from predictive_performance.multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
+    from ipfs_accelerate_py.predictive_performance.multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
     RESOURCE_POOL_INTEGRATION_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Error importing MultiModelResourcePoolIntegration: {e}")
@@ -62,7 +62,7 @@ except ImportError as e:
 
 # Import web resource pool adapter
 try:
-    from predictive_performance.web_resource_pool_adapter import WebResourcePoolAdapter
+    from ipfs_accelerate_py.predictive_performance.web_resource_pool_adapter import WebResourcePoolAdapter
     WEB_ADAPTER_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Error importing WebResourcePoolAdapter: {e}")

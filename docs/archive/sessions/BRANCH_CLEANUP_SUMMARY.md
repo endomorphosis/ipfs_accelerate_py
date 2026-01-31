@@ -79,7 +79,7 @@ ipfs_accelerate_py/
 ├── README.md                    ← ✅ Updated with comprehensive Mojo/MAX guide
 ├── hardware_detection.py        ← Hardware detection and capability assessment
 ├── final_mcp_server.py          ← Production MCP server
-├── generators/                  ← Model skill classes (367+ HuggingFace models)
+├── scripts/generators/                  ← Model skill classes (367+ HuggingFace models)
 ├── docs/                        ← Documentation (fastmcp, mcp-python-sdk)
 ├── external/                    ← External dependencies (ipfs_kit_py, etc.)
 └── test/                        ← Test suites and validation frameworks

@@ -19,7 +19,7 @@ sys.path.insert(0, current_dir)
 
 try:
     # Import the web dashboard module
-    from result_aggregator.web_dashboard import main
+    from test.distributed_testing.result_aggregator.web_dashboard import main
     
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="Run the Result Aggregator Web Dashboard")

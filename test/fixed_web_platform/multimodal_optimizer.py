@@ -18,7 +18,7 @@ Key features:
 - Zero-copy cross-modality tensor sharing on GPU
 
 Usage:
-    from fixed_web_platform.multimodal_optimizer import (
+    from test.web_platform.multimodal_optimizer import (
         MultimodalOptimizer,
         optimize_multimodal_model,
         configure_for_browser

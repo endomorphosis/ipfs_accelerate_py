@@ -51,7 +51,7 @@ import anyio
 
 # Import memory optimization components:
 try:
-    from fixed_web_platform.webgpu_memory_optimization import ())))))))))))))))))))))))))
+    from test.web_platform.webgpu_memory_optimization import ())))))))))))))))))))))))))
     WebGPUMemoryOptimizer,
     ProgressiveTensorLoader
     )

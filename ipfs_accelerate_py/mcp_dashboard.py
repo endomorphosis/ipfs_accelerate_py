@@ -16,7 +16,7 @@ try:
     from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
 except ImportError:
     try:
-        from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+        from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
     except ImportError:
         HAVE_STORAGE_WRAPPER = False
         def get_storage_wrapper(*args, **kwargs):
@@ -204,8 +204,8 @@ class MCPDashboard:
         def copilot_sdk_sessions():
             """List active Copilot SDK sessions."""
             try:
-                from shared.operations import CopilotSDKOperations
-                from shared.core import SharedCore
+                from scripts.shared.operations import CopilotSDKOperations
+                from scripts.shared.core import SharedCore
                 
                 ops = CopilotSDKOperations(SharedCore())
                 result = ops.list_sessions()
@@ -222,8 +222,8 @@ class MCPDashboard:
         def copilot_sdk_create_session():
             """Create a new Copilot SDK session."""
             try:
-                from shared.operations import CopilotSDKOperations
-                from shared.core import SharedCore
+                from scripts.shared.operations import CopilotSDKOperations
+                from scripts.shared.core import SharedCore
                 
                 data = request.get_json() or {}
                 model = data.get('model', 'gpt-4o')
@@ -242,8 +242,8 @@ class MCPDashboard:
         def copilot_sdk_send_message(session_id):
             """Send a message to a Copilot SDK session."""
             try:
-                from shared.operations import CopilotSDKOperations
-                from shared.core import SharedCore
+                from scripts.shared.operations import CopilotSDKOperations
+                from scripts.shared.core import SharedCore
                 
                 data = request.get_json() or {}
                 prompt = data.get('prompt', '')
@@ -272,8 +272,8 @@ class MCPDashboard:
         def copilot_sdk_destroy_session(session_id):
             """Destroy a Copilot SDK session."""
             try:
-                from shared.operations import CopilotSDKOperations
-                from shared.core import SharedCore
+                from scripts.shared.operations import CopilotSDKOperations
+                from scripts.shared.core import SharedCore
                 
                 ops = CopilotSDKOperations(SharedCore())
                 result = ops.destroy_session(session_id=session_id)

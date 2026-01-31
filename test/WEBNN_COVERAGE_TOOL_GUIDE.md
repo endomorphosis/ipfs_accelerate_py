@@ -131,7 +131,7 @@ The WebNN/WebGPU Coverage Tool requires:
 ./run_webnn_webgpu_coverage.sh full
 
 # Run minimal WebNN check
-python generators/models/test_webnn_minimal.py --browser edge
+python scripts/generators/models/test_webnn_minimal.py --browser edge
 ```
 
 ### Predefined Profiles
@@ -204,7 +204,7 @@ To check if your browsers properly support WebNN and WebGPU:
 ./run_webnn_webgpu_coverage.sh capabilities-only --browser firefox
 
 # Use minimal test script for quick verification
-python generators/models/test_webnn_minimal.py --browser edge
+python scripts/generators/models/test_webnn_minimal.py --browser edge
 ```
 
 ### Testing Models

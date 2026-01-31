@@ -7,7 +7,7 @@ from cross-browser model sharding tests, with a focus on fault tolerance perform
 and recovery capabilities.
 
 Usage:
-    from fixed_web_platform.cross_browser_metrics_collector import MetricsCollector
+    from test.web_platform.cross_browser_metrics_collector import MetricsCollector
     
     # Create collector with DuckDB integration
     collector = MetricsCollector(db_path="./benchmark_db.duckdb")

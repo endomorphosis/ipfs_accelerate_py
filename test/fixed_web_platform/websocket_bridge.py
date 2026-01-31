@@ -32,7 +32,7 @@ from typing import Dict, List, Tuple, Optional, Union, Callable, Any
 
 # Import unified error handling and dependency management frameworks
 try:
-    from fixed_web_platform.unified_framework.error_handling import (
+    from test.web_platform.unified_framework.error_handling import (
         ErrorHandler, handle_errors, handle_async_errors, with_retry, ErrorCategories
     )
     HAS_ERROR_FRAMEWORK = True
@@ -48,7 +48,7 @@ if HAS_ERROR_FRAMEWORK:
 
 # Try to import unified dependency management
 try:
-    from fixed_web_platform.unified_framework.dependency_management import (
+    from test.web_platform.unified_framework.dependency_management import (
         global_dependency_manager, require_dependencies
     )
     HAS_DEPENDENCY_MANAGER = True
@@ -230,7 +230,7 @@ class WebSocketBridge:
         try:
             # Try to import our string utilities
             try:
-                from fixed_web_platform.unified_framework.string_utils import fix_escapes
+                from test.web_platform.unified_framework.string_utils import fix_escapes
                 # Apply escape sequence fixes before parsing
                 message_data = fix_escapes(message_data)
             except ImportError:

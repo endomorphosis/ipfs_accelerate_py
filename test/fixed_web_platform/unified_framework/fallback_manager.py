@@ -16,7 +16,7 @@ Key features:
 - Dynamic adaptation based on available memory and device capabilities
 
 Usage:
-    from fixed_web_platform.unified_framework.fallback_manager import (
+    from test.web_platform.unified_framework.fallback_manager import (
         FallbackManager,
         SafariWebGPUFallback,
         create_optimal_fallback_strategy
@@ -68,10 +68,10 @@ logger = logging.getLogger("fallback_manager")
 
 # Try to import related modules
 try:
-    from fixed_web_platform.webgpu_wasm_fallback import WebAssemblyFallback
-    from fixed_web_platform.safari_webgpu_handler import SafariWebGPUHandler
-    from fixed_web_platform.unified_framework.configuration_manager import ConfigurationManager
-    from fixed_web_platform.unified_framework.error_handling import ErrorHandler
+    from test.web_platform.webgpu_wasm_fallback import WebAssemblyFallback
+    from test.web_platform.safari_webgpu_handler import SafariWebGPUHandler
+    from test.web_platform.unified_framework.configuration_manager import ConfigurationManager
+    from test.web_platform.unified_framework.error_handling import ErrorHandler
     MODULES_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Could not import dependent modules: {e}")
@@ -458,7 +458,7 @@ class SafariWebGPUFallback:
         
         # Initialize WebAssembly fallback as final fallback
         try:
-            from fixed_web_platform.webgpu_wasm_fallback import WebAssemblyFallback
+            from test.web_platform.webgpu_wasm_fallback import WebAssemblyFallback
             self.wasm_fallback = WebAssemblyFallback(
                 enable_simd=True,
                 enable_threading=True,
@@ -470,7 +470,7 @@ class SafariWebGPUFallback:
             
         # Initialize Safari WebGPU handler
         try:
-            from fixed_web_platform.safari_webgpu_handler import SafariWebGPUHandler
+            from test.web_platform.safari_webgpu_handler import SafariWebGPUHandler
             self.safari_handler = SafariWebGPUHandler(
                 fallback_to_wasm=True,
                 enable_metal_api=True

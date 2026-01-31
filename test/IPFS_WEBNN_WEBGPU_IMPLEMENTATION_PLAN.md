@@ -20,21 +20,21 @@ Following the generator workflow, we'll use the test generators to create skills
 
 1. **Generate Test Files**:
    ```bash
-   python generators/generators/test_generators/merged_test_generator.py --model bert --platform webnn,webgpu --output test/test_hf_bert_web_platform.py
-   python generators/generators/test_generators/merged_test_generator.py --model whisper --platform webnn,webgpu --output test/test_hf_whisper_web_platform.py
-   python generators/generators/test_generators/merged_test_generator.py --model vit --platform webnn,webgpu --output test/test_hf_vit_web_platform.py
+   python scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py --model bert --platform webnn,webgpu --output test/test_hf_bert_web_platform.py
+   python scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py --model whisper --platform webnn,webgpu --output test/test_hf_whisper_web_platform.py
+   python scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py --model vit --platform webnn,webgpu --output test/test_hf_vit_web_platform.py
    ```
 
 2. **Validate Tests**:
    ```bash
-   python generators/validate_merged_generator.py --test-files test/test_hf_bert_web_platform.py,test/test_hf_whisper_web_platform.py,test/test_hf_vit_web_platform.py
+   python scripts/generators/validate_merged_generator.py --test-files test/test_hf_bert_web_platform.py,test/test_hf_whisper_web_platform.py,test/test_hf_vit_web_platform.py
    ```
 
 3. **Generate Skill Implementations**:
    ```bash
-   python generators/generators/skill_generators/integrated_skillset_generator.py --model bert --hardware webnn,webgpu --cross-platform --output test/generated_skillsets/hf_bert_web.py
-   python generators/generators/skill_generators/integrated_skillset_generator.py --model whisper --hardware webnn,webgpu --cross-platform --output test/generated_skillsets/hf_whisper_web.py
-   python generators/generators/skill_generators/integrated_skillset_generator.py --model vit --hardware webnn,webgpu --cross-platform --output test/generated_skillsets/hf_vit_web.py
+   python scripts/generators/scripts/generators/skill_scripts/generators/integrated_skillset_generator.py --model bert --hardware webnn,webgpu --cross-platform --output test/generated_skillsets/hf_bert_web.py
+   python scripts/generators/scripts/generators/skill_scripts/generators/integrated_skillset_generator.py --model whisper --hardware webnn,webgpu --cross-platform --output test/generated_skillsets/hf_whisper_web.py
+   python scripts/generators/scripts/generators/skill_scripts/generators/integrated_skillset_generator.py --model vit --hardware webnn,webgpu --cross-platform --output test/generated_skillsets/hf_vit_web.py
    ```
 
 4. **Validate Skillset Implementations**:

@@ -58,7 +58,7 @@ The workflow consists of the following jobs:
 2. **run_tests**: Runs tests for specified models and hardware platforms
    - Creates a matrix of models and hardware platforms to test
    - Downloads the database from the setup job
-   - Runs tests using `generators/models/test_ipfs_accelerate.py` with direct database storage
+   - Runs tests using `scripts/generators/models/test_ipfs_accelerate.py` with direct database storage
    - Verifies that test results were properly stored in the database
    - Generates test reports in markdown format
    - Uploads the updated database and reports as artifacts
@@ -325,7 +325,7 @@ export BENCHMARK_DB_PATH=./benchmark_db_local.duckdb
 export DEPRECATE_JSON_OUTPUT=1
 
 # Run tests with database integration
-python generators/models/test_ipfs_accelerate.py --models prajjwal1/bert-tiny --endpoints cpu --db-path $BENCHMARK_DB_PATH
+python scripts/generators/models/test_ipfs_accelerate.py --models prajjwal1/bert-tiny --endpoints cpu --db-path $BENCHMARK_DB_PATH
 
 # Generate reports
 python duckdb_api/visualization/generate_compatibility_matrix.py --db-path $BENCHMARK_DB_PATH --format markdown --output compatibility_matrix.md

@@ -170,7 +170,7 @@ async trackRunners() {
    - Comprehensive documentation (247 lines)
    - Problem statement, solution, features, testing
 
-4. **`screenshots/active-runners-ui.png`**
+4. **`docs/images/active-runners-ui.png`**
    - Screenshot of the Active Runners section
    - Visual proof of implementation
 
@@ -219,7 +219,7 @@ Required tools in the MCP server:
 ## Visual Documentation
 
 ### Screenshot Location
-`screenshots/active-runners-ui.png` shows:
+`docs/images/active-runners-ui.png` shows:
 - The Active Runners section header
 - Input fields with "optional" placeholders
 - Track button with tooltip

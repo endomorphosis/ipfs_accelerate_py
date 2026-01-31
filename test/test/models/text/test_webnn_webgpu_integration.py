@@ -45,8 +45,8 @@ except ImportError as e:
     sys.exit())))1)
 
 try:
-    from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
-    from fixed_web_platform.webnn_implementation import RealWebNNImplementation
+    from test.web_platform.webgpu_implementation import RealWebGPUImplementation
+    from test.web_platform.webnn_implementation import RealWebNNImplementation
     logger.info())))"Successfully imported platform-specific implementations")
 except ImportError as e:
     logger.error())))f"Failed to import platform-specific implementations: {}}}}}}}e}")
@@ -288,8 +288,8 @@ async def simulate_implementation_test())))):
         
         # Import the implementation and implementation-specific modules
         from implement_real_webnn_webgpu import BrowserManager, WebBridgeServer
-        from fixed_web_platform.webgpu_implementation import RealWebGPUImplementation
-        from fixed_web_platform.webnn_implementation import RealWebNNImplementation
+        from test.web_platform.webgpu_implementation import RealWebGPUImplementation
+        from test.web_platform.webnn_implementation import RealWebNNImplementation
         
         logger.info())))"All modules imported successfully")
         

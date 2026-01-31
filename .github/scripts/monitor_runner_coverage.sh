@@ -10,7 +10,7 @@ set -e
 # Resolve repo root so this script works from cron/systemd.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-GH_API_CACHED=(python3 "$REPO_ROOT/tools/gh_api_cached.py")
+GH_API_CACHED=(python3 "$REPO_ROOT/scripts/utils/gh_api_cached.py")
 
 LOG_FILE="${LOG_FILE:-/tmp/runner-coverage-monitor.log}"
 CHECK_INTERVAL="${CHECK_INTERVAL:-300}" # 5 minutes default

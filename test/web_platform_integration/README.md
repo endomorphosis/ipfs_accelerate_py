@@ -31,7 +31,7 @@ The web platform integration follows a layered architecture:
 ```
 ┌────────────────────────────────────────────────────────────┐
 │                   Test Generator Layer                      │
-│   (generators/test_generators/merged_test_generator.py, web_platform_test_runner.py)   │
+│   (scripts/generators/test_scripts/generators/merged_test_generator.py, web_platform_test_runner.py)   │
 └─────────────────────────────┬──────────────────────────────┘
                               │
                               ▼
@@ -61,7 +61,7 @@ The web platform integration follows a layered architecture:
    - Integrates with real browsers or simulation mode
 
 3. **Integration with Test Generator**
-   - Location: `test/generators/test_generators/merged_test_generator.py`
+   - Location: `test/scripts/generators/test_scripts/generators/merged_test_generator.py`
    - Command-line arguments for platform selection
    - Template-based generation for web platforms
 
@@ -188,22 +188,22 @@ To verify the implementation:
 
 1. **Basic verification**
    ```bash
-   python generators/validators/verify_web_platform_integration.py
+   python scripts/generators/validators/verify_web_platform_integration.py
    ```
 
 2. **Test a specific model with WebNN**
    ```bash
-   python generators/runners/web/web_platform_test_runner.py --model bert --platform webnn
+   python scripts/generators/runners/web/web_platform_test_runner.py --model bert --platform webnn
    ```
 
 3. **Test with WebGPU compute shaders (March 2025)**
    ```bash
-   python generators/runners/web/web_platform_test_runner.py --model whisper --platform webgpu --compute-shaders
+   python scripts/generators/runners/web/web_platform_test_runner.py --model whisper --platform webgpu --compute-shaders
    ```
 
 4. **Test with parallel model loading (March 2025)**
    ```bash
-   python generators/runners/web/web_platform_test_runner.py --model clip --platform webgpu --parallel-loading
+   python scripts/generators/runners/web/web_platform_test_runner.py --model clip --platform webgpu --parallel-loading
    ```
 
 5. **Generate performance report**

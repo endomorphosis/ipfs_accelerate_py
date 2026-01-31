@@ -24,9 +24,9 @@ Usage:
 # Add parent directory to path
     sys.path.append()os.path.dirname()os.path.abspath()__file__)))
 
-# Try to import from fixed_web_platform
+# Try to import from test.web_platform
 try:
-    from fixed_web_platform.resource_pool_bridge import ResourcePoolBridge, BrowserConnection
+    from test.web_platform.resource_pool_bridge import ResourcePoolBridge, BrowserConnection
     HAS_RESOURCE_BRIDGE = True
 except ImportError as e:
     logger.error()f"Error importing ResourcePoolBridge: {}}}}e}")

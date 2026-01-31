@@ -43,14 +43,14 @@ sys.path.append(str(Path(__file__).resolve().parent))
 # Import required modules
 try:
     # Import core system components
-    from fixed_web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
-    from fixed_web_platform.cross_browser_model_sharding import CrossBrowserModelShardingManager
-    from fixed_web_platform.browser_performance_history import BrowserPerformanceHistory
+    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
+    from test.web_platform.cross_browser_model_sharding import CrossBrowserModelShardingManager
+    from test.web_platform.browser_performance_history import BrowserPerformanceHistory
     
     # Import fault tolerance and visualization components
-    from fixed_web_platform.fault_tolerance_validation import FaultToleranceValidator
-    from fixed_web_platform.fault_tolerance_visualization_integration import FaultToleranceValidationSystem
-    from fixed_web_platform.visualization.fault_tolerance_visualizer import FaultToleranceVisualizer
+    from test.web_platform.fault_tolerance_validation import FaultToleranceValidator
+    from test.web_platform.fault_tolerance_visualization_integration import FaultToleranceValidationSystem
+    from test.web_platform.visualization.fault_tolerance_visualizer import FaultToleranceVisualizer
     
     # Import mock implementations for testing without browsers
     if os.environ.get("USE_FIXED_MOCK", "0") == "1":

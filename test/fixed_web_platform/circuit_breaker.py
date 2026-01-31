@@ -12,7 +12,7 @@ Key features:
 5. Browser-specific recovery strategies
 
 Usage:
-    from fixed_web_platform.circuit_breaker import CircuitBreaker, BrowserCircuitBreakerManager
+    from test.web_platform.circuit_breaker import CircuitBreaker, BrowserCircuitBreakerManager
 
     # Create a circuit breaker
     circuit = CircuitBreaker(name="browser_chrome_1", failure_threshold=5)

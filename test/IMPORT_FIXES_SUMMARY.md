@@ -4,7 +4,7 @@
 
 1. **Fixed Package Structure**
    - Added missing `__init__.py` files to all package directories
-   - Created proper module hierarchy in `generators/` and `duckdb_api/` packages
+   - Created proper module hierarchy in `scripts/generators/` and `duckdb_api/` packages
    - Fixed 8 directories that were missing `__init__.py` files
 
 2. **Fixed Import Statements**

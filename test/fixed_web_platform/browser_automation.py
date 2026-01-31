@@ -16,7 +16,7 @@ Key features:
 - Comprehensive browser capabilities detection
 
 Usage:
-    from fixed_web_platform.browser_automation import BrowserAutomation
+    from test.web_platform.browser_automation import BrowserAutomation
     
     # Create instance
     automation = BrowserAutomation(

@@ -261,7 +261,7 @@ python -c "import groq; print(groq.__version__)"
 ### 1. Update Installer Script
 
 ```bash
-# installers/install.sh
+# install/install.sh
 
 # OpenAI Codex CLI - gracefully handle unavailability
 if command -v npm >/dev/null 2>&1; then

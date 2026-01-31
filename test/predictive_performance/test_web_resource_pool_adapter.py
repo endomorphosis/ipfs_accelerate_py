@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(str(Path(__file__).parent.parent))
 
 # Import the module to test
-from predictive_performance.web_resource_pool_adapter import (
+from ipfs_accelerate_py.predictive_performance.web_resource_pool_adapter import (
     WebResourcePoolAdapter,
     BROWSER_CAPABILITIES,
     MODEL_BROWSER_PREFERENCES,

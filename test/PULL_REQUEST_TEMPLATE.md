@@ -1,7 +1,7 @@
 # Import Path Fixes for Reorganized Code
 
 ## Summary
-This PR fixes import path issues in the IPFS Accelerate codebase after the March 2025 reorganization. It creates proper Python package structures for the `generators/` and `duckdb_api/` directories, updates import statements, and fixes syntax errors.
+This PR fixes import path issues in the IPFS Accelerate codebase after the March 2025 reorganization. It creates proper Python package structures for the `scripts/generators/` and `duckdb_api/` directories, updates import statements, and fixes syntax errors.
 
 ## Changes
 - Added missing `__init__.py` files to complete package structure

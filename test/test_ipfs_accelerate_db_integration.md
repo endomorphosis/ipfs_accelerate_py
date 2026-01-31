@@ -42,10 +42,10 @@ The database includes the following key tables:
 export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 
 # Run the test script with database integration
-python generators/models/test_ipfs_accelerate.py
+python scripts/generators/models/test_ipfs_accelerate.py
 
 # Run with specific options
-python generators/models/test_ipfs_accelerate.py --db-path ./custom_db.duckdb --report
+python scripts/generators/models/test_ipfs_accelerate.py --db-path ./custom_db.duckdb --report
 ```
 
 ### Environment Variables
@@ -62,16 +62,16 @@ The script supports several database-related command-line options:
 
 ```bash
 # Specify database path directly
-python generators/models/test_ipfs_accelerate.py --db-path ./custom_db.duckdb
+python scripts/generators/models/test_ipfs_accelerate.py --db-path ./custom_db.duckdb
 
 # Generate a report from the database
-python generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
+python scripts/generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
 
 # Run tests without storing results in the database
-python generators/models/test_ipfs_accelerate.py --no-db-store
+python scripts/generators/models/test_ipfs_accelerate.py --no-db-store
 
 # Run tests with both JSON and database output
-python generators/models/test_ipfs_accelerate.py --json-output --db-path ./benchmark_db.duckdb
+python scripts/generators/models/test_ipfs_accelerate.py --json-output --db-path ./benchmark_db.duckdb
 ```
 
 ## Database Code Implementation
@@ -208,10 +208,10 @@ The script includes a report generator:
 
 ```bash
 # Generate a markdown report
-python generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
+python scripts/generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
 
 # Generate an HTML report
-python generators/models/test_ipfs_accelerate.py --report --format html --output test_report.html
+python scripts/generators/models/test_ipfs_accelerate.py --report --format html --output test_report.html
 ```
 
 ## Example Queries

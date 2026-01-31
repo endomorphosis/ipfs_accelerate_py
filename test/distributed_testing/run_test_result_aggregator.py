@@ -40,8 +40,8 @@ logger = logging.getLogger("run_test_result_aggregator")
 
 # Import coordinator and result aggregator
 from .coordinator import DistributedTestingCoordinator
-from result_aggregator.coordinator_integration import ResultAggregatorIntegration
-from result_aggregator.service import ResultAggregatorService
+from test.distributed_testing.result_aggregator.coordinator_integration import ResultAggregatorIntegration
+from test.distributed_testing.result_aggregator.service import ResultAggregatorService
 
 # Task types for simulation
 TASK_TYPES = [

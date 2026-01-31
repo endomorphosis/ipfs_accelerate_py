@@ -44,7 +44,7 @@ The validation of CI/CD changes and MCP dashboard functionality has been complet
 
 **Documentation:**
 - Comprehensive Report: CICD_MCP_VALIDATION_REPORT_2025-10-23.md
-- Screenshots: screenshots/mcp_dashboard_*.png
+- Screenshots: docs/images/mcp_dashboard_*.png
 - Template Files: ipfs_accelerate_py/templates/
 
 ### Conclusion

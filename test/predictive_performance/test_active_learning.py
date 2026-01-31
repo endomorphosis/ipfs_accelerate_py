@@ -28,7 +28,7 @@ warnings.filterwarnings()))))))))))))"ignore")
 sys.path.append()))))))))))))str()))))))))))))Path()))))))))))))__file__).parent.parent))
 
 # Import the active learning module
-from predictive_performance.active_learning import ActiveLearningPipeline
+from ipfs_accelerate_py.predictive_performance.active_learning import ActiveLearningPipeline
 
 
 class TestActiveLearningPipeline()))))))))))))unittest.TestCase):

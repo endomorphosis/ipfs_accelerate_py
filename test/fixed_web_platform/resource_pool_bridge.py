@@ -268,8 +268,8 @@ class ResourcePoolBridgeIntegration:
         """
         try:
             # Try importing WebSocket bridge and browser automation
-            from fixed_web_platform.websocket_bridge import WebSocketBridge, create_websocket_bridge
-            from fixed_web_platform.browser_automation import BrowserAutomation
+            from test.web_platform.websocket_bridge import WebSocketBridge, create_websocket_bridge
+            from test.web_platform.browser_automation import BrowserAutomation
             
             self.websocket_bridge_class = WebSocketBridge
             self.create_websocket_bridge = create_websocket_bridge
@@ -289,7 +289,7 @@ class ResourcePoolBridgeIntegration:
                 logger.info(f"Adaptive scaling enabled, starting with {initial_connections} browser connections")
                 
                 # Initialize adaptive manager if adaptive scaling is enabled
-                from fixed_web_platform.adaptive_scaling import AdaptiveConnectionManager
+                from test.web_platform.adaptive_scaling import AdaptiveConnectionManager
                 self.adaptive_manager = AdaptiveConnectionManager(
                     max_connections=self.max_connections,
                     browser_preferences=self.browser_preferences,
@@ -301,7 +301,7 @@ class ResourcePoolBridgeIntegration:
                 
                 # Initialize circuit breaker manager for connection health monitoring
                 try:
-                    from fixed_web_platform.resource_pool_circuit_breaker import ResourcePoolCircuitBreakerManager
+                    from test.web_platform.resource_pool_circuit_breaker import ResourcePoolCircuitBreakerManager
                     self.circuit_breaker_manager = ResourcePoolCircuitBreakerManager(self.browser_connections)
                     await self.circuit_breaker_manager.initialize()
                     logger.info("Circuit breaker manager initialized for connection health monitoring")
@@ -325,7 +325,7 @@ class ResourcePoolBridgeIntegration:
             # Initialize adaptive manager if adaptive scaling is enabled (simulation mode)
             if self.adaptive_scaling:
                 try:
-                    from fixed_web_platform.adaptive_scaling import AdaptiveConnectionManager
+                    from test.web_platform.adaptive_scaling import AdaptiveConnectionManager
                     self.adaptive_manager = AdaptiveConnectionManager(
                         max_connections=self.max_connections,
                         browser_preferences=self.browser_preferences,
@@ -355,7 +355,7 @@ class ResourcePoolBridgeIntegration:
             num_connections: Number of connections to create
         """
         # Import error handling components
-        from fixed_web_platform.unified_framework.error_handling import ErrorHandler, with_retry, with_timeout
+        from test.web_platform.unified_framework.error_handling import ErrorHandler, with_retry, with_timeout
 
         # Determine browser distribution
         browser_distribution = self._calculate_browser_distribution(num_connections)
@@ -935,7 +935,7 @@ class ResourcePoolBridgeIntegration:
                 Returns:
                     Dictionary with inference results or error information
                 """
-                from fixed_web_platform.unified_framework.error_handling import ErrorHandler, ErrorCategories
+                from test.web_platform.unified_framework.error_handling import ErrorHandler, ErrorCategories
 
                 self.inference_count += 1
                 connection_id = None
@@ -1393,7 +1393,7 @@ class ResourcePoolBridgeIntegration:
             List of results in the same order as inputs
         """
         # Import for error handling
-        from fixed_web_platform.unified_framework.error_handling import ErrorHandler, ErrorCategories
+        from test.web_platform.unified_framework.error_handling import ErrorHandler, ErrorCategories
         error_handler = ErrorHandler()
         
         # Check for empty input
@@ -1687,7 +1687,7 @@ class ResourcePoolBridgeIntegration:
         Returns:
             True if all resources were closed successfully, False if any errors occurred
         """
-        from fixed_web_platform.unified_framework.error_handling import safe_resource_cleanup
+        from test.web_platform.unified_framework.error_handling import safe_resource_cleanup
         
         logger.info("Closing resource pool bridge...")
         start_time = time.time()
@@ -1894,7 +1894,7 @@ class ResourcePoolBridgeIntegration:
         Returns:
             TensorSharingManager instance
         """
-        from fixed_web_platform.unified_framework.error_handling import ErrorHandler
+        from test.web_platform.unified_framework.error_handling import ErrorHandler
         
         # Input validation
         if max_memory_mb is not None and not isinstance(max_memory_mb, (int, float)):
@@ -1906,7 +1906,7 @@ class ResourcePoolBridgeIntegration:
             return None
             
         try:
-            from fixed_web_platform.cross_model_tensor_sharing import TensorSharingManager
+            from test.web_platform.cross_model_tensor_sharing import TensorSharingManager
             
             # Set default memory limit if not provided
             if max_memory_mb is None:
@@ -1976,7 +1976,7 @@ class ResourcePoolBridgeIntegration:
         Returns:
             Registration result (success boolean and tensor info)
         """
-        from fixed_web_platform.unified_framework.error_handling import ErrorHandler
+        from test.web_platform.unified_framework.error_handling import ErrorHandler
         error_handler = ErrorHandler()
         
         # Input validation

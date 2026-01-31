@@ -239,13 +239,13 @@ Test the integration using the provided test scripts:
 
 ```bash
 # Simple integration test
-python generators/models/test_ipfs_accelerate_webnn_webgpu.py
+python scripts/generators/models/test_ipfs_accelerate_webnn_webgpu.py
 
 # Comprehensive test with real browser automation
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --platform webgpu --model whisper-tiny --optimize-audio
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --platform webgpu --model whisper-tiny --optimize-audio
 
 # Test with all browsers and platforms
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
 ```
 
 ## Troubleshooting

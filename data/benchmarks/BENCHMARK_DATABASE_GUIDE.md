@@ -425,17 +425,17 @@ The primary model benchmark runner now supports direct database integration:
 
 ```bash
 # Run benchmarks with direct database storage
-python generators/run_model_benchmarks.py --db-path ./benchmark_db.duckdb --models-set small --hardware cuda cpu
+python scripts/generators/run_model_benchmarks.py --db-path ./benchmark_db.duckdb --models-set small --hardware cuda cpu
 
 # Run and generate visualizations from the database
-python generators/run_model_benchmarks.py --db-path ./benchmark_db.duckdb --models-set key --visualize-from-db
+python scripts/generators/run_model_benchmarks.py --db-path ./benchmark_db.duckdb --models-set key --visualize-from-db
 
 # Run without database storage
-python generators/run_model_benchmarks.py --no-db-store
+python scripts/generators/run_model_benchmarks.py --no-db-store
 
 # Run with Qualcomm hardware and store power metrics
 export TEST_QUALCOMM=1
-python generators/run_model_benchmarks.py --db-path ./benchmark_db.duckdb --hardware qualcomm --models-set small
+python scripts/generators/run_model_benchmarks.py --db-path ./benchmark_db.duckdb --hardware qualcomm --models-set small
 ```
 
 #### Power and Thermal Metrics Analysis (Enhanced March 2025)
@@ -1232,10 +1232,10 @@ The system has been significantly enhanced to properly handle QNN (Qualcomm Neur
 
 ```bash
 # Run benchmarks with real QNN hardware (if available)
-python generators/run_model_benchmarks.py --hardware qnn --db-path ./benchmark_db.duckdb
+python scripts/generators/run_model_benchmarks.py --hardware qnn --db-path ./benchmark_db.duckdb
 
 # Run benchmarks in QNN simulation mode (when hardware is unavailable)
-QNN_SIMULATION_MODE=1 python generators/run_model_benchmarks.py --hardware qnn --db-path ./benchmark_db.duckdb
+QNN_SIMULATION_MODE=1 python scripts/generators/run_model_benchmarks.py --hardware qnn --db-path ./benchmark_db.duckdb
 
 # Generate reports that clearly distinguish between real and simulated QNN results
 python duckdb_api/benchmark_db_query.py --report qnn-performance --show-simulation-status --format html --output qnn_performance.html

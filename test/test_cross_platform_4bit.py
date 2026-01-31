@@ -2,7 +2,7 @@
 
 # Import hardware detection capabilities if available::
 try:
-    from generators.hardware.hardware_detection import ()))))
+    from scripts.generators.hardware.hardware_detection import ()))))
     HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
     detect_all_hardware
     )
@@ -45,7 +45,7 @@ Key features:
 
 # Try to import web platform modules
 try:
-    from fixed_web_platform.webgpu_quantization import setup_4bit_inference
+    from test.web_platform.webgpu_quantization import setup_4bit_inference
     WEBGPU_QUANTIZATION_AVAILABLE = True
 except ImportError:
     logger.warning()))))"WebGPU quantization modules not available")

@@ -34,7 +34,7 @@ import anyio
 
 # Import required modules
 try:
-    from fixed_web_platform.cross_browser_model_sharding import ModelShardingManager
+    from test.web_platform.cross_browser_model_sharding import ModelShardingManager
     SHARDING_AVAILABLE = True
 except ImportError as e:
     logger.error())))f"CrossBrowserModelSharding not available: {}}}}e}")

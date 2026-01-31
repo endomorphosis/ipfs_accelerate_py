@@ -12,7 +12,7 @@ This report summarizes the testing performed on the relocated code files followi
 
 The code reorganization created a more structured module layout:
 
-- **`generators/`** - Code generation tools (216 files)
+- **`scripts/generators/`** - Code generation tools (216 files)
   - Benchmark generators
   - Model implementations 
   - Runners

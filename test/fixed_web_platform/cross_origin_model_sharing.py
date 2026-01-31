@@ -17,7 +17,7 @@ Key features:
 - Configurable security policies for different sharing scenarios
 
 Usage:
-    from fixed_web_platform.cross_origin_model_sharing import (
+    from test.web_platform.cross_origin_model_sharing import (
         ModelSharingProtocol,
         create_sharing_server,
         create_sharing_client,

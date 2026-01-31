@@ -15,7 +15,7 @@ sys.path.append()str()Path()__file__).parent))
 
 # Import the example script from the predictive_performance module
 try:
-    from predictive_performance.example import ()
+    from ipfs_accelerate_py.predictive_performance.example import ()
     predict_single_configuration,
     compare_multiple_hardware,
     generate_batch_size_comparison,

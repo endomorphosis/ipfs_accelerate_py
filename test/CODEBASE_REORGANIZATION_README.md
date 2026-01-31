@@ -1,19 +1,19 @@
 # Codebase Reorganization Tools
 
-This directory contains scripts to help reorganize the codebase according to the plan in `CLAUDE.md`. The reorganization involves moving files from the `test/` directory to the new `generators/` and `duckdb_api/` directories.
+This directory contains scripts to help reorganize the codebase according to the plan in `CLAUDE.md`. The reorganization involves moving files from the `test/` directory to the new `scripts/generators/` and `duckdb_api/` directories.
 
 ## Overview
 
 According to the organization update in `CLAUDE.md`, the codebase will be reorganized as follows:
 
-1. Generator files will move to the **`generators/`** directory with subdirectories:
-   - `benchmark_generators/`: Benchmark generation tools
+1. Generator files will move to the **`scripts/generators/`** directory with subdirectories:
+   - `benchmark_scripts/generators/`: Benchmark generation tools
    - `models/`: Model implementations and skills
    - `runners/`: Test runner scripts
-   - `skill_generators/`: Skill generation tools
-   - `template_generators/`: Template generation utilities
+   - `skill_scripts/generators/`: Skill generation tools
+   - `template_scripts/generators/`: Template generation utilities
    - `templates/`: Template files for model generation
-   - `test_generators/`: Test generation tools
+   - `test_scripts/generators/`: Test generation tools
    - `utils/`: Utility functions
    - `hardware/`: Hardware-specific generator tools
 
@@ -80,7 +80,7 @@ python fix_syntax_errors.py --dry-run
 3. **`move_files_to_packages.py`**: Moves files to their new locations based on file type.
 
 ```bash
-# Move all generator files to the generators/ directory
+# Move all generator files to the scripts/generators/ directory
 python move_files_to_packages.py --type generator
 
 # Move all database files to the duckdb_api/ directory

@@ -130,7 +130,7 @@ class ResourcePoolBenchmarker:
         
         # Import resource pool integration
         try:
-            from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+            from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
             self.ResourcePoolBridgeIntegration = ResourcePoolBridgeIntegration
             logger.info("ResourcePoolBridgeIntegration imported successfully")
         except ImportError as e:

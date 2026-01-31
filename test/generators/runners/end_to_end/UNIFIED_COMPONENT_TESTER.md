@@ -141,7 +141,7 @@ UnifiedComponentTester
 ## Directory Structure
 
 ```
-generators/
+scripts/generators/
 ├── expected_results/        # Expected outputs for regression testing
 │   ├── bert-base-uncased/
 │   │   ├── cpu/

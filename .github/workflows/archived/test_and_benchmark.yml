@@ -10,7 +10,7 @@ on:
     branches:
       - main
     paths:
-      - 'generators/**'
+      - 'scripts/generators/**'
       - 'duckdb_api/**'
       - 'fixed_web_platform/**'
       - '.github/workflows/test_and_benchmark.yml'
@@ -20,7 +20,7 @@ on:
     branches:
       - main
     paths:
-      - 'generators/**'
+      - 'scripts/generators/**'
       - 'duckdb_api/**'
       - 'fixed_web_platform/**'
   
@@ -101,7 +101,7 @@ jobs:
           
           # Run tests
           echo "Running tests with models: $MODELS and hardware: $HARDWARE"
-          python generators/models/test_ipfs_accelerate.py --models $MODELS --endpoints $HARDWARE
+          python scripts/generators/models/test_ipfs_accelerate.py --models $MODELS --endpoints $HARDWARE
       
       - name: Run benchmarks
         run: |
@@ -121,7 +121,7 @@ jobs:
           fi
           
           # Generate report
-          python generators/models/test_ipfs_accelerate.py --report --format $REPORT_FORMAT --output test_report.$REPORT_FORMAT
+          python scripts/generators/models/test_ipfs_accelerate.py --report --format $REPORT_FORMAT --output test_report.$REPORT_FORMAT
       
       - name: Upload benchmark database
         uses: actions/upload-artifact@v3

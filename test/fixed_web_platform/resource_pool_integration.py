@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # Import resource pool bridge
-from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration, EnhancedWebModel, MockFallbackModel
+from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration, EnhancedWebModel, MockFallbackModel
 
 class IPFSAccelerateWebIntegration:
     """IPFS Accelerate integration with WebNN/WebGPU resource pool."""

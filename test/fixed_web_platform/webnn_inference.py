@@ -15,7 +15,7 @@ Key features:
 - Browser-specific optimizations for Edge, Chrome and Safari
 
 Usage:
-    from fixed_web_platform.webnn_inference import (
+    from test.web_platform.webnn_inference import (
         WebNNInference,
         get_webnn_capabilities,
         is_webnn_supported

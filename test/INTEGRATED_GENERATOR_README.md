@@ -19,8 +19,8 @@ This tool implements a test-driven development approach where test generation an
 This toolkit includes several key generators:
 
 1. **Enhanced Template Generator** (`enhanced_template_generator.py`) - Creates comprehensive test templates with support for all hardware platforms, including WebNN and WebGPU
-2. **Integrated Skillset Generator** (`generators/skill_generators/integrated_skillset_generator.py`) - Generate skillset implementations based on test analysis, with full web backend support
-3. **Merged Test Generator** (`generators/test_generators/merged_test_generator.py`) - Generates test files for 300+ Hugging Face model types
+2. **Integrated Skillset Generator** (`scripts/generators/skill_scripts/generators/integrated_skillset_generator.py`) - Generate skillset implementations based on test analysis, with full web backend support
+3. **Merged Test Generator** (`scripts/generators/test_scripts/generators/merged_test_generator.py`) - Generates test files for 300+ Hugging Face model types
 
 ## Implementation Goals
 
@@ -48,13 +48,13 @@ Generate a BERT model implementation with full hardware support:
 
 ```bash
 # Generate tests first
-python generators/test_generators/merged_test_generator.py --generate bert
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert
 
 # Run tests to collect insights
 python test/skills/test_hf_bert.py
 
 # Generate implementation based on test results
-python generators/skill_generators/integrated_skillset_generator.py --model bert --run-tests
+python scripts/generators/skill_scripts/generators/integrated_skillset_generator.py --model bert --run-tests
 ```
 
 ## Web Backend Support
@@ -116,8 +116,8 @@ ipfs_accelerate_py/
   ├── test/                                # Test directory
   │   ├── skills/                          # Test files (300+ model tests)
   │   ├── enhanced_template_generator.py   # Template generator with WebNN/WebGPU
-  │   ├── generators/skill_generators/integrated_skillset_generator.py # Main skillset implementation generator
-  │   ├── generators/test_generators/merged_test_generator.py         # Test file generator
+  │   ├── scripts/generators/skill_scripts/generators/integrated_skillset_generator.py # Main skillset implementation generator
+  │   ├── scripts/generators/test_scripts/generators/merged_test_generator.py         # Test file generator
   │   └── huggingface_model_*.json         # Model metadata
   ├── ipfs_accelerate_py/                  # Main module
   │   └── worker/                          # Worker module

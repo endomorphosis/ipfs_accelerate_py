@@ -23,7 +23,7 @@ Usage:
     from typing import Dict, Any, List
 
 # Import the module to test
-    from fixed_web_platform.browser_cpu_detection import ()
+    from test.web_platform.browser_cpu_detection import ()
     BrowserCPUDetector,
     create_thread_pool,
     optimize_workload_for_cores,

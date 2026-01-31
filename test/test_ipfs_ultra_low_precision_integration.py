@@ -44,7 +44,7 @@ logger = logging.getLogger("ipfs_ultra_low_precision_integration")
 
 # Try to import necessary modules
 try:
-    from fixed_web_platform.webgpu_ultra_low_precision import (
+    from test.web_platform.webgpu_ultra_low_precision import (
         setup_ultra_low_precision,
         extend_context_window,
         optimize_kv_cache,
@@ -57,7 +57,7 @@ except ImportError:
     ULTRA_LOW_PRECISION_AVAILABLE = False
 
 try:
-    from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
     RESOURCE_POOL_AVAILABLE = True
 except ImportError:
     logger.warning("Resource pool bridge not available.")

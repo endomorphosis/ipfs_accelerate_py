@@ -12,7 +12,7 @@ This implementation replaces the simulation with actual browser-based execution 
 includes detailed timing metrics for benchmarking performance.
 
 Usage:
-    from fixed_web_platform.webnn_implementation import RealWebNNImplementation
+    from test.web_platform.webnn_implementation import RealWebNNImplementation
 
     # Create implementation
     impl = RealWebNNImplementation(browser_name="chrome", headless=True)

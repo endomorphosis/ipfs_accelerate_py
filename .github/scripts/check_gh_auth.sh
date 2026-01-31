@@ -15,7 +15,7 @@ NC='\033[0m' # No Color
 # Resolve repo root so this script works no matter the current working directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-GH_API_CACHED=(python3 "$REPO_ROOT/tools/gh_api_cached.py")
+GH_API_CACHED=(python3 "$REPO_ROOT/scripts/utils/gh_api_cached.py")
 
 log_info() {
     echo -e "${GREEN}[INFO]${NC} $1"

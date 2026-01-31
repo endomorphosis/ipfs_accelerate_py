@@ -10,7 +10,7 @@ enabling dynamic precision adjustment based on runtime conditions:
 - Specialized handling for attention mechanisms
 
 Usage:
-    from fixed_web_platform.webgpu_adaptive_precision import (
+    from test.web_platform.webgpu_adaptive_precision import (
         WebGPUAdaptivePrecision,
         optimize_model_with_adaptive_precision
     )

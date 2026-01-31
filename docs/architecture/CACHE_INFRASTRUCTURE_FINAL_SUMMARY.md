@@ -253,12 +253,12 @@ offers = clis['vastai'].search_offers(gpu="RTX4090")     # Cached
 
 ### One-Line Install (Unix/Linux/macOS)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 ### One-Line Install (Windows)
 ```powershell
-iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.ps1 | iex
 ```
 
 ### Docker
@@ -295,7 +295,7 @@ docker run -v ~/.cache/ipfs_accelerate_py:/cache endomorphosis/ipfs-accelerate-p
 - `COMMON_CACHE_INFRASTRUCTURE.md` - Cache usage guide
 - `CLI_INTEGRATIONS.md` - CLI tool integration guide
 - `API_INTEGRATIONS_COMPLETE.md` - API wrapper guide
-- `installers/INSTALLATION_GUIDE.md` - Complete installer docs
+- `install/INSTALLATION_GUIDE.md` - Complete installer docs
 - `COMPLETE_IMPLEMENTATION_SUMMARY.md` - Executive summary
 - `CACHE_INFRASTRUCTURE_FINAL_SUMMARY.md` - This file
 

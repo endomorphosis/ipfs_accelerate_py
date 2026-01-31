@@ -35,7 +35,7 @@ try:
     
     # Try to import from the predictive_performance package
     try:
-        from predictive_performance.hardware_model_predictor import HardwareModelPredictor
+        from ipfs_accelerate_py.predictive_performance.hardware_model_predictor import HardwareModelPredictor
         HARDWARE_MODEL_PREDICTOR_AVAILABLE = True
     except ImportError:
         HARDWARE_MODEL_PREDICTOR_AVAILABLE = False

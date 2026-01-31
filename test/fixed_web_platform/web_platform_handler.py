@@ -21,7 +21,7 @@ April 2025 additions include:
 
 Usage:
   # Import in merged_test_generator.py
-  from fixed_web_platform.web_platform_handler import (
+  from test.web_platform.web_platform_handler import (
       process_for_web, init_webnn, init_webgpu, 
       create_mock_processors,
       setup_4bit_llm_inference  # New April 2025
@@ -40,7 +40,7 @@ from unittest.mock import MagicMock
 
 # Import optimization modules (April 2025)
 try:
-    from fixed_web_platform.webgpu_memory_optimization import (
+    from test.web_platform.webgpu_memory_optimization import (
         WebGPUMemoryOptimizer,
         ProgressiveTensorLoader, 
         optimize_model_for_webgpu
@@ -51,7 +51,7 @@ except ImportError:
 
 # Import quantization modules (April 2025)
 try:
-    from fixed_web_platform.webgpu_quantization import (
+    from test.web_platform.webgpu_quantization import (
         WebGPUQuantizer,
         quantize_model_weights,
         setup_4bit_inference
@@ -62,7 +62,7 @@ except ImportError:
 
 # Import March 2025 compute shader optimization
 try:
-    from fixed_web_platform.webgpu_audio_compute_shaders import (
+    from test.web_platform.webgpu_audio_compute_shaders import (
         optimize_for_firefox,
         get_optimized_audio_shader,
         create_audio_compute_pipeline
@@ -73,7 +73,7 @@ except ImportError:
 
 # Import March 2025 shader precompilation
 try:
-    from fixed_web_platform.webgpu_shader_precompilation import (
+    from test.web_platform.webgpu_shader_precompilation import (
         setup_shader_precompilation,
         precompile_model_shaders
     )
@@ -83,7 +83,7 @@ except ImportError:
 
 # Import March 2025 progressive loading
 try:
-    from fixed_web_platform.progressive_model_loader import (
+    from test.web_platform.progressive_model_loader import (
         ProgressiveModelLoader,
         load_model_progressively
     )
@@ -95,7 +95,7 @@ except ImportError:
 
 # Import browser automation tools if available
 try:
-    from fixed_web_platform.browser_automation import (
+    from test.web_platform.browser_automation import (
         setup_browser_automation,
         run_browser_test
     )
@@ -107,7 +107,7 @@ except ImportError:
 
 # Import browser capability detector
 try:
-    from fixed_web_platform.browser_capability_detector import (
+    from test.web_platform.browser_capability_detector import (
         BrowserCapabilityDetector,
         get_browser_feature_matrix
     )
@@ -1305,7 +1305,7 @@ def init_webgpu(self, model_name=None, model_path=None, model_type=None, device=
                                 # Apply Firefox-specific optimizations which show ~20% better performance
                                 if browser == "firefox":
                                     try:
-                                        from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
+                                        from test.web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
                                         self.firefox_config = optimize_for_firefox(model_name)
                                         self.firefox_optimized = True
                                         logger.info(f"Using Firefox-optimized audio compute shaders: workgroup_size={self.firefox_config['workgroup_config']}")
@@ -2145,7 +2145,7 @@ def setup_4bit_llm_inference(model_path, model_type="text", config=None):
     
     try:
         # Create a WebGPU4BitInferenceHandler instance
-        from fixed_web_platform.webgpu_quantization import WebGPU4BitInferenceHandler
+        from test.web_platform.webgpu_quantization import WebGPU4BitInferenceHandler
         
         handler = WebGPU4BitInferenceHandler(
             model_path=model_path,

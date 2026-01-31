@@ -84,7 +84,7 @@ except ImportError:
 
 # Try to import storage wrapper
 try:
-    from common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
+    from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
 except ImportError:
     try:
         from ipfs_accelerate_py.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER

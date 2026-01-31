@@ -117,7 +117,7 @@ See the [main README](../README.md) for complete CLI documentation.
 
 - [Documentation](../docs/) - Complete documentation
 - [Tests](../tests/) - Test suite examples
-- [Tools](../tools/) - Utility tools and scripts
+- [Scripts](../scripts/) - Utility tools and scripts
 - [Main README](../README.md) - Project overview
 
 ## 🐛 Troubleshooting

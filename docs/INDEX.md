@@ -67,7 +67,7 @@ This is the central documentation index for the IPFS Accelerate Python framework
 - **[Utils](../utils/README.md)** - Utility functions and helpers
 
 ### **Specialized Systems**
-- **[Generators](../generators/README.md)** - Code generation and automation
+- **[Generators](../scripts/generators/README.md)** - Code generation and automation
 - **[Web Interface](../static/README.md)** - Web-based management interface
 
 ## 📊 **Analysis and Monitoring**

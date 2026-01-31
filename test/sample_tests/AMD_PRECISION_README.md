@@ -15,7 +15,7 @@ The framework now includes comprehensive support for AMD GPUs with ROCm, alongsi
 
 ## Key Components
 
-### 1. Hardware Detection (auto_generators/hardware/hardware_detection.py)
+### 1. Hardware Detection (auto_scripts/generators/hardware/hardware_detection.py)
 
 Automatically identifies available hardware platforms:
 
@@ -34,7 +34,7 @@ For each platform, it determines:
 
 **Usage:**
 ```bash
-python auto_generators/hardware/hardware_detection.py --generate-config --generate-requirements
+python auto_scripts/generators/hardware/hardware_detection.py --generate-config --generate-requirements
 ```
 
 ### 2. Precision Benchmarking (benchmark_precision_hardware.py)
@@ -148,7 +148,7 @@ AMD GPUs are now fully supported with:
 
 1. **Detect your hardware**:
    ```bash
-   python auto_generators/hardware/hardware_detection.py
+   python auto_scripts/generators/hardware/hardware_detection.py
    ```
 
 2. **Install appropriate dependencies**:

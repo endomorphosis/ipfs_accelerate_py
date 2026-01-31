@@ -140,7 +140,7 @@ python run_e2e_tests.py --all-models --priority-hardware
 ## Directory Structure
 
 ```
-generators/
+scripts/generators/
 ├── expected_results/        # Expected outputs for regression testing
 │   ├── bert-base-uncased/
 │   │   ├── cpu/
@@ -314,7 +314,7 @@ jobs:
           
       - name: Run end-to-end tests
         run: |
-          python generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware --ci-integration --db-path ./benchmark_db.duckdb
+          python scripts/generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware --ci-integration --db-path ./benchmark_db.duckdb
           
       - name: Archive test results
         if: always()
@@ -322,12 +322,12 @@ jobs:
         with:
           name: test-results
           path: |
-            generators/collected_results/
+            scripts/generators/collected_results/
             benchmark_db.duckdb
             
       - name: Generate test summary
         run: |
-          python generators/runners/end_to_end/run_e2e_tests.py --generate-report --format markdown --output test_summary.md
+          python scripts/generators/runners/end_to_end/run_e2e_tests.py --generate-report --format markdown --output test_summary.md
           
       - name: Update PR with test results
         if: github.event_name == 'pull_request'

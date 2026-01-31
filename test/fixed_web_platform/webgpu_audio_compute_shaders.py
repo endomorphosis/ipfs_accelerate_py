@@ -12,7 +12,7 @@ Key optimizations:
 4. Reduced power consumption (~15% improvement)
 
 Usage:
-    from fixed_web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
+    from test.web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
     
     # Create Firefox-optimized processor for Whisper
     processor = optimize_for_firefox({"model_name": "whisper"})

@@ -34,7 +34,7 @@ The test suite validates all these aspects and ensures the implementation meets 
 Tests the implementation of the OVMS API client:
 
 ```bash
-python generators/models/test_ovms_unified.py --standard
+python scripts/generators/models/test_ovms_unified.py --standard
 ```
 
 This validates:
@@ -51,7 +51,7 @@ This validates:
 Benchmarks the performance of the API:
 
 ```bash
-python generators/models/test_ovms_unified.py --performance
+python scripts/generators/models/test_ovms_unified.py --performance
 ```
 
 This measures:
@@ -67,7 +67,7 @@ This measures:
 Tests connection to an actual OVMS server:
 
 ```bash
-python generators/models/test_ovms_unified.py --real
+python scripts/generators/models/test_ovms_unified.py --real
 ```
 
 This verifies:
@@ -84,7 +84,7 @@ This verifies:
 Tests specialized OVMS features:
 
 ```bash
-python generators/models/test_ovms_unified.py --advanced
+python scripts/generators/models/test_ovms_unified.py --advanced
 ```
 
 This tests:
@@ -101,7 +101,7 @@ This tests:
 Run all test suites:
 
 ```bash
-python generators/models/test_ovms_unified.py --all
+python scripts/generators/models/test_ovms_unified.py --all
 ```
 
 ## Configuration Options
@@ -118,7 +118,7 @@ You can customize the tests with these parameters:
 
 Example with custom configuration:
 ```bash
-python generators/models/test_ovms_unified.py --all --model resnet --api-url http://ovms-server:9000 --timeout 60 --version 2 --precision FP16
+python scripts/generators/models/test_ovms_unified.py --all --model resnet --api-url http://ovms-server:9000 --timeout 60 --version 2 --precision FP16
 ```
 
 ## Environment Variables

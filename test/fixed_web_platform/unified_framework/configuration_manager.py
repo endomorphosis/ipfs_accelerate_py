@@ -12,7 +12,7 @@ different browsers and hardware environments:
 - Dynamic reconfiguration based on runtime conditions
 
 Usage:
-    from fixed_web_platform.unified_framework.configuration_manager import (
+    from test.web_platform.unified_framework.configuration_manager import (
         ConfigurationManager, ConfigValidationRule, BrowserProfile
     )
     

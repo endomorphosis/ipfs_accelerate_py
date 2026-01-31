@@ -169,7 +169,7 @@ The time-series performance tracking system can be integrated with CI/CD systems
 export BENCHMARK_DB_PATH=./benchmark_db.duckdb
 
 # Run performance tests
-python generators/benchmark_generators/run_model_benchmarks.py --models bert-base-uncased,t5-small --hardware cuda
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --models bert-base-uncased,t5-small --hardware cuda
 
 # Set baselines if needed
 python duckdb_api/core/time_series_performance.py baseline --all --days 7 --min-samples 3

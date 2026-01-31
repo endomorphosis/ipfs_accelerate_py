@@ -22,11 +22,11 @@ from pathlib import Path
 from datetime import datetime, timedelta
 
 # Import visualization module
-from predictive_performance.visualization import AdvancedVisualization, create_visualization_report
+from ipfs_accelerate_py.predictive_performance.visualization import AdvancedVisualization, create_visualization_report
 
 # Import performance prediction
 try:
-    from predictive_performance.predict import PerformancePredictor
+    from ipfs_accelerate_py.predictive_performance.predict import PerformancePredictor
     PREDICTOR_AVAILABLE = True
 except ImportError:
     PREDICTOR_AVAILABLE = False

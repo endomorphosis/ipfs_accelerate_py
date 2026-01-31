@@ -8,7 +8,7 @@ interactive visualizations for recovery performance, success rates, and performa
 impact metrics.
 
 Usage:
-    from fixed_web_platform.visualization.fault_tolerance_visualizer import FaultToleranceVisualizer
+    from test.web_platform.visualization.fault_tolerance_visualizer import FaultToleranceVisualizer
     
     # Create visualizer with validation results
     visualizer = FaultToleranceVisualizer(validation_results)

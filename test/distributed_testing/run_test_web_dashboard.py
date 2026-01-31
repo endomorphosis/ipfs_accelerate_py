@@ -35,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 # Import required modules
 try:
-    from result_aggregator.service import ResultAggregatorService
-    from result_aggregator.web_dashboard import app
+    from test.distributed_testing.result_aggregator.service import ResultAggregatorService
+    from test.distributed_testing.result_aggregator.web_dashboard import app
 except ImportError:
     logger.error("Required modules not found. Make sure you have the Result Aggregator installed.")
     sys.exit(1)

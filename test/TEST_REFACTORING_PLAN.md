@@ -49,7 +49,7 @@ refactored_test_suite/
     │     ├── encoder_only_template.py
     │     ├── decoder_only_template.py
     │     └── ...
-    ├── generators/
+    ├── scripts/generators/
     │     ├── test_generator.py
     │     └── architecture_detector.py
     └── validation/
@@ -128,7 +128,7 @@ Create a validation system that:
 
 ### 3.2. Phase 2: Create Enhanced Architecture Detection
 
-1. Refactor `get_architecture_type` function in `refactored_test_suite/generators/architecture_detector.py`:
+1. Refactor `get_architecture_type` function in `refactored_test_suite/scripts/generators/architecture_detector.py`:
      - Model class detection (use HF API when available)
      - Model configuration detection
      - Fallback to pattern matching with enhanced rules
@@ -146,7 +146,7 @@ Create a validation system that:
 
 ### 3.3. Phase 3: Refactor Generator System
 
-1. Create a unified generator class in `refactored_test_suite/generators/test_generator.py`:
+1. Create a unified generator class in `refactored_test_suite/scripts/generators/test_generator.py`:
      - Factory methods for different architecture types
      - Template selection based on architecture detection
      - Special handling for hyphenated names
@@ -260,7 +260,7 @@ class EncoderOnlyModelTest(ModelTest):
 ### 4.3. Architecture Detection
 
 ```python
-# refactored_test_suite/generators/architecture_detector.py
+# refactored_test_suite/scripts/generators/architecture_detector.py
 def get_architecture_type(model_name):
         """Determine architecture type based on model name."""
         # Try introspection if transformers is available
@@ -309,7 +309,7 @@ def get_architecture_type(model_name):
 ### 4.4. Unified Generator
 
 ```python
-# refactored_test_suite/generators/test_generator.py
+# refactored_test_suite/scripts/generators/test_generator.py
 class ModelTestGenerator:
         """Generator for model test files."""
         

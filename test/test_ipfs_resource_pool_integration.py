@@ -54,7 +54,7 @@ REQUIRED_MODULES = {
 
 # Check for new resource_pool_integration
 try:
-    from fixed_web_platform.resource_pool_integration import IPFSAccelerateWebIntegration
+    from test.web_platform.resource_pool_integration import IPFSAccelerateWebIntegration
     REQUIRED_MODULES["resource_pool_integration"] = True
     logger.info("IPFSAccelerateWebIntegration available")
 except ImportError:
@@ -62,7 +62,7 @@ except ImportError:
 
 # Check for legacy resource_pool_bridge (backward compatibility)
 try:
-    from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
     REQUIRED_MODULES["resource_pool_bridge"] = True
 except ImportError:
     logger.warning("ResourcePoolBridgeIntegration not available for backward compatibility")

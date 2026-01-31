@@ -287,11 +287,11 @@ ipfs_accelerate_py/
 │   ├── benchmark_core/
 │   ├── examples/
 │   └── [various benchmark scripts]
-├── generators/               # Code and test generation
+├── scripts/generators/               # Code and test generation
 │   ├── README.md
 │   ├── models/
 │   ├── templates/
-│   ├── test_generators/
+│   ├── test_scripts/generators/
 │   └── [generator utilities]
 ├── duckdb_api/              # Database operations
 │   ├── core/

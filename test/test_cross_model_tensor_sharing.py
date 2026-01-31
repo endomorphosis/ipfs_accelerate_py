@@ -18,7 +18,7 @@ from typing import Dict, List, Any, Set
 sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
 
 # Import tensor sharing implementation
-from fixed_web_platform.cross_model_tensor_sharing import (
+from test.web_platform.cross_model_tensor_sharing import (
     SharedTensor,
     SharedTensorView,
     TensorSharingManager,
@@ -26,7 +26,7 @@ from fixed_web_platform.cross_model_tensor_sharing import (
 )
 
 # Import resource pool implementation
-from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
 
 class TestCrossModelTensorSharing(unittest.TestCase):
     """Test Cross-Model Tensor Sharing functionality."""

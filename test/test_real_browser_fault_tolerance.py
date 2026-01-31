@@ -36,12 +36,12 @@ sys.path.append(str(Path(__file__).resolve().parent))
 
 # Import required modules
 try:
-    from fixed_web_platform.cross_browser_model_sharding import ModelShardingManager
-    from fixed_web_platform.resource_pool_bridge_recovery import (
+    from test.web_platform.cross_browser_model_sharding import ModelShardingManager
+    from test.web_platform.resource_pool_bridge_recovery import (
         ResourcePoolRecoveryManager,
         BrowserFailureCategory
     )
-    from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
     MODULES_AVAILABLE = True
 except ImportError as e:
     logger.error(f"Required modules not available: {e}")

@@ -19,8 +19,8 @@ from .plugin_architecture import Plugin, PluginType, HookType
 
 # Import WebGPU/WebNN Resource Pool components
 try:
-    from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
-    from fixed_web_platform.model_sharding import ShardedModelExecution
+    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.web_platform.model_sharding import ShardedModelExecution
     RESOURCE_POOL_AVAILABLE = True
 except ImportError:
     RESOURCE_POOL_AVAILABLE = False

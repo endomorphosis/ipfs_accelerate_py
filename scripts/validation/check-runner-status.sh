@@ -12,7 +12,7 @@ NC='\033[0m' # No Color
 
 # Resolve repo root so this script works from any directory.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-GH_API_CACHED=(python3 "$SCRIPT_DIR/tools/gh_api_cached.py")
+GH_API_CACHED=(python3 "$SCRIPT_DIR/scripts/utils/gh_api_cached.py")
 
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo -e "${BLUE}  GitHub Actions Runner & Autoscaler Status${NC}"

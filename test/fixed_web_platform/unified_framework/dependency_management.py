@@ -19,7 +19,7 @@ from typing import Dict, List, Set, Tuple, Optional, Union, Any, Callable
 
 # Import error handling framework
 try:
-    from fixed_web_platform.unified_framework.error_handling import (
+    from test.web_platform.unified_framework.error_handling import (
         ErrorHandler, ErrorCategories, handle_errors
     )
     HAS_ERROR_FRAMEWORK = True

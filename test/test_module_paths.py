@@ -22,7 +22,7 @@ def test_generator_simple_api():
     try:
         # Import the generator
         logger.info("Testing simple_test_generator API...")
-        from generators.test_generators.simple_test_generator import generate_test
+        from scripts.generators.test_generators.simple_test_generator import generate_test
 
         # Generate a test file
         model = "bert"
@@ -42,7 +42,7 @@ def test_generator_model_detection():
     try:
         # Import the detection function
         logger.info("Testing model detection API...")
-        from generators.test_generators.simple_test_generator import detect_model_category
+        from scripts.generators.test_generators.simple_test_generator import detect_model_category
         
         # Test various models
         models = {}

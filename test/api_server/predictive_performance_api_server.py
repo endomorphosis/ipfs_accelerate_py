@@ -56,7 +56,7 @@ except ImportError:
 
 # Try to import hardware model predictor
 try:
-    from predictive_performance.hardware_model_predictor import HardwareModelPredictor
+    from ipfs_accelerate_py.predictive_performance.hardware_model_predictor import HardwareModelPredictor
     HARDWARE_MODEL_PREDICTOR_AVAILABLE = True
 except ImportError:
     logger.warning("HardwareModelPredictor not available")

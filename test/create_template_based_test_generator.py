@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 # Import template validator
 try:
     sys.path.append(str(Path(__file__).parent.parent))
-    from generators.validators.template_validator_integration import (
+    from scripts.generators.validators.template_validator_integration import (
         validate_template_for_generator,
         validate_template_file_for_generator
     )

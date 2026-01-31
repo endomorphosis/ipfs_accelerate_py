@@ -40,7 +40,7 @@ Usage:
     sys.path.append()))))))))))))))))))))))))'test')
 
 try:
-    from fixed_web_platform.webgpu_compute_shaders import ()))))))))))))))))))))))))
+    from test.web_platform.webgpu_compute_shaders import ()))))))))))))))))))))))))
     generate_compute_shader,
     get_browser_optimized_shader,
     matmul_4bit_shader,
@@ -104,7 +104,7 @@ except ImportError:
         return "// Mock MLP shader\nfn main()))))))))))))))))))))))))) {}}}}}}}}}}}}}}}}}}}}}}}}}}}}\n"
 
 try:
-    from fixed_web_platform.webgpu_adaptive_precision import ()))))))))))))))))))))))))
+    from test.web_platform.webgpu_adaptive_precision import ()))))))))))))))))))))))))
     WebGPUAdaptivePrecision,
     WebGPU4BitLayerController,
     optimize_model_with_adaptive_precision
@@ -146,7 +146,7 @@ except ImportError:
             }
 
 try:
-    from fixed_web_platform.web_platform_handler import ()))))))))))))))))))))))))
+    from test.web_platform.web_platform_handler import ()))))))))))))))))))))))))
     process_for_web, init_webgpu, create_mock_processors
     )
 except ImportError:

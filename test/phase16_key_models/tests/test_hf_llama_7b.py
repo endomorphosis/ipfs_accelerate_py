@@ -28,7 +28,7 @@ HAS_WEBGPU = importlib.util.find_spec("webgpu") is not None or "WEBGPU_AVAILABLE
 
 # Try to import centralized hardware detection
 try:
-    from centralized_hardware_detection import generators.hardware.hardware_detection as hardware_detection
+    from centralized_hardware_detection import scripts.generators.hardware.hardware_detection as hardware_detection
     HAS_CENTRALIZED_DETECTION = True
 except ImportError:
     HAS_CENTRALIZED_DETECTION = False

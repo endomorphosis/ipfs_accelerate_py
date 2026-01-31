@@ -10,7 +10,7 @@ in memory-constrained browser environments:
 - Quantization-aware inference for LLMs
 
 Usage:
-    from fixed_web_platform.webgpu_quantization import (
+    from test.web_platform.webgpu_quantization import (
         WebGPUQuantizer,
         quantize_model_weights,
         setup_4bit_inference

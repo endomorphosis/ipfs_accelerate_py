@@ -45,14 +45,14 @@ Usage:
 
 # Import the Predictive Performance System modules
 try:
-    from predictive_performance.predict import PerformancePredictor
-    from predictive_performance.example import ())))))))))
+    from ipfs_accelerate_py.predictive_performance.predict import PerformancePredictor
+    from ipfs_accelerate_py.predictive_performance.example import ())))))))))
     predict_single_configuration,
     compare_multiple_hardware,
     generate_batch_size_comparison,
     recommend_optimal_hardware
     )
-    from predictive_performance.active_learning import ActiveLearningSystem
+    from ipfs_accelerate_py.predictive_performance.active_learning import ActiveLearningSystem
     PPS_AVAILABLE = True
 except ImportError as e:
     logger.error())))))))))f"Failed to import Predictive Performance System modules: {}}}}e}")
@@ -310,7 +310,7 @@ def test_benchmark_scheduler_integration())))))))))):
         
         # Test if the benchmark scheduler can read the recommendations
         # This is a simulated test as we don't want to actually run benchmarks
-            from predictive_performance.benchmark_integration import BenchmarkScheduler
+            from ipfs_accelerate_py.predictive_performance.benchmark_integration import BenchmarkScheduler
         
             scheduler = BenchmarkScheduler()))))))))))
             loaded_configs = scheduler.load_recommendations())))))))))recommendations_file)

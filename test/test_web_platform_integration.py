@@ -145,20 +145,20 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
         # Try to import fixed_web_platform from the current directory
         sys.path.append()))))))))))))))))))))'.')
         # Import traditional platform handler
-        from fixed_web_platform.web_platform_handler import ()))))))))))))))))))))
+        from test.web_platform.web_platform_handler import ()))))))))))))))))))))
         process_for_web, init_webnn, init_webgpu, create_mock_processors
         )
         
         # Try to import new unified framework components
         try:
-            from fixed_web_platform.unified_web_framework import WebPlatformAccelerator
-            from fixed_web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+            from test.web_platform.unified_web_framework import WebPlatformAccelerator
+            from test.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
             has_unified_framework = True
         except ImportError:
             has_unified_framework = False
             
         if verbose:
-            logger.info()))))))))))))))))))))"Successfully imported web platform handler from fixed_web_platform")
+            logger.info()))))))))))))))))))))"Successfully imported web platform handler from test.web_platform")
             if has_unified_framework:
                 logger.info()))))))))))))))))))))"Successfully imported unified framework components")
     except ImportError:
@@ -166,14 +166,14 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
         try:
             sys.path.append()))))))))))))))))))))'test')
             # Import traditional platform handler
-            from fixed_web_platform.web_platform_handler import ()))))))))))))))))))))
+            from test.web_platform.web_platform_handler import ()))))))))))))))))))))
             process_for_web, init_webnn, init_webgpu, create_mock_processors
             )
             
             # Try to import new unified framework components
             try:
-                from fixed_web_platform.unified_web_framework import WebPlatformAccelerator
-                from fixed_web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+                from test.web_platform.unified_web_framework import WebPlatformAccelerator
+                from test.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
                 has_unified_framework = True
             except ImportError:
                 has_unified_framework = False
@@ -183,10 +183,10 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
                 if has_unified_framework:
                     logger.info()))))))))))))))))))))"Successfully imported unified framework components")
         except ImportError:
-            logger.error()))))))))))))))))))))"Failed to import web platform handler from fixed_web_platform")
+            logger.error()))))))))))))))))))))"Failed to import web platform handler from test.web_platform")
                     return {}}}}}}}}}}}}}}}}}}}
                     "success": False,
-                    "error": "Failed to import web platform handler from fixed_web_platform",
+                    "error": "Failed to import web platform handler from test.web_platform",
                     "platform": platform,
                     "model_modality": model_modality
                     }
@@ -489,21 +489,21 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     # Import unified framework components
     try:
         sys.path.append()))))))))))))))))))))'.')
-        from fixed_web_platform.unified_web_framework import WebPlatformAccelerator
+        from test.web_platform.unified_web_framework import WebPlatformAccelerator
         
         if verbose:
-            logger.info()))))))))))))))))))))"Successfully imported unified framework from fixed_web_platform")
+            logger.info()))))))))))))))))))))"Successfully imported unified framework from test.web_platform")
             
     except ImportError:
         try:
             sys.path.append()))))))))))))))))))))'test')
-            from fixed_web_platform.unified_web_framework import WebPlatformAccelerator
+            from test.web_platform.unified_web_framework import WebPlatformAccelerator
             
             if verbose:
                 logger.info()))))))))))))))))))))"Successfully imported unified framework from test/fixed_web_platform")
                 
         except ImportError:
-            logger.error()))))))))))))))))))))"Failed to import unified framework from fixed_web_platform")
+            logger.error()))))))))))))))))))))"Failed to import unified framework from test.web_platform")
                 return {}}}}}}}}}}}}}}}}}}}
                 "success": False,
                 "error": "Failed to import unified framework",
@@ -596,18 +596,18 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     # Import streaming inference component
     try:
         sys.path.append()))))))))))))))))))))'.')
-        from fixed_web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
+        from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
         WebGPUStreamingInference,
         optimize_for_streaming
         )
         
         if verbose:
-            logger.info()))))))))))))))))))))"Successfully imported streaming inference from fixed_web_platform")
+            logger.info()))))))))))))))))))))"Successfully imported streaming inference from test.web_platform")
             
     except ImportError:
         try:
             sys.path.append()))))))))))))))))))))'test')
-            from fixed_web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
+            from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
             WebGPUStreamingInference,
             optimize_for_streaming
             )
@@ -616,7 +616,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
                 logger.info()))))))))))))))))))))"Successfully imported streaming inference from test/fixed_web_platform")
                 
         except ImportError:
-            logger.error()))))))))))))))))))))"Failed to import streaming inference from fixed_web_platform")
+            logger.error()))))))))))))))))))))"Failed to import streaming inference from test.web_platform")
                 return {}}}}}}}}}}}}}}}}}}}
                 "success": False,
                 "error": "Failed to import streaming inference"
@@ -696,18 +696,18 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     # Import streaming inference component
     try:
         sys.path.append()))))))))))))))))))))'.')
-        from fixed_web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
+        from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
         WebGPUStreamingInference,
         optimize_for_streaming
         )
         
         if verbose:
-            logger.info()))))))))))))))))))))"Successfully imported streaming inference from fixed_web_platform")
+            logger.info()))))))))))))))))))))"Successfully imported streaming inference from test.web_platform")
             
     except ImportError:
         try:
             sys.path.append()))))))))))))))))))))'test')
-            from fixed_web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
+            from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
             WebGPUStreamingInference,
             optimize_for_streaming
             )
@@ -716,7 +716,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
                 logger.info()))))))))))))))))))))"Successfully imported streaming inference from test/fixed_web_platform")
                 
         except ImportError:
-            logger.error()))))))))))))))))))))"Failed to import streaming inference from fixed_web_platform")
+            logger.error()))))))))))))))))))))"Failed to import streaming inference from test.web_platform")
                 return {}}}}}}}}}}}}}}}}}}}
                 "success": False,
                 "error": "Failed to import streaming inference"

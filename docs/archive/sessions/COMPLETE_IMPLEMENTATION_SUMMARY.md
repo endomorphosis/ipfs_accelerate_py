@@ -34,12 +34,12 @@ Successfully implemented a **comprehensive content-addressed cache infrastructur
 
 **Unix/Linux/macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 **Windows:**
 ```powershell
-iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.ps1 | iex
 ```
 
 **Docker:**
@@ -65,10 +65,10 @@ docker pull endomorphosis/ipfs-accelerate-py-cache:latest
 - `COMMON_CACHE_INFRASTRUCTURE.md` - Cache usage guide
 - `CLI_INTEGRATIONS.md` - CLI integration guide
 - `API_INTEGRATIONS_COMPLETE.md` - API integration guide
-- `installers/INSTALLATION_GUIDE.md` - Complete installer documentation
+- `install/INSTALLATION_GUIDE.md` - Complete installer documentation
 
 ## Status: PRODUCTION READY ✅
 
 All features implemented and tested. Ready for immediate deployment on any platform with a single command.
 
-See `installers/INSTALLATION_GUIDE.md` for complete documentation.
+See `install/INSTALLATION_GUIDE.md` for complete documentation.

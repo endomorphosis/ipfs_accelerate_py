@@ -43,10 +43,10 @@ The framework includes special optimizations for running complex multimodal mode
 
 ```python
 # Use MPS for any model by specifying the platform
-python generators/benchmark_generators/run_model_benchmarks.py --model bert --hardware mps
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --model bert --hardware mps
 
 # Test LLaVA models on MPS
-python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --model llava --hardware mps
 
 # Comprehensive testing across hardware platforms
 python test/benchmark_all_key_models.py --model llava --hardware cpu,mps,cuda
@@ -58,13 +58,13 @@ For LLaVA and LLaVA-Next models, you can use specialized options:
 
 ```python
 # Set precision for MPS (default is float16)
-python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --precision float16
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --model llava --hardware mps --precision float16
 
 # Configure memory-efficient loading
-python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --memory-efficient
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --model llava --hardware mps --memory-efficient
 
 # Force alternative loading method (CPU first, then transfer)
-python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --alternative-loading
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --model llava --hardware mps --alternative-loading
 ```
 
 ## Performance Guidelines
@@ -82,7 +82,7 @@ Apple Silicon performance varies by model type:
 
 1. **Out of Memory**: Try reducing batch size or using a smaller model variant
    ```python
-   python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --batch-size 1 --small-model
+   python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --model llava --hardware mps --batch-size 1 --small-model
    ```
 
 2. **MPS Operation Not Implemented**: Some operations may not be supported
@@ -93,7 +93,7 @@ Apple Silicon performance varies by model type:
 
 3. **Model too large for memory**: Try using memory-efficient loading
    ```python
-   python generators/benchmark_generators/run_model_benchmarks.py --model llava --hardware mps --memory-efficient
+   python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --model llava --hardware mps --memory-efficient
    ```
 
 ### Memory Optimization
@@ -110,7 +110,7 @@ For large models on systems with limited memory:
 The MPS support is implemented in several key components:
 
 1. **Template Files**: See `hardware_test_templates/template_llava.py` and others
-2. **Hardware Detection**: MPS detection in `generators/hardware/hardware_detection.py`
+2. **Hardware Detection**: MPS detection in `scripts/generators/hardware/hardware_detection.py`
 3. **Test Generators**: All generators support MPS platform in generated tests
 
 ## Further Reading

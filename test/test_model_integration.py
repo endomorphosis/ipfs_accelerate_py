@@ -20,7 +20,7 @@ Usage:
 
 # Import web platform handlers
 try:
-    from fixed_web_platform import process_for_web, init_webnn, init_webgpu, create_mock_processors
+    from test.web_platform import process_for_web, init_webnn, init_webgpu, create_mock_processors
     WEB_PLATFORM_SUPPORT = True
 except ImportError:
     print("WebNN and WebGPU platform support not available")

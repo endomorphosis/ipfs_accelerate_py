@@ -61,7 +61,7 @@ This document describes the comprehensive improvements made to the test generato
 
 ## Fixed Generators
 
-1. **fixed_generators/test_generators/merged_test_generator.py**:
+1. **fixed_scripts/generators/test_scripts/generators/merged_test_generator.py**:
    - Added model registry for consistent model identification
    - Fixed test class naming and added run_tests() method
    - Added modality-specific model initialization and input handling
@@ -72,14 +72,14 @@ This document describes the comprehensive improvements made to the test generato
    - Added support for Qualcomm AI Engine
    - Enhanced web platform support with optimizations
 
-2. **generators/test_generators/merged_test_generator.py**:
+2. **scripts/generators/test_scripts/generators/merged_test_generator.py**:
    - Added model registry for consistent model identification
    - Fixed test class naming and added run_tests() method
    - Added modality-based functionality
    - Enhanced platform support with consistent API
    - Improved error handling with better exceptions
 
-3. **generators/skill_generators/integrated_skillset_generator.py**:
+3. **scripts/generators/skill_scripts/generators/integrated_skillset_generator.py**:
    - Added model registry for consistent model identification
    - Enhanced modality-based model and processor initialization
    - Improved input handling for different model types
@@ -117,19 +117,19 @@ To manually test a specific model with full cross-platform support:
 
 ```bash
 # Generate a test file for a specific model with all hardware platforms
-python fixed_generators/test_generators/merged_test_generator.py --generate bert --platform all --output test_hf_bert.py
+python fixed_scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert --platform all --output test_hf_bert.py
 
 # Generate a test file with specific hardware platforms
-python fixed_generators/test_generators/merged_test_generator.py --generate vit --platform "cuda,openvino,qualcomm,webgpu" --output test_hf_vit.py
+python fixed_scripts/generators/test_scripts/generators/merged_test_generator.py --generate vit --platform "cuda,openvino,qualcomm,webgpu" --output test_hf_vit.py
 
 # Generate a test file with cross-platform flag (same as platform=all)
-python fixed_generators/test_generators/merged_test_generator.py --generate clip --cross-platform --output test_hf_clip.py
+python fixed_scripts/generators/test_scripts/generators/merged_test_generator.py --generate clip --cross-platform --output test_hf_clip.py
 
 # Generate a skill implementation with cross-platform support
-python generators/skill_generators/integrated_skillset_generator.py --model bert --hardware all --cross-platform
+python scripts/generators/skill_scripts/generators/integrated_skillset_generator.py --model bert --hardware all --cross-platform
 
 # Generate a skill with specific hardware platforms
-python generators/skill_generators/integrated_skillset_generator.py --model t5 --hardware "cpu,cuda,rocm,webnn" 
+python scripts/generators/skill_scripts/generators/integrated_skillset_generator.py --model t5 --hardware "cpu,cuda,rocm,webnn" 
 ```
 
 ### Generator Improvements Example

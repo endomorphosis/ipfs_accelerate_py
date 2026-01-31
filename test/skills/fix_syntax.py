@@ -116,7 +116,7 @@ def fix_unterminated_strings(file_path):
         content = re.sub(r'^\s+from', 'from', content, flags=re.MULTILINE)
         
         # Fix hardware detection import
-        content = re.sub(r'from generators\.hardware\.hardware_detection import \(+\)+', 'from generators.hardware.hardware_detection import (', content)
+        content = re.sub(r'from generators\.hardware\.hardware_detection import \(+\)+', 'from scripts.generators.hardware.hardware_detection import (', content)
         content = re.sub(r'HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,', 'HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,\n    detect_all_hardware', content)
         
         # Fix class declarations with invalid names

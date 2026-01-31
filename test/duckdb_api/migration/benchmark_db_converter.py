@@ -23,7 +23,7 @@ from pathlib import Path
 # Try to import the dependency management framework
 try:
     sys.path.append(str(Path(__file__).parent.parent.parent))
-    from fixed_web_platform.unified_framework.dependency_management import (
+    from test.web_platform.unified_framework.dependency_management import (
         global_dependency_manager, require_dependencies
     )
     

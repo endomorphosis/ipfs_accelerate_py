@@ -21,7 +21,7 @@ Key components:
 - Memory-aware precision adaptation
 
 Usage:
-    from fixed_web_platform.webgpu_ultra_low_precision import (
+    from test.web_platform.webgpu_ultra_low_precision import (
         setup_ultra_low_precision,
         create_2bit_compute_shaders,
         create_3bit_compute_shaders,
@@ -73,14 +73,14 @@ from typing import Dict, List, Any, Optional, Tuple, Union, Callable
 
 # Try to import WebGPU related components if available
 try:
-    from fixed_web_platform.webgpu_adapter import WebGPUAdapter
+    from test.web_platform.webgpu_adapter import WebGPUAdapter
     WEBGPU_AVAILABLE = True
 except ImportError:
     WEBGPU_AVAILABLE = False
     
 # Try to import cross-browser sharding if available
 try:
-    from fixed_web_platform.cross_browser_model_sharding import ModelShardingManager
+    from test.web_platform.cross_browser_model_sharding import ModelShardingManager
     SHARDING_AVAILABLE = True
 except ImportError:
     SHARDING_AVAILABLE = False

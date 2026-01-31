@@ -323,13 +323,13 @@ python run_e2e_tests.py --model bert-base-uncased --hardware cpu --update-expect
 When tests fail due to result differences, examine the differences in the test report:
 
 ```bash
-cat generators/collected_results/bert-base-uncased/cpu/20250310_120000/comparison.json
+cat scripts/generators/collected_results/bert-base-uncased/cpu/20250310_120000/comparison.json
 ```
 
 You can also check the failure status file:
 
 ```bash
-cat generators/collected_results/bert-base-uncased/cpu/20250310_120000/failure.status
+cat scripts/generators/collected_results/bert-base-uncased/cpu/20250310_120000/failure.status
 ```
 
 ## Database Integration
@@ -406,7 +406,7 @@ python unified_component_tester.py --model bert-base-uncased --hardware cpu --ge
 python run_e2e_tests.py --model bert-base-uncased --hardware cpu --generate-docs
 ```
 
-This creates Markdown documentation in the `generators/model_documentation` directory. The unified component tester generates enhanced documentation with model-family specific content and hardware-specific optimization information.
+This creates Markdown documentation in the `scripts/generators/model_documentation` directory. The unified component tester generates enhanced documentation with model-family specific content and hardware-specific optimization information.
 
 ### Documentation Content
 
@@ -490,21 +490,21 @@ jobs:
       # Using the Unified Component Tester (recommended)
       - name: Run CI tests
         run: |
-          python generators/runners/end_to_end/ci_unified_component_test.py
+          python scripts/generators/runners/end_to_end/ci_unified_component_test.py
           
       # Or run the unified component tester directly
       - name: Run end-to-end tests
         run: |
-          python generators/runners/end_to_end/unified_component_tester.py --all-models --priority-hardware --ci-integration
+          python scripts/generators/runners/end_to_end/unified_component_tester.py --all-models --priority-hardware --ci-integration
           
       # Or use the legacy runner (not recommended for new projects)
       # - name: Run legacy end-to-end tests
       #   run: |
-      #     python generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware --ci-integration
+      #     python scripts/generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware --ci-integration
           
       - name: Generate test summary
         run: |
-          python generators/runners/end_to_end/unified_component_tester.py --generate-report --format markdown --output test_summary.md
+          python scripts/generators/runners/end_to_end/unified_component_tester.py --generate-report --format markdown --output test_summary.md
           
       - name: Archive test results
         if: always()
@@ -512,7 +512,7 @@ jobs:
         with:
           name: test-results
           path: |
-            generators/collected_results/
+            scripts/generators/collected_results/
             benchmark_db.duckdb
             test_summary.md
 ```
@@ -769,7 +769,7 @@ For comprehensive documentation, see:
 1. **Test fails due to result differences**:
    ```bash
    # Check the differences in the comparison file
-   cat generators/collected_results/bert-base-uncased/cpu/20250310_120000/comparison.json
+   cat scripts/generators/collected_results/bert-base-uncased/cpu/20250310_120000/comparison.json
    
    # If the differences are expected, update the expected results
    python run_e2e_tests.py --model bert-base-uncased --hardware cpu --update-expected
@@ -805,7 +805,7 @@ For comprehensive documentation, see:
 5. **Documentation generation fails**:
    ```bash
    # Check that all required files exist
-   ls generators/runners/end_to_end/
+   ls scripts/generators/runners/end_to_end/
    
    # Run with verbose logging
    python run_e2e_tests.py --model bert-base-uncased --hardware cpu --generate-docs --verbose

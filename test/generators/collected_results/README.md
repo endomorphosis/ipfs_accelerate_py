@@ -43,7 +43,7 @@ This directory is automatically cleaned by the testing framework, which retains:
 
 To manually clean old results:
 ```bash
-python generators/runners/end_to_end/run_e2e_tests.py --clean-old-results --days 14
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --clean-old-results --days 14
 ```
 
 ## Usage in CI/CD

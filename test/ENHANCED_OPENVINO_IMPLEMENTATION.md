@@ -258,16 +258,16 @@ A comprehensive test suite is provided to validate the enhancements:
 
 ```bash
 # Test audio processing
-python generators/models/test_enhanced_openvino_integration.py --test-audio --audio-file path/to/audio.wav
+python scripts/generators/models/test_enhanced_openvino_integration.py --test-audio --audio-file path/to/audio.wav
 
 # Test mixed precision capabilities
-python generators/models/test_enhanced_openvino_integration.py --test-mixed-precision --model bert-base-uncased
+python scripts/generators/models/test_enhanced_openvino_integration.py --test-mixed-precision --model bert-base-uncased
 
 # Test multi-device support
-python generators/models/test_enhanced_openvino_integration.py --test-multi-device --model bert-base-uncased
+python scripts/generators/models/test_enhanced_openvino_integration.py --test-multi-device --model bert-base-uncased
 
 # Run all tests
-python generators/models/test_enhanced_openvino_integration.py --run-all
+python scripts/generators/models/test_enhanced_openvino_integration.py --run-all
 ```
 
 ## Performance Considerations

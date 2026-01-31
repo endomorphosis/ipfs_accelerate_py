@@ -40,11 +40,11 @@ These archives contain:
 These files represent previous iterations of development that are no longer needed:
 
 - Backup (.bak) files for major script files:
-  - `generators/test_generators/merged_test_generator.py.bak*`
-  - `fixed_generators/test_generators/merged_test_generator.py.bak*`
-  - `generators/skill_generators/integrated_skillset_generator.py.bak*`
+  - `scripts/generators/test_scripts/generators/merged_test_generator.py.bak*`
+  - `fixed_scripts/generators/test_scripts/generators/merged_test_generator.py.bak*`
+  - `scripts/generators/skill_scripts/generators/integrated_skillset_generator.py.bak*`
   - `fix_generator_hardware_support.py.bak*`
-  - `template_generators/hardware/hardware_detection.py.bak*`
+  - `template_scripts/generators/hardware/hardware_detection.py.bak*`
   - All `.bak_json_dep` files (created during JSON deprecation)
 
 - Old versions of generators that have been replaced by improved versions:

@@ -117,7 +117,7 @@ jobs:
     
     - name: Run integration tests with MPS
       run: |
-        python generators/test_runners/integration_test_suite.py --categories hardware_detection cross_platform --hardware cpu mps --ci-mode --output integration_test_results_macos.json
+        python scripts/generators/test_runners/integration_test_suite.py --categories hardware_detection cross_platform --hardware cpu mps --ci-mode --output integration_test_results_macos.json
     
     - name: Upload macOS test results
       if: always()

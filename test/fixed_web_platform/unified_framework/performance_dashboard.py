@@ -12,7 +12,7 @@ system for the web platform with:
 - Integration with the unified framework
 
 Usage:
-    from fixed_web_platform.unified_framework.performance_dashboard import (
+    from test.web_platform.unified_framework.performance_dashboard import (
         PerformanceDashboard, MetricsCollector, create_performance_report
     )
     

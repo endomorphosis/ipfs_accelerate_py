@@ -48,13 +48,13 @@ The updated test generator now supports generating tests for specific hardware p
 
 ```bash
 # Generate test for specific platform
-python generators/test_generators/merged_test_generator.py --generate bert --platform cuda
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert --platform cuda
 
 # Generate test for web platform
-python generators/test_generators/merged_test_generator.py --generate vit --platform webgpu
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate vit --platform webgpu
 
 # Generate test for all platforms
-python generators/test_generators/merged_test_generator.py --generate bert --platform all
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert --platform all
 ```
 
 To analyze and fix hardware integration issues in existing test files:

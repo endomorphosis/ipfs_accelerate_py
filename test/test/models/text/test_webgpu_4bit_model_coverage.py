@@ -43,12 +43,12 @@ High Priority Model Classes:
 
 # Try to import WebGPU/WebNN modules
 try:
-    from fixed_web_platform.webgpu_4bit_inference import ())))
+    from test.web_platform.webgpu_4bit_inference import ())))
     WebGPU4BitOptimizer,
     create_4bit_optimizer,
     optimize_model_for_4bit_inference
     )
-    from fixed_web_platform.webgpu_quantization import setup_4bit_inference
+    from test.web_platform.webgpu_quantization import setup_4bit_inference
     WEBGPU_4BIT_AVAILABLE = True
 except ImportError:
     logger.warning())))"WebGPU 4-bit modules not available")
@@ -56,7 +56,7 @@ except ImportError:
 
 # Try to import hardware detection
 try:
-    from generators.hardware.hardware_detection import detect_all_hardware
+    from scripts.generators.hardware.hardware_detection import detect_all_hardware
     HAS_HARDWARE_DETECTION = True
 except ImportError:
     logger.warning())))"Hardware detection module not available")

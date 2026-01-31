@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/p2p-cache-smoke.yml'
-      - 'tools/github_p2p_cache_smoke.py'
+      - 'scripts/utils/github_p2p_cache_smoke.py'
       - 'ipfs_accelerate_py/github_cli/**'
       - '.github/actions/setup-github-cache/**'
       - 'P2P_CACHE_QUICK_REF.md'
@@ -15,7 +15,7 @@ on:
       - main
     paths:
       - '.github/workflows/p2p-cache-smoke.yml'
-      - 'tools/github_p2p_cache_smoke.py'
+      - 'scripts/utils/github_p2p_cache_smoke.py'
       - 'ipfs_accelerate_py/github_cli/**'
       - '.github/actions/setup-github-cache/**'
       - 'P2P_CACHE_QUICK_REF.md'

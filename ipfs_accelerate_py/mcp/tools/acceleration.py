@@ -34,7 +34,7 @@ if TYPE_CHECKING:
 try:
     from .ipfs_files import get_ipfs_client
 except ImportError:
-    from tools.ipfs_files import get_ipfs_client
+    from .ipfs_files import get_ipfs_client
 
 # Try to import hardware detection from IPFS Accelerate
 try:

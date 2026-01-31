@@ -326,7 +326,7 @@ An important aspect of the May 2025 enhancement is improved integration with the
 # Test resource pool with distributed testing framework
 python duckdb_api/distributed_testing/run_test.py \
   --mode all \
-  --test-file generators/models/test_web_resource_pool.py \
+  --test-file scripts/generators/models/test_web_resource_pool.py \
   --test-args "--comprehensive --browser-pool --fault-tolerance" \
   --worker-count 4 \
   --db-path ./benchmark_db.duckdb

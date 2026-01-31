@@ -27,7 +27,7 @@ warnings.filterwarnings("ignore")
 sys.path.append(str(Path(__file__).parent.parent))
 
 # Import the module to test
-from predictive_performance.multi_model_execution import MultiModelPredictor
+from ipfs_accelerate_py.predictive_performance.multi_model_execution import MultiModelPredictor
 
 
 class TestMultiModelExecution(unittest.TestCase):

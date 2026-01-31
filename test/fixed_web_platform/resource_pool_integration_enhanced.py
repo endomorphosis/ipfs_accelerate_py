@@ -33,24 +33,24 @@ from resource_pool import get_global_resource_pool
 
 # Import adaptive scaling and connection pool manager
 try:
-    from fixed_web_platform.adaptive_scaling import AdaptiveConnectionManager
+    from test.web_platform.adaptive_scaling import AdaptiveConnectionManager
     ADAPTIVE_SCALING_AVAILABLE = True
 except ImportError:
     ADAPTIVE_SCALING_AVAILABLE = False
     logger.warning("AdaptiveConnectionManager not available, using simplified scaling")
 
 try:
-    from fixed_web_platform.connection_pool_manager import ConnectionPoolManager
+    from test.web_platform.connection_pool_manager import ConnectionPoolManager
     CONNECTION_POOL_AVAILABLE = True
 except ImportError:
     CONNECTION_POOL_AVAILABLE = False
     logger.warning("ConnectionPoolManager not available, using basic connection management")
 
 # Import ResourcePoolBridgeIntegration (local import to avoid circular imports)
-from fixed_web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration, EnhancedWebModel
+from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration, EnhancedWebModel
 
 # Import error recovery utilities
-from fixed_web_platform.resource_pool_error_recovery import ResourcePoolErrorRecovery
+from test.web_platform.resource_pool_error_recovery import ResourcePoolErrorRecovery
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')

@@ -145,38 +145,38 @@ Use the `test_web_resource_pool.py` script to run comprehensive benchmarks:
 
 ```bash
 # Basic benchmarks with default models
-python generators/models/test_web_resource_pool.py
+python scripts/generators/models/test_web_resource_pool.py
 
 # Test with specific models
-python generators/models/test_web_resource_pool.py --models bert-base-uncased,vit-base-patch16-224,whisper-tiny
+python scripts/generators/models/test_web_resource_pool.py --models bert-base-uncased,vit-base-patch16-224,whisper-tiny
 
 # Test concurrent model execution
-python generators/models/test_web_resource_pool.py --concurrent-models
+python scripts/generators/models/test_web_resource_pool.py --concurrent-models
 
 # Compare browser performance
-python generators/models/test_web_resource_pool.py --compare-browsers
+python scripts/generators/models/test_web_resource_pool.py --compare-browsers
 
 # Test precision levels
-python generators/models/test_web_resource_pool.py --test-quantization
+python scripts/generators/models/test_web_resource_pool.py --test-quantization
 
 # Run stress test
-python generators/models/test_web_resource_pool.py --stress-test --duration 120
+python scripts/generators/models/test_web_resource_pool.py --stress-test --duration 120
 ```
 
 ### Advanced Benchmark Options
 
 ```bash
 # Store results in database
-python generators/models/test_web_resource_pool.py --db-path ./benchmark_db.duckdb
+python scripts/generators/models/test_web_resource_pool.py --db-path ./benchmark_db.duckdb
 
 # Test model loading optimizations
-python generators/models/test_web_resource_pool.py --test-loading-optimizations
+python scripts/generators/models/test_web_resource_pool.py --test-loading-optimizations
 
 # Test memory optimization techniques
-python generators/models/test_web_resource_pool.py --test-memory-optimization
+python scripts/generators/models/test_web_resource_pool.py --test-memory-optimization
 
 # Test Firefox audio compute shader optimizations
-python generators/models/test_web_resource_pool.py --models whisper-tiny --browser firefox --test-compute-shaders
+python scripts/generators/models/test_web_resource_pool.py --models whisper-tiny --browser firefox --test-compute-shaders
 ```
 
 ## Precision Modes
@@ -241,13 +241,13 @@ The resource pool implements several techniques for memory optimization:
 python check_browser_webnn_webgpu.py --browser firefox
 
 # Test WebSocket connection
-python generators/models/test_websocket_bridge.py --port 8765
+python scripts/generators/models/test_websocket_bridge.py --port 8765
 
 # Validate resource pool with basic model
-python generators/models/test_web_resource_pool.py --browser chrome --platform webgpu --basic-test
+python scripts/generators/models/test_web_resource_pool.py --browser chrome --platform webgpu --basic-test
 
 # Check database connection
-python generators/models/test_web_resource_pool.py --check-db --db-path ./benchmark_db.duckdb
+python scripts/generators/models/test_web_resource_pool.py --check-db --db-path ./benchmark_db.duckdb
 ```
 
 ## Performance Tips

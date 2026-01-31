@@ -53,7 +53,7 @@ def _load_heavy_imports():
         HAVE_MCP_SERVER = True
     except ImportError as e:
         try:
-            from tools.comprehensive_mcp_server import ComprehensiveMCPServer as _ComprehensiveMCPServer
+            from scripts.comprehensive_mcp_server import ComprehensiveMCPServer as _ComprehensiveMCPServer
             ComprehensiveMCPServer = _ComprehensiveMCPServer
             HAVE_MCP_SERVER = True
         except ImportError as e2:
