@@ -98,6 +98,72 @@ class ErrorAggregator:
         Args:
             repo: GitHub repository (e.g., 'owner/repo')
             peer_registry: P2PPeerRegistry instance for peer discovery
+            bundle_interval_minutes: Minutes between error bundling
+            min_error_count: Minimum error count to trigger issue creation
+            enable_auto_issue_creation: Enable automatic GitHub issue creation
+            enable_auto_pr_creation: Enable automatic draft PR creation
+            enable_copilot_autofix: Enable Copilot-based auto-fixing
+        """
+        self.repo = repo
+        self.peer_registry = peer_registry
+        self.bundle_interval_minutes = bundle_interval_minutes
+        self.min_error_count = min_error_count
+        self.enable_auto_issue_creation = enable_auto_issue_creation
+        self.enable_auto_pr_creation = enable_auto_pr_creation
+        self.enable_copilot_autofix = enable_copilot_autofix
+        
+        # Error storage
+        self.local_errors = []  # Errors captured locally
+        self.aggregated_errors = defaultdict(list)  # Errors from all peers
+        
+        # Issue tracking
+        self.existing_issues_cache = {}  # Map signature -> issue info
+        self.issues_cache_ttl = timedelta(minutes=30)
+        self.issues_cache_timestamp = None
+        
+        # Bundling
+        self.last_bundle_time = datetime.utcnow()
+        self.bundling_thread = None
+        self.bundling_active = False
+        
+        # Initialize cached GitHub CLI wrapper with P2P/IPFS caching
+        self._github_cli = None
+        self._init_github_cli()
+        
+        # Initialize datasets integration for error logging
+        self._provenance_logger = None
+        self._datasets_manager = None
+        if HAVE_DATASETS_INTEGRATION and is_datasets_available():
+            try:
+                self._provenance_logger = ProvenanceLogger()
+                self._datasets_manager = DatasetsManager()
+                logger.info("Datasets integration enabled for error logging")
+            except Exception as e:
+                logger.warning(f"Could not initialize datasets integration: {e}")
+        
+        logger.info(
+            f"ErrorAggregator initialized: "
+            f"repo={repo}, "
+            f"bundle_interval={bundle_interval_minutes}m, "
+            f"min_errors={min_error_count}, "
+            f"auto_issue={enable_auto_issue_creation}, "
+            f"auto_pr={enable_auto_pr_creation}, "
+            f"auto_heal={enable_copilot_autofix}"
+        )
+    
+    def _init_github_cli(self):
+        """Initialize GitHub CLI wrapper with P2P/IPFS caching."""
+        try:
+            from .wrapper import GitHubCLI
+            # Enable caching for all GitHub API calls
+            self._github_cli = GitHubCLI(
+                enable_cache=True,  # Enable P2P/IPFS/ipfs_kit caching
+                cache_ttl=300  # 5 minute TTL for API responses
+            )
+            logger.info("GitHub CLI initialized with P2P/IPFS caching enabled")
+        except ImportError as e:
+            logger.warning(f"Could not initialize GitHub CLI: {e}")
+            self._github_cli = None
             bundle_interval_minutes: How often to bundle and report errors
             min_error_count: Minimum occurrences before creating an issue
             enable_auto_issue_creation: Whether to automatically create issues
@@ -407,14 +473,43 @@ class ErrorAggregator:
             return 0
     
     def _refresh_existing_issues_cache(self):
-        """Refresh cache of existing GitHub issues."""
+        """Refresh cache of existing GitHub issues using P2P/IPFS-cached API calls."""
         try:
             # Check if cache is still valid
             if (self.issues_cache_timestamp and 
                 datetime.utcnow() - self.issues_cache_timestamp < self.issues_cache_ttl):
                 return
             
-            # Fetch open issues from GitHub
+            # Use cached GitHub CLI wrapper if available
+            if self._github_cli:
+                try:
+                    # list_issues uses P2P/IPFS caching automatically
+                    issues = self._github_cli.list_issues(
+                        repo=self.repo,
+                        state="open",
+                        limit=100,
+                        use_cache=True  # Use P2P/IPFS cache
+                    )
+                    
+                    # Build cache with error signatures from issue bodies
+                    self.existing_issues_cache = {}
+                    for issue in issues:
+                        # Extract error signature from issue body if present
+                        body = issue.get("body", "")
+                        if "Error Signature:" in body:
+                            for line in body.split("\n"):
+                                if "Error Signature:" in line:
+                                    sig = line.split("Error Signature:")[-1].strip().strip("`")
+                                    self.existing_issues_cache[sig] = issue
+                                    break
+                    
+                    self.issues_cache_timestamp = datetime.utcnow()
+                    logger.info(f"✓ Refreshed issues cache (P2P/IPFS cached): {len(self.existing_issues_cache)} issues")
+                    return
+                except Exception as e:
+                    logger.warning(f"Cached GitHub CLI failed, falling back to direct gh: {e}")
+            
+            # Fallback to direct gh command if wrapper unavailable
             result = subprocess.run(
                 [
                     "gh", "issue", "list",
@@ -585,25 +680,45 @@ class ErrorAggregator:
                 if template_error['severity'] in ['high', 'critical']:
                     labels.append("priority")
                 
-                # Create the issue
-                result = subprocess.run(
-                    [
-                        "gh", "issue", "create",
-                        "--repo", self.repo,
-                        "--title", title,
-                        "--body", body,
-                        "--label", ",".join(labels)
-                    ],
-                    capture_output=True,
-                    text=True,
-                    timeout=60
-                )
+                # Create the issue using cached GitHub CLI if available
+                issue_url = None
+                if self._github_cli:
+                    try:
+                        # create_issue uses P2P/IPFS caching for API calls
+                        issue_url = self._github_cli.create_issue(
+                            repo=self.repo,
+                            title=title,
+                            body=body,
+                            labels=labels
+                        )
+                        logger.info(f"✓ Created issue (P2P/IPFS cached): {issue_url}")
+                        issues_created += 1
+                    except Exception as e:
+                        logger.warning(f"Cached GitHub CLI failed, falling back to direct gh: {e}")
                 
-                if result.returncode == 0:
-                    issue_url = result.stdout.strip()
-                    logger.info(f"✓ Created issue: {issue_url}")
-                    issues_created += 1
+                # Fallback to direct gh command if wrapper unavailable or failed
+                if not issue_url:
+                    result = subprocess.run(
+                        [
+                            "gh", "issue", "create",
+                            "--repo", self.repo,
+                            "--title", title,
+                            "--body", body,
+                            "--label", ",".join(labels)
+                        ],
+                        capture_output=True,
+                        text=True,
+                        timeout=60
+                    )
                     
+                    if result.returncode == 0:
+                        issue_url = result.stdout.strip()
+                        logger.info(f"✓ Created issue: {issue_url}")
+                        issues_created += 1
+                    else:
+                        logger.warning(f"Failed to create issue: {result.stderr}")
+                
+                if issue_url:
                     # Add to cache to prevent duplicates
                     self.existing_issues_cache[signature] = {
                         "url": issue_url,
@@ -613,9 +728,6 @@ class ErrorAggregator:
                     # Create draft PR if enabled
                     if self.enable_auto_pr_creation:
                         self._create_draft_pr_from_issue(issue_url, template_error, signature)
-                    
-                else:
-                    logger.warning(f"Failed to create issue: {result.stderr}")
                 
                 # Rate limit protection: small delay between issue creations
                 time.sleep(2)

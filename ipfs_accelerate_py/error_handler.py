@@ -82,11 +82,24 @@ class CLIErrorHandler:
         return self._error_aggregator
     
     def _get_github_cli(self):
-        """Lazy load GitHub CLI."""
+        """
+        Lazy load GitHub CLI with P2P/IPFS caching enabled.
+        
+        GitHub API calls are automatically cached with:
+        - P2P cache sharing via libp2p
+        - IPFS/ipfs_kit integration
+        - Content-addressed validation
+        - Encrypted cache entries
+        """
         if self._github_cli is None:
             try:
                 from ipfs_accelerate_py.github_cli.wrapper import GitHubCLI
-                self._github_cli = GitHubCLI()
+                # Initialize with caching enabled (default) and P2P cache sharing
+                self._github_cli = GitHubCLI(
+                    enable_cache=True,  # Enable P2P/IPFS caching
+                    cache_ttl=300  # 5 minute default TTL
+                )
+                logger.debug("GitHub CLI initialized with P2P/IPFS caching enabled")
             except ImportError as e:
                 logger.warning(f"Could not initialize GitHub CLI: {e}")
         
