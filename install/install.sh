@@ -4,7 +4,7 @@
 # Supports: Linux (x86_64, ARM64, ARMv7), macOS (Intel, Apple Silicon), FreeBSD
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 #   or
 #   ./install.sh [--profile minimal|standard|full|cli] [--silent] [--no-cli-tools]
 

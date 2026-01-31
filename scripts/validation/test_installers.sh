@@ -10,7 +10,7 @@ echo
 
 # Test 1: Verify scripts are executable
 echo "Test 1: Checking script permissions..."
-if [ -x "installers/install.sh" ] && [ -x "installers/uninstall.sh" ]; then
+if [ -x "install/install.sh" ] && [ -x "install/uninstall.sh" ]; then
     echo "✓ Scripts are executable"
 else
     echo "✗ Scripts are not executable"
@@ -36,7 +36,7 @@ fi
 
 # Test 4: Test help output
 echo "Test 4: Testing help output..."
-if ./installers/install.sh --help >/dev/null 2>&1; then
+if ./install/install.sh --help >/dev/null 2>&1; then
     echo "✓ Help output works"
 else
     echo "✗ Help output failed"
@@ -45,7 +45,7 @@ fi
 
 # Test 5: Verify Docker file syntax
 echo "Test 5: Checking Dockerfile syntax..."
-if [ -f "installers/Dockerfile.cache" ]; then
+if [ -f "install/Dockerfile.cache" ]; then
     echo "✓ Dockerfile exists"
 else
     echo "✗ Dockerfile not found"
@@ -64,13 +64,13 @@ fi
 # Test 7: Verify all installer files exist
 echo "Test 7: Checking all installer files..."
 required_files=(
-    "installers/README.md"
-    "installers/install.sh"
-    "installers/install.ps1"
-    "installers/uninstall.sh"
-    "installers/uninstall.ps1"
-    "installers/Dockerfile.cache"
-    "installers/INSTALLATION_GUIDE.md"
+    "install/README.md"
+    "install/install.sh"
+    "install/install.ps1"
+    "install/uninstall.sh"
+    "install/uninstall.ps1"
+    "install/Dockerfile.cache"
+    "install/INSTALLATION_GUIDE.md"
 )
 
 all_exist=true

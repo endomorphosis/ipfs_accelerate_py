@@ -6,12 +6,12 @@ Complete automated installation system for ipfs_accelerate_py cache infrastructu
 
 ### One-Line Install (Unix/Linux/macOS)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 ### One-Line Install (Windows)
 ```powershell
-iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.ps1 | iex
 ```
 
 ### Docker (All Platforms)
@@ -206,12 +206,12 @@ services:
 export DOCKER_BUILDKIT=1
 
 # Build for current platform
-docker build -f installers/Dockerfile.cache -t my-cache:latest .
+docker build -f install/Dockerfile.cache -t my-cache:latest .
 
 # Build for multiple platforms (requires buildx)
 docker buildx build \
   --platform linux/amd64,linux/arm64,linux/arm/v7 \
-  -f installers/Dockerfile.cache \
+  -f install/Dockerfile.cache \
   -t my-cache:latest \
   --push .
 ```
@@ -227,7 +227,7 @@ sudo apt-get update
 sudo apt-get install -y python3 python3-venv curl git
 
 # Run installer
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 **RHEL/CentOS/Fedora:**
@@ -236,7 +236,7 @@ curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/ma
 sudo yum install -y python3 python3-venv curl git
 
 # Run installer
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 **Arch Linux:**
@@ -245,7 +245,7 @@ curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/ma
 sudo pacman -S python python-pip curl git
 
 # Run installer
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 ### macOS
@@ -256,7 +256,7 @@ curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/ma
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
 # Run installer
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 **Apple Silicon (M1/M2/M3):**
@@ -270,13 +270,13 @@ The installer automatically detects Apple Silicon and installs ARM64 versions.
 $PSVersionTable.PSVersion
 
 # Run installer
-iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.ps1 | iex
 ```
 
 **Windows Subsystem for Linux (WSL):**
 Use the Linux installer inside WSL:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 ## Environment Variables
@@ -306,7 +306,7 @@ Optional API keys (configure after installation):
 ```yaml
 - name: Install Cache Infrastructure
   run: |
-    curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash -s -- --profile minimal --silent
+    curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash -s -- --profile minimal --silent
 ```
 
 ### GitLab CI
@@ -314,13 +314,13 @@ Optional API keys (configure after installation):
 ```yaml
 install_cache:
   script:
-    - curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash -s -- --profile minimal --silent
+    - curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash -s -- --profile minimal --silent
 ```
 
 ### Jenkins
 
 ```groovy
-sh 'curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash -s -- --profile minimal --silent'
+sh 'curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash -s -- --profile minimal --silent'
 ```
 
 ### CircleCI
@@ -329,7 +329,7 @@ sh 'curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_p
 - run:
     name: Install Cache Infrastructure
     command: |
-      curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash -s -- --profile minimal --silent
+      curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash -s -- --profile minimal --silent
 ```
 
 ## Verification
@@ -353,7 +353,7 @@ Expected output:
 
 ### Unix/Linux/macOS
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/uninstall.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/uninstall.sh | bash
 ```
 
 Or manually:
@@ -364,7 +364,7 @@ rm -rf ~/.cache/ipfs_accelerate_py
 
 ### Windows
 ```powershell
-iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/uninstall.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/uninstall.ps1 | iex
 ```
 
 Or manually:
@@ -377,8 +377,8 @@ Remove-Item -Recurse -Force $env:USERPROFILE\.cache\ipfs_accelerate_py
 
 ### Permission Denied (Unix)
 ```bash
-chmod +x installers/install.sh
-./installers/install.sh
+chmod +x install/install.sh
+./install/install.sh
 ```
 
 ### Python Not Found

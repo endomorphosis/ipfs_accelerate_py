@@ -426,12 +426,12 @@ print(f"IPFS fallback misses: {stats.get('ipfs_fallback_misses', 0)}")
 
 **Unix/Linux/macOS:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 **Windows:**
 ```powershell
-iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.ps1 | iex
 ```
 
 **Docker:**
@@ -790,7 +790,7 @@ cache = get_global_llm_cache()
   - `API_INTEGRATIONS_COMPLETE.md` - API wrapper guide
   - `PHASES_3_4_IMPLEMENTATION.md` - Dual-mode and secrets manager guide
   - `PHASES_3_4_COMPLETION_SUMMARY.md` - Phase 3-4 summary
-  - `installers/INSTALLATION_GUIDE.md` - Installer documentation
+  - `install/INSTALLATION_GUIDE.md` - Installer documentation
 
 ## Conclusion
 

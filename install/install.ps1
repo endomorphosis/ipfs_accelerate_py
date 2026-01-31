@@ -2,7 +2,7 @@
 # Supports: Windows 10/11 (x64, ARM64)
 #
 # Usage:
-#   iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.ps1 | iex
+#   iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.ps1 | iex
 #   or
 #   .\install.ps1 [-Profile minimal|standard|full|cli] [-Silent] [-NoCliTools]
 

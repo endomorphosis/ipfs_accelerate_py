@@ -6,17 +6,17 @@ This directory contains automated, zero-touch installers for the ipfs_accelerate
 
 ### Linux (x86_64 / ARM64)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 ### macOS (Intel / Apple Silicon)
 ```bash
-curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.sh | bash
 ```
 
 ### Windows (x64 / ARM64)
 ```powershell
-iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/installers/install.ps1 | iex
+iwr -useb https://raw.githubusercontent.com/endomorphosis/ipfs_accelerate_py/main/install/install.ps1 | iex
 ```
 
 ## What Gets Installed
