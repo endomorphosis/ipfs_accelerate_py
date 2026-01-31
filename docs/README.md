@@ -9,10 +9,12 @@
 ## 🎯 Quick Navigation
 
 ### **Essential Reading**
-- 🚀 **[Installation & Setup](INSTALLATION.md)** - Get started quickly with comprehensive installation guide
-- 📖 **[Usage Guide](USAGE.md)** - Learn how to use all framework features  
+- 🚀 **[Getting Started](GETTING_STARTED.md)** - Complete beginner's guide (5 minutes to first inference!)
+- 📖 **[Installation & Setup](INSTALLATION.md)** - Detailed installation instructions
+- 📚 **[Usage Guide](USAGE.md)** - Learn how to use all framework features  
 - 🔧 **[API Reference](API.md)** - Complete API documentation with examples
 - 🏗️ **[Architecture Overview](ARCHITECTURE.md)** - System design and components
+- ❓ **[FAQ](FAQ.md)** - Frequently asked questions and troubleshooting
 
 ### **Platform-Specific**
 - ⚙️ **[Hardware Optimization](HARDWARE.md)** - Maximize performance across different hardware
@@ -104,9 +106,12 @@ IPFS Accelerate Python is a **comprehensive, enterprise-grade framework** that c
 - **Precision Control**: fp16, fp32, mixed precision support
 - **Real-time Performance**: Optimized for interactive applications
 
-## Getting Help
+### Getting Help
 
 ### Documentation Navigation
+- 📖 **[Getting Started Guide](GETTING_STARTED.md)** - Complete beginner's tutorial
+- ❓ **[FAQ](FAQ.md)** - Frequently asked questions and quick answers
+- 📚 **[Full Documentation Index](INDEX.md)** - Comprehensive guide listing
 - Use the **Table of Contents** in each document for quick navigation
 - Look for **🔗 Cross-references** between related sections  
 - Check **💡 Tips and Examples** throughout the documentation

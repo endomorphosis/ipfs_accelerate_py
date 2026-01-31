@@ -71,7 +71,7 @@ Choose the profile that matches your needs:
 | **MCP** | MCP server extras | `pip install ipfs-accelerate-py[mcp]` |
 | **Dev** | Development setup | `pip install -e .` |
 
-📚 **Detailed instructions**: [Installation Guide](docs/guides/INSTALL.md) | [Troubleshooting](docs/INSTALLATION_TROUBLESHOOTING_GUIDE.md)
+📚 **Detailed instructions**: [Installation Guide](docs/guides/INSTALL.md) | [Troubleshooting](docs/INSTALLATION_TROUBLESHOOTING_GUIDE.md) | [Getting Started](docs/GETTING_STARTED.md)
 
 ---
 
@@ -233,8 +233,10 @@ model = accelerator.load_model("gpt2", device="cuda")
 
 | Guide | Description | Audience |
 |-------|-------------|----------|
+| [**Getting Started**](docs/GETTING_STARTED.md) | Complete beginner tutorial | Everyone |
 | [**Quick Start**](docs/guides/QUICKSTART.md) | Get running in 5 minutes | Everyone |
 | [**Installation**](docs/guides/INSTALL.md) | Detailed setup instructions | Users |
+| [**FAQ**](docs/FAQ.md) | Common questions & answers | Everyone |
 | [**API Reference**](docs/API.md) | Complete API documentation | Developers |
 | [**Architecture**](docs/ARCHITECTURE.md) | System design & components | Architects |
 | [**Hardware Optimization**](docs/HARDWARE.md) | Platform-specific tuning | Engineers |
