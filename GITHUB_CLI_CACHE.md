@@ -88,23 +88,23 @@ env:
 
 ### Command Line
 
-Use `tools/gh_api_cached.py` as a drop-in replacement for `gh api`:
+Use `scripts/utils/gh_api_cached.py` as a drop-in replacement for `gh api`:
 
 ```bash
 # Standard GitHub API call (cached)
-python tools/gh_api_cached.py user --jq '.login'
+python scripts/utils/gh_api_cached.py user --jq '.login'
 
 # Get repository info
-python tools/gh_api_cached.py repos/owner/repo --jq '.name'
+python scripts/utils/gh_api_cached.py repos/owner/repo --jq '.name'
 
 # Search issues
-python tools/gh_api_cached.py "search/issues?q=repo:owner/repo+is:issue"
+python scripts/utils/gh_api_cached.py "search/issues?q=repo:owner/repo+is:issue"
 
 # Override cache TTL
-python tools/gh_api_cached.py user --ttl 600  # 10-minute TTL
+python scripts/utils/gh_api_cached.py user --ttl 600  # 10-minute TTL
 
 # Pass-through (no caching, includes headers)
-python tools/gh_api_cached.py user --include
+python scripts/utils/gh_api_cached.py user --include
 ```
 
 ### In Python Scripts
@@ -136,7 +136,7 @@ Replace direct `gh` calls with cached versions:
 - run: gh issue view "$ISSUE_NUMBER" --json title,body
 
 # After (cached gh call)
-- run: python tools/gh_api_cached.py "repos/${{ github.repository }}/issues/$ISSUE_NUMBER" --jq '.title'
+- run: python scripts/utils/gh_api_cached.py "repos/${{ github.repository }}/issues/$ISSUE_NUMBER" --jq '.title'
 ```
 
 ## Dependencies
@@ -293,9 +293,9 @@ Pre-populate cache before heavy operations:
 
 ```bash
 # Warm up repository cache
-python tools/gh_api_cached.py "repos/$REPO"
-python tools/gh_api_cached.py "repos/$REPO/issues"
-python tools/gh_api_cached.py "repos/$REPO/pulls"
+python scripts/utils/gh_api_cached.py "repos/$REPO"
+python scripts/utils/gh_api_cached.py "repos/$REPO/issues"
+python scripts/utils/gh_api_cached.py "repos/$REPO/pulls"
 ```
 
 ### Selective Caching
@@ -304,7 +304,7 @@ Some endpoints shouldn't be cached:
 
 ```bash
 # Use --include for non-cacheable requests
-python tools/gh_api_cached.py "user/repos" --include
+python scripts/utils/gh_api_cached.py "user/repos" --include
 ```
 
 ## Security Considerations
@@ -367,7 +367,7 @@ ipfs daemon &
 
 # Cache will automatically use IPFS if available
 export CACHE_ENABLE_P2P=true
-python tools/gh_api_cached.py user
+python scripts/utils/gh_api_cached.py user
 ```
 
 ## Best Practices
@@ -384,7 +384,7 @@ python tools/gh_api_cached.py user
 ## References
 
 - [GitHub CLI Cache Implementation](ipfs_accelerate_py/github_cli/cache.py)
-- [Cache Wrapper Script](tools/gh_api_cached.py)
+- [Cache Wrapper Script](scripts/utils/gh_api_cached.py)
 - [VSCode Cache Wrapper](scripts/gh_cached_vscode.py)
 - [P2P Verification Script](scripts/validation/verify_p2p_cache.py)
 - [Cache Monitoring Script](scripts/validation/monitor_p2p_cache.py)

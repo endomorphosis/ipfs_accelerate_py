@@ -25,7 +25,7 @@ def test_github_mcp_tools_registration():
     if parent_dir not in sys.path:
         sys.path.insert(0, parent_dir)
 
-    from tools.github_tools import register_github_tools
+    from .github_tools import register_github_tools
 
     # Try to import FastMCP, use mock if not available
     try:

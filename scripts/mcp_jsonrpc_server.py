@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 ComprehensiveMCPServer = None  # will be imported lazily in __init__
 
 # Import HuggingFace model search service
-from tools.huggingface_model_search import get_hf_search_service
+from scripts.huggingface_model_search import get_hf_search_service
 
 # Try to import model management dependencies
 try:
@@ -235,7 +235,7 @@ class MCPJSONRPCServer:
         try:
             global ComprehensiveMCPServer
             if ComprehensiveMCPServer is None:
-                from tools.comprehensive_mcp_server import ComprehensiveMCPServer as _CMS
+                from scripts.comprehensive_mcp_server import ComprehensiveMCPServer as _CMS
                 ComprehensiveMCPServer = _CMS
             self.mcp_server = ComprehensiveMCPServer()
             logger.info("MCP server initialized successfully")

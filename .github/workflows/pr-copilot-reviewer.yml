@@ -76,7 +76,7 @@ jobs:
           echo "Processing PR #$PR_NUMBER"
           
           # Get PR details using cached gh API
-          PR_DATA=$(python tools/gh_api_cached.py "repos/${{ github.repository }}/pulls/$PR_NUMBER")
+          PR_DATA=$(python scripts/utils/gh_api_cached.py "repos/${{ github.repository }}/pulls/$PR_NUMBER")
           
           PR_TITLE=$(echo "$PR_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['title'])")
           PR_AUTHOR=$(echo "$PR_DATA" | python -c "import sys, json; print(json.load(sys.stdin)['author']['login'])")
@@ -124,7 +124,7 @@ jobs:
           fi
           
           # Check comments using cached API
-          COMMENTS=$(python tools/gh_api_cached.py "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" --jq '.[].body')
+          COMMENTS=$(python scripts/utils/gh_api_cached.py "repos/${{ github.repository }}/issues/$PR_NUMBER/comments" --jq '.[].body')
           
           if echo "$COMMENTS" | grep -q "@copilot"; then
             echo "✓ @copilot already mentioned in comments"
