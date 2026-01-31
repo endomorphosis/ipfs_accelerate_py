@@ -88,7 +88,9 @@ class ErrorAggregator:
         peer_registry,
         bundle_interval_minutes: int = 15,
         min_error_count: int = 3,
-        enable_auto_issue_creation: bool = False
+        enable_auto_issue_creation: bool = False,
+        enable_auto_pr_creation: bool = False,
+        enable_copilot_autofix: bool = False
     ):
         """
         Initialize error aggregator.
@@ -99,6 +101,8 @@ class ErrorAggregator:
             bundle_interval_minutes: How often to bundle and report errors
             min_error_count: Minimum occurrences before creating an issue
             enable_auto_issue_creation: Whether to automatically create issues
+            enable_auto_pr_creation: Whether to automatically create draft PRs from issues
+            enable_copilot_autofix: Whether to invoke Copilot for auto-fixing
         """
         # Initialize datasets integration for error logging
         self._provenance_logger = None
@@ -128,6 +132,8 @@ class ErrorAggregator:
         self.bundle_interval = timedelta(minutes=bundle_interval_minutes)
         self.min_error_count = min_error_count
         self.enable_auto_issue_creation = enable_auto_issue_creation
+        self.enable_auto_pr_creation = enable_auto_pr_creation
+        self.enable_copilot_autofix = enable_copilot_autofix
         
         # Local error storage
         self.local_errors: List[Dict] = []
@@ -151,7 +157,9 @@ class ErrorAggregator:
         logger.info(
             f"Error Aggregator initialized: repo={repo}, "
             f"bundle_interval={bundle_interval_minutes}m, "
-            f"auto_create={enable_auto_issue_creation}"
+            f"auto_create={enable_auto_issue_creation}, "
+            f"auto_pr={enable_auto_pr_creation}, "
+            f"auto_heal={enable_copilot_autofix}"
         )
     
     def start_bundling(self):
@@ -601,6 +609,11 @@ class ErrorAggregator:
                         "url": issue_url,
                         "title": title
                     }
+                    
+                    # Create draft PR if enabled
+                    if self.enable_auto_pr_creation:
+                        self._create_draft_pr_from_issue(issue_url, template_error, signature)
+                    
                 else:
                     logger.warning(f"Failed to create issue: {result.stderr}")
                 
@@ -612,6 +625,167 @@ class ErrorAggregator:
                 continue
         
         return issues_created
+    
+    def _create_draft_pr_from_issue(
+        self,
+        issue_url: str,
+        error_data: Dict,
+        signature: str
+    ) -> Optional[str]:
+        """
+        Create a draft PR to fix the issue.
+        
+        Args:
+            issue_url: URL of the GitHub issue
+            error_data: Error data dictionary
+            signature: Error signature
+            
+        Returns:
+            PR URL if created, None otherwise
+        """
+        try:
+            # Extract issue number from URL
+            issue_number = issue_url.split("/")[-1]
+            
+            # Create a branch name
+            error_type = error_data['type'].lower().replace(' ', '-')
+            branch_name = f"auto-fix/issue-{issue_number}-{error_type}"
+            
+            # Create PR title and body
+            pr_title = f"[Auto-Fix] Fix for issue #{issue_number}: {error_data['type']}"
+            pr_body = f"""This is an automatically generated draft PR to address issue #{issue_number}.
+
+**Issue:** {issue_url}
+**Error Type:** {error_data['type']}
+**Severity:** {error_data['severity']}
+**Error Signature:** `{signature}`
+
+## Problem Description
+{error_data['message']}
+
+## Stack Trace
+```python
+{error_data.get('stack_trace', 'N/A')}
+```
+
+## Action Required
+This PR is a draft and needs to be completed with the actual fix.
+
+**Next Steps:**
+1. Review the error details in issue #{issue_number}
+2. Analyze the stack trace and context
+3. Implement the fix
+4. Add tests to prevent regression
+5. Mark as ready for review
+
+{'*GitHub Copilot has been invoked to suggest fixes.*' if self.enable_copilot_autofix else ''}
+
+Closes #{issue_number}
+
+---
+*This PR was automatically created by the P2P Error Aggregator*
+"""
+            
+            logger.info(f"Creating draft PR for issue #{issue_number}")
+            
+            # Note: Creating a PR requires:
+            # 1. A branch to be created
+            # 2. Commits on that branch
+            # Since we don't have changes yet, we log this for now
+            # In a full implementation, we would:
+            # - Create branch
+            # - Make automated changes (with Copilot)
+            # - Push changes
+            # - Create PR
+            
+            logger.info(f"  Branch name: {branch_name}")
+            logger.info(f"  Title: {pr_title}")
+            
+            # Invoke Copilot for auto-fix if enabled
+            if self.enable_copilot_autofix:
+                self._invoke_copilot_autofix(issue_number, error_data, signature)
+            
+            # Placeholder - would create actual PR here
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error creating draft PR: {e}")
+            return None
+    
+    def _invoke_copilot_autofix(
+        self,
+        issue_number: str,
+        error_data: Dict,
+        signature: str
+    ) -> bool:
+        """
+        Invoke GitHub Copilot to suggest fixes for the error.
+        
+        Args:
+            issue_number: GitHub issue number
+            error_data: Error data dictionary
+            signature: Error signature
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Import Copilot SDK
+            try:
+                from ipfs_accelerate_py.copilot_sdk.wrapper import CopilotSDK, HAVE_COPILOT_SDK
+            except ImportError:
+                logger.warning("Copilot SDK not available for auto-healing")
+                return False
+            
+            if not HAVE_COPILOT_SDK:
+                logger.warning("Copilot SDK not installed")
+                return False
+            
+            # Build analysis prompt for Copilot
+            prompt = f"""Analyze the following error from the IPFS Accelerate CLI and suggest fixes:
+
+**Error Type:** {error_data['type']}
+**Severity:** {error_data['severity']}
+**Error Message:**
+{error_data['message']}
+
+**Stack Trace:**
+{error_data.get('stack_trace', 'N/A')}
+
+**Context:**
+{json.dumps(error_data.get('context', {}), indent=2)}
+
+Please provide:
+1. Root cause analysis
+2. Suggested code fixes
+3. Files that need to be modified
+4. Test cases to prevent regression
+5. Any related issues or patterns
+
+Issue #{issue_number} tracks this error.
+"""
+            
+            logger.info(f"Invoking Copilot for issue #{issue_number}")
+            logger.debug(f"Copilot prompt length: {len(prompt)} characters")
+            
+            # In a full implementation:
+            # 1. Initialize CopilotSDK
+            # 2. Create a session
+            # 3. Send the prompt
+            # 4. Parse the response
+            # 5. Apply suggested fixes (with review)
+            # 6. Create commits
+            # 7. Push to branch
+            
+            # For now, log that we would invoke it
+            logger.info("✓ Copilot analysis would be performed here")
+            logger.info("  This would generate fix suggestions for the error")
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error invoking Copilot auto-fix: {e}")
+            return False
     
     def get_error_statistics(self) -> Dict:
         """

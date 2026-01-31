@@ -1578,6 +1578,36 @@ class IPFSAccelerateCLI:
 
 def main():
     """Main entry point for the CLI"""
+    # Initialize error handler
+    error_handler = None
+    
+    try:
+        # Import error handler
+        from ipfs_accelerate_py.error_handler import CLIErrorHandler
+        
+        # Check if we should enable auto features via environment variables
+        enable_auto_issue = os.environ.get('IPFS_AUTO_ISSUE', '').lower() in ('1', 'true', 'yes')
+        enable_auto_pr = os.environ.get('IPFS_AUTO_PR', '').lower() in ('1', 'true', 'yes')
+        enable_auto_heal = os.environ.get('IPFS_AUTO_HEAL', '').lower() in ('1', 'true', 'yes')
+        
+        # Get repository from environment or default
+        repo = os.environ.get('IPFS_REPO', 'endomorphosis/ipfs_accelerate_py')
+        
+        # Initialize error handler
+        error_handler = CLIErrorHandler(
+            repo=repo,
+            enable_auto_issue=enable_auto_issue,
+            enable_auto_pr=enable_auto_pr,
+            enable_auto_heal=enable_auto_heal,
+            log_context_lines=50
+        )
+        
+        logger.debug(f"Error handler initialized: auto_issue={enable_auto_issue}, auto_pr={enable_auto_pr}, auto_heal={enable_auto_heal}")
+        
+    except ImportError as e:
+        logger.debug(f"Error handler not available: {e}")
+        error_handler = None
+    
     try:
         # Create argument parser
         parser = argparse.ArgumentParser(
@@ -1909,10 +1939,34 @@ Examples:
             
     except KeyboardInterrupt:
         logger.info("CLI interrupted by user")
+        if error_handler:
+            error_handler.cleanup()
         return 0
     except Exception as e:
         logger.error(f"CLI error: {e}")
+        
+        # Capture error with error handler if available
+        if error_handler:
+            try:
+                error_handler.capture_error(e)
+                
+                # Create issue if auto-issue is enabled
+                if error_handler.enable_auto_issue:
+                    error_handler.create_issue_from_error(e)
+                    
+            except Exception as handler_error:
+                logger.debug(f"Error handler failed: {handler_error}")
+            finally:
+                error_handler.cleanup()
+        
         return 1
+    finally:
+        # Cleanup error handler
+        if error_handler:
+            try:
+                error_handler.cleanup()
+            except Exception as e:
+                logger.debug(f"Error during cleanup: {e}")
 
 
 if __name__ == "__main__":
