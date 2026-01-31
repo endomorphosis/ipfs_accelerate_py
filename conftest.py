@@ -15,6 +15,16 @@ warnings.filterwarnings(
     message=r"Can't initialize NVML",
     category=UserWarning,
 )
+warnings.filterwarnings(
+    "ignore",
+    message=r".*result_aggregator\.log.*",
+    category=ResourceWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r".*result_aggregator_integration\.log.*",
+    category=ResourceWarning,
+)
 
 
 def pytest_configure() -> None:
@@ -49,3 +59,28 @@ def pytest_configure() -> None:
         message=r"Can't initialize NVML",
         category=UserWarning,
     )
+
+
+def _close_result_aggregator_file_handlers() -> None:
+    import logging
+
+    targets = {"result_aggregator.log", "result_aggregator_integration.log"}
+
+    def _close_from_logger(logger: logging.Logger) -> None:
+        for handler in list(logger.handlers):
+            if isinstance(handler, logging.FileHandler):
+                filename = os.path.basename(getattr(handler, "baseFilename", ""))
+                if filename in targets:
+                    handler.close()
+                    logger.removeHandler(handler)
+
+    root_logger = logging.getLogger()
+    _close_from_logger(root_logger)
+
+    for logger in logging.Logger.manager.loggerDict.values():
+        if isinstance(logger, logging.Logger):
+            _close_from_logger(logger)
+
+
+def pytest_sessionfinish(session, exitstatus):
+    _close_result_aggregator_file_handlers()
