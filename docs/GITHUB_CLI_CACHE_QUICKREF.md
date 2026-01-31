@@ -81,7 +81,7 @@ print(f'Hit rate: {c.hits/(c.hits+c.misses)*100:.1f}%')
 - `tools/gh_api_cached.py` - Cache wrapper script
 - `ipfs_accelerate_py/github_cli/cache.py` - Cache implementation
 - `.vscode/settings.json` - VSCode cache config
-- `GITHUB_CLI_CACHE.md` - Full documentation
+- `docs/GITHUB_CLI_CACHE.md` - Full documentation
 
 ## Benefits
 
@@ -93,4 +93,4 @@ print(f'Hit rate: {c.hits/(c.hits+c.misses)*100:.1f}%')
 
 ## Learn More
 
-See [GITHUB_CLI_CACHE.md](GITHUB_CLI_CACHE.md) for complete documentation.
+See [docs/GITHUB_CLI_CACHE.md](docs/GITHUB_CLI_CACHE.md) for complete documentation.

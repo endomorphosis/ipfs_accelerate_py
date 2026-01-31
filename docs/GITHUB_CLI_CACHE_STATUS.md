@@ -216,7 +216,7 @@ Check workflow logs for cache messages:
 ## 📚 Documentation
 
 ### Complete Guides
-1. **GITHUB_CLI_CACHE.md** (11KB)
+1. **docs/GITHUB_CLI_CACHE.md** (11KB)
    - Complete implementation guide
    - Architecture and design
    - Configuration reference

@@ -1,1 +1,0 @@
-python3 -m ipfs_accelerate_py.main
