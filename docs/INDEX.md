@@ -18,7 +18,7 @@ This is the central documentation index for the IPFS Accelerate Python framework
 
 ### **Advanced Features**
 - **[WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)** - Browser-based acceleration guide
-- **[MCP Integration](../mcp/README.md)** - Model Control Protocol for automation
+- **[MCP Integration](../ipfs_accelerate_py/mcp/README.md)** - Model Control Protocol for automation
 - **[Testing Framework](TESTING.md)** - Comprehensive testing and validation
 
 ## 🏢 **Enterprise Documentation**
@@ -114,6 +114,24 @@ This is the central documentation index for the IPFS Accelerate Python framework
 
 ---
 
+## 📚 **Documentation Organization**
+
+### **Active Documentation**
+All current, maintained documentation is in the main `/docs/` directory and organized subdirectories:
+- **Core Docs**: API.md, ARCHITECTURE.md, INSTALLATION.md, USAGE.md, TESTING.md
+- **Specialized Guides**: [guides/](guides/) - Deployment, Docker, GitHub, P2P, CLI, Infrastructure
+- **Architecture**: [architecture/](architecture/) - System architecture and design docs
+
+### **Historical Documentation**
+- **[Archive](archive/README.md)** - Historical session summaries and implementation reports
+- **[Development History](development_history/README.md)** - Major milestones and phase completions
+- **[Exports](exports/README.md)** - HTML, PDF, and other non-markdown documentation exports
+
+### **Documentation Audit**
+- **[Documentation Audit Report](DOCUMENTATION_AUDIT_REPORT.md)** - Comprehensive audit findings and recommendations
+
+---
+
 ## 🔍 **Search Tips**
 
 - **Use Ctrl+F** to search within this index
@@ -127,4 +145,4 @@ For troubleshooting, see the **[Installation Troubleshooting Guide](INSTALLATION
 
 ---
 
-*Last updated: Based on comprehensive documentation scan and analysis*
+*Last updated: January 2026 - After comprehensive documentation audit and cleanup*
