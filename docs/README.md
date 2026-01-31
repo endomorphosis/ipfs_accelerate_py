@@ -96,6 +96,25 @@ IPFS Accelerate Python is a comprehensive framework that combines:
 - **Code of Conduct**: Review our community guidelines
 - **Development Setup**: Follow the [Testing Guide](TESTING.md#development-setup)
 
+## Documentation Organization
+
+### **Current Documentation**
+All active, maintained documentation is organized in this directory:
+- **Core Docs**: Installation, Usage, API, Architecture, Testing
+- **[Guides](guides/)**: Topic-specific guides (GitHub, Docker, P2P, Deployment)
+- **[Architecture](architecture/)**: System architecture and design docs
+
+### **Historical Documentation**
+- **[Archive](archive/README.md)**: Historical session summaries and implementation reports
+- **[Development History](development_history/README.md)**: Major milestones and phase completions
+- **[Exports](exports/README.md)**: HTML, PDF, and other non-markdown exports
+
+### **Documentation Audit**
+A comprehensive audit was completed in January 2026:
+- **[Audit Report](DOCUMENTATION_AUDIT_REPORT.md)**: Complete findings and recommendations
+- 200+ files reviewed, duplicates removed, links fixed
+- Archive organized and documented
+
 ## Documentation Updates
 
 This documentation was comprehensively updated to reflect the current state of the IPFS Accelerate Python framework, including recent additions such as:
@@ -109,6 +128,7 @@ This documentation was comprehensively updated to reflect the current state of t
 All examples, APIs, and features have been verified and updated for accuracy.
 
 **Last Updated**: January 2026  
+**Last Audit**: January 31, 2026  
 **Framework Version**: 0.0.45+  
 **Documentation Coverage**: Comprehensive (Core + Recent Features)
 
