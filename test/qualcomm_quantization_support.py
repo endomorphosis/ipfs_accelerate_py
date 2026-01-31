@@ -30,11 +30,11 @@ except ImportError:
 
 # Try importing quality models modules
 try::
-    from centralized_hardware_detection import generators.hardware.hardware_detection as hardware_detection
+    from centralized_hardware_detection import scripts.generators.hardware.hardware_detection as hardware_detection
     HAS_HARDWARE_DETECTION = True
 except ImportError:
     HAS_HARDWARE_DETECTION = False
-    print())))))))))"Warning: Could not import generators.hardware.hardware_detection as hardware_detection module.")
+    print())))))))))"Warning: Could not import scripts.generators.hardware.hardware_detection as hardware_detection module.")
 
 # Define quantization methods
     QUANTIZATION_METHODS = {}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}

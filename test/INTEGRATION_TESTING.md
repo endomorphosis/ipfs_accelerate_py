@@ -40,11 +40,11 @@ The integration testing system supports various test categories:
 
 | Category | Description | Components Tested |
 |----------|-------------|-------------------|
-| Hardware Detection | Tests hardware detection capabilities | generators/hardware/hardware_detection.py |
+| Hardware Detection | Tests hardware detection capabilities | scripts/generators/hardware/hardware_detection.py |
 | Model Family Classification | Tests model family classification | model_family_classifier.py |
 | ResourcePool | Tests resource sharing and management | resource_pool.py |
 | Hardware-Model Integration | Tests hardware and model integration | hardware_model_integration.py |
-| Web Platform Support | Tests WebNN and WebGPU integration | generators/hardware/hardware_detection.py, ResourcePool |
+| Web Platform Support | Tests WebNN and WebGPU integration | scripts/generators/hardware/hardware_detection.py, ResourcePool |
 | Cross-Platform Compatibility | Tests compatibility across platforms | All components |
 | Hardware Compatibility | Tests and reports hardware compatibility | hardware_compatibility_reporter.py |
 
@@ -158,7 +158,7 @@ The framework implements resilient integration testing that adapts to the availa
    - Generate comprehensive compatibility matrices
    - Provide detailed error reports
 
-2. **generators/hardware/hardware_detection.py Missing**:
+2. **scripts/generators/hardware/hardware_detection.py Missing**:
    - Run limited tests with basic hardware detection
    - Use ResourcePool's fallback hardware detection
    - Skip hardware-specific integration tests

@@ -189,13 +189,13 @@ api.store_performance_result(model_name="bert-base-uncased", hardware_type="cuda
 python test/run_benchmark_with_db.py --model bert-base-uncased --hardware cuda --batch-sizes 1,2,4,8,16 --db ./benchmark_db.duckdb
 
 # Run benchmarks with database integration using standard model benchmark runner
-python generators/benchmark_generators/run_model_benchmarks.py --hardware cuda --models-set small --db-path ./benchmark_db.duckdb
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --hardware cuda --models-set small --db-path ./benchmark_db.duckdb
 
 # Run benchmarks without storing in database
-python generators/benchmark_generators/run_model_benchmarks.py --hardware cuda --models-set small --no-db-store
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --hardware cuda --models-set small --no-db-store
 
 # Generate database visualizations from benchmark results
-python generators/benchmark_generators/run_model_benchmarks.py --hardware cuda --visualize-from-db
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --hardware cuda --visualize-from-db
 ```
 
 ### Querying the Database

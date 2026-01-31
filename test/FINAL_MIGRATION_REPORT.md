@@ -4,7 +4,7 @@
 
 The code reorganization project has been successfully completed, with files moved from the `test/` directory into two new dedicated directories:
 
-- `generators/`: Contains all generator-related code (216 files)
+- `scripts/generators/`: Contains all generator-related code (216 files)
 - `duckdb_api/`: Contains all database-related code (83 files)
 
 Total files migrated: **299 files**
@@ -34,8 +34,8 @@ Total files migrated: **299 files**
 ### Generators Package
 
 ```
-generators/
-├── benchmark_generators/        # Benchmark generation tools
+scripts/generators/
+├── benchmark_scripts/generators/        # Benchmark generation tools
 ├── creators/                   # Creator utilities
 │   └── schemas/               # Schema definition tools
 ├── fixes/                     # Fix scripts for various components
@@ -48,9 +48,9 @@ generators/
 │   ├── models/               # Model-specific runners
 │   ├── remaining/            # Additional runner files
 │   └── web/                  # Web-specific runners
-├── skill_generators/          # Skill generation tools
+├── skill_scripts/generators/          # Skill generation tools
 │   └── models/               # Model-specific skill generators
-├── template_generators/       # Template generation utilities
+├── template_scripts/generators/       # Template generation utilities
 ├── templates/                 # Template files
 │   ├── custom/               # Custom templates
 │   ├── extra/                # Additional templates
@@ -58,7 +58,7 @@ generators/
 │   ├── model_templates/      # Model-specific templates
 │   ├── remaining/            # Additional template files
 │   └── skill_templates/      # Skill-specific templates
-├── test_generators/           # Test generation tools
+├── test_scripts/generators/           # Test generation tools
 │   ├── enhanced/             # Enhanced test generators
 │   ├── functional/           # Functional test generators
 │   ├── misc/                 # Miscellaneous test generators

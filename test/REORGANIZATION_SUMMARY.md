@@ -17,14 +17,14 @@ This document summarizes the codebase reorganization completed on March 9, 2025.
 
 ```
 /
-├── generators/             # All generator-related code (216 files)
-│   ├── benchmark_generators/ # Benchmark generation tools
+├── scripts/generators/             # All generator-related code (216 files)
+│   ├── benchmark_scripts/generators/ # Benchmark generation tools
 │   ├── models/             # Model implementations and skill files
 │   ├── runners/            # Test runner scripts
-│   ├── skill_generators/   # Skill generation tools
-│   ├── template_generators/ # Template generation utilities
+│   ├── skill_scripts/generators/   # Skill generation tools
+│   ├── template_scripts/generators/ # Template generation utilities
 │   ├── templates/          # Template files and template system
-│   ├── test_generators/    # Test generation tools
+│   ├── test_scripts/generators/    # Test generation tools
 │   └── utils/              # Utility functions
 ├── duckdb_api/             # All database-related code (83 files)
 │   ├── core/               # Core database functionality
@@ -40,8 +40,8 @@ This document summarizes the codebase reorganization completed on March 9, 2025.
 The following documentation files were updated to reflect the new directory structure:
 
 1. **WEB_PLATFORM_INTEGRATION_GUIDE.md**:
-   - Updated references to `generators/test_generators/merged_test_generator.py` to use `generators/generators/test_generators/merged_test_generator.py`
-   - Updated references to `fix_test_generator.py` to use `generators/fix_test_generator.py`
+   - Updated references to `scripts/generators/test_scripts/generators/merged_test_generator.py` to use `scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py`
+   - Updated references to `fix_test_generator.py` to use `scripts/generators/fix_test_generator.py`
    - Updated references to `run_model_benchmarks.py` to use `duckdb_api/run_model_benchmarks.py`
 
 2. **BENCHMARK_TIMING_REPORT_GUIDE.md**:
@@ -52,13 +52,13 @@ The following documentation files were updated to reflect the new directory stru
    - Updated GitHub Actions workflow example
 
 3. **README.md**:
-   - Updated all references to test generators to use the generators/ directory
+   - Updated all references to test generators to use the scripts/generators/ directory
    - Updated all references to benchmark tools to use the duckdb_api/ directory
    - Updated examples in the "Running Tests" section
 
 4. **New Documentation Created**:
    - **MIGRATION_GUIDE.md**: Comprehensive guide to the codebase reorganization
-   - **/generators/README.md**: Documentation for the generators directory
+   - **/scripts/generators/README.md**: Documentation for the generators directory
    - **/duckdb_api/README.md**: Documentation for the duckdb_api directory
    - **DOCUMENTATION_UPDATE_SUMMARY.md**: Summary of all documentation updates
    - **WEB_PLATFORM_INTEGRATION_UPDATES.md**: Detailed record of updates to the web platform integration guide
@@ -70,26 +70,26 @@ The following path update patterns were consistently applied across all document
 
 | Old Path | New Path |
 |----------|----------|
-| `python generators/benchmark_generators/run_model_benchmarks.py` | `python duckdb_api/run_model_benchmarks.py` |
+| `python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py` | `python duckdb_api/run_model_benchmarks.py` |
 | `python test/run_comprehensive_benchmarks.py` | `python duckdb_api/run_comprehensive_benchmarks.py` |
-| `python generators/test_generators/merged_test_generator.py` | `python generators/generators/test_generators/merged_test_generator.py` |
-| `python fix_test_generator.py` | `python generators/fix_test_generator.py` |
+| `python scripts/generators/test_scripts/generators/merged_test_generator.py` | `python scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py` |
+| `python fix_test_generator.py` | `python scripts/generators/fix_test_generator.py` |
 | `python duckdb_api/core/duckdb_api/core/benchmark_db_query.py` | `python duckdb_api/duckdb_api/core/benchmark_db_query.py` |
 | `python run_benchmark_timing_report.py` | `python duckdb_api/run_benchmark_timing_report.py` |
 | `python query_benchmark_timings.py` | `python duckdb_api/query_benchmark_timings.py` |
-| `python test/test_web_platform_optimizations.py` | `python generators/test_web_platform_optimizations.py` |
-| `python test/test_ultra_low_precision.py` | `python generators/test_ultra_low_precision.py` |
-| `python test/run_real_web_benchmarks.py` | `python generators/run_real_web_benchmarks.py` |
-| `python test/check_browser_webnn_webgpu.py` | `python generators/check_browser_webnn_webgpu.py` |
+| `python test/test_web_platform_optimizations.py` | `python scripts/generators/test_web_platform_optimizations.py` |
+| `python test/test_ultra_low_precision.py` | `python scripts/generators/test_ultra_low_precision.py` |
+| `python test/run_real_web_benchmarks.py` | `python scripts/generators/run_real_web_benchmarks.py` |
+| `python test/check_browser_webnn_webgpu.py` | `python scripts/generators/check_browser_webnn_webgpu.py` |
 
 ## Latest Updates (March 10, 2025)
 
 The following key generator components have been fixed and migrated:
 
 1. **Generator Files Fixed**:
-   - `fixed_merged_test_generator_clean.py` moved to `generators/test_generators/`
-   - `test_generator_with_resource_pool.py` moved to `generators/utils/`
-   - `resource_pool.py` moved to `generators/utils/`
+   - `fixed_merged_test_generator_clean.py` moved to `scripts/generators/test_scripts/generators/`
+   - `test_generator_with_resource_pool.py` moved to `scripts/generators/utils/`
+   - `resource_pool.py` moved to `scripts/generators/utils/`
 
 2. **Syntax Fixes**:
    - Fixed syntax errors in key generator files including:

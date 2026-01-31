@@ -273,19 +273,19 @@ Use the provided test script to verify the OpenVINO backend:
 
 ```bash
 # Test backend initialization
-python generators/models/test_openvino_backend.py --test-init
+python scripts/generators/models/test_openvino_backend.py --test-init
 
 # Test model operations
-python generators/models/test_openvino_backend.py --test-model --model bert-base-uncased --device CPU
+python scripts/generators/models/test_openvino_backend.py --test-model --model bert-base-uncased --device CPU
 
 # Run benchmarks
-python generators/models/test_openvino_backend.py --run-benchmarks --model bert-base-uncased --device CPU --iterations 10
+python scripts/generators/models/test_openvino_backend.py --run-benchmarks --model bert-base-uncased --device CPU --iterations 10
 
 # Compare with CPU performance
-python generators/models/test_openvino_backend.py --compare-cpu --model bert-base-uncased --iterations 5
+python scripts/generators/models/test_openvino_backend.py --compare-cpu --model bert-base-uncased --iterations 5
 
 # Run all tests
-python generators/models/test_openvino_backend.py --run-all
+python scripts/generators/models/test_openvino_backend.py --run-all
 ```
 
 ## Example Applications

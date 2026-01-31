@@ -31,10 +31,10 @@ In addition to moving the workflow files, the file paths referenced in these wor
 | `test/model_performance_predictor.py` | `predictive_performance/model_performance_predictor.py` |
 | `test/create_benchmark_schema.py` | `duckdb_api/schema/create_benchmark_schema.py` |
 | `test/ci_benchmark_integrator.py` | `duckdb_api/scripts/ci_benchmark_integrator.py` |
-| `test/test_ipfs_accelerate.py` | `generators/models/test_ipfs_accelerate.py` |
+| `test/test_ipfs_accelerate.py` | `scripts/generators/models/test_ipfs_accelerate.py` |
 | `test/generate_compatibility_matrix.py` | `duckdb_api/visualization/generate_compatibility_matrix.py` |
 | `test/generate_enhanced_compatibility_matrix.py` | `duckdb_api/visualization/generate_enhanced_compatibility_matrix.py` |
-| `test/integration_test_suite.py` | `generators/test_runners/integration_test_suite.py` |
+| `test/integration_test_suite.py` | `scripts/generators/test_runners/integration_test_suite.py` |
 | `test/web_platform_test_runner.py` | `fixed_web_platform/web_platform_test_runner.py` |
 
 ## Documentation Updates

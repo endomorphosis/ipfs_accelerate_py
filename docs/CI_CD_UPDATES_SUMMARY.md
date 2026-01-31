@@ -9,7 +9,7 @@ Original Structure:
 - CI/CD workflows in `/test/.github/workflows/`
 
 New Structure:
-- Generators moved to top-level `/generators/` directory
+- Generators moved to top-level `/scripts/generators/` directory
 - Database-related tools moved to top-level `/duckdb_api/` directory
 - Web platform implementations in `/fixed_web_platform/` directory
 - CI/CD workflows moved to standard `/.github/workflows/` location
@@ -19,11 +19,11 @@ New Structure:
 The following workflow files have been updated to use the new directory structure:
 
 1. **test_and_benchmark.yml**
-   - Updated monitored paths to include `generators/**` and `duckdb_api/**` instead of `test/**`
+   - Updated monitored paths to include `scripts/generators/**` and `duckdb_api/**` instead of `test/**`
    - Path references already pointed to new directories for scripts
 
 2. **benchmark_db_ci.yml**
-   - Updated monitored paths to include `generators/**` and `duckdb_api/**` instead of `test/**`
+   - Updated monitored paths to include `scripts/generators/**` and `duckdb_api/**` instead of `test/**`
    - Script paths already pointed to new directories
 
 3. **integration_tests.yml**
@@ -35,7 +35,7 @@ The following workflow files have been updated to use the new directory structur
    - Script paths already updated to reference `duckdb_api/visualization/`
 
 5. **test_results_integration.yml**
-   - Updated monitored paths to include `generators/**` and `duckdb_api/**` instead of `test/**`
+   - Updated monitored paths to include `scripts/generators/**` and `duckdb_api/**` instead of `test/**`
    - Script paths already updated to reference new directories
 
 ## Key Path Changes
@@ -43,7 +43,7 @@ The following workflow files have been updated to use the new directory structur
 All workflow files now reference paths in the new directory structure:
 
 - Script paths use: 
-  - `generators/models/test_ipfs_accelerate.py` 
+  - `scripts/generators/models/test_ipfs_accelerate.py` 
   - `duckdb_api/core/run_benchmark_with_db.py`
   - `duckdb_api/visualization/generate_compatibility_matrix.py`
   - `duckdb_api/scripts/create_benchmark_schema.py`
@@ -59,7 +59,7 @@ All workflow files now reference paths in the new directory structure:
   To:
   ```yaml
   paths:
-    - 'generators/**'
+    - 'scripts/generators/**'
     - 'duckdb_api/**'
     - 'fixed_web_platform/**'
   ```
@@ -80,7 +80,7 @@ To test workflows locally with the new directory structure:
 
 ```bash
 # Run model tests
-python generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --endpoints cpu
+python scripts/generators/models/test_ipfs_accelerate.py --models "bert-base-uncased" --endpoints cpu
 
 # Run benchmarks with database integration
 python duckdb_api/core/run_benchmark_with_db.py --models bert-base-uncased --hardware cpu
@@ -134,11 +134,11 @@ The verification script initially identified several missing files that were ref
 | duckdb_api/core/run_benchmark_with_db.py | test/duckdb_api/core/run_benchmark_with_db.py | ✅ Migrated |
 | duckdb_api/scripts/ci_benchmark_integrator.py | test/scripts/ci_benchmark_integrator.py | ✅ Migrated |
 | duckdb_api/scripts/create_benchmark_schema.py | test/scripts/benchmark_db/create_benchmark_schema.py | ✅ Migrated |
-| duckdb_api/visualization/generate_compatibility_matrix.py | generators/generate_compatibility_matrix.py | ✅ Migrated |
-| duckdb_api/visualization/generate_enhanced_compatibility_matrix.py | generators/generate_enhanced_compatibility_matrix.py | ✅ Migrated |
+| duckdb_api/visualization/generate_compatibility_matrix.py | scripts/generators/generate_compatibility_matrix.py | ✅ Migrated |
+| duckdb_api/visualization/generate_enhanced_compatibility_matrix.py | scripts/generators/generate_enhanced_compatibility_matrix.py | ✅ Migrated |
 | fixed_web_platform/web_platform_test_runner.py | test/archive/web_platform_test_runner.py | ✅ Migrated |
-| generators/models/test_ipfs_accelerate.py | test/test_ipfs_accelerate.py | ✅ Migrated |
-| generators/test_runners/integration_test_suite.py | test/integration_test_suite.py | ✅ Migrated |
+| scripts/generators/models/test_ipfs_accelerate.py | test/test_ipfs_accelerate.py | ✅ Migrated |
+| scripts/generators/test_runners/integration_test_suite.py | test/integration_test_suite.py | ✅ Migrated |
 | predictive_performance/hardware_model_predictor.py | test/archive/hardware_model_predictor.py | ✅ Migrated |
 | predictive_performance/model_performance_predictor.py | test/archive/model_performance_predictor.py | ✅ Migrated |
 
@@ -188,9 +188,9 @@ Run this script before pushing changes to ensure all referenced files exist and 
 The CI/CD workflow migration has been successfully completed, addressing the key issues that were discovered during implementation:
 
 1. ✅ **Fixed Corrupted Python Files**: Three key files that were corrupted have been fixed by replacing them with clean versions and adding proper dependency handling:
-   - `generators/models/test_ipfs_accelerate.py`
+   - `scripts/generators/models/test_ipfs_accelerate.py`
    - `duckdb_api/analysis/benchmark_regression_detector.py`
-   - `generators/test_runners/integration_test_suite.py`
+   - `scripts/generators/test_runners/integration_test_suite.py`
 
 2. ✅ **Added Dependency Resilience**: The code has been modified to gracefully handle missing dependencies by:
    - Adding proper try/except blocks around optional dependency imports

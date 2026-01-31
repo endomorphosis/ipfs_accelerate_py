@@ -21,7 +21,7 @@ This script:
     HARDWARE_DETECTION_IMPORTS = """
 # Import hardware detection capabilities if available:
 try:
-    from generators.hardware.hardware_detection import ()
+    from scripts.generators.hardware.hardware_detection import ()
     HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
     detect_all_hardware
     )
@@ -50,7 +50,7 @@ def update_file()file_path):
                 break
     
     # Check if we already added the hardware detection imports:
-    if any()"from generators.hardware.hardware_detection import" in line for line in lines):
+    if any()"from scripts.generators.hardware.hardware_detection import" in line for line in lines):
         print()f"\1{file_path}\3")
                 return False
     

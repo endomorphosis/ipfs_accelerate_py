@@ -18,7 +18,7 @@ logger = logging.getLogger())))))__name__)
 
 def test_comprehensive_hardware_detection())))))):
     """Test the enhanced comprehensive hardware detection function"""
-    from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
+    from scripts.generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
     
     logger.info())))))"Testing enhanced comprehensive hardware detection...")
     
@@ -121,7 +121,7 @@ def validate_results())))))hardware):
 
 def compare_with_basic_detection())))))):
     """Compare the comprehensive detection with the standard detection"""
-    from generators.hardware.hardware_detection import detect_available_hardware, detect_hardware_with_comprehensive_checks, CPU, MPS, OPENVINO, CUDA, ROCM
+    from scripts.generators.hardware.hardware_detection import detect_available_hardware, detect_hardware_with_comprehensive_checks, CPU, MPS, OPENVINO, CUDA, ROCM
     
     logger.info())))))"Comparing comprehensive and standard hardware detection...")
     
@@ -274,7 +274,7 @@ def compare_with_basic_detection())))))):
 
 def test_hardware_model_integration())))))):
     """Test the integration between hardware detection and model family classification"""
-    from generators.hardware.hardware_detection import HardwareDetector, detect_hardware_with_comprehensive_checks, CPU, CUDA, ROCM, MPS, OPENVINO
+    from scripts.generators.hardware.hardware_detection import HardwareDetector, detect_hardware_with_comprehensive_checks, CPU, CUDA, ROCM, MPS, OPENVINO
     from model_family_classifier import classify_model
     
     logger.info())))))"Testing hardware detection and model family classifier integration...")

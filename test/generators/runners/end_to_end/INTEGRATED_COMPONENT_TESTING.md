@@ -59,7 +59,7 @@ python integrated_component_test_runner.py --clean-old-results --days 14
 ## Directory Structure
 
 ```
-generators/
+scripts/generators/
 ├── expected_results/        # Expected outputs for regression testing
 │   ├── bert-base-uncased/
 │   │   ├── cpu/

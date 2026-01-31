@@ -48,7 +48,7 @@ The test suite validates three main aspects:
 Tests the implementation of the VLLM API client:
 
 ```bash
-python generators/models/test_vllm_unified.py --standard
+python scripts/generators/models/test_vllm_unified.py --standard
 ```
 
 This validates:
@@ -65,7 +65,7 @@ This validates:
 Benchmarks the performance of the API:
 
 ```bash
-python generators/models/test_vllm_unified.py --performance
+python scripts/generators/models/test_vllm_unified.py --performance
 ```
 
 This measures:
@@ -80,7 +80,7 @@ This measures:
 Tests connection to an actual VLLM server:
 
 ```bash
-python generators/models/test_vllm_unified.py --real
+python scripts/generators/models/test_vllm_unified.py --real
 ```
 
 This verifies:
@@ -93,7 +93,7 @@ This verifies:
 Run all test suites:
 
 ```bash
-python generators/models/test_vllm_unified.py --all
+python scripts/generators/models/test_vllm_unified.py --all
 ```
 
 ## Configuration Options
@@ -108,7 +108,7 @@ You can customize the tests with these parameters:
 
 Example with custom configuration:
 ```bash
-python generators/models/test_vllm_unified.py --all --model meta-llama/Llama-2-7b-chat-hf --api-url http://vllm-server:8000 --timeout 60
+python scripts/generators/models/test_vllm_unified.py --all --model meta-llama/Llama-2-7b-chat-hf --api-url http://vllm-server:8000 --timeout 60
 ```
 
 ## Environment Variables

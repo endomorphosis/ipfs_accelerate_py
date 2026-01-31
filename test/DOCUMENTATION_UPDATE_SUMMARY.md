@@ -2,7 +2,7 @@
 
 This document summarizes the updates made to documentation files to reflect the recent code reorganization, where files were moved from the `test/` directory to two new top-level directories:
 
-1. `generators/` - Contains all generator-related files (test generators, model generators, etc.)
+1. `scripts/generators/` - Contains all generator-related files (test generators, model generators, etc.)
 2. `duckdb_api/` - Contains all database-related files
 
 ## Updated Documentation Files
@@ -18,18 +18,18 @@ A total of **47 documentation files** have been updated with new file paths. Key
 2. **TIME_SERIES_PERFORMANCE_GUIDE.md**
    - Updated paths from `test/run_time_series_performance.py` to `duckdb_api/utils/run_time_series_performance.py`
    - Updated paths from `test/time_series_performance.py` to `duckdb_api/core/time_series_performance.py`
-   - Updated paths from `test/run_model_benchmarks.py` to `generators/benchmark_generators/run_model_benchmarks.py`
+   - Updated paths from `test/run_model_benchmarks.py` to `scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py`
    - Updated import paths from `from time_series_performance import TimeSeriesPerformance` to `from duckdb_api.core.time_series_performance import TimeSeriesPerformance`
    - Updated paths from `test/db_schema/time_series_schema.sql` to `duckdb_api/schema/time_series_schema.sql`
 
 3. **WEB_PLATFORM_INTEGRATION_GUIDE.md**
-   - Updated paths from `test/generators/skill_generators/integrated_skillset_generator.py` to `generators/generators/skill_generators/integrated_skillset_generator.py`
-   - Updated paths from `test/run_model_benchmarks.py` to `generators/benchmark_generators/run_model_benchmarks.py`
-   - Updated paths from `test/web_platform_test_runner.py` to `generators/runners/web/web_platform_test_runner.py`
-   - Updated paths from `test/template_inheritance_system.py` to `generators/templates/template_inheritance_system.py`
+   - Updated paths from `test/scripts/generators/skill_scripts/generators/integrated_skillset_generator.py` to `scripts/generators/scripts/generators/skill_scripts/generators/integrated_skillset_generator.py`
+   - Updated paths from `test/run_model_benchmarks.py` to `scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py`
+   - Updated paths from `test/web_platform_test_runner.py` to `scripts/generators/runners/web/web_platform_test_runner.py`
+   - Updated paths from `test/template_inheritance_system.py` to `scripts/generators/templates/template_inheritance_system.py`
    - Updated paths from `test/run_web_platform_tests_with_db.py` to `duckdb_api/web/run_web_platform_tests_with_db.py`
-   - Updated paths from `test/test_web_platform_integration.py` to `generators/web/test_web_platform_integration.py`
-   - Updated paths from `test/verify_key_models.py` to `generators/validators/verify_key_models.py`
+   - Updated paths from `test/test_web_platform_integration.py` to `scripts/generators/web/test_web_platform_integration.py`
+   - Updated paths from `test/verify_key_models.py` to `scripts/generators/validators/verify_key_models.py`
 
 4. **BENCHMARK_DB_QUERY_GUIDE.md**
    - Updated paths from absolute file references to the appropriate new directory structure
@@ -60,7 +60,7 @@ Additional updates were made to several other files including documentation guid
 The following patterns were applied for the updates:
 
 1. For generator-related files (test generators, model generators, etc.):
-   - Changed: `test/file.py` to `generators/appropriate_subdirectory/file.py`
+   - Changed: `test/file.py` to `scripts/generators/appropriate_subdirectory/file.py`
 
 2. For database-related files:
    - Changed: `test/file.py` to `duckdb_api/appropriate_subdirectory/file.py`
@@ -69,7 +69,7 @@ The following patterns were applied for the updates:
    - Added the appropriate module path prefix (e.g., `duckdb_api.core.` or `generators.`)
 
 4. For absolute paths:
-   - Updated from `/home/barberb/ipfs_accelerate_py/test/file.py` to `/home/barberb/ipfs_accelerate_py/generators/appropriate_subdirectory/file.py` or `/home/barberb/ipfs_accelerate_py/duckdb_api/appropriate_subdirectory/file.py`
+   - Updated from `/home/barberb/ipfs_accelerate_py/test/file.py` to `/home/barberb/ipfs_accelerate_py/scripts/generators/appropriate_subdirectory/file.py` or `/home/barberb/ipfs_accelerate_py/duckdb_api/appropriate_subdirectory/file.py`
 
 5. For simple command invocations:
    - Updated command examples to use the new file paths

@@ -32,7 +32,7 @@ except ImportError as e:
     RESOURCE_POOL_AVAILABLE = False
 
 try:
-    from generators.hardware.hardware_detection import ())))))
+    from scripts.generators.hardware.hardware_detection import ())))))
     HardwareDetector, detect_available_hardware,
     CPU, CUDA, ROCM, MPS, OPENVINO, WEBNN, WEBGPU, QUALCOMM
     )

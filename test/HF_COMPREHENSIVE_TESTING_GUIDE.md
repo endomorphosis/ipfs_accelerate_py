@@ -928,13 +928,13 @@ The tool integrates with the merged test generator to extend coverage:
 python test/test_comprehensive_hardware_coverage.py --enhance-merged-generator --hardware all
 
 # Verify generator enhancements
-python generators/test_comprehensive_hardware_coverage.py --verify-generator-enhancements --model bert
+python scripts/generators/test_comprehensive_hardware_coverage.py --verify-generator-enhancements --model bert
 ```
 
 #### Example of Enhanced Generator Configuration
 
 ```python
-# Example generator enhancement (added to generators/test_generators/merged_test_generator.py)
+# Example generator enhancement (added to scripts/generators/test_scripts/generators/merged_test_generator.py)
 def extend_hardware_support(model_type, template, target_hardware_platforms):
     """Extend hardware support in templates for all target platforms"""
     

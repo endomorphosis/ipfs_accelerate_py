@@ -35,19 +35,19 @@ To run tests for a specific model:
 
 ```bash
 # List available models
-python generators/models/test_hf_bert.py --list-models
+python scripts/generators/models/test_hf_bert.py --list-models
 
 # Run test with default model
-python generators/models/test_hf_bert.py
+python scripts/generators/models/test_hf_bert.py
 
 # Run test with specific model
-python generators/models/test_hf_bert.py --model bert-base-uncased
+python scripts/generators/models/test_hf_bert.py --model bert-base-uncased
 
 # Test on all available hardware
-python generators/models/test_hf_bert.py --all-hardware
+python scripts/generators/models/test_hf_bert.py --all-hardware
 
 # Save results to file
-python generators/models/test_hf_bert.py --save
+python scripts/generators/models/test_hf_bert.py --save
 ```
 
 ### Generating Missing Tests

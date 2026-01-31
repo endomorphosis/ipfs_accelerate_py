@@ -5,7 +5,7 @@ This directory contains tools and documentation for fixing import path issues in
 ## Background
 
 The codebase has been reorganized with files moved from `/test/` to:
-- `/generators/` - Code generation tools (216 files)
+- `/scripts/generators/` - Code generation tools (216 files)
 - `/duckdb_api/` - Database functionality (83 files)
 
 This reorganization caused import path issues that need to be addressed.
@@ -33,7 +33,7 @@ This reorganization caused import path issues that need to be addressed.
 
 2. **Test package imports**:
    ```bash
-   python generators/models/test_package_imports.py
+   python scripts/generators/models/test_package_imports.py
    ```
 
 3. **Check for syntax errors**:

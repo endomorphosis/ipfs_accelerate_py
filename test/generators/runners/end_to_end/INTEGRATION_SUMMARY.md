@@ -277,7 +277,7 @@ To generate documentation with the enhanced system:
 4. Documentation will be generated in the appropriate directory:
    ```bash
    # For unified component tester
-   ls generators/model_documentation/bert-base-uncased/
+   ls scripts/generators/model_documentation/bert-base-uncased/
    
    # For legacy tester
    ls test_output/enhanced_docs_test/bert-base-uncased/

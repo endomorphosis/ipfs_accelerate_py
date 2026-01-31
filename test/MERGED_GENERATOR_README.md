@@ -44,25 +44,25 @@ The merged test generator can be used with various command-line arguments:
 
 ```bash
 # Show help
-python generators/test_generators/merged_test_generator.py --help
+python scripts/generators/test_scripts/generators/merged_test_generator.py --help
 
 # List all model families in registry
-python generators/test_generators/merged_test_generator.py --list-families
+python scripts/generators/test_scripts/generators/merged_test_generator.py --list-families
 
 # Generate a test file for a specific model family
-python generators/test_generators/merged_test_generator.py --generate bert
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert
 
 # Generate a test with specific hardware platforms
-python generators/test_generators/merged_test_generator.py --generate vit --platform cuda,openvino,webgpu
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate vit --platform cuda,openvino,webgpu
 
 # Generate a test with cross-platform support for all hardware
-python fixed_generators/test_generators/merged_test_generator.py --generate clip --cross-platform
+python fixed_scripts/generators/test_scripts/generators/merged_test_generator.py --generate clip --cross-platform
 
 # Generate tests for all model families
-python generators/test_generators/merged_test_generator.py --all
+python scripts/generators/test_scripts/generators/merged_test_generator.py --all
 
 # Generate tests for a specific set of models
-python generators/test_generators/merged_test_generator.py --batch-generate bert,gpt2,t5,vit,clip
+python scripts/generators/test_scripts/generators/merged_test_generator.py --batch-generate bert,gpt2,t5,vit,clip
 ```
 
 ## Advanced Features
@@ -73,22 +73,22 @@ Automatically identify and generate test files for models missing test implement
 
 ```bash
 # List all missing test implementations without generating files
-python generators/test_generators/merged_test_generator.py --generate-missing --list-only
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-missing --list-only
 
 # Generate up to 10 test files for missing models
-python generators/test_generators/merged_test_generator.py --generate-missing --limit 10
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-missing --limit 10
 
 # Generate tests only for high priority models
-python generators/test_generators/merged_test_generator.py --generate-missing --high-priority-only
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-missing --high-priority-only
 
 # Generate tests for a specific category of models
-python generators/test_generators/merged_test_generator.py --generate-missing --category vision
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-missing --category vision
 
 # Generate tests for key models with enhanced hardware support
-python generators/test_generators/merged_test_generator.py --generate-missing --key-models-only
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-missing --key-models-only
 
 # Prioritize key models (t5, clap, whisper, llava, etc.) with hardware optimizations
-python generators/test_generators/merged_test_generator.py --generate-missing --prioritize-key-models
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-missing --prioritize-key-models
 ```
 
 ### 2. Export Model Registry
@@ -97,26 +97,26 @@ Export the model registry data to parquet format for analysis or integration wit
 
 ```bash
 # Export using HuggingFace Datasets (default)
-python generators/test_generators/merged_test_generator.py --export-registry
+python scripts/generators/test_scripts/generators/merged_test_generator.py --export-registry
 
 # Export using DuckDB
-python generators/test_generators/merged_test_generator.py --export-registry --use-duckdb
+python scripts/generators/test_scripts/generators/merged_test_generator.py --export-registry --use-duckdb
 ```
 
 ### 3. Other Features
 
 ```bash
 # Suggest new models to add to the registry
-python generators/test_generators/merged_test_generator.py --suggest-models
+python scripts/generators/test_scripts/generators/merged_test_generator.py --suggest-models
 
 # Generate a registry entry for a specific model
-python generators/test_generators/merged_test_generator.py --generate-registry-entry sam
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-registry-entry sam
 
 # Auto-add new models (limited to 5 by default)
-python generators/test_generators/merged_test_generator.py --auto-add
+python scripts/generators/test_scripts/generators/merged_test_generator.py --auto-add
 
 # Update test_all_models.py with all model families
-python generators/test_generators/merged_test_generator.py --update-all-models
+python scripts/generators/test_scripts/generators/merged_test_generator.py --update-all-models
 ```
 
 ## Hardware Platforms Support
@@ -180,13 +180,13 @@ These enhanced models include:
 To generate tests with these enhancements:
 ```bash
 # Generate tests for all key models
-python generators/test_generators/merged_test_generator.py --generate-missing --key-models-only
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-missing --key-models-only
 
 # Prioritize key models but include others
-python generators/test_generators/merged_test_generator.py --generate-missing --prioritize-key-models
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-missing --prioritize-key-models
 
 # Focus on a specific modality of key models
-python generators/test_generators/merged_test_generator.py --generate-missing --key-models-only --category multimodal
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate-missing --key-models-only --category multimodal
 ```
 
 ## Test File Structure

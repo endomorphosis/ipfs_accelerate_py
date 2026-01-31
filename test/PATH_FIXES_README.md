@@ -5,7 +5,7 @@ This document outlines the changes made to fix import path issues following the 
 ## Overview of Changes
 
 The codebase has been reorganized with files moved from `/test/` to:
-- `/generators/` - Code generation tools
+- `/scripts/generators/` - Code generation tools
 - `/duckdb_api/` - Database functionality
 
 ## Fixes Implemented
@@ -53,7 +53,7 @@ The codebase has been reorganized with files moved from `/test/` to:
 2. **Test Package Imports**:
    ```bash
    # From the test directory
-   python generators/models/test_package_imports.py
+   python scripts/generators/models/test_package_imports.py
    ```
 
 3. **Setup Import Paths**:

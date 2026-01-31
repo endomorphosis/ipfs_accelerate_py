@@ -44,10 +44,10 @@ ipfs_accelerate/
 │   ├── integration_tests/       # Cross-platform integration tests
 │   ├── model_test_runners/      # Model-specific test execution utilities
 │   └── skills/                  # Test skill definitions
-└── generators/                  # Test and benchmark generators
-    ├── test_generators/         # Scripts to generate test files
-    ├── skill_generators/        # Scripts to generate skill implementations
-    └── benchmark_generators/    # Scripts to generate benchmark suites
+└── scripts/generators/                  # Test and benchmark generators
+    ├── test_scripts/generators/         # Scripts to generate test files
+    ├── skill_scripts/generators/        # Scripts to generate skill implementations
+    └── benchmark_scripts/generators/    # Scripts to generate benchmark suites
 ```
 
 ## SDK Components
@@ -817,10 +817,10 @@ const deploymentOptions = await registry.getDeploymentOptions({
 The enhanced SDK builds on the reorganized generator framework, which has been moved from the test directory to a dedicated `generators` directory structure at the root level. The generators are now organized into three main categories:
 
 ```
-generators/
-├── test_generators/         # Test file generators
-├── skill_generators/        # Skill implementation generators
-└── benchmark_generators/    # Benchmark and report generators
+scripts/generators/
+├── test_scripts/generators/         # Test file generators
+├── skill_scripts/generators/        # Skill implementation generators
+└── benchmark_scripts/generators/    # Benchmark and report generators
 ```
 
 This structure makes the generators more maintainable and easier to use. Here's how the enhanced SDK uses these generators:
@@ -922,7 +922,7 @@ webgpu_benchmark_generator.generate_benchmark_suites(
 )
 ```
 
-For more details on the generator framework, see the [generators/README.md](../generators/README.md) file.
+For more details on the generator framework, see the [scripts/generators/README.md](../scripts/generators/README.md) file.
 
 ## Detailed Directory Structure
 
@@ -1018,16 +1018,16 @@ ipfs_accelerate/
 │   └── integration_tests/
 │       ├── test_cross_platform.py
 │       └── test_api_compatibility.py
-└── generators/
-    ├── test_generators/
+└── scripts/generators/
+    ├── test_scripts/generators/
     │   ├── __init__.py
     │   ├── model_test_generator.py
     │   └── hardware_test_generator.py
-    ├── skill_generators/
+    ├── skill_scripts/generators/
     │   ├── __init__.py
     │   ├── skill_generator.py
     │   └── template_processor.py
-    └── benchmark_generators/
+    └── benchmark_scripts/generators/
         ├── __init__.py
         ├── benchmark_generator.py
         └── report_generator.py

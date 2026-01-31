@@ -117,29 +117,29 @@ Each template follows standard Python indentation (4 spaces per level) and inclu
 
 ```bash
 # List available models
-python generators/models/test_hf_MODEL_TYPE.py --list-models
+python scripts/generators/models/test_hf_MODEL_TYPE.py --list-models
 
 # Test with default model
-python generators/models/test_hf_MODEL_TYPE.py
+python scripts/generators/models/test_hf_MODEL_TYPE.py
 
 # Test specific model
-python generators/models/test_hf_MODEL_TYPE.py --model MODEL_ID
+python scripts/generators/models/test_hf_MODEL_TYPE.py --model MODEL_ID
 
 # Test with all hardware backends
-python generators/models/test_hf_MODEL_TYPE.py --all-hardware
+python scripts/generators/models/test_hf_MODEL_TYPE.py --all-hardware
 
 # Save results to file
-python generators/models/test_hf_MODEL_TYPE.py --save
+python scripts/generators/models/test_hf_MODEL_TYPE.py --save
 ```
 
 ### Batch Testing
 
 ```bash
 # Test all model types
-python generators/models/test_all_models.py
+python scripts/generators/models/test_all_models.py
 
 # Test specific model families
-python generators/models/test_all_models.py --models bert,gpt2,t5
+python scripts/generators/models/test_all_models.py --models bert,gpt2,t5
 ```
 
 ## Comprehensive Testing Plan
@@ -153,17 +153,17 @@ To fully verify all 300 model types across hardware platforms:
 
 2. **Phase 2: Verify Each Model Type on CPU**
    ```bash
-   python generators/models/test_all_models.py --cpu-only
+   python scripts/generators/models/test_all_models.py --cpu-only
    ```
 
 3. **Phase 3: Test GPU Acceleration**
    ```bash
-   python generators/models/test_all_models.py --cuda-only
+   python scripts/generators/models/test_all_models.py --cuda-only
    ```
 
 4. **Phase 4: Test OpenVINO Acceleration**
    ```bash
-   python generators/models/test_all_models.py --openvino-only
+   python scripts/generators/models/test_all_models.py --openvino-only
    ```
 
 5. **Phase 5: Generate Comprehensive Report**

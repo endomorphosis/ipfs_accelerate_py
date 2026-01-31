@@ -84,7 +84,7 @@ import data.duckdb.core.benchmark_db_query as benchmark_db_query
 **Files updated by category:**
 
 1. **External files (96):**
-   - `generators/` - 3 files
+   - `scripts/generators/` - 3 files
    - `test/` - 93 files (various subdirectories)
 
 2. **Internal files:**
@@ -141,7 +141,7 @@ data/
 
 ### Modified
 - **~200 Python files** - Import statement updates across:
-  - `generators/` directory
+  - `scripts/generators/` directory
   - `test/` directory and subdirectories
   - `data/duckdb/` internal imports
   - `test/duckdb_api/` cross-references

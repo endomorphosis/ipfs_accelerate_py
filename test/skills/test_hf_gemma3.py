@@ -14,7 +14,7 @@ import numpy as np
 
 # Import hardware detection capabilities if available:::
 try:
-    from generators.hardware.hardware_detection import ())))))))))
+    from scripts.generators.hardware.hardware_detection import ())))))))))
     HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,
     detect_all_hardware
     )

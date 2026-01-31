@@ -16,18 +16,18 @@
 
 ### Directory Structure
 ```
-generators/
-├── benchmark_generators/
+scripts/generators/
+├── benchmark_scripts/generators/
 ├── creators/
 ├── fixes/
 ├── models/
 │   └── skills/
 ├── runners/
-├── skill_generators/
-├── template_generators/
+├── skill_scripts/generators/
+├── template_scripts/generators/
 ├── templates/
 │   └── model_templates/
-├── test_generators/
+├── test_scripts/generators/
 └── utils/
 
 duckdb_api/

@@ -105,7 +105,7 @@ class ResourcePool:
         # Try using hardware_detection module first
         try:
             # Import locally to avoid circular imports
-            from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
+            from scripts.generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
             hardware_info = detect_hardware_with_comprehensive_checks()
             
             if "system" in hardware_info and "available_memory" in hardware_info["system"]:
@@ -395,7 +395,7 @@ class ResourcePool:
             has_model_classifier = os.path.exists(model_classifier_path)
             
             # Import hardware detection (should be available since we checked file existence)
-            from generators.hardware.hardware_detection import detect_available_hardware
+            from scripts.generators.hardware.hardware_detection import detect_available_hardware
             
             # Get hardware info
             hardware_info = detect_available_hardware()

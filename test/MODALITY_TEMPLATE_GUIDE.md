@@ -121,10 +121,10 @@ To use the enhanced generator with modality-specific templates:
 
 ```bash
 # Generate test file with automatic modality detection
-python generators/models/test_template_generator.py bert
+python scripts/generators/models/test_template_generator.py bert
 
 # Override detected modality
-python generators/models/test_template_generator.py my_model --modality vision
+python scripts/generators/models/test_template_generator.py my_model --modality vision
 
 # Generate and verify samples for a specific modality
 python generate_modality_tests.py --modality audio

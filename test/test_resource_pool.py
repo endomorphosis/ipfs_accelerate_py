@@ -302,7 +302,7 @@ def test_model_family_integration())))))))))))))))))))))))):
         try:
             # Import required modules
             from model_family_classifier import classify_model
-            from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks, WEBNN, WEBGPU, CPU
+            from scripts.generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks, WEBNN, WEBGPU, CPU
             
             # Check for web platform support with comprehensive detection
             hw_info = detect_hardware_with_comprehensive_checks()))))))))))))))))))))))))
@@ -440,7 +440,7 @@ def test_model_family_integration())))))))))))))))))))))))):
     else:
         try:
             # Import hardware detection
-            from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
+            from scripts.generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
             logger.info())))))))))))))))))))))))"✅ Successfully imported hardware_detection")
             
             # Get hardware information
@@ -614,10 +614,10 @@ def test_hardware_aware_model_selection())))))))))))))))))))))))):
     else:
         try:
             # Import hardware detection with constants
-            from generators.hardware.hardware_detection import detect_available_hardware, detect_hardware_with_comprehensive_checks
+            from scripts.generators.hardware.hardware_detection import detect_available_hardware, detect_hardware_with_comprehensive_checks
             # Try to import constants, with fallbacks if not found:
             try:
-                from generators.hardware.hardware_detection import CPU, CUDA, MPS, ROCM, OPENVINO, WEBNN, WEBGPU, QUALCOMM
+                from scripts.generators.hardware.hardware_detection import CPU, CUDA, MPS, ROCM, OPENVINO, WEBNN, WEBGPU, QUALCOMM
             except ImportError:
                 # Define fallback constants if not available
                 CPU, CUDA, MPS, ROCM, OPENVINO = "cpu", "cuda", "mps", "rocm", "openvino"
@@ -1121,7 +1121,7 @@ def test_web_platform_integration())))))))))))))))))))))))):
         has_hardware_detection = True
         # Import necessary components
         try:
-            from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks, WEBNN, WEBGPU, CPU
+            from scripts.generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks, WEBNN, WEBGPU, CPU
             logger.info())))))))))))))))))))))))"Successfully imported hardware detection module")
         except ImportError as e:
             logger.warning())))))))))))))))))))))))f"Error importing hardware detection: {}}}}}}}}}}}}}}}}}}}}}}}}}e}")

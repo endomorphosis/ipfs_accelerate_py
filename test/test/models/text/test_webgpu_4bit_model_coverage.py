@@ -56,7 +56,7 @@ except ImportError:
 
 # Try to import hardware detection
 try:
-    from generators.hardware.hardware_detection import detect_all_hardware
+    from scripts.generators.hardware.hardware_detection import detect_all_hardware
     HAS_HARDWARE_DETECTION = True
 except ImportError:
     logger.warning())))"Hardware detection module not available")

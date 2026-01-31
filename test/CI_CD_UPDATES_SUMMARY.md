@@ -8,11 +8,11 @@ This document provides guidance on how to update and use the CI/CD workflows wit
 
 The codebase has been reorganized with the following top-level structure:
 
-- **generators/** - Generator code (formerly in test/)
-  - **generators/test_generators/** - Test generation tools
-  - **generators/utils/** - Utility functions
-  - **generators/models/** - Model implementations
-  - **generators/hardware/** - Hardware detection tools
+- **scripts/generators/** - Generator code (formerly in test/)
+  - **scripts/generators/test_scripts/generators/** - Test generation tools
+  - **scripts/generators/utils/** - Utility functions
+  - **scripts/generators/models/** - Model implementations
+  - **scripts/generators/hardware/** - Hardware detection tools
   - Other generator subdirectories
 
 - **duckdb_api/** - Database code (formerly in test/)
@@ -36,7 +36,7 @@ This workflow runs tests and benchmarks on a regular schedule and on various tri
 python test/models/test_ipfs_accelerate.py --models $MODELS --endpoints $HARDWARE
 
 # New
-python generators/models/test_ipfs_accelerate.py --models $MODELS --endpoints $HARDWARE
+python scripts/generators/models/test_ipfs_accelerate.py --models $MODELS --endpoints $HARDWARE
 ```
 
 ```yaml
@@ -77,7 +77,7 @@ on:
   push:
     branches: [ main ]
     paths:
-      - 'generators/**'
+      - 'scripts/generators/**'
       - 'duckdb_api/**'
       - 'fixed_web_platform/**'
       - '.github/workflows/test_and_benchmark.yml'
@@ -112,10 +112,10 @@ To run CI/CD tasks locally with the new directory structure:
 1. **Run Tests**:
 ```bash
 # Single model test
-python generators/models/test_ipfs_accelerate.py --models BAAI/bge-small-en-v1.5 --endpoints cpu
+python scripts/generators/models/test_ipfs_accelerate.py --models BAAI/bge-small-en-v1.5 --endpoints cpu
 
 # Multiple models test
-python generators/models/test_ipfs_accelerate.py --models BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny --endpoints cpu,cuda
+python scripts/generators/models/test_ipfs_accelerate.py --models BAAI/bge-small-en-v1.5,prajjwal1/bert-tiny --endpoints cpu,cuda
 ```
 
 2. **Run Benchmarks**:
@@ -130,7 +130,7 @@ python duckdb_api/visualization/generate_compatibility_matrix.py --format markdo
 3. **Generate Reports**:
 ```bash
 # Generate test report
-python generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
+python scripts/generators/models/test_ipfs_accelerate.py --report --format markdown --output test_report.md
 
 # Generate database report
 python duckdb_api/core/benchmark_db_query.py --report performance --format html --output performance_report.html
@@ -186,7 +186,7 @@ run_new_feature:
         
     - name: Run new feature
       run: |
-        python generators/new_feature/run_feature.py --option value
+        python scripts/generators/new_feature/run_feature.py --option value
 ```
 
 ## Troubleshooting

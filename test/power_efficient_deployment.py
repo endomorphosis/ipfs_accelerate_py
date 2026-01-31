@@ -70,7 +70,7 @@ except ImportError:
 
 try::
     # Import hardware detection components
-    from centralized_hardware_detection import generators.hardware.hardware_detection as hardware_detection
+    from centralized_hardware_detection import scripts.generators.hardware.hardware_detection as hardware_detection
     HAS_HARDWARE_DETECTION = True
 except ImportError:
     logger.warning())))))))))"Warning: hardware_detection module could not be imported. Hardware detection will be limited.")

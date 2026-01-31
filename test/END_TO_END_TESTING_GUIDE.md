@@ -15,11 +15,11 @@ This approach focuses on fixing issues at the generator/template level rather th
 
 ## Getting Started
 
-The end-to-end testing framework is located in `/generators/runners/end_to_end/`. To run a basic test:
+The end-to-end testing framework is located in `/scripts/generators/runners/end_to_end/`. To run a basic test:
 
 ```bash
 cd /home/barberb/ipfs_accelerate_py/test
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cpu
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cpu
 ```
 
 This will:
@@ -33,7 +33,7 @@ This will:
 ### Directory Structure
 
 ```
-generators/
+scripts/generators/
 ├── expected_results/        # Expected outputs for regression testing
 ├── collected_results/       # Actual test results with timestamps
 ├── model_documentation/     # Generated documentation
@@ -54,46 +54,46 @@ generators/
 
 ```bash
 # First generate expected results
-python generators/runners/end_to_end/run_e2e_tests.py --model your-new-model --hardware cpu --update-expected
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model your-new-model --hardware cpu --update-expected
 
 # Then run the test normally
-python generators/runners/end_to_end/run_e2e_tests.py --model your-new-model --hardware cpu
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model your-new-model --hardware cpu
 
 # Generate documentation
-python generators/runners/end_to_end/run_e2e_tests.py --model your-new-model --hardware cpu --generate-docs
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model your-new-model --hardware cpu --generate-docs
 ```
 
 ### Testing Across Multiple Hardware Platforms
 
 ```bash
 # Test on multiple platforms at once
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cpu,cuda,webgpu
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cpu,cuda,webgpu
 
 # Test on priority hardware platforms
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --priority-hardware
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --priority-hardware
 
 # Test on all hardware platforms
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --all-hardware
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --all-hardware
 ```
 
 ### Working with Model Families
 
 ```bash
 # Test all models in a family
-python generators/runners/end_to_end/run_e2e_tests.py --model-family text-embedding --hardware cpu
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model-family text-embedding --hardware cpu
 
 # Test all supported models
-python generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware
 ```
 
 ### Maintenance Tasks
 
 ```bash
 # Clean up old test results
-python generators/runners/end_to_end/run_e2e_tests.py --clean-old-results --days 14
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --clean-old-results --days 14
 
 # Clean up failed test results too
-python generators/runners/end_to_end/run_e2e_tests.py --clean-old-results --days 14 --clean-failures
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --clean-old-results --days 14 --clean-failures
 ```
 
 ## Best Practices
@@ -108,7 +108,7 @@ Expected results should be updated when:
 To update expected results:
 
 ```bash
-python generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --update-expected
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --update-expected
 ```
 
 ### How to Fix Issues
@@ -125,7 +125,7 @@ When tests fail, the framework generates detailed reports showing the difference
 Documentation is automatically generated when running tests with the `--generate-docs` flag:
 
 ```bash
-python generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --generate-docs
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --generate-docs
 ```
 
 Generated documentation provides:
@@ -135,26 +135,26 @@ Generated documentation provides:
 - Expected behavior
 - Code examples
 
-Documentation is stored in `/generators/model_documentation/`.
+Documentation is stored in `/scripts/generators/model_documentation/`.
 
 ## Advanced Features
 
 ### Verbose Logging
 
 ```bash
-python generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --verbose
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --verbose
 ```
 
 ### Keep Temporary Files
 
 ```bash
-python generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --keep-temp
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --keep-temp
 ```
 
 ### Quick Tests
 
 ```bash
-python generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --quick-test
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model your-model --hardware your-hardware --quick-test
 ```
 
 ## Extending the Framework
@@ -198,7 +198,7 @@ If the framework itself is failing:
 ## References
 
 - [CLAUDE.md](CLAUDE.md) - Project status and current focus areas
-- [Model Documentation README](/generators/model_documentation/README.md) - Documentation format and purpose
-- [End-to-End Testing Framework README](/generators/runners/end_to_end/README.md) - Detailed framework documentation
-- [Expected Results README](/generators/expected_results/README.md) - Expected results format and usage
-- [Collected Results README](/generators/collected_results/README.md) - Test result format and interpretation
+- [Model Documentation README](/scripts/generators/model_documentation/README.md) - Documentation format and purpose
+- [End-to-End Testing Framework README](/scripts/generators/runners/end_to_end/README.md) - Detailed framework documentation
+- [Expected Results README](/scripts/generators/expected_results/README.md) - Expected results format and usage
+- [Collected Results README](/scripts/generators/collected_results/README.md) - Test result format and interpretation

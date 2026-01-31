@@ -10,13 +10,13 @@ Results are now stored in DuckDB for better querying and analysis:
 
 ```bash
 # Store results in both files and database
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --use-db
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --use-db
 
 # Store results only in database
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --use-db --db-only
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --use-db --db-only
 
 # Specify custom database path
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --use-db --db-path ./my_benchmark.duckdb
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --use-db --db-path ./my_benchmark.duckdb
 ```
 
 Database integration provides several benefits:
@@ -32,10 +32,10 @@ Run tests in parallel for faster execution:
 
 ```bash
 # Use distributed testing with default number of workers
-python generators/runners/end_to_end/run_e2e_tests.py --model-family vision --hardware cuda --distributed
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model-family vision --hardware cuda --distributed
 
 # Specify number of worker threads
-python generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware --distributed --workers 8
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware --distributed --workers 8
 ```
 
 Distributed testing provides:
@@ -50,10 +50,10 @@ Improved validation for tensor outputs with statistical comparison:
 
 ```bash
 # Specify tolerance for tensor comparison
-python generators/runners/end_to_end/run_e2e_tests.py --model vit --hardware cuda --tensor-tolerance 0.05
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model vit --hardware cuda --tensor-tolerance 0.05
 
 # Use statistical comparison for large tensors
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --tensor-comparison-mode statistical
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --tensor-comparison-mode statistical
 ```
 
 Key improvements:
@@ -68,7 +68,7 @@ Automatic detection of real vs. simulated hardware:
 
 ```bash
 # Be explicit about real vs. simulated hardware
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda,webgpu --simulation-aware
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda,webgpu --simulation-aware
 ```
 
 Simulation awareness:
@@ -86,7 +86,7 @@ Test results are now stored in the same DuckDB database used by other components
 ```bash
 # Set database path via environment variable
 export BENCHMARK_DB_PATH=./benchmark_db.duckdb
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --use-db
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --use-db
 
 # Query test results using benchmark_db_query.py
 python duckdb_api/core/benchmark_db_query.py --sql "SELECT * FROM test_results WHERE model_name='bert-base-uncased'" --format markdown
@@ -98,7 +98,7 @@ Generate documentation in parallel for faster execution:
 
 ```bash
 # Generate documentation in parallel
-python generators/runners/end_to_end/run_e2e_tests.py --model-family text-generation --hardware all --generate-docs --parallel-docs
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model-family text-generation --hardware all --generate-docs --parallel-docs
 ```
 
 ## Example Usage Scenarios
@@ -107,17 +107,17 @@ python generators/runners/end_to_end/run_e2e_tests.py --model-family text-genera
 
 ```bash
 # Test a new model on priority hardware
-python generators/runners/end_to_end/run_e2e_tests.py --model new-model --priority-hardware --update-expected
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model new-model --priority-hardware --update-expected
 
 # Generate documentation for the model
-python generators/runners/end_to_end/run_e2e_tests.py --model new-model --priority-hardware --generate-docs
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model new-model --priority-hardware --generate-docs
 ```
 
 ### Comprehensive Testing of All Models
 
 ```bash
 # Test all models on priority hardware in parallel
-python generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware --distributed --workers 8 --use-db
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --all-models --priority-hardware --distributed --workers 8 --use-db
 ```
 
 ### Integration with CI/CD Pipeline
@@ -180,7 +180,7 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: e2e-test-results-${{ matrix.test-scope.name }}
-          path: generators/collected_results/summary/
+          path: scripts/generators/collected_results/summary/
 
   analyze-results:
     needs: e2e-tests
@@ -201,7 +201,7 @@ When running in CI mode, the testing framework provides enhanced functionality:
 
 ```bash
 # Run the tests in CI mode directly
-python generators/runners/end_to_end/run_e2e_tests.py --model-family text-embedding --hardware cpu,cuda --distributed --ci
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model-family text-embedding --hardware cpu,cuda --distributed --ci
 
 # Use the wrapper script for easier CI integration
 ./run_e2e_ci_tests.sh --model-family text-embedding --hardware cpu,cuda
@@ -258,10 +258,10 @@ If distributed testing isn't working correctly:
 
 ```bash
 # Try with fewer workers
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --distributed --workers 2 --verbose
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --distributed --workers 2 --verbose
 
 # Check for race conditions
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --distributed --verbose
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cuda --distributed --verbose
 ```
 
 ### Missing Hardware Detection

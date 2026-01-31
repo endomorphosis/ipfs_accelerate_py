@@ -213,7 +213,7 @@ python test/test_web_platform_optimizations.py --parallel-loading --model clip
 python test/test_web_platform_optimizations.py --shader-precompile --model vit
 
 # Run web platform model tests
-python generators/runners/web/web_platform_test_runner.py --model bert --platform webgpu --shader-precompile
+python scripts/generators/runners/web/web_platform_test_runner.py --model bert --platform webgpu --shader-precompile
 
 # Generate optimization report
 python test/test_web_platform_optimizations.py --all-optimizations --generate-report

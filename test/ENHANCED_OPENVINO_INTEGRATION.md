@@ -190,19 +190,19 @@ A comprehensive test script is provided to validate the enhanced OpenVINO integr
 
 ```bash
 # Test optimum.intel integration
-python generators/models/test_enhanced_openvino.py --test-optimum
+python scripts/generators/models/test_enhanced_openvino.py --test-optimum
 
 # Test INT8 quantization
-python generators/models/test_enhanced_openvino.py --test-int8
+python scripts/generators/models/test_enhanced_openvino.py --test-int8
 
 # Compare FP32, FP16, and INT8 precision performance
-python generators/models/test_enhanced_openvino.py --compare-precisions
+python scripts/generators/models/test_enhanced_openvino.py --compare-precisions
 
 # Run all tests
-python generators/models/test_enhanced_openvino.py --run-all
+python scripts/generators/models/test_enhanced_openvino.py --run-all
 
 # Test with a specific model and device
-python generators/models/test_enhanced_openvino.py --run-all --model bert-base-uncased --device CPU
+python scripts/generators/models/test_enhanced_openvino.py --run-all --model bert-base-uncased --device CPU
 ```
 
 ## Performance Considerations
@@ -250,10 +250,10 @@ The enhanced backend includes template support for easy integration with the tem
 
 ```python
 # Generate a test with OpenVINO support
-python generators/test_generators/simple_test_generator.py -g bert -p openvino -o test_bert_openvino.py
+python scripts/generators/test_scripts/generators/simple_test_generator.py -g bert -p openvino -o test_bert_openvino.py
 
 # Generate a test with multiple hardware support including OpenVINO
-python generators/test_generators/simple_test_generator.py -g bert -p cpu,cuda,openvino -o test_bert_multi.py
+python scripts/generators/test_scripts/generators/simple_test_generator.py -g bert -p cpu,cuda,openvino -o test_bert_multi.py
 ```
 
 ## Additional Examples

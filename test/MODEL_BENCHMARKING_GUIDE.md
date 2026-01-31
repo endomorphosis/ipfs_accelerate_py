@@ -46,13 +46,13 @@ The direct API supports the same three output formats as the shell script: markd
 To run basic model benchmarks using the original framework components:
 
 ```bash
-python generators/benchmark_generators/run_model_benchmarks.py --output-dir ./benchmark_results
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --output-dir ./benchmark_results
 ```
 
 For a specific hardware platform:
 
 ```bash
-python generators/benchmark_generators/run_model_benchmarks.py --hardware cuda --output-dir ./benchmark_results
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --hardware cuda --output-dir ./benchmark_results
 ```
 
 ## Comprehensive Key Model Benchmarking
@@ -110,7 +110,7 @@ The benchmark script accepts several configuration options:
 Example:
 
 ```bash
-python generators/benchmark_generators/run_model_benchmarks.py --models-set small --hardware cpu cuda --batch-sizes 1 4 8 --specific-models bert t5
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --models-set small --hardware cpu cuda --batch-sizes 1 4 8 --specific-models bert t5
 ```
 
 ## Hardware Platforms
@@ -245,7 +245,7 @@ To benchmark custom models, create a JSON file with model definitions:
 Then run:
 
 ```bash
-python generators/benchmark_generators/run_model_benchmarks.py --models-set custom --custom-models path/to/models.json
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --models-set custom --custom-models path/to/models.json
 ```
 
 ### Performance Profiling

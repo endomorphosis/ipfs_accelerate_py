@@ -89,16 +89,16 @@ The following scripts provide comprehensive testing and benchmarking for the res
 
 ```bash
 # Test a model with WebGPU acceleration and real hardware validation
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --model bert-base-uncased --platform webgpu --browser chrome
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --model bert-base-uncased --platform webgpu --browser chrome
 
 # Use Firefox with audio optimizations for Whisper models
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --model whisper-tiny --browser firefox --optimize-audio
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --model whisper-tiny --browser firefox --optimize-audio
 
 # Test Edge browser with WebNN support
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --model bert-base-uncased --platform webnn --browser edge
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --model bert-base-uncased --platform webnn --browser edge
 
 # Run comprehensive tests across all browsers and platforms
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
 ```
 
 #### Advanced Resource Pool Benchmarking

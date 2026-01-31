@@ -1260,40 +1260,40 @@ Generated: 2025-03-23 10:43:29
 - ❌ `refactored_test_suite/models/text/test_ollama_backoff.py` - Missing required methods: verify_model_output Missing: verify_model_output
 - ❌ `distributed_testing/tests/test_hardware_utilization_monitor.py` - ModelTest not imported
 - ❌ `distributed_testing/tests/test_security.py` - ModelTest not imported
-- ❌ `generators/collected_results/bert-base-uncased/cuda/20250316_154613/test_bert-base-uncased_cuda.py` - ModelTest not imported
-- ❌ `generators/collected_results/bert-base-uncased/cuda/20250316_152830/test_bert-base-uncased_cuda.py` - ModelTest not imported
-- ❌ `generators/collected_results/bert-base-uncased/cuda/20250316_152713/test_bert-base-uncased_cuda.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/ci_unified_component_test.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_unified_component_tester.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_enhanced_reports.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/component_test_f1af4649-12bb-4454-8515-a94f1014d86e/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
-- ❌ `generators/runners/end_to_end/test_output/component_test_615161af-60f2-4dbe-8b1e-fa19c82a4cdb/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
-- ❌ `generators/runners/end_to_end/test_output/tester_integration_0e9caf50-75f1-402b-841c-a8ea2f7135da/test_bert-base-uncased_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/tester_integration_ca339640-ac3f-437e-b9a4-ff0f5d21a185/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
-- ❌ `generators/runners/end_to_end/test_output/tester_integration_448ff63d-fde2-4a64-91ab-a2a5a061dec9/test_bert-base-uncased_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/tester_integration_1dd4d5d5-b105-4cae-be71-12d20634e4dc/test_bert-base-uncased_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/tester_integration_98e48d13-2548-44b1-9aee-2ff256341442/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
-- ❌ `generators/runners/end_to_end/test_output/tester_integration_0e0f5805-454a-4840-a052-355e44b4619d/test_bert-base-uncased_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/bert-base-uncased_cuda/test_bert-base-uncased_cuda.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/tester_integration_6bd7ab89-613b-49b9-9c56-c399a619e56d/test_bert-base-uncased_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/tester_integration_69d7bdde-626d-4a94-85d9-956ae84eec68/test_bert-base-uncased_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/tester_integration_3d02f537-6f05-4108-b30f-ba90f5ec943c/test_bert-base-uncased_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_rocm/test_bert-base-uncased_rocm.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_cpu/test_gpt2_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_cuda/test_bert-base-uncased_cuda.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_qnn/test_gpt2_qnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_webgpu/test_bert-base-uncased_webgpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_webnn/test_gpt2_webnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_openvino/test_gpt2_openvino.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_webgpu/test_gpt2_webgpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_mps/test_gpt2_mps.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_mps/test_bert-base-uncased_mps.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_openvino/test_bert-base-uncased_openvino.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_webnn/test_bert-base-uncased_webnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_cpu/test_bert-base-uncased_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_cuda/test_gpt2_cuda.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_qnn/test_bert-base-uncased_qnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_rocm/test_gpt2_rocm.py` - ModelTest not imported
+- ❌ `scripts/generators/collected_results/bert-base-uncased/cuda/20250316_154613/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `scripts/generators/collected_results/bert-base-uncased/cuda/20250316_152830/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `scripts/generators/collected_results/bert-base-uncased/cuda/20250316_152713/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/ci_unified_component_test.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_unified_component_tester.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_enhanced_reports.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/component_test_f1af4649-12bb-4454-8515-a94f1014d86e/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
+- ❌ `scripts/generators/runners/end_to_end/test_output/component_test_615161af-60f2-4dbe-8b1e-fa19c82a4cdb/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
+- ❌ `scripts/generators/runners/end_to_end/test_output/tester_integration_0e9caf50-75f1-402b-841c-a8ea2f7135da/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/tester_integration_ca339640-ac3f-437e-b9a4-ff0f5d21a185/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
+- ❌ `scripts/generators/runners/end_to_end/test_output/tester_integration_448ff63d-fde2-4a64-91ab-a2a5a061dec9/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/tester_integration_1dd4d5d5-b105-4cae-be71-12d20634e4dc/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/tester_integration_98e48d13-2548-44b1-9aee-2ff256341442/test_bert-base-uncased_cpu.py` - Error processing file: expected '(' (<unknown>, line 32)
+- ❌ `scripts/generators/runners/end_to_end/test_output/tester_integration_0e0f5805-454a-4840-a052-355e44b4619d/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/bert-base-uncased_cuda/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/tester_integration_6bd7ab89-613b-49b9-9c56-c399a619e56d/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/tester_integration_69d7bdde-626d-4a94-85d9-956ae84eec68/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/tester_integration_3d02f537-6f05-4108-b30f-ba90f5ec943c/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_rocm/test_bert-base-uncased_rocm.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_cpu/test_gpt2_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_cuda/test_bert-base-uncased_cuda.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_qnn/test_gpt2_qnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_webgpu/test_bert-base-uncased_webgpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_webnn/test_gpt2_webnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_openvino/test_gpt2_openvino.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_webgpu/test_gpt2_webgpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_mps/test_gpt2_mps.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_mps/test_bert-base-uncased_mps.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_openvino/test_bert-base-uncased_openvino.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_webnn/test_bert-base-uncased_webnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_cpu/test_bert-base-uncased_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_cuda/test_gpt2_cuda.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/bert-base-uncased_qnn/test_bert-base-uncased_qnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/gpt2_rocm/test_gpt2_rocm.py` - ModelTest not imported
 - ❌ `models/text/bert/test_bert_base_uncased.py` - ModelTest not imported
 - ❌ `doc-builder/transformers-docs/transformers/tests/test_modeling_tf_common.py` - ModelTest not imported
 - ❌ `doc-builder/transformers-docs/transformers/tests/test_tokenization_common.py` - ModelTest not imported
@@ -1933,8 +1933,8 @@ Generated: 2025-03-23 10:43:29
 - ❌ `huggingface_doc_builder/tests/test_convert_md_to_mdx.py` - ModelTest not imported
 - ❌ `huggingface_doc_builder/tests/test_build_doc.py` - ModelTest not imported
 - ❌ `huggingface_doc_builder/tests/test_convert_rst_to_mdx.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_visualization_dashboard.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_integrated_visualization_reports.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_visualization_dashboard.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_integrated_visualization_reports.py` - ModelTest not imported
 - ❌ `doc-builder-test/tests/test_convert_doc_file.py` - Error processing file: unmatched ')' (<unknown>, line 18)
 - ❌ `doc-builder-test/tests/test_utils.py` - Error processing file: invalid syntax (<unknown>, line 42)
 - ❌ `doc-builder-test/tests/test_build_doc.py` - Error processing file: unmatched ')' (<unknown>, line 21)
@@ -2922,26 +2922,26 @@ Generated: 2025-03-23 10:43:29
 - ❌ `refactored_test_suite/models/vision/test_vit_base_patch16_224.py` - Missing required methods: verify_model_output, detect_preferred_device Missing: verify_model_output, detect_preferred_device
 - ❌ `distributed_testing/tests/test_dynamic_resource_manager.py` - ModelTest not imported
 - ❌ `huggingface_doc_builder/tests/test_autodoc.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/manual_doc_test.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_template_system.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_enhanced_documentation.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_webnn/test_openai_clip-vit-base-patch32_webnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_rocm/test_vit-base-patch16-224_rocm.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_webnn/test_vit-base-patch16-224_webnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_cuda/test_vit-base-patch16-224_cuda.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_openvino/test_openai_clip-vit-base-patch32_openvino.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_cpu/test_openai_clip-vit-base-patch32_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_cuda/test_openai_clip-vit-base-patch32_cuda.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_mps/test_vit-base-patch16-224_mps.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_qnn/test_openai_clip-vit-base-patch32_qnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_rocm/test_openai_clip-vit-base-patch32_rocm.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_cpu/test_vit-base-patch16-224_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_webgpu/test_openai_clip-vit-base-patch32_webgpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_webgpu/test_vit-base-patch16-224_webgpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_mps/test_openai_clip-vit-base-patch32_mps.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_openvino/test_vit-base-patch16-224_openvino.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_qnn/test_vit-base-patch16-224_qnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/vision_webgpu_test/vit-base-patch16-224_webgpu/test_vit-base-patch16-224_webgpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/manual_doc_test.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_template_system.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_enhanced_documentation.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_webnn/test_openai_clip-vit-base-patch32_webnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_rocm/test_vit-base-patch16-224_rocm.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_webnn/test_vit-base-patch16-224_webnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_cuda/test_vit-base-patch16-224_cuda.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_openvino/test_openai_clip-vit-base-patch32_openvino.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_cpu/test_openai_clip-vit-base-patch32_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_cuda/test_openai_clip-vit-base-patch32_cuda.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_mps/test_vit-base-patch16-224_mps.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_qnn/test_openai_clip-vit-base-patch32_qnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_rocm/test_openai_clip-vit-base-patch32_rocm.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_cpu/test_vit-base-patch16-224_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_webgpu/test_openai_clip-vit-base-patch32_webgpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_webgpu/test_vit-base-patch16-224_webgpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/openai_clip-vit-base-patch32_mps/test_openai_clip-vit-base-patch32_mps.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_openvino/test_vit-base-patch16-224_openvino.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/vit-base-patch16-224_qnn/test_vit-base-patch16-224_qnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/vision_webgpu_test/vit-base-patch16-224_webgpu/test_vit-base-patch16-224_webgpu.py` - ModelTest not imported
 - ❌ `doc-builder-test/tests/test_autodoc.py` - Error processing file: unmatched ')' (<unknown>, line 24)
 - ❌ `doc-builder/tests/test_autodoc.py` - ModelTest not imported
 - ❌ `doc-builder/transformers-docs/transformers/tests/test_modeling_common.py` - ModelTest not imported
@@ -3460,14 +3460,14 @@ Generated: 2025-03-23 10:43:29
 - ❌ `refactored_test_suite/models/audio/test_hf_whisper.py` - Missing required methods: verify_model_output Missing: verify_model_output
 - ❌ `distributed_testing/tests/test_browser_recovery_strategies.py` - ModelTest not imported
 - ❌ `distributed_testing/integration_tests/test_load_balancer_resource_pool_integration.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_webnn/test_whisper-tiny_webnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_openvino/test_whisper-tiny_openvino.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_webgpu/test_whisper-tiny_webgpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_mps/test_whisper-tiny_mps.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_cpu/test_whisper-tiny_cpu.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_qnn/test_whisper-tiny_qnn.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_cuda/test_whisper-tiny_cuda.py` - ModelTest not imported
-- ❌ `generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_rocm/test_whisper-tiny_rocm.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_webnn/test_whisper-tiny_webnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_openvino/test_whisper-tiny_openvino.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_webgpu/test_whisper-tiny_webgpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_mps/test_whisper-tiny_mps.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_cpu/test_whisper-tiny_cpu.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_qnn/test_whisper-tiny_qnn.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_cuda/test_whisper-tiny_cuda.py` - ModelTest not imported
+- ❌ `scripts/generators/runners/end_to_end/test_output/enhanced_docs_test/whisper-tiny_rocm/test_whisper-tiny_rocm.py` - ModelTest not imported
 - ❌ `doc-builder/transformers-docs/transformers/tests/test_sequence_feature_extraction_common.py` - ModelTest not imported
 - ❌ `doc-builder/transformers-docs/transformers/tests/agents/test_final_answer.py` - ModelTest not imported
 - ❌ `doc-builder/transformers-docs/transformers/tests/pipelines/test_pipelines_automatic_speech_recognition.py` - ModelTest not imported

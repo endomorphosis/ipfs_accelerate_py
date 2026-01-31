@@ -129,13 +129,13 @@ The `test_onnx_verification.py` script provides comprehensive tests:
 
 ```bash
 # Run all tests
-python generators/models/test_onnx_verification.py
+python scripts/generators/models/test_onnx_verification.py
 
 # Run a specific test
-python generators/models/test_onnx_verification.py --test test_verify_onnx_file
+python scripts/generators/models/test_onnx_verification.py --test test_verify_onnx_file
 
 # Run with verbose output
-python generators/models/test_onnx_verification.py --verbose
+python scripts/generators/models/test_onnx_verification.py --verbose
 ```
 
 ## Supported Models

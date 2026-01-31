@@ -348,7 +348,7 @@ To customize the generator behavior:
 
 1. Modify templates in `refactored_generator_suite/templates/`
 2. Update hardware detection in `refactored_generator_suite/hardware/hardware_detection.py`
-3. Add new model types in `refactored_generator_suite/generators/model_generator.py`
+3. Add new model types in `refactored_generator_suite/scripts/generators/model_generator.py`
 
 ### Generator Architecture
 

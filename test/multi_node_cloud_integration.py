@@ -22,7 +22,7 @@ logger = logging.getLogger())))))))))__name__)
 
 # Try to import framework components with graceful degradation
 try:
-    from generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
+    from scripts.generators.hardware.hardware_detection import detect_hardware_with_comprehensive_checks
     from model_family_classifier import classify_model, ModelFamilyClassifier
     from resource_pool import get_global_resource_pool
     from model_compression import ModelCompressor

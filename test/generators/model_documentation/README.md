@@ -8,7 +8,7 @@ The documentation in this directory is now part of an enhanced end-to-end testin
 
 1. **Generate Components Together**: Generate skill, test, and benchmark files as a unified set
 2. **Run Integrated Tests**: Test all components together to ensure they work as a unit
-3. **Compare with Expected Results**: Store expected outputs in `/generators/expected_results/` to compare with actual results in `/generators/collected_results/`
+3. **Compare with Expected Results**: Store expected outputs in `/scripts/generators/expected_results/` to compare with actual results in `/scripts/generators/collected_results/`
 4. **Document Implementation**: Generate this detailed documentation to explain how components work together
 5. **Fix at Generator Level**: Instead of fixing individual test files, fix the templates or generators
 
@@ -47,13 +47,13 @@ Each implementation document includes:
 Documentation is automatically generated when running end-to-end tests:
 
 ```bash
-python generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cpu --generate-docs
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --model bert-base-uncased --hardware cpu --generate-docs
 ```
 
 To generate documentation for all models across all hardware platforms:
 
 ```bash
-python generators/runners/end_to_end/run_e2e_tests.py --all-models --all-hardware --generate-docs
+python scripts/generators/runners/end_to_end/run_e2e_tests.py --all-models --all-hardware --generate-docs
 ```
 
 ## Purpose

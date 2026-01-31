@@ -124,10 +124,10 @@ To run comprehensive tests of WebNN and WebGPU quantization support:
 ./run_webnn_quantized_tests.sh
 
 # Run specific WebGPU test
-python generators/models/test_webgpu_quantization.py --model prajjwal1/bert-tiny --browser chrome --bits 8
+python scripts/generators/models/test_webgpu_quantization.py --model prajjwal1/bert-tiny --browser chrome --bits 8
 
 # Run specific WebNN test
-python generators/models/test_webnn_minimal.py --model prajjwal1/bert-tiny --browser edge --bits 4 --mixed-precision
+python scripts/generators/models/test_webnn_minimal.py --model prajjwal1/bert-tiny --browser edge --bits 4 --mixed-precision
 ```
 
 The test suite will generate a comprehensive report comparing performance across browsers and precision levels. It automatically selects the most appropriate precision/browser combination for each model type.
@@ -245,7 +245,7 @@ To verify the cross-platform compatibility of models, we have developed testing 
 
 ```bash
 # Test a single model on multiple hardware platforms
-python generators/models/test_single_model_hardware.py --model-file key_models_hardware_fixes/test_hf_qwen2.py --platforms cpu cuda mps qualcomm
+python scripts/generators/models/test_single_model_hardware.py --model-file key_models_hardware_fixes/test_hf_qwen2.py --platforms cpu cuda mps qualcomm
 
 # Run the full benchmark suite for all models
 python duckdb_api/core/benchmark_all_key_models.py --output-dir ./benchmark_results

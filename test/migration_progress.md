@@ -59,9 +59,9 @@ Total overall migration progress: 82%
 
 ### Final Migration Update - Sun Mar 10 00:35:47 PM PDT 2025
 Migrated and fixed key generator files:
-- `fixed_merged_test_generator_clean.py` moved to `generators/test_generators/`
-- `test_generator_with_resource_pool.py` moved to `generators/utils/`
-- `resource_pool.py` moved to `generators/utils/`
+- `fixed_merged_test_generator_clean.py` moved to `scripts/generators/test_scripts/generators/`
+- `test_generator_with_resource_pool.py` moved to `scripts/generators/utils/`
+- `resource_pool.py` moved to `scripts/generators/utils/`
 
 All files have been fixed to work correctly with the new package structure and pass import verification tests.
 

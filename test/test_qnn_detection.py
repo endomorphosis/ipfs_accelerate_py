@@ -10,7 +10,7 @@ from pathlib import Path
 # Add the repository root to the Python path
 sys.path.append(str(Path(__file__).parent))
 
-from generators.hardware.hardware_detection import HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_QNN, HAS_WEBNN, HAS_WEBGPU
+from scripts.generators.hardware.hardware_detection import HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_QNN, HAS_WEBNN, HAS_WEBGPU
 from hardware_detection.capabilities import detect_all_hardware, detect_qnn
 
 def main():

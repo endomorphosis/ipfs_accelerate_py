@@ -282,7 +282,7 @@ The integration is implemented through:
 python duckdb_api/distributed_testing/run_test.py \
   --mode client \
   --coordinator http://coordinator-host:8080 \
-  --test-file generators/models/test_web_resource_pool.py \
+  --test-file scripts/generators/models/test_web_resource_pool.py \
   --test-args "--platform webgpu --browser firefox --model whisper-tiny --optimize-audio" \
   --requirements '{"browser": "firefox"}' \
   --timeout 600
@@ -291,7 +291,7 @@ python duckdb_api/distributed_testing/run_test.py \
 python duckdb_api/distributed_testing/create_task.py \
   --type test \
   --name "webgpu-comprehensive" \
-  --test-file generators/models/test_web_resource_pool.py \
+  --test-file scripts/generators/models/test_web_resource_pool.py \
   --test-args "--comprehensive --browser-pool" \
   --requirements '{"browsers": ["chrome", "firefox", "edge"]}' \
   --timeout 1800

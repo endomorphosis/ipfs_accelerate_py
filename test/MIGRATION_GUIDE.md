@@ -13,9 +13,9 @@ Prior to March 2025, most code was housed in the `/test/` directory, which conta
 ```
 /test/
 ├── benchmark_*.py          # Benchmark-related files
-├── generators/test_generators/merged_test_generator.py # Test generator
-├── fixed_generators/test_generators/merged_test_generator.py # Fixed test generator
-├── generators/skill_generators/integrated_skillset_generator.py # Skillset generator
+├── scripts/generators/test_scripts/generators/merged_test_generator.py # Test generator
+├── fixed_scripts/generators/test_scripts/generators/merged_test_generator.py # Fixed test generator
+├── scripts/generators/skill_scripts/generators/integrated_skillset_generator.py # Skillset generator
 └── ... (many other files)  # Various test, benchmark, and utility files
 ```
 
@@ -25,14 +25,14 @@ After the March 2025 reorganization, files were moved to the following directory
 
 ```
 /
-├── generators/             # All generator-related code (216 files)
-│   ├── benchmark_generators/ # Benchmark generation tools
+├── scripts/generators/             # All generator-related code (216 files)
+│   ├── benchmark_scripts/generators/ # Benchmark generation tools
 │   ├── models/             # Model implementations and skill files
 │   ├── runners/            # Test runner scripts
-│   ├── skill_generators/   # Skill generation tools
-│   ├── template_generators/ # Template generation utilities
+│   ├── skill_scripts/generators/   # Skill generation tools
+│   ├── template_scripts/generators/ # Template generation utilities
 │   ├── templates/          # Template files and template system
-│   ├── test_generators/    # Test generation tools
+│   ├── test_scripts/generators/    # Test generation tools
 │   └── utils/              # Utility functions
 ├── duckdb_api/             # All database-related code (83 files)
 │   ├── core/               # Core database functionality
@@ -47,27 +47,27 @@ After the March 2025 reorganization, files were moved to the following directory
 
 ## Key Components Moved
 
-### Generators (moved to `/generators/`)
+### Generators (moved to `/scripts/generators/`)
 
 - **Test Generators**:
-  - `generators/test_generators/merged_test_generator.py` → `generators/generators/test_generators/merged_test_generator.py`
-  - `fixed_generators/test_generators/merged_test_generator.py` → `generators/test_generators/fixed_generators/test_generators/merged_test_generator.py`
-  - `generators/test_generators/simple_test_generator.py` → `generators/test_generators/generators/test_generators/simple_test_generator.py`
-  - `generate_modality_tests.py` → `generators/generate_modality_tests.py`
+  - `scripts/generators/test_scripts/generators/merged_test_generator.py` → `scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py`
+  - `fixed_scripts/generators/test_scripts/generators/merged_test_generator.py` → `scripts/generators/test_scripts/generators/fixed_scripts/generators/test_scripts/generators/merged_test_generator.py`
+  - `scripts/generators/test_scripts/generators/simple_test_generator.py` → `scripts/generators/test_scripts/generators/scripts/generators/test_scripts/generators/simple_test_generator.py`
+  - `generate_modality_tests.py` → `scripts/generators/generate_modality_tests.py`
 
 - **Skill Generators**:
-  - `generators/skill_generators/integrated_skillset_generator.py` → `generators/models/generators/skill_generators/integrated_skillset_generator.py`
-  - `skillset_generator.py` → `generators/skill_generators/skillset_generator.py`
+  - `scripts/generators/skill_scripts/generators/integrated_skillset_generator.py` → `scripts/generators/models/scripts/generators/skill_scripts/generators/integrated_skillset_generator.py`
+  - `skillset_generator.py` → `scripts/generators/skill_scripts/generators/skillset_generator.py`
 
 - **Template System**:
-  - `template_database.py` → `generators/templates/template_database.py`
-  - `template_validator.py` → `generators/templates/template_validator.py`
-  - `template_inheritance_system.py` → `generators/templates/template_inheritance_system.py`
+  - `template_database.py` → `scripts/generators/templates/template_database.py`
+  - `template_validator.py` → `scripts/generators/templates/template_validator.py`
+  - `template_inheritance_system.py` → `scripts/generators/templates/template_inheritance_system.py`
 
 - **Web Platform Generators**:
-  - `run_real_web_benchmarks.py` → `generators/run_real_web_benchmarks.py`
-  - `run_real_webgpu_webnn.py` → `generators/run_real_webgpu_webnn.py`
-  - `check_browser_webnn_webgpu.py` → `generators/check_browser_webnn_webgpu.py`
+  - `run_real_web_benchmarks.py` → `scripts/generators/run_real_web_benchmarks.py`
+  - `run_real_webgpu_webnn.py` → `scripts/generators/run_real_webgpu_webnn.py`
+  - `check_browser_webnn_webgpu.py` → `scripts/generators/check_browser_webnn_webgpu.py`
 
 ### Database Tools (moved to `/duckdb_api/`)
 
@@ -112,10 +112,10 @@ When running files, update your commands to use the new paths:
 
 ```bash
 # Old commands
-python generators/generators/test_generators/merged_test_generator.py --generate bert
+python scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert
 
 # New commands
-python generators/generators/test_generators/merged_test_generator.py --generate bert
+python scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert
 ```
 
 ### Backward Compatibility
@@ -123,12 +123,12 @@ python generators/generators/test_generators/merged_test_generator.py --generate
 To maintain backward compatibility, import redirection has been implemented in some modules:
 
 ```python
-# In test/generators/test_generators/merged_test_generator.py
+# In test/scripts/generators/test_scripts/generators/merged_test_generator.py
 import sys
 import warnings
 
 warnings.warn(
-    "This module has been moved to generators/generators/test_generators/merged_test_generator.py. "
+    "This module has been moved to scripts/generators/scripts/generators/test_scripts/generators/merged_test_generator.py. "
     "Please update your imports.",
     DeprecationWarning
 )

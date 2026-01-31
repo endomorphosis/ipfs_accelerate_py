@@ -378,7 +378,7 @@ def generate_template_fix_recommendation(test_path: str, template_path: str, arc
         recommendations.append("Add the following hardware detection code:")
         recommendations.append("```python")
         recommendations.append("try:")
-        recommendations.append("    from generators.hardware.hardware_detection import (")
+        recommendations.append("    from scripts.generators.hardware.hardware_detection import (")
         recommendations.append("        HAS_CUDA, HAS_ROCM, HAS_OPENVINO, HAS_MPS, HAS_WEBNN, HAS_WEBGPU,")
         recommendations.append("        detect_all_hardware")
         recommendations.append("    )")

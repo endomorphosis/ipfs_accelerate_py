@@ -25,13 +25,13 @@ A comprehensive new tool that tests IPFS acceleration with real WebNN/WebGPU har
 
 ```bash
 # Test all browsers and platforms
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive
 
 # Test specific browser and platform
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --platform webgpu --model bert-base-uncased
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --platform webgpu --model bert-base-uncased
 
 # Enable Firefox audio optimizations for audio models
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --model whisper-tiny --optimize-audio
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --model whisper-tiny --optimize-audio
 ```
 
 Key features:
@@ -164,10 +164,10 @@ Test results can be stored in DuckDB for efficient analysis:
 
 ```bash
 # Use database integration with custom path
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --db-path ./benchmark_db.duckdb
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --db-path ./benchmark_db.duckdb
 
 # Store results only in database (no JSON files)
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --db-only
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --db-only
 ```
 
 Database schema includes:
@@ -183,13 +183,13 @@ The implementation supports multiple precision levels:
 
 ```bash
 # Test 4-bit precision
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --precision 4
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --precision 4
 
 # Test 8-bit precision with mixed precision
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --precision 8 --mixed-precision
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --precision 8 --mixed-precision
 
 # Test 16-bit precision
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --precision 16
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --precision 16
 ```
 
 Each precision level offers different memory-performance tradeoffs:
@@ -321,19 +321,19 @@ await bridge.stop()
 2. **Browser Not Detected**
    ```bash
    # Test with visible browser
-   python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --visible
+   python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --visible
    ```
 
 3. **Real Hardware Not Detected**
    ```bash
    # Allow simulation if real hardware not available
-   python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --allow-simulation
+   python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --allow-simulation
    ```
 
 4. **Firefox Audio Optimization Issues**
    ```bash
    # Test Firefox audio optimization with visible browser
-   python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --model whisper-tiny --optimize-audio --visible
+   python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --model whisper-tiny --optimize-audio --visible
    ```
 
 ### Browser Requirements

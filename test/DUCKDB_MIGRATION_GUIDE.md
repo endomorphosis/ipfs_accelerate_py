@@ -26,12 +26,12 @@ export BENCHMARK_DB_PATH=/path/to/your/benchmark_db.duckdb
 
 Instead of:
 ```bash
-python generators/benchmark_generators/run_model_benchmarks.py --output-dir ./results --models bert
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --output-dir ./results --models bert
 ```
 
 Now use:
 ```bash
-python generators/benchmark_generators/run_model_benchmarks.py --models bert
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --models bert
 ```
 
 The results will be automatically stored in the database specified by `BENCHMARK_DB_PATH`.
@@ -68,7 +68,7 @@ If you need to temporarily revert to the old JSON-based output for backward comp
 export DEPRECATE_JSON_OUTPUT=0
 
 # Run with JSON output explicitly
-python generators/benchmark_generators/run_model_benchmarks.py --models bert --output-dir ./json_results
+python scripts/generators/benchmark_scripts/generators/run_model_benchmarks.py --models bert --output-dir ./json_results
 ```
 
 Note that this approach is not recommended and is only provided for transition purposes.

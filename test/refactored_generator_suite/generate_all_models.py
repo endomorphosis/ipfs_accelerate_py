@@ -17,8 +17,8 @@ from typing import List, Dict, Any, Optional
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 # Import generator modules
-from generators.reference_model_generator import ReferenceModelGenerator
-from generators.architecture_detector import get_architecture_type
+from scripts.generators.reference_model_generator import ReferenceModelGenerator
+from scripts.generators.architecture_detector import get_architecture_type
 
 # Configure logging
 logging.basicConfig(

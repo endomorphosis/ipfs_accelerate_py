@@ -18,7 +18,7 @@ def test_imports():
     
     print("\n==== Testing root package imports ====")
     try:
-        import generators
+        import scripts.generators
         print(f"\1{generators.__file__}\3")
     except ImportError as e:
         print(f"\1{str(e)}\3")
@@ -31,13 +31,13 @@ def test_imports():
     
         print("\n==== Testing subpackage imports ====")
     try:
-        from generators.test_generators import generators.test_generators.simple_test_generator as simple_test_generator
+        from scripts.generators.test_generators import scripts.generators.test_generators.simple_test_generator as simple_test_generator
         print(f"\1{simple_test_generator.__file__}\3")
     except ImportError as e:
         print(f"\1{str(e)}\3")
     
     try:
-        from generators.utils import utils
+        from scripts.generators.utils import utils
         print(f"\1{utils.__file__}\3")
     except ImportError as e:
         print(f"\1{str(e)}\3")
@@ -56,7 +56,7 @@ def test_imports():
     
         print("\n==== Testing deep imports ====")
     try:
-        from generators.templates.model_templates import text_model_template
+        from scripts.generators.templates.model_templates import text_model_template
         print(f"✅ Imported text_model_template module")
     except ImportError as e:
         print(f"\1{str(e)}\3")

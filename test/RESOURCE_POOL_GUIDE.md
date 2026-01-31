@@ -98,7 +98,7 @@ The ResourcePool is deeply integrated with the test generator workflow, providin
 
 ```bash
 # Generate a hardware-aware test file for bert-base-uncased
-python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --output-dir ./skills
+python scripts/generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --output-dir ./skills
 
 # Generated tests include hardware-aware resource handling:
 # - Automatic device selection based on model family
@@ -112,25 +112,25 @@ python generators/models/test_generator_with_resource_pool.py --model bert-base-
 
 ```bash
 # Generate with debug logging to see detailed resource allocation
-python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --debug
+python scripts/generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --debug
 
 # Clear the resource cache before generating
-python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --clear-cache
+python scripts/generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --clear-cache
 
 # Set a custom timeout for resource cleanup
-python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --timeout 60
+python scripts/generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --timeout 60
 
 # Use the model family classifier to optimize test generation
-python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --use-model-family
+python scripts/generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --use-model-family
 
 # Force a specific hardware backend
-python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --device cuda
+python scripts/generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --device cuda
 
 # Use hardware detection cache to speed up generation
-python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --hw-cache ./hardware_cache.json
+python scripts/generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --hw-cache ./hardware_cache.json
 
 # Specify model database for improved classification
-python generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --model-db ./model_database.json
+python scripts/generators/models/test_generator_with_resource_pool.py --model bert-base-uncased --model-db ./model_database.json
 ```
 
 #### How Tests Use ResourcePool
@@ -399,7 +399,7 @@ The ResourcePool's advanced decision system checks each model against this compa
 You can see this comprehensive system in action by running the enhanced hardware test:
 
 ```bash
-python generators/models/test_comprehensive_hardware.py --test all
+python scripts/generators/models/test_comprehensive_hardware.py --test all
 ```
 
 This will show detailed hardware-aware model classification results like:
@@ -676,7 +676,7 @@ The comprehensive stats include:
 The ResourcePool system is designed with robust error handling to function gracefully even when optional components are missing:
 
 1. **Modular Dependencies**: Each component checks for the existence of its dependencies before attempting to use them
-2. **Graceful Degradation**: When generators/hardware/hardware_detection.py or model_family_classifier.py are missing, the system falls back to basic functionality
+2. **Graceful Degradation**: When scripts/generators/hardware/hardware_detection.py or model_family_classifier.py are missing, the system falls back to basic functionality
 3. **Runtime Feature Detection**: Components automatically detect available features at runtime rather than failing during import
 4. **Comprehensive Error Logging**: Clear error messages explain what features are missing and how the system is adapting
 5. **Self-Testing Capability**: The run_integrated_hardware_model_test.py script verifies all components work together correctly

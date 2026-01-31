@@ -4,7 +4,7 @@
 This document outlines the steps needed to migrate the template system from JSON to DuckDB for improved performance, reliability, and scalability.
 
 ## Current Status
-- Template database currently stored in JSON format at `/generators/templates/template_db.json`
+- Template database currently stored in JSON format at `/scripts/generators/templates/template_db.json`
 - 26 templates total (19 with valid syntax, 7 with errors)
 - Test generators currently read from JSON for template retrieval
 
@@ -52,7 +52,7 @@ CREATE TABLE template_metadata (
 ### 3. Migrate Existing Templates to DuckDB
 ```bash
 # Run migration script
-python generators/duckdb/create_template_db.py --json-path generators/templates/template_db.json --db-path generators/templates/template_db.duckdb
+python scripts/generators/duckdb/create_template_db.py --json-path scripts/generators/templates/template_db.json --db-path scripts/generators/templates/template_db.duckdb
 ```
 
 ### 4. Update Test Generator to Use DuckDB

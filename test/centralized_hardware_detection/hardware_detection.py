@@ -14,7 +14,7 @@ Key features:
     - Integration with test generators
 
 Usage:
-    from generators.hardware.hardware_detection import HardwareManager
+    from scripts.generators.hardware.hardware_detection import HardwareManager
     
     # Get hardware capabilities
     hw_manager = HardwareManager())))))))))

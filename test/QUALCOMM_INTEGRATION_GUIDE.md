@@ -28,17 +28,17 @@ To use the Qualcomm AI Engine support, you need:
 
 ```bash
 # Generate a test for bert with Qualcomm support
-python generators/test_generators/simple_test_generator.py -g bert -p qualcomm -o test_bert_qualcomm.py
+python scripts/generators/test_scripts/generators/simple_test_generator.py -g bert -p qualcomm -o test_bert_qualcomm.py
 
 # Generate a comprehensive test with all hardware platforms including Qualcomm
-python generators/test_generators/simple_test_generator.py -g bert -p all
+python scripts/generators/test_scripts/generators/simple_test_generator.py -g bert -p all
 ```
 
 ### Run Tests on Qualcomm Hardware
 
 ```bash
 # Run the test on Qualcomm hardware
-python generators/models/test_bert_qualcomm.py
+python scripts/generators/models/test_bert_qualcomm.py
 
 # Run a specific test method for Qualcomm
 python -m unittest test_hf_bert.TestBert.test_qualcomm
@@ -48,7 +48,7 @@ python -m unittest test_hf_bert.TestBert.test_qualcomm
 
 ```bash
 # Use the automated hardware selector with Qualcomm support
-python generators/hardware/automated_hardware_selection.py --model bert --include-qualcomm
+python scripts/generators/hardware/automated_hardware_selection.py --model bert --include-qualcomm
 
 # Get hardware recommendations that include Qualcomm devices
 python hardware_selector.py --model-family text --include-qualcomm

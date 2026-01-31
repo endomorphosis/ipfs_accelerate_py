@@ -44,7 +44,7 @@ Updated the following files to reference the docker group requirement:
    - Included docker group and service restart commands
    - Referenced comprehensive setup guide with hardware configurations
 
-4. **generators/test_generator/CI_CD_INTEGRATION.md**
+4. **scripts/generators/test_generator/CI_CD_INTEGRATION.md**
    - Added "Self-Hosted Runner Configuration" section
    - Included docker group configuration
    - Referenced comprehensive setup guide
@@ -78,7 +78,7 @@ test/
 data/benchmarks/
   └── BENCHMARK_CI_INTEGRATION.md (UPDATED)
 
-generators/
+scripts/generators/
   └── test_generator/
       └── CI_CD_INTEGRATION.md (UPDATED)
 

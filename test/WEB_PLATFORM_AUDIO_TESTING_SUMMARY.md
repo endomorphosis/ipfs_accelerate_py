@@ -28,7 +28,7 @@ For optimal performance with audio models on WebGPU:
 3. **Use the simplified test script** with the `--firefox` flag to automatically apply optimizations:
 
 ```bash
-./run_web_platform_tests.sh --firefox python generators/runners/web/web_platform_test_runner.py --model whisper
+./run_web_platform_tests.sh --firefox python scripts/generators/runners/web/web_platform_test_runner.py --model whisper
 ```
 
 ### Integration with ResourcePool
@@ -157,7 +157,7 @@ python test/test_firefox_webgpu_compute_shaders.py --benchmark-all --create-char
 python test/test_firefox_webgpu_compute_shaders.py --model whisper --audio-durations 5,15,30,60
 
 # Benchmark via test runner with optimizations enabled
-./run_web_platform_tests.sh --firefox --enable-compute-shaders python generators/runners/web/web_platform_test_runner.py --model whisper
+./run_web_platform_tests.sh --firefox --enable-compute-shaders python scripts/generators/runners/web/web_platform_test_runner.py --model whisper
 
 # Direct browser comparison
 ./run_web_platform_tests.sh --compare-browsers python test/test_firefox_webgpu_compute_shaders.py --model whisper

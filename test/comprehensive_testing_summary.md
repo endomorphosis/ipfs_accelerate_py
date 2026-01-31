@@ -2,13 +2,13 @@
 
 ## Overview
 
-This document summarizes the comprehensive testing performed after migrating code from `test/` to the new `generators/` and `duckdb_api/` packages. The migration process involved moving 299 files (216 to generators/ and 83 to duckdb_api/) and updating all import paths.
+This document summarizes the comprehensive testing performed after migrating code from `test/` to the new `scripts/generators/` and `duckdb_api/` packages. The migration process involved moving 299 files (216 to scripts/generators/ and 83 to duckdb_api/) and updating all import paths.
 
 ## File Structure Testing
 
 File structure testing confirmed that all expected directories and key files are present in the correct locations:
 
-- All required directories exist (generators/, generators/test_generators/, etc.)
+- All required directories exist (scripts/generators/, scripts/generators/test_scripts/generators/, etc.)
 - All key files are present and accessible
 - File counts match expected migration counts:
   - generators: 217 Python files (Expected: 216) - 100.5%
@@ -41,7 +41,7 @@ A few limitations were identified during testing:
 
 ## Conclusion
 
-The migration of code from `test/` to `generators/` and `duckdb_api/` has been successfully completed and verified through comprehensive testing. The file structure is correct, key files are in place, and core functionality works as expected.
+The migration of code from `test/` to `scripts/generators/` and `duckdb_api/` has been successfully completed and verified through comprehensive testing. The file structure is correct, key files are in place, and core functionality works as expected.
 
 Some database-specific functionality cannot be tested without installing additional dependencies, but this does not affect the verification of the migration itself.
 

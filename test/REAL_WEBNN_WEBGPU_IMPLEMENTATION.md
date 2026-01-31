@@ -97,22 +97,22 @@ The implementation automatically detects browser capabilities with detailed repo
 
 ```bash
 # Test WebGPU with a text model
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --input "This is a test input."
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --input "This is a test input."
 
 # Test WebNN with a vision model
-python generators/models/test_real_webnn_webgpu.py --platform webnn --model vit-base-patch16-224 --input-image test.jpg
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webnn --model vit-base-patch16-224 --input-image test.jpg
 
 # Test WebGPU with an audio model and Firefox (best for compute shaders)
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --browser firefox --model whisper-tiny --input-audio test.mp3
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --browser firefox --model whisper-tiny --input-audio test.mp3
 
 # Test with quantization
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --bits 8 --mixed-precision
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --bits 8 --mixed-precision
 
 # Show browser window (not headless)
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --show-browser
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --show-browser
 
 # Enable verbose logging for debugging
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --verbose
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --verbose
 ```
 
 ### Advanced Usage
@@ -121,29 +121,29 @@ python generators/models/test_real_webnn_webgpu.py --platform webgpu --verbose
 
 ```bash
 # Text model
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --model-type text --model bert-base-uncased
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --model-type text --model bert-base-uncased
 
 # Vision model
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --model-type vision --model vit-base-patch16-224 --input-image test.jpg
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --model-type vision --model vit-base-patch16-224 --input-image test.jpg
 
 # Audio model
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --model-type audio --model whisper-tiny --input-audio test.mp3
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --model-type audio --model whisper-tiny --input-audio test.mp3
 
 # Multimodal model
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --model-type multimodal --model clip-vit-base-patch32 --input-image test.jpg
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --model-type multimodal --model clip-vit-base-patch32 --input-image test.jpg
 ```
 
 #### Testing with Different Quantization Settings
 
 ```bash
 # 8-bit quantization
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --bits 8
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --bits 8
 
 # 4-bit quantization
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --bits 4
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --bits 4
 
 # 4-bit mixed precision quantization (higher precision for critical layers)
-python generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --bits 4 --mixed-precision
+python scripts/generators/models/test_real_webnn_webgpu.py --platform webgpu --model bert-base-uncased --bits 4 --mixed-precision
 ```
 
 ## Integration with Other Components

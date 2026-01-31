@@ -37,13 +37,13 @@ The benchmark automatically tests models across Chrome, Firefox, and Edge to det
 
 ```bash
 # Compare browsers for all default models
-python generators/models/test_web_resource_pool.py --compare-browsers
+python scripts/generators/models/test_web_resource_pool.py --compare-browsers
 
 # Compare browsers for specific model
-python generators/models/test_web_resource_pool.py --models whisper-tiny --compare-browsers
+python scripts/generators/models/test_web_resource_pool.py --models whisper-tiny --compare-browsers
 
 # Compare with specific optimization
-python generators/models/test_web_resource_pool.py --models whisper-tiny --compare-browsers --test-compute-shaders
+python scripts/generators/models/test_web_resource_pool.py --models whisper-tiny --compare-browsers --test-compute-shaders
 ```
 
 ### 2. Precision Mode Benchmarks
@@ -79,13 +79,13 @@ For each model, the benchmark:
 
 ```bash
 # Test all precision modes for default models
-python generators/models/test_web_resource_pool.py --test-quantization
+python scripts/generators/models/test_web_resource_pool.py --test-quantization
 
 # Test precision modes for specific model
-python generators/models/test_web_resource_pool.py --models bert-base-uncased --test-quantization
+python scripts/generators/models/test_web_resource_pool.py --models bert-base-uncased --test-quantization
 
 # Test on specific browser
-python generators/models/test_web_resource_pool.py --test-quantization --browser firefox
+python scripts/generators/models/test_web_resource_pool.py --test-quantization --browser firefox
 ```
 
 ### 3. Concurrent Execution Benchmarks
@@ -120,13 +120,13 @@ The benchmark:
 
 ```bash
 # Test concurrent execution with default models
-python generators/models/test_web_resource_pool.py --concurrent-models
+python scripts/generators/models/test_web_resource_pool.py --concurrent-models
 
 # Test with specific models
-python generators/models/test_web_resource_pool.py --concurrent-models --models bert-base-uncased,vit-base-patch16-224,whisper-tiny
+python scripts/generators/models/test_web_resource_pool.py --concurrent-models --models bert-base-uncased,vit-base-patch16-224,whisper-tiny
 
 # Test with specific concurrency level
-python generators/models/test_web_resource_pool.py --concurrent-models --concurrency 4
+python scripts/generators/models/test_web_resource_pool.py --concurrent-models --concurrency 4
 ```
 
 ### 4. Loading Optimization Benchmarks
@@ -160,13 +160,13 @@ The benchmark measures model loading time with:
 
 ```bash
 # Test loading optimizations for default models
-python generators/models/test_web_resource_pool.py --test-loading-optimizations
+python scripts/generators/models/test_web_resource_pool.py --test-loading-optimizations
 
 # Test for specific model
-python generators/models/test_web_resource_pool.py --models clip-vit-base-patch16 --test-loading-optimizations
+python scripts/generators/models/test_web_resource_pool.py --models clip-vit-base-patch16 --test-loading-optimizations
 
 # Test on specific browser
-python generators/models/test_web_resource_pool.py --test-loading-optimizations --browser edge
+python scripts/generators/models/test_web_resource_pool.py --test-loading-optimizations --browser edge
 ```
 
 ### 5. IPFS Acceleration Integration Benchmarks
@@ -201,13 +201,13 @@ The benchmark:
 
 ```bash
 # Test IPFS acceleration for default models
-python generators/models/test_web_resource_pool.py --test-ipfs-acceleration
+python scripts/generators/models/test_web_resource_pool.py --test-ipfs-acceleration
 
 # Test with specific models
-python generators/models/test_web_resource_pool.py --models bert-base-uncased --test-ipfs-acceleration
+python scripts/generators/models/test_web_resource_pool.py --models bert-base-uncased --test-ipfs-acceleration
 
 # Test with P2P optimization
-python generators/models/test_web_resource_pool.py --test-ipfs-acceleration --enable-p2p
+python scripts/generators/models/test_web_resource_pool.py --test-ipfs-acceleration --enable-p2p
 ```
 
 ### 6. Stress Testing
@@ -241,13 +241,13 @@ The benchmark:
 
 ```bash
 # Run 1-minute stress test
-python generators/models/test_web_resource_pool.py --stress-test --duration 60
+python scripts/generators/models/test_web_resource_pool.py --stress-test --duration 60
 
 # Test with specific models
-python generators/models/test_web_resource_pool.py --stress-test --models bert-base-uncased --duration 120
+python scripts/generators/models/test_web_resource_pool.py --stress-test --models bert-base-uncased --duration 120
 
 # Test with high concurrency
-python generators/models/test_web_resource_pool.py --stress-test --duration 60 --max-connections 8
+python scripts/generators/models/test_web_resource_pool.py --stress-test --duration 60 --max-connections 8
 ```
 
 ## Benchmark Environment Considerations
@@ -398,7 +398,7 @@ The benchmark framework can generate various visualizations:
 
 ```bash
 # Generate browser comparison visualization
-python generators/models/test_web_resource_pool.py --compare-browsers --visualize --output browser_comparison.html
+python scripts/generators/models/test_web_resource_pool.py --compare-browsers --visualize --output browser_comparison.html
 ```
 
 ### 2. Precision Impact Charts
@@ -407,7 +407,7 @@ python generators/models/test_web_resource_pool.py --compare-browsers --visualiz
 
 ```bash
 # Generate precision impact visualization
-python generators/models/test_web_resource_pool.py --test-quantization --visualize --output precision_impact.html
+python scripts/generators/models/test_web_resource_pool.py --test-quantization --visualize --output precision_impact.html
 ```
 
 ### 3. Concurrent Execution Scaling
@@ -416,7 +416,7 @@ python generators/models/test_web_resource_pool.py --test-quantization --visuali
 
 ```bash
 # Generate concurrency scaling visualization
-python generators/models/test_web_resource_pool.py --concurrent-models --visualize --output concurrency_scaling.html
+python scripts/generators/models/test_web_resource_pool.py --concurrent-models --visualize --output concurrency_scaling.html
 ```
 
 ### 4. Loading Optimization Impact
@@ -425,7 +425,7 @@ python generators/models/test_web_resource_pool.py --concurrent-models --visuali
 
 ```bash
 # Generate loading optimization visualization
-python generators/models/test_web_resource_pool.py --test-loading-optimizations --visualize --output loading_optimization.html
+python scripts/generators/models/test_web_resource_pool.py --test-loading-optimizations --visualize --output loading_optimization.html
 ```
 
 ## Continuous Integration
@@ -461,13 +461,13 @@ jobs:
           pip install -r requirements.txt
           
       - name: Run basic benchmarks
-        run: python generators/models/test_web_resource_pool.py --db-path ./benchmark_db.duckdb
+        run: python scripts/generators/models/test_web_resource_pool.py --db-path ./benchmark_db.duckdb
         
       - name: Run browser comparison
-        run: python generators/models/test_web_resource_pool.py --compare-browsers --db-path ./benchmark_db.duckdb
+        run: python scripts/generators/models/test_web_resource_pool.py --compare-browsers --db-path ./benchmark_db.duckdb
         
       - name: Run precision tests
-        run: python generators/models/test_web_resource_pool.py --test-quantization --db-path ./benchmark_db.duckdb
+        run: python scripts/generators/models/test_web_resource_pool.py --test-quantization --db-path ./benchmark_db.duckdb
         
       - name: Upload benchmark database
         uses: actions/upload-artifact@v3

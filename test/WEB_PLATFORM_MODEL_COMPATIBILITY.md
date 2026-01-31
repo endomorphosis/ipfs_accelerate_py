@@ -327,28 +327,28 @@ To properly test 4-bit quantized models:
 1. **Accuracy Validation**:
    ```bash
    # Compare accuracy against reference models
-   python generators/models/test_webgpu_4bit_inference.py --model llama --validate-accuracy
+   python scripts/generators/models/test_webgpu_4bit_inference.py --model llama --validate-accuracy
    
    # Test with specific prompts
-   python generators/models/test_webgpu_4bit_inference.py --model llama --test-prompts prompts.json
+   python scripts/generators/models/test_webgpu_4bit_inference.py --model llama --test-prompts prompts.json
    ```
 
 2. **Cross-Platform Comparison**:
    ```bash
    # Compare across hardware platforms
-   python generators/models/test_cross_platform_4bit.py --model llama --all-platforms
+   python scripts/generators/models/test_cross_platform_4bit.py --model llama --all-platforms
    
    # Generate HTML report
-   python generators/models/test_cross_platform_4bit.py --model llama --output-report report.html
+   python scripts/generators/models/test_cross_platform_4bit.py --model llama --output-report report.html
    ```
 
 3. **Browser Testing**:
    ```bash
    # Test with browser automation
-   ./run_web_platform_tests.sh --use-browser-automation --browser chrome python generators/models/test_webgpu_4bit_inference.py --model llama
+   ./run_web_platform_tests.sh --use-browser-automation --browser chrome python scripts/generators/models/test_webgpu_4bit_inference.py --model llama
    
    # Test across browsers
-   python generators/models/test_cross_platform_4bit.py --model llama --cross-browser
+   python scripts/generators/models/test_cross_platform_4bit.py --model llama --cross-browser
    ```
 
 ### Memory-Efficient KV-Cache Testing
@@ -358,28 +358,28 @@ To test memory-efficient KV-cache:
 1. **Basic Testing**:
    ```bash
    # Test all KV-cache optimizations
-   python generators/models/test_webgpu_kv_cache_optimization.py --test all
+   python scripts/generators/models/test_webgpu_kv_cache_optimization.py --test all
    
    # Test specific optimization
-   python generators/models/test_webgpu_kv_cache_optimization.py --test sliding_window
+   python scripts/generators/models/test_webgpu_kv_cache_optimization.py --test sliding_window
    ```
 
 2. **Long Context Testing**:
    ```bash
    # Test with increasing context lengths
-   python generators/models/test_webgpu_kv_cache_optimization.py --context-sizes 1k,2k,4k,8k,16k
+   python scripts/generators/models/test_webgpu_kv_cache_optimization.py --context-sizes 1k,2k,4k,8k,16k
    
    # Test with real-world documents
-   python generators/models/test_webgpu_kv_cache_optimization.py --document-file long_documents.txt
+   python scripts/generators/models/test_webgpu_kv_cache_optimization.py --document-file long_documents.txt
    ```
 
 3. **Memory Profiling**:
    ```bash
    # Profile memory usage
-   python generators/models/test_webgpu_kv_cache_optimization.py --memory-profile
+   python scripts/generators/models/test_webgpu_kv_cache_optimization.py --memory-profile
    
    # Generate memory usage charts
-   python generators/models/test_webgpu_kv_cache_optimization.py --memory-profile --create-chart
+   python scripts/generators/models/test_webgpu_kv_cache_optimization.py --memory-profile --create-chart
    ```
 
 ## Browser-Specific 4-bit Inference Optimizations (April 2025)
@@ -407,7 +407,7 @@ python implement_adaptive_precision.py --model llama --target-browser chrome
 python implement_adaptive_precision.py --model llama --target-browser firefox --implement-shader-code
 
 # Test with browser-specific optimizations
-python generators/models/test_webgpu_4bit_inference.py --model llama --browser-specific --target-browser chrome
+python scripts/generators/models/test_webgpu_4bit_inference.py --model llama --browser-specific --target-browser chrome
 ```
 
 ### Performance Metrics with Browser Optimizations

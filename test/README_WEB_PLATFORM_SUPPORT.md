@@ -43,7 +43,7 @@ This implementation allows tests to be generated for all 13 key model families w
      - `__init__.py`: Exports the main functions
      - `web_platform_handler.py`: Contains the main implementation
 
-2. **Integration with generators/test_generators/merged_test_generator.py**
+2. **Integration with scripts/generators/test_scripts/generators/merged_test_generator.py**
    - Imports the fixed_web_platform module
    - Uses enhanced WebNN and WebGPU initializers
    - Supports platform-specific test generation
@@ -102,27 +102,27 @@ Generate tests with web platform support using:
 
 ```bash
 # Generate a test for BERT with WebNN platform
-python generators/test_generators/merged_test_generator.py --generate bert --platform webnn
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert --platform webnn
 
 # Generate a test for ViT with WebGPU platform 
-python generators/test_generators/merged_test_generator.py --generate vit --platform webgpu
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate vit --platform webgpu
 
 # Specify the WebNN implementation mode
-python generators/test_generators/merged_test_generator.py --generate bert --platform webnn --webnn-mode simulation
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert --platform webnn --webnn-mode simulation
 
 # Generate for specific browsers with optimizations
-python generators/test_generators/merged_test_generator.py --generate bert --platform webgpu --firefox  # Firefox optimizations
-python generators/test_generators/merged_test_generator.py --generate bert --platform webgpu --safari   # Safari Metal API integration
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert --platform webgpu --firefox  # Firefox optimizations
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert --platform webgpu --safari   # Safari Metal API integration
 
 # Generate for all platforms
-python generators/test_generators/merged_test_generator.py --generate bert --platform all
+python scripts/generators/test_scripts/generators/merged_test_generator.py --generate bert --platform all
 ```
 
 ### Running Web Platform Tests
 
 ```bash
 # Run a basic integration test to verify functionality
-python generators/models/test_model_integration.py
+python scripts/generators/models/test_model_integration.py
 
 # Run tests with database integration
 python run_web_platform_tests_with_db.py --models bert t5 vit --small-models
@@ -207,7 +207,7 @@ This script checks:
 For a simple test of the web platform handlers:
 
 ```bash
-python generators/models/test_model_integration.py
+python scripts/generators/models/test_model_integration.py
 ```
 
 This script tests:
@@ -510,7 +510,7 @@ python -c "from fixed_web_platform import process_for_web; print('Module importe
 python verify_web_platform_integration.py
 
 # Test with explicit environment variables
-WEBNN_ENABLED=1 WEBNN_SIMULATION=1 python generators/models/test_model_integration.py
+WEBNN_ENABLED=1 WEBNN_SIMULATION=1 python scripts/generators/models/test_model_integration.py
 ```
 
 ## Recent and Future Enhancements

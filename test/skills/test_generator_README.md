@@ -30,35 +30,35 @@ The `test_generator.py` script is a powerful tool for generating test files for 
 
 ```bash
 # List available model families (76 total)
-python generators/models/test_generator.py --list-families
+python scripts/generators/models/test_generator.py --list-families
 
 # Generate a test file for a specific model family
-python generators/models/test_generator.py --generate bert
+python scripts/generators/models/test_generator.py --generate bert
 
 # Generate test files for all model families
-python generators/models/test_generator.py --all
+python scripts/generators/models/test_generator.py --all
 
 # Generate test files for a specific set of models
-python generators/models/test_generator.py --batch-generate bert,gpt2,t5,vit,clip
+python scripts/generators/models/test_generator.py --batch-generate bert,gpt2,t5,vit,clip
 ```
 
 ### Advanced Features
 
 ```bash
 # Discover and suggest new models to add
-python generators/models/test_generator.py --suggest-models
+python scripts/generators/models/test_generator.py --suggest-models
 
 # Generate a registry entry for a specific model
-python generators/models/test_generator.py --generate-registry-entry sam
+python scripts/generators/models/test_generator.py --generate-registry-entry sam
 
 # Automatically discover and add new models to registry
-python generators/models/test_generator.py --auto-add --max-models 5
+python scripts/generators/models/test_generator.py --auto-add --max-models 5
 
 # Update test_all_models.py with all current model families
-python generators/models/test_generator.py --update-all-models
+python scripts/generators/models/test_generator.py --update-all-models
 
 # Scan the transformers library for available models
-python generators/models/test_generator.py --scan-transformers
+python scripts/generators/models/test_generator.py --scan-transformers
 ```
 
 ## Running Tests
@@ -67,29 +67,29 @@ The generated test files can be run directly to test specific model families:
 
 ```bash
 # Test a specific model family
-python generators/models/test_hf_bert.py
+python scripts/generators/models/test_hf_bert.py
 
 # Test all hardware backends (CPU, CUDA, OpenVINO)
-python generators/models/test_hf_bert.py --all-hardware
+python scripts/generators/models/test_hf_bert.py --all-hardware
 
 # Test a specific model
-python generators/models/test_hf_bert.py --model bert-base-uncased
+python scripts/generators/models/test_hf_bert.py --model bert-base-uncased
 
 # Save detailed test results
-python generators/models/test_hf_bert.py --save --output-dir collected_results
+python scripts/generators/models/test_hf_bert.py --save --output-dir collected_results
 ```
 
 For running multiple tests at once, use the `test_all_models.py` script:
 
 ```bash
 # Run tests for all models
-python generators/models/test_all_models.py
+python scripts/generators/models/test_all_models.py
 
 # Run tests with all hardware
-python generators/models/test_all_models.py --all-hardware
+python scripts/generators/models/test_all_models.py --all-hardware
 
 # Run tests for specific categories
-python generators/models/test_all_models.py --categories language,vision,audio
+python scripts/generators/models/test_all_models.py --categories language,vision,audio
 ```
 
 ## Test Results

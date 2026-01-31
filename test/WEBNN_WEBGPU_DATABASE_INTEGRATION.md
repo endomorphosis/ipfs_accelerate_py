@@ -39,16 +39,16 @@ For real hardware validation and testing:
 
 ```bash
 # Test real WebGPU implementation with hardware validation
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser chrome --platform webgpu --model bert-base-uncased --db-path ./benchmark_db.duckdb
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser chrome --platform webgpu --model bert-base-uncased --db-path ./benchmark_db.duckdb
 
 # Test Firefox with audio optimizations and real hardware validation
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --model whisper-tiny --optimize-audio --db-path ./benchmark_db.duckdb
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser firefox --model whisper-tiny --optimize-audio --db-path ./benchmark_db.duckdb
 
 # Test Edge WebNN with real hardware validation
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser edge --platform webnn --model bert-base-uncased --db-path ./benchmark_db.duckdb
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --browser edge --platform webnn --model bert-base-uncased --db-path ./benchmark_db.duckdb
 
 # Run comprehensive hardware validation tests
-python generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive --db-path ./benchmark_db.duckdb
+python scripts/generators/models/test_ipfs_accelerate_with_real_webnn_webgpu.py --comprehensive --db-path ./benchmark_db.duckdb
 ```
 
 Still compatible with legacy methods:
