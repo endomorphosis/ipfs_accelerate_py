@@ -745,4 +745,4 @@ For more detailed examples and advanced usage patterns, see the [Usage Guide](US
 - [Usage Guide](USAGE.md) - Comprehensive usage examples
 - [Hardware Optimization](HARDWARE.md) - Hardware-specific optimization
 - [IPFS Integration](IPFS.md) - Advanced IPFS features
-- [WebNN/WebGPU README](../WEBNN_WEBGPU_README.md) - Browser acceleration
+- [WebNN/WebGPU README](WEBNN_WEBGPU_README.md) - Browser acceleration

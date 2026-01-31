@@ -38,7 +38,7 @@ IPFS Accelerate Python is a comprehensive framework that combines:
 7. **[Hardware Optimization](HARDWARE.md)** - Platform-specific optimization strategies
 8. **[IPFS Integration](IPFS.md)** - Distributed inference and content addressing
 9. **[P2P & MCP Architecture](P2P_AND_MCP.md)** - P2P workflow scheduling and MCP server
-10. **[WebNN/WebGPU Integration](../WEBNN_WEBGPU_README.md)** - Browser-based acceleration
+10. **[WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)** - Browser-based acceleration
 
 ### Organized Guides
 11. **[GitHub Guides](guides/github/)** - GitHub Actions, autoscaling, authentication, P2P cache

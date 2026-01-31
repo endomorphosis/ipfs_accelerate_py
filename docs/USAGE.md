@@ -996,7 +996,7 @@ async def distributed_inference():
 distributed_result = anyio.run(distributed_inference)
 ```
 
-For more examples, see the [examples directory](../examples/) and the [WebNN/WebGPU README](../WEBNN_WEBGPU_README.md).
+For more examples, see the [examples directory](../examples/) and the [WebNN/WebGPU README](WEBNN_WEBGPU_README.md).
 
 ## Next Steps
 

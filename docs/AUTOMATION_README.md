@@ -14,8 +14,8 @@ This directory contains a comprehensive plan for integrating advanced CI/CD auto
 
 | Document | Purpose | Size | For |
 |----------|---------|------|-----|
-| **[EXECUTIVE_SUMMARY.md](./EXECUTIVE_SUMMARY.md)** | Business case, ROI analysis, high-level overview | 14KB | Leadership, Decision Makers |
-| **[REUSABLE_COMPONENTS_SUMMARY.md](./REUSABLE_COMPONENTS_SUMMARY.md)** | Quick reference of available components | 15KB | Developers, Tech Leads |
+| **<!-- MISSING: <!-- MISSING: <!-- MISSING: [EXECUTIVE_SUMMARY.md](./EXECUTIVE_SUMMARY.md) --> --> -->** | Business case, ROI analysis, high-level overview | 14KB | Leadership, Decision Makers |
+| **<!-- MISSING: <!-- MISSING: [REUSABLE_COMPONENTS_SUMMARY.md](./REUSABLE_COMPONENTS_SUMMARY.md) --> -->** | Quick reference of available components | 15KB | Developers, Tech Leads |
 | **[AUTOMATION_INTEGRATION_PLAN.md](./AUTOMATION_INTEGRATION_PLAN.md)** | Detailed 7-phase integration plan | 27KB | Implementation Team |
 | **[QUICKSTART_VSCODE_INTEGRATION.md](./QUICKSTART_VSCODE_INTEGRATION.md)** | Step-by-step Phase 1 guide | 14KB | Developers |
 
@@ -144,14 +144,14 @@ This directory contains a comprehensive plan for integrating advanced CI/CD auto
 ## 📖 How to Use This Documentation
 
 ### For Leadership / Decision Makers
-**Start here:** [EXECUTIVE_SUMMARY.md](./EXECUTIVE_SUMMARY.md)
+**Start here:** <!-- MISSING: <!-- MISSING: <!-- MISSING: [EXECUTIVE_SUMMARY.md](./EXECUTIVE_SUMMARY.md) --> --> -->
 - Business case and ROI analysis
 - High-level benefits and outcomes
 - Risk assessment
 - Approval recommendation
 
 ### For Tech Leads / Architects
-**Start here:** [REUSABLE_COMPONENTS_SUMMARY.md](./REUSABLE_COMPONENTS_SUMMARY.md)
+**Start here:** <!-- MISSING: <!-- MISSING: [REUSABLE_COMPONENTS_SUMMARY.md](./REUSABLE_COMPONENTS_SUMMARY.md) --> -->
 - Quick reference of all components
 - Integration priority matrix
 - Technical details
@@ -178,7 +178,7 @@ This directory contains a comprehensive plan for integrating advanced CI/CD auto
 
 ### Ready to Begin?
 
-1. **Review** the [Executive Summary](./EXECUTIVE_SUMMARY.md)
+1. **Review** the <!-- MISSING: <!-- MISSING: <!-- MISSING: [Executive Summary](./EXECUTIVE_SUMMARY.md) --> --> -->
 2. **Approve** the integration approach
 3. **Read** the [Quick Start Guide](./QUICKSTART_VSCODE_INTEGRATION.md)
 4. **Begin** with VSCode integration (1-2 days)
@@ -259,7 +259,7 @@ curl -o .vscode/tasks.json.template \
 ## 🎓 Additional Resources
 
 ### Related Documentation
-- [Current Auto-Healing System](./.github/AUTO_HEAL_README.md)
+- <!-- MISSING: [Current Auto-Healing System](./.github/AUTO_HEAL_README.md) -->
 - [ipfs_datasets_py Repository](https://github.com/endomorphosis/ipfs_datasets_py)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [VSCode Tasks Documentation](https://code.visualstudio.com/docs/editor/tasks)

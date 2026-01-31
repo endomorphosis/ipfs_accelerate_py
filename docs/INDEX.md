@@ -18,7 +18,7 @@ This is the central documentation index for the IPFS Accelerate Python framework
 
 ### **Advanced Features**
 - **[WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)** - Browser-based acceleration guide
-- **[MCP Integration](../mcp/README.md)** - Model Control Protocol for automation
+- **[MCP Integration](../ipfs_accelerate_py/mcp/README.md)** - Model Control Protocol for automation
 - **[Testing Framework](TESTING.md)** - Comprehensive testing and validation
 
 ## 🏢 **Enterprise Documentation**
