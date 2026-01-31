@@ -6,11 +6,18 @@ and returning the expected responses.
 """
 
 import os
+import sys
+from pathlib import Path
 import pytest
 import logging
 import time
 import json
 from typing import Dict, List, Any, Optional
+
+# Ensure repo root is on sys.path for shared test utilities.
+repo_root = Path(__file__).resolve().parents[2]
+if str(repo_root) not in sys.path:
+    sys.path.insert(0, str(repo_root))
 
 # Import common utilities
 from common.hardware_detection import detect_hardware
