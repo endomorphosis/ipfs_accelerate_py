@@ -53,8 +53,123 @@ class StandaloneMCP:
         self.tools = {}
         self.resources = {}
         self.prompts = {}
+        self._error_handler = None
         
         logger.info(f"Using standalone MCP implementation: {name}")
+        
+        # Initialize error handler if available
+        self._init_error_handler()
+    
+    def _init_error_handler(self):
+        """Initialize the error handler for auto-healing."""
+        try:
+            import os
+            from ipfs_accelerate_py.error_handler import CLIErrorHandler
+            
+            # Check if auto-healing is enabled
+            enable_auto_issue = os.environ.get('IPFS_AUTO_ISSUE', '').lower() in ('1', 'true', 'yes')
+            enable_auto_pr = os.environ.get('IPFS_AUTO_PR', '').lower() in ('1', 'true', 'yes')
+            enable_auto_heal = os.environ.get('IPFS_AUTO_HEAL', '').lower() in ('1', 'true', 'yes')
+            repo = os.environ.get('IPFS_REPO', 'endomorphosis/ipfs_accelerate_py')
+            
+            if enable_auto_issue or enable_auto_pr or enable_auto_heal:
+                self._error_handler = CLIErrorHandler(
+                    repo=repo,
+                    enable_auto_issue=enable_auto_issue,
+                    enable_auto_pr=enable_auto_pr,
+                    enable_auto_heal=enable_auto_heal,
+                    log_context_lines=50
+                )
+                logger.info(f"MCP auto-healing enabled: issue={enable_auto_issue}, pr={enable_auto_pr}, heal={enable_auto_heal}")
+        except ImportError as e:
+            logger.debug(f"Error handler not available for MCP: {e}")
+        except Exception as e:
+            logger.debug(f"Failed to initialize MCP error handler: {e}")
+    
+    def _report_tool_error(self, tool_name: str, exception: Exception, params: dict):
+        """Report a tool execution error to the auto-healing system."""
+        if not self._error_handler:
+            return
+        
+        try:
+            context = {
+                'mcp_server': self.name,
+                'tool_name': tool_name,
+                'tool_params': str(params),
+                'error_source': 'mcp_tool'
+            }
+            
+            # Capture the error
+            self._error_handler.capture_error(exception, context=context)
+            
+            # Create issue if enabled
+            if self._error_handler.enable_auto_issue:
+                self._error_handler.create_issue_from_error(exception, context=context)
+        except Exception as e:
+            logger.debug(f"Failed to report tool error: {e}")
+    
+    def _report_resource_error(self, resource_uri: str, exception: Exception):
+        """Report a resource access error to the auto-healing system."""
+        if not self._error_handler:
+            return
+        
+        try:
+            context = {
+                'mcp_server': self.name,
+                'resource_uri': resource_uri,
+                'error_source': 'mcp_resource'
+            }
+            
+            # Capture the error
+            self._error_handler.capture_error(exception, context=context)
+            
+            # Create issue if enabled
+            if self._error_handler.enable_auto_issue:
+                self._error_handler.create_issue_from_error(exception, context=context)
+        except Exception as e:
+            logger.debug(f"Failed to report resource error: {e}")
+    
+    def _report_client_error(self, error_data: dict):
+        """
+        Report a client-side (JavaScript SDK) error to the auto-healing system.
+        
+        Args:
+            error_data: Dictionary containing error details from the client
+        """
+        if not self._error_handler:
+            logger.debug("Error handler not available, skipping client error report")
+            return
+        
+        try:
+            # Create a synthetic exception from the client error data
+            error_type = error_data.get('error_type', 'ClientError')
+            error_message = error_data.get('error_message', 'Unknown client error')
+            stack_trace = error_data.get('stack_trace', '')
+            client_context = error_data.get('context', {})
+            
+            # Build context
+            context = {
+                'mcp_server': self.name,
+                'error_source': 'mcp_javascript_sdk',
+                'client_context': client_context,
+                'client_stack_trace': stack_trace,
+            }
+            
+            # Create a RuntimeError with the client's error message
+            exception = RuntimeError(f"[JavaScript SDK] {error_type}: {error_message}")
+            
+            # Capture the error
+            self._error_handler.capture_error(exception, context=context)
+            
+            # Create issue if enabled
+            if self._error_handler.enable_auto_issue:
+                self._error_handler.create_issue_from_error(exception, context=context)
+            
+            logger.info(f"Reported client error to auto-healing system: {error_type}")
+        except Exception as e:
+            logger.error(f"Failed to report client error: {e}")
+            import traceback
+            logger.debug(traceback.format_exc())
     
     def register_tool(
         self,
@@ -272,6 +387,13 @@ class StandaloneMCP:
                     return result
                 except Exception as e:
                     logger.error(f"Error executing tool {tool_name}: {e}")
+                    
+                    # Capture error with auto-healing system if available
+                    try:
+                        self._report_tool_error(tool_name, e, data)
+                    except Exception as report_error:
+                        logger.debug(f"Failed to report error to auto-healing system: {report_error}")
+                    
                     raise HTTPException(status_code=500, detail=str(e))
             
             # Log all registered tools
@@ -294,11 +416,40 @@ class StandaloneMCP:
                     return result
                 except Exception as e:
                     logger.error(f"Error accessing resource {resource_uri}: {e}")
+                    
+                    # Capture error with auto-healing system if available
+                    try:
+                        self._report_resource_error(resource_uri, e)
+                    except Exception as report_error:
+                        logger.debug(f"Failed to report error to auto-healing system: {report_error}")
+                    
                     raise HTTPException(status_code=500, detail=str(e))
             
             # Log all registered resources
             for uri, resource in self.resources.items():
                 logger.debug(f"Registered resource: {uri} (accessible at GET /resource/{uri})")
+            
+            # Add error reporting endpoint for JavaScript SDK
+            @router.post("/report-error", summary="Report client-side error")
+            async def report_error_endpoint(error_data: dict = Body(..., description="Error details from client")):
+                """
+                Endpoint for JavaScript SDK to report client-side errors.
+                
+                Expected error_data format:
+                {
+                    "error_type": "string",
+                    "error_message": "string", 
+                    "stack_trace": "string",
+                    "context": {...}
+                }
+                """
+                try:
+                    # Report the error to the auto-healing system
+                    self._report_client_error(error_data)
+                    return {"status": "ok", "message": "Error reported successfully"}
+                except Exception as e:
+                    logger.error(f"Failed to report client error: {e}")
+                    return {"status": "error", "message": str(e)}
             
             # Mount the router
             app.include_router(router, prefix=mount_path)
