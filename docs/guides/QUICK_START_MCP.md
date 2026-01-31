@@ -205,7 +205,7 @@ ipfs-accelerate mcp start
 ## 📚 Full Documentation
 
 - **MCP_ERROR_HANDLING_VERIFICATION.md** - MCP-specific details
-- **AUTO_HEALING_README.md** - Complete guide
+- **[AUTO_HEALING_README.md](../AUTO_HEALING_README.md)** - Complete guide
 - **docs/AUTO_HEALING_CONFIGURATION.md** - All configuration options
 
 ---
