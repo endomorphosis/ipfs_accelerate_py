@@ -442,14 +442,48 @@ class StandaloneMCP:
                     "stack_trace": "string",
                     "context": {...}
                 }
+                
+                Security: This endpoint validates and sanitizes input before processing.
                 """
                 try:
+                    # Validate required fields
+                    if not isinstance(error_data, dict):
+                        raise HTTPException(status_code=400, detail="Invalid error data format")
+                    
+                    required_fields = ["error_type", "error_message"]
+                    for field in required_fields:
+                        if field not in error_data:
+                            raise HTTPException(status_code=400, detail=f"Missing required field: {field}")
+                    
+                    # Sanitize and limit field sizes to prevent abuse
+                    max_message_length = 10000
+                    max_stack_trace_length = 50000
+                    
+                    error_type = str(error_data.get("error_type", ""))[:500]
+                    error_message = str(error_data.get("error_message", ""))[:max_message_length]
+                    stack_trace = str(error_data.get("stack_trace", ""))[:max_stack_trace_length]
+                    context = error_data.get("context", {})
+                    
+                    # Validate context is dict and limit size
+                    if not isinstance(context, dict):
+                        context = {}
+                    
+                    # Create sanitized error data
+                    sanitized_error_data = {
+                        "error_type": error_type,
+                        "error_message": error_message,
+                        "stack_trace": stack_trace,
+                        "context": context
+                    }
+                    
                     # Report the error to the auto-healing system
-                    self._report_client_error(error_data)
+                    self._report_client_error(sanitized_error_data)
                     return {"status": "ok", "message": "Error reported successfully"}
+                except HTTPException:
+                    raise
                 except Exception as e:
                     logger.error(f"Failed to report client error: {e}")
-                    return {"status": "error", "message": str(e)}
+                    return {"status": "error", "message": "Internal server error"}
             
             # Mount the router
             app.include_router(router, prefix=mount_path)

@@ -69,7 +69,9 @@ class CLIErrorHandler:
                 self._error_aggregator = ErrorAggregator(
                     repo=self.repo,
                     peer_registry=peer_registry,
-                    enable_auto_issue_creation=self.enable_auto_issue
+                    enable_auto_issue_creation=self.enable_auto_issue,
+                    enable_auto_pr_creation=self.enable_auto_pr,
+                    enable_copilot_autofix=self.enable_auto_heal
                 )
                 
                 # Start bundling thread if auto-issue is enabled
@@ -174,7 +176,9 @@ class CLIErrorHandler:
         # Get error details
         error_type = type(exception).__name__
         error_message = str(exception)
-        stack_trace = traceback.format_exc()
+        stack_trace = "".join(
+            traceback.format_exception(type(exception), exception, exception.__traceback__)
+        )
         
         # Capture log context
         log_context = self._capture_log_context()
@@ -276,7 +280,9 @@ class CLIErrorHandler:
         # Capture error details
         error_type = type(exception).__name__
         error_message = str(exception)
-        stack_trace = traceback.format_exc()
+        stack_trace = "".join(
+            traceback.format_exception(type(exception), exception, exception.__traceback__)
+        )
         log_context = self._capture_log_context()
         
         # Build issue title
@@ -410,8 +416,8 @@ Closes #{issue_number}
             if self.enable_auto_heal:
                 self._invoke_copilot_autofix(issue_number, exception)
             
-            # Return placeholder (actual PR creation would happen here)
-            return f"{self.repo}/pull/{issue_number}"
+            # No actual PR is created here; return None to indicate that no live PR URL exists yet
+            return None
             
         except Exception as e:
             logger.error(f"Error creating draft PR: {e}")

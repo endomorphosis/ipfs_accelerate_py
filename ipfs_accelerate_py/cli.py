@@ -1593,16 +1593,23 @@ def main():
         # Get repository from environment or default
         repo = os.environ.get('IPFS_REPO', 'endomorphosis/ipfs_accelerate_py')
         
-        # Initialize error handler
-        error_handler = CLIErrorHandler(
-            repo=repo,
-            enable_auto_issue=enable_auto_issue,
-            enable_auto_pr=enable_auto_pr,
-            enable_auto_heal=enable_auto_heal,
-            log_context_lines=50
-        )
-        
-        logger.debug(f"Error handler initialized: auto_issue={enable_auto_issue}, auto_pr={enable_auto_pr}, auto_heal={enable_auto_heal}")
+        # Initialize error handler only if at least one auto feature is enabled
+        if enable_auto_issue or enable_auto_pr or enable_auto_heal:
+            error_handler = CLIErrorHandler(
+                repo=repo,
+                enable_auto_issue=enable_auto_issue,
+                enable_auto_pr=enable_auto_pr,
+                enable_auto_heal=enable_auto_heal,
+                log_context_lines=50
+            )
+            logger.debug(
+                f"Error handler initialized: auto_issue={enable_auto_issue}, auto_pr={enable_auto_pr}, auto_heal={enable_auto_heal}"
+            )
+        else:
+            logger.debug(
+                "Error handler not initialized because all auto features are disabled "
+                "(IPFS_AUTO_ISSUE, IPFS_AUTO_PR, IPFS_AUTO_HEAL)."
+            )
         
     except ImportError as e:
         logger.debug(f"Error handler not available: {e}")
@@ -1939,8 +1946,6 @@ Examples:
             
     except KeyboardInterrupt:
         logger.info("CLI interrupted by user")
-        if error_handler:
-            error_handler.cleanup()
         return 0
     except Exception as e:
         logger.error(f"CLI error: {e}")
@@ -1956,12 +1961,10 @@ Examples:
                     
             except Exception as handler_error:
                 logger.debug(f"Error handler failed: {handler_error}")
-            finally:
-                error_handler.cleanup()
         
         return 1
     finally:
-        # Cleanup error handler
+        # Cleanup error handler (only once in outer finally)
         if error_handler:
             try:
                 error_handler.cleanup()

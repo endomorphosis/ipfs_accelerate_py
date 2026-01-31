@@ -25,16 +25,16 @@ test_step() {
 
 test_pass() {
     echo -e "${GREEN}✓ PASS:${NC} $1"
-    ((TESTS_PASSED++))
+    ((++TESTS_PASSED))
 }
 
 test_fail() {
     echo -e "${RED}✗ FAIL:${NC} $1"
-    ((TESTS_FAILED++))
+    ((++TESTS_FAILED))
 }
 
 # Change to repo directory
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")"
 
 echo "Step 1: Testing Python Module Imports"
 echo "--------------------------------------"

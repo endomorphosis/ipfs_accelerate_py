@@ -10,8 +10,8 @@ import sys
 from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 
-# Add parent directory to path
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+# Add repo root directory to path
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from ipfs_accelerate_py.error_handler import CLIErrorHandler
 
