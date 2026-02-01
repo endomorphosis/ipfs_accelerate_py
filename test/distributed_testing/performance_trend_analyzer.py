@@ -48,6 +48,65 @@ try:
 except Exception:  # pragma: no cover
     stats = None
 
+
+def _zscore(values: np.ndarray) -> np.ndarray:
+    """Compute z-scores with SciPy if available, else NumPy.
+
+    This keeps anomaly detection working in minimal environments where SciPy
+    isn't installed.
+    """
+    arr = np.asarray(values, dtype=float)
+    if stats is not None:
+        return stats.zscore(arr)
+
+    mean = float(arr.mean()) if arr.size else 0.0
+    std = float(arr.std(ddof=0)) if arr.size else 0.0
+    if std == 0.0:
+        return np.zeros_like(arr, dtype=float)
+    return (arr - mean) / std
+
+
+def _linregress(x: np.ndarray, y: np.ndarray) -> Tuple[float, float, float, float, float]:
+    """Linear regression with SciPy if available, else NumPy.
+
+    Returns (slope, intercept, r_value, p_value, std_err).
+    The fallback returns p_value/std_err as NaN when SciPy isn't available.
+    """
+    x_arr = np.asarray(x, dtype=float)
+    y_arr = np.asarray(y, dtype=float)
+
+    if stats is not None:
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x_arr, y_arr)
+        return float(slope), float(intercept), float(r_value), float(p_value), float(std_err)
+
+    n = int(x_arr.size)
+    if n < 2:
+        intercept = float(y_arr.mean()) if n else 0.0
+        return 0.0, intercept, 0.0, float('nan'), float('nan')
+
+    x_mean = float(x_arr.mean())
+    y_mean = float(y_arr.mean())
+    x_d = x_arr - x_mean
+    y_d = y_arr - y_mean
+
+    denom = float(np.sum(x_d * x_d))
+    if denom == 0.0:
+        # All x are the same; slope undefined. Treat as no trend.
+        return 0.0, y_mean, 0.0, float('nan'), float('nan')
+
+    slope = float(np.sum(x_d * y_d) / denom)
+    intercept = float(y_mean - slope * x_mean)
+
+    # Pearson correlation coefficient
+    x_std = float(np.sqrt(np.mean(x_d * x_d)))
+    y_std = float(np.sqrt(np.mean(y_d * y_d)))
+    if x_std == 0.0 or y_std == 0.0:
+        r_value = 0.0
+    else:
+        r_value = float(np.mean(x_d * y_d) / (x_std * y_std))
+
+    return slope, intercept, r_value, float('nan'), float('nan')
+
 try:
     from sklearn.ensemble import IsolationForest
 except Exception:  # pragma: no cover
@@ -1041,12 +1100,16 @@ class PerformanceTrendAnalyzer:
         
         # Z-score based anomaly detection
         z_threshold = self.config["anomaly_detection"]["z_score_threshold"]
-        z_scores = stats.zscore(values.flatten())
+        z_scores = _zscore(values.flatten())
         z_score_anomalies = np.where(np.abs(z_scores) > z_threshold)[0]
         anomalous_indices.update(z_score_anomalies)
         
         # Isolation Forest anomaly detection
-        if self.config["anomaly_detection"]["isolation_forest"]["enabled"] and len(values) >= 10:
+        if (
+            IsolationForest is not None
+            and self.config["anomaly_detection"]["isolation_forest"]["enabled"]
+            and len(values) >= 10
+        ):
             contamination = self.config["anomaly_detection"]["isolation_forest"]["contamination"]
             n_estimators = self.config["anomaly_detection"]["isolation_forest"]["n_estimators"]
             
@@ -1202,7 +1265,7 @@ class PerformanceTrendAnalyzer:
         normalized_timestamps = (timestamps - t_min) / t_range
         
         # Perform linear regression
-        slope, intercept, r_value, p_value, std_err = stats.linregress(normalized_timestamps, values)
+        slope, intercept, r_value, p_value, std_err = _linregress(normalized_timestamps, values)
         
         # Calculate confidence in the trend
         confidence = abs(r_value)
