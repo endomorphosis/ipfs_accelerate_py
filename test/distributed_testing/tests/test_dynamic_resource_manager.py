@@ -27,7 +27,7 @@ from .integration_mode import integration_enabled, integration_opt_in_message
 if not integration_enabled():
     pytest.skip(integration_opt_in_message(), allow_module_level=True)
 
-pytest.importorskip("aiohttp")
+pytest.importorskip("httpx")
 
 # Import the components to test
 from .dynamic_resource_manager import (

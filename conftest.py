@@ -3,6 +3,8 @@ import sys
 import warnings
 from pathlib import Path
 
+import pytest
+
 # Ensure integration/long tests are enabled before module imports during collection.
 os.environ.setdefault("TEST_MODE", "development")
 os.environ.setdefault("MPLBACKEND", "Agg")
@@ -59,6 +61,30 @@ def pytest_configure() -> None:
         message=r"Can't initialize NVML",
         category=UserWarning,
     )
+
+    # Enforce Trio-only AnyIO backend for the test suite.
+    # This prevents pytest-anyio from parametrizing tests over asyncio + trio,
+    # and also ensures anyio.run(...) defaults to Trio when tests call it
+    # without an explicit backend.
+    try:
+        import anyio as _anyio
+    except Exception:
+        return
+
+    if not getattr(_anyio.run, "__ipfs_accelerate_trio_patched__", False):
+        _orig_run = _anyio.run
+
+        def _run_with_trio(func, *args, backend="trio", backend_options=None):
+            return _orig_run(func, *args, backend=backend, backend_options=backend_options)
+
+        _run_with_trio.__ipfs_accelerate_trio_patched__ = True  # type: ignore[attr-defined]
+        _anyio.run = _run_with_trio
+
+
+@pytest.fixture(scope="session")
+def anyio_backend() -> str:
+    # pytest-anyio reads this fixture to choose the backend.
+    return "trio"
 
 
 def _close_result_aggregator_file_handlers() -> None:

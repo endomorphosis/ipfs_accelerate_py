@@ -27,7 +27,7 @@ from enum import Enum, auto
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Set, Tuple, Callable, Union
 
-import aiohttp
+import httpx
 import numpy as np
 import yaml
 from unittest.mock import AsyncMock
@@ -296,10 +296,15 @@ class DynamicResourceManager:
         return payload
 
     async def _read_text(self, response):
-        payload = response.text()
-        if inspect.isawaitable(payload):
-            payload = await payload
-        return payload
+        text_attr = getattr(response, "text", None)
+        if text_attr is None:
+            return ""
+        if callable(text_attr):
+            payload = text_attr()
+            if inspect.isawaitable(payload):
+                payload = await payload
+            return payload
+        return text_attr
     
     def _load_config(self, config_path: str) -> None:
         """
@@ -408,7 +413,7 @@ class DynamicResourceManager:
         """
         try:
             # Create HTTP session
-            self.session = aiohttp.ClientSession()
+            self.session = httpx.AsyncClient()
             
             # Create authentication headers
             headers = {}
@@ -419,13 +424,17 @@ class DynamicResourceManager:
             
             # Check coordinator status
             async with self._request("get", f"{self.coordinator_url}/status", headers=headers) as response:
-                if response.status == 200:
+                status = getattr(response, "status", None)
+                if status is None:
+                    status = getattr(response, "status_code", None)
+
+                if status == 200:
                     status_data = await self._read_json(response)
                     logger.info(f"Connected to coordinator. Status: {status_data.get('status', 'unknown')}")
                     return True
                 else:
                     error_text = await self._read_text(response)
-                    logger.error(f"Failed to connect to coordinator: {response.status} - {error_text}")
+                    logger.error(f"Failed to connect to coordinator: {status} - {error_text}")
                     return False
         except Exception as e:
             logger.error(f"Error connecting to coordinator: {str(e)}")
@@ -434,7 +443,11 @@ class DynamicResourceManager:
     async def close(self) -> None:
         """Close the connection to the coordinator."""
         if self.session:
-            await self.session.close()
+            close_fn = getattr(self.session, "aclose", None)
+            if callable(close_fn):
+                await close_fn()
+            else:
+                await self.session.close()
             logger.info("Closed connection to coordinator")
     
     async def start(self) -> None:
@@ -499,22 +512,18 @@ class DynamicResourceManager:
     async def run(self) -> None:
         """Run loop used by integration tests."""
         if self.coordinator_url.startswith("ws"):
-            if self._task_group is None:
-                self._task_group = anyio.create_task_group()
-                await self._task_group.__aenter__()
-                self._task_group.start_soon(self._management_loop)
+            if not self.active:
+                await self.initialize()
 
-            while self.active:
-                await anyio.sleep(0.1)
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(self._management_loop)
+                while self.active:
+                    await anyio.sleep(0.1)
+                tg.cancel_scope.cancel()
             return
 
         if not self.active:
             await self.start()
-
-        if self._task_group is None:
-            self._task_group = anyio.create_task_group()
-            await self._task_group.__aenter__()
-            self._task_group.start_soon(self._management_loop)
 
         while self.active:
             await anyio.sleep(0.1)
@@ -606,7 +615,11 @@ class DynamicResourceManager:
             
             # Get statistics from coordinator
             async with self._request("get", f"{self.coordinator_url}/statistics", headers=headers) as response:
-                if response.status == 200:
+                status = getattr(response, "status", None)
+                if status is None:
+                    status = getattr(response, "status_code", None)
+
+                if status == 200:
                     stats = await self._read_json(response)
                     
                     # Update metrics
@@ -657,7 +670,7 @@ class DynamicResourceManager:
                     
                     logger.debug(f"Updated metrics: queue={self.metrics.task_queue_length}, workers={self.metrics.active_workers}, rate={self.metrics.task_processing_rate:.2f} tasks/sec")
                 else:
-                    logger.error(f"Failed to get statistics: {response.status}")
+                    logger.error(f"Failed to get statistics: {status}")
         except Exception as e:
             logger.error(f"Error updating metrics: {str(e)}")
     
@@ -684,7 +697,11 @@ class DynamicResourceManager:
             
             # Get worker data from coordinator
             async with self._request("get", f"{self.coordinator_url}/workers", headers=headers) as response:
-                if response.status == 200:
+                status = getattr(response, "status", None)
+                if status is None:
+                    status = getattr(response, "status_code", None)
+
+                if status == 200:
                     workers_data = await self._read_json(response)
                     workers = workers_data.get("workers", [])
                     
@@ -747,7 +764,7 @@ class DynamicResourceManager:
                                     logger.warning(f"Resource {resource_id} disappeared from coordinator")
                                     resource.state = ResourceState.ERROR
                 else:
-                    logger.error(f"Failed to get workers: {response.status}")
+                    logger.error(f"Failed to get workers: {status}")
         except Exception as e:
             logger.error(f"Error updating resource state: {str(e)}")
     
@@ -1682,14 +1699,19 @@ class DynamicResourceManager:
                 
                 # Send drain request
                 try:
-                    async with self.session.post(
+                    async with self._request(
+                        "post",
                         f"{self.coordinator_url}/workers/{resource.instance_id}/drain",
-                        headers=headers
+                        headers=headers,
                     ) as response:
-                        if response.status == 200:
+                        status = getattr(response, "status", None)
+                        if status is None:
+                            status = getattr(response, "status_code", None)
+
+                        if status == 200:
                             logger.info(f"Drain request sent for worker {resource_id}")
                         else:
-                            logger.warning(f"Failed to send drain request: {response.status}")
+                            logger.warning(f"Failed to send drain request: {status}")
                 except Exception as e:
                     logger.warning(f"Error sending drain request: {str(e)}")
             

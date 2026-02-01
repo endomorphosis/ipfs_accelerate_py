@@ -495,24 +495,22 @@ class ExecutionOrchestratorTests(unittest.TestCase):
         status = self.dependency_manager.get_test_status(test_id)
         self.assertEqual(status["status"], "failed")
     
-    @patch('execution_orchestrator.anyio.sleep')
-    def test_execute_test_async_cancellation(self, mock_sleep):
+    def test_execute_test_async_cancellation(self):
         """Test cancellation of asynchronous test execution."""
-        anyio.run(self._test_execute_test_async_cancellation, mock_sleep)
+        anyio.run(self._test_execute_test_async_cancellation)
 
-    async def _test_execute_test_async_cancellation(self, mock_sleep):
+    async def _test_execute_test_async_cancellation(self):
         """Test async execution of a single test with cancellation."""
-        # Mock sleep to raise cancellation
-        mock_sleep.side_effect = anyio.get_cancelled_exc_class()()
-        
         # Create execution context
         test_id = "test1"
         worker_id = "worker1"
         self.orchestrator.execution_contexts[test_id] = ExecutionContext(test_id=test_id)
         
         # Execute test asynchronously (should raise CancelledError)
-        with self.assertRaises(anyio.get_cancelled_exc_class()):
-            await self.orchestrator.execute_test_async(test_id, worker_id)
+        with anyio.CancelScope() as scope:
+            scope.cancel()
+            with self.assertRaises(anyio.get_cancelled_exc_class()):
+                await self.orchestrator.execute_test_async(test_id, worker_id)
         
         # Verify context was updated
         context = self.orchestrator.execution_contexts[test_id]

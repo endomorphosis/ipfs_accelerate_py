@@ -29,7 +29,7 @@ from .integration_mode import integration_enabled, integration_opt_in_message
 if not integration_enabled():
     pytest.skip(integration_opt_in_message(), allow_module_level=True)
 
-pytest.importorskip("aiohttp")
+pytest.importorskip("httpx")
 
 # Import the components to test
 from . import performance_trend_analyzer as pta
@@ -146,7 +146,11 @@ class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):
         finally:
             # Clean up
             if self.analyzer.session:
-                await self.analyzer.session.close()
+                close_fn = getattr(self.analyzer.session, "aclose", None)
+                if callable(close_fn):
+                    await close_fn()
+                else:
+                    await self.analyzer.session.close()
 
     def test_analyzer_collects_metrics(self):
         anyio.run(self._test_analyzer_collects_metrics)

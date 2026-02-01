@@ -102,6 +102,8 @@ class GitHubClient(CIProviderInterface):
     
     async def _ensure_session(self):
         """Ensure an aiohttp session exists."""
+        if self._offline:
+            return
         if aiohttp is None:
             self._offline = True
             return

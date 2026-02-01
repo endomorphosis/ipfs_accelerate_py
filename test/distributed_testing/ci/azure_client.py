@@ -114,6 +114,8 @@ class AzureDevOpsClient(CIProviderInterface):
         if aiohttp is None:
             self._offline = True
             return
+        if getattr(self, "_offline", False):
+            return
         if self.session is None:
             # Create auth header for Basic authentication with empty username and PAT as password
             auth = aiohttp.BasicAuth("", self.token)

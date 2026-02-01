@@ -20,6 +20,11 @@ TEST_VENV_DIR="${TEST_VENV_DIR:-$REPO_ROOT/.venv-test}"
 # - full: testing + heavy test venv + local tools
 PROFILE="${PROFILE:-runtime}"
 
+# Install the project's dependency metadata (setup/pyproject deps) into the main venv.
+# When enabled, the installer will install the editable project *with deps* instead of using --no-deps.
+INSTALL_PROJECT_DEPS="${INSTALL_PROJECT_DEPS:-0}"
+PROJECT_EXTRAS="${PROJECT_EXTRAS:-}"  # e.g. "all" or "testing"; empty => no extras
+
 # Track whether the user explicitly set knobs (env or args) so profiles don't clobber them.
 ENV_HAS_INSTALL_TEST_DEPS=0; [[ -n "${INSTALL_TEST_DEPS+x}" ]] && ENV_HAS_INSTALL_TEST_DEPS=1
 ENV_HAS_INSTALL_HEAVY_TEST_DEPS=0; [[ -n "${INSTALL_HEAVY_TEST_DEPS+x}" ]] && ENV_HAS_INSTALL_HEAVY_TEST_DEPS=1
@@ -33,11 +38,18 @@ ENV_HAS_GH_VERSION=0; [[ -n "${GH_VERSION+x}" ]] && ENV_HAS_GH_VERSION=1
 ENV_HAS_KUBO_VERSION=0; [[ -n "${KUBO_VERSION+x}" ]] && ENV_HAS_KUBO_VERSION=1
 ENV_HAS_JQ_VERSION=0; [[ -n "${JQ_VERSION+x}" ]] && ENV_HAS_JQ_VERSION=1
 ENV_HAS_YQ_VERSION=0; [[ -n "${YQ_VERSION+x}" ]] && ENV_HAS_YQ_VERSION=1
+ENV_HAS_INSTALL_PROJECT_DEPS=0; [[ -n "${INSTALL_PROJECT_DEPS+x}" ]] && ENV_HAS_INSTALL_PROJECT_DEPS=1
+ENV_HAS_PROJECT_EXTRAS=0; [[ -n "${PROJECT_EXTRAS+x}" ]] && ENV_HAS_PROJECT_EXTRAS=1
+ENV_HAS_INSTALL_VIZ_DEPS=0; [[ -n "${INSTALL_VIZ_DEPS+x}" ]] && ENV_HAS_INSTALL_VIZ_DEPS=1
 
 # Defaults: keep the main env consistent with runtime deps.
 # Heavier / potentially conflicting stacks (selenium, big ML suites) are opt-in.
 INSTALL_TEST_DEPS="${INSTALL_TEST_DEPS:-1}"                 # installs project extras: .[testing]
 INSTALL_HEAVY_TEST_DEPS="${INSTALL_HEAVY_TEST_DEPS:-0}"     # installs test/requirements.txt into a separate venv
+
+# Optional visualization stack (matplotlib/seaborn/plotly).
+# Enabled by default for testing/full profiles.
+INSTALL_VIZ_DEPS="${INSTALL_VIZ_DEPS:-0}"
 
 # Tool install behavior
 FORCE_LOCAL_TOOLS="${FORCE_LOCAL_TOOLS:-0}"                 # install into ./bin even if tool exists on PATH
@@ -110,6 +122,10 @@ Options:
   --no-tools                 (disable gh/ipfs/jq/yq installs)
   --with-heavy-tests         (set INSTALL_HEAVY_TEST_DEPS=1)
   --without-tests            (set INSTALL_TEST_DEPS=0)
+  --with-viz                 (set INSTALL_VIZ_DEPS=1)
+  --without-viz              (set INSTALL_VIZ_DEPS=0)
+  --with-project-deps         (install editable project WITH deps; sets INSTALL_PROJECT_DEPS=1)
+  --project-extras <extras>   (extras for editable project, e.g. 'all' or 'testing')
   --build-wheels             (set BUILD_WHEELS=1)
   --use-wheelhouse           (set USE_WHEELHOUSE=1; install only from wheelhouse)
   --from-source              (force source builds; implies --build-wheels + --use-wheelhouse)
@@ -126,6 +142,8 @@ Env overrides:
   BUILD_WHEELS, USE_WHEELHOUSE, FROM_SOURCE, FROM_SOURCE_STRICT, PIP_NO_BINARY_ALL, WHEELHOUSE_DIR, REBUILD_WHEELS
   PIP_NO_BUILD_ISOLATION
   INSTALL_TEST_DEPS, INSTALL_HEAVY_TEST_DEPS
+  INSTALL_VIZ_DEPS
+  INSTALL_PROJECT_DEPS, PROJECT_EXTRAS
   INSTALL_TOOL_GH, INSTALL_TOOL_IPFS, INSTALL_TOOL_JQ, INSTALL_TOOL_YQ
   GH_VERSION, KUBO_VERSION, JQ_VERSION, YQ_VERSION ("latest" or explicit version)
 EOF
@@ -162,6 +180,22 @@ parse_args() {
       --without-tests)
         INSTALL_TEST_DEPS=0
         ENV_HAS_INSTALL_TEST_DEPS=1
+        ;;
+      --with-viz)
+        INSTALL_VIZ_DEPS=1
+        ;;
+      --without-viz)
+        INSTALL_VIZ_DEPS=0
+        ;;
+      --with-project-deps)
+        INSTALL_PROJECT_DEPS=1
+        ENV_HAS_INSTALL_PROJECT_DEPS=1
+        ;;
+      --project-extras)
+        shift
+        [[ $# -gt 0 ]] || die "--project-extras requires a value"
+        PROJECT_EXTRAS="$1"
+        ENV_HAS_PROJECT_EXTRAS=1
         ;;
       --build-wheels)
         BUILD_WHEELS=1
@@ -201,6 +235,7 @@ apply_profile_defaults() {
     minimal)
       [[ $ENV_HAS_INSTALL_TEST_DEPS -eq 1 ]] || INSTALL_TEST_DEPS=0
       [[ $ENV_HAS_INSTALL_HEAVY_TEST_DEPS -eq 1 ]] || INSTALL_HEAVY_TEST_DEPS=0
+      [[ $ENV_HAS_INSTALL_VIZ_DEPS -eq 1 ]] || INSTALL_VIZ_DEPS=0
       [[ $ENV_HAS_INSTALL_TOOL_GH -eq 1 ]] || INSTALL_TOOL_GH=0
       [[ $ENV_HAS_INSTALL_TOOL_IPFS -eq 1 ]] || INSTALL_TOOL_IPFS=0
       [[ $ENV_HAS_INSTALL_TOOL_JQ -eq 1 ]] || INSTALL_TOOL_JQ=0
@@ -209,6 +244,7 @@ apply_profile_defaults() {
     runtime)
       [[ $ENV_HAS_INSTALL_TEST_DEPS -eq 1 ]] || INSTALL_TEST_DEPS=0
       [[ $ENV_HAS_INSTALL_HEAVY_TEST_DEPS -eq 1 ]] || INSTALL_HEAVY_TEST_DEPS=0
+      [[ $ENV_HAS_INSTALL_VIZ_DEPS -eq 1 ]] || INSTALL_VIZ_DEPS=0
       [[ $ENV_HAS_INSTALL_TOOL_GH -eq 1 ]] || INSTALL_TOOL_GH=1
       [[ $ENV_HAS_INSTALL_TOOL_IPFS -eq 1 ]] || INSTALL_TOOL_IPFS=1
       [[ $ENV_HAS_INSTALL_TOOL_JQ -eq 1 ]] || INSTALL_TOOL_JQ=1
@@ -217,6 +253,7 @@ apply_profile_defaults() {
     testing)
       [[ $ENV_HAS_INSTALL_TEST_DEPS -eq 1 ]] || INSTALL_TEST_DEPS=1
       [[ $ENV_HAS_INSTALL_HEAVY_TEST_DEPS -eq 1 ]] || INSTALL_HEAVY_TEST_DEPS=0
+      [[ $ENV_HAS_INSTALL_VIZ_DEPS -eq 1 ]] || INSTALL_VIZ_DEPS=1
       [[ $ENV_HAS_INSTALL_TOOL_GH -eq 1 ]] || INSTALL_TOOL_GH=1
       [[ $ENV_HAS_INSTALL_TOOL_IPFS -eq 1 ]] || INSTALL_TOOL_IPFS=1
       [[ $ENV_HAS_INSTALL_TOOL_JQ -eq 1 ]] || INSTALL_TOOL_JQ=1
@@ -225,10 +262,15 @@ apply_profile_defaults() {
     full)
       [[ $ENV_HAS_INSTALL_TEST_DEPS -eq 1 ]] || INSTALL_TEST_DEPS=1
       [[ $ENV_HAS_INSTALL_HEAVY_TEST_DEPS -eq 1 ]] || INSTALL_HEAVY_TEST_DEPS=1
+      [[ $ENV_HAS_INSTALL_VIZ_DEPS -eq 1 ]] || INSTALL_VIZ_DEPS=1
       [[ $ENV_HAS_INSTALL_TOOL_GH -eq 1 ]] || INSTALL_TOOL_GH=1
       [[ $ENV_HAS_INSTALL_TOOL_IPFS -eq 1 ]] || INSTALL_TOOL_IPFS=1
       [[ $ENV_HAS_INSTALL_TOOL_JQ -eq 1 ]] || INSTALL_TOOL_JQ=1
       [[ $ENV_HAS_INSTALL_TOOL_YQ -eq 1 ]] || INSTALL_TOOL_YQ=1
+
+      # Full profile is intended to install the "whole stack".
+      [[ $ENV_HAS_INSTALL_PROJECT_DEPS -eq 1 ]] || INSTALL_PROJECT_DEPS=1
+      [[ $ENV_HAS_PROJECT_EXTRAS -eq 1 ]] || PROJECT_EXTRAS="all"
       ;;
     *)
       die "Unknown PROFILE='$PROFILE' (use minimal|runtime|testing|full)"
@@ -256,7 +298,8 @@ print_config() {
   log "Config: OFFLINE=$OFFLINE FORCE_LOCAL_TOOLS=$FORCE_LOCAL_TOOLS"
   log "Config: pip prefer-binary=$PIP_PREFER_BINARY retries=$PIP_RETRIES timeout=$PIP_TIMEOUT no-build-isolation=$PIP_NO_BUILD_ISOLATION${PIP_ARGS:+ args='$PIP_ARGS'}"
   log "Config: wheels build=$BUILD_WHEELS use-wheelhouse=$USE_WHEELHOUSE from-source=$FROM_SOURCE strict=$FROM_SOURCE_STRICT no-binary-all=$PIP_NO_BINARY_ALL rebuild=$REBUILD_WHEELS${WHEELHOUSE_DIR:+ wheelhouse='$WHEELHOUSE_DIR'}"
-  log "Config: INSTALL_TEST_DEPS=$INSTALL_TEST_DEPS INSTALL_HEAVY_TEST_DEPS=$INSTALL_HEAVY_TEST_DEPS"
+  log "Config: INSTALL_TEST_DEPS=$INSTALL_TEST_DEPS INSTALL_HEAVY_TEST_DEPS=$INSTALL_HEAVY_TEST_DEPS INSTALL_VIZ_DEPS=$INSTALL_VIZ_DEPS"
+  log "Config: INSTALL_PROJECT_DEPS=$INSTALL_PROJECT_DEPS${PROJECT_EXTRAS:+ PROJECT_EXTRAS=$PROJECT_EXTRAS}"
   log "Config: tools gh=$INSTALL_TOOL_GH ipfs=$INSTALL_TOOL_IPFS jq=$INSTALL_TOOL_JQ yq=$INSTALL_TOOL_YQ"
 }
 
@@ -731,9 +774,21 @@ pip_install() {
 }
 
 pip_install_editable_package() {
-  # Avoid pulling in setup.py's very large dependency list.
-  # The repo uses curated requirements files; install the package itself without deps.
-  if [[ -f "$REPO_ROOT/setup.py" || -f "$REPO_ROOT/pyproject.toml" ]]; then
+  if [[ ! -f "$REPO_ROOT/setup.py" && ! -f "$REPO_ROOT/pyproject.toml" ]]; then
+    return 0
+  fi
+
+  if [[ "$INSTALL_PROJECT_DEPS" == "1" ]]; then
+    if [[ -n "$PROJECT_EXTRAS" ]]; then
+      log "Installing package in editable mode WITH deps (extras: $PROJECT_EXTRAS)"
+      pip_install_with_common_args "$1" -e "$REPO_ROOT[$PROJECT_EXTRAS]"
+    else
+      log "Installing package in editable mode WITH deps"
+      pip_install_with_common_args "$1" -e "$REPO_ROOT"
+    fi
+  else
+    # Avoid pulling in setup.py's very large dependency list.
+    # The repo uses curated requirements files; install the package itself without deps.
     log "Installing package in editable mode (no deps)"
     pip_install_with_common_args "$1" -e "$REPO_ROOT" --no-deps
   fi
@@ -982,6 +1037,14 @@ main() {
     pip_install_extras "$VENV_DIR" "testing"
   else
     log "Skipping test extras (INSTALL_TEST_DEPS=$INSTALL_TEST_DEPS)"
+  fi
+
+  # Visualization extras (matplotlib/seaborn/plotly) are expected to be present
+  # for dashboard/reporting features.
+  if [[ "$INSTALL_VIZ_DEPS" == "1" ]]; then
+    pip_install_extras "$VENV_DIR" "viz"
+  else
+    log "Skipping viz extras (INSTALL_VIZ_DEPS=$INSTALL_VIZ_DEPS)"
   fi
 
   # Install curated base installer requirements if present.

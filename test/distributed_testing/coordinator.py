@@ -493,7 +493,7 @@ class TestCoordinator:
     async def run(self) -> None:
         """Async run loop used by integration tests."""
         while not self.stop_event.is_set():
-            await asyncio.sleep(0.1)
+            await anyio.sleep(0.1)
     
     def stop(self) -> None:
         """Stop the coordinator."""
@@ -815,7 +815,7 @@ class TestCoordinator:
                 await self.redundancy_manager.start()
                 self._redundancy_ready.set()
                 while not self.stop_event.is_set():
-                    await asyncio.sleep(0.2)
+                    await anyio.sleep(0.2)
                 await self.redundancy_manager.stop()
 
             try:

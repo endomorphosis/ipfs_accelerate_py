@@ -97,6 +97,29 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "vllm: mark test as vLLM API test")
     config.addinivalue_line("markers", "claude: mark test as Claude API test")
 
+    # Enforce Trio-only AnyIO backend for the test suite.
+    # This prevents pytest-anyio from parametrizing tests over asyncio + trio,
+    # and also ensures anyio.run(...) defaults to Trio when tests call it
+    # without an explicit backend.
+    try:
+        import anyio as _anyio
+    except Exception:
+        return
+
+    if not getattr(_anyio.run, "__ipfs_accelerate_trio_patched__", False):
+        _orig_run = _anyio.run
+
+        def _run_with_trio(func, *args, backend="trio", backend_options=None):
+            return _orig_run(func, *args, backend=backend, backend_options=backend_options)
+
+        _run_with_trio.__ipfs_accelerate_trio_patched__ = True  # type: ignore[attr-defined]
+        _anyio.run = _run_with_trio
+
+
+@pytest.fixture(scope="session")
+def anyio_backend() -> str:
+    return "trio"
+
 
 def pytest_collection_modifyitems(config, items):
     """Dynamically mark CUDA-capable tests based on module globals and skip standalone scripts."""

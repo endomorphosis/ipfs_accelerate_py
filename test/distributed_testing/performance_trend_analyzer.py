@@ -27,7 +27,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple, Union, Set
 
-import aiohttp
+import httpx
 from unittest.mock import AsyncMock
 
 try:
@@ -375,7 +375,7 @@ class PerformanceTrendAnalyzer:
         """
         try:
             # Create HTTP session
-            self.session = aiohttp.ClientSession()
+            self.session = httpx.AsyncClient()
             
             # Create authentication headers
             headers = {}
@@ -386,13 +386,17 @@ class PerformanceTrendAnalyzer:
             
             # Check coordinator status
             async with self._request("get", f"{self.coordinator_url}/status", headers=headers) as response:
-                if response.status == 200:
+                status = getattr(response, "status", None)
+                if status is None:
+                    status = getattr(response, "status_code", None)
+
+                if status == 200:
                     status_data = await self._read_json(response)
                     logger.info(f"Connected to coordinator. Status: {status_data.get('status', 'unknown')}")
                     return True
                 else:
                     error_text = await self._read_text(response)
-                    logger.error(f"Failed to connect to coordinator: {response.status} - {error_text}")
+                    logger.error(f"Failed to connect to coordinator: {status} - {error_text}")
                     return False
         except Exception as e:
             logger.error(f"Error connecting to coordinator: {str(e)}")
@@ -406,7 +410,11 @@ class PerformanceTrendAnalyzer:
     async def close(self) -> None:
         """Close the connection to the coordinator."""
         if self.session:
-            await self.session.close()
+            close_fn = getattr(self.session, "aclose", None)
+            if callable(close_fn):
+                await close_fn()
+            else:
+                await self.session.close()
             logger.info("Closed connection to coordinator")
     
     async def start(self) -> None:
@@ -468,22 +476,18 @@ class PerformanceTrendAnalyzer:
     async def run(self) -> None:
         """Run loop used by integration tests."""
         if self.coordinator_url.startswith("ws"):
-            if self._task_group is None:
-                self._task_group = anyio.create_task_group()
-                await self._task_group.__aenter__()
-                self._task_group.start_soon(self._analysis_loop)
+            if not self.active:
+                await self.initialize()
 
-            while self.active:
-                await anyio.sleep(0.1)
+            async with anyio.create_task_group() as tg:
+                tg.start_soon(self._analysis_loop)
+                while self.active:
+                    await anyio.sleep(0.1)
+                tg.cancel_scope.cancel()
             return
 
         if not self.active:
             await self.start()
-
-        if self._task_group is None:
-            self._task_group = anyio.create_task_group()
-            await self._task_group.__aenter__()
-            self._task_group.start_soon(self._analysis_loop)
 
         while self.active:
             await anyio.sleep(0.1)
@@ -573,10 +577,15 @@ class PerformanceTrendAnalyzer:
         return payload
 
     async def _read_text(self, response):
-        payload = response.text()
-        if inspect.isawaitable(payload):
-            payload = await payload
-        return payload
+        text_attr = getattr(response, "text", None)
+        if text_attr is None:
+            return ""
+        if callable(text_attr):
+            payload = text_attr()
+            if inspect.isawaitable(payload):
+                payload = await payload
+            return payload
+        return text_attr
     
     async def _analysis_loop(self) -> None:
         """Main analysis loop that collects and analyzes metrics periodically."""
@@ -687,7 +696,11 @@ class PerformanceTrendAnalyzer:
             
             # Get task results
             async with self._request("get", f"{self.coordinator_url}/task_results", headers=headers) as response:
-                if response.status == 200:
+                status = getattr(response, "status", None)
+                if status is None:
+                    status = getattr(response, "status_code", None)
+
+                if status == 200:
                     results_data = await self._read_json(response)
                     task_results = results_data.get("results", [])
                     
@@ -700,11 +713,15 @@ class PerformanceTrendAnalyzer:
                     
                     logger.debug(f"Collected {len(metrics)} metrics from {len(task_results)} task results")
                 else:
-                    logger.error(f"Failed to get task results: {response.status}")
+                    logger.error(f"Failed to get task results: {status}")
             
             # Get system metrics
             async with self._request("get", f"{self.coordinator_url}/system_metrics", headers=headers) as response:
-                if response.status == 200:
+                status = getattr(response, "status", None)
+                if status is None:
+                    status = getattr(response, "status_code", None)
+
+                if status == 200:
                     system_data = await self._read_json(response)
                     
                     # Process system metrics
@@ -716,7 +733,7 @@ class PerformanceTrendAnalyzer:
                     
                     logger.debug(f"Collected {len(system_metrics)} system metrics")
                 else:
-                    logger.error(f"Failed to get system metrics: {response.status}")
+                    logger.error(f"Failed to get system metrics: {status}")
         except Exception as e:
             logger.error(f"Error collecting metrics: {str(e)}")
     
@@ -1350,58 +1367,62 @@ class PerformanceTrendAnalyzer:
             return
         
         try:
-            # Generate time series charts for each metric
-            for metric_name, metrics in self.metrics_cache.items():
-                if len(metrics) < 5:
-                    continue
-                
-                # Group metrics by configured dimensions
-                grouped_metrics = self._group_metrics(metrics)
-                
-                # Skip if there are too many groups
-                if len(grouped_metrics) > 10:
-                    continue
-                
-                # Create the figure
-                plt.figure(figsize=(12, 6))
-                
-                # Plot each group
-                has_series = False
-                for group_key, group_metrics in grouped_metrics.items():
-                    if len(group_metrics) < 5:
+            if plt is None:
+                # Keep report generation working in minimal environments where matplotlib isn't installed.
+                logger.debug("Matplotlib not available; skipping chart generation.")
+            else:
+                # Generate time series charts for each metric
+                for metric_name, metrics in self.metrics_cache.items():
+                    if len(metrics) < 5:
                         continue
-                    
-                    # Sort by timestamp
-                    sorted_metrics = sorted(group_metrics, key=lambda m: m.timestamp)
-                    
-                    # Convert timestamps to datetime for better labels
-                    timestamps = [datetime.datetime.fromtimestamp(m.timestamp) for m in sorted_metrics]
-                    values = [m.value for m in sorted_metrics]
-                    
-                    # Plot the data
-                    plt.plot(timestamps, values, marker='o', linestyle='-', label=group_key)
-                    has_series = True
-                
-                # Add chart elements
-                plt.title(f"{metric_name} Performance Trend")
-                plt.xlabel("Time")
-                plt.ylabel(metric_name)
-                plt.grid(True, linestyle='--', alpha=0.7)
-                if has_series:
-                    plt.legend()
-                
-                # Format the x-axis to show readable timestamps
-                plt.gcf().autofmt_xdate()
-                
-                # Save the chart
-                chart_filename = os.path.join(
-                    self.output_dir,
-                    f"{metric_name.replace(' ', '_')}_{int(time.time())}.png"
-                )
-                plt.savefig(chart_filename)
-                plt.close()
-                
-                logger.info(f"Generated visualization for {metric_name} at {chart_filename}")
+
+                    # Group metrics by configured dimensions
+                    grouped_metrics = self._group_metrics(metrics)
+
+                    # Skip if there are too many groups
+                    if len(grouped_metrics) > 10:
+                        continue
+
+                    # Create the figure
+                    plt.figure(figsize=(12, 6))
+
+                    # Plot each group
+                    has_series = False
+                    for group_key, group_metrics in grouped_metrics.items():
+                        if len(group_metrics) < 5:
+                            continue
+
+                        # Sort by timestamp
+                        sorted_metrics = sorted(group_metrics, key=lambda m: m.timestamp)
+
+                        # Convert timestamps to datetime for better labels
+                        timestamps = [datetime.datetime.fromtimestamp(m.timestamp) for m in sorted_metrics]
+                        values = [m.value for m in sorted_metrics]
+
+                        # Plot the data
+                        plt.plot(timestamps, values, marker='o', linestyle='-', label=group_key)
+                        has_series = True
+
+                    # Add chart elements
+                    plt.title(f"{metric_name} Performance Trend")
+                    plt.xlabel("Time")
+                    plt.ylabel(metric_name)
+                    plt.grid(True, linestyle='--', alpha=0.7)
+                    if has_series:
+                        plt.legend()
+
+                    # Format the x-axis to show readable timestamps
+                    plt.gcf().autofmt_xdate()
+
+                    # Save the chart
+                    chart_filename = os.path.join(
+                        self.output_dir,
+                        f"{metric_name.replace(' ', '_')}_{int(time.time())}.png"
+                    )
+                    plt.savefig(chart_filename)
+                    plt.close()
+
+                    logger.info(f"Generated visualization for {metric_name} at {chart_filename}")
             
             # Generate summary report
             report_filename = os.path.join(

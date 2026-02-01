@@ -112,6 +112,8 @@ class BitbucketClient(CIProviderInterface):
     
     async def _ensure_session(self):
         """Ensure an aiohttp session exists with proper authentication."""
+        if getattr(self, "_offline", False):
+            return
         if aiohttp is None:
             self._offline = True
             return

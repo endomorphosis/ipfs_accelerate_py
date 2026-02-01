@@ -98,6 +98,8 @@ class CircleCIClient(CIProviderInterface):
     
     async def _ensure_session(self):
         """Ensure an aiohttp session exists."""
+        if getattr(self, "_offline", False):
+            return
         if aiohttp is None:
             self._offline = True
             return
