@@ -65,12 +65,14 @@ class ModelLoader:
                 logger.debug(f"Waiting for ongoing load: {model_id}")
                 return await self._loading[model_id]
             
-            # Start loading
-            load_task = # anyio task - see task group(self._load_model_impl(model_id))
-            self._loading[model_id] = load_task
+            # Start loading - create a future-like object for anyio
+            # Since anyio doesn't have create_task, we'll use a different approach
+            # We'll just call the implementation directly
+            pass  # Removed task creation, will call directly
         
         try:
-            model = await load_task
+            model = await self._load_model_impl(model_id)
+            await self.cache.put(model_id, model)
             return model
         finally:
             async with self._lock:
@@ -112,7 +114,7 @@ class ModelLoader:
             if hasattr(skill_instance, init_method):
                 init_fn = getattr(skill_instance, init_method)
                 # Call init method (may be sync or async)
-                if asyncio.iscoroutinefunction(init_fn):
+                if inspect.iscoroutinefunction(init_fn):
                     await init_fn()
                 else:
                     init_fn()

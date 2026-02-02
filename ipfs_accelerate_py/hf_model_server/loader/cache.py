@@ -2,9 +2,9 @@
 LRU cache for loaded models.
 """
 
-import asyncio
+import anyio
 from collections import OrderedDict
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 import logging
 
 from .types import LoadedModel, ModelStatus
@@ -116,7 +116,7 @@ class ModelCache:
             self._cache.clear()
             logger.info(f"Cleared cache ({count} models)")
     
-    def get_stats(self) -> Dict[str, any]:
+    def get_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
         total = self._hits + self._misses
         hit_rate = self._hits / total if total > 0 else 0.0

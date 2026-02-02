@@ -2,7 +2,7 @@
 Circuit breaker pattern for fault tolerance.
 """
 
-import asyncio
+import anyio
 import logging
 import time
 from enum import Enum
@@ -56,9 +56,9 @@ class CircuitBreaker:
         
         self._circuits: Dict[str, CircuitState] = {}
         self._stats: Dict[str, CircuitStats] = {}
-        self._locks: Dict[str, asyncio.Lock] = {}
+        self._locks: Dict[str, anyio.Lock] = {}
     
-    def _get_lock(self, model_id: str) -> asyncio.Lock:
+    def _get_lock(self, model_id: str) -> anyio.Lock:
         """Get or create lock for model."""
         if model_id not in self._locks:
             self._locks[model_id] = anyio.Lock()

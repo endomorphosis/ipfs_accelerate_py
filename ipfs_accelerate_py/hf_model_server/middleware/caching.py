@@ -2,13 +2,13 @@
 Response caching middleware.
 """
 
-import asyncio
+import anyio
 import hashlib
 import json
 import logging
 import time
 from collections import OrderedDict
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, Tuple
 
 logger = logging.getLogger(__name__)
 
