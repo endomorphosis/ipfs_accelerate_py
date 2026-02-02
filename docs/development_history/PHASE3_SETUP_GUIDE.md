@@ -368,9 +368,9 @@ python3 -c "import json; print(json.load(open('test/.performance_baselines.json'
 
 ### Documentation
 
-- `docs/PHASE3_PRIORITY_MODELS.md` - This guide
-- `docs/MODEL_TEST_GATING_GUIDE.md` - Test usage
-- `docs/HF_MODEL_TESTING_REVIEW.md` - Architecture
+- `docs/development_history/PHASE3_PRIORITY_MODELS.md` - This guide
+- `docs/guides/testing/MODEL_TEST_GATING_GUIDE.md` - Test usage
+- `docs/summaries/HF_MODEL_TESTING_REVIEW.md` - Architecture
 - `test/improved/README.md` - Test structure
 
 ---

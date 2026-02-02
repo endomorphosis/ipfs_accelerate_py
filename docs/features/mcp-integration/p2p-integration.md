@@ -836,11 +836,11 @@ ipfs-accelerate mcp start
 
 ## Further Reading
 
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Overall system architecture
-- [API.md](API.md) - Complete API reference
-- [P2P_SETUP_GUIDE.md](../P2P_SETUP_GUIDE.md) - P2P network setup
-- [MCP_SETUP_GUIDE.md](../MCP_SETUP_GUIDE.md) - MCP server configuration
-- [TESTING.md](TESTING.md) - Testing framework and best practices
+- [../../architecture/overview.md](../../architecture/overview.md) - Overall system architecture
+- [../../api/overview.md](../../api/overview.md) - Complete API reference
+- [../p2p/P2P_SETUP_GUIDE.md](../p2p/P2P_SETUP_GUIDE.md) - P2P network setup
+- [../MCP_SETUP_GUIDE.md](../MCP_SETUP_GUIDE.md) - MCP server configuration
+- [../testing/TESTING_README.md](../testing/TESTING_README.md) - Testing framework and best practices
 
 ---
 

@@ -603,7 +603,7 @@ The `DualModeWrapper` base class provides:
 - **Performance**: Uses fastest available method
 - **Debugging**: Clear mode metadata in responses
 
-See [PHASES_3_4_IMPLEMENTATION.md](./PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
+See [PHASES_3_4_IMPLEMENTATION.md](../summaries/PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
 
 ## Phase 4: Secrets Manager
 
@@ -732,7 +732,7 @@ response = claude.chat("Hello")
 # Response now includes: {"response": "...", "mode": "SDK", "cached": False}
 ```
 
-See [PHASES_3_4_IMPLEMENTATION.md](./PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
+See [PHASES_3_4_IMPLEMENTATION.md](../summaries/PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
 
 ## Troubleshooting
 
@@ -788,8 +788,8 @@ cache = get_global_llm_cache()
   - `COMMON_CACHE_INFRASTRUCTURE.md` - Base cache guide
   - `CLI_INTEGRATIONS.md` - CLI integration guide (updated with Phases 3-4)
   - `API_INTEGRATIONS_COMPLETE.md` - API wrapper guide
-  - `PHASES_3_4_IMPLEMENTATION.md` - Dual-mode and secrets manager guide
-  - `PHASES_3_4_COMPLETION_SUMMARY.md` - Phase 3-4 summary
+  - `../summaries/PHASES_3_4_IMPLEMENTATION.md` - Dual-mode and secrets manager guide
+  - `../summaries/PHASES_3_4_COMPLETION_SUMMARY.md` - Phase 3-4 summary
   - `install/INSTALLATION_GUIDE.md` - Installer documentation
 
 ## Conclusion

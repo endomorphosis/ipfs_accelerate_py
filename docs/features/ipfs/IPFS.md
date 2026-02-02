@@ -1169,7 +1169,7 @@ For more IPFS integration examples, see the [examples directory](../examples/) a
 
 ## Related Documentation
 
-- [Usage Guide](USAGE.md) - General framework usage
-- [API Reference](API.md) - Complete API documentation
-- [Hardware Optimization](HARDWARE.md) - Hardware-specific features
-- [Examples](../examples/README.md) - Practical examples
+- [Usage Guide](../../archive/USAGE.md) - General framework usage
+- [API Reference](../../api/overview.md) - Complete API documentation
+- [Hardware Optimization](../../guides/hardware/overview.md) - Hardware-specific features
+- [Examples](../../../examples/README.md) - Practical examples

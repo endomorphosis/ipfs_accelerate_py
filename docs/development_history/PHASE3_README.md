@@ -30,8 +30,8 @@ That's it! Phase 3 is complete.
 
 ### Reference
 - **[Testing Infrastructure Review](./FINAL_TESTING_INFRASTRUCTURE_REVIEW.md)** - Complete review
-- **[Model Test Gating Guide](./MODEL_TEST_GATING_GUIDE.md)** - Usage guide
-- **[HF Testing Improvement Summary](./HF_TESTING_IMPROVEMENT_SUMMARY.md)** - Roadmap
+- **[Model Test Gating Guide](../guides/testing/MODEL_TEST_GATING_GUIDE.md)** - Usage guide
+- **[HF Testing Improvement Summary](../summaries/HF_TESTING_IMPROVEMENT_SUMMARY.md)** - Roadmap
 
 ---
 

@@ -770,8 +770,8 @@ This comprehensive testing framework ensures the reliability, performance, and c
 
 ## Related Documentation
 
-- [Usage Guide](USAGE.md) - How to use the framework
-- [API Reference](API.md) - Complete API documentation
-- [Hardware Optimization](HARDWARE.md) - Hardware-specific features
-- [Installation Guide](INSTALLATION.md) - Setup and installation
-- [Architecture Guide](ARCHITECTURE.md) - System architecture overview
+- [Usage Guide](../archive/USAGE.md) - How to use the framework
+- [API Reference](../api/overview.md) - Complete API documentation
+- [Hardware Optimization](../guides/hardware/overview.md) - Hardware-specific features
+- [Installation Guide](../guides/getting-started/INSTALLATION.md) - Setup and installation
+- [Architecture Guide](../architecture/overview.md) - System architecture overview

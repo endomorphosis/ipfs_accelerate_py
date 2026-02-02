@@ -2,19 +2,19 @@
 
 > **Comprehensive documentation for the IPFS Accelerate Python framework** - a complete solution for hardware-accelerated machine learning inference with IPFS network-based distribution.
 
-[![Documentation Status](https://img.shields.io/badge/docs-excellent-brightgreen.svg)](DOCUMENTATION_AUDIT_REPORT.md)
-[![Coverage](https://img.shields.io/badge/coverage-200%2B%20files-blue.svg)](DOCUMENTATION_INDEX.md)
-[![Last Audit](https://img.shields.io/badge/audit-Jan%202026-green.svg)](DOCUMENTATION_AUDIT_REPORT.md)
+[![Documentation Status](https://img.shields.io/badge/docs-excellent-brightgreen.svg)](development_history/DOCUMENTATION_AUDIT_REPORT.md)
+[![Coverage](https://img.shields.io/badge/coverage-200%2B%20files-blue.svg)](INDEX.md)
+[![Last Audit](https://img.shields.io/badge/audit-Jan%202026-green.svg)](development_history/DOCUMENTATION_AUDIT_REPORT.md)
 
 ## 🎯 Quick Navigation
 
 ### **Essential Reading**
-- 🚀 **[Getting Started](GETTING_STARTED.md)** - Complete beginner's guide (5 minutes to first inference!)
-- 📖 **[Installation & Setup](INSTALLATION.md)** - Detailed installation instructions
-- 📚 **[Usage Guide](USAGE.md)** - Learn how to use all framework features  
-- 🔧 **[API Reference](API.md)** - Complete API documentation with examples
-- 🏗️ **[Architecture Overview](ARCHITECTURE.md)** - System design and components
-- ❓ **[FAQ](FAQ.md)** - Frequently asked questions and troubleshooting
+- 🚀 **[Getting Started](guides/getting-started/README.md)** - Complete beginner's guide (5 minutes to first inference!)
+- 📖 **[Installation & Setup](guides/getting-started/installation.md)** - Detailed installation instructions
+- 📚 **[Usage Guide](archive/USAGE.md)** - Learn how to use all framework features  
+- 🔧 **[API Reference](api/overview.md)** - Complete API documentation with examples
+- 🏗️ **[Architecture Overview](architecture/overview.md)** - System design and components
+- ❓ **[FAQ](guides/troubleshooting/faq.md)** - Frequently asked questions and troubleshooting
 
 ### **Project Information**
 - 📋 **[Changelog](../CHANGELOG.md)** - Version history and release notes
@@ -23,14 +23,14 @@
 - 📄 **[License](../LICENSE)** - AGPLv3+ license details
 
 ### **Platform-Specific**
-- ⚙️ **[Hardware Optimization](HARDWARE.md)** - Maximize performance across different hardware
-- 🌐 **[IPFS Integration](IPFS.md)** - Leverage distributed inference and content addressing
-- 🌍 **[WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)** - Browser-based acceleration
+- ⚙️ **[Hardware Optimization](guides/hardware/overview.md)** - Maximize performance across different hardware
+- 🌐 **[IPFS Integration](features/ipfs/IPFS.md)** - Leverage distributed inference and content addressing
+- 🌍 **[WebNN/WebGPU Integration](features/webnn-webgpu/WEBNN_WEBGPU_README.md)** - Browser-based acceleration
 
 ### **Advanced Topics**
-- 🔗 **[P2P & MCP Architecture](P2P_AND_MCP.md)** - P2P workflow scheduling and MCP server guide
-- 🧪 **[Testing Guide](TESTING.md)** - Comprehensive testing framework and best practices
-- 📊 **[Performance Tuning](HARDWARE.md#performance-optimization)** - Advanced optimization techniques
+- 🔗 **[P2P Architecture](guides/p2p/)** - P2P workflow scheduling and distributed computing
+- 🧪 **[Testing Guide](guides/testing/TESTING_README.md)** - Comprehensive testing framework and best practices
+- 📊 **[Performance Tuning](guides/hardware/overview.md#performance-optimization)** - Advanced optimization techniques
 
 ## What is IPFS Accelerate Python?
 
@@ -59,20 +59,20 @@ IPFS Accelerate Python is a **comprehensive, enterprise-grade framework** that c
 ## Documentation Structure
 
 ### Getting Started
-1. **[Installation & Setup](INSTALLATION.md)** - Complete installation guide with hardware setup
-2. **[Usage Guide](USAGE.md)** - Basic to advanced usage patterns with examples
+1. **[Installation & Setup](guides/getting-started/installation.md)** - Complete installation guide with hardware setup
+2. **[Usage Guide](archive/USAGE.md)** - Basic to advanced usage patterns with examples
 3. **[Examples](../examples/README.md)** - Practical examples and demos
 
 ### Technical Reference
-4. **[API Reference](API.md)** - Complete API documentation with all methods and parameters
-5. **[Architecture Overview](ARCHITECTURE.md)** - System design, components, and data flow
-6. **[Testing Guide](TESTING.md)** - Testing framework, benchmarks, and quality assurance
+4. **[API Reference](api/overview.md)** - Complete API documentation with all methods and parameters
+5. **[Architecture Overview](architecture/overview.md)** - System design, components, and data flow
+6. **[Testing Guide](guides/testing/TESTING_README.md)** - Testing framework, benchmarks, and quality assurance
 
 ### Specialization Guides
-7. **[Hardware Optimization](HARDWARE.md)** - Platform-specific optimization strategies
-8. **[IPFS Integration](IPFS.md)** - Distributed inference and content addressing
-9. **[P2P & MCP Architecture](P2P_AND_MCP.md)** - P2P workflow scheduling and MCP server
-10. **[WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)** - Browser-based acceleration
+7. **[Hardware Optimization](guides/hardware/overview.md)** - Platform-specific optimization strategies
+8. **[IPFS Integration](features/ipfs/IPFS.md)** - Distributed inference and content addressing
+9. **[P2P Architecture](guides/p2p/)** - P2P workflow scheduling and distributed computing
+10. **[WebNN/WebGPU Integration](features/webnn-webgpu/WEBNN_WEBGPU_README.md)** - Browser-based acceleration
 
 ### Organized Guides
 11. **[GitHub Guides](guides/github/)** - GitHub Actions, autoscaling, authentication, P2P cache
@@ -115,8 +115,8 @@ IPFS Accelerate Python is a **comprehensive, enterprise-grade framework** that c
 ### Getting Help
 
 ### Documentation Navigation
-- 📖 **[Getting Started Guide](GETTING_STARTED.md)** - Complete beginner's tutorial
-- ❓ **[FAQ](FAQ.md)** - Frequently asked questions and quick answers
+- 📖 **[Getting Started Guide](guides/getting-started/README.md)** - Complete beginner's tutorial
+- ❓ **[FAQ](guides/troubleshooting/faq.md)** - Frequently asked questions and quick answers
 - 📚 **[Full Documentation Index](INDEX.md)** - Comprehensive guide listing
 - Use the **Table of Contents** in each document for quick navigation
 - Look for **🔗 Cross-references** between related sections  
@@ -132,7 +132,7 @@ IPFS Accelerate Python is a **comprehensive, enterprise-grade framework** that c
 - **[Contributing Guide](../CONTRIBUTING.md)** - Detailed contribution guidelines
 - **[Security Policy](../SECURITY.md)** - Security reporting and best practices
 - **[Code of Conduct](../CONTRIBUTING.md#community-guidelines)** - Community guidelines
-- **[Development Setup](TESTING.md#development-setup)** - Follow the Testing Guide
+- **[Development Setup](guides/testing/TESTING_README.md#development-setup)** - Follow the Testing Guide
 
 ## Documentation Organization
 
@@ -149,7 +149,7 @@ All active, maintained documentation is organized in this directory:
 
 ### **Documentation Audit**
 A comprehensive audit was completed in January 2026:
-- **[Audit Report](DOCUMENTATION_AUDIT_REPORT.md)**: Complete findings and recommendations
+- **[Audit Report](development_history/DOCUMENTATION_AUDIT_REPORT.md)**: Complete findings and recommendations
 - 200+ files reviewed, duplicates removed, links fixed
 - Archive organized and documented
 
@@ -172,5 +172,5 @@ All examples, APIs, and features have been verified and updated for accuracy.
 
 ---
 
-Start with the [Installation Guide](INSTALLATION.md) to begin using IPFS Accelerate Python! 🚀
+Start with the [Installation Guide](guides/getting-started/installation.md) to begin using IPFS Accelerate Python! 🚀
 

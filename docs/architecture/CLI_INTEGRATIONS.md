@@ -449,7 +449,7 @@ The dual-mode wrapper provides:
 - **Unified caching** regardless of execution mode
 - **Response metadata** for debugging and monitoring
 
-See [PHASES_3_4_IMPLEMENTATION.md](./PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
+See [PHASES_3_4_IMPLEMENTATION.md](../summaries/PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
 
 ### Secrets Manager Architecture
 

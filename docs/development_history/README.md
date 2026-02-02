@@ -56,9 +56,9 @@ These files are **reference documentation only** and document the development pr
 
 For current, actively maintained documentation, see:
 - **Main Documentation**: [../README.md](../README.md)
-- **Architecture**: [../ARCHITECTURE.md](../ARCHITECTURE.md)
-- **API Reference**: [../API.md](../API.md)
-- **Testing Guide**: [../TESTING.md](../TESTING.md)
+- **Architecture**: [../architecture/overview.md](../architecture/overview.md)
+- **API Reference**: [../api/overview.md](../api/overview.md)
+- **Testing Guide**: [../guides/testing/TESTING_README.md](../guides/testing/TESTING_README.md)
 
 ---
 

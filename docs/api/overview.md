@@ -738,11 +738,11 @@ print(f"Inference time: {end_time - start_time:.3f} seconds")
 print(f"Result: {result}")
 ```
 
-For more detailed examples and advanced usage patterns, see the [Usage Guide](USAGE.md) and [examples directory](../examples/).
+For more detailed examples and advanced usage patterns, see the [Usage Guide](../archive/USAGE.md) and [examples directory](../../examples/).
 
 ## Related Documentation
 
-- [Usage Guide](USAGE.md) - Comprehensive usage examples
-- [Hardware Optimization](HARDWARE.md) - Hardware-specific optimization
-- [IPFS Integration](IPFS.md) - Advanced IPFS features
-- [WebNN/WebGPU README](WEBNN_WEBGPU_README.md) - Browser acceleration
+- [Usage Guide](../archive/USAGE.md) - Comprehensive usage examples
+- [Hardware Optimization](../guides/hardware/overview.md) - Hardware-specific optimization
+- [IPFS Integration](../features/ipfs/IPFS.md) - Advanced IPFS features
+- [WebNN/WebGPU README](../features/webnn-webgpu/WEBNN_WEBGPU_README.md) - Browser acceleration

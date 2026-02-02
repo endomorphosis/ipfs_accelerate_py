@@ -723,10 +723,10 @@ For detailed contribution guidelines, see [CONTRIBUTING.md](../CONTRIBUTING.md).
 
 After successful installation and setup:
 
-1. Read the [Usage Guide](USAGE.md) for detailed usage instructions
-2. Check out the [Examples](../examples/README.md) for practical examples
-3. Review the [API Reference](API.md) for complete API documentation
-4. Learn about [Hardware Optimization](HARDWARE.md) for your specific setup
-5. Explore [IPFS Integration](IPFS.md) for distributed inference
+1. Read the [Usage Guide](../../archive/USAGE.md) for detailed usage instructions
+2. Check out the [Examples](../../../examples/README.md) for practical examples
+3. Review the [API Reference](../../api/overview.md) for complete API documentation
+4. Learn about [Hardware Optimization](../hardware/overview.md) for your specific setup
+5. Explore [IPFS Integration](../../features/ipfs/IPFS.md) for distributed inference
 
 Welcome to IPFS Accelerate Python! 🚀
