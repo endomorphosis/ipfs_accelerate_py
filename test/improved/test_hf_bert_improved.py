@@ -47,6 +47,10 @@ def bert_model_and_tokenizer():
     model.eval()
     return model, tokenizer
 
+@pytest.fixture
+def pytest_config(request):
+    """Get pytest configuration."""
+    return request.config
 
 @pytest.fixture
 def sample_inputs(bert_model_and_tokenizer):
@@ -63,6 +67,7 @@ def sample_inputs(bert_model_and_tokenizer):
 
 # Basic Tests
 
+@pytest.mark.model_test
 @pytest.mark.model
 @pytest.mark.text
 class TestBERTLoading:
@@ -85,6 +90,7 @@ class TestBERTLoading:
         assert config.vocab_size == 30522, f"Wrong vocab size: {config.vocab_size}"
 
 
+@pytest.mark.model_test
 @pytest.mark.model
 @pytest.mark.text
 class TestBERTInference:
@@ -119,6 +125,7 @@ class TestBERTInference:
 
 # Hardware Tests
 
+@pytest.mark.model_test
 @pytest.mark.hardware
 @pytest.mark.cpu
 class TestBERTCPU:
@@ -136,6 +143,7 @@ class TestBERTCPU:
         ModelTestUtils.assert_device_correct(outputs.last_hidden_state, "cpu")
 
 
+@pytest.mark.model_test
 @pytest.mark.hardware
 @pytest.mark.cuda
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
@@ -152,3 +160,48 @@ class TestBERTCUDA:
             outputs = model(**inputs)
         
         ModelTestUtils.assert_device_correct(outputs.last_hidden_state, "cuda")
+
+
+# Performance Tests with Regression Detection
+
+@pytest.mark.model_test
+@pytest.mark.benchmark
+@pytest.mark.slow
+class TestBERTPerformance:
+    """Test BERT performance with regression detection."""
+    
+    def test_cpu_performance_with_baseline(self, bert_model_and_tokenizer, sample_inputs, pytest_config):
+        """Test CPU performance and check for regressions."""
+        model, _ = bert_model_and_tokenizer
+        model = model.to("cpu")
+        inputs = {k: v.to("cpu") for k, v in sample_inputs.items()}
+        
+        # Measure performance
+        timing_stats = ModelTestUtils.measure_inference_time(
+            model, inputs, warmup_runs=2, test_runs=5
+        )
+        
+        # Get config options
+        update_baseline = getattr(pytest_config, 'update_baselines', False)
+        tolerance = getattr(pytest_config, 'baseline_tolerance', 0.20)
+        
+        # Check for regressions or update baseline
+        result = PerformanceTestUtils.check_performance_regression(
+            model_name=MODEL_NAME,
+            timing_stats=timing_stats,
+            device="cpu",
+            tolerance=tolerance,
+            update_baseline=update_baseline
+        )
+        
+        # Print results
+        print(f"\n{MODEL_NAME} CPU Performance:")
+        print(f"  Mean inference time: {timing_stats['mean']*1000:.2f}ms")
+        if result.get('has_baseline'):
+            print(f"  {result.get('message', '')}")
+        
+        # Log warning if regressions detected (don't fail test)
+        if result.get('regressions'):
+            import warnings
+            warnings.warn(f"Performance regressions detected for {MODEL_NAME}")
+

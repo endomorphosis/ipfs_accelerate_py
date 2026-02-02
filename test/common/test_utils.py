@@ -381,3 +381,58 @@ class PerformanceTestUtils:
         
         report.append(f"{'='*60}\n")
         return '\n'.join(report)
+    
+    @staticmethod
+    def check_performance_regression(model_name: str,
+                                    timing_stats: Dict,
+                                    memory_stats: Optional[Dict] = None,
+                                    device: str = "cpu",
+                                    tolerance: float = 0.20,
+                                    update_baseline: bool = False) -> Dict[str, Any]:
+        """Check for performance regressions against baseline.
+        
+        Args:
+            model_name: Name of the model
+            timing_stats: Current timing statistics
+            memory_stats: Current memory statistics
+            device: Device string
+            tolerance: Allowed deviation (default: 0.20 = 20%)
+            update_baseline: If True, update baseline instead of checking
+            
+        Returns:
+            Dictionary with regression check results
+        """
+        try:
+            from .performance_baseline import get_baseline_manager
+        except ImportError:
+            return {
+                "error": "Performance baseline manager not available",
+                "has_baseline": False
+            }
+        
+        manager = get_baseline_manager()
+        
+        # Prepare current metrics
+        current_metrics = {
+            "inference_time_mean": timing_stats['mean'],
+            "inference_time_median": timing_stats['median'],
+            "inference_time_min": timing_stats['min'],
+            "inference_time_max": timing_stats['max'],
+        }
+        
+        if memory_stats:
+            current_metrics.update({
+                "memory_allocated_mb": memory_stats.get('allocated_mb', 0),
+                "memory_peak_mb": memory_stats.get('peak_mb', 0),
+            })
+        
+        if update_baseline:
+            # Update baseline
+            manager.set_baseline(model_name, current_metrics, device)
+            return {
+                "updated": True,
+                "message": f"✅ Updated baseline for {model_name} on {device}"
+            }
+        else:
+            # Check for regression
+            return manager.check_regression(model_name, current_metrics, device, tolerance)

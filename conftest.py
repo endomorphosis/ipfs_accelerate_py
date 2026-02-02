@@ -29,11 +29,40 @@ warnings.filterwarnings(
 )
 
 
-def pytest_configure() -> None:
+def pytest_addoption(parser):
+    """Add custom pytest command-line options."""
+    parser.addoption(
+        "--run-model-tests",
+        action="store_true",
+        default=False,
+        help="Run HuggingFace model tests (gated by default to speed up framework testing)"
+    )
+    parser.addoption(
+        "--update-baselines",
+        action="store_true",
+        default=False,
+        help="Update performance baselines instead of comparing against them"
+    )
+    parser.addoption(
+        "--baseline-tolerance",
+        action="store",
+        default=0.20,
+        type=float,
+        help="Performance regression tolerance (default: 0.20 = 20%%)"
+    )
+
+
+def pytest_configure(config) -> None:
+    """Configure pytest before test collection."""
     # Preserve previous intent of PYTHONPATH=.
     repo_root = Path(__file__).resolve().parent
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
+
+    # Store config options for use in tests
+    config.run_model_tests = config.getoption("--run-model-tests")
+    config.update_baselines = config.getoption("--update-baselines")
+    config.baseline_tolerance = config.getoption("--baseline-tolerance")
 
     # Suppress known third-party deprecation warnings during tests
     warnings.filterwarnings(
@@ -61,6 +90,36 @@ def pytest_configure() -> None:
         message=r"Can't initialize NVML",
         category=UserWarning,
     )
+
+    # Enforce Trio-only AnyIO backend for the test suite.
+    # This prevents pytest-anyio from parametrizing tests over asyncio + trio,
+    # and also ensures anyio.run(...) defaults to Trio when tests call it
+    # without an explicit backend.
+    try:
+        import anyio as _anyio
+    except Exception:
+        return
+
+    if not getattr(_anyio.run, "__ipfs_accelerate_trio_patched__", False):
+        _orig_run = _anyio.run
+
+        def _run_with_trio(func, *args, backend="trio", backend_options=None):
+            return _orig_run(func, *args, backend=backend, backend_options=backend_options)
+
+        _run_with_trio.__ipfs_accelerate_trio_patched__ = True  # type: ignore[attr-defined]
+        _anyio.run = _run_with_trio
+
+
+def pytest_collection_modifyitems(config, items):
+    """Modify test collection to skip model tests unless --run-model-tests is specified."""
+    if config.getoption("--run-model-tests"):
+        # Model tests are enabled, don't skip anything
+        return
+    
+    skip_model_tests = pytest.mark.skip(reason="Model tests require --run-model-tests flag")
+    for item in items:
+        if "model_test" in item.keywords:
+            item.add_marker(skip_model_tests)
 
     # Enforce Trio-only AnyIO backend for the test suite.
     # This prevents pytest-anyio from parametrizing tests over asyncio + trio,
