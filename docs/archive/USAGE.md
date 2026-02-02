@@ -996,11 +996,11 @@ async def distributed_inference():
 distributed_result = anyio.run(distributed_inference)
 ```
 
-For more examples, see the [examples directory](../examples/) and the [WebNN/WebGPU README](WEBNN_WEBGPU_README.md).
+For more examples, see the [examples directory](../../examples/) and the [WebNN/WebGPU README](../features/webnn-webgpu/WEBNN_WEBGPU_README.md).
 
 ## Next Steps
 
-- [API Reference](API.md) - Detailed API documentation
-- [Hardware Optimization](HARDWARE.md) - Hardware-specific optimization guide
-- [IPFS Integration](IPFS.md) - Advanced IPFS usage patterns
-- [Examples](../examples/README.md) - More practical examples
+- [API Reference](../api/overview.md) - Detailed API documentation
+- [Hardware Optimization](../guides/hardware/overview.md) - Hardware-specific optimization guide
+- [IPFS Integration](../features/ipfs/IPFS.md) - Advanced IPFS usage patterns
+- [Examples](../../examples/README.md) - More practical examples

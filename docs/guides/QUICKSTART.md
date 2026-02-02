@@ -312,11 +312,11 @@ ipfs-accelerate files get QmHash... output.txt
 
 ### Documentation
 
-- **[USAGE.md](docs/USAGE.md)** - Comprehensive usage guide
-- **[API.md](docs/API.md)** - Complete API reference
-- **[P2P_AND_MCP.md](docs/P2P_AND_MCP.md)** - P2P & MCP architecture
-- **[HARDWARE.md](docs/HARDWARE.md)** - Hardware optimization guide
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System architecture
+- **[USAGE.md](../archive/USAGE.md)** - Comprehensive usage guide
+- **[API.md](../api/overview.md)** - Complete API reference
+- **[P2P Documentation](p2p/)** - P2P & MCP architecture
+- **[HARDWARE.md](hardware/overview.md)** - Hardware optimization guide
+- **[ARCHITECTURE.md](../architecture/overview.md)** - System architecture
 
 ### Examples
 

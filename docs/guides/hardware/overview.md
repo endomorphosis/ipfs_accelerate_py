@@ -419,7 +419,7 @@ webgpu_config = {
 }
 ```
 
-For detailed WebNN/WebGPU usage, see the [WebNN/WebGPU README](WEBNN_WEBGPU_README.md).
+For detailed WebNN/WebGPU usage, see the [WebNN/WebGPU README](../../features/webnn-webgpu/WEBNN_WEBGPU_README.md).
 
 ## Performance Tuning
 
@@ -756,8 +756,8 @@ diagnose_hardware()
 
 ## Related Documentation
 
-- [Usage Guide](USAGE.md) - General usage patterns
-- [API Reference](API.md) - Complete API documentation  
-- [IPFS Integration](IPFS.md) - IPFS-specific features
-- [WebNN/WebGPU README](WEBNN_WEBGPU_README.md) - Browser acceleration
-- [Benchmarks](../data/benchmarks/README.md) - Performance benchmarking tools
+- [Usage Guide](../../archive/USAGE.md) - General usage patterns
+- [API Reference](../../api/overview.md) - Complete API documentation  
+- [IPFS Integration](../../features/ipfs/IPFS.md) - IPFS-specific features
+- [WebNN/WebGPU README](../../features/webnn-webgpu/WEBNN_WEBGPU_README.md) - Browser acceleration
+- [Benchmarks](../../../data/benchmarks/README.md) - Performance benchmarking tools

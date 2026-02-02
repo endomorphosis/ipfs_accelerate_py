@@ -484,10 +484,10 @@ Once Phase 3 is complete:
 
 ## References
 
-- [HF Model Testing Review](./HF_MODEL_TESTING_REVIEW.md)
-- [Testing Improvement Summary](./HF_TESTING_IMPROVEMENT_SUMMARY.md)
-- [Model Test Gating Guide](./MODEL_TEST_GATING_GUIDE.md)
-- [Conversion Complete Summary](./CONVERSION_COMPLETE_SUMMARY.md)
+- [HF Model Testing Review](../summaries/HF_MODEL_TESTING_REVIEW.md)
+- [Testing Improvement Summary](../summaries/HF_TESTING_IMPROVEMENT_SUMMARY.md)
+- [Model Test Gating Guide](../guides/testing/MODEL_TEST_GATING_GUIDE.md)
+- [Conversion Complete Summary](../summaries/CONVERSION_COMPLETE_SUMMARY.md)
 
 ---
 

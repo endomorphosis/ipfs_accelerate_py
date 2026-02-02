@@ -370,10 +370,10 @@ ipfs-accelerate mcp start --port 8080
 
 | Resource | Description | Time |
 |----------|-------------|------|
-| [API Reference](API.md) | Complete API docs | Reference |
-| [Architecture](ARCHITECTURE.md) | System design | 15 min |
-| [Hardware Guide](HARDWARE.md) | Platform optimization | 20 min |
-| [IPFS Integration](IPFS.md) | Distributed features | 15 min |
+| [API Reference](../api/overview.md) | Complete API docs | Reference |
+| [Architecture](../architecture/overview.md) | System design | 15 min |
+| [Hardware Guide](hardware/overview.md) | Platform optimization | 20 min |
+| [IPFS Integration](../features/ipfs/IPFS.md) | Distributed features | 15 min |
 
 ### Examples
 

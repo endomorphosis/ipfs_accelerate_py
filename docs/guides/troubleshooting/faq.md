@@ -163,7 +163,7 @@ See [Security Guide](ARCHITECTURE.md#security) for details.
 1. **Direct JavaScript** (see [examples/browser/](../examples/browser/))
 2. **Python API** generates browser-compatible code
 
-See [WebNN/WebGPU Guide](WEBNN_WEBGPU_README.md) for complete tutorial.
+See [WebNN/WebGPU Guide](../../features/webnn-webgpu/WEBNN_WEBGPU_README.md) for complete tutorial.
 
 ---
 

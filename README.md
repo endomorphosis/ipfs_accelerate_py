@@ -223,7 +223,7 @@ model = accelerator.load_model("./my_model/")
 model = accelerator.load_model("gpt2", device="cuda")
 ```
 
-🤖 **Full model list**: [Supported Models](docs/README.md#model-support) | [Custom Models Guide](docs/USAGE.md#custom-models)
+🤖 **Full model list**: [Supported Models](docs/README.md#model-support) | [Custom Models Guide](docs/archive/USAGE.md#custom-models)
 
 ---
 
@@ -246,11 +246,11 @@ model = accelerator.load_model("gpt2", device="cuda")
 
 | Topic | Resources |
 |-------|-----------|
-| **IPFS & P2P** | [IPFS Integration](docs/IPFS.md) • [P2P Networking](docs/guides/p2p/) |
+| **IPFS & P2P** | [IPFS Integration](docs/features/ipfs/IPFS.md) • [P2P Networking](docs/guides/p2p/) |
 | **GitHub Actions** | [Autoscaler](docs/architecture/AUTOSCALER.md) • [CI/CD](docs/guides/github/) |
 | **Docker & K8s** | [Container Guide](docs/guides/docker/) • [Deployment](docs/guides/deployment/) |
 | **MCP Server** | [MCP Setup](docs/guides/MCP_SETUP_GUIDE.md) • [Protocol Docs](docs/P2P_AND_MCP.md) |
-| **Browser Support** | [WebNN/WebGPU](docs/WEBNN_WEBGPU_README.md) • [Examples](examples/webnn_demo.py) |
+| **Browser Support** | [WebNN/WebGPU](docs/features/webnn-webgpu/WEBNN_WEBGPU_README.md) • [Examples](examples/webnn_demo.py) |
 
 ### 📊 Documentation Quality
 
@@ -261,7 +261,7 @@ Our documentation has been **professionally audited** (January 2026):
 - ✅ **Well-organized** - Clear structure and navigation
 - ✅ **Verified** - All examples tested and working
 
-📋 **Documentation Hub**: [docs/](docs/) | [Full Index](docs/INDEX.md) | [Audit Report](docs/DOCUMENTATION_AUDIT_REPORT.md)
+📋 **Documentation Hub**: [docs/](docs/) | [Full Index](docs/INDEX.md) | [Audit Report](docs/development_history/DOCUMENTATION_AUDIT_REPORT.md)
 
 ---
 
@@ -299,7 +299,7 @@ result = model.inference("Distributed AI!")
 | **Autoscaler** | Dynamic runner provisioning | ✅ |
 | **MCP Server** | Model Context Protocol (14+ tools) | ✅ |
 
-🌐 **Learn more**: [IPFS Guide](docs/IPFS.md) | [P2P Architecture](docs/P2P_AND_MCP.md) | [Network Setup](docs/guides/p2p/)
+🌐 **Learn more**: [IPFS Guide](docs/features/ipfs/IPFS.md) | [P2P Architecture](docs/guides/p2p/) | [Network Setup](docs/guides/p2p/)
 
 ---
 
@@ -324,12 +324,12 @@ python data/benchmarks/run_benchmarks.py
 | Metric | Status | Details |
 |--------|--------|---------|
 | **Test Coverage** | ✅ | Comprehensive test suite |
-| **Documentation** | ✅ 93/100 | [Audit Report](docs/DOCUMENTATION_AUDIT_REPORT.md) |
+| **Documentation** | ✅ 93/100 | [Audit Report](docs/development_history/DOCUMENTATION_AUDIT_REPORT.md) |
 | **Code Quality** | ✅ | Linted, type-checked |
 | **Security** | ✅ | Regular vulnerability scans |
 | **Performance** | ✅ | Benchmarked across platforms |
 
-🧪 **Testing guide**: [docs/TESTING.md](docs/TESTING.md) | [CI/CD Setup](docs/guides/github/)
+🧪 **Testing guide**: [docs/guides/testing/TESTING_README.md](docs/guides/testing/TESTING_README.md) | [CI/CD Setup](docs/guides/github/)
 
 ---
 
@@ -360,7 +360,7 @@ model = accelerator.load_model("bert-base-uncased", quantize=True)
 accelerator = IPFSAccelerator(enable_cache=True)
 ```
 
-📊 **Performance guide**: [Hardware Optimization](docs/HARDWARE.md) | [Benchmarking](docs/TESTING.md#benchmarks)
+📊 **Performance guide**: [Hardware Optimization](docs/guides/hardware/overview.md) | [Benchmarking](docs/guides/testing/TESTING_README.md#benchmarks)
 
 ---
 
@@ -392,7 +392,7 @@ ipfs-accelerate inference test
 ipfs-accelerate logs --tail 100
 ```
 
-🆘 **Get help**: [Troubleshooting Guide](docs/INSTALLATION_TROUBLESHOOTING_GUIDE.md) | [FAQ](docs/FAQ.md) | [GitHub Issues](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
+🆘 **Get help**: [Troubleshooting Guide](docs/guides/troubleshooting/INSTALLATION_TROUBLESHOOTING_GUIDE.md) | [FAQ](docs/guides/troubleshooting/faq.md) | [GitHub Issues](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
 
 ---
 

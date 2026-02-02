@@ -202,4 +202,4 @@ The WebNN/WebGPU integration with IPFS acceleration has been successfully implem
 
 The completed implementation provides a solid foundation for future enhancements and optimizations, with a focus on improving performance, reliability, and user experience.
 
-For detailed information on using the implementation, please refer to the [WEBNN_WEBGPU_README.md](WEBNN_WEBGPU_README.md) file.
+For detailed information on using the implementation, please refer to the [WEBNN_WEBGPU_README.md](../features/webnn-webgpu/WEBNN_WEBGPU_README.md) file.

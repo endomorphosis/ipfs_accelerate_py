@@ -261,10 +261,16 @@ ipfs_accelerate_py/
 ├── ipfs_accelerate_py.py      # Main framework class
 ├── __init__.py                # Package initialization
 ├── docs/                      # Documentation
-│   ├── USAGE.md              # Usage guide
-│   ├── API.md                # API reference
-│   ├── HARDWARE.md           # Hardware optimization
-│   └── IPFS.md               # IPFS integration
+│   ├── archive/
+│   │   └── USAGE.md          # Usage guide (archived)
+│   ├── api/
+│   │   └── overview.md       # API reference
+│   ├── guides/
+│   │   └── hardware/
+│   │       └── overview.md   # Hardware optimization
+│   └── features/
+│       └── ipfs/
+│           └── IPFS.md       # IPFS integration
 ├── examples/                  # Example applications
 │   ├── README.md
 │   ├── demo_webnn_webgpu.py
@@ -775,7 +781,7 @@ This architecture provides a solid foundation for scalable, distributed machine 
 
 ## Related Documentation
 
-- [Usage Guide](USAGE.md) - How to use the framework
-- [API Reference](API.md) - Complete API documentation
-- [Hardware Optimization](HARDWARE.md) - Hardware-specific features
-- [IPFS Integration](IPFS.md) - IPFS functionality details
+- [Usage Guide](../archive/USAGE.md) - How to use the framework
+- [API Reference](../api/overview.md) - Complete API documentation
+- [Hardware Optimization](../guides/hardware/overview.md) - Hardware-specific features
+- [IPFS Integration](../features/ipfs/IPFS.md) - IPFS functionality details

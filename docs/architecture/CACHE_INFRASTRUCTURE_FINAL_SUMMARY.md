@@ -296,7 +296,7 @@ docker run -v ~/.cache/ipfs_accelerate_py:/cache endomorphosis/ipfs-accelerate-p
 - `CLI_INTEGRATIONS.md` - CLI tool integration guide
 - `API_INTEGRATIONS_COMPLETE.md` - API wrapper guide
 - `install/INSTALLATION_GUIDE.md` - Complete installer docs
-- `COMPLETE_IMPLEMENTATION_SUMMARY.md` - Executive summary
+- `../summaries/COMPLETE_IMPLEMENTATION_SUMMARY.md` - Executive summary
 - `CACHE_INFRASTRUCTURE_FINAL_SUMMARY.md` - This file
 
 ## Testing

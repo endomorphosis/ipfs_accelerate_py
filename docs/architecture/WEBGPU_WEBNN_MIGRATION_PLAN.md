@@ -292,12 +292,12 @@ The implementation of the WebNN/WebGPU integration with IPFS acceleration has ma
    - Result saving and analysis ✅
 
 5. **Documentation**: Comprehensive documentation includes:
-   - Usage guide: `WEBNN_WEBGPU_README.md` ✅
-   - Implementation details: `WEBNN_WEBGPU_IMPLEMENTATION_SUMMARY.md` ✅
+   - Usage guide: `../features/webnn-webgpu/WEBNN_WEBGPU_README.md` ✅
+   - Implementation details: `../summaries/WEBNN_WEBGPU_IMPLEMENTATION_SUMMARY.md` ✅
    - Migration plan updates (this document) ✅
 
 The implementation now supports both simulation mode for testing and real browser mode with WebNN/WebGPU acceleration. The core JavaScript functionality has been implemented in the browser bridge HTML template, with the key WebNN and WebGPU operations for various model types.
 
 Next steps include further optimization of the browser-specific implementations, enhanced resource pooling, and comprehensive testing across different browser environments.
 
-For information on using the implementation, please see the [WEBNN_WEBGPU_README.md](WEBNN_WEBGPU_README.md) file.
+For information on using the implementation, please see the [WEBNN_WEBGPU_README.md](../features/webnn-webgpu/WEBNN_WEBGPU_README.md) file.

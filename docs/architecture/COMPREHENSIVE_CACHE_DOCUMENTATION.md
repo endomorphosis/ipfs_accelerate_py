@@ -788,8 +788,8 @@ cache = get_global_llm_cache()
   - `COMMON_CACHE_INFRASTRUCTURE.md` - Base cache guide
   - `CLI_INTEGRATIONS.md` - CLI integration guide (updated with Phases 3-4)
   - `API_INTEGRATIONS_COMPLETE.md` - API wrapper guide
-  - `PHASES_3_4_IMPLEMENTATION.md` - Dual-mode and secrets manager guide
-  - `PHASES_3_4_COMPLETION_SUMMARY.md` - Phase 3-4 summary
+  - `../summaries/PHASES_3_4_IMPLEMENTATION.md` - Dual-mode and secrets manager guide
+  - `../summaries/PHASES_3_4_COMPLETION_SUMMARY.md` - Phase 3-4 summary
   - `install/INSTALLATION_GUIDE.md` - Installer documentation
 
 ## Conclusion
