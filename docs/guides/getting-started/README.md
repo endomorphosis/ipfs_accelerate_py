@@ -420,10 +420,10 @@ ipfs-accelerate mcp start --port 8080
 
 Choose your learning path:
 
-1. **Explore Examples** → [examples/](../examples/)
-2. **Read Architecture** → [ARCHITECTURE.md](ARCHITECTURE.md)
-3. **Optimize Performance** → [HARDWARE.md](HARDWARE.md)
-4. **Deploy to Production** → [DEPLOYMENT_GUIDE.md](guides/deployment/DEPLOYMENT_GUIDE.md)
+1. **Explore Examples** → [examples/](../../../examples/)
+2. **Read Architecture** → [../../architecture/overview.md](../../architecture/overview.md)
+3. **Optimize Performance** → [../hardware/overview.md](../hardware/overview.md)
+4. **Deploy to Production** → [../deployment/DEPLOYMENT_GUIDE.md](../deployment/DEPLOYMENT_GUIDE.md)
 5. **Join Community** → [Discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
 
 ---

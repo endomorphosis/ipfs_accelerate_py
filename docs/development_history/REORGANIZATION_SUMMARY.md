@@ -196,4 +196,4 @@ For developers and users:
 For more information, see:
 - [Installation Guide](guides/INSTALL.md)
 - [Quick Start Guide](guides/QUICKSTART.md)
-- [Architecture Documentation](ARCHITECTURE.md)
+- [Architecture Documentation](../architecture/overview.md)
