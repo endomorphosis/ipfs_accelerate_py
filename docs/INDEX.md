@@ -1,148 +1,99 @@
-# 📚 IPFS Accelerate Python - Documentation Index
+# IPFS Accelerate Python - Documentation Index
 
-This is the central documentation index for the IPFS Accelerate Python framework. It provides organized access to all documentation, guides, and examples.
+Welcome to the complete documentation for IPFS Accelerate Python. This index helps you find the information you need quickly.
 
-## 🎯 **Quick Navigation**
+## 📚 Quick Links
 
-### **Getting Started**
-- **[Main README](../README.md)** - Project overview and quick start
-- **[Installation Guide](INSTALLATION.md)** - Complete installation and setup
-- **[Usage Guide](USAGE.md)** - Basic and advanced usage patterns
-- **[Installation Troubleshooting](INSTALLATION_TROUBLESHOOTING_GUIDE.md)** - Detailed troubleshooting guide
+- [Getting Started](guides/getting-started/README.md) - Installation and first steps
+- [API Reference](api/overview.md) - Complete API documentation
+- [Architecture](architecture/overview.md) - System architecture and design
+- [Contributing](../CONTRIBUTING.md) - How to contribute
 
-### **Core Documentation**
-- **[API Reference](API.md)** - Complete API documentation  
-- **[System Architecture](ARCHITECTURE.md)** - Enterprise architecture and design patterns
-- **[Hardware Optimization](HARDWARE.md)** - Hardware-specific acceleration techniques
-- **[IPFS Integration](IPFS.md)** - Advanced IPFS features and network optimization
+## 🗂️ Documentation Structure
 
-### **Advanced Features**
-- **[WebNN/WebGPU Integration](WEBNN_WEBGPU_README.md)** - Browser-based acceleration guide
-- **[MCP Integration](../ipfs_accelerate_py/mcp/README.md)** - Model Control Protocol for automation
-- **[Testing Framework](TESTING.md)** - Comprehensive testing and validation
+### 📖 Guides
 
-## 🏢 **Enterprise Documentation**
+User-facing guides and tutorials for getting started and using the system.
 
-### **Production Deployment**
-- **[Production Installation](INSTALLATION_TROUBLESHOOTING_GUIDE.md)** - 16,000+ word enterprise installation guide
-- **[Implementation Plan](IMPLEMENTATION_PLAN.md)** - Complete roadmap for production deployment  
-- **[Deployment Automation](../deployments/README.md)** - Docker, Kubernetes, and cloud deployment
+#### Getting Started
+- [Installation](guides/getting-started/installation.md) - Installation instructions for all platforms
+- [Quick Start](guides/QUICKSTART.md) - Get up and running in 5 minutes
+- [First Inference](guides/getting-started/README.md) - Run your first inference
 
-### **Advanced Guides**
-- **[WebGPU/WebNN Migration](WEBGPU_WEBNN_MIGRATION_PLAN.md)** - Migration planning and execution
-- **[Python 3.12 Compatibility](PYTHON312_COMPATIBILITY_SUMMARY.md)** - Platform compatibility guide
-- **[Windows Compatibility](WINDOWS_COMPATIBILITY.md)** - Windows-specific optimization
+#### Hardware Setup
+- [Hardware Support Overview](guides/hardware/overview.md) - Supported hardware platforms
 
-### **Integration Guides**
-- **[MCP Implementation](IPFS_ACCELERATE_MCP_IMPLEMENTATION_SUMMARY.md)** - MCP integration details
-- **[HuggingFace Integration](HUGGINGFACE_REPOSITORY_INTEGRATION.md)** - Model repository integration
+#### Troubleshooting
+- [FAQ](guides/troubleshooting/faq.md) - Frequently asked questions
 
-## 🛠️ **Examples and Tutorials**
+### 🔧 API Documentation
 
-### **Core Examples**
-- **[Examples Overview](../examples/README.md)** - 14 comprehensive examples
-- **[Basic Usage](../examples/basic_usage.py)** - Simple getting started example
-- **[Complete Demo](../examples/complete_implementation_demo.py)** - Full feature demonstration
+Complete API reference for Python, CLI, and REST endpoints.
 
-### **Advanced Examples**
-- **[Performance Analysis](../examples/performance_analysis.py)** - Performance modeling and optimization
-- **[Enterprise Demo](../examples/ultimate_enterprise_demo.py)** - Complete enterprise deployment
-- **[WebNN/WebGPU Demo](../examples/demo_webnn_webgpu.py)** - Browser acceleration examples
+- [API Overview](api/overview.md) - API concepts and authentication
 
-### **Integration Examples**
-- **[MCP Integration](../examples/mcp_integration_example.py)** - Model Control Protocol usage
-- **[Transformers Integration](../examples/transformers_example.py)** - HuggingFace Transformers integration
-- **[Model Manager](../examples/model_manager_example.py)** - Advanced model management
+### 🏗️ Architecture
 
-## 🔧 **Developer Resources**
+System architecture, design decisions, and technical deep-dives.
 
-### **Testing and Validation**
-- **[Testing Documentation](../test/README.md)** - Testing guidelines and infrastructure
-- **[Kitchen Sink Testing](KITCHEN_SINK_TESTING_PLAN.md)** - Comprehensive testing plan
-- **[CI/CD Integration](CI_CD_UPDATES_SUMMARY.md)** - Continuous integration setup
+- [Architecture Overview](architecture/overview.md) - High-level system design
+- [CI/CD Pipeline](architecture/ci-cd.md) - Continuous integration and deployment
 
-### **Advanced Components**
-- **[Benchmarks](../data/benchmarks/README.md)** - Performance benchmarking framework
-- **[Database Integration](../duckdb_api/README.md)** - Analytics and data management
-- **[Utils](../utils/README.md)** - Utility functions and helpers
+### ⚙️ Features
 
-### **Specialized Systems**
-- **[Generators](../scripts/generators/README.md)** - Code generation and automation
-- **[Web Interface](../static/README.md)** - Web-based management interface
+Feature-specific documentation for major system components.
 
-## 📊 **Analysis and Monitoring**
+#### HuggingFace Model Server
+- [Overview](features/hf-model-server/README.md) - HF Model Server introduction
+- [Architecture](features/hf-model-server/architecture.md) - Server architecture
+- [Implementation](features/hf-model-server/implementation.md) - Implementation details
+- [Review](features/hf-model-server/review.md) - Technical review
+- [Testing & Deployment](features/hf-model-server/testing-deployment.md) - Testing and deployment
+- [anyio Migration](features/hf-model-server/anyio-migration.md) - Async migration guide
+- [Project Summary](features/hf-model-server/project-summary.md) - Complete project overview
+- [Final Summary](features/hf-model-server/final-summary.md) - Final implementation status
 
-### **Performance Analysis**
-- **[Performance Modeling](../test/enhanced_performance_modeling.py)** - Advanced performance analysis
-- **[Benchmarking Suite](../test/advanced_benchmarking_suite.py)** - Comprehensive benchmarking
-- **[Hardware Compatibility](../test/comprehensive_model_hardware_compatibility.py)** - Compatibility analysis
+#### Auto-Healing System
+- [Overview](features/auto-healing/overview.md) - Auto-healing capabilities
+- [README](features/auto-healing/README.md) - Auto-healing guide
 
-### **Monitoring and Dashboards**
-- **[Simulation Validation](../test/duckdb_api/simulation_validation/README.md)** - Validation framework
-- **[Documentation Index](../test/duckdb_api/simulation_validation/DOCUMENTATION_INDEX.md)** - Validation docs
+#### GitHub Cache Integration
+- [Overview](features/github-cache/overview.md) - GitHub Actions cache
+- [P2P Integration](features/github-cache/p2p-integration.md) - P2P cache sharing
 
-## 🚀 **Quick Links**
+#### MCP Integration
+- [P2P Integration](features/mcp-integration/p2p-integration.md) - MCP & P2P integration
 
-### **Most Common Tasks**
-1. **[Get Started](../README.md#quick-start)** - Jump into basic usage
-2. **[Install for Production](INSTALLATION_TROUBLESHOOTING_GUIDE.md)** - Production deployment
-3. **[Fix Issues](INSTALLATION_TROUBLESHOOTING_GUIDE.md#troubleshooting)** - Common problems and solutions
-4. **[API Reference](API.md)** - Find specific functions and classes
-5. **[Examples](../examples/README.md)** - See working code examples
+### 💻 Development
 
-### **Platform-Specific**
-- **[Windows Users](../README.md#platform-specific-notes)** - Windows 10/11 and Python 3.12 notes
-- **[macOS Users](HARDWARE.md#apple-metal-performance-shaders-mps)** - Apple Silicon optimization
-- **[Linux Users](HARDWARE.md#cuda-acceleration)** - CUDA and ROCm setup
+Developer documentation for contributing, testing, and building.
 
-### **Feature-Specific**
-- **[Browser Acceleration](WEBNN_WEBGPU_README.md)** - WebNN/WebGPU setup and usage  
-- **[IPFS Integration](IPFS.md)** - Distributed inference and caching
-- **[Hardware Optimization](HARDWARE.md)** - Platform-specific acceleration
+- [Contributing](../CONTRIBUTING.md) - How to contribute
+- [Testing](development/testing.md) - Testing infrastructure
 
-## 📝 **Contributing**
+### 📜 Archive
 
-### **Development Setup**
-- **[Development Installation](INSTALLATION.md#development-installation)** - Setup for contributors
-- **[Testing Guidelines](../test/README.md)** - Running and writing tests
-- **[Documentation Standards](COMPREHENSIVE_DOCUMENTATION_UPDATE_SUMMARY.md)** - Doc contribution guidelines
+Historical documentation and session summaries (for reference only).
 
-### **Project Status**
-- **[Implementation Status](IMPLEMENTATION_COMPLETION_SUMMARY.md)** - Current development phase
-- **[Next Steps](../test/NEXT_STEPS.md)** - Roadmap and priorities
-- **[Migration Progress](../test/refactoring_plan.md)** - Refactoring status
+- [Session Summaries](archive/sessions/) - Implementation session notes
+
+## 🔍 Finding What You Need
+
+### By Task
+
+- **I want to install the software** → [Installation Guide](guides/getting-started/installation.md)
+- **I want to run my first inference** → [Quick Start](guides/QUICKSTART.md)
+- **I want to contribute** → [Contributing](../CONTRIBUTING.md)
+- **I have a problem** → [Troubleshooting](guides/troubleshooting/)
+- **I need API documentation** → [API Reference](api/overview.md)
+
+### By Role
+
+- **End User** → Start with [Getting Started](guides/getting-started/README.md)
+- **Developer** → See [Architecture](architecture/overview.md) and [API Docs](api/overview.md)
+- **Contributor** → Read [Contributing](../CONTRIBUTING.md) and [Testing](development/testing.md)
 
 ---
 
-## 📚 **Documentation Organization**
-
-### **Active Documentation**
-All current, maintained documentation is in the main `/docs/` directory and organized subdirectories:
-- **Core Docs**: API.md, ARCHITECTURE.md, INSTALLATION.md, USAGE.md, TESTING.md
-- **Specialized Guides**: [guides/](guides/) - Deployment, Docker, GitHub, P2P, CLI, Infrastructure
-- **Architecture**: [architecture/](architecture/) - System architecture and design docs
-
-### **Historical Documentation**
-- **[Archive](archive/README.md)** - Historical session summaries and implementation reports
-- **[Development History](development_history/README.md)** - Major milestones and phase completions
-- **[Exports](exports/README.md)** - HTML, PDF, and other non-markdown documentation exports
-
-### **Documentation Audit**
-- **[Documentation Audit Report](DOCUMENTATION_AUDIT_REPORT.md)** - Comprehensive audit findings and recommendations
-
----
-
-## 🔍 **Search Tips**
-
-- **Use Ctrl+F** to search within this index
-- **File names** are linked for direct access
-- **Section headers** help navigate within documents
-- **Cross-references** connect related topics
-
-For specific API questions, start with the **[API Reference](API.md)**.  
-For implementation examples, check the **[Examples Overview](../examples/README.md)**.  
-For troubleshooting, see the **[Installation Troubleshooting Guide](INSTALLATION_TROUBLESHOOTING_GUIDE.md)**.
-
----
-
-*Last updated: January 2026 - After comprehensive documentation audit and cleanup*
+**Last Updated:** 2026-02-02
+**Version:** Production Release
