@@ -5,8 +5,8 @@
 [![PyPI version](https://badge.fury.io/py/ipfs-accelerate-py.svg)](https://badge.fury.io/py/ipfs-accelerate-py)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![Python 3.8+](https://img.shields.io/badge/python-3.8+-blue.svg)](https://www.python.org/downloads/)
-[![Documentation](https://img.shields.io/badge/docs-comprehensive-brightgreen.svg)](docs/README.md)
-[![Tests](https://img.shields.io/badge/tests-passing-success.svg)](docs/TESTING.md)
+[![Documentation](https://img.shields.io/badge/docs-comprehensive-brightgreen.svg)](docs/INDEX.md)
+[![Tests](https://img.shields.io/badge/tests-passing-success.svg)](docs/development/testing.md)
 
 ---
 
@@ -71,7 +71,7 @@ Choose the profile that matches your needs:
 | **MCP** | MCP server extras | `pip install ipfs-accelerate-py[mcp]` |
 | **Dev** | Development setup | `pip install -e .` |
 
-📚 **Detailed instructions**: [Installation Guide](docs/guides/INSTALL.md) | [Troubleshooting](docs/INSTALLATION_TROUBLESHOOTING_GUIDE.md) | [Getting Started](docs/GETTING_STARTED.md)
+📚 **Detailed instructions**: [Installation Guide](docs/guides/getting-started/installation.md) | [Troubleshooting](docs/guides/troubleshooting/faq.md) | [Getting Started](docs/guides/getting-started/README.md)
 
 ---
 
@@ -159,7 +159,7 @@ IPFS Accelerate Python is built on a **modular, enterprise-grade architecture**:
 - **MCP Server**: Model Context Protocol for standardized automation
 - **Monitoring**: Real-time metrics, profiling, and analytics
 
-📐 **Detailed architecture**: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | [System Design](docs/ARCHITECTURE.md#system-design)
+📐 **Detailed architecture**: [docs/architecture/overview.md](docs/architecture/overview.md) | [CI/CD](docs/architecture/ci-cd.md)
 
 ---
 
@@ -191,7 +191,7 @@ accelerator = IPFSAccelerator(device="cuda")  # Force CUDA
 accelerator = IPFSAccelerator(device="mps")   # Force Apple MPS
 ```
 
-⚙️ **Hardware guides**: [Hardware Optimization](docs/HARDWARE.md) | [Platform-Specific](docs/HARDWARE.md#platform-guides)
+⚙️ **Hardware guides**: [Hardware Optimization](docs/guides/hardware/overview.md) | [Platform Support](docs/guides/hardware/overview.md#platforms)
 
 ---
 
@@ -233,14 +233,14 @@ model = accelerator.load_model("gpt2", device="cuda")
 
 | Guide | Description | Audience |
 |-------|-------------|----------|
-| [**Getting Started**](docs/GETTING_STARTED.md) | Complete beginner tutorial | Everyone |
+| [**Getting Started**](docs/guides/getting-started/README.md) | Complete beginner tutorial | Everyone |
 | [**Quick Start**](docs/guides/QUICKSTART.md) | Get running in 5 minutes | Everyone |
-| [**Installation**](docs/guides/INSTALL.md) | Detailed setup instructions | Users |
-| [**FAQ**](docs/FAQ.md) | Common questions & answers | Everyone |
-| [**API Reference**](docs/API.md) | Complete API documentation | Developers |
-| [**Architecture**](docs/ARCHITECTURE.md) | System design & components | Architects |
-| [**Hardware Optimization**](docs/HARDWARE.md) | Platform-specific tuning | Engineers |
-| [**Testing Guide**](docs/TESTING.md) | Testing & benchmarking | QA/DevOps |
+| [**Installation**](docs/guides/getting-started/installation.md) | Detailed setup instructions | Users |
+| [**FAQ**](docs/guides/troubleshooting/faq.md) | Common questions & answers | Everyone |
+| [**API Reference**](docs/api/overview.md) | Complete API documentation | Developers |
+| [**Architecture**](docs/architecture/overview.md) | System design & components | Architects |
+| [**Hardware Optimization**](docs/guides/hardware/overview.md) | Platform-specific tuning | Engineers |
+| [**Testing Guide**](docs/development/testing.md) | Testing & benchmarking | QA/DevOps |
 
 ### 🎯 Specialized Topics
 
