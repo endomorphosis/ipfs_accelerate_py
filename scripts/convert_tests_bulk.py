@@ -240,7 +240,8 @@ class TestConverter:
     def convert_batch(self, input_dir: Path, output_dir: Path, 
                      pattern: str = "test_hf_*.py", 
                      limit: Optional[int] = None,
-                     overwrite: bool = False) -> Tuple[int, int]:
+                     overwrite: bool = False,
+                     recursive: bool = True) -> Tuple[int, int]:
         """Convert a batch of test files.
         
         Args:
@@ -249,12 +250,18 @@ class TestConverter:
             pattern: Glob pattern for input files
             limit: Maximum number of files to convert (None = all)
             overwrite: Whether to overwrite existing files
+            recursive: Whether to search subdirectories recursively (default: True)
             
         Returns:
             Tuple of (successful_count, total_count)
         """
-        # Find input files
-        input_files = sorted(input_dir.glob(pattern))
+        # Find input files (recursively if specified)
+        if recursive:
+            input_files = sorted(input_dir.rglob(pattern))
+            # Exclude files already in improved/ directory
+            input_files = [f for f in input_files if 'improved' not in f.parts]
+        else:
+            input_files = sorted(input_dir.glob(pattern))
         
         if limit:
             input_files = input_files[:limit]
@@ -324,6 +331,18 @@ def main():
         default="test/common/test_template_improved.py",
         help="Path to test template (default: test/common/test_template_improved.py)"
     )
+    parser.add_argument(
+        "--recursive",
+        action="store_true",
+        default=True,
+        help="Search subdirectories recursively (default: True)"
+    )
+    parser.add_argument(
+        "--no-recursive",
+        action="store_false",
+        dest="recursive",
+        help="Don't search subdirectories recursively"
+    )
     
     args = parser.parse_args()
     
@@ -351,7 +370,8 @@ def main():
         output_dir=output_dir,
         pattern=args.pattern,
         limit=args.limit,
-        overwrite=args.overwrite
+        overwrite=args.overwrite,
+        recursive=args.recursive
     )
     
     # Return appropriate exit code
