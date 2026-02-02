@@ -603,7 +603,7 @@ The `DualModeWrapper` base class provides:
 - **Performance**: Uses fastest available method
 - **Debugging**: Clear mode metadata in responses
 
-See [PHASES_3_4_IMPLEMENTATION.md](./PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
+See [PHASES_3_4_IMPLEMENTATION.md](../summaries/PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
 
 ## Phase 4: Secrets Manager
 
@@ -732,7 +732,7 @@ response = claude.chat("Hello")
 # Response now includes: {"response": "...", "mode": "SDK", "cached": False}
 ```
 
-See [PHASES_3_4_IMPLEMENTATION.md](./PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
+See [PHASES_3_4_IMPLEMENTATION.md](../summaries/PHASES_3_4_IMPLEMENTATION.md) for complete documentation.
 
 ## Troubleshooting
 
