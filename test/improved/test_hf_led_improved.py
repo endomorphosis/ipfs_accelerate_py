@@ -6,7 +6,7 @@ This template provides a standardized structure for testing HuggingFace models
 with proper pytest functions, assertions, and hardware compatibility.
 
 Usage:
-    Replace BERT, bert-base-uncased, fill-mask with actual values.
+    Replace LED, led-base, token-classification with actual values.
 """
 
 import pytest
@@ -39,9 +39,9 @@ except ImportError:
 
 
 # Model configuration
-MODEL_ID = "bert-base-uncased"  # e.g., "bert-base-uncased"
-MODEL_NAME = "BERT"  # e.g., "bert"
-TASK_TYPE = "fill-mask"  # e.g., "text_embedding"
+MODEL_ID = "led-base"  # e.g., "bert-base-uncased"
+MODEL_NAME = "LED"  # e.g., "bert"
+TASK_TYPE = "token-classification"  # e.g., "text_embedding"
 
 
 # Fixtures

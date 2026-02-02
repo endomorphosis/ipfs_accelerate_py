@@ -6,7 +6,7 @@ This template provides a standardized structure for testing HuggingFace models
 with proper pytest functions, assertions, and hardware compatibility.
 
 Usage:
-    Replace BERT, bert-base-uncased, fill-mask with actual values.
+    Replace BIGBIRD_PEGASUS, bigbird_pegasus-base, fill-mask with actual values.
 """
 
 import pytest
@@ -39,8 +39,8 @@ except ImportError:
 
 
 # Model configuration
-MODEL_ID = "bert-base-uncased"  # e.g., "bert-base-uncased"
-MODEL_NAME = "BERT"  # e.g., "bert"
+MODEL_ID = "bigbird_pegasus-base"  # e.g., "bert-base-uncased"
+MODEL_NAME = "BIGBIRD_PEGASUS"  # e.g., "bert"
 TASK_TYPE = "fill-mask"  # e.g., "text_embedding"
 
 

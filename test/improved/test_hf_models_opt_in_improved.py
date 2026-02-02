@@ -6,7 +6,7 @@ This template provides a standardized structure for testing HuggingFace models
 with proper pytest functions, assertions, and hardware compatibility.
 
 Usage:
-    Replace BERT, bert-base-uncased, fill-mask with actual values.
+    Replace MODELS_OPT_IN, models_opt_in-base, feature-extraction with actual values.
 """
 
 import pytest
@@ -39,9 +39,9 @@ except ImportError:
 
 
 # Model configuration
-MODEL_ID = "bert-base-uncased"  # e.g., "bert-base-uncased"
-MODEL_NAME = "BERT"  # e.g., "bert"
-TASK_TYPE = "fill-mask"  # e.g., "text_embedding"
+MODEL_ID = "models_opt_in-base"  # e.g., "bert-base-uncased"
+MODEL_NAME = "MODELS_OPT_IN"  # e.g., "bert"
+TASK_TYPE = "feature-extraction"  # e.g., "text_embedding"
 
 
 # Fixtures

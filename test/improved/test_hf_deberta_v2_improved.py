@@ -6,7 +6,7 @@ This template provides a standardized structure for testing HuggingFace models
 with proper pytest functions, assertions, and hardware compatibility.
 
 Usage:
-    Replace BERT, bert-base-uncased, fill-mask with actual values.
+    Replace DEBERTA_V2, deberta_v2-base, fill-mask with actual values.
 """
 
 import pytest
@@ -39,8 +39,8 @@ except ImportError:
 
 
 # Model configuration
-MODEL_ID = "bert-base-uncased"  # e.g., "bert-base-uncased"
-MODEL_NAME = "BERT"  # e.g., "bert"
+MODEL_ID = "deberta_v2-base"  # e.g., "bert-base-uncased"
+MODEL_NAME = "DEBERTA_V2"  # e.g., "bert"
 TASK_TYPE = "fill-mask"  # e.g., "text_embedding"
 
 

@@ -100,3 +100,15 @@ bin/*
 
 # GitHub CLI cache (P2P/IPFS)
 .cache/github_cli/
+
+# Coverage reports
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.pytest_cache/
+
+# Performance baselines - KEEP IN VERSION CONTROL
+# (Uncomment the line below to exclude from version control if needed)
+# test/.performance_baselines.json
