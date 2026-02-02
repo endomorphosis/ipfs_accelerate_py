@@ -6,7 +6,7 @@ import time
 import logging
 from collections import defaultdict
 from typing import Dict, Tuple
-import asyncio
+import anyio
 
 from .api_keys import APIKey
 
@@ -26,7 +26,7 @@ class RateLimiter:
         self.enabled = enabled
         # key_id -> (count, window_start)
         self._counts: Dict[str, Tuple[int, float]] = defaultdict(lambda: (0, time.time()))
-        self._lock = asyncio.Lock()
+        self._lock = anyio.Lock()
     
     async def check_limit(self, api_key: APIKey) -> Tuple[bool, int]:
         """

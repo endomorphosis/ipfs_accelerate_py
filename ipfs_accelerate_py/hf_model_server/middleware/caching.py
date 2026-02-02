@@ -27,7 +27,7 @@ class ResponseCache:
         self.max_size = max_size
         self.ttl_seconds = ttl_seconds
         self._cache: OrderedDict[str, Tuple[Any, float]] = OrderedDict()
-        self._lock = asyncio.Lock()
+        self._lock = anyio.Lock()
         self._hits = 0
         self._misses = 0
     

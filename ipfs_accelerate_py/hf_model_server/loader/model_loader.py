@@ -1,8 +1,9 @@
 """
-Model loader with skill integration.
+Model loader with skill integration using anyio.
 """
 
-import asyncio
+import anyio
+import inspect
 import logging
 import importlib
 import sys
@@ -35,7 +36,7 @@ class ModelLoader:
             max_memory_mb=16384  # 16GB default
         )
         self._loading = {}  # Track in-progress loads
-        self._lock = asyncio.Lock()
+        self._lock = anyio.Lock()
     
     async def load_model(self, model_id: str) -> LoadedModel:
         """
@@ -65,7 +66,7 @@ class ModelLoader:
                 return await self._loading[model_id]
             
             # Start loading
-            load_task = asyncio.create_task(self._load_model_impl(model_id))
+            load_task = # anyio task - see task group(self._load_model_impl(model_id))
             self._loading[model_id] = load_task
         
         try:

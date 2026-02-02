@@ -50,7 +50,7 @@ def serve(host, port, workers, log_level, config_file):
 def discover():
     """Discover available HF skills"""
     from .registry import SkillRegistry
-    import asyncio
+    import anyio
     
     async def _discover():
         registry = SkillRegistry(
@@ -68,7 +68,7 @@ def discover():
             click.echo(f"    Hardware: {', '.join(skill.supported_hardware)}")
             click.echo()
     
-    asyncio.run(_discover())
+    anyio.run(_discover)
 
 
 @cli.command()

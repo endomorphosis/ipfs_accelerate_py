@@ -61,7 +61,7 @@ class CircuitBreaker:
     def _get_lock(self, model_id: str) -> asyncio.Lock:
         """Get or create lock for model."""
         if model_id not in self._locks:
-            self._locks[model_id] = asyncio.Lock()
+            self._locks[model_id] = anyio.Lock()
         return self._locks[model_id]
     
     def _get_state(self, model_id: str) -> CircuitState:

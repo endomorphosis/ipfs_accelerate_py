@@ -26,7 +26,7 @@ class ModelCache:
         self.max_size = max_size
         self.max_memory_mb = max_memory_mb
         self._cache: OrderedDict[str, LoadedModel] = OrderedDict()
-        self._lock = asyncio.Lock()
+        self._lock = anyio.Lock()
         self._hits = 0
         self._misses = 0
     

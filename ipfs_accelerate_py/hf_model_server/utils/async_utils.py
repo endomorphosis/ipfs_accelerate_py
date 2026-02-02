@@ -1,8 +1,9 @@
 """
-Async utility functions.
+Async utility functions using anyio.
 """
 
-import asyncio
+import anyio
+import inspect
 import logging
 from typing import Callable, Any, List
 from functools import wraps
@@ -22,11 +23,12 @@ async def timeout(coro, seconds: float):
         Result from coroutine
         
     Raises:
-        asyncio.TimeoutError: If timeout exceeded
+        TimeoutError: If timeout exceeded
     """
     try:
-        return await asyncio.wait_for(coro, timeout=seconds)
-    except asyncio.TimeoutError:
+        with anyio.fail_after(seconds):
+            return await coro
+    except TimeoutError:
         logger.warning(f"Operation timed out after {seconds}s")
         raise
 
@@ -57,7 +59,7 @@ async def retry_with_backoff(
     
     for attempt in range(max_attempts):
         try:
-            if asyncio.iscoroutinefunction(fn):
+            if inspect.iscoroutinefunction(fn):
                 return await fn()
             else:
                 return fn()
@@ -68,7 +70,7 @@ async def retry_with_backoff(
                     f"Attempt {attempt + 1}/{max_attempts} failed: {e}. "
                     f"Retrying in {delay}s..."
                 )
-                await asyncio.sleep(delay)
+                await anyio.sleep(delay)
                 delay *= backoff_factor
             else:
                 logger.error(f"All {max_attempts} attempts failed")
@@ -81,7 +83,7 @@ async def gather_with_timeout(
     timeout_seconds: float
 ) -> List[Any]:
     """
-    Gather coroutines with overall timeout.
+    Gather coroutines with overall timeout using anyio task groups.
     
     Args:
         coros: List of coroutines
@@ -91,13 +93,23 @@ async def gather_with_timeout(
         List of results
         
     Raises:
-        asyncio.TimeoutError: If timeout exceeded
+        TimeoutError: If timeout exceeded
     """
+    results = []
+    
     try:
-        return await asyncio.wait_for(
-            asyncio.gather(*coros),
-            timeout=timeout_seconds
-        )
-    except asyncio.TimeoutError:
+        with anyio.fail_after(timeout_seconds):
+            async with anyio.create_task_group() as tg:
+                for coro in coros:
+                    tg.start_soon(_gather_helper, coro, results)
+    except TimeoutError:
         logger.warning(f"Gather timed out after {timeout_seconds}s")
         raise
+    
+    return results
+
+
+async def _gather_helper(coro, results_list):
+    """Helper function to gather results."""
+    result = await coro
+    results_list.append(result)
