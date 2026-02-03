@@ -13,11 +13,11 @@ Architecture:
     User commands
 
 Usage:
-    ipfs-kit github list-repos
-    ipfs-kit github create-pr owner/repo "Fix bug" "This fixes the bug"
-    ipfs-kit docker run python:3.9 "python --version"
-    ipfs-kit hardware info
-    ipfs-kit --help
+    ipfs-accelerate github list-repos
+    ipfs-accelerate github create-pr owner/repo "Fix bug" "This fixes the bug"
+    ipfs-accelerate docker run python:3.9 "python --version"
+    ipfs-accelerate hardware info
+    ipfs-accelerate --help
 """
 
 import argparse
@@ -31,7 +31,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger("ipfs_kit_cli")
+logger = logging.getLogger("ipfs_accelerate_cli")
 
 
 def import_kit_module(module_name: str):

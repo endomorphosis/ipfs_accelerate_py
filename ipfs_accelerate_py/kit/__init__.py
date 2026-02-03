@@ -1,12 +1,12 @@
 """
-IPFS Kit - Core Modules for IPFS Accelerate
+IPFS Accelerate Kit - Core Modules
 
 This package contains the core functionality modules that are used by both
 the unified CLI and the MCP server. All modules here should be pure Python
 with minimal dependencies and no CLI-specific code.
 
 Architecture:
-    ipfs_kit_py (core modules)
+    ipfs_accelerate_py/kit/ (core modules)
         ↓
     unified_cli (CLI interface)
         ↓
@@ -35,7 +35,7 @@ def register_module(name: str, module):
         module: Module instance or class
     """
     _MODULE_REGISTRY[name] = module
-    logger.debug(f"Registered ipfs_kit module: {name}")
+    logger.debug(f"Registered kit module: {name}")
 
 
 def get_module(name: str):
@@ -73,7 +73,7 @@ def get_all_modules() -> Dict[str, Any]:
 
 # Import and auto-register all available modules
 def _auto_register_modules():
-    """Auto-register all available ipfs_kit modules."""
+    """Auto-register all available kit modules."""
     modules_to_register = [
         ('github', 'github_kit'),
         ('docker', 'docker_kit'),
@@ -85,7 +85,7 @@ def _auto_register_modules():
     
     for name, module_name in modules_to_register:
         try:
-            module = __import__(f'ipfs_kit_py.{module_name}', fromlist=[module_name])
+            module = __import__(f'ipfs_accelerate_py.kit.{module_name}', fromlist=[module_name])
             register_module(name, module)
         except ImportError as e:
             logger.debug(f"Module {module_name} not available: {e}")
