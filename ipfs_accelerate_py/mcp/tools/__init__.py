@@ -77,6 +77,14 @@ def register_all_tools(mcp: Any) -> None:
                 logger.debug("Registered GitHub CLI tools")
             except Exception as e:
                 logger.warning(f"GitHub CLI tools not registered: {e}")
+            
+            # Register Docker tools
+            try:
+                from .docker_tools import register_docker_tools
+                register_docker_tools(mcp)
+                logger.debug("Registered Docker execution tools")
+            except Exception as e:
+                logger.warning(f"Docker tools not registered: {e}")
         else:
             logger.warning("FastMCP decorators not available; only hardware and model tools registered in standalone mode")
 
