@@ -39,7 +39,7 @@ def import_kit_module(module_name: str):
     Import a kit module dynamically.
     
     Args:
-        module_name: Name of the module (e.g., 'github', 'docker')
+        module_name: Name of the module (e.g., 'github', 'docker', 'runner')
         
     Returns:
         Module or None if not available
@@ -55,6 +55,9 @@ def import_kit_module(module_name: str):
         elif module_name == 'hardware':
             from ipfs_accelerate_py.kit import hardware_kit
             return hardware_kit
+        elif module_name == 'runner':
+            from ipfs_accelerate_py.kit import runner_kit
+            return runner_kit
         else:
             logger.error(f"Unknown module: {module_name}")
             return None
@@ -75,6 +78,9 @@ def import_kit_module(module_name: str):
             elif module_name == 'hardware':
                 from kit import hardware_kit
                 return hardware_kit
+            elif module_name == 'runner':
+                from kit import runner_kit
+                return runner_kit
         except ImportError as e:
             logger.error(f"Failed to import {module_name} module: {e}")
             return None
@@ -259,6 +265,131 @@ def hardware_command(args):
         sys.exit(1)
 
 
+def runner_command(args):
+    """Handle Runner autoscaler commands."""
+    runner_kit = import_kit_module('runner')
+    if not runner_kit:
+        print("Runner kit module not available", file=sys.stderr)
+        sys.exit(1)
+    
+    # Create runner config from args
+    config = runner_kit.RunnerConfig(
+        owner=getattr(args, 'owner', None),
+        poll_interval=getattr(args, 'interval', 120),
+        max_runners=getattr(args, 'max_runners', 10),
+        runner_image=getattr(args, 'image', 'myoung34/github-runner:latest')
+    )
+    
+    kit = runner_kit.get_runner_kit(config)
+    
+    if args.runner_command == 'start':
+        # Start autoscaler
+        result = kit.start_autoscaler(background=args.background)
+        if result:
+            print("✓ Autoscaler started")
+            if args.background:
+                print("  Running in background")
+            else:
+                print("  Press Ctrl+C to stop")
+                # Keep running until interrupted
+                try:
+                    import time
+                    while kit.running:
+                        time.sleep(1)
+                except KeyboardInterrupt:
+                    kit.stop_autoscaler()
+        else:
+            print("✗ Failed to start autoscaler", file=sys.stderr)
+            sys.exit(1)
+    
+    elif args.runner_command == 'stop':
+        # Stop autoscaler
+        result = kit.stop_autoscaler()
+        if result:
+            print("✓ Autoscaler stopped")
+        else:
+            print("✗ Autoscaler not running", file=sys.stderr)
+    
+    elif args.runner_command == 'status':
+        # Get status
+        status = kit.get_status()
+        output = {
+            'running': status.running,
+            'start_time': status.start_time.isoformat() if status.start_time else None,
+            'iterations': status.iterations,
+            'active_runners': status.active_runners,
+            'queued_workflows': status.queued_workflows,
+            'repositories_monitored': status.repositories_monitored,
+            'last_check': status.last_check.isoformat() if status.last_check else None
+        }
+        print_result(output, args.format)
+    
+    elif args.runner_command == 'list-workflows':
+        # List workflow queues
+        queues = kit.get_workflow_queues()
+        output = []
+        for queue in queues:
+            output.append({
+                'repo': queue.repo,
+                'total_workflows': queue.total,
+                'running': queue.running,
+                'failed': queue.failed,
+                'pending': queue.pending
+            })
+        print_result(output, args.format)
+    
+    elif args.runner_command == 'list-containers':
+        # List runner containers
+        runners = kit.list_runner_containers()
+        output = []
+        for runner in runners:
+            output.append({
+                'container_id': runner.container_id,
+                'repo': runner.repo,
+                'status': runner.status,
+                'created_at': runner.created_at.isoformat()
+            })
+        print_result(output, args.format)
+    
+    elif args.runner_command == 'provision':
+        # Manually provision runners
+        if args.repo:
+            # Provision for specific repo
+            token = kit.generate_runner_token(args.repo)
+            if token:
+                container_id = kit.launch_runner_container(args.repo, token)
+                if container_id:
+                    print(f"✓ Provisioned runner for {args.repo}")
+                    print(f"  Container ID: {container_id}")
+                else:
+                    print(f"✗ Failed to launch container", file=sys.stderr)
+                    sys.exit(1)
+            else:
+                print(f"✗ Failed to generate token", file=sys.stderr)
+                sys.exit(1)
+        else:
+            # Provision for all queues
+            queues = kit.get_workflow_queues()
+            results = kit.provision_runners_for_queues(queues)
+            print_result(results, args.format)
+    
+    elif args.runner_command == 'stop-container':
+        # Stop a specific container
+        if not args.container:
+            print("Error: --container required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.stop_runner_container(args.container)
+        if result:
+            print(f"✓ Stopped container {args.container}")
+        else:
+            print(f"✗ Failed to stop container", file=sys.stderr)
+            sys.exit(1)
+    
+    else:
+        print(f"Unknown runner command: {args.runner_command}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -368,6 +499,38 @@ def main():
     hw_recommend.add_argument('--task', default='inference', choices=['inference', 'training', 'fine-tuning'])
     hw_recommend.add_argument('--available-only', action='store_true', default=True)
     
+    # Runner subcommands (GitHub Actions autoscaler)
+    runner_parser = subparsers.add_parser('runner', help='GitHub Actions runner autoscaling')
+    runner_subparsers = runner_parser.add_subparsers(dest='runner_command', help='Runner command')
+    
+    # Runner start
+    runner_start = runner_subparsers.add_parser('start', help='Start runner autoscaler')
+    runner_start.add_argument('--owner', help='GitHub owner (user or org) to monitor')
+    runner_start.add_argument('--interval', type=int, default=120, help='Poll interval in seconds')
+    runner_start.add_argument('--max-runners', type=int, default=10, help='Maximum concurrent runners')
+    runner_start.add_argument('--image', default='myoung34/github-runner:latest', help='Runner Docker image')
+    runner_start.add_argument('--background', action='store_true', help='Run in background')
+    
+    # Runner stop
+    runner_stop = runner_subparsers.add_parser('stop', help='Stop runner autoscaler')
+    
+    # Runner status
+    runner_status = runner_subparsers.add_parser('status', help='Get autoscaler status')
+    
+    # Runner list-workflows
+    runner_list_workflows = runner_subparsers.add_parser('list-workflows', help='List workflow queues')
+    
+    # Runner list-containers
+    runner_list_containers = runner_subparsers.add_parser('list-containers', help='List active runner containers')
+    
+    # Runner provision
+    runner_provision = runner_subparsers.add_parser('provision', help='Manually provision runners')
+    runner_provision.add_argument('--repo', help='Repository (owner/name) - if omitted, provisions for all queues')
+    
+    # Runner stop-container
+    runner_stop_container = runner_subparsers.add_parser('stop-container', help='Stop a runner container')
+    runner_stop_container.add_argument('--container', required=True, help='Container ID or name')
+    
     # Parse arguments
     args = parser.parse_args()
     
@@ -387,6 +550,8 @@ def main():
             docker_command(args)
         elif args.module == 'hardware':
             hardware_command(args)
+        elif args.module == 'runner':
+            runner_command(args)
         else:
             print(f"Unknown module: {args.module}", file=sys.stderr)
             sys.exit(1)
