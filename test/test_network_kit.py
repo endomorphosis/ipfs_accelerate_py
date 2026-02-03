@@ -153,7 +153,10 @@ class TestNetworkKit(unittest.TestCase):
         result = kit.get_swarm_info()
         
         self.assertTrue(result.success)
-        self.assertIn('swarm', result.data)
+        # Check for actual keys returned by get_swarm_info
+        self.assertIn('peer_count', result.data)
+        self.assertIn('local_addresses', result.data)
+        self.assertIn('connected', result.data)
         self.assertIsNone(result.error)
     
     @patch('subprocess.run')
@@ -169,7 +172,11 @@ class TestNetworkKit(unittest.TestCase):
         result = kit.get_bandwidth_stats()
         
         self.assertTrue(result.success)
-        self.assertIn('bandwidth', result.data)
+        # Check for actual keys returned by BandwidthStats.to_dict()
+        self.assertIn('total_in', result.data)
+        self.assertIn('total_out', result.data)
+        self.assertIn('rate_in', result.data)
+        self.assertIn('rate_out', result.data)
         self.assertIsNone(result.error)
     
     @patch('subprocess.run')
@@ -185,7 +192,12 @@ class TestNetworkKit(unittest.TestCase):
         result = kit.ping_peer('QmPeer123', count=3)
         
         self.assertTrue(result.success)
-        self.assertIn('ping', result.data)
+        # Check for actual keys returned by ping_peer
+        self.assertIn('peer_id', result.data)
+        self.assertIn('count', result.data)
+        self.assertIn('success_count', result.data)
+        self.assertIn('avg_latency_ms', result.data)
+        self.assertIn('latencies', result.data)
         self.assertIsNone(result.error)
     
     def test_network_result_dataclass(self):
@@ -193,12 +205,14 @@ class TestNetworkKit(unittest.TestCase):
         result = self.NetworkResult(
             success=True,
             data={'peers': ['QmPeer1', 'QmPeer2']},
-            error=None
+            error=None,
+            message="Success"
         )
         
         self.assertTrue(result.success)
         self.assertEqual(len(result.data['peers']), 2)
         self.assertIsNone(result.error)
+        self.assertEqual(result.message, "Success")
         
         # Test dataclass can be converted to dict
         result_dict = asdict(result)
