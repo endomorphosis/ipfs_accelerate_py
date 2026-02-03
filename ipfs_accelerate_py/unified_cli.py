@@ -45,6 +45,7 @@ def import_kit_module(module_name: str):
         Module or None if not available
     """
     try:
+        # Try absolute import first
         if module_name == 'github':
             from ipfs_accelerate_py.kit import github_kit
             return github_kit
@@ -57,9 +58,26 @@ def import_kit_module(module_name: str):
         else:
             logger.error(f"Unknown module: {module_name}")
             return None
-    except ImportError as e:
-        logger.error(f"Failed to import {module_name} module: {e}")
-        return None
+    except ImportError:
+        # Try relative import
+        try:
+            import os
+            import sys
+            # Add parent directory to path
+            sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            
+            if module_name == 'github':
+                from kit import github_kit
+                return github_kit
+            elif module_name == 'docker':
+                from kit import docker_kit
+                return docker_kit
+            elif module_name == 'hardware':
+                from kit import hardware_kit
+                return hardware_kit
+        except ImportError as e:
+            logger.error(f"Failed to import {module_name} module: {e}")
+            return None
 
 
 def print_result(result: Any, format: str = "json"):
