@@ -34,10 +34,14 @@ except ImportError:
 
 # Try to import compatibility layer
 try:
-    from ..github_cli.libp2p_compat import patch_libp2p_compatibility
+    from ipfs_accelerate_py.github_cli.libp2p_compat import patch_libp2p_compatibility
     patch_libp2p_compatibility()
 except ImportError:
-    logger.debug("libp2p compatibility layer not available")
+    try:
+        from github_cli.libp2p_compat import patch_libp2p_compatibility
+        patch_libp2p_compatibility()
+    except ImportError:
+        logger.debug("libp2p compatibility layer not available")
 
 
 class PeerCapability(Enum):
@@ -363,6 +367,7 @@ class LibP2PInferenceNode:
         """Send an inference request to a specific peer"""
         # TODO: Implement actual libp2p stream communication
         # For now, this is a placeholder
+        logger.warning(f"P2P inference not yet fully implemented - request will fail")
         raise NotImplementedError("Actual libp2p communication not yet implemented")
     
     async def _connect_bootstrap_peers(self):

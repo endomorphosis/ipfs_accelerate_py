@@ -241,6 +241,10 @@ def route_inference_request(
     
     MCP Tool: Submits inference request with automatic backend selection
     
+    NOTE: This tool currently provides backend routing and selection but does
+    not execute the actual inference. Full backend execution will be implemented
+    in a future update when all backend integrations are complete.
+    
     Args:
         task: Inference task type
         model: Model to use

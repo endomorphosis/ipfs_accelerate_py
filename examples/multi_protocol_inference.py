@@ -7,12 +7,23 @@ This example demonstrates using the unified inference service with:
 - libp2p distributed inference (if enabled)
 - MCP tool integration
 
+Dependencies required:
+    pip install aiohttp websockets
+
 Run this after starting the unified inference service.
 """
 
 import asyncio
-import aiohttp
-import websockets
+try:
+    import aiohttp
+except ImportError:
+    raise ImportError("aiohttp is required. Install with: pip install aiohttp")
+
+try:
+    import websockets
+except ImportError:
+    raise ImportError("websockets is required. Install with: pip install websockets")
+
 import json
 import time
 from typing import Dict, Any

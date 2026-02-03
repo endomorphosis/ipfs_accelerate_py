@@ -268,7 +268,13 @@ class WebSocketInferenceHandler:
         parameters: Dict[str, Any],
         stream: bool
     ):
-        """Run the actual inference"""
+        """
+        Run the actual inference
+        
+        NOTE: This is a MOCK implementation for demonstration purposes.
+        Actual backend integration with the backend_manager will be added
+        in a future update to route requests to real inference backends.
+        """
         try:
             # TODO: Implement actual inference using backend_manager
             # For now, send a mock response

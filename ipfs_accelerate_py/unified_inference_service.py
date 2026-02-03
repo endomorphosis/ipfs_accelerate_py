@@ -157,7 +157,7 @@ class UnifiedInferenceService:
                 'bootstrap_peers': self.config.libp2p_bootstrap_peers,
                 'enable_mdns': self.config.libp2p_enable_mdns,
                 'discovery_interval': self.config.libp2p_discovery_interval,
-                'start_time': asyncio.get_event_loop().time()
+                'start_time': time.time()  # Use time.time() instead of event loop time
             })
             await self.p2p_node.start()
             
@@ -264,7 +264,17 @@ class UnifiedInferenceService:
                     f'ipfs_accelerate_py.api_backends.{backend_name}',
                     fromlist=[backend_name]
                 )
-                backend_class = getattr(module, backend_name)
+                
+                # Try to get the class - handle different naming conventions
+                backend_class = None
+                for attr_name in [backend_name, backend_name.replace('_', '').upper(), backend_name.upper()]:
+                    if hasattr(module, attr_name):
+                        backend_class = getattr(module, attr_name)
+                        break
+                
+                if backend_class is None:
+                    logger.warning(f"Could not find class for backend {backend_name} in module")
+                    continue
                 
                 # Create instance
                 backend_instance = backend_class()
