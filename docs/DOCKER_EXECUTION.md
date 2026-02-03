@@ -498,6 +498,6 @@ result = execute_docker_container(
 ## See Also
 
 - [MCP Server Documentation](../README.md)
-- [IPFS Accelerate Documentation](../../README.md)
+- [IPFS Accelerate Documentation](../README.md)
 - [Docker Documentation](https://docs.docker.com/)
 - [Container Security Best Practices](https://docs.docker.com/engine/security/)

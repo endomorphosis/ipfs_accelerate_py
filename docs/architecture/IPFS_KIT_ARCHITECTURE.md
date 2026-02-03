@@ -472,5 +472,5 @@ The architecture is designed for:
 
 - [Integration Guide](./IPFS_KIT_INTEGRATION.md)
 - [Implementation Plan](./IPFS_KIT_INTEGRATION_PLAN.md)
-- [Example Code](../examples/ipfs_kit_integration_example.py)
-- [Test Suite](../test/test_ipfs_kit_integration.py)
+- [Example Code](../../examples/ipfs_kit_integration_example.py)
+- [Test Suite](../../test/test_ipfs_kit_integration.py)
