@@ -6,7 +6,7 @@ import time
 import uuid
 import logging
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Depends, Header
+from fastapi import FastAPI, HTTPException, Depends, Header, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
@@ -24,6 +24,13 @@ from .api.schemas import (
     ChatMessage
 )
 
+# Import WebSocket handler
+try:
+    from .websocket_handler import get_connection_manager, WebSocketInferenceHandler
+    HAVE_WEBSOCKET = True
+except ImportError:
+    HAVE_WEBSOCKET = False
+    logger.warning("WebSocket handler not available")
 
 logger = logging.getLogger(__name__)
 
@@ -50,10 +57,17 @@ class HFModelServer:
         self.hardware_detector: Optional[HardwareDetector] = None
         self.hardware_selector: Optional[HardwareSelector] = None
         
+        # WebSocket components
+        self.connection_manager = None
+        self.websocket_handler = None
+        if HAVE_WEBSOCKET:
+            self.connection_manager = get_connection_manager()
+            self.websocket_handler = WebSocketInferenceHandler(self.connection_manager)
+        
         # FastAPI app
         self.app = FastAPI(
             title="Unified HuggingFace Model Server",
-            description="OpenAI-compatible API for HuggingFace models",
+            description="OpenAI-compatible API for HuggingFace models with WebSocket support",
             version="0.1.0",
             lifespan=self.lifespan
         )
@@ -247,6 +261,13 @@ class HFModelServer:
                 status="unloaded",
                 message=f"Model {request.model_id} unloaded successfully"
             )
+        
+        # WebSocket endpoint
+        if HAVE_WEBSOCKET and self.websocket_handler:
+            @self.app.websocket("/ws/{client_id}")
+            async def websocket_endpoint(websocket: WebSocket, client_id: str):
+                """WebSocket endpoint for real-time inference and monitoring"""
+                await self.websocket_handler.handle_client(websocket, client_id)
     
     def run(self):
         """Run the server"""
