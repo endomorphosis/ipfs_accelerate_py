@@ -58,6 +58,12 @@ def import_kit_module(module_name: str):
         elif module_name == 'runner':
             from ipfs_accelerate_py.kit import runner_kit
             return runner_kit
+        elif module_name == 'ipfs_files':
+            from ipfs_accelerate_py.kit import ipfs_files_kit
+            return ipfs_files_kit
+        elif module_name == 'network':
+            from ipfs_accelerate_py.kit import network_kit
+            return network_kit
         else:
             logger.error(f"Unknown module: {module_name}")
             return None
@@ -81,6 +87,12 @@ def import_kit_module(module_name: str):
             elif module_name == 'runner':
                 from kit import runner_kit
                 return runner_kit
+            elif module_name == 'ipfs_files':
+                from kit import ipfs_files_kit
+                return ipfs_files_kit
+            elif module_name == 'network':
+                from kit import network_kit
+                return network_kit
         except ImportError as e:
             logger.error(f"Failed to import {module_name} module: {e}")
             return None
@@ -390,6 +402,131 @@ def runner_command(args):
         sys.exit(1)
 
 
+# IPFS Files Commands
+
+def ipfs_files_command(args):
+    """Handle IPFS files commands."""
+    ipfs_files_kit = import_kit_module('ipfs_files')
+    if not ipfs_files_kit:
+        print("IPFS files kit module not available", file=sys.stderr)
+        sys.exit(1)
+    
+    kit = ipfs_files_kit.get_ipfs_files_kit()
+    
+    if args.ipfs_files_command == 'add':
+        if not args.path:
+            print("Error: --path required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.add_file(path=args.path, pin=args.pin)
+        print_result(result, args.format)
+    
+    elif args.ipfs_files_command == 'get':
+        if not args.cid or not args.output:
+            print("Error: --cid and --output required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.get_file(cid=args.cid, output_path=args.output)
+        print_result(result, args.format)
+    
+    elif args.ipfs_files_command == 'cat':
+        if not args.cid:
+            print("Error: --cid required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.cat_file(cid=args.cid)
+        print_result(result, args.format)
+    
+    elif args.ipfs_files_command == 'pin':
+        if not args.cid:
+            print("Error: --cid required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.pin_file(cid=args.cid)
+        print_result(result, args.format)
+    
+    elif args.ipfs_files_command == 'unpin':
+        if not args.cid:
+            print("Error: --cid required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.unpin_file(cid=args.cid)
+        print_result(result, args.format)
+    
+    elif args.ipfs_files_command == 'list':
+        result = kit.list_files(path=args.path if hasattr(args, 'path') else '/')
+        print_result(result, args.format)
+    
+    elif args.ipfs_files_command == 'validate-cid':
+        if not args.cid:
+            print("Error: --cid required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.validate_cid(cid=args.cid)
+        print_result(result, args.format)
+    
+    else:
+        print(f"Unknown ipfs-files command: {args.ipfs_files_command}", file=sys.stderr)
+        sys.exit(1)
+
+
+# Network Commands
+
+def network_command(args):
+    """Handle network commands."""
+    network_kit = import_kit_module('network')
+    if not network_kit:
+        print("Network kit module not available", file=sys.stderr)
+        sys.exit(1)
+    
+    kit = network_kit.get_network_kit()
+    
+    if args.network_command == 'list-peers':
+        result = kit.list_peers()
+        print_result(result, args.format)
+    
+    elif args.network_command == 'connect':
+        if not args.peer:
+            print("Error: --peer required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.connect_peer(address=args.peer)
+        print_result(result, args.format)
+    
+    elif args.network_command == 'disconnect':
+        if not args.peer:
+            print("Error: --peer required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.disconnect_peer(peer_id=args.peer)
+        print_result(result, args.format)
+    
+    elif args.network_command == 'dht-put':
+        if not args.key or not args.value:
+            print("Error: --key and --value required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.dht_put(key=args.key, value=args.value)
+        print_result(result, args.format)
+    
+    elif args.network_command == 'dht-get':
+        if not args.key:
+            print("Error: --key required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.dht_get(key=args.key)
+        print_result(result, args.format)
+    
+    elif args.network_command == 'swarm-info':
+        result = kit.get_swarm_info()
+        print_result(result, args.format)
+    
+    elif args.network_command == 'bandwidth':
+        result = kit.get_bandwidth_stats()
+        print_result(result, args.format)
+    
+    elif args.network_command == 'ping':
+        if not args.peer:
+            print("Error: --peer required", file=sys.stderr)
+            sys.exit(1)
+        result = kit.ping_peer(peer_id=args.peer, count=args.count if hasattr(args, 'count') else 5)
+        print_result(result, args.format)
+    
+    else:
+        print(f"Unknown network command: {args.network_command}", file=sys.stderr)
+        sys.exit(1)
+
+
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
@@ -531,6 +668,75 @@ def main():
     runner_stop_container = runner_subparsers.add_parser('stop-container', help='Stop a runner container')
     runner_stop_container.add_argument('--container', required=True, help='Container ID or name')
     
+    # IPFS Files subcommands
+    ipfs_files_parser = subparsers.add_parser('ipfs-files', help='IPFS file operations')
+    ipfs_files_subparsers = ipfs_files_parser.add_subparsers(dest='ipfs_files_command', help='IPFS files command')
+    
+    # IPFS Files add
+    ipfs_files_add = ipfs_files_subparsers.add_parser('add', help='Add file to IPFS')
+    ipfs_files_add.add_argument('--path', required=True, help='Path to file')
+    ipfs_files_add.add_argument('--pin', action='store_true', help='Pin the file after adding')
+    
+    # IPFS Files get
+    ipfs_files_get = ipfs_files_subparsers.add_parser('get', help='Get file from IPFS by CID')
+    ipfs_files_get.add_argument('--cid', required=True, help='Content Identifier (CID)')
+    ipfs_files_get.add_argument('--output', required=True, help='Output path')
+    
+    # IPFS Files cat
+    ipfs_files_cat = ipfs_files_subparsers.add_parser('cat', help='Read file content from IPFS')
+    ipfs_files_cat.add_argument('--cid', required=True, help='Content Identifier (CID)')
+    
+    # IPFS Files pin
+    ipfs_files_pin = ipfs_files_subparsers.add_parser('pin', help='Pin content in IPFS')
+    ipfs_files_pin.add_argument('--cid', required=True, help='Content Identifier (CID)')
+    
+    # IPFS Files unpin
+    ipfs_files_unpin = ipfs_files_subparsers.add_parser('unpin', help='Unpin content from IPFS')
+    ipfs_files_unpin.add_argument('--cid', required=True, help='Content Identifier (CID)')
+    
+    # IPFS Files list
+    ipfs_files_list = ipfs_files_subparsers.add_parser('list', help='List IPFS files')
+    ipfs_files_list.add_argument('--path', default='/', help='IPFS path to list')
+    
+    # IPFS Files validate-cid
+    ipfs_files_validate = ipfs_files_subparsers.add_parser('validate-cid', help='Validate CID format')
+    ipfs_files_validate.add_argument('--cid', required=True, help='Content Identifier (CID)')
+    
+    # Network subcommands
+    network_parser = subparsers.add_parser('network', help='Network and peer operations')
+    network_subparsers = network_parser.add_subparsers(dest='network_command', help='Network command')
+    
+    # Network list-peers
+    network_list_peers = network_subparsers.add_parser('list-peers', help='List connected peers')
+    
+    # Network connect
+    network_connect = network_subparsers.add_parser('connect', help='Connect to peer')
+    network_connect.add_argument('--peer', required=True, help='Peer multiaddr or ID')
+    
+    # Network disconnect
+    network_disconnect = network_subparsers.add_parser('disconnect', help='Disconnect from peer')
+    network_disconnect.add_argument('--peer', required=True, help='Peer ID')
+    
+    # Network dht-put
+    network_dht_put = network_subparsers.add_parser('dht-put', help='Store key-value in DHT')
+    network_dht_put.add_argument('--key', required=True, help='Key')
+    network_dht_put.add_argument('--value', required=True, help='Value')
+    
+    # Network dht-get
+    network_dht_get = network_subparsers.add_parser('dht-get', help='Retrieve value from DHT')
+    network_dht_get.add_argument('--key', required=True, help='Key')
+    
+    # Network swarm-info
+    network_swarm_info = network_subparsers.add_parser('swarm-info', help='Get swarm statistics')
+    
+    # Network bandwidth
+    network_bandwidth = network_subparsers.add_parser('bandwidth', help='Get bandwidth statistics')
+    
+    # Network ping
+    network_ping = network_subparsers.add_parser('ping', help='Ping a peer')
+    network_ping.add_argument('--peer', required=True, help='Peer ID')
+    network_ping.add_argument('--count', type=int, default=5, help='Number of pings')
+    
     # Parse arguments
     args = parser.parse_args()
     
@@ -552,6 +758,10 @@ def main():
             hardware_command(args)
         elif args.module == 'runner':
             runner_command(args)
+        elif args.module == 'ipfs-files':
+            ipfs_files_command(args)
+        elif args.module == 'network':
+            network_command(args)
         else:
             print(f"Unknown module: {args.module}", file=sys.stderr)
             sys.exit(1)
