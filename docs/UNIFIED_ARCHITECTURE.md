@@ -32,10 +32,10 @@ This document describes the completed refactoring of IPFS Accelerate to use a un
 │  - Error handling          │  │  - Result formatting         │
 │                            │  │                              │
 │  Commands:                 │  │  Tools:                      │
-│  • ipfs-kit github ...     │  │  • github_list_repos         │
-│  • ipfs-kit docker ...     │  │  • github_get_repo           │
-│  • ipfs-kit hardware ...   │  │  • docker_run_container      │
-│  • ipfs-kit runner ...     │  │  • docker_list_containers    │
+│  • ipfs-accelerate github ...     │  │  • github_list_repos         │
+│  • ipfs-accelerate docker ...     │  │  • github_get_repo           │
+│  • ipfs-accelerate hardware ...   │  │  • docker_run_container      │
+│  • ipfs-accelerate runner ...     │  │  • docker_list_containers    │
 └────────────────────────────┘  │  • hardware_get_info         │
                                 │  • hardware_test             │
                                 │  • runner_start_autoscaler   │
@@ -142,7 +142,7 @@ Single CLI entrypoint wrapping all kit modules.
 
 **Command Structure:**
 ```
-ipfs-kit <module> <command> [options]
+ipfs-accelerate <module> <command> [options]
 ```
 
 **Supported Modules:**
@@ -163,32 +163,32 @@ ipfs-kit <module> <command> [options]
 
 ```bash
 # GitHub
-ipfs-kit github list-repos --owner username --limit 10
-ipfs-kit github get-repo --repo owner/repo
-ipfs-kit github list-prs --repo owner/repo --state open
-ipfs-kit github get-pr --repo owner/repo --number 123
+ipfs-accelerate github list-repos --owner username --limit 10
+ipfs-accelerate github get-repo --repo owner/repo
+ipfs-accelerate github list-prs --repo owner/repo --state open
+ipfs-accelerate github get-pr --repo owner/repo --number 123
 
 # Docker
-ipfs-kit docker run --image python:3.9 --command "python --version"
-ipfs-kit docker run --image ubuntu --command "echo test" --memory 512m --cpus 1.0
-ipfs-kit docker list --all
-ipfs-kit docker stop --container my_container
-ipfs-kit docker pull --image ubuntu:20.04
+ipfs-accelerate docker run --image python:3.9 --command "python --version"
+ipfs-accelerate docker run --image ubuntu --command "echo test" --memory 512m --cpus 1.0
+ipfs-accelerate docker list --all
+ipfs-accelerate docker stop --container my_container
+ipfs-accelerate docker pull --image ubuntu:20.04
 
 # Hardware
-ipfs-kit hardware info
-ipfs-kit hardware info --detailed
-ipfs-kit hardware test --accelerator cuda --level comprehensive
-ipfs-kit hardware recommend --model gpt2 --task inference
+ipfs-accelerate hardware info
+ipfs-accelerate hardware info --detailed
+ipfs-accelerate hardware test --accelerator cuda --level comprehensive
+ipfs-accelerate hardware recommend --model gpt2 --task inference
 
 # Runner (GitHub Actions autoscaling)
-ipfs-kit runner start --owner myorg --max-runners 8
-ipfs-kit runner status
-ipfs-kit runner list-workflows
-ipfs-kit runner list-containers
-ipfs-kit runner provision --repo owner/repo
-ipfs-kit runner stop-container --container abc123
-ipfs-kit runner stop
+ipfs-accelerate runner start --owner myorg --max-runners 8
+ipfs-accelerate runner status
+ipfs-accelerate runner list-workflows
+ipfs-accelerate runner list-containers
+ipfs-accelerate runner provision --repo owner/repo
+ipfs-accelerate runner stop-container --container abc123
+ipfs-accelerate runner stop
 ```
 
 ### Phase 3: Unified MCP Tools ✅
@@ -376,7 +376,7 @@ The runner module integrates GitHub Actions runner autoscaling into the unified 
 - Pure Python, no CLI dependencies
 - Fully testable and reusable
 
-**CLI Commands**: `ipfs-kit runner`
+**CLI Commands**: `ipfs-accelerate runner`
 - `start` - Start autoscaler
 - `stop` - Stop autoscaler
 - `status` - Get status
@@ -407,13 +407,13 @@ The runner module integrates GitHub Actions runner autoscaling into the unified 
 **CLI:**
 ```bash
 # Start monitoring and autoscaling
-ipfs-kit runner start --owner myorg --max-runners 8 --background
+ipfs-accelerate runner start --owner myorg --max-runners 8 --background
 
 # Check status
-ipfs-kit runner status
+ipfs-accelerate runner status
 
 # List workflows
-ipfs-kit runner list-workflows
+ipfs-accelerate runner list-workflows
 ```
 
 **MCP (JavaScript SDK):**
@@ -463,7 +463,7 @@ python scripts/utils/github_autoscaler.py --owner myorg
 
 **After:**
 ```bash
-ipfs-kit runner start --owner myorg
+ipfs-accelerate runner start --owner myorg
 ```
 
 ## Conclusion

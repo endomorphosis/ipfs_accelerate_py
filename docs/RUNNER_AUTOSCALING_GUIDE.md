@@ -2,7 +2,7 @@
 
 ## Overview
 
-The GitHub Actions runner autoscaling system automatically monitors workflow queues and provisions self-hosted runners as needed. It's fully integrated into the unified ipfs-kit architecture, using the same Docker provisioning methods across all interfaces.
+The GitHub Actions runner autoscaling system automatically monitors workflow queues and provisions self-hosted runners as needed. It's fully integrated into the unified ipfs-accelerate architecture, using the same Docker provisioning methods across all interfaces.
 
 ## Architecture
 
@@ -35,7 +35,7 @@ unified_cli.py      mcp/unified_tools.py
 
 ### Integration Points
 
-1. **CLI Interface**: `ipfs-kit runner` commands
+1. **CLI Interface**: `ipfs-accelerate runner` commands
 2. **MCP Tools**: 7 tools for programmatic access
 3. **Python API**: Direct import of runner_kit module
 4. **Dashboard**: Via JavaScript SDK integration
@@ -50,20 +50,20 @@ Start monitoring workflows and provisioning runners:
 
 ```bash
 # Basic usage
-ipfs-kit runner start
+ipfs-accelerate runner start
 
 # Monitor specific organization
-ipfs-kit runner start --owner myorg
+ipfs-accelerate runner start --owner myorg
 
 # Custom configuration
-ipfs-kit runner start \
+ipfs-accelerate runner start \
   --owner myorg \
   --interval 60 \
   --max-runners 8 \
   --image myoung34/github-runner:latest
 
 # Run in background
-ipfs-kit runner start --owner myorg --background
+ipfs-accelerate runner start --owner myorg --background
 ```
 
 #### Get Status
@@ -71,7 +71,7 @@ ipfs-kit runner start --owner myorg --background
 Check autoscaler status:
 
 ```bash
-ipfs-kit runner status
+ipfs-accelerate runner status
 ```
 
 Output:
@@ -92,7 +92,7 @@ Output:
 View workflow queues:
 
 ```bash
-ipfs-kit runner list-workflows
+ipfs-accelerate runner list-workflows
 ```
 
 Output:
@@ -120,7 +120,7 @@ Output:
 View active runner containers:
 
 ```bash
-ipfs-kit runner list-containers
+ipfs-accelerate runner list-containers
 ```
 
 Output:
@@ -141,10 +141,10 @@ Manually provision a runner for a specific repository:
 
 ```bash
 # Provision for specific repo
-ipfs-kit runner provision --repo owner/repo
+ipfs-accelerate runner provision --repo owner/repo
 
 # Provision for all queues
-ipfs-kit runner provision
+ipfs-accelerate runner provision
 ```
 
 #### Stop Container
@@ -152,7 +152,7 @@ ipfs-kit runner provision
 Stop a specific runner container:
 
 ```bash
-ipfs-kit runner stop-container --container abc123def456
+ipfs-accelerate runner stop-container --container abc123def456
 ```
 
 #### Stop Autoscaler
@@ -160,7 +160,7 @@ ipfs-kit runner stop-container --container abc123def456
 Stop the autoscaler:
 
 ```bash
-ipfs-kit runner stop
+ipfs-accelerate runner stop
 ```
 
 ### 2. MCP Tools (JavaScript SDK)
@@ -384,7 +384,7 @@ Track these metrics:
 Enable verbose logging:
 
 ```bash
-ipfs-kit runner start --verbose
+ipfs-accelerate runner start --verbose
 ```
 
 Logs include:
@@ -462,7 +462,7 @@ python scripts/utils/github_autoscaler.py --owner myorg
 
 **After (CLI):**
 ```bash
-ipfs-kit runner start --owner myorg
+ipfs-accelerate runner start --owner myorg
 ```
 
 **After (Python):**
@@ -476,7 +476,7 @@ kit.start_autoscaler()
 
 ### Benefits of Migration
 
-1. **Unified interface**: Same pattern as other ipfs-kit commands
+1. **Unified interface**: Same pattern as other ipfs-accelerate commands
 2. **Code reuse**: Uses docker_kit and github_kit
 3. **MCP integration**: Available via MCP tools
 4. **Better testing**: Pure Python module
@@ -488,23 +488,23 @@ kit.start_autoscaler()
 
 ```bash
 # Start monitoring all accessible repos
-ipfs-kit runner start --background
+ipfs-accelerate runner start --background
 
 # Check status
-ipfs-kit runner status
+ipfs-accelerate runner status
 
 # View workflows
-ipfs-kit runner list-workflows
+ipfs-accelerate runner list-workflows
 
 # Stop when done
-ipfs-kit runner stop
+ipfs-accelerate runner stop
 ```
 
 ### Example 2: Organization Monitoring
 
 ```bash
 # Monitor specific organization
-ipfs-kit runner start \
+ipfs-accelerate runner start \
   --owner myorg \
   --interval 60 \
   --max-runners 20 \

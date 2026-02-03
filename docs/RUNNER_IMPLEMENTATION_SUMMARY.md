@@ -2,7 +2,7 @@
 
 ## Mission Accomplished ✅
 
-Successfully integrated GitHub Actions runner autoscaling into the unified ipfs-kit architecture, using the same Docker provisioning methods across all interfaces.
+Successfully integrated GitHub Actions runner autoscaling into the unified ipfs-accelerate architecture, using the same Docker provisioning methods across all interfaces.
 
 ---
 
@@ -50,13 +50,13 @@ All requirements from the problem statement have been fulfilled:
 
 **7 Commands Added:**
 ```bash
-ipfs-kit runner start        # Start autoscaler
-ipfs-kit runner stop         # Stop autoscaler
-ipfs-kit runner status       # Get status
-ipfs-kit runner list-workflows      # List workflow queues
-ipfs-kit runner list-containers     # List active containers
-ipfs-kit runner provision    # Manually provision runners
-ipfs-kit runner stop-container      # Stop specific container
+ipfs-accelerate runner start        # Start autoscaler
+ipfs-accelerate runner stop         # Stop autoscaler
+ipfs-accelerate runner status       # Get status
+ipfs-accelerate runner list-workflows      # List workflow queues
+ipfs-accelerate runner list-containers     # List active containers
+ipfs-accelerate runner provision    # Manually provision runners
+ipfs-accelerate runner stop-container      # Stop specific container
 ```
 
 ### 3. MCP Tools (+270 lines)
@@ -148,7 +148,7 @@ ipfs-kit runner stop-container      # Stop specific container
 
 **CLI** (for manual management):
 ```bash
-ipfs-kit runner start --owner myorg
+ipfs-accelerate runner start --owner myorg
 ```
 
 **MCP** (for programmatic access):
@@ -182,23 +182,23 @@ kit.start_autoscaler()
 
 ```bash
 # Start monitoring all accessible repos
-ipfs-kit runner start --background
+ipfs-accelerate runner start --background
 
 # Check status
-ipfs-kit runner status
+ipfs-accelerate runner status
 
 # View workflow queues
-ipfs-kit runner list-workflows
+ipfs-accelerate runner list-workflows
 
 # Stop when done
-ipfs-kit runner stop
+ipfs-accelerate runner stop
 ```
 
 ### Organization Monitoring
 
 ```bash
 # Monitor specific organization
-ipfs-kit runner start \
+ipfs-accelerate runner start \
   --owner myorg \
   --interval 60 \
   --max-runners 20 \
@@ -282,7 +282,7 @@ for queue in queues:
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| CLI Commands | 7 | ipfs-kit runner commands |
+| CLI Commands | 7 | ipfs-accelerate runner commands |
 | MCP Tools | 7 | Programmatic access |
 | Python Classes | 5 | Core classes |
 | **Total** | **19** | **New interfaces** |
@@ -301,7 +301,7 @@ for queue in queues:
 
 ### For Users
 
-✅ **Unified Interface**: Same pattern as other ipfs-kit commands  
+✅ **Unified Interface**: Same pattern as other ipfs-accelerate commands  
 ✅ **Multiple Access Methods**: CLI, MCP, Python API  
 ✅ **Dashboard Integration**: Real-time monitoring and control  
 ✅ **Easy Migration**: Compatible with existing scripts  
@@ -373,7 +373,7 @@ python scripts/utils/github_autoscaler.py --owner myorg --interval 60
 
 **Option 1 - CLI:**
 ```bash
-ipfs-kit runner start --owner myorg --interval 60
+ipfs-accelerate runner start --owner myorg --interval 60
 ```
 
 **Option 2 - Python:**
@@ -393,7 +393,7 @@ await mcp.call_tool('runner_start_autoscaler', {
 
 ### Benefits of Migration
 
-✅ Unified interface with other ipfs-kit commands  
+✅ Unified interface with other ipfs-accelerate commands  
 ✅ Code reuse (docker_kit, github_kit)  
 ✅ MCP integration for dashboard access  
 ✅ Better testing capabilities  
@@ -451,4 +451,4 @@ For issues or questions:
 
 **Implementation Complete: January 2024**
 **Status: Production Ready**
-**Architecture: Unified ipfs-kit pattern**
+**Architecture: Unified ipfs-accelerate pattern**
