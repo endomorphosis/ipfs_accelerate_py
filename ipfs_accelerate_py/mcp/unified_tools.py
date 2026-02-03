@@ -52,6 +52,13 @@ def register_unified_tools(mcp: Any) -> None:
     except Exception as e:
         logger.warning(f"Failed to register Hardware tools: {e}")
     
+    # Register Runner tools
+    try:
+        register_runner_tools(mcp)
+        logger.debug("Registered Runner unified tools")
+    except Exception as e:
+        logger.warning(f"Failed to register Runner tools: {e}")
+    
     logger.info("All unified tools registered")
 
 
@@ -525,9 +532,286 @@ def register_hardware_tools(mcp: Any) -> None:
     )
 
 
+# Runner Tools (GitHub Actions Autoscaler)
+
+def register_runner_tools(mcp: Any) -> None:
+    """Register Runner autoscaler tools with MCP server."""
+    from ipfs_accelerate_py.kit.runner_kit import get_runner_kit, RunnerConfig
+    
+    # Shared runner kit instance for stateful operations
+    _runner_kit_instance = None
+    
+    def _get_runner_kit():
+        """Get or create runner kit instance."""
+        nonlocal _runner_kit_instance
+        if _runner_kit_instance is None:
+            _runner_kit_instance = get_runner_kit()
+        return _runner_kit_instance
+    
+    def runner_start_autoscaler(
+        owner: Optional[str] = None,
+        poll_interval: int = 120,
+        max_runners: int = 10,
+        runner_image: str = "myoung34/github-runner:latest",
+        background: bool = True
+    ) -> Dict[str, Any]:
+        """
+        Start GitHub Actions runner autoscaler.
+        
+        Args:
+            owner: GitHub owner (user or org) to monitor
+            poll_interval: Poll interval in seconds
+            max_runners: Maximum concurrent runners
+            runner_image: Docker image for runners
+            background: Run in background
+            
+        Returns:
+            Dictionary with start status
+        """
+        config = RunnerConfig(
+            owner=owner,
+            poll_interval=poll_interval,
+            max_runners=max_runners,
+            runner_image=runner_image
+        )
+        kit = get_runner_kit(config)
+        success = kit.start_autoscaler(background=background)
+        
+        return {
+            "success": success,
+            "running": kit.running,
+            "message": "Autoscaler started" if success else "Failed to start autoscaler"
+        }
+    
+    def runner_stop_autoscaler() -> Dict[str, Any]:
+        """
+        Stop GitHub Actions runner autoscaler.
+        
+        Returns:
+            Dictionary with stop status
+        """
+        kit = _get_runner_kit()
+        success = kit.stop_autoscaler()
+        
+        return {
+            "success": success,
+            "running": kit.running,
+            "message": "Autoscaler stopped" if success else "Autoscaler not running"
+        }
+    
+    def runner_get_status() -> Dict[str, Any]:
+        """
+        Get GitHub Actions runner autoscaler status.
+        
+        Returns:
+            Dictionary with autoscaler status
+        """
+        kit = _get_runner_kit()
+        status = kit.get_status()
+        
+        return {
+            "success": True,
+            "data": {
+                "running": status.running,
+                "start_time": status.start_time.isoformat() if status.start_time else None,
+                "iterations": status.iterations,
+                "active_runners": status.active_runners,
+                "queued_workflows": status.queued_workflows,
+                "repositories_monitored": status.repositories_monitored,
+                "last_check": status.last_check.isoformat() if status.last_check else None
+            }
+        }
+    
+    def runner_list_workflows() -> Dict[str, Any]:
+        """
+        List GitHub workflow queues.
+        
+        Returns:
+            Dictionary with workflow queues
+        """
+        kit = _get_runner_kit()
+        queues = kit.get_workflow_queues()
+        
+        data = []
+        for queue in queues:
+            data.append({
+                "repo": queue.repo,
+                "total_workflows": queue.total,
+                "running": queue.running,
+                "failed": queue.failed,
+                "pending": queue.pending
+            })
+        
+        return {
+            "success": True,
+            "data": data,
+            "count": len(data)
+        }
+    
+    def runner_provision_for_workflow(repo: str) -> Dict[str, Any]:
+        """
+        Provision a runner for a specific repository.
+        
+        Args:
+            repo: Repository in format 'owner/repo'
+            
+        Returns:
+            Dictionary with provisioning result
+        """
+        kit = _get_runner_kit()
+        
+        # Generate token
+        token = kit.generate_runner_token(repo)
+        if not token:
+            return {
+                "success": False,
+                "error": "Failed to generate runner token"
+            }
+        
+        # Launch container
+        container_id = kit.launch_runner_container(repo, token)
+        
+        return {
+            "success": bool(container_id),
+            "data": {
+                "repo": repo,
+                "container_id": container_id,
+                "token_generated": bool(token)
+            },
+            "message": f"Provisioned runner for {repo}" if container_id else "Failed to launch container"
+        }
+    
+    def runner_list_containers() -> Dict[str, Any]:
+        """
+        List active GitHub Actions runner containers.
+        
+        Returns:
+            Dictionary with runner container list
+        """
+        kit = _get_runner_kit()
+        runners = kit.list_runner_containers()
+        
+        data = []
+        for runner in runners:
+            data.append({
+                "container_id": runner.container_id,
+                "repo": runner.repo,
+                "status": runner.status,
+                "created_at": runner.created_at.isoformat()
+            })
+        
+        return {
+            "success": True,
+            "data": data,
+            "count": len(data)
+        }
+    
+    def runner_stop_container(container: str) -> Dict[str, Any]:
+        """
+        Stop a GitHub Actions runner container.
+        
+        Args:
+            container: Container ID or name
+            
+        Returns:
+            Dictionary with stop status
+        """
+        kit = _get_runner_kit()
+        success = kit.stop_runner_container(container)
+        
+        return {
+            "success": success,
+            "message": f"Stopped container {container}" if success else "Failed to stop container"
+        }
+    
+    # Register tools with MCP
+    mcp.register_tool(
+        name="runner_start_autoscaler",
+        function=runner_start_autoscaler,
+        description="Start GitHub Actions runner autoscaler",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "owner": {"type": "string", "description": "GitHub owner (user or org) to monitor"},
+                "poll_interval": {"type": "number", "default": 120, "description": "Poll interval in seconds"},
+                "max_runners": {"type": "number", "default": 10, "description": "Maximum concurrent runners"},
+                "runner_image": {"type": "string", "default": "myoung34/github-runner:latest"},
+                "background": {"type": "boolean", "default": True, "description": "Run in background"}
+            }
+        }
+    )
+    
+    mcp.register_tool(
+        name="runner_stop_autoscaler",
+        function=runner_stop_autoscaler,
+        description="Stop GitHub Actions runner autoscaler",
+        input_schema={
+            "type": "object",
+            "properties": {}
+        }
+    )
+    
+    mcp.register_tool(
+        name="runner_get_status",
+        function=runner_get_status,
+        description="Get GitHub Actions runner autoscaler status",
+        input_schema={
+            "type": "object",
+            "properties": {}
+        }
+    )
+    
+    mcp.register_tool(
+        name="runner_list_workflows",
+        function=runner_list_workflows,
+        description="List GitHub workflow queues",
+        input_schema={
+            "type": "object",
+            "properties": {}
+        }
+    )
+    
+    mcp.register_tool(
+        name="runner_provision_for_workflow",
+        function=runner_provision_for_workflow,
+        description="Provision a runner for a specific repository",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "repo": {"type": "string", "description": "Repository in format 'owner/repo'"}
+            },
+            "required": ["repo"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="runner_list_containers",
+        function=runner_list_containers,
+        description="List active GitHub Actions runner containers",
+        input_schema={
+            "type": "object",
+            "properties": {}
+        }
+    )
+    
+    mcp.register_tool(
+        name="runner_stop_container",
+        function=runner_stop_container,
+        description="Stop a GitHub Actions runner container",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "container": {"type": "string", "description": "Container ID or name"}
+            },
+            "required": ["container"]
+        }
+    )
+
+
 __all__ = [
     'register_unified_tools',
     'register_github_tools',
     'register_docker_tools',
     'register_hardware_tools',
+    'register_runner_tools',
 ]
