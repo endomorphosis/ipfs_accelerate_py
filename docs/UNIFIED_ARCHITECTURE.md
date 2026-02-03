@@ -16,14 +16,15 @@ This document describes the completed refactoring of IPFS Accelerate to use a un
 │                                                                │
 │  ├─ github_kit.py      (350 lines) - GitHub operations        │
 │  ├─ docker_kit.py      (420 lines) - Docker operations        │
-│  └─ hardware_kit.py    (440 lines) - Hardware detection       │
+│  ├─ hardware_kit.py    (440 lines) - Hardware detection       │
+│  └─ runner_kit.py      (630 lines) - Runner autoscaling       │
 └────────────────────┬──────────────────────────────────────────┘
                      │
                      ├──────────────────┐
                      ↓                  ↓
 ┌────────────────────────────┐  ┌──────────────────────────────┐
 │    unified_cli.py          │  │    mcp/unified_tools.py      │
-│    (420 lines)             │  │    (510 lines)               │
+│    (580 lines)             │  │    (800 lines)               │
 │                            │  │                              │
 │  CLI Interface             │  │  MCP Tool Wrappers           │
 │  - Arg parsing             │  │  - MCP tool registration     │
@@ -34,10 +35,12 @@ This document describes the completed refactoring of IPFS Accelerate to use a un
 │  • ipfs-kit github ...     │  │  • github_list_repos         │
 │  • ipfs-kit docker ...     │  │  • github_get_repo           │
 │  • ipfs-kit hardware ...   │  │  • docker_run_container      │
-└────────────────────────────┘  │  • docker_list_containers    │
-                                │  • hardware_get_info         │
+│  • ipfs-kit runner ...     │  │  • docker_list_containers    │
+└────────────────────────────┘  │  • hardware_get_info         │
                                 │  • hardware_test             │
-                                │  • ...13 total tools         │
+                                │  • runner_start_autoscaler   │
+                                │  • runner_get_status         │
+                                │  • ...20 total tools         │
                                 └──────────┬───────────────────┘
                                            │
                                            ↓
@@ -117,9 +120,23 @@ Created pure Python modules with no CLI/MCP dependencies:
   - Model recommendations
 - Full type hints
 
+**ipfs_accelerate_py/kit/runner_kit.py** (630 lines)
+- `RunnerKit` class for GitHub Actions runner autoscaling
+- `RunnerConfig`, `WorkflowQueue`, `RunnerStatus`, `AutoscalerStatus` dataclasses
+- Operations:
+  - Workflow queue monitoring (via github_kit)
+  - Runner token generation
+  - Container provisioning (via docker_kit)
+  - Runner lifecycle management
+  - Status tracking and reporting
+  - Automatic scaling logic
+- Uses docker_kit for container operations
+- Uses github_kit for GitHub operations
+- Full type hints
+
 ### Phase 2: Unified CLI ✅
 
-**ipfs_accelerate_py/unified_cli.py** (420 lines)
+**ipfs_accelerate_py/unified_cli.py** (580 lines)
 
 Single CLI entrypoint wrapping all kit modules.
 
@@ -132,6 +149,7 @@ ipfs-kit <module> <command> [options]
 - `github` - GitHub operations
 - `docker` - Docker operations
 - `hardware` - Hardware operations
+- `runner` - GitHub Actions runner autoscaling
 
 **Features:**
 - Comprehensive argument parsing with argparse
@@ -162,15 +180,24 @@ ipfs-kit hardware info
 ipfs-kit hardware info --detailed
 ipfs-kit hardware test --accelerator cuda --level comprehensive
 ipfs-kit hardware recommend --model gpt2 --task inference
+
+# Runner (GitHub Actions autoscaling)
+ipfs-kit runner start --owner myorg --max-runners 8
+ipfs-kit runner status
+ipfs-kit runner list-workflows
+ipfs-kit runner list-containers
+ipfs-kit runner provision --repo owner/repo
+ipfs-kit runner stop-container --container abc123
+ipfs-kit runner stop
 ```
 
 ### Phase 3: Unified MCP Tools ✅
 
-**ipfs_accelerate_py/mcp/unified_tools.py** (510 lines)
+**ipfs_accelerate_py/mcp/unified_tools.py** (800 lines)
 
 Wraps kit modules as MCP tools with proper schemas.
 
-**Registered Tools (13 total):**
+**Registered Tools (20 total):**
 
 **GitHub Tools (6):**
 1. `github_list_repos(owner, limit)` - List repositories
@@ -190,6 +217,15 @@ Wraps kit modules as MCP tools with proper schemas.
 1. `hardware_get_info(include_detailed)` - Get hardware info
 2. `hardware_test(accelerator, test_level)` - Test hardware
 3. `hardware_recommend(model_name, task, consider_available_only)` - Get recommendations
+
+**Runner Tools (7):**
+1. `runner_start_autoscaler(owner, poll_interval, max_runners, runner_image, background)` - Start autoscaler
+2. `runner_stop_autoscaler()` - Stop autoscaler
+3. `runner_get_status()` - Get autoscaler status
+4. `runner_list_workflows()` - List workflow queues
+5. `runner_provision_for_workflow(repo)` - Provision for specific repo
+6. `runner_list_containers()` - List runner containers
+7. `runner_stop_container(container)` - Stop runner container
 
 **Features:**
 - Proper JSON Schema for each tool
@@ -321,11 +357,91 @@ To be implemented following the same pattern:
 
 ### Phase 7: Documentation
 
-- [ ] User guide for unified CLI
-- [ ] MCP tools reference
-- [ ] Kit modules API reference
+- [x] User guide for unified CLI
+- [x] MCP tools reference
+- [x] Kit modules API reference
+- [x] Runner autoscaling guide (RUNNER_AUTOSCALING_GUIDE.md)
 - [ ] Migration guide from legacy code
 - [ ] Best practices guide
+
+## GitHub Actions Runner Autoscaling
+
+The runner module integrates GitHub Actions runner autoscaling into the unified architecture, using the same Docker provisioning methods as other components.
+
+### Integration Points
+
+**Core Module**: `ipfs_accelerate_py/kit/runner_kit.py`
+- Uses `docker_kit.py` for container operations
+- Uses `github_kit.py` for GitHub operations
+- Pure Python, no CLI dependencies
+- Fully testable and reusable
+
+**CLI Commands**: `ipfs-kit runner`
+- `start` - Start autoscaler
+- `stop` - Stop autoscaler
+- `status` - Get status
+- `list-workflows` - List workflow queues
+- `list-containers` - List active containers
+- `provision` - Manually provision runners
+- `stop-container` - Stop specific container
+
+**MCP Tools**: 7 tools for programmatic access
+- `runner_start_autoscaler`
+- `runner_stop_autoscaler`
+- `runner_get_status`
+- `runner_list_workflows`
+- `runner_provision_for_workflow`
+- `runner_list_containers`
+- `runner_stop_container`
+
+### Architecture Benefits
+
+1. **Unified Docker Provisioning**: Runner containers use the same `docker_kit.py` methods as other Docker operations
+2. **Code Reuse**: No duplication between autoscaler and Docker kit
+3. **Consistent Interface**: Same command structure and output format as other modules
+4. **Dashboard Integration**: Available through MCP → JavaScript SDK → Dashboard
+5. **Testability**: Pure Python module easy to unit test
+
+### Example Usage
+
+**CLI:**
+```bash
+# Start monitoring and autoscaling
+ipfs-kit runner start --owner myorg --max-runners 8 --background
+
+# Check status
+ipfs-kit runner status
+
+# List workflows
+ipfs-kit runner list-workflows
+```
+
+**MCP (JavaScript SDK):**
+```javascript
+// Start autoscaler
+await mcp.call_tool('runner_start_autoscaler', {
+  owner: 'myorg',
+  max_runners: 8,
+  background: true
+});
+
+// Get status
+const status = await mcp.call_tool('runner_get_status', {});
+
+// List workflows
+const workflows = await mcp.call_tool('runner_list_workflows', {});
+```
+
+**Python API:**
+```python
+from ipfs_accelerate_py.kit.runner_kit import get_runner_kit, RunnerConfig
+
+config = RunnerConfig(owner='myorg', max_runners=8)
+kit = get_runner_kit(config)
+kit.start_autoscaler(background=True)
+```
+
+See [RUNNER_AUTOSCALING_GUIDE.md](./RUNNER_AUTOSCALING_GUIDE.md) for complete documentation.
 
 ## Migration Path
 
@@ -336,13 +452,28 @@ For existing code using legacy CLI/MCP:
 3. **Deprecation warnings** - Added to legacy tools (future)
 4. **Full migration** - Eventually remove legacy code
 
+### Migrating from Standalone Autoscaler
+
+If using `scripts/utils/github_autoscaler.py`:
+
+**Before:**
+```bash
+python scripts/utils/github_autoscaler.py --owner myorg
+```
+
+**After:**
+```bash
+ipfs-kit runner start --owner myorg
+```
+
 ## Conclusion
 
-✅ **Architecture Complete** - Core modules, CLI, and MCP tools implemented
-✅ **Fully Functional** - All components tested and working
-✅ **Production Ready** - Error handling, logging, type safety
-✅ **Extensible** - Easy to add new modules
-✅ **Well Structured** - Clean separation of concerns
-✅ **Backward Compatible** - Existing code continues to work
+✅ **Architecture Complete** - Core modules, CLI, and MCP tools implemented  
+✅ **Fully Functional** - All components tested and working  
+✅ **Production Ready** - Error handling, logging, type safety  
+✅ **Extensible** - Easy to add new modules  
+✅ **Well Structured** - Clean separation of concerns  
+✅ **Backward Compatible** - Existing code continues to work  
+✅ **Runner Autoscaling** - Integrated with unified Docker provisioning  
 
-The unified architecture is complete and ready for use. Future modules can be added following the established pattern, and the system can scale to support additional functionality as needed.
+The unified architecture is complete and ready for use. The runner autoscaling module demonstrates how new functionality can be added following the established pattern, with automatic integration into CLI, MCP tools, and the JavaScript SDK.
