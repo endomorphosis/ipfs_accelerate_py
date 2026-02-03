@@ -14,7 +14,9 @@ def register_all_tools(mcp: Any) -> None:
     """
     Register all tools with the MCP server
     
-    This function registers all tools with the MCP server.
+    This function registers all tools with the MCP server, including:
+    - Unified tools from kit modules (new architecture)
+    - Legacy tools (for backward compatibility)
     
     Args:
         mcp: MCP server instance
@@ -22,6 +24,14 @@ def register_all_tools(mcp: Any) -> None:
     logger.debug("Registering all tools with MCP server")
     
     try:
+        # Register unified tools (new architecture) - wraps kit modules
+        try:
+            from ..unified_tools import register_unified_tools
+            register_unified_tools(mcp)
+            logger.info("Registered unified tools from kit modules")
+        except Exception as e:
+            logger.warning(f"Unified tools not registered: {e}")
+        
         # Always register hardware tools (supports both Standalone and FastMCP styles)
         from .hardware import register_hardware_tools
         register_hardware_tools(mcp)
@@ -77,6 +87,14 @@ def register_all_tools(mcp: Any) -> None:
                 logger.debug("Registered GitHub CLI tools")
             except Exception as e:
                 logger.warning(f"GitHub CLI tools not registered: {e}")
+            
+            # Register Docker tools
+            try:
+                from .docker_tools import register_docker_tools
+                register_docker_tools(mcp)
+                logger.debug("Registered Docker execution tools")
+            except Exception as e:
+                logger.warning(f"Docker tools not registered: {e}")
         else:
             logger.warning("FastMCP decorators not available; only hardware and model tools registered in standalone mode")
 
