@@ -59,6 +59,20 @@ def register_unified_tools(mcp: Any) -> None:
     except Exception as e:
         logger.warning(f"Failed to register Runner tools: {e}")
     
+    # Register IPFS Files tools
+    try:
+        register_ipfs_files_tools(mcp)
+        logger.debug("Registered IPFS Files unified tools")
+    except Exception as e:
+        logger.warning(f"Failed to register IPFS Files tools: {e}")
+    
+    # Register Network tools
+    try:
+        register_network_tools(mcp)
+        logger.debug("Registered Network unified tools")
+    except Exception as e:
+        logger.warning(f"Failed to register Network tools: {e}")
+    
     logger.info("All unified tools registered")
 
 
@@ -808,10 +822,482 @@ def register_runner_tools(mcp: Any) -> None:
     )
 
 
+# IPFS Files Tools
+
+def register_ipfs_files_tools(mcp: Any) -> None:
+    """Register IPFS files kit tools with MCP server."""
+    from ipfs_accelerate_py.kit.ipfs_files_kit import get_ipfs_files_kit
+    
+    def ipfs_files_add(path: str, pin: Optional[bool] = None) -> Dict[str, Any]:
+        """
+        Add a file to IPFS.
+        
+        Args:
+            path: Path to the file to add
+            pin: Whether to pin the file after adding
+            
+        Returns:
+            Dictionary with CID and file information
+        """
+        kit = get_ipfs_files_kit()
+        result = kit.add_file(path=path, pin=pin)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def ipfs_files_get(cid: str, output_path: str) -> Dict[str, Any]:
+        """
+        Get a file from IPFS by CID.
+        
+        Args:
+            cid: Content Identifier (CID) of the file
+            output_path: Path where to save the file
+            
+        Returns:
+            Dictionary with file retrieval status
+        """
+        kit = get_ipfs_files_kit()
+        result = kit.get_file(cid=cid, output_path=output_path)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def ipfs_files_cat(cid: str) -> Dict[str, Any]:
+        """
+        Read file content from IPFS.
+        
+        Args:
+            cid: Content Identifier (CID) of the file
+            
+        Returns:
+            Dictionary with file content
+        """
+        kit = get_ipfs_files_kit()
+        result = kit.cat_file(cid=cid)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def ipfs_files_pin(cid: str) -> Dict[str, Any]:
+        """
+        Pin content in IPFS.
+        
+        Args:
+            cid: Content Identifier (CID) to pin
+            
+        Returns:
+            Dictionary with pin status
+        """
+        kit = get_ipfs_files_kit()
+        result = kit.pin_file(cid=cid)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def ipfs_files_unpin(cid: str) -> Dict[str, Any]:
+        """
+        Unpin content from IPFS.
+        
+        Args:
+            cid: Content Identifier (CID) to unpin
+            
+        Returns:
+            Dictionary with unpin status
+        """
+        kit = get_ipfs_files_kit()
+        result = kit.unpin_file(cid=cid)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def ipfs_files_list(path: Optional[str] = '/') -> Dict[str, Any]:
+        """
+        List IPFS files.
+        
+        Args:
+            path: IPFS path to list (default: '/')
+            
+        Returns:
+            Dictionary with file list
+        """
+        kit = get_ipfs_files_kit()
+        result = kit.list_files(path=path)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def ipfs_files_validate_cid(cid: str) -> Dict[str, Any]:
+        """
+        Validate CID format.
+        
+        Args:
+            cid: Content Identifier (CID) to validate
+            
+        Returns:
+            Dictionary with validation result
+        """
+        kit = get_ipfs_files_kit()
+        result = kit.validate_cid(cid=cid)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    # Register all IPFS files tools
+    mcp.register_tool(
+        name="ipfs_files_add",
+        function=ipfs_files_add,
+        description="Add a file to IPFS and get its CID",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "Path to the file to add"},
+                "pin": {"type": "boolean", "description": "Whether to pin the file after adding"}
+            },
+            "required": ["path"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="ipfs_files_get",
+        function=ipfs_files_get,
+        description="Get a file from IPFS by CID",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cid": {"type": "string", "description": "Content Identifier (CID) of the file"},
+                "output_path": {"type": "string", "description": "Path where to save the file"}
+            },
+            "required": ["cid", "output_path"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="ipfs_files_cat",
+        function=ipfs_files_cat,
+        description="Read file content from IPFS",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cid": {"type": "string", "description": "Content Identifier (CID) of the file"}
+            },
+            "required": ["cid"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="ipfs_files_pin",
+        function=ipfs_files_pin,
+        description="Pin content in IPFS to prevent garbage collection",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cid": {"type": "string", "description": "Content Identifier (CID) to pin"}
+            },
+            "required": ["cid"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="ipfs_files_unpin",
+        function=ipfs_files_unpin,
+        description="Unpin content from IPFS",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cid": {"type": "string", "description": "Content Identifier (CID) to unpin"}
+            },
+            "required": ["cid"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="ipfs_files_list",
+        function=ipfs_files_list,
+        description="List IPFS files at a given path",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "path": {"type": "string", "description": "IPFS path to list (default: '/')"}
+            }
+        }
+    )
+    
+    mcp.register_tool(
+        name="ipfs_files_validate_cid",
+        function=ipfs_files_validate_cid,
+        description="Validate Content Identifier (CID) format",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cid": {"type": "string", "description": "Content Identifier (CID) to validate"}
+            },
+            "required": ["cid"]
+        }
+    )
+
+
+# Network Tools
+
+def register_network_tools(mcp: Any) -> None:
+    """Register network kit tools with MCP server."""
+    from ipfs_accelerate_py.kit.network_kit import get_network_kit
+    
+    def network_list_peers() -> Dict[str, Any]:
+        """
+        List connected peers.
+        
+        Returns:
+            Dictionary with peer list
+        """
+        kit = get_network_kit()
+        result = kit.list_peers()
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def network_connect_peer(address: str) -> Dict[str, Any]:
+        """
+        Connect to a peer.
+        
+        Args:
+            address: Peer multiaddr or ID
+            
+        Returns:
+            Dictionary with connection status
+        """
+        kit = get_network_kit()
+        result = kit.connect_peer(address=address)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def network_disconnect_peer(peer_id: str) -> Dict[str, Any]:
+        """
+        Disconnect from a peer.
+        
+        Args:
+            peer_id: Peer ID to disconnect
+            
+        Returns:
+            Dictionary with disconnection status
+        """
+        kit = get_network_kit()
+        result = kit.disconnect_peer(peer_id=peer_id)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def network_dht_put(key: str, value: str) -> Dict[str, Any]:
+        """
+        Store a key-value pair in the DHT.
+        
+        Args:
+            key: Key to store
+            value: Value to store
+            
+        Returns:
+            Dictionary with storage status
+        """
+        kit = get_network_kit()
+        result = kit.dht_put(key=key, value=value)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def network_dht_get(key: str) -> Dict[str, Any]:
+        """
+        Retrieve a value from the DHT.
+        
+        Args:
+            key: Key to retrieve
+            
+        Returns:
+            Dictionary with retrieved value
+        """
+        kit = get_network_kit()
+        result = kit.dht_get(key=key)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def network_get_swarm_info() -> Dict[str, Any]:
+        """
+        Get swarm statistics.
+        
+        Returns:
+            Dictionary with swarm information
+        """
+        kit = get_network_kit()
+        result = kit.get_swarm_info()
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def network_get_bandwidth() -> Dict[str, Any]:
+        """
+        Get bandwidth statistics.
+        
+        Returns:
+            Dictionary with bandwidth information
+        """
+        kit = get_network_kit()
+        result = kit.get_bandwidth_stats()
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    def network_ping_peer(peer_id: str, count: Optional[int] = 5) -> Dict[str, Any]:
+        """
+        Ping a peer to test connectivity.
+        
+        Args:
+            peer_id: Peer ID to ping
+            count: Number of pings to send (default: 5)
+            
+        Returns:
+            Dictionary with ping results
+        """
+        kit = get_network_kit()
+        result = kit.ping_peer(peer_id=peer_id, count=count)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error
+        }
+    
+    # Register all network tools
+    mcp.register_tool(
+        name="network_list_peers",
+        function=network_list_peers,
+        description="List connected peers",
+        input_schema={
+            "type": "object",
+            "properties": {}
+        }
+    )
+    
+    mcp.register_tool(
+        name="network_connect_peer",
+        function=network_connect_peer,
+        description="Connect to a peer",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "address": {"type": "string", "description": "Peer multiaddr or ID"}
+            },
+            "required": ["address"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="network_disconnect_peer",
+        function=network_disconnect_peer,
+        description="Disconnect from a peer",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "peer_id": {"type": "string", "description": "Peer ID to disconnect"}
+            },
+            "required": ["peer_id"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="network_dht_put",
+        function=network_dht_put,
+        description="Store a key-value pair in the DHT",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Key to store"},
+                "value": {"type": "string", "description": "Value to store"}
+            },
+            "required": ["key", "value"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="network_dht_get",
+        function=network_dht_get,
+        description="Retrieve a value from the DHT",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string", "description": "Key to retrieve"}
+            },
+            "required": ["key"]
+        }
+    )
+    
+    mcp.register_tool(
+        name="network_get_swarm_info",
+        function=network_get_swarm_info,
+        description="Get swarm statistics including peer counts and addresses",
+        input_schema={
+            "type": "object",
+            "properties": {}
+        }
+    )
+    
+    mcp.register_tool(
+        name="network_get_bandwidth",
+        function=network_get_bandwidth,
+        description="Get bandwidth statistics including rate in/out",
+        input_schema={
+            "type": "object",
+            "properties": {}
+        }
+    )
+    
+    mcp.register_tool(
+        name="network_ping_peer",
+        function=network_ping_peer,
+        description="Ping a peer to test connectivity",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "peer_id": {"type": "string", "description": "Peer ID to ping"},
+                "count": {"type": "integer", "description": "Number of pings to send (default: 5)"}
+            },
+            "required": ["peer_id"]
+        }
+    )
+
+
 __all__ = [
     'register_unified_tools',
     'register_github_tools',
     'register_docker_tools',
     'register_hardware_tools',
     'register_runner_tools',
+    'register_ipfs_files_tools',
+    'register_network_tools',
 ]
