@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Set
 
 # Import CI interfaces (using relative imports since we're in test/distributed_testing/ci/)
-from .api_interface import CIProviderInterface, TestRunResult, CIProviderFactory
+from test.tests.distributed.distributed_testing.ci.api_interface import CIProviderInterface, TestRunResult, CIProviderFactory
 
 # Configure logging
 logging.basicConfig(
@@ -484,7 +484,7 @@ class TestResultReporter:
                     # Optional validation (kept consistent with the slower path)
                     if validate and urls:
                         try:
-                            from .url_validator import validate_urls
+                            from test.tests.distributed.distributed_testing.ci.url_validator import validate_urls
 
                             valid_urls = {name: url for name, url in urls.items() if url is not None}
                             if valid_urls:
@@ -520,7 +520,7 @@ class TestResultReporter:
         if validate and urls:
             try:
                 # Import the URL validator
-                from .url_validator import validate_urls
+                from test.tests.distributed.distributed_testing.ci.url_validator import validate_urls
                 
                 # Get valid URLs (skip None values)
                 valid_urls = {name: url for name, url in urls.items() if url is not None}
@@ -744,7 +744,7 @@ class TestResultReporter:
                 if validate_urls and artifact_url and not artifact_url.startswith("ci://artifacts/"):
                     try:
                         # Import the URL validator
-                        from .url_validator import validate_url
+                        from test.tests.distributed.distributed_testing.ci.url_validator import validate_url
                         
                         # Validate the URL
                         is_valid, status_code, error_message = await validate_url(artifact_url)
@@ -760,7 +760,7 @@ class TestResultReporter:
                         # Include health info if requested
                         if include_health_info:
                             try:
-                                from .url_validator import get_validator
+                                from test.tests.distributed.distributed_testing.ci.url_validator import get_validator
                                 validator = await get_validator()
                                 health_info = validator.get_url_health(artifact_url)
                                 artifact_info["url_health"] = health_info

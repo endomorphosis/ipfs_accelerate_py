@@ -8,7 +8,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime
 
-from ..benchmark import BenchmarkResult, BenchmarkResults, BenchmarkConfig
+from test.tools.skills.refactored_benchmark_suite.benchmark import BenchmarkResult, BenchmarkResults, BenchmarkConfig
 
 logger = logging.getLogger("benchmark.utils.importers")
 

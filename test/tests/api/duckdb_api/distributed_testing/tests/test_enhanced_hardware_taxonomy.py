@@ -9,7 +9,7 @@ and capability inheritance support.
 import unittest
 from typing import Dict, Set, Any
 
-from ..hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareArchitecture,
     HardwareVendor,
@@ -22,7 +22,7 @@ from ..hardware_taxonomy import (
     create_gpu_profile,
     create_npu_profile
 )
-from ..enhanced_hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.enhanced_hardware_taxonomy import (
     EnhancedHardwareTaxonomy,
     CapabilityScope,
     CapabilityDefinition,

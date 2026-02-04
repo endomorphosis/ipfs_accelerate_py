@@ -8,7 +8,7 @@ and the hardware abstraction layer.
 import unittest
 from typing import Dict, Set, Any
 
-from ..hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareArchitecture,
     HardwareVendor,
@@ -21,11 +21,11 @@ from ..hardware_taxonomy import (
     create_npu_profile,
     create_browser_profile
 )
-from ..enhanced_hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.enhanced_hardware_taxonomy import (
     EnhancedHardwareTaxonomy,
     CapabilityScope
 )
-from ..hardware_abstraction_layer import (
+from test.tests.api.duckdb_api.distributed_testing.hardware_abstraction_layer import (
     HardwareAbstractionLayer,
     OperationContext,
     HardwareBackend
@@ -129,7 +129,7 @@ class TestHardwareAbstractionLayer(unittest.TestCase):
         self.assertIsNotNone(browser_backend)
         
         # Verify backend types
-        from ..hardware_abstraction_layer import CPUBackend, GPUBackend, NPUBackend, BrowserBackend
+        from test.tests.api.duckdb_api.distributed_testing.hardware_abstraction_layer import CPUBackend, GPUBackend, NPUBackend, BrowserBackend
         self.assertIsInstance(cpu_backend, CPUBackend)
         self.assertIsInstance(gpu_backend, GPUBackend)
         self.assertIsInstance(npu_backend, NPUBackend)

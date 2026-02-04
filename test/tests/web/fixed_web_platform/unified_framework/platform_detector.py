@@ -55,7 +55,7 @@ logger = logging.getLogger("unified_framework.platform_detector")
 
 # Try to import browser capability detector from parent package
 try:
-    from ..browser_capability_detector import BrowserCapabilityDetector
+    from test.tests.web.fixed_web_platform.browser_capability_detector import BrowserCapabilityDetector
 except ImportError:
     logger.warning("Could not import BrowserCapabilityDetector from parent package")
     BrowserCapabilityDetector = None

@@ -17,7 +17,7 @@ from typing import Dict, List, Any, Optional, Union, Set, Tuple
 
 from .artifact_metadata import ArtifactMetadata, ArtifactDiscovery
 from .artifact_handler import ArtifactHandler, get_artifact_handler
-from .api_interface import CIProviderInterface, CIProviderFactory
+from test.tests.distributed.distributed_testing.ci.api_interface import CIProviderInterface, CIProviderFactory
 
 # Configure logging
 logging.basicConfig(

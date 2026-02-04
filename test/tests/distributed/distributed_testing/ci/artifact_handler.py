@@ -18,7 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Set, Tuple
 
-from .api_interface import CIProviderInterface
+from test.tests.distributed.distributed_testing.ci.api_interface import CIProviderInterface
 from .artifact_metadata import ArtifactMetadata, ArtifactDiscovery
 
 # Configure logging

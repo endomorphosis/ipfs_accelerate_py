@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 import logging
 from datetime import datetime, timedelta
 
-from ..distributed_error_handler import (
+from test.tests.distributed.distributed_testing.distributed_error_handler import (
     DistributedErrorHandler, ErrorType, ErrorSeverity, 
     ErrorContext, ErrorReport, RetryPolicy, ErrorAggregator,
     safe_execute, safe_execute_async

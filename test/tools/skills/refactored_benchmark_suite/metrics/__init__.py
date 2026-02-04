@@ -2,9 +2,9 @@
 Performance metrics collection modules for the refactored benchmark suite.
 """
 
-from .timing import LatencyMetric, ThroughputMetric
-from .memory import MemoryMetric
-from .flops import FLOPsMetric
+from test.tools.skills.refactored_benchmark_suite.metrics.timing import LatencyMetric, ThroughputMetric
+from test.tools.skills.refactored_benchmark_suite.metrics.memory import MemoryMetric
+from test.tools.skills.refactored_benchmark_suite.metrics.flops import FLOPsMetric
 from .power import PowerMetric
 from .bandwidth import BandwidthMetric
 

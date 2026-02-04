@@ -7,8 +7,8 @@ extensibility, and reporting capabilities.
 
 __version__ = "0.1.0"
 
-from .benchmark import ModelBenchmark, BenchmarkResults, BenchmarkSuite, BenchmarkConfig
-from .metrics import LatencyMetric, ThroughputMetric, MemoryMetric, FLOPsMetric
+from test.tools.skills.refactored_benchmark_suite.benchmark import ModelBenchmark, BenchmarkResults, BenchmarkSuite, BenchmarkConfig
+from test.tools.skills.refactored_benchmark_suite.metrics import LatencyMetric, ThroughputMetric, MemoryMetric, FLOPsMetric
 
 __all__ = [
     "ModelBenchmark",

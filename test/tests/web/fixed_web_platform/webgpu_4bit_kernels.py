@@ -320,7 +320,7 @@ class WebGPU4BitKernels:
         # Unpack 4-bit weights
         if bits == 4:
             # Unpack 4-bit weights if needed
-            from ..webgpu_quantization import WebGPUQuantizer
+            from test.tests.web.fixed_web_platform.webgpu_quantization import WebGPUQuantizer
             quantizer = WebGPUQuantizer()
             unpacked_weights = quantizer._unpack_4bit_values(quantized_data)
             
@@ -438,7 +438,7 @@ def example_4bit_matmul():
     kernel = WebGPU4BitKernels()
     
     # Quantize weights (simulate)
-    from ..webgpu_quantization import WebGPUQuantizer
+    from test.tests.web.fixed_web_platform.webgpu_quantization import WebGPUQuantizer
     quantizer = WebGPUQuantizer(default_bits=4)
     
     # Convert to 4-bit (simulate)

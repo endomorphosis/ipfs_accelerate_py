@@ -11,11 +11,11 @@ import logging
 import anyio
 from typing import Dict, Any, Optional
 
-from .api_interface import CIProviderFactory, CIProviderInterface
+from test.tests.distributed.distributed_testing.ci.api_interface import CIProviderFactory, CIProviderInterface
 
 # Optional provider implementations (may require extra deps like aiohttp).
 try:
-    from .github_client import GitHubClient
+    from test.tests.distributed.distributed_testing.ci.github_client import GitHubClient
 except Exception:  # pragma: no cover
     GitHubClient = None  # type: ignore[assignment]
 
@@ -25,7 +25,7 @@ except Exception:  # pragma: no cover
     JenkinsClient = None  # type: ignore[assignment]
 
 try:
-    from .gitlab_client import GitLabClient
+    from test.tests.distributed.distributed_testing.ci.gitlab_client import GitLabClient
 except Exception:  # pragma: no cover
     GitLabClient = None  # type: ignore[assignment]
 

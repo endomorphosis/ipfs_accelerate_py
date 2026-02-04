@@ -25,7 +25,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import standardized interface
-from .api_interface import (
+from test.tests.distributed.distributed_testing.ci.api_interface import (
     CIProviderInterface, 
     TestRunResult,
     CIProviderFactory
@@ -33,13 +33,13 @@ from .api_interface import (
 
 # Import implementation classes (optional: may require extra deps like aiohttp)
 try:
-    from .github_client import GitHubClient
+    from test.tests.distributed.distributed_testing.ci.github_client import GitHubClient
 except Exception as e:  # pragma: no cover
     GitHubClient = None  # type: ignore[assignment]
     logger.debug("GitHubClient unavailable: %s", e)
 
 try:
-    from .gitlab_client import GitLabClient
+    from test.tests.distributed.distributed_testing.ci.gitlab_client import GitLabClient
 except Exception as e:  # pragma: no cover
     GitLabClient = None  # type: ignore[assignment]
     logger.debug("GitLabClient unavailable: %s", e)
@@ -82,7 +82,7 @@ except Exception as e:  # pragma: no cover
 
 # Import provider registration module (optional)
 try:
-    from .register_providers import register_all_providers
+    from test.tests.distributed.distributed_testing.ci.register_providers import register_all_providers
 
     # Register all providers with factory.
     # This may fail if optional client deps are missing, so keep it best-effort.

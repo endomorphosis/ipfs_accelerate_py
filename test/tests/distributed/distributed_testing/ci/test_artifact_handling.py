@@ -16,7 +16,7 @@ from typing import Dict, List, Any, Optional
 
 import pytest
 
-from .api_interface import CIProviderInterface, CIProviderFactory
+from test.tests.distributed.distributed_testing.ci.api_interface import CIProviderInterface, CIProviderFactory
 from .artifact_handler import (
     ArtifactMetadata, 
     ArtifactStorage, 

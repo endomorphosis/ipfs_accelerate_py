@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import List, Optional
 
 from . import ModelBenchmark, BenchmarkSuite
-from .utils.logging import setup_logger
+from test.tools.skills.refactored_benchmark_suite.utils.logging import setup_logger
 
 # Configure logger
 logger = setup_logger("benchmark_cli")
@@ -208,7 +208,7 @@ def main():
             # Generate dashboard
             if args.dashboard:
                 try:
-                    from .visualizers.dashboard import generate_dashboard
+                    from test.tools.skills.refactored_benchmark_suite.visualizers.dashboard import generate_dashboard
                     dashboard_path = generate_dashboard(list(suite_results.values()), output_dir=args.output_dir)
                     logger.info(f"Generated dashboard: {dashboard_path}")
                 except ImportError:
@@ -219,7 +219,7 @@ def main():
         elif args.config:
             # Run from config file
             try:
-                from .config.benchmark_config import create_benchmark_configs_from_file
+                from test.tools.skills.refactored_benchmark_suite.config.benchmark_config import create_benchmark_configs_from_file
                 
                 # Load configurations
                 configs = create_benchmark_configs_from_file(args.config)
@@ -260,7 +260,7 @@ def main():
                 # Generate dashboard for all results
                 if args.dashboard and results:
                     try:
-                        from .visualizers.dashboard import generate_dashboard
+                        from test.tools.skills.refactored_benchmark_suite.visualizers.dashboard import generate_dashboard
                         dashboard_path = generate_dashboard(list(results.values()), output_dir=args.output_dir)
                         logger.info(f"Generated dashboard: {dashboard_path}")
                     except ImportError:

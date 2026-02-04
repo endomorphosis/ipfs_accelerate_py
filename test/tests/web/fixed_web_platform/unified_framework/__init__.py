@@ -39,7 +39,7 @@ logger = logging.getLogger("unified_framework")
 try:
     from .configuration_manager import ConfigurationManager
     from .error_handling import ErrorHandler, WebPlatformError
-    from .platform_detector import PlatformDetector
+    from test.tests.web.fixed_web_platform.unified_framework.platform_detector import PlatformDetector
     from .result_formatter import ResultFormatter
     from .model_sharding import ModelShardingManager
     
@@ -194,7 +194,7 @@ class UnifiedWebPlatform:
             # Import dynamically to avoid dependency issues
             try:
                 from ..web_platform_handler import WebPlatformHandler
-                from ..webgpu_quantization import setup_4bit_inference
+                from test.tests.web.fixed_web_platform.webgpu_quantization import setup_4bit_inference
                 
                 # Use Safari-specific handler if detected
                 if browser_info and browser_info.get("name", "").lower() == "safari":
