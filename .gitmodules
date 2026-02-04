@@ -1,8 +1,5 @@
-[submodule "test/huggingface_transformers"]
-	path = test/huggingface_transformers
-	url = https://github.com/huggingface/transformers.git
 [submodule "test/doc-builder"]
-	path = test/doc-builder
+	path = docs/builders/doc-builder
 	url = https://github.com/huggingface/doc-builder.git
 [submodule "ipfs_transformers_py"]
 	path = ipfs_transformers_py
@@ -21,7 +18,7 @@
 	path = docs/mcp-python-sdk
 	url = https://github.com/jlowin/mcp-python-sdk.git
 [submodule "test/huggingface_doc_builder"]
-	path = test/huggingface_doc_builder
+	path = docs/builders/huggingface_doc_builder
 	url = https://github.com/huggingface/doc-builder.git
 [submodule "ipfs_datasets_py"]
 	path = ipfs_datasets_py
