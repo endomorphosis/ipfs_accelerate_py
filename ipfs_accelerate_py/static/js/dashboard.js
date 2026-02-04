@@ -6,6 +6,72 @@ let searchResults = [];
 let compatibilityResults = [];
 let autoRefreshInterval = null;
 
+// Cache for SDK operations
+const sdkCache = {
+    data: new Map(),
+    ttl: 5 * 60 * 1000, // 5 minutes default TTL
+    
+    set(key, value, ttl = this.ttl) {
+        this.data.set(key, {
+            value: value,
+            expires: Date.now() + ttl
+        });
+    },
+    
+    get(key) {
+        const item = this.data.get(key);
+        if (!item) return null;
+        
+        if (Date.now() > item.expires) {
+            this.data.delete(key);
+            return null;
+        }
+        
+        return item.value;
+    },
+    
+    clear() {
+        this.data.clear();
+    },
+    
+    has(key) {
+        const item = this.data.get(key);
+        if (!item) return false;
+        
+        if (Date.now() > item.expires) {
+            this.data.delete(key);
+            return false;
+        }
+        
+        return true;
+    }
+};
+
+// Debounce utility
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Throttle utility
+function throttle(func, limit) {
+    let inThrottle;
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
 // Initialize MCP SDK Client
 let mcpClient = null;
 let sdkStats = {
@@ -3146,7 +3212,7 @@ function initializeSDKPlayground() {
 }
 
 // Quick Action Functions for Overview Tab
-async function quickGetHardwareInfo() {
+async function quickGetHardwareInfo(useCache = true) {
     const resultDiv = document.getElementById('quick-action-result');
     const contentDiv = document.getElementById('quick-action-content');
     
@@ -3155,8 +3221,19 @@ async function quickGetHardwareInfo() {
         return;
     }
     
+    const cacheKey = 'hardware_info';
+    
+    // Check cache first if enabled
+    if (useCache && sdkCache.has(cacheKey)) {
+        const cached = sdkCache.get(cacheKey);
+        resultDiv.style.display = 'block';
+        contentDiv.textContent = JSON.stringify(cached, null, 2) + '\n\n(Cached data)';
+        showToast('Hardware info loaded from cache', 'info');
+        return;
+    }
+    
     resultDiv.style.display = 'block';
-    contentDiv.textContent = 'Loading hardware information...';
+    contentDiv.innerHTML = '<div class="spinner-large"></div><div class="loading-text">Loading hardware information...</div>';
     
     const startTime = Date.now();
     
@@ -3165,18 +3242,21 @@ async function quickGetHardwareInfo() {
         const responseTime = Date.now() - startTime;
         trackSDKCall('hardware_get_info', true, responseTime);
         
+        // Cache the result
+        sdkCache.set(cacheKey, result);
+        
         contentDiv.textContent = JSON.stringify(result, null, 2);
         showToast(`Hardware info loaded (${responseTime}ms)`, 'success');
     } catch (error) {
         const responseTime = Date.now() - startTime;
         trackSDKCall('hardware_get_info', false, responseTime);
         
-        contentDiv.textContent = `Error: ${error.message}`;
+        contentDiv.innerHTML = `<div class="error-message"><strong>Error</strong>${error.message}</div>`;
         showToast('Failed to get hardware info', 'error');
     }
 }
 
-async function quickListContainers() {
+async function quickListContainers(useCache = true) {
     const resultDiv = document.getElementById('quick-action-result');
     const contentDiv = document.getElementById('quick-action-content');
     
@@ -3185,8 +3265,19 @@ async function quickListContainers() {
         return;
     }
     
+    const cacheKey = 'docker_containers';
+    
+    // Check cache first if enabled
+    if (useCache && sdkCache.has(cacheKey)) {
+        const cached = sdkCache.get(cacheKey);
+        resultDiv.style.display = 'block';
+        contentDiv.textContent = JSON.stringify(cached, null, 2) + '\n\n(Cached data)';
+        showToast('Container list loaded from cache', 'info');
+        return;
+    }
+    
     resultDiv.style.display = 'block';
-    contentDiv.textContent = 'Loading Docker containers...';
+    contentDiv.innerHTML = '<div class="spinner-large"></div><div class="loading-text">Loading Docker containers...</div>';
     
     const startTime = Date.now();
     
@@ -3195,18 +3286,21 @@ async function quickListContainers() {
         const responseTime = Date.now() - startTime;
         trackSDKCall('docker_list_containers', true, responseTime);
         
+        // Cache the result
+        sdkCache.set(cacheKey, result, 2 * 60 * 1000); // 2 minute cache for docker
+        
         contentDiv.textContent = JSON.stringify(result, null, 2);
         showToast(`Container list loaded (${responseTime}ms)`, 'success');
     } catch (error) {
         const responseTime = Date.now() - startTime;
         trackSDKCall('docker_list_containers', false, responseTime);
         
-        contentDiv.textContent = `Error: ${error.message}`;
+        contentDiv.innerHTML = `<div class="error-message"><strong>Error</strong>${error.message}</div>`;
         showToast('Failed to list containers', 'error');
     }
 }
 
-async function quickGetNetworkPeers() {
+async function quickGetNetworkPeers(useCache = true) {
     const resultDiv = document.getElementById('quick-action-result');
     const contentDiv = document.getElementById('quick-action-content');
     
@@ -3215,8 +3309,19 @@ async function quickGetNetworkPeers() {
         return;
     }
     
+    const cacheKey = 'network_peers';
+    
+    // Check cache first if enabled
+    if (useCache && sdkCache.has(cacheKey)) {
+        const cached = sdkCache.get(cacheKey);
+        resultDiv.style.display = 'block';
+        contentDiv.textContent = JSON.stringify(cached, null, 2) + '\n\n(Cached data)';
+        showToast('Network peers loaded from cache', 'info');
+        return;
+    }
+    
     resultDiv.style.display = 'block';
-    contentDiv.textContent = 'Loading network peers...';
+    contentDiv.innerHTML = '<div class="spinner-large"></div><div class="loading-text">Loading network peers...</div>';
     
     const startTime = Date.now();
     
@@ -3225,13 +3330,16 @@ async function quickGetNetworkPeers() {
         const responseTime = Date.now() - startTime;
         trackSDKCall('network_list_peers', true, responseTime);
         
+        // Cache the result
+        sdkCache.set(cacheKey, result, 1 * 60 * 1000); // 1 minute cache for network
+        
         contentDiv.textContent = JSON.stringify(result, null, 2);
         showToast(`Network peers loaded (${responseTime}ms)`, 'success');
     } catch (error) {
         const responseTime = Date.now() - startTime;
         trackSDKCall('network_list_peers', false, responseTime);
         
-        contentDiv.textContent = `Error: ${error.message}`;
+        contentDiv.innerHTML = `<div class="error-message"><strong>Error</strong>${error.message}</div>`;
         showToast('Failed to get network peers', 'error');
     }
 }
@@ -3242,11 +3350,14 @@ async function quickRefreshAll() {
         return;
     }
     
+    // Clear cache for fresh data
+    sdkCache.clear();
+    
     const resultDiv = document.getElementById('quick-action-result');
     const contentDiv = document.getElementById('quick-action-content');
     
     resultDiv.style.display = 'block';
-    contentDiv.textContent = 'Refreshing all data with batch request...';
+    contentDiv.innerHTML = '<div class="spinner-large"></div><div class="loading-text">Refreshing all data with batch request...</div>';
     
     const startTime = Date.now();
     
