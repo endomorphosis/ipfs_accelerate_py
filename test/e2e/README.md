@@ -79,6 +79,9 @@ npm run test:system
 
 # Distributed & backend (P2P, Copilot, backends)
 npm run test:distributed
+
+# Complete tool coverage (all 100+ tools)
+npm run test:complete
 ```
 
 ### Browser-Specific Tests
@@ -212,6 +215,16 @@ test/e2e/
 - ✅ Backend listing and configuration
 - ✅ Docker container management
 - ✅ Complete feature coverage validation
+
+### 10. Complete Tool Coverage (10-complete-tool-coverage.spec.ts)
+
+- ✅ Docker tools (execute, build, list, stop, pull)
+- ✅ Backend management (status, selection, routing, tasks)
+- ✅ Hardware tools (info, test, recommend)
+- ✅ Shared tools (generate, classify, IPFS, models, network)
+- ✅ CLI adapter tools (register, list, execute)
+- ✅ Verification of all 100+ MCP tools
+- ✅ Actual MCP tool invocations with arguments
 
 ## Log Correlation
 
