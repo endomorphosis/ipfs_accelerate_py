@@ -45,7 +45,7 @@
             <button class="nav-tab" onclick="showTab('model-manager')">📚 Model Manager</button>
             <button class="nav-tab" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
             <button class="nav-tab" onclick="showTab('github-workflows')">⚡ GitHub Workflows</button>
-            <button class="nav-tab" onclick="showTab('copilot-sdk')">🚀 Copilot SDK</button>
+            <button class="nav-tab" onclick="showTab('sdk-playground')">🎮 SDK Playground</button>
             <button class="nav-tab" onclick="showTab('mcp-tools')">🔧 MCP Tools</button>
             <button class="nav-tab" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
             <button class="nav-tab" onclick="showTab('system-logs')">📝 System Logs</button>
@@ -633,6 +633,113 @@
             </div>
         </div>
 
+        
+        <!-- SDK Playground Tab -->
+        <div id="sdk-playground" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- SDK Statistics Card -->
+                <div class="card">
+                    <h3>📊 SDK Performance Stats</h3>
+                    <div id="sdk-stats" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 15px; margin-top: 15px;">
+                        <div class="stat-item">
+                            <div class="stat-value">0</div>
+                            <div class="stat-label">Total Calls</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">0</div>
+                            <div class="stat-label">Successful</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">0</div>
+                            <div class="stat-label">Failed</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">0%</div>
+                            <div class="stat-label">Success Rate</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value">0ms</div>
+                            <div class="stat-label">Avg Response</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SDK Examples Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h3>🎮 SDK Method Examples</h3>
+                    <p style="color: #6b7280; margin-bottom: 20px;">
+                        Try out SDK convenience methods below. Each example demonstrates the enhanced JavaScript SDK capabilities.
+                    </p>
+                    
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                        <!-- Hardware Tools -->
+                        <div class="example-category">
+                            <h4 style="margin: 0 0 10px 0; color: #374151; font-size: 14px; font-weight: 600;">🔧 Hardware Tools</h4>
+                            <button class="btn btn-primary btn-sm" onclick="runSDKExample('hardware', 'getInfo', {})" style="width: 100%; margin-bottom: 8px;">
+                                Get Hardware Info
+                            </button>
+                            <button class="btn btn-primary btn-sm" onclick="runSDKExample('hardware', 'test', {})" style="width: 100%;">
+                                Run Hardware Test
+                            </button>
+                        </div>
+
+                        <!-- Network Tools -->
+                        <div class="example-category">
+                            <h4 style="margin: 0 0 10px 0; color: #374151; font-size: 14px; font-weight: 600;">🌐 Network Tools</h4>
+                            <button class="btn btn-primary btn-sm" onclick="runSDKExample('network', 'listPeers', {})" style="width: 100%; margin-bottom: 8px;">
+                                List Network Peers
+                            </button>
+                            <button class="btn btn-primary btn-sm" onclick="runSDKExample('network', 'getSwarmInfo', {})" style="width: 100%; margin-bottom: 8px;">
+                                Get Swarm Info
+                            </button>
+                            <button class="btn btn-primary btn-sm" onclick="runSDKExample('network', 'getBandwidth', {})" style="width: 100%;">
+                                Get Bandwidth Stats
+                            </button>
+                        </div>
+
+                        <!-- Docker Tools -->
+                        <div class="example-category">
+                            <h4 style="margin: 0 0 10px 0; color: #374151; font-size: 14px; font-weight: 600;">🐳 Docker Tools</h4>
+                            <button class="btn btn-primary btn-sm" onclick="runSDKExample('docker', 'listContainers', {all: true})" style="width: 100%; margin-bottom: 8px;">
+                                List All Containers
+                            </button>
+                            <button class="btn btn-primary btn-sm" onclick="runSDKExample('docker', 'listContainers', {all: false})" style="width: 100%;">
+                                List Running Containers
+                            </button>
+                        </div>
+
+                        <!-- Batch Operations -->
+                        <div class="example-category">
+                            <h4 style="margin: 0 0 10px 0; color: #374151; font-size: 14px; font-weight: 600;">🚀 Batch Operations</h4>
+                            <button class="btn btn-success btn-sm" onclick="runBatchExample()" style="width: 100%;">
+                                Run Batch Request
+                            </button>
+                            <p style="margin: 8px 0 0 0; font-size: 12px; color: #6b7280;">
+                                Execute multiple tools in parallel
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Code Display Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h3>💻 Code Example</h3>
+                    <pre id="sdk-code" style="background: #1f2937; color: #f3f4f6; padding: 15px; border-radius: 6px; overflow-x: auto; font-family: 'Monaco', 'Menlo', monospace; font-size: 13px; line-height: 1.5;">// Click any example button above to see the SDK code here
+// Examples will show how to use the JavaScript SDK convenience methods</pre>
+                </div>
+
+                <!-- Result Display Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h3>📋 Result</h3>
+                    <div id="sdk-result" style="min-height: 200px; background: #f9fafb; padding: 15px; border-radius: 6px; border: 1px solid #e5e7eb;">
+                        <div style="text-align: center; color: #6b7280; padding: 40px 0;">
+                            Run an example above to see the result here
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
         <!-- MCP Tools Tab -->
         <div id="mcp-tools" class="tab-content">
             <div class="dashboard-grid">

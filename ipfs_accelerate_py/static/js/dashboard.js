@@ -6,6 +6,61 @@ let searchResults = [];
 let compatibilityResults = [];
 let autoRefreshInterval = null;
 
+// Initialize MCP SDK Client
+let mcpClient = null;
+let sdkStats = {
+    totalCalls: 0,
+    successfulCalls: 0,
+    failedCalls: 0,
+    avgResponseTime: 0,
+    methodCalls: {}
+};
+
+// Initialize SDK on page load
+function initializeSDK() {
+    try {
+        mcpClient = new MCPClient('/jsonrpc', {
+            timeout: 30000,
+            retries: 3,
+            reportErrors: true
+        });
+        console.log('[Dashboard] MCP SDK client initialized');
+        return true;
+    } catch (error) {
+        console.error('[Dashboard] Failed to initialize MCP SDK:', error);
+        showToast('Failed to initialize MCP SDK', 'error');
+        return false;
+    }
+}
+
+// Track SDK method calls
+function trackSDKCall(method, success, responseTime) {
+    sdkStats.totalCalls++;
+    if (success) {
+        sdkStats.successfulCalls++;
+    } else {
+        sdkStats.failedCalls++;
+    }
+    
+    // Update average response time
+    sdkStats.avgResponseTime = 
+        (sdkStats.avgResponseTime * (sdkStats.totalCalls - 1) + responseTime) / sdkStats.totalCalls;
+    
+    // Track per-method calls
+    if (!sdkStats.methodCalls[method]) {
+        sdkStats.methodCalls[method] = { count: 0, successCount: 0, failCount: 0, avgTime: 0 };
+    }
+    sdkStats.methodCalls[method].count++;
+    if (success) {
+        sdkStats.methodCalls[method].successCount++;
+    } else {
+        sdkStats.methodCalls[method].failCount++;
+    }
+    sdkStats.methodCalls[method].avgTime = 
+        (sdkStats.methodCalls[method].avgTime * (sdkStats.methodCalls[method].count - 1) + responseTime) / 
+        sdkStats.methodCalls[method].count;
+}
+
 // Utility function for user notifications
 function showToast(message, type = 'info', duration = 3000) {
     console.log(`[Dashboard] ${type.toUpperCase()}: ${message}`);
@@ -98,6 +153,9 @@ function initializeTab(tabName) {
             } else {
                 console.warn('[Dashboard] GitHub Workflows manager not available');
             }
+            break;
+        case 'sdk-playground':
+            initializeSDKPlayground();
             break;
         case 'mcp-tools':
             refreshTools();
@@ -2131,6 +2189,9 @@ function startAutoRefresh() {
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize MCP SDK client first
+    initializeSDK();
+    
     // Initialize overview tab
     showTab('overview');
     
@@ -2529,6 +2590,215 @@ function displayToolsFromCache(data) {
             categoryDiv.appendChild(categoryToolsDiv);
             toolsGrid.appendChild(categoryDiv);
         });
+    }
+}
+
+// SDK Playground Functions
+function initializeSDKPlayground() {
+    console.log('[Dashboard] Initializing SDK Playground');
+    
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    // Update SDK stats display
+    updateSDKStats();
+}
+
+function updateSDKStats() {
+    const statsContainer = document.getElementById('sdk-stats');
+    if (!statsContainer) return;
+    
+    const successRate = sdkStats.totalCalls > 0 
+        ? ((sdkStats.successfulCalls / sdkStats.totalCalls) * 100).toFixed(1)
+        : 0;
+    
+    statsContainer.innerHTML = `
+        <div class="stat-item">
+            <div class="stat-value">${sdkStats.totalCalls}</div>
+            <div class="stat-label">Total Calls</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">${sdkStats.successfulCalls}</div>
+            <div class="stat-label">Successful</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">${sdkStats.failedCalls}</div>
+            <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">${successRate}%</div>
+            <div class="stat-label">Success Rate</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">${Math.round(sdkStats.avgResponseTime)}ms</div>
+            <div class="stat-label">Avg Response</div>
+        </div>
+    `;
+}
+
+async function runSDKExample(category, method, args = {}) {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return null;
+    }
+    
+    const resultContainer = document.getElementById('sdk-result');
+    const codeContainer = document.getElementById('sdk-code');
+    
+    if (resultContainer) {
+        resultContainer.innerHTML = '<div class="loading">Executing...</div>';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        const methodName = `${category}_${method}`;
+        
+        // Generate code snippet
+        const argsStr = Object.keys(args).length > 0 ? JSON.stringify(args, null, 2) : '';
+        const codeSnippet = `// Using SDK convenience method
+const client = new MCPClient('/jsonrpc');
+const result = await client.${category}${method.charAt(0).toUpperCase() + method.slice(1)}(${argsStr ? '\n  ' + argsStr.split('\n').join('\n  ') + '\n' : ''});
+console.log(result);`;
+        
+        if (codeContainer) {
+            codeContainer.textContent = codeSnippet;
+        }
+        
+        // Call the appropriate SDK method
+        switch(category) {
+            case 'github':
+                result = await mcpClient[`github${method.charAt(0).toUpperCase() + method.slice(1)}`](...Object.values(args));
+                break;
+            case 'docker':
+                result = await mcpClient[`docker${method.charAt(0).toUpperCase() + method.slice(1)}`](...Object.values(args));
+                break;
+            case 'hardware':
+                result = await mcpClient[`hardware${method.charAt(0).toUpperCase() + method.slice(1)}`](...Object.values(args));
+                break;
+            case 'network':
+                result = await mcpClient[`network${method.charAt(0).toUpperCase() + method.slice(1)}`](...Object.values(args));
+                break;
+            default:
+                result = await mcpClient.callTool(`${category}_${method}`, args);
+        }
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall(methodName, true, responseTime);
+        
+        if (resultContainer) {
+            resultContainer.innerHTML = `
+                <div class="result-success">
+                    <div class="result-header">
+                        <span class="result-status">✅ Success</span>
+                        <span class="result-time">${responseTime}ms</span>
+                    </div>
+                    <pre class="result-json">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        
+        showToast(`${methodName} executed successfully`, 'success');
+        updateSDKStats();
+        
+        return result;
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall(`${category}_${method}`, false, responseTime);
+        
+        if (resultContainer) {
+            resultContainer.innerHTML = `
+                <div class="result-error">
+                    <div class="result-header">
+                        <span class="result-status">❌ Error</span>
+                        <span class="result-time">${responseTime}ms</span>
+                    </div>
+                    <pre class="result-json">${error.message || error}</pre>
+                </div>
+            `;
+        }
+        
+        showToast(`Failed to execute ${category}_${method}`, 'error');
+        updateSDKStats();
+        
+        return null;
+    }
+}
+
+// Batch execution example
+async function runBatchExample() {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const resultContainer = document.getElementById('sdk-result');
+    const codeContainer = document.getElementById('sdk-code');
+    
+    if (resultContainer) {
+        resultContainer.innerHTML = '<div class="loading">Executing batch...</div>';
+    }
+    
+    const batchCalls = [
+        { name: 'hardware_get_info', arguments: {} },
+        { name: 'network_list_peers', arguments: {} }
+    ];
+    
+    const codeSnippet = `// Batch execution
+const client = new MCPClient('/jsonrpc');
+const results = await client.callToolsBatch([
+    { name: 'hardware_get_info', arguments: {} },
+    { name: 'network_list_peers', arguments: {} }
+]);
+console.log(results);`;
+    
+    if (codeContainer) {
+        codeContainer.textContent = codeSnippet;
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        const results = await mcpClient.callToolsBatch(batchCalls);
+        const responseTime = Date.now() - startTime;
+        
+        trackSDKCall('batch_execution', true, responseTime);
+        
+        if (resultContainer) {
+            resultContainer.innerHTML = `
+                <div class="result-success">
+                    <div class="result-header">
+                        <span class="result-status">✅ Batch Success</span>
+                        <span class="result-time">${responseTime}ms</span>
+                    </div>
+                    <pre class="result-json">${JSON.stringify(results, null, 2)}</pre>
+                </div>
+            `;
+        }
+        
+        showToast('Batch execution completed successfully', 'success');
+        updateSDKStats();
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('batch_execution', false, responseTime);
+        
+        if (resultContainer) {
+            resultContainer.innerHTML = `
+                <div class="result-error">
+                    <div class="result-header">
+                        <span class="result-status">❌ Batch Error</span>
+                        <span class="result-time">${responseTime}ms</span>
+                    </div>
+                    <pre class="result-json">${error.message || error}</pre>
+                </div>
+            `;
+        }
+        
+        showToast('Batch execution failed', 'error');
+        updateSDKStats();
     }
 }
 
