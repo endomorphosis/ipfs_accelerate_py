@@ -989,6 +989,10 @@ function refreshTools() {
         })
         .then(data => {
             console.log('[Dashboard] Tools loaded:', data);
+            
+            // Cache the tools data for filtering
+            cachedToolsData = data;
+            
             toolsGrid.innerHTML = '';
             
             // Handle different response formats
@@ -2390,6 +2394,142 @@ function executeToolFromModal(toolName) {
         resultContent.style.color = '#dc2626';
         showToast(`Tool execution failed: ${error.message}`, 'error', 5000);
     });
+}
+
+// Tool Search and Filter Functions
+let cachedToolsData = null;
+
+function filterTools(searchTerm) {
+    if (!cachedToolsData) {
+        console.warn('[Dashboard] No cached tools data available. Refresh tools first.');
+        return;
+    }
+    
+    const toolsGrid = document.querySelector('.tools-grid');
+    if (!toolsGrid) return;
+    
+    const normalizedSearch = searchTerm.toLowerCase().trim();
+    
+    if (!normalizedSearch) {
+        // Show all tools if search is empty
+        displayToolsFromCache(cachedToolsData);
+        return;
+    }
+    
+    // Filter tools and categories
+    const filteredCategories = {};
+    const filteredTools = [];
+    
+    if (cachedToolsData.categories) {
+        for (const [category, tools] of Object.entries(cachedToolsData.categories)) {
+            const categoryMatch = category.toLowerCase().includes(normalizedSearch);
+            const matchingTools = tools.filter(tool => 
+                categoryMatch || 
+                tool.name.toLowerCase().includes(normalizedSearch) ||
+                (tool.description && tool.description.toLowerCase().includes(normalizedSearch))
+            );
+            
+            if (matchingTools.length > 0) {
+                filteredCategories[category] = matchingTools;
+                filteredTools.push(...matchingTools);
+            }
+        }
+    }
+    
+    // Display filtered results
+    displayToolsFromCache({
+        tools: filteredTools,
+        categories: filteredCategories,
+        total: filteredTools.length
+    });
+    
+    if (filteredTools.length === 0) {
+        toolsGrid.innerHTML = `<div class="tool-tag" style="background: #fef3c7; color: #92400e;">No tools found matching "${searchTerm}"</div>`;
+    }
+}
+
+function clearToolSearch() {
+    const searchInput = document.getElementById('tool-search-input');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    
+    if (cachedToolsData) {
+        displayToolsFromCache(cachedToolsData);
+    }
+}
+
+function displayToolsFromCache(data) {
+    const toolsGrid = document.querySelector('.tools-grid');
+    if (!toolsGrid) return;
+    
+    toolsGrid.innerHTML = '';
+    
+    const tools = data.tools || [];
+    const categories = data.categories || {};
+    
+    if (tools.length === 0) {
+        toolsGrid.innerHTML = '<div class="tool-tag" style="background: #fef3c7; color: #92400e;">⚠️ No tools to display</div>';
+        return;
+    }
+    
+    // Display tools by category if available
+    if (Object.keys(categories).length > 0) {
+        const sortedCategories = Object.keys(categories).sort();
+        
+        sortedCategories.forEach(category => {
+            const categoryTools = categories[category];
+            
+            // Create category section
+            const categoryDiv = document.createElement('div');
+            categoryDiv.className = 'tool-category';
+            categoryDiv.style.cssText = 'margin-bottom: 20px;';
+            
+            // Category header
+            const categoryHeader = document.createElement('h4');
+            categoryHeader.textContent = `${category} (${categoryTools.length})`;
+            categoryHeader.style.cssText = 'margin-bottom: 10px; color: #374151; font-size: 14px; font-weight: 600;';
+            categoryDiv.appendChild(categoryHeader);
+            
+            // Create tools container for this category
+            const categoryToolsDiv = document.createElement('div');
+            categoryToolsDiv.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
+            
+            // Display each tool in category
+            categoryTools.forEach(tool => {
+                const toolTag = document.createElement('div');
+                toolTag.className = 'tool-tag';
+                toolTag.style.cssText = 'cursor: pointer; padding: 6px 12px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 12px; transition: all 0.2s;';
+                toolTag.textContent = tool.name || tool;
+                
+                if (tool.description) {
+                    toolTag.title = tool.description;
+                }
+                
+                if (tool.status === 'error' || tool.status === 'inactive') {
+                    toolTag.style.background = '#fee2e2';
+                    toolTag.style.color = '#991b1b';
+                    toolTag.textContent += ' ⚠️';
+                }
+                
+                toolTag.addEventListener('click', () => showToolExecutionModal(tool));
+                
+                toolTag.addEventListener('mouseenter', function() {
+                    this.style.background = '#c7d2fe';
+                    this.style.transform = 'translateY(-1px)';
+                });
+                toolTag.addEventListener('mouseleave', function() {
+                    this.style.background = tool.status === 'error' ? '#fee2e2' : '#e0e7ff';
+                    this.style.transform = 'translateY(0)';
+                });
+                
+                categoryToolsDiv.appendChild(toolTag);
+            });
+            
+            categoryDiv.appendChild(categoryToolsDiv);
+            toolsGrid.appendChild(categoryDiv);
+        });
+    }
 }
 
 // Cleanup on page unload

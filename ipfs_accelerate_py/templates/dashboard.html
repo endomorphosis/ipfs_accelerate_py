@@ -638,19 +638,22 @@
             <div class="dashboard-grid">
                 <div class="card">
                     <h3>🔧 Available MCP Tools</h3>
-                    <div class="tools-grid">
-                        <div class="tool-tag">text_generation</div>
-                        <div class="tool-tag">text_classification</div>
-                        <div class="tool-tag">text_embeddings</div>
-                        <div class="tool-tag">audio_transcription</div>
-                        <div class="tool-tag">image_classification</div>
-                        <div class="tool-tag">visual_qa</div>
-                        <div class="tool-tag">model_search</div>
-                        <div class="tool-tag">model_recommend</div>
-                        <div class="tool-tag">queue_status</div>
-                        <div class="tool-tag">performance_stats</div>
+                    <div style="margin-bottom: 16px;">
+                        <input 
+                            type="text" 
+                            id="tool-search-input" 
+                            placeholder="Search tools by name or category..." 
+                            style="width: 100%; padding: 10px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                            oninput="filterTools(this.value)"
+                        />
                     </div>
-                    <button class="btn btn-primary" onclick="refreshTools()">🔄 Refresh Tools</button>
+                    <div class="tools-grid">
+                        <div class="tool-tag">Loading tools...</div>
+                    </div>
+                    <div style="margin-top: 16px; display: flex; gap: 8px;">
+                        <button class="btn btn-primary" onclick="refreshTools()">🔄 Refresh Tools</button>
+                        <button class="btn btn-secondary" onclick="clearToolSearch()">🔍 Clear Search</button>
+                    </div>
                 </div>
 
                 <div class="card">

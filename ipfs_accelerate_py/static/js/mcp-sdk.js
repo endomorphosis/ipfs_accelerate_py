@@ -529,6 +529,166 @@ class MCPClient {
     }
 
     // ============================================
+    // MCP TOOL METHODS
+    // ============================================
+
+    /**
+     * Call any MCP tool by name
+     */
+    async callTool(toolName, args = {}) {
+        return await this.request('tools/call', {
+            name: toolName,
+            arguments: args
+        });
+    }
+
+    // GitHub Tools
+    async githubListRepos(owner = null, limit = 30) {
+        return await this.callTool('github_list_repos', { owner, limit });
+    }
+
+    async githubGetRepo(owner, repo) {
+        return await this.callTool('github_get_repo', { owner, repo });
+    }
+
+    async githubListPrs(owner, repo, state = 'open') {
+        return await this.callTool('github_list_prs', { owner, repo, state });
+    }
+
+    async githubGetPr(owner, repo, pr_number) {
+        return await this.callTool('github_get_pr', { owner, repo, pr_number });
+    }
+
+    async githubListIssues(owner, repo, state = 'open') {
+        return await this.callTool('github_list_issues', { owner, repo, state });
+    }
+
+    async githubGetIssue(owner, repo, issue_number) {
+        return await this.callTool('github_get_issue', { owner, repo, issue_number });
+    }
+
+    // Docker Tools
+    async dockerRunContainer(image, command = null, env = null) {
+        return await this.callTool('docker_run_container', { image, command, env });
+    }
+
+    async dockerListContainers(all = false) {
+        return await this.callTool('docker_list_containers', { all });
+    }
+
+    async dockerStopContainer(container_id) {
+        return await this.callTool('docker_stop_container', { container_id });
+    }
+
+    async dockerPullImage(image) {
+        return await this.callTool('docker_pull_image', { image });
+    }
+
+    // Hardware Tools
+    async hardwareGetInfo() {
+        return await this.callTool('hardware_get_info', {});
+    }
+
+    async hardwareTest() {
+        return await this.callTool('hardware_test', {});
+    }
+
+    async hardwareRecommend(task_type) {
+        return await this.callTool('hardware_recommend', { task_type });
+    }
+
+    // Runner Tools
+    async runnerStartAutoscaler(owner, interval = 60) {
+        return await this.callTool('runner_start_autoscaler', { owner, interval });
+    }
+
+    async runnerStopAutoscaler() {
+        return await this.callTool('runner_stop_autoscaler', {});
+    }
+
+    async runnerGetStatus() {
+        return await this.callTool('runner_get_status', {});
+    }
+
+    async runnerListWorkflows(owner, repo) {
+        return await this.callTool('runner_list_workflows', { owner, repo });
+    }
+
+    async runnerProvisionForWorkflow(workflow_id, runner_type = 'ubuntu-latest') {
+        return await this.callTool('runner_provision_for_workflow', { workflow_id, runner_type });
+    }
+
+    async runnerListContainers() {
+        return await this.callTool('runner_list_containers', {});
+    }
+
+    async runnerStopContainer(container_id) {
+        return await this.callTool('runner_stop_container', { container_id });
+    }
+
+    // IPFS Files Tools
+    async ipfsFilesAdd(path, content) {
+        return await this.callTool('ipfs_files_add', { path, content });
+    }
+
+    async ipfsFilesGet(cid, output_path = null) {
+        return await this.callTool('ipfs_files_get', { cid, output_path });
+    }
+
+    async ipfsFilesCat(cid) {
+        return await this.callTool('ipfs_files_cat', { cid });
+    }
+
+    async ipfsFilesPin(cid) {
+        return await this.callTool('ipfs_files_pin', { cid });
+    }
+
+    async ipfsFilesUnpin(cid) {
+        return await this.callTool('ipfs_files_unpin', { cid });
+    }
+
+    async ipfsFilesList(path = '/') {
+        return await this.callTool('ipfs_files_list', { path });
+    }
+
+    async ipfsFilesValidateCid(cid) {
+        return await this.callTool('ipfs_files_validate_cid', { cid });
+    }
+
+    // Network Tools
+    async networkListPeers() {
+        return await this.callTool('network_list_peers', {});
+    }
+
+    async networkConnectPeer(peer_address) {
+        return await this.callTool('network_connect_peer', { peer_address });
+    }
+
+    async networkDisconnectPeer(peer_id) {
+        return await this.callTool('network_disconnect_peer', { peer_id });
+    }
+
+    async networkDhtPut(key, value) {
+        return await this.callTool('network_dht_put', { key, value });
+    }
+
+    async networkDhtGet(key) {
+        return await this.callTool('network_dht_get', { key });
+    }
+
+    async networkGetSwarmInfo() {
+        return await this.callTool('network_get_swarm_info', {});
+    }
+
+    async networkGetBandwidth() {
+        return await this.callTool('network_get_bandwidth', {});
+    }
+
+    async networkPingPeer(peer_id) {
+        return await this.callTool('network_ping_peer', { peer_id });
+    }
+
+    // ============================================
     // SYSTEM METHODS
     // ============================================
 
