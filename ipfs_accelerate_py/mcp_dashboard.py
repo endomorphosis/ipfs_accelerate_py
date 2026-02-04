@@ -719,8 +719,39 @@ class MCPDashboard:
         
         @self.app.route('/api/mcp/tools')
         def get_mcp_tools():
-            """Get list of available MCP tools."""
-            tools = []
+            """Get list of available MCP tools with full metadata and categorization."""
+            tools_by_category = {}
+            tools_list = []
+            
+            # Helper function to categorize tools by name prefix
+            def categorize_tool(tool_name):
+                """Categorize tool by name prefix."""
+                if tool_name.startswith('github_'):
+                    return 'GitHub'
+                elif tool_name.startswith('docker_'):
+                    return 'Docker'
+                elif tool_name.startswith('hardware_'):
+                    return 'Hardware'
+                elif tool_name.startswith('runner_'):
+                    return 'Runner'
+                elif tool_name.startswith('ipfs_files_'):
+                    return 'IPFS Files'
+                elif tool_name.startswith('network_'):
+                    return 'Network'
+                elif tool_name.startswith('search_') or tool_name.startswith('recommend_') or 'model' in tool_name.lower():
+                    return 'Models'
+                elif 'inference' in tool_name.lower() or 'generate' in tool_name.lower():
+                    return 'Inference'
+                elif 'workflow' in tool_name.lower():
+                    return 'Workflows'
+                elif 'dashboard' in tool_name.lower():
+                    return 'Dashboard'
+                elif 'endpoint' in tool_name.lower():
+                    return 'Endpoints'
+                elif 'status' in tool_name.lower() or 'health' in tool_name.lower():
+                    return 'Status'
+                else:
+                    return 'Other'
             
             # If we have an MCP server instance, get tools from it
             if self.mcp_server and hasattr(self.mcp_server, 'tools'):
@@ -729,11 +760,27 @@ class MCPDashboard:
                     # Clean up description - take first line only
                     if desc:
                         desc = desc.split('\n')[0].strip()
-                    tools.append({
+                    
+                    # Get input schema if available
+                    input_schema = tool_info.get('input_schema', {})
+                    
+                    category = categorize_tool(tool_name)
+                    
+                    tool_data = {
                         'name': tool_name,
                         'description': desc,
-                        'status': 'active'
-                    })
+                        'category': category,
+                        'status': 'active',
+                        'input_schema': input_schema
+                    }
+                    
+                    tools_list.append(tool_data)
+                    
+                    # Add to category
+                    if category not in tools_by_category:
+                        tools_by_category[category] = []
+                    tools_by_category[category].append(tool_data)
+                    
             else:
                 # Fall back to creating a mock MCP server to get registered tools
                 try:
@@ -749,38 +796,54 @@ class MCPDashboard:
                         # Clean up description - take first line only
                         if desc:
                             desc = desc.split('\n')[0].strip()
-                        tools.append({
+                        
+                        # Get input schema if available
+                        input_schema = tool_info.get('input_schema', {})
+                        
+                        category = categorize_tool(tool_name)
+                        
+                        tool_data = {
                             'name': tool_name,
                             'description': desc,
-                            'status': 'active'
-                        })
+                            'category': category,
+                            'status': 'active',
+                            'input_schema': input_schema
+                        }
+                        
+                        tools_list.append(tool_data)
+                        
+                        # Add to category
+                        if category not in tools_by_category:
+                            tools_by_category[category] = []
+                        tools_by_category[category].append(tool_data)
+                        
                 except Exception as e:
                     logger.error(f"Error getting tools from MCP server: {e}")
                     # Ultimate fallback - hardcoded list of essential tools
-                    tools = [
+                    tools_list = [
                         {
                             'name': 'search_models',
                             'description': 'Search for models on HuggingFace',
-                            'status': 'active'
+                            'category': 'Models',
+                            'status': 'active',
+                            'input_schema': {}
                         },
                         {
                             'name': 'recommend_models',
                             'description': 'Get model recommendations',
-                            'status': 'active'
-                        },
-                        {
-                            'name': 'get_model_details',
-                            'description': 'Get detailed information about a specific model',
-                            'status': 'active'
-                        },
-                        {
-                            'name': 'run_inference',
-                            'description': 'Run inference with a model',
-                            'status': 'active'
+                            'category': 'Models',
+                            'status': 'active',
+                            'input_schema': {}
                         }
                     ]
+                    tools_by_category = {'Models': tools_list}
             
-            return jsonify({'tools': tools, 'total': len(tools)})
+            return jsonify({
+                'tools': tools_list,
+                'categories': tools_by_category,
+                'total': len(tools_list),
+                'category_count': len(tools_by_category)
+            })
         
         @self.app.route('/api/mcp/logs')
         def get_logs():
@@ -1173,59 +1236,103 @@ class MCPDashboard:
                     
                     logger.info(f"Calling tool: {tool_name} with args: {tool_args}")
                     
-                    # Import GitHub operations
-                    try:
-                        # Try absolute import first (when installed as package)
-                        try:
-                            from shared import SharedCore, GitHubOperations
-                        except ImportError:
-                            # Fall back to relative import (when running from source)
-                            import sys
-                            import os
-                            sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-                            from shared import SharedCore, GitHubOperations
-                        
-                        shared_core = SharedCore()
-                        github_ops = GitHubOperations(shared_core)
-                    except ImportError as e:
-                        logger.error(f"Failed to import GitHub operations: {e}")
-                        return jsonify({
-                            'jsonrpc': '2.0',
-                            'error': {
-                                'code': -32603,
-                                'message': f'GitHub operations not available: {str(e)}'
-                            },
-                            'id': request_id
-                        }), 500
+                    # Try to call tool from MCP server first
+                    if self.mcp_server and hasattr(self.mcp_server, 'tools'):
+                        if tool_name in self.mcp_server.tools:
+                            try:
+                                tool_info = self.mcp_server.tools[tool_name]
+                                tool_func = tool_info.get('function')
+                                
+                                if tool_func:
+                                    # Call the tool function with arguments
+                                    result = tool_func(**tool_args)
+                                    return jsonify({
+                                        'jsonrpc': '2.0',
+                                        'result': result,
+                                        'id': request_id
+                                    })
+                                else:
+                                    return jsonify({
+                                        'jsonrpc': '2.0',
+                                        'error': {
+                                            'code': -32603,
+                                            'message': f'Tool {tool_name} has no function'
+                                        },
+                                        'id': request_id
+                                    }), 500
+                            except Exception as e:
+                                logger.error(f"Error calling tool {tool_name}: {e}", exc_info=True)
+                                return jsonify({
+                                    'jsonrpc': '2.0',
+                                    'error': {
+                                        'code': -32603,
+                                        'message': f'Tool execution error: {str(e)}'
+                                    },
+                                    'id': request_id
+                                }), 500
                     
-                    # Map tool names to GitHub operations
-                    try:
-                        result = self._call_github_tool(github_ops, tool_name, tool_args)
-                        return jsonify({
-                            'jsonrpc': '2.0',
-                            'result': result,
-                            'id': request_id
-                        })
-                    except ValueError as e:
-                        logger.error(f"Tool not found: {tool_name}")
-                        return jsonify({
-                            'jsonrpc': '2.0',
-                            'error': {
-                                'code': -32601,
-                                'message': f'Tool not found: {tool_name}'
-                            },
-                            'id': request_id
-                        }), 404
-                    except Exception as e:
-                        logger.error(f"Error calling tool {tool_name}: {e}", exc_info=True)
-                        return jsonify({
-                            'jsonrpc': '2.0',
-                            'error': {
-                                'code': -32603,
-                                'message': f'Tool execution error: {str(e)}'
-                            },
-                            'id': request_id
-                        }), 500
+                    # Fallback to GitHub operations for legacy GitHub tools
+                    if tool_name.startswith('gh_'):
+                        try:
+                            # Try absolute import first (when installed as package)
+                            try:
+                                from shared import SharedCore, GitHubOperations
+                            except ImportError:
+                                # Fall back to relative import (when running from source)
+                                import sys
+                                import os
+                                sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+                                from shared import SharedCore, GitHubOperations
+                            
+                            shared_core = SharedCore()
+                            github_ops = GitHubOperations(shared_core)
+                            
+                            result = self._call_github_tool(github_ops, tool_name, tool_args)
+                            return jsonify({
+                                'jsonrpc': '2.0',
+                                'result': result,
+                                'id': request_id
+                            })
+                        except ImportError as e:
+                            logger.error(f"Failed to import GitHub operations: {e}")
+                            return jsonify({
+                                'jsonrpc': '2.0',
+                                'error': {
+                                    'code': -32603,
+                                    'message': f'GitHub operations not available: {str(e)}'
+                                },
+                                'id': request_id
+                            }), 500
+                        except ValueError as e:
+                            logger.error(f"Tool not found: {tool_name}")
+                            return jsonify({
+                                'jsonrpc': '2.0',
+                                'error': {
+                                    'code': -32601,
+                                    'message': f'Tool not found: {tool_name}'
+                                },
+                                'id': request_id
+                            }), 404
+                        except Exception as e:
+                            logger.error(f"Error calling tool {tool_name}: {e}", exc_info=True)
+                            return jsonify({
+                                'jsonrpc': '2.0',
+                                'error': {
+                                    'code': -32603,
+                                    'message': f'Tool execution error: {str(e)}'
+                                },
+                                'id': request_id
+                            }), 500
+                    
+                    # Tool not found
+                    return jsonify({
+                        'jsonrpc': '2.0',
+                        'error': {
+                            'code': -32601,
+                            'message': f'Tool not found: {tool_name}'
+                        },
+                        'id': request_id
+                    }), 404
                 
                 # Legacy direct method calls for model tools
                 # Lazy import MCP tools wrapper

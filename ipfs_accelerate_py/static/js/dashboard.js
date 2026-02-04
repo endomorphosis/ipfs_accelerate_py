@@ -993,6 +993,7 @@ function refreshTools() {
             
             // Handle different response formats
             const tools = data.tools || data.data || [];
+            const categories = data.categories || {};
             const total = data.total || tools.length;
             
             if (tools.length === 0) {
@@ -1001,28 +1002,91 @@ function refreshTools() {
                 return;
             }
             
-            // Display each tool
-            tools.forEach(tool => {
-                const toolTag = document.createElement('div');
-                toolTag.className = 'tool-tag';
-                toolTag.textContent = tool.name || tool;
+            // Display tools by category
+            if (Object.keys(categories).length > 0) {
+                // Sort categories alphabetically
+                const sortedCategories = Object.keys(categories).sort();
                 
-                // Add description as tooltip if available
-                if (tool.description) {
-                    toolTag.title = tool.description;
-                }
-                
-                // Add status indicator if available
-                if (tool.status === 'error' || tool.status === 'inactive') {
-                    toolTag.style.background = '#fee2e2';
-                    toolTag.style.color = '#991b1b';
-                    toolTag.textContent += ' ⚠️';
-                }
-                
-                toolsGrid.appendChild(toolTag);
-            });
+                sortedCategories.forEach(category => {
+                    const categoryTools = categories[category];
+                    
+                    // Create category section
+                    const categoryDiv = document.createElement('div');
+                    categoryDiv.className = 'tool-category';
+                    categoryDiv.style.cssText = 'margin-bottom: 20px;';
+                    
+                    // Category header
+                    const categoryHeader = document.createElement('h4');
+                    categoryHeader.textContent = `${category} (${categoryTools.length})`;
+                    categoryHeader.style.cssText = 'margin-bottom: 10px; color: #374151; font-size: 14px; font-weight: 600;';
+                    categoryDiv.appendChild(categoryHeader);
+                    
+                    // Create tools container for this category
+                    const categoryToolsDiv = document.createElement('div');
+                    categoryToolsDiv.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
+                    
+                    // Display each tool in category
+                    categoryTools.forEach(tool => {
+                        const toolTag = document.createElement('div');
+                        toolTag.className = 'tool-tag';
+                        toolTag.style.cssText = 'cursor: pointer; padding: 6px 12px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 12px; transition: all 0.2s;';
+                        toolTag.textContent = tool.name || tool;
+                        
+                        // Add description as tooltip if available
+                        if (tool.description) {
+                            toolTag.title = tool.description;
+                        }
+                        
+                        // Add status indicator if available
+                        if (tool.status === 'error' || tool.status === 'inactive') {
+                            toolTag.style.background = '#fee2e2';
+                            toolTag.style.color = '#991b1b';
+                            toolTag.textContent += ' ⚠️';
+                        }
+                        
+                        // Add click handler to show tool execution UI
+                        toolTag.addEventListener('click', () => showToolExecutionModal(tool));
+                        
+                        // Add hover effect
+                        toolTag.addEventListener('mouseenter', function() {
+                            this.style.background = '#c7d2fe';
+                            this.style.transform = 'translateY(-1px)';
+                        });
+                        toolTag.addEventListener('mouseleave', function() {
+                            this.style.background = tool.status === 'error' ? '#fee2e2' : '#e0e7ff';
+                            this.style.transform = 'translateY(0)';
+                        });
+                        
+                        categoryToolsDiv.appendChild(toolTag);
+                    });
+                    
+                    categoryDiv.appendChild(categoryToolsDiv);
+                    toolsGrid.appendChild(categoryDiv);
+                });
+            } else {
+                // Fallback: display tools without categories
+                tools.forEach(tool => {
+                    const toolTag = document.createElement('div');
+                    toolTag.className = 'tool-tag';
+                    toolTag.textContent = tool.name || tool;
+                    
+                    if (tool.description) {
+                        toolTag.title = tool.description;
+                    }
+                    
+                    if (tool.status === 'error' || tool.status === 'inactive') {
+                        toolTag.style.background = '#fee2e2';
+                        toolTag.style.color = '#991b1b';
+                        toolTag.textContent += ' ⚠️';
+                    }
+                    
+                    toolTag.addEventListener('click', () => showToolExecutionModal(tool));
+                    
+                    toolsGrid.appendChild(toolTag);
+                });
+            }
             
-            console.log(`[Dashboard] Successfully loaded ${total} MCP tools`);
+            console.log(`[Dashboard] Successfully loaded ${total} MCP tools in ${Object.keys(categories).length} categories`);
             showToast(`Loaded ${total} MCP tools`, 'success');
         })
         .catch(error => {
@@ -2090,6 +2154,243 @@ document.addEventListener('DOMContentLoaded', function() {
         initializeModelAutocomplete(testModelInput);
     }
 });
+
+// Tool Execution Modal Functions
+function showToolExecutionModal(tool) {
+    console.log('[Dashboard] Opening execution modal for tool:', tool.name);
+    
+    // Create modal overlay
+    const modalOverlay = document.createElement('div');
+    modalOverlay.id = 'tool-execution-modal';
+    modalOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    `;
+    
+    // Create modal content
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    `;
+    
+    // Build modal HTML
+    let html = `
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;">
+            <div>
+                <h3 style="margin: 0; color: #111827; font-size: 18px; font-weight: 600;">${tool.name}</h3>
+                <p style="margin: 4px 0 0 0; color: #6b7280; font-size: 14px;">${tool.description || 'No description available'}</p>
+            </div>
+            <button onclick="closeToolExecutionModal()" style="background: none; border: none; font-size: 24px; cursor: pointer; color: #9ca3af; padding: 0; margin: 0; line-height: 1;">&times;</button>
+        </div>
+    `;
+    
+    // Add parameters form if input schema available
+    if (tool.input_schema && tool.input_schema.properties) {
+        html += `<form id="tool-execution-form" style="margin-bottom: 16px;">`;
+        
+        const properties = tool.input_schema.properties;
+        const required = tool.input_schema.required || [];
+        
+        for (const [paramName, paramSchema] of Object.entries(properties)) {
+            const isRequired = required.includes(paramName);
+            const paramType = paramSchema.type || 'string';
+            const paramDescription = paramSchema.description || '';
+            
+            html += `
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 4px; color: #374151; font-size: 14px; font-weight: 500;">
+                        ${paramName}${isRequired ? ' *' : ''}
+                    </label>
+                    ${paramDescription ? `<p style="margin: 0 0 4px 0; color: #6b7280; font-size: 12px;">${paramDescription}</p>` : ''}
+            `;
+            
+            if (paramType === 'string' || paramType === 'number' || paramType === 'integer') {
+                const inputType = (paramType === 'number' || paramType === 'integer') ? 'number' : 'text';
+                html += `
+                    <input 
+                        type="${inputType}" 
+                        name="${paramName}" 
+                        ${isRequired ? 'required' : ''} 
+                        style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                        placeholder="Enter ${paramName}"
+                    />
+                `;
+            } else if (paramType === 'boolean') {
+                html += `
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input 
+                            type="checkbox" 
+                            name="${paramName}" 
+                            style="width: 16px; height: 16px;"
+                        />
+                        <span style="color: #6b7280; font-size: 14px;">Enable</span>
+                    </label>
+                `;
+            } else if (paramType === 'array') {
+                html += `
+                    <textarea 
+                        name="${paramName}" 
+                        ${isRequired ? 'required' : ''} 
+                        rows="3"
+                        style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: monospace;"
+                        placeholder="Enter JSON array, e.g., [1, 2, 3]"
+                    ></textarea>
+                `;
+            } else {
+                html += `
+                    <textarea 
+                        name="${paramName}" 
+                        ${isRequired ? 'required' : ''} 
+                        rows="3"
+                        style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: monospace;"
+                        placeholder="Enter JSON value"
+                    ></textarea>
+                `;
+            }
+            
+            html += `</div>`;
+        }
+        
+        html += `</form>`;
+    } else {
+        html += `<p style="color: #6b7280; font-size: 14px; margin-bottom: 16px;">No parameters required for this tool.</p>`;
+    }
+    
+    // Add execution button and result area
+    html += `
+        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+            <button 
+                onclick="executeToolFromModal('${tool.name}')" 
+                style="flex: 1; padding: 10px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s;"
+                onmouseover="this.style.background='#2563eb'" 
+                onmouseout="this.style.background='#3b82f6'"
+            >
+                ▶ Execute Tool
+            </button>
+            <button 
+                onclick="closeToolExecutionModal()" 
+                style="padding: 10px 16px; background: #e5e7eb; color: #374151; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;"
+            >
+                Cancel
+            </button>
+        </div>
+        <div id="tool-execution-result" style="display: none; padding: 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 16px;">
+            <h4 style="margin: 0 0 8px 0; color: #111827; font-size: 14px; font-weight: 600;">Result:</h4>
+            <pre id="tool-execution-result-content" style="margin: 0; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; color: #374151; font-family: monospace;"></pre>
+        </div>
+    `;
+    
+    modalContent.innerHTML = html;
+    modalOverlay.appendChild(modalContent);
+    document.body.appendChild(modalOverlay);
+    
+    // Close modal on overlay click
+    modalOverlay.addEventListener('click', function(e) {
+        if (e.target === modalOverlay) {
+            closeToolExecutionModal();
+        }
+    });
+}
+
+function closeToolExecutionModal() {
+    const modal = document.getElementById('tool-execution-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+function executeToolFromModal(toolName) {
+    console.log('[Dashboard] Executing tool:', toolName);
+    
+    const form = document.getElementById('tool-execution-form');
+    const resultDiv = document.getElementById('tool-execution-result');
+    const resultContent = document.getElementById('tool-execution-result-content');
+    
+    // Collect parameters from form
+    const params = {};
+    if (form) {
+        const formData = new FormData(form);
+        for (const [key, value] of formData.entries()) {
+            const input = form.elements[key];
+            if (input.type === 'checkbox') {
+                params[key] = input.checked;
+            } else if (input.type === 'number') {
+                params[key] = parseFloat(value);
+            } else {
+                // Try to parse as JSON for arrays/objects
+                if (value.trim().startsWith('[') || value.trim().startsWith('{')) {
+                    try {
+                        params[key] = JSON.parse(value);
+                    } catch (e) {
+                        params[key] = value;
+                    }
+                } else {
+                    params[key] = value;
+                }
+            }
+        }
+    }
+    
+    // Show loading state
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultContent.textContent = 'Executing tool...';
+        resultContent.style.color = '#6b7280';
+    }
+    
+    // Execute tool via JSON-RPC
+    const requestBody = {
+        jsonrpc: '2.0',
+        method: 'tools/call',
+        params: {
+            name: toolName,
+            arguments: params
+        },
+        id: Date.now()
+    };
+    
+    fetch('/jsonrpc', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestBody)
+    })
+    .then(response => response.json())
+    .then(data => {
+        console.log('[Dashboard] Tool execution result:', data);
+        
+        if (data.error) {
+            resultContent.textContent = `Error: ${data.error.message}`;
+            resultContent.style.color = '#dc2626';
+            showToast(`Tool execution failed: ${data.error.message}`, 'error', 5000);
+        } else {
+            resultContent.textContent = JSON.stringify(data.result, null, 2);
+            resultContent.style.color = '#059669';
+            showToast('Tool executed successfully', 'success');
+        }
+    })
+    .catch(error => {
+        console.error('[Dashboard] Error executing tool:', error);
+        resultContent.textContent = `Error: ${error.message}`;
+        resultContent.style.color = '#dc2626';
+        showToast(`Tool execution failed: ${error.message}`, 'error', 5000);
+    });
+}
 
 // Cleanup on page unload
 window.addEventListener('beforeunload', function() {
