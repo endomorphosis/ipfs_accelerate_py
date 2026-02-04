@@ -48,6 +48,7 @@
             <button class="nav-tab" onclick="showTab('advanced-ai')">🚀 Advanced AI</button>
             <button class="nav-tab" onclick="showTab('model-manager')">📚 Model Manager</button>
             <button class="nav-tab" onclick="showTab('ipfs-manager')">📁 IPFS Manager</button>
+            <button class="nav-tab" onclick="showTab('network-status')">🌐 Network & Status</button>
             <button class="nav-tab" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
             <button class="nav-tab" onclick="showTab('github-workflows')">⚡ GitHub Workflows</button>
             <button class="nav-tab" onclick="showTab('runner-management')">🏃 Runner Management</button>
@@ -956,6 +957,175 @@
                             <div class="stat-value" id="last-test-date">2024-01-15</div>
                             <div class="stat-label">Last Test Date</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Network & Status Tab -->
+        <div id="network-status" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- Advanced Network Operations Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>🌐 Advanced Network Operations</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                        <!-- Bandwidth Monitor -->
+                        <div>
+                            <h4 style="font-size: 14px; margin-bottom: 10px;">📊 Bandwidth Statistics</h4>
+                            <div id="bandwidth-stats" style="background: #f9fafb; padding: 15px; border-radius: 8px;">
+                                <div style="margin-bottom: 8px;"><strong>Total In:</strong> <span id="bandwidth-in">Loading...</span></div>
+                                <div style="margin-bottom: 8px;"><strong>Total Out:</strong> <span id="bandwidth-out">Loading...</span></div>
+                                <div><strong>Rate:</strong> <span id="bandwidth-rate">Loading...</span></div>
+                            </div>
+                            <button class="btn btn-sm btn-primary" onclick="refreshBandwidthStats()" style="margin-top: 10px; width: 100%;">🔄 Refresh</button>
+                        </div>
+                        
+                        <!-- Connection List -->
+                        <div>
+                            <h4 style="font-size: 14px; margin-bottom: 10px;">🔗 Active Connections</h4>
+                            <div id="connection-list" style="background: #f9fafb; padding: 15px; border-radius: 8px; max-height: 120px; overflow-y: auto;">
+                                <p style="margin: 0; color: #6b7280;">Loading connections...</p>
+                            </div>
+                            <button class="btn btn-sm btn-primary" onclick="refreshNetworkConnections()" style="margin-top: 10px; width: 100%;">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Peer Management -->
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 10px;">
+                        <h4 style="font-size: 14px; margin-bottom: 15px;">👥 Peer Management</h4>
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Peer ID:</label>
+                                <input type="text" id="peer-id-input" class="form-control" placeholder="Enter peer ID" />
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                                <button class="btn btn-primary" onclick="getPeerInfo()" style="flex: 1;">ℹ️ Info</button>
+                                <button class="btn btn-secondary" onclick="getPeerLatency()" style="flex: 1;">⏱️ Latency</button>
+                            </div>
+                        </div>
+                        <div id="peer-info-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Network Limits Configuration -->
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 15px;">⚙️ Network Limits Configuration</h4>
+                        <form id="network-limits-form" onsubmit="configureNetworkLimits(event); return false;">
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max Connections:</label>
+                                    <input type="number" id="max-connections" class="form-control" value="100" min="1" max="10000" />
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max Bandwidth (MB/s):</label>
+                                    <input type="number" id="max-bandwidth" class="form-control" value="100" min="1" max="10000" />
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Timeout (seconds):</label>
+                                    <input type="number" id="connection-timeout" class="form-control" value="30" min="5" max="300" />
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success">💾 Apply Network Limits</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- System Status & Monitoring Card -->
+                <div class="card">
+                    <h3>📈 System Status & Monitoring</h3>
+                    
+                    <!-- Overall System Status -->
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 10px;">🖥️ System Health</h4>
+                        <div id="system-health" style="background: #f9fafb; padding: 15px; border-radius: 8px;">
+                            <div style="margin-bottom: 8px;"><strong>Status:</strong> <span id="system-status">Loading...</span></div>
+                            <div style="margin-bottom: 8px;"><strong>Uptime:</strong> <span id="system-uptime">Loading...</span></div>
+                            <div><strong>Version:</strong> <span id="system-version">Loading...</span></div>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="refreshSystemStatus()" style="margin-top: 10px; width: 100%;">🔄 Refresh</button>
+                    </div>
+                    
+                    <!-- Resource Usage -->
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 10px;">💻 Resource Usage</h4>
+                        <div id="resource-usage" style="background: #f9fafb; padding: 15px; border-radius: 8px;">
+                            <div style="margin-bottom: 8px;">
+                                <strong>CPU:</strong>
+                                <div style="background: #e5e7eb; height: 20px; border-radius: 10px; margin-top: 5px; overflow: hidden;">
+                                    <div id="cpu-bar" style="background: #667eea; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                </div>
+                                <span id="cpu-percent" style="font-size: 12px; color: #6b7280;">0%</span>
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <strong>Memory:</strong>
+                                <div style="background: #e5e7eb; height: 20px; border-radius: 10px; margin-top: 5px; overflow: hidden;">
+                                    <div id="memory-bar" style="background: #10b981; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                </div>
+                                <span id="memory-percent" style="font-size: 12px; color: #6b7280;">0%</span>
+                            </div>
+                            <div>
+                                <strong>Disk:</strong>
+                                <div style="background: #e5e7eb; height: 20px; border-radius: 10px; margin-top: 5px; overflow: hidden;">
+                                    <div id="disk-bar" style="background: #f59e0b; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                </div>
+                                <span id="disk-percent" style="font-size: 12px; color: #6b7280;">0%</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="refreshResourceUsage()" style="margin-top: 10px; width: 100%;">🔄 Refresh</button>
+                    </div>
+                    
+                    <!-- Service Status -->
+                    <div>
+                        <h4 style="font-size: 14px; margin-bottom: 10px;">🔧 Service Status</h4>
+                        <div style="margin-bottom: 10px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Service:</label>
+                            <select id="service-select" class="form-control">
+                                <option value="mcp">MCP Server</option>
+                                <option value="ipfs">IPFS</option>
+                                <option value="docker">Docker</option>
+                                <option value="inference">Inference Engine</option>
+                                <option value="queue">Queue System</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="checkServiceStatus()" style="width: 100%; margin-bottom: 10px;">🔍 Check Status</button>
+                        <div id="service-status-result"></div>
+                    </div>
+                </div>
+
+                <!-- CLI Tools Interface Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>🛠️ CLI Endpoint Management</h3>
+                    
+                    <!-- CLI Endpoints List -->
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="font-size: 14px; margin: 0;">📋 Registered CLI Endpoints</h4>
+                            <button class="btn btn-sm btn-primary" onclick="refreshCliEndpoints()">🔄 Refresh</button>
+                        </div>
+                        <div id="cli-endpoints-list" style="background: #f9fafb; padding: 15px; border-radius: 8px; min-height: 100px;">
+                            <p style="margin: 0; color: #6b7280;">Loading CLI endpoints...</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Register New CLI Endpoint -->
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 15px;">➕ Register New CLI Endpoint</h4>
+                        <form id="cli-endpoint-form" onsubmit="registerNewCliEndpoint(event); return false;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Endpoint Name:</label>
+                                    <input type="text" id="cli-endpoint-name" class="form-control" placeholder="my-endpoint" required />
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Endpoint URL:</label>
+                                    <input type="text" id="cli-endpoint-url" class="form-control" placeholder="http://localhost:8080" required />
+                                </div>
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Description:</label>
+                                <textarea id="cli-endpoint-description" class="form-control" rows="2" placeholder="Endpoint description..."></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-success">✅ Register Endpoint</button>
+                        </form>
                     </div>
                 </div>
             </div>

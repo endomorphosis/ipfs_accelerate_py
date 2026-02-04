@@ -744,6 +744,23 @@ class MCPClient {
         return await this.callTool('network_ping_peer', { peer_id });
     }
 
+    // Additional Network Management Methods (Phase 5)
+    async networkGetLatency(peerId) {
+        return await this.callTool('network_get_latency', { peer_id: peerId });
+    }
+
+    async networkListConnections() {
+        return await this.callTool('network_list_connections', {});
+    }
+
+    async networkConfigureLimits(limits) {
+        return await this.callTool('network_configure_limits', limits);
+    }
+
+    async networkGetPeerInfo(peerId) {
+        return await this.callTool('network_get_peer_info', { peer_id: peerId });
+    }
+
     async checkNetworkStatus() {
         return await this.callTool('check_network_status', {});
     }
@@ -866,6 +883,11 @@ class MCPClient {
         return await this.callTool('list_cli_endpoints_tool', {});
     }
 
+    // Additional CLI Management Methods (Phase 5)
+    async registerCliEndpoint(config) {
+        return await this.callTool('register_cli_endpoint', config);
+    }
+
     // Status and Health Tools
     async getServerStatus() {
         return await this.callTool('get_server_status', {});
@@ -873,6 +895,15 @@ class MCPClient {
 
     async getSystemStatus() {
         return await this.callTool('get_system_status', {});
+    }
+
+    // Additional Status & Monitoring Methods (Phase 5)
+    async getServiceStatus(service) {
+        return await this.callTool('get_service_status', { service });
+    }
+
+    async getResourceUsage() {
+        return await this.callTool('get_resource_usage', {});
     }
 
     async getQueueStatus() {

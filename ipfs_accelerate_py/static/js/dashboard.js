@@ -6285,3 +6285,283 @@ async function predictTimeseriesData() {
     }
 }
 
+// ==========================================
+// NETWORK & STATUS MANAGEMENT FUNCTIONS
+// ==========================================
+
+// Bandwidth Statistics
+async function refreshBandwidthStats() {
+    try {
+        const stats = await mcpClient.networkGetBandwidth();
+        
+        document.getElementById('bandwidth-in').textContent = formatBytes(stats.totalIn || 0);
+        document.getElementById('bandwidth-out').textContent = formatBytes(stats.totalOut || 0);
+        document.getElementById('bandwidth-rate').textContent = `${formatBytes(stats.rateIn || 0)}/s in, ${formatBytes(stats.rateOut || 0)}/s out`;
+        
+        showToast('Bandwidth stats refreshed', 'success');
+    } catch (error) {
+        console.error('[Network] Failed to get bandwidth stats:', error);
+        document.getElementById('bandwidth-in').textContent = 'Error';
+        document.getElementById('bandwidth-out').textContent = 'Error';
+        document.getElementById('bandwidth-rate').textContent = 'Error';
+        showToast('Failed to load bandwidth stats', 'error');
+    }
+}
+
+// Helper function to format bytes
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Network Connections
+async function refreshNetworkConnections() {
+    const listDiv = document.getElementById('connection-list');
+    listDiv.innerHTML = '<div class="spinner"></div> Loading connections...';
+    
+    try {
+        const connections = await mcpClient.networkListConnections();
+        
+        if (!connections || connections.length === 0) {
+            listDiv.innerHTML = '<p style="margin: 0; color: #6b7280;">No active connections</p>';
+            return;
+        }
+        
+        let html = '<div style="font-size: 12px;">';
+        connections.forEach((conn, i) => {
+            html += `<div style="margin-bottom: 5px; padding: 5px; background: #fff; border-radius: 4px;">
+                <strong>${i + 1}.</strong> ${conn.peerId || conn.id || 'Unknown'} 
+                <span style="color: #10b981;">(${conn.status || 'active'})</span>
+            </div>`;
+        });
+        html += '</div>';
+        
+        listDiv.innerHTML = html;
+        showToast(`${connections.length} connections loaded`, 'success');
+    } catch (error) {
+        console.error('[Network] Failed to list connections:', error);
+        listDiv.innerHTML = `<p style="margin: 0; color: #ef4444;">Failed to load connections</p>`;
+        showToast('Failed to load connections', 'error');
+    }
+}
+
+// Peer Information
+async function getPeerInfo() {
+    const peerId = document.getElementById('peer-id-input').value;
+    const resultDiv = document.getElementById('peer-info-result');
+    
+    if (!peerId) {
+        showToast('Please enter a peer ID', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Getting peer info...';
+    
+    try {
+        const info = await mcpClient.networkGetPeerInfo(peerId);
+        resultDiv.innerHTML = `<div class="result-success">
+            <strong>Peer Information:</strong><br>
+            <pre style="margin-top: 10px; font-size: 12px;">${JSON.stringify(info, null, 2)}</pre>
+        </div>`;
+        showToast('Peer info retrieved', 'success');
+    } catch (error) {
+        console.error('[Network] Failed to get peer info:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to get peer info', 'error');
+    }
+}
+
+// Peer Latency
+async function getPeerLatency() {
+    const peerId = document.getElementById('peer-id-input').value;
+    const resultDiv = document.getElementById('peer-info-result');
+    
+    if (!peerId) {
+        showToast('Please enter a peer ID', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Measuring latency...';
+    
+    try {
+        const latency = await mcpClient.networkGetLatency(peerId);
+        resultDiv.innerHTML = `<div class="result-success">
+            <strong>Latency to Peer:</strong><br>
+            <div style="font-size: 24px; margin-top: 10px; color: #667eea;">${latency.latency || latency}ms</div>
+        </div>`;
+        showToast('Latency measured', 'success');
+    } catch (error) {
+        console.error('[Network] Failed to get latency:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to measure latency', 'error');
+    }
+}
+
+// Configure Network Limits
+async function configureNetworkLimits(event) {
+    event.preventDefault();
+    
+    const limits = {
+        maxConnections: parseInt(document.getElementById('max-connections').value),
+        maxBandwidth: parseInt(document.getElementById('max-bandwidth').value) * 1024 * 1024, // Convert MB to bytes
+        connectionTimeout: parseInt(document.getElementById('connection-timeout').value)
+    };
+    
+    try {
+        await mcpClient.networkConfigureLimits(limits);
+        showToast('Network limits configured successfully', 'success');
+    } catch (error) {
+        console.error('[Network] Failed to configure limits:', error);
+        showToast(`Failed to configure limits: ${error.message}`, 'error');
+    }
+}
+
+// System Status
+async function refreshSystemStatus() {
+    try {
+        const status = await mcpClient.getSystemStatus();
+        
+        document.getElementById('system-status').innerHTML = status.healthy ? 
+            '<span class="status-success">✅ Healthy</span>' : 
+            '<span class="status-warning">⚠️ Issues Detected</span>';
+        
+        document.getElementById('system-uptime').textContent = status.uptime || 'Unknown';
+        document.getElementById('system-version').textContent = status.version || 'Unknown';
+        
+        showToast('System status refreshed', 'success');
+    } catch (error) {
+        console.error('[Status] Failed to get system status:', error);
+        document.getElementById('system-status').innerHTML = '<span style="color: #ef4444;">Error</span>';
+        showToast('Failed to load system status', 'error');
+    }
+}
+
+// Resource Usage
+async function refreshResourceUsage() {
+    try {
+        const usage = await mcpClient.getResourceUsage();
+        
+        const cpuPercent = usage.cpu || 0;
+        const memoryPercent = usage.memory || 0;
+        const diskPercent = usage.disk || 0;
+        
+        document.getElementById('cpu-bar').style.width = `${cpuPercent}%`;
+        document.getElementById('cpu-percent').textContent = `${cpuPercent}%`;
+        
+        document.getElementById('memory-bar').style.width = `${memoryPercent}%`;
+        document.getElementById('memory-percent').textContent = `${memoryPercent}%`;
+        
+        document.getElementById('disk-bar').style.width = `${diskPercent}%`;
+        document.getElementById('disk-percent').textContent = `${diskPercent}%`;
+        
+        showToast('Resource usage refreshed', 'success');
+    } catch (error) {
+        console.error('[Status] Failed to get resource usage:', error);
+        showToast('Failed to load resource usage', 'error');
+    }
+}
+
+// Service Status
+async function checkServiceStatus() {
+    const service = document.getElementById('service-select').value;
+    const resultDiv = document.getElementById('service-status-result');
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Checking service status...';
+    
+    try {
+        const status = await mcpClient.getServiceStatus(service);
+        
+        const statusHtml = status.running ? 
+            '<span class="status-success">✅ Running</span>' : 
+            '<span class="status-warning">⚠️ Stopped</span>';
+        
+        resultDiv.innerHTML = `<div class="result-success" style="margin-top: 10px;">
+            <strong>Service: ${service}</strong><br>
+            <div style="margin-top: 8px;">Status: ${statusHtml}</div>
+            ${status.info ? `<div style="margin-top: 5px;">Info: ${status.info}</div>` : ''}
+        </div>`;
+        
+        showToast('Service status checked', 'success');
+    } catch (error) {
+        console.error('[Status] Failed to check service status:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to check service status', 'error');
+    }
+}
+
+// CLI Endpoints
+async function refreshCliEndpoints() {
+    const listDiv = document.getElementById('cli-endpoints-list');
+    listDiv.innerHTML = '<div class="spinner"></div> Loading CLI endpoints...';
+    
+    try {
+        const endpoints = await mcpClient.listCliEndpoints();
+        
+        if (!endpoints || endpoints.length === 0) {
+            listDiv.innerHTML = '<p style="margin: 0; color: #6b7280;">No CLI endpoints registered</p>';
+            return;
+        }
+        
+        let html = '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px;">';
+        endpoints.forEach(endpoint => {
+            html += `<div style="padding: 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;">
+                <div style="font-weight: 600; margin-bottom: 5px;">${endpoint.name || 'Unnamed'}</div>
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 3px;">${endpoint.url || 'No URL'}</div>
+                ${endpoint.description ? `<div style="font-size: 11px; color: #9ca3af;">${endpoint.description}</div>` : ''}
+            </div>`;
+        });
+        html += '</div>';
+        
+        listDiv.innerHTML = html;
+        showToast(`${endpoints.length} endpoints loaded`, 'success');
+    } catch (error) {
+        console.error('[CLI] Failed to list endpoints:', error);
+        listDiv.innerHTML = '<p style="margin: 0; color: #ef4444;">Failed to load endpoints</p>';
+        showToast('Failed to load CLI endpoints', 'error');
+    }
+}
+
+// Register CLI Endpoint
+async function registerNewCliEndpoint(event) {
+    event.preventDefault();
+    
+    const config = {
+        name: document.getElementById('cli-endpoint-name').value,
+        url: document.getElementById('cli-endpoint-url').value,
+        description: document.getElementById('cli-endpoint-description').value
+    };
+    
+    try {
+        await mcpClient.registerCliEndpoint(config);
+        showToast('CLI endpoint registered successfully', 'success');
+        
+        // Clear form
+        document.getElementById('cli-endpoint-name').value = '';
+        document.getElementById('cli-endpoint-url').value = '';
+        document.getElementById('cli-endpoint-description').value = '';
+        
+        // Refresh list
+        await refreshCliEndpoints();
+    } catch (error) {
+        console.error('[CLI] Failed to register endpoint:', error);
+        showToast(`Failed to register endpoint: ${error.message}`, 'error');
+    }
+}
+
+// Auto-load network & status data when tab is shown
+document.addEventListener('DOMContentLoaded', function() {
+    const networkStatusTab = document.querySelector('[onclick*="network-status"]');
+    if (networkStatusTab) {
+        networkStatusTab.addEventListener('click', function() {
+            refreshBandwidthStats();
+            refreshNetworkConnections();
+            refreshSystemStatus();
+            refreshResourceUsage();
+            refreshCliEndpoints();
+        });
+    }
+});
+
