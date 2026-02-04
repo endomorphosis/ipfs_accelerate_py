@@ -404,10 +404,64 @@ function runInference() {
     // Show loading state
     resultsDiv.innerHTML = '<div class="spinner"></div>Loading...';
     
-    // Simulate inference execution
-    setTimeout(() => {
+    // Use SDK if available
+    if (mcpClient) {
+        runInferenceViaSDK(inferenceType, modelId, resultsDiv, executionTimeSpan, modelUsedSpan);
+    } else {
+        // Fallback to mock results
+        setTimeout(() => {
+            const mockResults = generateMockInferenceResult(inferenceType);
+            resultsDiv.innerHTML = mockResults.result;
+            
+            if (executionTimeSpan) {
+                executionTimeSpan.textContent = mockResults.executionTime;
+            }
+            if (modelUsedSpan) {
+                modelUsedSpan.textContent = mockResults.modelUsed;
+            }
+        }, 2000);
+    }
+}
+
+async function runInferenceViaSDK(inferenceType, modelId, resultsDiv, executionTimeSpan, modelUsedSpan) {
+    const startTime = Date.now();
+    
+    try {
+        // Get input based on inference type
+        const input = getInferenceInput(inferenceType);
+        
+        // Map inference type to SDK method
+        let result;
+        const toolName = `run_inference`;
+        
+        result = await mcpClient.callTool(toolName, {
+            inference_type: inferenceType,
+            model_id: modelId || 'auto',
+            input: input
+        });
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall(toolName, true, responseTime);
+        
+        // Display results
+        resultsDiv.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+        
+        if (executionTimeSpan) {
+            executionTimeSpan.textContent = `${(responseTime / 1000).toFixed(2)}s`;
+        }
+        if (modelUsedSpan) {
+            modelUsedSpan.textContent = modelId || result.model_used || 'auto-selected';
+        }
+        
+        showToast(`Inference completed (${responseTime}ms)`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('run_inference', false, responseTime);
+        
+        // Fallback to mock on error
+        console.warn('[Dashboard] Inference via SDK failed, using mock:', error);
         const mockResults = generateMockInferenceResult(inferenceType);
-        resultsDiv.innerHTML = mockResults.result;
+        resultsDiv.innerHTML = `<div class="warning">SDK inference unavailable, showing mock result:</div><br>${mockResults.result}`;
         
         if (executionTimeSpan) {
             executionTimeSpan.textContent = mockResults.executionTime;
@@ -415,7 +469,30 @@ function runInference() {
         if (modelUsedSpan) {
             modelUsedSpan.textContent = mockResults.modelUsed;
         }
-    }, 2000);
+    }
+}
+
+function getInferenceInput(inferenceType) {
+    // Get input from form fields based on inference type
+    const textInput = document.getElementById('text-input')?.value;
+    const promptInput = document.getElementById('prompt')?.value;
+    const questionInput = document.getElementById('question')?.value;
+    
+    if (textInput) return textInput;
+    if (promptInput) return promptInput;
+    if (questionInput) return questionInput;
+    
+    // Default inputs for testing
+    const defaults = {
+        'text-generation': 'Once upon a time',
+        'text-classification': 'This product is amazing!',
+        'text-embeddings': 'The quick brown fox jumps',
+        'translation': 'Hello world',
+        'summarization': 'This is a long text that needs to be summarized.',
+        'question-answering': 'What is AI?'
+    };
+    
+    return defaults[inferenceType] || 'Test input';
 }
 
 function generateMockInferenceResult(inferenceType) {
@@ -978,13 +1055,116 @@ function refreshServerStatus() {
 }
 
 function refreshModels() {
-    console.log('Refreshing model list...');
+    console.log('[Dashboard] Refreshing model list via SDK...');
+    
+    if (!mcpClient) {
+        console.warn('[Dashboard] SDK not available, skipping model refresh');
+        return;
+    }
+    
+    // Use SDK to search for popular models
+    quickSearchModels('transformer', 10);
+}
+
+async function quickSearchModels(query, limit = 10) {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.callTool('search_models', {
+            query: query,
+            limit: limit
+        });
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('search_models', true, responseTime);
+        
+        console.log('[Dashboard] Model search results:', result);
+        showToast(`Found models (${responseTime}ms)`, 'success');
+        
+        return result;
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('search_models', false, responseTime);
+        
+        console.error('[Dashboard] Model search failed:', error);
+        showToast('Failed to search models', 'error');
+        
+        return null;
+    }
+}
+
+async function quickRecommendModels(task, constraints = {}) {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.callTool('recommend_models', {
+            task: task,
+            constraints: constraints
+        });
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('recommend_models', true, responseTime);
+        
+        console.log('[Dashboard] Model recommendations:', result);
+        showToast(`Got recommendations (${responseTime}ms)`, 'success');
+        
+        return result;
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('recommend_models', false, responseTime);
+        
+        console.error('[Dashboard] Model recommendation failed:', error);
+        showToast('Failed to get recommendations', 'error');
+        
+        return null;
+    }
 }
 
 function loadModel() {
     const modelId = prompt('Enter model ID to load:');
     if (modelId) {
-        alert(`Loading model: ${modelId}`);
+        if (mcpClient) {
+            loadModelViaSDK(modelId);
+        } else {
+            alert(`Loading model: ${modelId}`);
+        }
+    }
+}
+
+async function loadModelViaSDK(modelId) {
+    const startTime = Date.now();
+    
+    try {
+        // Try to get model details via SDK
+        const result = await mcpClient.callTool('get_model_details', {
+            model_id: modelId
+        });
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('get_model_details', true, responseTime);
+        
+        console.log('[Dashboard] Model details:', result);
+        showToast(`Model loaded (${responseTime}ms)`, 'success');
+        
+        return result;
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('get_model_details', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load model:', error);
+        showToast(`Failed to load model: ${error.message}`, 'error');
+        
+        return null;
     }
 }
 
@@ -2630,6 +2810,163 @@ function initializeSDKPlayground() {
     
     // Update SDK stats display
     updateSDKStats();
+}
+
+// Quick Action Functions for Overview Tab
+async function quickGetHardwareInfo() {
+    const resultDiv = document.getElementById('quick-action-result');
+    const contentDiv = document.getElementById('quick-action-content');
+    
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    resultDiv.style.display = 'block';
+    contentDiv.textContent = 'Loading hardware information...';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.hardwareGetInfo();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('hardware_get_info', true, responseTime);
+        
+        contentDiv.textContent = JSON.stringify(result, null, 2);
+        showToast(`Hardware info loaded (${responseTime}ms)`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('hardware_get_info', false, responseTime);
+        
+        contentDiv.textContent = `Error: ${error.message}`;
+        showToast('Failed to get hardware info', 'error');
+    }
+}
+
+async function quickListContainers() {
+    const resultDiv = document.getElementById('quick-action-result');
+    const contentDiv = document.getElementById('quick-action-content');
+    
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    resultDiv.style.display = 'block';
+    contentDiv.textContent = 'Loading Docker containers...';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.dockerListContainers(true);
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('docker_list_containers', true, responseTime);
+        
+        contentDiv.textContent = JSON.stringify(result, null, 2);
+        showToast(`Container list loaded (${responseTime}ms)`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('docker_list_containers', false, responseTime);
+        
+        contentDiv.textContent = `Error: ${error.message}`;
+        showToast('Failed to list containers', 'error');
+    }
+}
+
+async function quickGetNetworkPeers() {
+    const resultDiv = document.getElementById('quick-action-result');
+    const contentDiv = document.getElementById('quick-action-content');
+    
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    resultDiv.style.display = 'block';
+    contentDiv.textContent = 'Loading network peers...';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.networkListPeers();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('network_list_peers', true, responseTime);
+        
+        contentDiv.textContent = JSON.stringify(result, null, 2);
+        showToast(`Network peers loaded (${responseTime}ms)`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('network_list_peers', false, responseTime);
+        
+        contentDiv.textContent = `Error: ${error.message}`;
+        showToast('Failed to get network peers', 'error');
+    }
+}
+
+async function quickRefreshAll() {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const resultDiv = document.getElementById('quick-action-result');
+    const contentDiv = document.getElementById('quick-action-content');
+    
+    resultDiv.style.display = 'block';
+    contentDiv.textContent = 'Refreshing all data with batch request...';
+    
+    const startTime = Date.now();
+    
+    try {
+        // Use batch SDK call for efficiency
+        const results = await mcpClient.callToolsBatch([
+            { name: 'hardware_get_info', arguments: {} },
+            { name: 'docker_list_containers', arguments: { all: true } },
+            { name: 'network_list_peers', arguments: {} }
+        ]);
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('batch_refresh_all', true, responseTime);
+        
+        const summary = {
+            hardware: results[0].result || results[0].error,
+            docker: results[1].result || results[1].error,
+            network: results[2].result || results[2].error,
+            responseTime: `${responseTime}ms`
+        };
+        
+        contentDiv.textContent = JSON.stringify(summary, null, 2);
+        showToast(`All data refreshed (${responseTime}ms)`, 'success');
+        
+        // Update overview cards
+        updateOverviewCards(summary);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('batch_refresh_all', false, responseTime);
+        
+        contentDiv.textContent = `Error: ${error.message}`;
+        showToast('Failed to refresh data', 'error');
+    }
+}
+
+function updateOverviewCards(data) {
+    // Update available tools count
+    if (data.hardware && data.hardware.status === 'success') {
+        console.log('[Dashboard] Hardware data updated');
+    }
+    
+    // Update Docker container count
+    if (data.docker && data.docker.containers) {
+        const containerCount = data.docker.containers.length;
+        const runningCount = data.docker.containers.filter(c => c.status === 'running').length;
+        console.log(`[Dashboard] Docker: ${runningCount}/${containerCount} containers running`);
+    }
+    
+    // Update network peer count
+    if (data.network && data.network.peers) {
+        const peerCount = data.network.peers.length;
+        console.log(`[Dashboard] Network: ${peerCount} peers connected`);
+    }
 }
 
 function updateSDKStats() {

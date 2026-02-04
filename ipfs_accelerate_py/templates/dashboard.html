@@ -53,6 +53,29 @@
 
         <!-- Overview Tab -->
         <div id="overview" class="tab-content active">
+            <!-- SDK Quick Actions Bar -->
+            <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 20px;">
+                <h3 style="color: white; margin-bottom: 15px;">⚡ Quick Actions</h3>
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
+                    <button class="btn btn-light" onclick="quickGetHardwareInfo()" style="background: rgba(255,255,255,0.9); color: #667eea;">
+                        🔧 Hardware Info
+                    </button>
+                    <button class="btn btn-light" onclick="quickListContainers()" style="background: rgba(255,255,255,0.9); color: #667eea;">
+                        🐳 Docker Status
+                    </button>
+                    <button class="btn btn-light" onclick="quickGetNetworkPeers()" style="background: rgba(255,255,255,0.9); color: #667eea;">
+                        🌐 Network Peers
+                    </button>
+                    <button class="btn btn-light" onclick="quickRefreshAll()" style="background: rgba(255,255,255,0.9); color: #667eea;">
+                        🔄 Refresh All
+                    </button>
+                </div>
+                <div id="quick-action-result" style="margin-top: 15px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 6px; display: none;">
+                    <div style="font-weight: 600; margin-bottom: 8px;">Result:</div>
+                    <pre id="quick-action-content" style="margin: 0; white-space: pre-wrap; font-size: 13px; max-height: 200px; overflow-y: auto;"></pre>
+                </div>
+            </div>
+
             <div class="dashboard-grid">
                 <div class="card">
                     <h3>🔧 MCP Server Status</h3>
