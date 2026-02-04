@@ -5711,4 +5711,577 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// ==========================================
+// ADVANCED AI OPERATIONS FUNCTIONS
+// ==========================================
+
+// Tab switching functions for Advanced AI
+function switchAudioTab(tabId) {
+    const tabs = document.querySelectorAll('#advanced-ai .ai-tab-content');
+    tabs.forEach(tab => {
+        if (tab.id.startsWith('audio-')) {
+            tab.style.display = 'none';
+        }
+    });
+    document.getElementById(tabId).style.display = 'block';
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[data-tab^="audio-"]');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+}
+
+function switchImageTab(tabId) {
+    const tabs = document.querySelectorAll('#advanced-ai .ai-tab-content');
+    tabs.forEach(tab => {
+        if (tab.id.startsWith('img-')) {
+            tab.style.display = 'none';
+        }
+    });
+    document.getElementById(tabId).style.display = 'block';
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[data-tab^="img-"]');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+}
+
+function switchTextTab(tabId) {
+    const tabs = document.querySelectorAll('#advanced-ai .ai-tab-content');
+    tabs.forEach(tab => {
+        if (tab.id.startsWith('text-')) {
+            tab.style.display = 'none';
+        }
+    });
+    document.getElementById(tabId).style.display = 'block';
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[data-tab^="text-"]');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+}
+
+function switchMLTab(tabId) {
+    const tabs = document.querySelectorAll('#advanced-ai .ai-tab-content');
+    tabs.forEach(tab => {
+        if (tab.id.startsWith('ml-')) {
+            tab.style.display = 'none';
+        }
+    });
+    document.getElementById(tabId).style.display = 'block';
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[data-tab^="ml-"]');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+}
+
+// Question Answering
+async function performQuestionAnswering() {
+    const context = document.getElementById('qa-context').value;
+    const question = document.getElementById('qa-question').value;
+    const resultDiv = document.getElementById('qa-result');
+    const answerDiv = document.getElementById('qa-answer');
+    
+    if (!context || !question) {
+        showToast('Please provide both context and question', 'warning');
+        return;
+    }
+    
+    resultDiv.style.display = 'block';
+    answerDiv.innerHTML = '<div class="spinner"></div> Finding answer...';
+    
+    try {
+        const result = await mcpClient.answerQuestion(question, context);
+        answerDiv.innerHTML = `<strong>${result.answer || result.text || JSON.stringify(result)}</strong>`;
+        showToast('Answer found', 'success');
+    } catch (error) {
+        console.error('[AI] Question answering failed:', error);
+        answerDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to answer question', 'error');
+    }
+}
+
+// Audio Operations
+async function transcribeAudioFile() {
+    const fileInput = document.getElementById('audio-file-transcribe');
+    const resultDiv = document.getElementById('audio-transcribe-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an audio file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Transcribing audio...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const audioData = e.target.result;
+            const result = await mcpClient.transcribeAudio(audioData);
+            resultDiv.innerHTML = `<div class="result-success"><strong>Transcription:</strong><br>${result.text || JSON.stringify(result)}</div>`;
+            showToast('Audio transcribed', 'success');
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Audio transcription failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to transcribe audio', 'error');
+    }
+}
+
+async function classifyAudioFile() {
+    const fileInput = document.getElementById('audio-file-classify');
+    const resultDiv = document.getElementById('audio-classify-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an audio file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Classifying audio...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const audioData = e.target.result;
+            const result = await mcpClient.classifyAudio(audioData);
+            resultDiv.innerHTML = `<div class="result-success"><strong>Classification:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
+            showToast('Audio classified', 'success');
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Audio classification failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to classify audio', 'error');
+    }
+}
+
+async function generateAudioFromPrompt() {
+    const prompt = document.getElementById('audio-prompt').value;
+    const resultDiv = document.getElementById('audio-generate-result');
+    
+    if (!prompt) {
+        showToast('Please enter a prompt', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating audio...';
+    
+    try {
+        const result = await mcpClient.generateAudio(prompt);
+        resultDiv.innerHTML = `<div class="result-success">✅ Audio generated<br><audio controls src="${result.audio || result.url}"></audio></div>`;
+        showToast('Audio generated', 'success');
+    } catch (error) {
+        console.error('[AI] Audio generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate audio', 'error');
+    }
+}
+
+async function synthesizeSpeechFromText() {
+    const text = document.getElementById('tts-text').value;
+    const resultDiv = document.getElementById('tts-result');
+    
+    if (!text) {
+        showToast('Please enter text', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Synthesizing speech...';
+    
+    try {
+        const result = await mcpClient.synthesizeSpeech(text);
+        resultDiv.innerHTML = `<div class="result-success">✅ Speech synthesized<br><audio controls src="${result.audio || result.url}"></audio></div>`;
+        showToast('Speech synthesized', 'success');
+    } catch (error) {
+        console.error('[AI] Speech synthesis failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to synthesize speech', 'error');
+    }
+}
+
+// Image Operations
+async function classifyImageFile() {
+    const fileInput = document.getElementById('img-file-classify');
+    const resultDiv = document.getElementById('img-classify-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Classifying image...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const imageData = e.target.result;
+            const result = await mcpClient.classifyImage(imageData);
+            resultDiv.innerHTML = `<div class="result-success"><strong>Classification:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
+            showToast('Image classified', 'success');
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Image classification failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to classify image', 'error');
+    }
+}
+
+async function detectObjectsInImage() {
+    const fileInput = document.getElementById('img-file-detect');
+    const resultDiv = document.getElementById('img-detect-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Detecting objects...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const imageData = e.target.result;
+            const result = await mcpClient.detectObjects(imageData);
+            resultDiv.innerHTML = `<div class="result-success"><strong>Objects Detected:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
+            showToast('Objects detected', 'success');
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Object detection failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to detect objects', 'error');
+    }
+}
+
+async function segmentImageFile() {
+    const fileInput = document.getElementById('img-file-segment');
+    const resultDiv = document.getElementById('img-segment-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Segmenting image...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const imageData = e.target.result;
+            const result = await mcpClient.segmentImage(imageData);
+            resultDiv.innerHTML = `<div class="result-success">✅ Image segmented<br><img src="${result.segmented_image || result.url}" style="max-width: 100%; border-radius: 8px;"/></div>`;
+            showToast('Image segmented', 'success');
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Image segmentation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to segment image', 'error');
+    }
+}
+
+async function generateImageCaption() {
+    const fileInput = document.getElementById('img-file-caption');
+    const resultDiv = document.getElementById('img-caption-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating caption...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const imageData = e.target.result;
+            const result = await mcpClient.generateImageCaption(imageData);
+            resultDiv.innerHTML = `<div class="result-success"><strong>Caption:</strong><br>${result.caption || result.text || JSON.stringify(result)}</div>`;
+            showToast('Caption generated', 'success');
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Caption generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate caption', 'error');
+    }
+}
+
+async function generateImageFromPrompt() {
+    const prompt = document.getElementById('img-generate-prompt').value;
+    const resultDiv = document.getElementById('img-generate-result');
+    
+    if (!prompt) {
+        showToast('Please enter a prompt', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating image...';
+    
+    try {
+        const result = await mcpClient.generateImage(prompt);
+        resultDiv.innerHTML = `<div class="result-success">✅ Image generated<br><img src="${result.image || result.url}" style="max-width: 100%; border-radius: 8px;"/></div>`;
+        showToast('Image generated', 'success');
+    } catch (error) {
+        console.error('[AI] Image generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate image', 'error');
+    }
+}
+
+async function answerVisualQuestionImage() {
+    const fileInput = document.getElementById('img-file-vqa');
+    const question = document.getElementById('vqa-question').value;
+    const resultDiv = document.getElementById('img-vqa-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    if (!question) {
+        showToast('Please enter a question', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Answering question...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const imageData = e.target.result;
+            const result = await mcpClient.answerVisualQuestion(imageData, question);
+            resultDiv.innerHTML = `<div class="result-success"><strong>Answer:</strong><br>${result.answer || result.text || JSON.stringify(result)}</div>`;
+            showToast('Question answered', 'success');
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Visual Q&A failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to answer question', 'error');
+    }
+}
+
+// Text Operations
+async function summarizeTextInput() {
+    const text = document.getElementById('text-summarize-input').value;
+    const resultDiv = document.getElementById('text-summarize-result');
+    
+    if (!text) {
+        showToast('Please enter text to summarize', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Summarizing text...';
+    
+    try {
+        const result = await mcpClient.summarizeText(text);
+        resultDiv.innerHTML = `<div class="result-success"><strong>Summary:</strong><br>${result.summary || result.text || JSON.stringify(result)}</div>`;
+        showToast('Text summarized', 'success');
+    } catch (error) {
+        console.error('[AI] Text summarization failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to summarize text', 'error');
+    }
+}
+
+async function translateTextInput() {
+    const text = document.getElementById('text-translate-input').value;
+    const targetLang = document.getElementById('translate-target-lang').value;
+    const resultDiv = document.getElementById('text-translate-result');
+    
+    if (!text) {
+        showToast('Please enter text to translate', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Translating text...';
+    
+    try {
+        const result = await mcpClient.translateText(text, targetLang);
+        resultDiv.innerHTML = `<div class="result-success"><strong>Translation:</strong><br>${result.translation || result.text || JSON.stringify(result)}</div>`;
+        showToast('Text translated', 'success');
+    } catch (error) {
+        console.error('[AI] Translation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to translate text', 'error');
+    }
+}
+
+async function fillMaskInput() {
+    const text = document.getElementById('text-fillmask-input').value;
+    const resultDiv = document.getElementById('text-fillmask-result');
+    
+    if (!text || !text.includes('[MASK]')) {
+        showToast('Please enter text with [MASK] token', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Filling mask...';
+    
+    try {
+        const result = await mcpClient.fillMask(text);
+        let html = '<div class="result-success"><strong>Predictions:</strong><br>';
+        if (Array.isArray(result)) {
+            result.forEach((pred, i) => {
+                html += `${i+1}. ${pred.token_str || pred.sequence} (${(pred.score * 100).toFixed(1)}%)<br>`;
+            });
+        } else {
+            html += JSON.stringify(result);
+        }
+        html += '</div>';
+        resultDiv.innerHTML = html;
+        showToast('Mask filled', 'success');
+    } catch (error) {
+        console.error('[AI] Fill mask failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to fill mask', 'error');
+    }
+}
+
+async function generateCodeFromDesc() {
+    const description = document.getElementById('text-code-input').value;
+    const language = document.getElementById('code-language').value;
+    const resultDiv = document.getElementById('text-code-result');
+    
+    if (!description) {
+        showToast('Please enter a code description', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating code...';
+    
+    try {
+        const result = await mcpClient.generateCode(description, { language });
+        resultDiv.innerHTML = `<div class="result-success"><strong>Generated Code:</strong><br><pre style="background: #1f2937; color: #f3f4f6; padding: 15px; border-radius: 6px; overflow-x: auto;">${result.code || result.text || JSON.stringify(result)}</pre></div>`;
+        showToast('Code generated', 'success');
+    } catch (error) {
+        console.error('[AI] Code generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate code', 'error');
+    }
+}
+
+// Extended ML Operations
+async function generateEmbeddingsFromText() {
+    const text = document.getElementById('embeddings-input').value;
+    const resultDiv = document.getElementById('embeddings-result');
+    
+    if (!text) {
+        showToast('Please enter text', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating embeddings...';
+    
+    try {
+        const result = await mcpClient.generateEmbeddings(text);
+        let html = '<div class="result-success"><strong>Embeddings Generated:</strong><br>';
+        if (Array.isArray(result.embeddings)) {
+            html += `<div>Vector dimension: ${result.embeddings.length}</div>`;
+            html += `<div>First 10 values: [${result.embeddings.slice(0, 10).map(v => v.toFixed(4)).join(', ')}...]</div>`;
+        } else {
+            html += JSON.stringify(result);
+        }
+        html += '</div>';
+        resultDiv.innerHTML = html;
+        showToast('Embeddings generated', 'success');
+    } catch (error) {
+        console.error('[AI] Embeddings generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate embeddings', 'error');
+    }
+}
+
+async function processDocumentFile() {
+    const fileInput = document.getElementById('document-file');
+    const operation = document.getElementById('document-operation').value;
+    const resultDiv = document.getElementById('document-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select a document file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Processing document...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const documentData = e.target.result;
+            const result = await mcpClient.processDocument(documentData, { operation });
+            resultDiv.innerHTML = `<div class="result-success"><strong>Result:</strong><br>${result.text || JSON.stringify(result, null, 2)}</div>`;
+            showToast('Document processed', 'success');
+        };
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Document processing failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to process document', 'error');
+    }
+}
+
+async function processTabularDataFile() {
+    const fileInput = document.getElementById('tabular-file');
+    const operation = document.getElementById('tabular-operation').value;
+    const resultDiv = document.getElementById('tabular-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select a CSV file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Processing tabular data...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = async function(e) {
+            const data = e.target.result;
+            const result = await mcpClient.processTabularData(data, { operation });
+            resultDiv.innerHTML = `<div class="result-success"><strong>Result:</strong><br><pre>${JSON.stringify(result, null, 2)}</pre></div>`;
+            showToast('Data processed', 'success');
+        };
+        reader.readAsText(file);
+    } catch (error) {
+        console.error('[AI] Tabular data processing failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to process data', 'error');
+    }
+}
+
+async function predictTimeseriesData() {
+    const dataText = document.getElementById('timeseries-data').value;
+    const periods = parseInt(document.getElementById('timeseries-periods').value);
+    const resultDiv = document.getElementById('timeseries-result');
+    
+    if (!dataText) {
+        showToast('Please enter time series data', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Predicting time series...';
+    
+    try {
+        const data = JSON.parse(dataText);
+        const result = await mcpClient.predictTimeseries(data, { periods });
+        resultDiv.innerHTML = `<div class="result-success"><strong>Predictions:</strong><br><pre>${JSON.stringify(result, null, 2)}</pre></div>`;
+        showToast('Time series predicted', 'success');
+    } catch (error) {
+        console.error('[AI] Time series prediction failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to predict time series', 'error');
+    }
+}
 

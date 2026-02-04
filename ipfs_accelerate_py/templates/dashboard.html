@@ -45,6 +45,7 @@
         <div class="nav-tabs">
             <button class="nav-tab active" onclick="showTab('overview')">🏠 Overview</button>
             <button class="nav-tab" onclick="showTab('ai-inference')">🤖 AI Inference</button>
+            <button class="nav-tab" onclick="showTab('advanced-ai')">🚀 Advanced AI</button>
             <button class="nav-tab" onclick="showTab('model-manager')">📚 Model Manager</button>
             <button class="nav-tab" onclick="showTab('ipfs-manager')">📁 IPFS Manager</button>
             <button class="nav-tab" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
@@ -344,6 +345,316 @@
                             <span>Model Used:</span>
                             <span id="model-used">-</span>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced AI Operations Tab -->
+        <div id="advanced-ai" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- Question Answering Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>❓ Question Answering</h3>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Context:</label>
+                        <textarea id="qa-context" class="form-control" rows="4" placeholder="Enter the context or passage..."></textarea>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Question:</label>
+                        <input type="text" id="qa-question" class="form-control" placeholder="What question do you want to ask?" />
+                    </div>
+                    <button class="btn btn-primary" onclick="performQuestionAnswering()">🔍 Get Answer</button>
+                    <div id="qa-result" style="margin-top: 15px; display: none;">
+                        <h4 style="font-size: 14px; margin-bottom: 8px;">Answer:</h4>
+                        <div id="qa-answer" style="padding: 15px; background: #f0fdf4; border-left: 4px solid #10b981; border-radius: 6px;"></div>
+                    </div>
+                </div>
+
+                <!-- Audio Operations Card -->
+                <div class="card">
+                    <h3>🎵 Audio Operations</h3>
+                    <div class="ai-operation-tabs" style="margin-bottom: 15px;">
+                        <button class="ai-tab-btn active" data-tab="audio-transcribe" onclick="switchAudioTab('audio-transcribe')">Transcribe</button>
+                        <button class="ai-tab-btn" data-tab="audio-classify" onclick="switchAudioTab('audio-classify')">Classify</button>
+                        <button class="ai-tab-btn" data-tab="audio-generate" onclick="switchAudioTab('audio-generate')">Generate</button>
+                        <button class="ai-tab-btn" data-tab="audio-tts" onclick="switchAudioTab('audio-tts')">TTS</button>
+                    </div>
+                    
+                    <!-- Audio Transcribe -->
+                    <div id="audio-transcribe" class="ai-tab-content" style="display: block;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Audio File:</label>
+                            <input type="file" id="audio-file-transcribe" accept="audio/*" class="form-control" />
+                        </div>
+                        <button class="btn btn-primary" onclick="transcribeAudioFile()">🎤 Transcribe</button>
+                        <div id="audio-transcribe-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Audio Classify -->
+                    <div id="audio-classify" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Audio File:</label>
+                            <input type="file" id="audio-file-classify" accept="audio/*" class="form-control" />
+                        </div>
+                        <button class="btn btn-primary" onclick="classifyAudioFile()">🎯 Classify</button>
+                        <div id="audio-classify-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Audio Generate -->
+                    <div id="audio-generate" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Prompt:</label>
+                            <textarea id="audio-prompt" class="form-control" rows="3" placeholder="Describe the audio you want to generate..."></textarea>
+                        </div>
+                        <button class="btn btn-success" onclick="generateAudioFromPrompt()">🎵 Generate</button>
+                        <div id="audio-generate-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Text-to-Speech -->
+                    <div id="audio-tts" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Text:</label>
+                            <textarea id="tts-text" class="form-control" rows="3" placeholder="Enter text to synthesize..."></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="synthesizeSpeechFromText()">🗣️ Synthesize</button>
+                        <div id="tts-result" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+
+                <!-- Image Operations Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>🖼️ Image Operations</h3>
+                    <div class="ai-operation-tabs" style="margin-bottom: 15px;">
+                        <button class="ai-tab-btn active" data-tab="img-classify" onclick="switchImageTab('img-classify')">Classify</button>
+                        <button class="ai-tab-btn" data-tab="img-detect" onclick="switchImageTab('img-detect')">Detect</button>
+                        <button class="ai-tab-btn" data-tab="img-segment" onclick="switchImageTab('img-segment')">Segment</button>
+                        <button class="ai-tab-btn" data-tab="img-caption" onclick="switchImageTab('img-caption')">Caption</button>
+                        <button class="ai-tab-btn" data-tab="img-generate" onclick="switchImageTab('img-generate')">Generate</button>
+                        <button class="ai-tab-btn" data-tab="img-vqa" onclick="switchImageTab('img-vqa')">Visual Q&A</button>
+                    </div>
+                    
+                    <!-- Image Classify -->
+                    <div id="img-classify" class="ai-tab-content" style="display: block;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                                <input type="file" id="img-file-classify" accept="image/*" class="form-control" />
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" onclick="classifyImageFile()">🎯 Classify Image</button>
+                            </div>
+                        </div>
+                        <div id="img-classify-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Object Detection -->
+                    <div id="img-detect" class="ai-tab-content" style="display: none;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                                <input type="file" id="img-file-detect" accept="image/*" class="form-control" />
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" onclick="detectObjectsInImage()">🔍 Detect Objects</button>
+                            </div>
+                        </div>
+                        <div id="img-detect-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Image Segmentation -->
+                    <div id="img-segment" class="ai-tab-content" style="display: none;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                                <input type="file" id="img-file-segment" accept="image/*" class="form-control" />
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" onclick="segmentImageFile()">✂️ Segment Image</button>
+                            </div>
+                        </div>
+                        <div id="img-segment-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Image Captioning -->
+                    <div id="img-caption" class="ai-tab-content" style="display: none;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                                <input type="file" id="img-file-caption" accept="image/*" class="form-control" />
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" onclick="generateImageCaption()">📝 Generate Caption</button>
+                            </div>
+                        </div>
+                        <div id="img-caption-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Image Generation -->
+                    <div id="img-generate" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image Prompt:</label>
+                            <textarea id="img-generate-prompt" class="form-control" rows="3" placeholder="Describe the image you want to generate..."></textarea>
+                        </div>
+                        <button class="btn btn-success" onclick="generateImageFromPrompt()">🎨 Generate Image</button>
+                        <div id="img-generate-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Visual Q&A -->
+                    <div id="img-vqa" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                            <input type="file" id="img-file-vqa" accept="image/*" class="form-control" />
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Question:</label>
+                            <input type="text" id="vqa-question" class="form-control" placeholder="What do you want to ask about this image?" />
+                        </div>
+                        <button class="btn btn-primary" onclick="answerVisualQuestionImage()">❓ Ask Question</button>
+                        <div id="img-vqa-result" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+
+                <!-- Text Operations Card -->
+                <div class="card">
+                    <h3>📝 Advanced Text Operations</h3>
+                    <div class="ai-operation-tabs" style="margin-bottom: 15px;">
+                        <button class="ai-tab-btn active" data-tab="text-summarize" onclick="switchTextTab('text-summarize')">Summarize</button>
+                        <button class="ai-tab-btn" data-tab="text-translate" onclick="switchTextTab('text-translate')">Translate</button>
+                        <button class="ai-tab-btn" data-tab="text-fillmask" onclick="switchTextTab('text-fillmask')">Fill Mask</button>
+                        <button class="ai-tab-btn" data-tab="text-code" onclick="switchTextTab('text-code')">Gen Code</button>
+                    </div>
+                    
+                    <!-- Text Summarization -->
+                    <div id="text-summarize" class="ai-tab-content" style="display: block;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Text to Summarize:</label>
+                            <textarea id="text-summarize-input" class="form-control" rows="5" placeholder="Enter text to summarize..."></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="summarizeTextInput()">📄 Summarize</button>
+                        <div id="text-summarize-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Translation -->
+                    <div id="text-translate" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Text to Translate:</label>
+                            <textarea id="text-translate-input" class="form-control" rows="3" placeholder="Enter text to translate..."></textarea>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Target Language:</label>
+                            <select id="translate-target-lang" class="form-control">
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                                <option value="de">German</option>
+                                <option value="zh">Chinese</option>
+                                <option value="ja">Japanese</option>
+                                <option value="ko">Korean</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="translateTextInput()">🌐 Translate</button>
+                        <div id="text-translate-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Fill Mask -->
+                    <div id="text-fillmask" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Text with [MASK]:</label>
+                            <input type="text" id="text-fillmask-input" class="form-control" placeholder="Paris is the [MASK] of France." />
+                        </div>
+                        <button class="btn btn-primary" onclick="fillMaskInput()">🎭 Fill Mask</button>
+                        <div id="text-fillmask-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Code Generation -->
+                    <div id="text-code" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Code Description:</label>
+                            <textarea id="text-code-input" class="form-control" rows="3" placeholder="Describe the code you want to generate..."></textarea>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Language:</label>
+                            <select id="code-language" class="form-control">
+                                <option value="python">Python</option>
+                                <option value="javascript">JavaScript</option>
+                                <option value="java">Java</option>
+                                <option value="cpp">C++</option>
+                                <option value="go">Go</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-success" onclick="generateCodeFromDesc()">💻 Generate Code</button>
+                        <div id="text-code-result" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+
+                <!-- Extended ML Operations Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>🔬 Extended ML Operations</h3>
+                    <div class="ai-operation-tabs" style="margin-bottom: 15px;">
+                        <button class="ai-tab-btn active" data-tab="ml-embeddings" onclick="switchMLTab('ml-embeddings')">Embeddings</button>
+                        <button class="ai-tab-btn" data-tab="ml-document" onclick="switchMLTab('ml-document')">Document</button>
+                        <button class="ai-tab-btn" data-tab="ml-tabular" onclick="switchMLTab('ml-tabular')">Tabular</button>
+                        <button class="ai-tab-btn" data-tab="ml-timeseries" onclick="switchMLTab('ml-timeseries')">Time Series</button>
+                    </div>
+                    
+                    <!-- Embeddings -->
+                    <div id="ml-embeddings" class="ai-tab-content" style="display: block;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Input Text:</label>
+                            <textarea id="embeddings-input" class="form-control" rows="3" placeholder="Enter text to generate embeddings..."></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="generateEmbeddingsFromText()">🔢 Generate Embeddings</button>
+                        <div id="embeddings-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Document Processing -->
+                    <div id="ml-document" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Document File:</label>
+                            <input type="file" id="document-file" accept=".pdf,.docx,.txt" class="form-control" />
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Operation:</label>
+                            <select id="document-operation" class="form-control">
+                                <option value="extract">Extract Text</option>
+                                <option value="summarize">Summarize</option>
+                                <option value="analyze">Analyze</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="processDocumentFile()">📄 Process Document</button>
+                        <div id="document-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Tabular Data -->
+                    <div id="ml-tabular" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">CSV File:</label>
+                            <input type="file" id="tabular-file" accept=".csv" class="form-control" />
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Operation:</label>
+                            <select id="tabular-operation" class="form-control">
+                                <option value="analyze">Analyze</option>
+                                <option value="predict">Predict</option>
+                                <option value="transform">Transform</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="processTabularDataFile()">📊 Process Data</button>
+                        <div id="tabular-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Time Series -->
+                    <div id="ml-timeseries" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Time Series Data (JSON):</label>
+                            <textarea id="timeseries-data" class="form-control" rows="4" placeholder='[{"time": "2024-01", "value": 100}, ...]'></textarea>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Periods to Predict:</label>
+                            <input type="number" id="timeseries-periods" class="form-control" value="5" min="1" max="100" />
+                        </div>
+                        <button class="btn btn-primary" onclick="predictTimeseriesData()">📈 Predict</button>
+                        <div id="timeseries-result" style="margin-top: 15px;"></div>
                     </div>
                 </div>
             </div>
