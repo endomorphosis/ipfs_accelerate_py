@@ -1,9 +1,9 @@
 # Special requirements file for GitHub CI that excludes ONNX to avoid building it
-ipfs_kit_py
+ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@main
 sentence_transformers
 transformers>=4.46
-ipfs_transformers_py
-ipfs_model_manager_py
+ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main
+ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main
 # No torch/torchvision to avoid heavy dependencies
 numpy
 urllib3

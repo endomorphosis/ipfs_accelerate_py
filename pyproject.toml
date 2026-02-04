@@ -80,8 +80,8 @@ full = [
   "uvicorn>=0.27.0",
   "fastapi>=0.110.0",
   "sentence-transformers",
-  "ipfs_transformers_py",
-  "ipfs_model_manager_py",
+  "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
+  "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
 ]
 testing = [
   "pytest>=8.0.0",
@@ -121,8 +121,8 @@ all = [
   "uvicorn>=0.27.0",
   "fastapi>=0.110.0",
   "sentence-transformers",
-  "ipfs_transformers_py",
-  "ipfs_model_manager_py",
+  "ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
+  "ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
   "pytest>=8.0.0",
   "pytest-timeout>=2.4.0",
   "pytest-cov>=4.0.0",

@@ -84,8 +84,8 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy source code
 COPY --chown=appuser:appuser . .
 
-# Install ipfs_kit_py from GitHub known_good fork
-RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good
+# Install ipfs_kit_py from GitHub main branch
+RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@main
 
 # Install package in editable mode with development dependencies
 # Install Flask, Werkzeug, flask-cors, and fastmcp explicitly for MCP dashboard
@@ -115,8 +115,8 @@ RUN pip install --upgrade pip setuptools wheel
 # Copy source code
 COPY --chown=appuser:appuser . .
 
-# Install ipfs_kit_py from GitHub known_good fork
-RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good
+# Install ipfs_kit_py from GitHub main branch
+RUN pip install --no-cache-dir git+https://github.com/endomorphosis/ipfs_kit_py.git@main
 
 # Install package with ONLY testing dependencies (not the heavy ML libs)
 # This significantly reduces image size and build time
