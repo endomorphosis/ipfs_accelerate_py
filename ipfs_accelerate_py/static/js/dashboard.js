@@ -5256,3 +5256,459 @@ async function ipfsPubsubSub() {
     showToast('Pubsub subscribe requires server-side streaming', 'info');
 }
 
+// ==========================================
+// RUNNER MANAGEMENT FUNCTIONS
+// ==========================================
+
+let currentRunners = [];
+let selectedRunnerId = null;
+
+/**
+ * Load runner capabilities and display all runners
+ */
+async function loadRunnerCapabilities() {
+    const runnerListDiv = document.getElementById('runner-list');
+    if (!runnerListDiv) return;
+    
+    runnerListDiv.innerHTML = '<div class="spinner"></div> Loading runners...';
+    
+    try {
+        const capabilities = await mcpClient.runnerGetCapabilities();
+        currentRunners = capabilities.runners || [];
+        
+        // Update runner select dropdowns
+        updateRunnerSelects();
+        
+        // Display runners
+        if (currentRunners.length === 0) {
+            runnerListDiv.innerHTML = '<p class="text-muted">No runners available</p>';
+            return;
+        }
+        
+        let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">';
+        
+        for (const runner of currentRunners) {
+            const statusClass = runner.status === 'online' ? 'status-running' : 'status-stopped';
+            const healthClass = runner.health === 'healthy' ? 'status-success' : 'status-warning';
+            
+            html += `
+                <div class="runner-card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                        <h4 style="margin: 0; font-size: 16px;">${runner.id || 'Unknown Runner'}</h4>
+                        <span class="${statusClass}" style="padding: 4px 8px; border-radius: 4px; font-size: 12px;">${runner.status || 'unknown'}</span>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">
+                            <strong>Type:</strong> ${runner.type || 'standard'}
+                        </div>
+                        <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">
+                            <strong>Capacity:</strong> ${runner.capacity || 'N/A'}
+                        </div>
+                        <div style="font-size: 13px; color: #6b7280;">
+                            <strong>Health:</strong> <span class="${healthClass}">${runner.health || 'unknown'}</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-sm btn-primary" onclick="viewRunnerDetails('${runner.id}')" style="flex: 1;">📊 Details</button>
+                        <button class="btn btn-sm btn-secondary" onclick="runRunnerHealthCheck('${runner.id}')" style="flex: 1;">🏥 Health</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        runnerListDiv.innerHTML = html;
+        showToast(`Loaded ${currentRunners.length} runner(s)`, 'success');
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load capabilities:', error);
+        runnerListDiv.innerHTML = `<div class="error-message">❌ Failed to load runners: ${error.message}</div>`;
+        showToast('Failed to load runners', 'error');
+    }
+}
+
+/**
+ * Update all runner select dropdowns
+ */
+function updateRunnerSelects() {
+    const selects = ['runner-id-select', 'task-runner-select', 'metrics-runner-select'];
+    
+    for (const selectId of selects) {
+        const select = document.getElementById(selectId);
+        if (!select) continue;
+        
+        // Clear existing options except first
+        select.innerHTML = '<option value="">-- Select a runner --</option>';
+        
+        // Add runner options
+        for (const runner of currentRunners) {
+            const option = document.createElement('option');
+            option.value = runner.id;
+            option.textContent = `${runner.id} (${runner.type || 'standard'})`;
+            select.appendChild(option);
+        }
+    }
+}
+
+/**
+ * View detailed runner information
+ */
+async function viewRunnerDetails(runnerId) {
+    try {
+        const status = await mcpClient.runnerGetStatus(runnerId);
+        const metrics = await mcpClient.runnerGetMetrics(runnerId);
+        
+        const details = {
+            ...status,
+            metrics: metrics
+        };
+        
+        alert(`Runner Details:\n\n${JSON.stringify(details, null, 2)}`);
+        
+    } catch (error) {
+        console.error('[Runner] Failed to get details:', error);
+        showToast(`Failed to get runner details: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Run health check for a specific runner
+ */
+async function runRunnerHealthCheck(runnerId) {
+    try {
+        showToast('Running health check...', 'info');
+        const health = await mcpClient.runnerHealthCheck(runnerId);
+        
+        const healthStatus = health.healthy ? '✅ Healthy' : '⚠️ Unhealthy';
+        const message = health.message || 'No additional information';
+        
+        showToast(`${healthStatus}: ${message}`, health.healthy ? 'success' : 'warning');
+        
+        // Refresh runner list
+        await loadRunnerCapabilities();
+        
+    } catch (error) {
+        console.error('[Runner] Health check failed:', error);
+        showToast(`Health check failed: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Run health check for all runners
+ */
+async function runAllRunnerHealthChecks() {
+    if (currentRunners.length === 0) {
+        showToast('No runners available', 'warning');
+        return;
+    }
+    
+    showToast('Checking health of all runners...', 'info');
+    
+    let healthy = 0;
+    let unhealthy = 0;
+    
+    for (const runner of currentRunners) {
+        try {
+            const health = await mcpClient.runnerHealthCheck(runner.id);
+            if (health.healthy) {
+                healthy++;
+            } else {
+                unhealthy++;
+            }
+        } catch (error) {
+            console.error(`[Runner] Health check failed for ${runner.id}:`, error);
+            unhealthy++;
+        }
+    }
+    
+    showToast(`Health check complete: ${healthy} healthy, ${unhealthy} unhealthy`, 'success');
+    await loadRunnerCapabilities();
+}
+
+/**
+ * Load runner configuration
+ */
+async function loadRunnerConfig(runnerId) {
+    if (!runnerId) return;
+    
+    selectedRunnerId = runnerId;
+    
+    try {
+        const status = await mcpClient.runnerGetStatus(runnerId);
+        const config = status.config || {};
+        
+        // Update form fields
+        document.getElementById('config-max-cpu').value = config.maxCpu || 4;
+        document.getElementById('config-max-memory').value = config.maxMemory || 8;
+        document.getElementById('config-max-tasks').value = config.maxTasks || 5;
+        document.getElementById('config-auto-scale').checked = config.autoScale || false;
+        
+        showToast('Configuration loaded', 'success');
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load config:', error);
+        showToast(`Failed to load configuration: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Save runner configuration
+ */
+async function saveRunnerConfig(event) {
+    event.preventDefault();
+    
+    const runnerId = document.getElementById('runner-id-select').value;
+    if (!runnerId) {
+        showToast('Please select a runner', 'warning');
+        return;
+    }
+    
+    const config = {
+        maxCpu: parseInt(document.getElementById('config-max-cpu').value),
+        maxMemory: parseInt(document.getElementById('config-max-memory').value),
+        maxTasks: parseInt(document.getElementById('config-max-tasks').value),
+        autoScale: document.getElementById('config-auto-scale').checked
+    };
+    
+    try {
+        await mcpClient.runnerSetConfig({ runnerId, config });
+        showToast('Configuration saved successfully', 'success');
+        
+    } catch (error) {
+        console.error('[Runner] Failed to save config:', error);
+        showToast(`Failed to save configuration: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Reset runner configuration to defaults
+ */
+function resetRunnerConfig() {
+    document.getElementById('config-max-cpu').value = 4;
+    document.getElementById('config-max-memory').value = 8;
+    document.getElementById('config-max-tasks').value = 5;
+    document.getElementById('config-auto-scale').checked = false;
+    showToast('Configuration reset to defaults', 'info');
+}
+
+/**
+ * Load tasks for a specific runner
+ */
+async function loadRunnerTasks(runnerId) {
+    const tasksListDiv = document.getElementById('runner-tasks-list');
+    if (!tasksListDiv) return;
+    
+    if (!runnerId) {
+        tasksListDiv.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Select a runner to view tasks</p>';
+        return;
+    }
+    
+    tasksListDiv.innerHTML = '<div class="spinner"></div> Loading tasks...';
+    
+    try {
+        const tasks = await mcpClient.runnerListTasks(runnerId);
+        
+        if (!tasks || tasks.length === 0) {
+            tasksListDiv.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">No tasks running</p>';
+            return;
+        }
+        
+        let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
+        
+        for (const task of tasks) {
+            const statusClass = task.status === 'running' ? 'status-running' : 
+                              task.status === 'completed' ? 'status-success' : 'status-stopped';
+            
+            html += `
+                <div style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                        <strong style="font-size: 14px;">${task.name || task.id}</strong>
+                        <span class="${statusClass}" style="padding: 3px 8px; border-radius: 4px; font-size: 11px;">${task.status}</span>
+                    </div>
+                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
+                        <div><strong>ID:</strong> ${task.id}</div>
+                        ${task.command ? `<div><strong>Command:</strong> <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px;">${task.command}</code></div>` : ''}
+                    </div>
+                    <button class="btn btn-sm btn-danger" onclick="stopRunnerTask('${runnerId}', '${task.id}')" ${task.status !== 'running' ? 'disabled' : ''}>
+                        ⏹️ Stop Task
+                    </button>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        tasksListDiv.innerHTML = html;
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load tasks:', error);
+        tasksListDiv.innerHTML = `<div class="error-message">❌ Failed to load tasks: ${error.message}</div>`;
+        showToast('Failed to load tasks', 'error');
+    }
+}
+
+/**
+ * Start a new task on a runner
+ */
+async function startNewRunnerTask(event) {
+    event.preventDefault();
+    
+    const runnerId = document.getElementById('task-runner-select').value;
+    if (!runnerId) {
+        showToast('Please select a runner', 'warning');
+        return;
+    }
+    
+    const taskName = document.getElementById('task-name').value;
+    const taskCommand = document.getElementById('task-command').value;
+    
+    const taskConfig = {
+        name: taskName,
+        command: taskCommand,
+        runnerId: runnerId
+    };
+    
+    try {
+        showToast('Starting task...', 'info');
+        const result = await mcpClient.runnerStartTask(taskConfig);
+        
+        showToast(`Task started: ${result.taskId || 'success'}`, 'success');
+        
+        // Clear form
+        document.getElementById('task-name').value = '';
+        document.getElementById('task-command').value = '';
+        
+        // Refresh task list
+        await loadRunnerTasks(runnerId);
+        
+    } catch (error) {
+        console.error('[Runner] Failed to start task:', error);
+        showToast(`Failed to start task: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Stop a running task
+ */
+async function stopRunnerTask(runnerId, taskId) {
+    if (!confirm('Are you sure you want to stop this task?')) {
+        return;
+    }
+    
+    try {
+        await mcpClient.runnerStopTask(taskId);
+        showToast('Task stopped', 'success');
+        
+        // Refresh task list
+        await loadRunnerTasks(runnerId);
+        
+    } catch (error) {
+        console.error('[Runner] Failed to stop task:', error);
+        showToast(`Failed to stop task: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Load metrics for a specific runner
+ */
+async function loadRunnerMetrics(runnerId) {
+    if (!runnerId) {
+        // Reset metrics display
+        document.getElementById('metric-cpu').textContent = '--';
+        document.getElementById('metric-memory').textContent = '--';
+        document.getElementById('metric-tasks').textContent = '--';
+        document.getElementById('metric-uptime').textContent = '--';
+        document.getElementById('runner-logs-display').innerHTML = '<p style="color: #9ca3af; margin: 0;">Select a runner to view logs...</p>';
+        return;
+    }
+    
+    try {
+        const metrics = await mcpClient.runnerGetMetrics(runnerId);
+        
+        // Update metrics display
+        document.getElementById('metric-cpu').textContent = metrics.cpuUsage ? `${metrics.cpuUsage.toFixed(1)}%` : '--';
+        document.getElementById('metric-memory').textContent = metrics.memoryUsage ? `${metrics.memoryUsage.toFixed(1)}%` : '--';
+        document.getElementById('metric-tasks').textContent = metrics.activeTasks || '0';
+        document.getElementById('metric-uptime').textContent = metrics.uptime || '--';
+        
+        showToast('Metrics loaded', 'success');
+        
+        // Also load logs
+        await loadRunnerLogs(runnerId);
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load metrics:', error);
+        showToast(`Failed to load metrics: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Load logs for a specific runner
+ */
+async function loadRunnerLogs(runnerId) {
+    if (!runnerId) return;
+    
+    const logsDiv = document.getElementById('runner-logs-display');
+    if (!logsDiv) return;
+    
+    try {
+        const logs = await mcpClient.runnerGetLogs(runnerId, { limit: 100 });
+        
+        if (!logs || logs.length === 0) {
+            logsDiv.innerHTML = '<p style="color: #9ca3af; margin: 0;">No logs available</p>';
+            return;
+        }
+        
+        let html = '';
+        for (const log of logs) {
+            const timestamp = log.timestamp || '';
+            const level = log.level || 'INFO';
+            const message = log.message || '';
+            
+            const levelColor = level === 'ERROR' ? '#ef4444' : 
+                             level === 'WARN' ? '#f59e0b' : '#10b981';
+            
+            html += `<div style="margin-bottom: 4px;">
+                <span style="color: #6b7280;">[${timestamp}]</span>
+                <span style="color: ${levelColor}; font-weight: 600;">[${level}]</span>
+                <span>${message}</span>
+            </div>`;
+        }
+        
+        logsDiv.innerHTML = html;
+        // Auto-scroll to bottom
+        logsDiv.scrollTop = logsDiv.scrollHeight;
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load logs:', error);
+        logsDiv.innerHTML = `<p style="color: #ef4444; margin: 0;">Failed to load logs: ${error.message}</p>`;
+    }
+}
+
+/**
+ * Refresh runner logs display
+ */
+async function refreshRunnerLogs() {
+    const runnerId = document.getElementById('metrics-runner-select').value;
+    if (!runnerId) {
+        showToast('Please select a runner first', 'warning');
+        return;
+    }
+    
+    await loadRunnerLogs(runnerId);
+    showToast('Logs refreshed', 'success');
+}
+
+// Initialize Runner Management tab when it's shown
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-load runners when Runner Management tab is clicked
+    const runnerTab = document.querySelector('[onclick*="runner-management"]');
+    if (runnerTab) {
+        runnerTab.addEventListener('click', function() {
+            if (currentRunners.length === 0) {
+                loadRunnerCapabilities();
+            }
+        });
+    }
+});
+
+

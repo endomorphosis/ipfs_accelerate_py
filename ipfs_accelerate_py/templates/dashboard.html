@@ -49,6 +49,7 @@
             <button class="nav-tab" onclick="showTab('ipfs-manager')">📁 IPFS Manager</button>
             <button class="nav-tab" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
             <button class="nav-tab" onclick="showTab('github-workflows')">⚡ GitHub Workflows</button>
+            <button class="nav-tab" onclick="showTab('runner-management')">🏃 Runner Management</button>
             <button class="nav-tab" onclick="showTab('sdk-playground')">🎮 SDK Playground</button>
             <button class="nav-tab" onclick="showTab('mcp-tools')">🔧 MCP Tools</button>
             <button class="nav-tab" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
@@ -1138,6 +1139,140 @@
                 <div id="log-container" class="log-container">
                     <div class="log-placeholder">
                         <p class="text-muted">Loading system logs...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Runner Management Tab -->
+        <div id="runner-management" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- Runner Dashboard Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0;">🏃 Active Runners</h3>
+                        <div>
+                            <button class="btn btn-primary" onclick="loadRunnerCapabilities()">🔄 Refresh</button>
+                            <button class="btn btn-success" onclick="runAllRunnerHealthChecks()">🏥 Check All Health</button>
+                        </div>
+                    </div>
+                    <div id="runner-list" class="runner-list">
+                        <div class="loading-placeholder">
+                            <p>Loading runners...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Runner Configuration Card -->
+                <div class="card">
+                    <h3>⚙️ Runner Configuration</h3>
+                    <div id="runner-config-section">
+                        <div style="margin-bottom: 15px;">
+                            <label for="runner-id-select" style="display: block; margin-bottom: 5px; font-weight: 600;">Select Runner:</label>
+                            <select id="runner-id-select" class="form-control" onchange="loadRunnerConfig(this.value)">
+                                <option value="">-- Select a runner --</option>
+                            </select>
+                        </div>
+                        <form id="runner-config-form" onsubmit="saveRunnerConfig(event); return false;">
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max CPU Cores:</label>
+                                <input type="number" id="config-max-cpu" class="form-control" min="1" max="128" value="4">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max Memory (GB):</label>
+                                <input type="number" id="config-max-memory" class="form-control" min="1" max="512" value="8">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max Concurrent Tasks:</label>
+                                <input type="number" id="config-max-tasks" class="form-control" min="1" max="100" value="5">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" id="config-auto-scale" style="margin-right: 8px;">
+                                    <span>Enable Auto-scaling</span>
+                                </label>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button type="submit" class="btn btn-primary">💾 Save Configuration</button>
+                                <button type="button" class="btn btn-secondary" onclick="resetRunnerConfig()">🔄 Reset to Defaults</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Task Management Card -->
+                <div class="card">
+                    <h3>📋 Task Management</h3>
+                    <div id="task-management-section">
+                        <div style="margin-bottom: 15px;">
+                            <label for="task-runner-select" style="display: block; margin-bottom: 5px; font-weight: 600;">Runner:</label>
+                            <select id="task-runner-select" class="form-control" onchange="loadRunnerTasks(this.value)">
+                                <option value="">-- Select a runner --</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Start New Task -->
+                        <div style="padding: 15px; background: #f9fafb; border-radius: 8px; margin-bottom: 15px;">
+                            <h4 style="margin: 0 0 10px 0; font-size: 14px;">➕ Start New Task</h4>
+                            <form id="start-task-form" onsubmit="startNewRunnerTask(event); return false;">
+                                <div style="margin-bottom: 10px;">
+                                    <input type="text" id="task-name" class="form-control" placeholder="Task name" required>
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <textarea id="task-command" class="form-control" placeholder="Command to run" rows="2" required></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-success btn-sm" style="width: 100%;">▶️ Start Task</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Active Tasks List -->
+                        <div id="runner-tasks-list">
+                            <p class="text-muted" style="text-align: center; padding: 20px;">Select a runner to view tasks</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metrics & Monitoring Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h3>📊 Runner Metrics & Monitoring</h3>
+                    <div id="runner-metrics-section">
+                        <div style="margin-bottom: 15px;">
+                            <label for="metrics-runner-select" style="display: block; margin-bottom: 5px; font-weight: 600;">Select Runner:</label>
+                            <select id="metrics-runner-select" class="form-control" onchange="loadRunnerMetrics(this.value)">
+                                <option value="">-- Select a runner --</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Metrics Display -->
+                        <div id="runner-metrics-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                            <div class="stat-item">
+                                <div class="stat-value" id="metric-cpu">--</div>
+                                <div class="stat-label">CPU Usage (%)</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="metric-memory">--</div>
+                                <div class="stat-label">Memory Usage (%)</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="metric-tasks">--</div>
+                                <div class="stat-label">Active Tasks</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="metric-uptime">--</div>
+                                <div class="stat-label">Uptime</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Runner Logs -->
+                        <div style="margin-top: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <h4 style="margin: 0;">📝 Runner Logs</h4>
+                                <button class="btn btn-sm btn-secondary" onclick="refreshRunnerLogs()">🔄 Refresh</button>
+                            </div>
+                            <div id="runner-logs-display" style="background: #1f2937; color: #f3f4f6; padding: 15px; border-radius: 6px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                                <p style="color: #9ca3af; margin: 0;">Select a runner to view logs...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

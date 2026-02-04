@@ -2319,3 +2319,87 @@ kbd {
     color: #1e40af;
     text-align: center;
 }
+
+/* ==========================================
+   RUNNER MANAGEMENT STYLES
+   ========================================== */
+
+.runner-list {
+    min-height: 200px;
+}
+
+.runner-card {
+    transition: all 0.3s ease;
+}
+
+.runner-card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    transform: translateY(-2px);
+}
+
+.stat-item {
+    text-align: center;
+    padding: 15px;
+    background: #f9fafb;
+    border-radius: 8px;
+}
+
+.stat-value {
+    font-size: 24px;
+    font-weight: bold;
+    color: #667eea;
+    margin-bottom: 5px;
+}
+
+.stat-label {
+    font-size: 12px;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.form-control {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 14px;
+    font-family: inherit;
+    transition: border-color 0.2s ease;
+}
+
+.form-control:focus {
+    outline: none;
+    border-color: #667eea;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+.loading-placeholder {
+    text-align: center;
+    padding: 40px;
+    color: #6b7280;
+}
+
+.loading-placeholder p {
+    margin: 0;
+    font-size: 14px;
+}
+
+/* Runner status badges */
+.status-success {
+    color: #065f46;
+    background: #d1fae5;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.status-warning {
+    color: #92400e;
+    background: #fef3c7;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+}

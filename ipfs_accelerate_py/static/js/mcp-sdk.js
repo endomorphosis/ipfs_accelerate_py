@@ -649,6 +649,39 @@ class MCPClient {
         return await this.callTool('runner_stop_container', { container_id });
     }
 
+    // Additional Runner Management Methods (Phase 3)
+    async runnerGetCapabilities() {
+        return await this.callTool('runner_get_capabilities', {});
+    }
+
+    async runnerSetConfig(config) {
+        return await this.callTool('runner_set_config', config);
+    }
+
+    async runnerStartTask(taskConfig) {
+        return await this.callTool('runner_start_task', taskConfig);
+    }
+
+    async runnerStopTask(taskId) {
+        return await this.callTool('runner_stop_task', { task_id: taskId });
+    }
+
+    async runnerGetLogs(runnerId, options = {}) {
+        return await this.callTool('runner_get_logs', { runner_id: runnerId, ...options });
+    }
+
+    async runnerListTasks(runnerId) {
+        return await this.callTool('runner_list_tasks', { runner_id: runnerId });
+    }
+
+    async runnerGetMetrics(runnerId) {
+        return await this.callTool('runner_get_metrics', { runner_id: runnerId });
+    }
+
+    async runnerHealthCheck(runnerId) {
+        return await this.callTool('runner_health_check', { runner_id: runnerId });
+    }
+
     // IPFS Files Tools
     async ipfsFilesAdd(path, content) {
         return await this.callTool('ipfs_files_add', { path, content });
