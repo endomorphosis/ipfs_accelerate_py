@@ -1286,6 +1286,186 @@ function refreshMetrics() {
 }
 
 // Queue Functions
+// Overview Tab Functions
+let overviewRefreshInterval = null;
+
+function refreshStatus() {
+    console.log('[Dashboard] Refreshing overview status via SDK...');
+    
+    if (!mcpClient) {
+        console.warn('[Dashboard] SDK not available for status refresh');
+        return;
+    }
+    
+    // Load all overview data
+    loadServerStatusFromSDK();
+    loadSystemMetricsFromSDK();
+    loadCacheStatsFromSDK();
+    loadPeerStatusFromSDK();
+    
+    // Start auto-refresh if not already running
+    if (!overviewRefreshInterval) {
+        startOverviewAutoRefresh();
+    }
+}
+
+async function loadServerStatusFromSDK() {
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getServerStatus();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getServerStatus', true, responseTime);
+        
+        // Update UI with server status
+        updateServerStatusUI(result);
+        console.log('[Dashboard] Server status loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getServerStatus', false, responseTime);
+        console.error('[Dashboard] Failed to load server status:', error);
+    }
+}
+
+function updateServerStatusUI(data) {
+    // Update available tools count
+    const toolsCountEl = document.querySelector('.info-row span:contains("Available Tools:")');
+    if (toolsCountEl && data.tools_count) {
+        toolsCountEl.nextElementSibling.textContent = data.tools_count;
+    }
+    
+    // Update status indicator
+    const statusEl = document.querySelector('.status-running');
+    if (statusEl && data.status) {
+        statusEl.textContent = data.status;
+        statusEl.className = data.status === 'running' ? 'status-running' : 'status-stopped';
+    }
+}
+
+async function loadSystemMetricsFromSDK() {
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getDashboardSystemMetrics();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardSystemMetrics', true, responseTime);
+        
+        // Update UI with system metrics
+        updateSystemMetricsUI(result);
+        console.log('[Dashboard] System metrics loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardSystemMetrics', false, responseTime);
+        console.error('[Dashboard] Failed to load system metrics:', error);
+    }
+}
+
+function updateSystemMetricsUI(data) {
+    // Update CPU usage
+    const cpuEl = document.querySelector('[data-metric="cpu"]');
+    if (cpuEl && data.cpu_usage !== undefined) {
+        cpuEl.textContent = `${data.cpu_usage}%`;
+        cpuEl.style.color = data.cpu_usage > 80 ? '#ef4444' : '#10b981';
+    }
+    
+    // Update Memory usage
+    const memEl = document.querySelector('[data-metric="memory"]');
+    if (memEl && data.memory_usage !== undefined) {
+        memEl.textContent = `${data.memory_usage}%`;
+        memEl.style.color = data.memory_usage > 80 ? '#ef4444' : '#10b981';
+    }
+    
+    // Update Disk usage
+    const diskEl = document.querySelector('[data-metric="disk"]');
+    if (diskEl && data.disk_usage !== undefined) {
+        diskEl.textContent = `${data.disk_usage}%`;
+    }
+    
+    // Update Network usage
+    const netEl = document.querySelector('[data-metric="network"]');
+    if (netEl && data.network_throughput) {
+        netEl.textContent = data.network_throughput;
+    }
+}
+
+async function loadCacheStatsFromSDK() {
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getDashboardCacheStats();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardCacheStats', true, responseTime);
+        
+        // Update UI with cache stats
+        updateCacheStatsUI(result);
+        console.log('[Dashboard] Cache stats loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardCacheStats', false, responseTime);
+        console.error('[Dashboard] Failed to load cache stats:', error);
+    }
+}
+
+function updateCacheStatsUI(data) {
+    // Update cache statistics if available
+    if (data.hits !== undefined && data.misses !== undefined) {
+        const total = data.hits + data.misses;
+        const hitRate = total > 0 ? ((data.hits / total) * 100).toFixed(1) : 0;
+        console.log(`[Dashboard] Cache hit rate: ${hitRate}%`);
+    }
+}
+
+async function loadPeerStatusFromSDK() {
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getDashboardPeerStatus();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardPeerStatus', true, responseTime);
+        
+        // Update UI with peer status
+        updatePeerStatusUI(result);
+        console.log('[Dashboard] Peer status loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardPeerStatus', false, responseTime);
+        console.error('[Dashboard] Failed to load peer status:', error);
+    }
+}
+
+function updatePeerStatusUI(data) {
+    // Update peer count if available
+    if (data.peer_count !== undefined) {
+        console.log(`[Dashboard] Connected peers: ${data.peer_count}`);
+    }
+}
+
+function startOverviewAutoRefresh() {
+    // Clear existing interval if any
+    if (overviewRefreshInterval) {
+        clearInterval(overviewRefreshInterval);
+    }
+    
+    // Refresh every 10 seconds
+    overviewRefreshInterval = setInterval(() => {
+        console.log('[Dashboard] Auto-refreshing overview data...');
+        loadServerStatusFromSDK();
+        loadSystemMetricsFromSDK();
+        loadCacheStatsFromSDK();
+        loadPeerStatusFromSDK();
+    }, 10000);
+    
+    console.log('[Dashboard] Overview auto-refresh started (10s interval)');
+}
+
+function stopOverviewAutoRefresh() {
+    if (overviewRefreshInterval) {
+        clearInterval(overviewRefreshInterval);
+        overviewRefreshInterval = null;
+        console.log('[Dashboard] Overview auto-refresh stopped');
+    }
+}
+
 // Queue Monitor auto-refresh interval
 let queueRefreshInterval = null;
 
