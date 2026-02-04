@@ -67,6 +67,18 @@ npm run test:models
 
 # Comprehensive workflow tests
 npm run test:comprehensive
+
+# IPFS operations
+npm run test:ipfs
+
+# Advanced features (workflows, multiplex, CLI)
+npm run test:advanced
+
+# System monitoring (hardware, logs, metrics)
+npm run test:system
+
+# Distributed & backend (P2P, Copilot, backends)
+npm run test:distributed
 ```
 
 ### Browser-Specific Tests
@@ -160,6 +172,46 @@ test/e2e/
 - ✅ All tab functionality verification
 - ✅ Stress testing (rapid navigation)
 - ✅ MCP tool execution end-to-end
+
+### 6. IPFS Operations (06-ipfs-operations.spec.ts)
+
+- ✅ IPFS Manager tab functionality
+- ✅ File operations (add, cat, ls, mkdir, pin)
+- ✅ Network operations (id, swarm peers, pubsub, DHT)
+- ✅ IPFS tool integration via MCP
+
+### 7. Advanced Features (07-advanced-features.spec.ts)
+
+- ✅ Multiplex inference configuration
+- ✅ Endpoint registration and management
+- ✅ CLI endpoint tools
+- ✅ Queue history and monitoring
+- ✅ Distributed inference capabilities
+- ✅ Workflow management (create, list, execute, templates)
+- ✅ HuggingFace model search integration
+
+### 8. System Monitoring (08-system-monitoring.spec.ts)
+
+- ✅ Hardware information retrieval
+- ✅ Model acceleration options
+- ✅ Model benchmarking
+- ✅ System logs retrieval and filtering
+- ✅ Error log filtering
+- ✅ Performance metrics display
+- ✅ Coverage analysis
+- ✅ MCP tools display
+
+### 9. Distributed & Backend (09-distributed-backend.spec.ts)
+
+- ✅ P2P scheduler status
+- ✅ Task submission to P2P network
+- ✅ Peer state management
+- ✅ Merkle clock operations
+- ✅ Copilot command suggestions
+- ✅ Copilot SDK sessions
+- ✅ Backend listing and configuration
+- ✅ Docker container management
+- ✅ Complete feature coverage validation
 
 ## Log Correlation
 
