@@ -781,7 +781,7 @@ function loadModelRecommendationsForType() {
 }
 
 // HuggingFace Model Search Functions
-function searchHuggingFace() {
+async function searchHuggingFace() {
     const query = document.getElementById('hf-search')?.value;
     const taskFilter = document.getElementById('task-filter')?.value;
     const sizeFilter = document.getElementById('size-filter')?.value;
@@ -795,38 +795,68 @@ function searchHuggingFace() {
     }
     
     // Show loading state
-    resultsDiv.innerHTML = '<div class="spinner"></div>Searching HuggingFace Hub...';
-    
-    // Build query parameters - use MCP API endpoint
-    const params = new URLSearchParams({
-        q: query,
-        limit: '20'
-    });
-    
-    if (taskFilter) {
-        params.append('task', taskFilter);
-    }
+    resultsDiv.innerHTML = '<div class="spinner"></div>Searching HuggingFace Hub via SDK...';
     
     console.log(`[Dashboard] Searching HuggingFace with query: ${query}, task: ${taskFilter}`);
     
-    // Make API call to search models using MCP endpoint
-    fetch(`/api/mcp/models/search?${params}`)
-        .then(response => {
+    const startTime = Date.now();
+    
+    try {
+        // Use SDK method if available
+        if (mcpClient && mcpClient.searchHuggingfaceModels) {
+            const searchParams = {
+                query: query,
+                limit: 20
+            };
+            
+            if (taskFilter) {
+                searchParams.task = taskFilter;
+            }
+            
+            const data = await mcpClient.searchHuggingfaceModels(searchParams);
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('searchHuggingfaceModels', true, responseTime);
+            
+            console.log(`[Dashboard] SDK search results:`, data);
+            displayHFResults(data);
+            updateSearchStats(data);
+        } else {
+            // Fallback to direct API call if SDK not available
+            console.warn('[Dashboard] SDK not available, using direct API call');
+            const params = new URLSearchParams({
+                q: query,
+                limit: '20'
+            });
+            
+            if (taskFilter) {
+                params.append('task', taskFilter);
+            }
+            
+            const response = await fetch(`/api/mcp/models/search?${params}`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            return response.json();
-        })
-        .then(data => {
-            console.log(`[Dashboard] Search results:`, data);
+            
+            const data = await response.json();
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('searchHuggingfaceModels', false, responseTime);
+            
+            console.log(`[Dashboard] API search results:`, data);
             displayHFResults(data);
             updateSearchStats(data);
-        })
-        .catch(error => {
-            console.error('[Dashboard] Search error:', error);
-            resultsDiv.innerHTML = `<p>Search failed: ${error.message}. Please try again.</p>`;
-            showToast('Search failed', 'error');
-        });
+        }
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('searchHuggingfaceModels', false, responseTime);
+        
+        console.error('[Dashboard] Search error:', error);
+        resultsDiv.innerHTML = `<div class="error-message">
+            <p><strong>Search Failed</strong></p>
+            <p>${error.message}</p>
+            <button class="btn btn-primary btn-sm" onclick="searchHuggingFace()">🔄 Retry</button>
+        </div>`;
+        showToast('Search failed', 'error');
+    }
 }
 
 function displayHFResults(data) {
@@ -890,7 +920,7 @@ function testModelFromHF(modelId) {
     }, 100);
 }
 
-function downloadModel(modelId, buttonId) {
+async function downloadModel(modelId, buttonId) {
     console.log(`[Dashboard] Downloading model: ${modelId}`);
     showToast(`Initiating download for: ${modelId}`, 'info');
     
@@ -903,25 +933,41 @@ function downloadModel(modelId, buttonId) {
         button.classList.add('btn-secondary');
     }
     
-    // Call the MCP API to download the model
-    fetch('/api/mcp/models/download', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            model_id: modelId
-        })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const startTime = Date.now();
+    
+    try {
+        let data;
+        
+        // Use SDK method if available
+        if (mcpClient && mcpClient.downloadModel) {
+            data = await mcpClient.downloadModel(modelId);
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('downloadModel', true, responseTime);
+        } else {
+            // Fallback to direct API call if SDK not available
+            console.warn('[Dashboard] SDK not available, using direct API call');
+            const response = await fetch('/api/mcp/models/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model_id: modelId
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            data = await response.json();
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('downloadModel', false, responseTime);
         }
-        return response.json();
-    })
-    .then(data => {
+        
         console.log(`[Dashboard] Download response:`, data);
-        if (data.status === 'success') {
+        
+        if (data.status === 'success' || data.success) {
             showToast(`✓ Model ${modelId} downloaded successfully`, 'success');
             
             // Update button to show success
@@ -931,23 +977,20 @@ function downloadModel(modelId, buttonId) {
                 button.classList.add('btn-info');
             }
             
-            // Refresh the models list in Model Browser tab
+            // Refresh the models list
             if (typeof loadModels === 'function') {
                 loadModels();
             }
-        } else {
-            showToast(`Download failed: ${data.message || 'Unknown error'}`, 'error');
-            
-            // Reset button on failure
-            if (button) {
-                button.disabled = false;
-                button.innerHTML = '⬇️ Download';
-                button.classList.remove('btn-secondary');
-                button.classList.add('btn-success');
+            if (typeof loadAvailableModels === 'function') {
+                loadAvailableModels();
             }
+        } else {
+            throw new Error(data.message || data.error || 'Download failed');
         }
-    })
-    .catch(error => {
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('downloadModel', false, responseTime);
+        
         console.error('[Dashboard] Download error:', error);
         showToast(`Download failed: ${error.message}`, 'error');
         
@@ -958,7 +1001,215 @@ function downloadModel(modelId, buttonId) {
             button.classList.remove('btn-secondary');
             button.classList.add('btn-success');
         }
+    }
+}
+
+// New SDK-based model management functions
+
+async function showModelDetails(modelId) {
+    console.log(`[Dashboard] Fetching details for model: ${modelId}`);
+    
+    const startTime = Date.now();
+    
+    try {
+        let details;
+        
+        if (mcpClient && mcpClient.getModelDetails) {
+            details = await mcpClient.getModelDetails(modelId);
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelDetails', true, responseTime);
+        } else {
+            // Fallback to callTool
+            console.warn('[Dashboard] getModelDetails not available, using callTool');
+            details = await mcpClient.callTool('get_model_details', { model_id: modelId });
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelDetails', false, responseTime);
+        }
+        
+        console.log(`[Dashboard] Model details:`, details);
+        displayModelDetailsModal(details);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getModelDetails', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load model details:', error);
+        showToast(`Failed to load model details: ${error.message}`, 'error');
+    }
+}
+
+function displayModelDetailsModal(details) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content model-details-modal">
+            <div class="modal-header">
+                <h3>📦 ${details.model_name || details.model_id}</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="model-detail-section">
+                    <h4>Basic Information</h4>
+                    <div class="detail-grid">
+                        <div><strong>Model ID:</strong> ${details.model_id}</div>
+                        <div><strong>Architecture:</strong> ${details.architecture || 'N/A'}</div>
+                        <div><strong>Task:</strong> ${details.task || details.pipeline_tag || 'N/A'}</div>
+                        <div><strong>Language:</strong> ${details.language || 'N/A'}</div>
+                    </div>
+                </div>
+                
+                ${details.description ? `
+                <div class="model-detail-section">
+                    <h4>Description</h4>
+                    <p>${details.description}</p>
+                </div>
+                ` : ''}
+                
+                <div class="model-detail-section">
+                    <h4>Statistics</h4>
+                    <div class="detail-grid">
+                        <div><strong>Downloads:</strong> ${details.downloads || 0}</div>
+                        <div><strong>Likes:</strong> ${details.likes || 0}</div>
+                        <div><strong>Size:</strong> ${details.model_size || 'Unknown'}</div>
+                    </div>
+                </div>
+                
+                ${details.tags && details.tags.length > 0 ? `
+                <div class="model-detail-section">
+                    <h4>Tags</h4>
+                    <div class="tag-list">
+                        ${details.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+                <button class="btn btn-success" onclick="downloadModel('${details.model_id}'); this.closest('.modal-overlay').remove();">⬇️ Download</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+async function loadAvailableModels() {
+    console.log('[Dashboard] Loading available models list...');
+    
+    const startTime = Date.now();
+    
+    try {
+        let models;
+        
+        if (mcpClient && mcpClient.getModelList) {
+            models = await mcpClient.getModelList();
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelList', true, responseTime);
+        } else {
+            // Fallback to callTool
+            console.warn('[Dashboard] getModelList not available, using callTool');
+            models = await mcpClient.callTool('get_model_list', {});
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelList', false, responseTime);
+        }
+        
+        console.log(`[Dashboard] Available models:`, models);
+        displayAvailableModels(models);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getModelList', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load models list:', error);
+        showToast(`Failed to load models: ${error.message}`, 'error');
+    }
+}
+
+function displayAvailableModels(data) {
+    const modelsContainer = document.getElementById('available-models-list');
+    if (!modelsContainer) return;
+    
+    const models = data.models || data.results || data || [];
+    
+    if (models.length === 0) {
+        modelsContainer.innerHTML = '<p class="info-message">No models available locally. Search and download models from HuggingFace.</p>';
+        return;
+    }
+    
+    let html = '<div class="models-grid">';
+    
+    models.forEach(model => {
+        const modelId = model.model_id || model.id || model.name;
+        html += `
+            <div class="model-card">
+                <div class="model-card-header">
+                    <strong>${model.model_name || modelId}</strong>
+                </div>
+                <div class="model-card-body">
+                    <div class="model-meta-small">
+                        <span>📊 ${model.task || 'General'}</span>
+                        ${model.size ? `<span>💾 ${model.size}</span>` : ''}
+                    </div>
+                    ${model.description ? `<p class="model-description-small">${model.description.substring(0, 100)}...</p>` : ''}
+                </div>
+                <div class="model-card-actions">
+                    <button class="btn btn-sm btn-primary" onclick="showModelDetails('${modelId}')">ℹ️ Details</button>
+                    <button class="btn btn-sm btn-warning" onclick="testModelFromHF('${modelId}')">🔧 Test</button>
+                </div>
+            </div>
+        `;
     });
+    
+    html += '</div>';
+    modelsContainer.innerHTML = html;
+}
+
+async function loadModelStatistics() {
+    console.log('[Dashboard] Loading model statistics...');
+    
+    const startTime = Date.now();
+    
+    try {
+        let stats;
+        
+        if (mcpClient && mcpClient.getModelStats) {
+            stats = await mcpClient.getModelStats();
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelStats', true, responseTime);
+        } else {
+            // Fallback to callTool
+            console.warn('[Dashboard] getModelStats not available, using callTool');
+            stats = await mcpClient.callTool('get_model_stats', {});
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelStats', false, responseTime);
+        }
+        
+        console.log(`[Dashboard] Model statistics:`, stats);
+        displayModelStatistics(stats);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getModelStats', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load model statistics:', error);
+        // Don't show error toast for stats, just log it
+    }
+}
+
+function displayModelStatistics(stats) {
+    // Update statistics in the UI if elements exist
+    const totalModels = document.getElementById('total-models-stat');
+    const downloadedModels = document.getElementById('downloaded-models-stat');
+    const popularModel = document.getElementById('popular-model-stat');
+    
+    if (totalModels && stats.total_models !== undefined) {
+        totalModels.textContent = stats.total_models;
+    }
+    
+    if (downloadedModels && stats.downloaded_models !== undefined) {
+        downloadedModels.textContent = stats.downloaded_models;
+    }
+    
+    if (popularModel && stats.most_used_model) {
+        popularModel.textContent = stats.most_used_model;
+    }
 }
 
 function clearHFResults() {

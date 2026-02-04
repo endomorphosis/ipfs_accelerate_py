@@ -395,6 +395,20 @@
                 </div>
 
                 <div class="card">
+                    <h3>📦 Available Models</h3>
+                    <p style="color: #6b7280; margin-bottom: 15px;">Models downloaded and available locally</p>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="loadAvailableModels()">🔄 Refresh List</button>
+                        <button class="btn btn-info" onclick="loadModelStatistics()">📊 Load Stats</button>
+                    </div>
+                    <div id="available-models-list">
+                        <div style="padding: 20px; text-align: center; color: #6b7280;">
+                            Click "Refresh List" to load available models
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
                     <h3>🔧 Hardware Compatibility Testing</h3>
                     <div class="form-group">
                         <label for="test-model-id">Model ID:</label>
