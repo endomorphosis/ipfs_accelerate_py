@@ -6,6 +6,166 @@ let searchResults = [];
 let compatibilityResults = [];
 let autoRefreshInterval = null;
 
+// Cache for SDK operations
+const sdkCache = {
+    data: new Map(),
+    ttl: 5 * 60 * 1000, // 5 minutes default TTL
+    
+    set(key, value, ttl = this.ttl) {
+        this.data.set(key, {
+            value: value,
+            expires: Date.now() + ttl
+        });
+    },
+    
+    get(key) {
+        const item = this.data.get(key);
+        if (!item) return null;
+        
+        if (Date.now() > item.expires) {
+            this.data.delete(key);
+            return null;
+        }
+        
+        return item.value;
+    },
+    
+    clear() {
+        this.data.clear();
+    },
+    
+    has(key) {
+        const item = this.data.get(key);
+        if (!item) return false;
+        
+        if (Date.now() > item.expires) {
+            this.data.delete(key);
+            return false;
+        }
+        
+        return true;
+    }
+};
+
+// Debounce utility
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Throttle utility
+function throttle(func, limit) {
+    let inThrottle;
+    return function(...args) {
+        if (!inThrottle) {
+            func.apply(this, args);
+            inThrottle = true;
+            setTimeout(() => inThrottle = false, limit);
+        }
+    };
+}
+
+// Initialize MCP SDK Client
+let mcpClient = null;
+let sdkStats = {
+    totalCalls: 0,
+    successfulCalls: 0,
+    failedCalls: 0,
+    avgResponseTime: 0,
+    methodCalls: {}
+};
+
+// Initialize SDK on page load
+function initializeSDK() {
+    try {
+        mcpClient = new MCPClient('/jsonrpc', {
+            timeout: 30000,
+            retries: 3,
+            reportErrors: true
+        });
+        console.log('[Dashboard] MCP SDK client initialized');
+        
+        // Perform health check
+        checkSDKConnection();
+        
+        return true;
+    } catch (error) {
+        console.error('[Dashboard] Failed to initialize MCP SDK:', error);
+        updateConnectionStatus(false);
+        return false;
+    }
+}
+
+// Check SDK connection health
+async function checkSDKConnection() {
+    try {
+        // Try a simple SDK call to verify connection
+        const response = await fetch('/jsonrpc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'tools/list',
+                params: {},
+                id: Date.now()
+            })
+        });
+        
+        const connected = response.ok;
+        updateConnectionStatus(connected);
+        
+        return connected;
+    } catch (error) {
+        console.warn('[Dashboard] SDK connection check failed:', error);
+        updateConnectionStatus(false);
+        return false;
+    }
+}
+
+// Update connection status indicator
+function updateConnectionStatus(connected) {
+    const statusIndicator = document.getElementById('server-status');
+    if (statusIndicator) {
+        statusIndicator.className = connected ? 'status-indicator online' : 'status-indicator offline';
+        statusIndicator.title = connected ? 'SDK Connected' : 'SDK Disconnected';
+    }
+}
+
+// Track SDK method calls
+function trackSDKCall(method, success, responseTime) {
+    sdkStats.totalCalls++;
+    if (success) {
+        sdkStats.successfulCalls++;
+    } else {
+        sdkStats.failedCalls++;
+    }
+    
+    // Update average response time
+    sdkStats.avgResponseTime = 
+        (sdkStats.avgResponseTime * (sdkStats.totalCalls - 1) + responseTime) / sdkStats.totalCalls;
+    
+    // Track per-method calls
+    if (!sdkStats.methodCalls[method]) {
+        sdkStats.methodCalls[method] = { count: 0, successCount: 0, failCount: 0, avgTime: 0 };
+    }
+    sdkStats.methodCalls[method].count++;
+    if (success) {
+        sdkStats.methodCalls[method].successCount++;
+    } else {
+        sdkStats.methodCalls[method].failCount++;
+    }
+    sdkStats.methodCalls[method].avgTime = 
+        (sdkStats.methodCalls[method].avgTime * (sdkStats.methodCalls[method].count - 1) + responseTime) / 
+        sdkStats.methodCalls[method].count;
+}
+
 // Utility function for user notifications
 function showToast(message, type = 'info', duration = 3000) {
     console.log(`[Dashboard] ${type.toUpperCase()}: ${message}`);
@@ -98,6 +258,9 @@ function initializeTab(tabName) {
             } else {
                 console.warn('[Dashboard] GitHub Workflows manager not available');
             }
+            break;
+        case 'sdk-playground':
+            initializeSDKPlayground();
             break;
         case 'mcp-tools':
             refreshTools();
@@ -337,6 +500,7 @@ function updateInferenceForm() {
 function runInference() {
     const inferenceType = document.getElementById('inference-type')?.value;
     const modelId = document.getElementById('model-id')?.value;
+    const inferenceMode = document.getElementById('inference-mode')?.value || 'standard';
     const resultsDiv = document.getElementById('inference-results');
     const executionTimeSpan = document.getElementById('execution-time');
     const modelUsedSpan = document.getElementById('model-used');
@@ -344,51 +508,180 @@ function runInference() {
     if (!resultsDiv) return;
     
     // Show loading state
-    resultsDiv.innerHTML = '<div class="spinner"></div>Loading...';
+    resultsDiv.innerHTML = '<div class="spinner large"></div><p>Running inference...</p>';
     
-    // Simulate inference execution
-    setTimeout(() => {
-        const mockResults = generateMockInferenceResult(inferenceType);
-        resultsDiv.innerHTML = mockResults.result;
-        
-        if (executionTimeSpan) {
-            executionTimeSpan.textContent = mockResults.executionTime;
-        }
-        if (modelUsedSpan) {
-            modelUsedSpan.textContent = mockResults.modelUsed;
-        }
-    }, 2000);
+    // Check SDK availability
+    if (!mcpClient) {
+        resultsDiv.innerHTML = `
+            <div class="error-message">
+                <strong>❌ SDK Not Available</strong>
+                <p>The MCP SDK client is not initialized. Please check:</p>
+                <ul>
+                    <li>Server is running and accessible</li>
+                    <li>SDK client initialized on page load</li>
+                    <li>Network connection is stable</li>
+                </ul>
+                <button class="btn btn-primary" onclick="location.reload()">🔄 Reload Page</button>
+            </div>
+        `;
+        return;
+    }
+    
+    // Run inference based on selected mode
+    runInferenceViaSDK(inferenceType, modelId, inferenceMode, resultsDiv, executionTimeSpan, modelUsedSpan);
 }
 
-function generateMockInferenceResult(inferenceType) {
-    const results = {
-        'text-generate': {
-            result: 'Quantum computing is a revolutionary technology that leverages quantum mechanical phenomena...',
-            executionTime: '1.2s',
-            modelUsed: 'gpt2-medium'
-        },
-        'text-classify': {
-            result: 'Classification: Positive (confidence: 0.92)',
-            executionTime: '0.8s',
-            modelUsed: 'distilbert-base-uncased'
-        },
-        'text-embeddings': {
-            result: 'Generated 768-dimensional embedding vector',
-            executionTime: '0.5s',
-            modelUsed: 'sentence-transformers/all-MiniLM-L6-v2'
-        },
-        'image-classify': {
-            result: 'Top predictions: 1. Golden Retriever (0.89), 2. Labrador (0.08), 3. Dog (0.03)',
-            executionTime: '1.5s',
-            modelUsed: 'resnet50'
+async function runInferenceViaSDK(inferenceType, modelId, inferenceMode, resultsDiv, executionTimeSpan, modelUsedSpan) {
+    const startTime = Date.now();
+    
+    try {
+        // Get input based on inference type
+        const input = getInferenceInput(inferenceType);
+        
+        let result;
+        let toolName;
+        
+        // Choose inference method based on mode
+        switch (inferenceMode) {
+            case 'distributed':
+                toolName = 'run_distributed_inference';
+                result = await mcpClient.runDistributedInference(inferenceType, modelId || 'auto', input);
+                break;
+            case 'multiplex':
+                toolName = 'multiplex_inference';
+                // For multiplex, we can send multiple inputs
+                const inputs = Array.isArray(input) ? input : [input];
+                result = await mcpClient.multiplexInference(inferenceType, modelId || 'auto', inputs);
+                break;
+            default: // standard
+                toolName = 'run_inference';
+                result = await mcpClient.runInference(inferenceType, modelId || 'auto', input);
+                break;
         }
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall(toolName, true, responseTime);
+        
+        // Display results with better formatting
+        displayInferenceResults(result, inferenceType, resultsDiv);
+        
+        if (executionTimeSpan) {
+            executionTimeSpan.textContent = `${(responseTime / 1000).toFixed(2)}s`;
+            executionTimeSpan.style.color = responseTime < 5000 ? '#10b981' : '#f59e0b';
+        }
+        if (modelUsedSpan) {
+            modelUsedSpan.textContent = modelId || result.model_used || result.model || 'auto-selected';
+        }
+        
+        showToast(`✅ Inference completed in ${responseTime}ms`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('run_inference', false, responseTime);
+        
+        // Show proper error message (NO mock fallback)
+        console.error('[Dashboard] Inference via SDK failed:', error);
+        resultsDiv.innerHTML = `
+            <div class="error-message">
+                <strong>❌ Inference Failed</strong>
+                <p><strong>Error:</strong> ${error.message || error}</p>
+                <details>
+                    <summary>Technical Details</summary>
+                    <pre>${JSON.stringify(error, null, 2)}</pre>
+                </details>
+                <p><strong>Possible causes:</strong></p>
+                <ul>
+                    <li>Model not available or not loaded</li>
+                    <li>Invalid input format for inference type</li>
+                    <li>Server resource constraints</li>
+                    <li>Network connectivity issues</li>
+                </ul>
+                <div style="margin-top: 10px;">
+                    <button class="btn btn-primary" onclick="runInference()">🔄 Retry</button>
+                    <button class="btn btn-secondary" onclick="getModelRecommendations('${inferenceType}')">💡 Get Model Recommendations</button>
+                </div>
+            </div>
+        `;
+        
+        if (executionTimeSpan) {
+            executionTimeSpan.textContent = 'Failed';
+            executionTimeSpan.style.color = '#ef4444';
+        }
+        if (modelUsedSpan) {
+            modelUsedSpan.textContent = 'N/A';
+        }
+        
+        showToast('❌ Inference failed: ' + (error.message || error), 'error');
+    }
+}
+
+function displayInferenceResults(result, inferenceType, resultsDiv) {
+    // Format results based on inference type
+    let html = '';
+    
+    if (result.error) {
+        html = `<div class="warning">⚠️ ${result.error}</div>`;
+    } else if (typeof result === 'string') {
+        html = `<div class="result-text">${result}</div>`;
+    } else if (result.text || result.generated_text) {
+        html = `<div class="result-text">${result.text || result.generated_text}</div>`;
+    } else if (result.embeddings || result.embedding) {
+        const embeddings = result.embeddings || result.embedding;
+        html = `
+            <div class="result-embeddings">
+                <strong>Embeddings Generated:</strong>
+                <p>Dimensions: ${embeddings.length || 'Unknown'}</p>
+                <details>
+                    <summary>View Embeddings</summary>
+                    <pre>${JSON.stringify(embeddings.slice(0, 10), null, 2)}${embeddings.length > 10 ? '\n... (' + (embeddings.length - 10) + ' more)' : ''}</pre>
+                </details>
+            </div>
+        `;
+    } else if (result.labels || result.label) {
+        const labels = result.labels || [result.label];
+        html = `
+            <div class="result-classification">
+                <strong>Classification Results:</strong>
+                <ul>
+                    ${labels.map(l => `<li>${l.label || l}: ${((l.score || 0) * 100).toFixed(2)}%</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    } else if (result.image || result.images) {
+        html = `<div class="result-image"><img src="${result.image || result.images[0]}" alt="Generated image" style="max-width: 100%; border-radius: 8px;"/></div>`;
+    } else {
+        // Fallback to JSON display
+        html = `<pre class="result-json">${JSON.stringify(result, null, 2)}</pre>`;
+    }
+    
+    // Add metadata if available
+    if (result.confidence || result.score) {
+        html += `<div class="result-metadata"><strong>Confidence:</strong> ${((result.confidence || result.score) * 100).toFixed(2)}%</div>`;
+    }
+    
+    resultsDiv.innerHTML = html;
+}
+
+function getInferenceInput(inferenceType) {
+    // Get input from form fields based on inference type
+    const textInput = document.getElementById('text-input')?.value;
+    const promptInput = document.getElementById('prompt')?.value;
+    const questionInput = document.getElementById('question')?.value;
+    
+    if (textInput) return textInput;
+    if (promptInput) return promptInput;
+    if (questionInput) return questionInput;
+    
+    // Default inputs for testing
+    const defaults = {
+        'text-generation': 'Once upon a time',
+        'text-classification': 'This product is amazing!',
+        'text-embeddings': 'The quick brown fox jumps',
+        'translation': 'Hello world',
+        'summarization': 'This is a long text that needs to be summarized.',
+        'question-answering': 'What is AI?'
     };
     
-    return results[inferenceType] || {
-        result: `Inference completed for ${inferenceType}`,
-        executionTime: '1.0s',
-        modelUsed: 'auto-selected'
-    };
+    return defaults[inferenceType] || 'Test input';
 }
 
 function clearInferenceForm() {
@@ -410,8 +703,85 @@ function clearInferenceForm() {
     }
 }
 
+// Model Recommendations
+async function getModelRecommendations(inferenceType) {
+    const resultsDiv = document.getElementById('model-recommendations');
+    if (!resultsDiv) {
+        console.warn('Model recommendations div not found');
+        return;
+    }
+    
+    resultsDiv.innerHTML = '<div class="spinner"></div><p>Getting model recommendations...</p>';
+    
+    if (!mcpClient) {
+        resultsDiv.innerHTML = '<div class="warning">SDK not available for recommendations</div>';
+        return;
+    }
+    
+    try {
+        const startTime = Date.now();
+        const recommendations = await mcpClient.callTool('recommend_models', {
+            task: inferenceType,
+            limit: 5
+        });
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('recommend_models', true, responseTime);
+        
+        if (!recommendations || !recommendations.models || recommendations.models.length === 0) {
+            resultsDiv.innerHTML = '<div class="info">No specific recommendations available. Using auto-select.</div>';
+            return;
+        }
+        
+        let html = '<div class="model-recommendations"><h4>💡 Recommended Models:</h4><ul>';
+        recommendations.models.forEach((model, index) => {
+            const modelName = model.model_id || model.name || model;
+            const score = model.score || model.confidence || 0;
+            const description = model.description || 'No description available';
+            
+            html += `
+                <li class="model-recommendation-item">
+                    <div class="model-rec-header">
+                        <strong>${index + 1}. ${modelName}</strong>
+                        ${score > 0 ? `<span class="model-score">${(score * 100).toFixed(1)}%</span>` : ''}
+                    </div>
+                    <div class="model-rec-description">${description}</div>
+                    <button class="btn btn-sm btn-primary" onclick="selectRecommendedModel('${modelName}')">
+                        ✨ Use This Model
+                    </button>
+                </li>
+            `;
+        });
+        html += '</ul></div>';
+        
+        resultsDiv.innerHTML = html;
+        showToast(`✅ Found ${recommendations.models.length} recommended models`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('recommend_models', false, responseTime);
+        console.error('Failed to get model recommendations:', error);
+        resultsDiv.innerHTML = `<div class="warning">⚠️ Could not get recommendations: ${error.message}</div>`;
+    }
+}
+
+function selectRecommendedModel(modelId) {
+    const modelIdInput = document.getElementById('model-id');
+    if (modelIdInput) {
+        modelIdInput.value = modelId;
+        showToast(`✅ Selected model: ${modelId}`, 'success');
+    }
+}
+
+// Auto-load recommendations when inference type changes
+function loadModelRecommendationsForType() {
+    const inferenceType = document.getElementById('inference-type')?.value;
+    if (inferenceType && mcpClient) {
+        getModelRecommendations(inferenceType);
+    }
+}
+
 // HuggingFace Model Search Functions
-function searchHuggingFace() {
+async function searchHuggingFace() {
     const query = document.getElementById('hf-search')?.value;
     const taskFilter = document.getElementById('task-filter')?.value;
     const sizeFilter = document.getElementById('size-filter')?.value;
@@ -425,38 +795,68 @@ function searchHuggingFace() {
     }
     
     // Show loading state
-    resultsDiv.innerHTML = '<div class="spinner"></div>Searching HuggingFace Hub...';
-    
-    // Build query parameters - use MCP API endpoint
-    const params = new URLSearchParams({
-        q: query,
-        limit: '20'
-    });
-    
-    if (taskFilter) {
-        params.append('task', taskFilter);
-    }
+    resultsDiv.innerHTML = '<div class="spinner"></div>Searching HuggingFace Hub via SDK...';
     
     console.log(`[Dashboard] Searching HuggingFace with query: ${query}, task: ${taskFilter}`);
     
-    // Make API call to search models using MCP endpoint
-    fetch(`/api/mcp/models/search?${params}`)
-        .then(response => {
+    const startTime = Date.now();
+    
+    try {
+        // Use SDK method if available
+        if (mcpClient && mcpClient.searchHuggingfaceModels) {
+            const searchParams = {
+                query: query,
+                limit: 20
+            };
+            
+            if (taskFilter) {
+                searchParams.task = taskFilter;
+            }
+            
+            const data = await mcpClient.searchHuggingfaceModels(searchParams);
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('searchHuggingfaceModels', true, responseTime);
+            
+            console.log(`[Dashboard] SDK search results:`, data);
+            displayHFResults(data);
+            updateSearchStats(data);
+        } else {
+            // Fallback to direct API call if SDK not available
+            console.warn('[Dashboard] SDK not available, using direct API call');
+            const params = new URLSearchParams({
+                q: query,
+                limit: '20'
+            });
+            
+            if (taskFilter) {
+                params.append('task', taskFilter);
+            }
+            
+            const response = await fetch(`/api/mcp/models/search?${params}`);
             if (!response.ok) {
                 throw new Error(`HTTP ${response.status}: ${response.statusText}`);
             }
-            return response.json();
-        })
-        .then(data => {
-            console.log(`[Dashboard] Search results:`, data);
+            
+            const data = await response.json();
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('searchHuggingfaceModels', false, responseTime);
+            
+            console.log(`[Dashboard] API search results:`, data);
             displayHFResults(data);
             updateSearchStats(data);
-        })
-        .catch(error => {
-            console.error('[Dashboard] Search error:', error);
-            resultsDiv.innerHTML = `<p>Search failed: ${error.message}. Please try again.</p>`;
-            showToast('Search failed', 'error');
-        });
+        }
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('searchHuggingfaceModels', false, responseTime);
+        
+        console.error('[Dashboard] Search error:', error);
+        resultsDiv.innerHTML = `<div class="error-message">
+            <p><strong>Search Failed</strong></p>
+            <p>${error.message}</p>
+            <button class="btn btn-primary btn-sm" onclick="searchHuggingFace()">🔄 Retry</button>
+        </div>`;
+        showToast('Search failed', 'error');
+    }
 }
 
 function displayHFResults(data) {
@@ -520,7 +920,7 @@ function testModelFromHF(modelId) {
     }, 100);
 }
 
-function downloadModel(modelId, buttonId) {
+async function downloadModel(modelId, buttonId) {
     console.log(`[Dashboard] Downloading model: ${modelId}`);
     showToast(`Initiating download for: ${modelId}`, 'info');
     
@@ -533,25 +933,41 @@ function downloadModel(modelId, buttonId) {
         button.classList.add('btn-secondary');
     }
     
-    // Call the MCP API to download the model
-    fetch('/api/mcp/models/download', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            model_id: modelId
-        })
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const startTime = Date.now();
+    
+    try {
+        let data;
+        
+        // Use SDK method if available
+        if (mcpClient && mcpClient.downloadModel) {
+            data = await mcpClient.downloadModel(modelId);
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('downloadModel', true, responseTime);
+        } else {
+            // Fallback to direct API call if SDK not available
+            console.warn('[Dashboard] SDK not available, using direct API call');
+            const response = await fetch('/api/mcp/models/download', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model_id: modelId
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+            }
+            
+            data = await response.json();
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('downloadModel', false, responseTime);
         }
-        return response.json();
-    })
-    .then(data => {
+        
         console.log(`[Dashboard] Download response:`, data);
-        if (data.status === 'success') {
+        
+        if (data.status === 'success' || data.success) {
             showToast(`✓ Model ${modelId} downloaded successfully`, 'success');
             
             // Update button to show success
@@ -561,23 +977,20 @@ function downloadModel(modelId, buttonId) {
                 button.classList.add('btn-info');
             }
             
-            // Refresh the models list in Model Browser tab
+            // Refresh the models list
             if (typeof loadModels === 'function') {
                 loadModels();
             }
-        } else {
-            showToast(`Download failed: ${data.message || 'Unknown error'}`, 'error');
-            
-            // Reset button on failure
-            if (button) {
-                button.disabled = false;
-                button.innerHTML = '⬇️ Download';
-                button.classList.remove('btn-secondary');
-                button.classList.add('btn-success');
+            if (typeof loadAvailableModels === 'function') {
+                loadAvailableModels();
             }
+        } else {
+            throw new Error(data.message || data.error || 'Download failed');
         }
-    })
-    .catch(error => {
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('downloadModel', false, responseTime);
+        
         console.error('[Dashboard] Download error:', error);
         showToast(`Download failed: ${error.message}`, 'error');
         
@@ -588,7 +1001,215 @@ function downloadModel(modelId, buttonId) {
             button.classList.remove('btn-secondary');
             button.classList.add('btn-success');
         }
+    }
+}
+
+// New SDK-based model management functions
+
+async function showModelDetails(modelId) {
+    console.log(`[Dashboard] Fetching details for model: ${modelId}`);
+    
+    const startTime = Date.now();
+    
+    try {
+        let details;
+        
+        if (mcpClient && mcpClient.getModelDetails) {
+            details = await mcpClient.getModelDetails(modelId);
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelDetails', true, responseTime);
+        } else {
+            // Fallback to callTool
+            console.warn('[Dashboard] getModelDetails not available, using callTool');
+            details = await mcpClient.callTool('get_model_details', { model_id: modelId });
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelDetails', false, responseTime);
+        }
+        
+        console.log(`[Dashboard] Model details:`, details);
+        displayModelDetailsModal(details);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getModelDetails', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load model details:', error);
+        showToast(`Failed to load model details: ${error.message}`, 'error');
+    }
+}
+
+function displayModelDetailsModal(details) {
+    const modal = document.createElement('div');
+    modal.className = 'modal-overlay';
+    modal.innerHTML = `
+        <div class="modal-content model-details-modal">
+            <div class="modal-header">
+                <h3>📦 ${details.model_name || details.model_id}</h3>
+                <button class="modal-close" onclick="this.closest('.modal-overlay').remove()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="model-detail-section">
+                    <h4>Basic Information</h4>
+                    <div class="detail-grid">
+                        <div><strong>Model ID:</strong> ${details.model_id}</div>
+                        <div><strong>Architecture:</strong> ${details.architecture || 'N/A'}</div>
+                        <div><strong>Task:</strong> ${details.task || details.pipeline_tag || 'N/A'}</div>
+                        <div><strong>Language:</strong> ${details.language || 'N/A'}</div>
+                    </div>
+                </div>
+                
+                ${details.description ? `
+                <div class="model-detail-section">
+                    <h4>Description</h4>
+                    <p>${details.description}</p>
+                </div>
+                ` : ''}
+                
+                <div class="model-detail-section">
+                    <h4>Statistics</h4>
+                    <div class="detail-grid">
+                        <div><strong>Downloads:</strong> ${details.downloads || 0}</div>
+                        <div><strong>Likes:</strong> ${details.likes || 0}</div>
+                        <div><strong>Size:</strong> ${details.model_size || 'Unknown'}</div>
+                    </div>
+                </div>
+                
+                ${details.tags && details.tags.length > 0 ? `
+                <div class="model-detail-section">
+                    <h4>Tags</h4>
+                    <div class="tag-list">
+                        ${details.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}
+                    </div>
+                </div>
+                ` : ''}
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="this.closest('.modal-overlay').remove()">Close</button>
+                <button class="btn btn-success" onclick="downloadModel('${details.model_id}'); this.closest('.modal-overlay').remove();">⬇️ Download</button>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+}
+
+async function loadAvailableModels() {
+    console.log('[Dashboard] Loading available models list...');
+    
+    const startTime = Date.now();
+    
+    try {
+        let models;
+        
+        if (mcpClient && mcpClient.getModelList) {
+            models = await mcpClient.getModelList();
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelList', true, responseTime);
+        } else {
+            // Fallback to callTool
+            console.warn('[Dashboard] getModelList not available, using callTool');
+            models = await mcpClient.callTool('get_model_list', {});
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelList', false, responseTime);
+        }
+        
+        console.log(`[Dashboard] Available models:`, models);
+        displayAvailableModels(models);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getModelList', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load models list:', error);
+        showToast(`Failed to load models: ${error.message}`, 'error');
+    }
+}
+
+function displayAvailableModels(data) {
+    const modelsContainer = document.getElementById('available-models-list');
+    if (!modelsContainer) return;
+    
+    const models = data.models || data.results || data || [];
+    
+    if (models.length === 0) {
+        modelsContainer.innerHTML = '<p class="info-message">No models available locally. Search and download models from HuggingFace.</p>';
+        return;
+    }
+    
+    let html = '<div class="models-grid">';
+    
+    models.forEach(model => {
+        const modelId = model.model_id || model.id || model.name;
+        html += `
+            <div class="model-card">
+                <div class="model-card-header">
+                    <strong>${model.model_name || modelId}</strong>
+                </div>
+                <div class="model-card-body">
+                    <div class="model-meta-small">
+                        <span>📊 ${model.task || 'General'}</span>
+                        ${model.size ? `<span>💾 ${model.size}</span>` : ''}
+                    </div>
+                    ${model.description ? `<p class="model-description-small">${model.description.substring(0, 100)}...</p>` : ''}
+                </div>
+                <div class="model-card-actions">
+                    <button class="btn btn-sm btn-primary" onclick="showModelDetails('${modelId}')">ℹ️ Details</button>
+                    <button class="btn btn-sm btn-warning" onclick="testModelFromHF('${modelId}')">🔧 Test</button>
+                </div>
+            </div>
+        `;
     });
+    
+    html += '</div>';
+    modelsContainer.innerHTML = html;
+}
+
+async function loadModelStatistics() {
+    console.log('[Dashboard] Loading model statistics...');
+    
+    const startTime = Date.now();
+    
+    try {
+        let stats;
+        
+        if (mcpClient && mcpClient.getModelStats) {
+            stats = await mcpClient.getModelStats();
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelStats', true, responseTime);
+        } else {
+            // Fallback to callTool
+            console.warn('[Dashboard] getModelStats not available, using callTool');
+            stats = await mcpClient.callTool('get_model_stats', {});
+            const responseTime = Date.now() - startTime;
+            trackSDKCall('getModelStats', false, responseTime);
+        }
+        
+        console.log(`[Dashboard] Model statistics:`, stats);
+        displayModelStatistics(stats);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getModelStats', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load model statistics:', error);
+        // Don't show error toast for stats, just log it
+    }
+}
+
+function displayModelStatistics(stats) {
+    // Update statistics in the UI if elements exist
+    const totalModels = document.getElementById('total-models-stat');
+    const downloadedModels = document.getElementById('downloaded-models-stat');
+    const popularModel = document.getElementById('popular-model-stat');
+    
+    if (totalModels && stats.total_models !== undefined) {
+        totalModels.textContent = stats.total_models;
+    }
+    
+    if (downloadedModels && stats.downloaded_models !== undefined) {
+        downloadedModels.textContent = stats.downloaded_models;
+    }
+    
+    if (popularModel && stats.most_used_model) {
+        popularModel.textContent = stats.most_used_model;
+    }
 }
 
 function clearHFResults() {
@@ -920,13 +1541,116 @@ function refreshServerStatus() {
 }
 
 function refreshModels() {
-    console.log('Refreshing model list...');
+    console.log('[Dashboard] Refreshing model list via SDK...');
+    
+    if (!mcpClient) {
+        console.warn('[Dashboard] SDK not available, skipping model refresh');
+        return;
+    }
+    
+    // Use SDK to search for popular models
+    quickSearchModels('transformer', 10);
+}
+
+async function quickSearchModels(query, limit = 10) {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.callTool('search_models', {
+            query: query,
+            limit: limit
+        });
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('search_models', true, responseTime);
+        
+        console.log('[Dashboard] Model search results:', result);
+        showToast(`Found models (${responseTime}ms)`, 'success');
+        
+        return result;
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('search_models', false, responseTime);
+        
+        console.error('[Dashboard] Model search failed:', error);
+        showToast('Failed to search models', 'error');
+        
+        return null;
+    }
+}
+
+async function quickRecommendModels(task, constraints = {}) {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.callTool('recommend_models', {
+            task: task,
+            constraints: constraints
+        });
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('recommend_models', true, responseTime);
+        
+        console.log('[Dashboard] Model recommendations:', result);
+        showToast(`Got recommendations (${responseTime}ms)`, 'success');
+        
+        return result;
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('recommend_models', false, responseTime);
+        
+        console.error('[Dashboard] Model recommendation failed:', error);
+        showToast('Failed to get recommendations', 'error');
+        
+        return null;
+    }
 }
 
 function loadModel() {
     const modelId = prompt('Enter model ID to load:');
     if (modelId) {
-        alert(`Loading model: ${modelId}`);
+        if (mcpClient) {
+            loadModelViaSDK(modelId);
+        } else {
+            alert(`Loading model: ${modelId}`);
+        }
+    }
+}
+
+async function loadModelViaSDK(modelId) {
+    const startTime = Date.now();
+    
+    try {
+        // Try to get model details via SDK
+        const result = await mcpClient.callTool('get_model_details', {
+            model_id: modelId
+        });
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('get_model_details', true, responseTime);
+        
+        console.log('[Dashboard] Model details:', result);
+        showToast(`Model loaded (${responseTime}ms)`, 'success');
+        
+        return result;
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('get_model_details', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load model:', error);
+        showToast(`Failed to load model: ${error.message}`, 'error');
+        
+        return null;
     }
 }
 
@@ -943,28 +1667,528 @@ function refreshMetrics() {
 }
 
 // Queue Functions
+// Overview Tab Functions
+let overviewRefreshInterval = null;
+
+function refreshStatus() {
+    console.log('[Dashboard] Refreshing overview status via SDK...');
+    
+    if (!mcpClient) {
+        console.warn('[Dashboard] SDK not available for status refresh');
+        return;
+    }
+    
+    // Load all overview data
+    loadServerStatusFromSDK();
+    loadSystemMetricsFromSDK();
+    loadCacheStatsFromSDK();
+    loadPeerStatusFromSDK();
+    
+    // Start auto-refresh if not already running
+    if (!overviewRefreshInterval) {
+        startOverviewAutoRefresh();
+    }
+}
+
+async function loadServerStatusFromSDK() {
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getServerStatus();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getServerStatus', true, responseTime);
+        
+        // Update UI with server status
+        updateServerStatusUI(result);
+        console.log('[Dashboard] Server status loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getServerStatus', false, responseTime);
+        console.error('[Dashboard] Failed to load server status:', error);
+    }
+}
+
+function updateServerStatusUI(data) {
+    // Update available tools count
+    const toolsCountEl = document.querySelector('.info-row span:contains("Available Tools:")');
+    if (toolsCountEl && data.tools_count) {
+        toolsCountEl.nextElementSibling.textContent = data.tools_count;
+    }
+    
+    // Update status indicator
+    const statusEl = document.querySelector('.status-running');
+    if (statusEl && data.status) {
+        statusEl.textContent = data.status;
+        statusEl.className = data.status === 'running' ? 'status-running' : 'status-stopped';
+    }
+}
+
+async function loadSystemMetricsFromSDK() {
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getDashboardSystemMetrics();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardSystemMetrics', true, responseTime);
+        
+        // Update UI with system metrics
+        updateSystemMetricsUI(result);
+        console.log('[Dashboard] System metrics loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardSystemMetrics', false, responseTime);
+        console.error('[Dashboard] Failed to load system metrics:', error);
+    }
+}
+
+function updateSystemMetricsUI(data) {
+    // Update CPU usage
+    const cpuEl = document.querySelector('[data-metric="cpu"]');
+    if (cpuEl && data.cpu_usage !== undefined) {
+        cpuEl.textContent = `${data.cpu_usage}%`;
+        cpuEl.style.color = data.cpu_usage > 80 ? '#ef4444' : '#10b981';
+    }
+    
+    // Update Memory usage
+    const memEl = document.querySelector('[data-metric="memory"]');
+    if (memEl && data.memory_usage !== undefined) {
+        memEl.textContent = `${data.memory_usage}%`;
+        memEl.style.color = data.memory_usage > 80 ? '#ef4444' : '#10b981';
+    }
+    
+    // Update Disk usage
+    const diskEl = document.querySelector('[data-metric="disk"]');
+    if (diskEl && data.disk_usage !== undefined) {
+        diskEl.textContent = `${data.disk_usage}%`;
+    }
+    
+    // Update Network usage
+    const netEl = document.querySelector('[data-metric="network"]');
+    if (netEl && data.network_throughput) {
+        netEl.textContent = data.network_throughput;
+    }
+}
+
+async function loadCacheStatsFromSDK() {
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getDashboardCacheStats();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardCacheStats', true, responseTime);
+        
+        // Update UI with cache stats
+        updateCacheStatsUI(result);
+        console.log('[Dashboard] Cache stats loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardCacheStats', false, responseTime);
+        console.error('[Dashboard] Failed to load cache stats:', error);
+    }
+}
+
+function updateCacheStatsUI(data) {
+    // Update cache statistics if available
+    if (data.hits !== undefined && data.misses !== undefined) {
+        const total = data.hits + data.misses;
+        const hitRate = total > 0 ? ((data.hits / total) * 100).toFixed(1) : 0;
+        console.log(`[Dashboard] Cache hit rate: ${hitRate}%`);
+    }
+}
+
+async function loadPeerStatusFromSDK() {
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getDashboardPeerStatus();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardPeerStatus', true, responseTime);
+        
+        // Update UI with peer status
+        updatePeerStatusUI(result);
+        console.log('[Dashboard] Peer status loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getDashboardPeerStatus', false, responseTime);
+        console.error('[Dashboard] Failed to load peer status:', error);
+    }
+}
+
+function updatePeerStatusUI(data) {
+    // Update peer count if available
+    if (data.peer_count !== undefined) {
+        console.log(`[Dashboard] Connected peers: ${data.peer_count}`);
+    }
+}
+
+function startOverviewAutoRefresh() {
+    // Clear existing interval if any
+    if (overviewRefreshInterval) {
+        clearInterval(overviewRefreshInterval);
+    }
+    
+    // Refresh every 10 seconds
+    overviewRefreshInterval = setInterval(() => {
+        console.log('[Dashboard] Auto-refreshing overview data...');
+        loadServerStatusFromSDK();
+        loadSystemMetricsFromSDK();
+        loadCacheStatsFromSDK();
+        loadPeerStatusFromSDK();
+    }, 10000);
+    
+    console.log('[Dashboard] Overview auto-refresh started (10s interval)');
+}
+
+function stopOverviewAutoRefresh() {
+    if (overviewRefreshInterval) {
+        clearInterval(overviewRefreshInterval);
+        overviewRefreshInterval = null;
+        console.log('[Dashboard] Overview auto-refresh stopped');
+    }
+}
+
+// Queue Monitor auto-refresh interval
+let queueRefreshInterval = null;
+
 function refreshQueue() {
-    console.log('Refreshing queue status...');
+    console.log('[Dashboard] Refreshing queue status via SDK...');
+    
+    if (!mcpClient) {
+        console.warn('[Dashboard] SDK not available for queue monitoring');
+        displayQueueError('SDK not initialized');
+        return;
+    }
+    
+    // Load all queue-related data
+    loadQueueStatusFromSDK();
+    loadQueueHistoryFromSDK();
+    loadPerformanceMetricsFromSDK();
+    
+    // Start auto-refresh if not already running
+    if (!queueRefreshInterval) {
+        startQueueAutoRefresh();
+    }
+}
+
+async function loadQueueStatusFromSDK() {
+    const queueStatusDiv = document.getElementById('queue-status-data');
+    if (!queueStatusDiv) return;
+    
+    // Check cache
+    const cached = sdkCache.get('queue_status');
+    if (cached) {
+        displayQueueStatus(cached);
+        return;
+    }
+    
+    // Show loading
+    queueStatusDiv.innerHTML = '<div class="spinner large"></div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getQueueStatus();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getQueueStatus', true, responseTime);
+        
+        // Cache for 5 seconds
+        sdkCache.set('queue_status', result, 5000);
+        
+        displayQueueStatus(result);
+        console.log('[Dashboard] Queue status loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getQueueStatus', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load queue status:', error);
+        queueStatusDiv.innerHTML = `<div class="error-message">Failed to load queue status: ${error.message}</div>`;
+    }
+}
+
+function displayQueueStatus(data) {
+    const queueStatusDiv = document.getElementById('queue-status-data');
+    if (!queueStatusDiv) return;
+    
+    const queueSize = data.queue_size || 0;
+    const pending = data.pending || 0;
+    const running = data.running || 0;
+    const completed = data.completed || 0;
+    const failed = data.failed || 0;
+    const workers = data.workers || 0;
+    const throughput = data.throughput || '0/s';
+    
+    queueStatusDiv.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div class="metric-card">
+                <div class="metric-label">Queue Size</div>
+                <div class="metric-value">${queueSize}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Pending</div>
+                <div class="metric-value" style="color: #f59e0b;">${pending}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Running</div>
+                <div class="metric-value" style="color: #3b82f6;">${running}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Completed</div>
+                <div class="metric-value" style="color: #10b981;">${completed}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Failed</div>
+                <div class="metric-value" style="color: #ef4444;">${failed}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Workers</div>
+                <div class="metric-value">${workers}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Throughput</div>
+                <div class="metric-value">${throughput}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Last Updated</div>
+                <div class="metric-value" style="font-size: 14px;">${new Date().toLocaleTimeString()}</div>
+            </div>
+        </div>
+    `;
+}
+
+async function loadQueueHistoryFromSDK() {
+    const historyDiv = document.getElementById('queue-history-data');
+    if (!historyDiv) return;
+    
+    // Check cache
+    const cached = sdkCache.get('queue_history');
+    if (cached) {
+        displayQueueHistory(cached);
+        return;
+    }
+    
+    // Show loading
+    historyDiv.innerHTML = '<div class="spinner large"></div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getQueueHistory();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getQueueHistory', true, responseTime);
+        
+        // Cache for 5 seconds
+        sdkCache.set('queue_history', result, 5000);
+        
+        displayQueueHistory(result);
+        console.log('[Dashboard] Queue history loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getQueueHistory', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load queue history:', error);
+        historyDiv.innerHTML = `<div class="error-message">Failed to load queue history: ${error.message}</div>`;
+    }
+}
+
+function displayQueueHistory(data) {
+    const historyDiv = document.getElementById('queue-history-data');
+    if (!historyDiv) return;
+    
+    const history = data.history || [];
+    
+    if (history.length === 0) {
+        historyDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">No queue history available</div>';
+        return;
+    }
+    
+    const historyHtml = history.slice(0, 10).map(item => `
+        <div style="padding: 10px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between;">
+            <span>${item.task_name || 'Unknown task'}</span>
+            <span style="color: ${item.status === 'completed' ? '#10b981' : '#ef4444'};">
+                ${item.status} (${item.duration || 'N/A'})
+            </span>
+        </div>
+    `).join('');
+    
+    historyDiv.innerHTML = historyHtml;
+}
+
+async function loadPerformanceMetricsFromSDK() {
+    const metricsDiv = document.getElementById('performance-metrics-data');
+    if (!metricsDiv) return;
+    
+    // Check cache
+    const cached = sdkCache.get('performance_metrics');
+    if (cached) {
+        displayPerformanceMetrics(cached);
+        return;
+    }
+    
+    // Show loading
+    metricsDiv.innerHTML = '<div class="spinner large"></div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getPerformanceMetrics();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getPerformanceMetrics', true, responseTime);
+        
+        // Cache for 5 seconds
+        sdkCache.set('performance_metrics', result, 5000);
+        
+        displayPerformanceMetrics(result);
+        console.log('[Dashboard] Performance metrics loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getPerformanceMetrics', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load performance metrics:', error);
+        metricsDiv.innerHTML = `<div class="error-message">Failed to load performance metrics: ${error.message}</div>`;
+    }
+}
+
+function displayPerformanceMetrics(data) {
+    const metricsDiv = document.getElementById('performance-metrics-data');
+    if (!metricsDiv) return;
+    
+    const cpu = data.cpu_usage || 0;
+    const memory = data.memory_usage || 0;
+    const disk = data.disk_usage || 0;
+    const network = data.network_throughput || '0 MB/s';
+    
+    metricsDiv.innerHTML = `
+        <div style="display: grid; gap: 15px;">
+            <div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>CPU Usage</span>
+                    <span>${cpu}%</span>
+                </div>
+                <div style="background: #e5e7eb; height: 10px; border-radius: 5px; overflow: hidden;">
+                    <div style="background: ${cpu > 80 ? '#ef4444' : '#3b82f6'}; height: 100%; width: ${cpu}%;"></div>
+                </div>
+            </div>
+            <div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>Memory Usage</span>
+                    <span>${memory}%</span>
+                </div>
+                <div style="background: #e5e7eb; height: 10px; border-radius: 5px; overflow: hidden;">
+                    <div style="background: ${memory > 80 ? '#ef4444' : '#10b981'}; height: 100%; width: ${memory}%;"></div>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 10px;">
+                <div class="metric-card">
+                    <div class="metric-label">Disk Usage</div>
+                    <div class="metric-value">${disk}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Network</div>
+                    <div class="metric-value" style="font-size: 16px;">${network}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function startQueueAutoRefresh() {
+    // Clear existing interval if any
+    if (queueRefreshInterval) {
+        clearInterval(queueRefreshInterval);
+    }
+    
+    // Refresh every 5 seconds
+    queueRefreshInterval = setInterval(() => {
+        console.log('[Dashboard] Auto-refreshing queue data...');
+        
+        // Clear cache to force fresh data
+        sdkCache.clear('queue_status');
+        sdkCache.clear('queue_history');
+        sdkCache.clear('performance_metrics');
+        
+        // Reload data
+        loadQueueStatusFromSDK();
+        loadQueueHistoryFromSDK();
+        loadPerformanceMetricsFromSDK();
+    }, 5000);
+    
+    console.log('[Dashboard] Queue auto-refresh started (5s interval)');
+}
+
+function stopQueueAutoRefresh() {
+    if (queueRefreshInterval) {
+        clearInterval(queueRefreshInterval);
+        queueRefreshInterval = null;
+        console.log('[Dashboard] Queue auto-refresh stopped');
+    }
+}
+
+function displayQueueError(message) {
+    const statusDiv = document.getElementById('queue-status-data');
+    const historyDiv = document.getElementById('queue-history-data');
+    const metricsDiv = document.getElementById('performance-metrics-data');
+    
+    const errorHtml = `<div class="error-message">${message}</div>`;
+    
+    if (statusDiv) statusDiv.innerHTML = errorHtml;
+    if (historyDiv) historyDiv.innerHTML = errorHtml;
+    if (metricsDiv) metricsDiv.innerHTML = errorHtml;
 }
 
 function clearQueue() {
     if (confirm('Are you sure you want to clear the queue?')) {
-        alert('Queue cleared');
+        if (mcpClient) {
+            // TODO: Add SDK method for clearing queue when available
+            showToast('Queue clear not yet implemented via SDK', 'warning');
+        } else {
+            alert('Queue cleared');
+        }
     }
 }
 
 function addWorker() {
-    alert('Adding new worker to pool...');
+    if (mcpClient) {
+        // TODO: Add SDK method for adding workers when available
+        showToast('Add worker not yet implemented via SDK', 'warning');
+    } else {
+        alert('Adding new worker to pool...');
+    }
 }
 
 function removeWorker() {
     if (confirm('Remove a worker from the pool?')) {
-        alert('Worker removed');
+        if (mcpClient) {
+            // TODO: Add SDK method for removing workers when available
+            showToast('Remove worker not yet implemented via SDK', 'warning');
+        } else {
+            alert('Worker removed');
+        }
     }
 }
 
 function exportQueueStats() {
-    alert('Exporting queue statistics...');
+    if (mcpClient) {
+        // Export current queue data as JSON
+        const queueData = {
+            status: sdkCache.get('queue_status'),
+            history: sdkCache.get('queue_history'),
+            metrics: sdkCache.get('performance_metrics'),
+            timestamp: new Date().toISOString()
+        };
+        
+        const dataStr = JSON.stringify(queueData, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `queue-stats-${Date.now()}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        
+        showToast('Queue stats exported', 'success');
+    } else {
+        alert('Exporting queue statistics...');
+    }
 }
 
 // MCP Tools Functions
@@ -989,10 +2213,15 @@ function refreshTools() {
         })
         .then(data => {
             console.log('[Dashboard] Tools loaded:', data);
+            
+            // Cache the tools data for filtering
+            cachedToolsData = data;
+            
             toolsGrid.innerHTML = '';
             
             // Handle different response formats
             const tools = data.tools || data.data || [];
+            const categories = data.categories || {};
             const total = data.total || tools.length;
             
             if (tools.length === 0) {
@@ -1001,28 +2230,100 @@ function refreshTools() {
                 return;
             }
             
-            // Display each tool
-            tools.forEach(tool => {
-                const toolTag = document.createElement('div');
-                toolTag.className = 'tool-tag';
-                toolTag.textContent = tool.name || tool;
+            // Display tools by category
+            if (Object.keys(categories).length > 0) {
+                // Sort categories alphabetically
+                const sortedCategories = Object.keys(categories).sort();
                 
-                // Add description as tooltip if available
-                if (tool.description) {
-                    toolTag.title = tool.description;
-                }
-                
-                // Add status indicator if available
-                if (tool.status === 'error' || tool.status === 'inactive') {
-                    toolTag.style.background = '#fee2e2';
-                    toolTag.style.color = '#991b1b';
-                    toolTag.textContent += ' ⚠️';
-                }
-                
-                toolsGrid.appendChild(toolTag);
-            });
+                sortedCategories.forEach(category => {
+                    const categoryTools = categories[category];
+                    
+                    // Create category section
+                    const categoryDiv = document.createElement('div');
+                    categoryDiv.className = 'tool-category';
+                    categoryDiv.style.cssText = 'margin-bottom: 20px;';
+                    
+                    // Category header
+                    const categoryHeader = document.createElement('h4');
+                    categoryHeader.textContent = `${category} (${categoryTools.length})`;
+                    categoryHeader.style.cssText = 'margin-bottom: 10px; color: #374151; font-size: 14px; font-weight: 600;';
+                    categoryDiv.appendChild(categoryHeader);
+                    
+                    // Create tools container for this category
+                    const categoryToolsDiv = document.createElement('div');
+                    categoryToolsDiv.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
+                    
+                    // Display each tool in category
+                    categoryTools.forEach(tool => {
+                        // Normalize tool to an object shape so the modal receives the expected structure
+                        const toolObj = (tool && typeof tool === 'object') ? tool : { name: tool };
+                        
+                        const toolTag = document.createElement('button');
+                        toolTag.type = 'button';
+                        toolTag.className = 'tool-tag';
+                        toolTag.style.cssText = 'cursor: pointer; padding: 6px 12px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 12px; transition: all 0.2s; border: none;';
+                        toolTag.textContent = toolObj.name || tool;
+                        
+                        // Add description as tooltip if available
+                        if (toolObj.description) {
+                            toolTag.title = toolObj.description;
+                        }
+                        
+                        // Add status indicator if available
+                        if (toolObj.status === 'error' || toolObj.status === 'inactive') {
+                            toolTag.style.background = '#fee2e2';
+                            toolTag.style.color = '#991b1b';
+                            toolTag.textContent += ' ⚠️';
+                        }
+                        
+                        // Add click handler to show tool execution UI
+                        toolTag.addEventListener('click', () => showToolExecutionModal(toolObj));
+                        
+                        // Add hover effect
+                        toolTag.addEventListener('mouseenter', function() {
+                            this.style.background = '#c7d2fe';
+                            this.style.transform = 'translateY(-1px)';
+                        });
+                        toolTag.addEventListener('mouseleave', function() {
+                            this.style.background = toolObj.status === 'error' ? '#fee2e2' : '#e0e7ff';
+                            this.style.transform = 'translateY(0)';
+                        });
+                        
+                        categoryToolsDiv.appendChild(toolTag);
+                    });
+                    
+                    categoryDiv.appendChild(categoryToolsDiv);
+                    toolsGrid.appendChild(categoryDiv);
+                });
+            } else {
+                // Fallback: display tools without categories
+                tools.forEach(tool => {
+                    // Normalize tool to an object shape
+                    const toolObj = (tool && typeof tool === 'object') ? tool : { name: tool };
+                    
+                    const toolTag = document.createElement('button');
+                    toolTag.type = 'button';
+                    toolTag.className = 'tool-tag';
+                    toolTag.style.cssText = 'cursor: pointer; padding: 6px 12px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 12px; transition: all 0.2s; border: none;';
+                    toolTag.textContent = toolObj.name || tool;
+                    
+                    if (toolObj.description) {
+                        toolTag.title = toolObj.description;
+                    }
+                    
+                    if (toolObj.status === 'error' || toolObj.status === 'inactive') {
+                        toolTag.style.background = '#fee2e2';
+                        toolTag.style.color = '#991b1b';
+                        toolTag.textContent += ' ⚠️';
+                    }
+                    
+                    toolTag.addEventListener('click', () => showToolExecutionModal(toolObj));
+                    
+                    toolsGrid.appendChild(toolTag);
+                });
+            }
             
-            console.log(`[Dashboard] Successfully loaded ${total} MCP tools`);
+            console.log(`[Dashboard] Successfully loaded ${total} MCP tools in ${Object.keys(categories).length} categories`);
             showToast(`Loaded ${total} MCP tools`, 'success');
         })
         .catch(error => {
@@ -2063,6 +3364,15 @@ function startAutoRefresh() {
 
 // Initialize dashboard
 document.addEventListener('DOMContentLoaded', function() {
+    // Initialize MCP SDK client first
+    initializeSDK();
+    
+    // Initialize keyboard shortcuts
+    initializeKeyboardShortcuts();
+    
+    // Add floating SDK menu
+    createFloatingSDKMenu();
+    
     // Initialize overview tab
     showTab('overview');
     
@@ -2091,9 +3401,1858 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// Keyboard Shortcuts
+function initializeKeyboardShortcuts() {
+    document.addEventListener('keydown', function(e) {
+        // Prevent shortcuts when typing in input fields (except for special keys)
+        const isInputField = e.target.tagName === 'INPUT' || 
+                           e.target.tagName === 'TEXTAREA' || 
+                           e.target.isContentEditable;
+        
+        // ? key: Show keyboard shortcuts help (works anywhere)
+        if (e.key === '?' && !isInputField) {
+            e.preventDefault();
+            showKeyboardShortcuts();
+            return;
+        }
+        
+        // Esc key: Close modals
+        if (e.key === 'Escape') {
+            closeKeyboardShortcuts();
+            closeCommandPalette();
+            return;
+        }
+        
+        // Don't process other shortcuts when in input fields
+        if (isInputField && !e.ctrlKey && !e.metaKey) {
+            return;
+        }
+        
+        // Ctrl/Cmd + K: Open command palette
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            toggleCommandPalette();
+        }
+        
+        // Ctrl/Cmd + 1-9: Switch tabs
+        if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '9') {
+            e.preventDefault();
+            const tabs = ['overview', 'ai-inference', 'model-manager', 'queue-monitor', 
+                          'github-workflows', 'sdk-playground', 'mcp-tools', 'coverage', 'system-logs'];
+            const index = parseInt(e.key) - 1;
+            if (index < tabs.length) {
+                showTab(tabs[index]);
+            }
+        }
+        
+        // Ctrl/Cmd + H: Quick hardware info
+        if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+            e.preventDefault();
+            quickGetHardwareInfo();
+        }
+        
+        // Ctrl/Cmd + D: Quick Docker status
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+            e.preventDefault();
+            quickListContainers();
+        }
+        
+        // Ctrl/Cmd + Shift + R: Refresh all
+        if ((e.ctrlKey || e.metaKey) && e.key === 'r' && e.shiftKey) {
+            e.preventDefault();
+            quickRefreshAll();
+        }
+    });
+    
+    console.log('[Dashboard] Keyboard shortcuts initialized');
+}
+
+// Keyboard Shortcuts Modal Functions
+function showKeyboardShortcuts() {
+    const modal = document.getElementById('keyboard-shortcuts-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+function closeKeyboardShortcuts() {
+    const modal = document.getElementById('keyboard-shortcuts-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
+}
+
+// Floating SDK Menu
+function createFloatingSDKMenu() {
+    const menu = document.createElement('div');
+    menu.id = 'floating-sdk-menu';
+    menu.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9999;
+    `;
+    
+    menu.innerHTML = `
+        <button id="sdk-menu-btn" style="
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: transform 0.2s;
+        ">⚡</button>
+        <div id="sdk-quick-menu" style="
+            display: none;
+            position: absolute;
+            bottom: 70px;
+            right: 0;
+            background: white;
+            border-radius: 12px;
+            padding: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            min-width: 200px;
+        ">
+            <div style="font-weight: 600; margin-bottom: 10px; padding: 5px 10px; border-bottom: 1px solid #e5e7eb;">
+                Quick SDK Actions
+            </div>
+            <button onclick="quickGetHardwareInfo()" class="quick-menu-item">🔧 Hardware Info</button>
+            <button onclick="quickListContainers()" class="quick-menu-item">🐳 Docker Status</button>
+            <button onclick="quickGetNetworkPeers()" class="quick-menu-item">🌐 Network Peers</button>
+            <button onclick="quickRefreshAll()" class="quick-menu-item">🔄 Refresh All</button>
+            <div style="margin: 5px 0; border-top: 1px solid #e5e7eb;"></div>
+            <button onclick="showTab('sdk-playground')" class="quick-menu-item">🎮 SDK Playground</button>
+            <button onclick="showSDKStats()" class="quick-menu-item">📊 SDK Stats</button>
+        </div>
+    `;
+    
+    document.body.appendChild(menu);
+    
+    // Toggle menu
+    const btn = document.getElementById('sdk-menu-btn');
+    const quickMenu = document.getElementById('sdk-quick-menu');
+    
+    btn.addEventListener('click', function() {
+        const isVisible = quickMenu.style.display === 'block';
+        quickMenu.style.display = isVisible ? 'none' : 'block';
+    });
+    
+    btn.addEventListener('mouseenter', function() {
+        this.style.transform = 'scale(1.1)';
+    });
+    
+    btn.addEventListener('mouseleave', function() {
+        this.style.transform = 'scale(1)';
+    });
+    
+    // Close menu when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!menu.contains(e.target)) {
+            quickMenu.style.display = 'none';
+        }
+    });
+    
+    console.log('[Dashboard] Floating SDK menu created');
+}
+
+// Command Palette
+let commandPaletteOpen = false;
+
+function toggleCommandPalette() {
+    if (commandPaletteOpen) {
+        closeCommandPalette();
+    } else {
+        openCommandPalette();
+    }
+}
+
+function openCommandPalette() {
+    const palette = document.createElement('div');
+    palette.id = 'command-palette';
+    palette.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 10000;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 100px;
+    `;
+    
+    palette.innerHTML = `
+        <div style="
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        ">
+            <input type="text" id="command-input" placeholder="Type a command or search..." 
+                style="width: 100%; padding: 15px; border: 2px solid #667eea; border-radius: 8px; font-size: 16px; outline: none;" />
+            <div id="command-results" style="margin-top: 15px; max-height: 400px; overflow-y: auto;"></div>
+        </div>
+    `;
+    
+    document.body.appendChild(palette);
+    
+    const input = document.getElementById('command-input');
+    input.focus();
+    
+    // Command list
+    const commands = [
+        { name: 'Hardware Info', action: () => { quickGetHardwareInfo(); closeCommandPalette(); }, icon: '🔧' },
+        { name: 'Docker Status', action: () => { quickListContainers(); closeCommandPalette(); }, icon: '🐳' },
+        { name: 'Network Peers', action: () => { quickGetNetworkPeers(); closeCommandPalette(); }, icon: '🌐' },
+        { name: 'Refresh All', action: () => { quickRefreshAll(); closeCommandPalette(); }, icon: '🔄' },
+        { name: 'SDK Playground', action: () => { showTab('sdk-playground'); closeCommandPalette(); }, icon: '🎮' },
+        { name: 'SDK Stats', action: () => { showSDKStats(); closeCommandPalette(); }, icon: '📊' },
+        { name: 'MCP Tools', action: () => { showTab('mcp-tools'); closeCommandPalette(); }, icon: '🔧' },
+        { name: 'AI Inference', action: () => { showTab('ai-inference'); closeCommandPalette(); }, icon: '🤖' },
+        { name: 'Model Manager', action: () => { showTab('model-manager'); closeCommandPalette(); }, icon: '📚' },
+    ];
+    
+    input.addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase();
+        const results = commands.filter(cmd => cmd.name.toLowerCase().includes(query));
+        
+        const resultsDiv = document.getElementById('command-results');
+        resultsDiv.innerHTML = ''; // Clear previous results
+        
+        // Build command items using DOM APIs to avoid code injection
+        results.forEach((cmd, index) => {
+            const commandItem = document.createElement('div');
+            commandItem.className = 'command-item';
+            commandItem.dataset.index = index;
+            commandItem.style.cssText = `
+                padding: 12px 15px;
+                cursor: pointer;
+                border-radius: 6px;
+                transition: background 0.2s;
+                margin-bottom: 5px;
+            `;
+            commandItem.textContent = `${cmd.icon} ${cmd.name}`;
+            
+            // Attach event listener directly instead of using inline onclick
+            commandItem.addEventListener('click', () => {
+                cmd.action();
+            });
+            
+            commandItem.addEventListener('mouseenter', function() {
+                this.style.background = '#f3f4f6';
+            });
+            commandItem.addEventListener('mouseleave', function() {
+                this.style.background = 'transparent';
+            });
+            
+            resultsDiv.appendChild(commandItem);
+        });
+    });
+    
+    input.dispatchEvent(new Event('input'));
+    
+    // Close on Escape
+    palette.addEventListener('click', function(e) {
+        if (e.target === palette) {
+            closeCommandPalette();
+        }
+    });
+    
+    document.addEventListener('keydown', function escHandler(e) {
+        if (e.key === 'Escape') {
+            closeCommandPalette();
+            document.removeEventListener('keydown', escHandler);
+        }
+    });
+    
+    commandPaletteOpen = true;
+}
+
+function closeCommandPalette() {
+    const palette = document.getElementById('command-palette');
+    if (palette) {
+        palette.remove();
+        commandPaletteOpen = false;
+    }
+}
+
+function showSDKStats() {
+    showTab('sdk-playground');
+    setTimeout(() => {
+        const statsSection = document.getElementById('sdk-stats');
+        if (statsSection) {
+            statsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, 100);
+}
+
+// Tool Execution Modal Functions
+function showToolExecutionModal(tool) {
+    console.log('[Dashboard] Opening execution modal for tool:', tool.name);
+    
+    // Create modal overlay
+    const modalOverlay = document.createElement('div');
+    modalOverlay.id = 'tool-execution-modal';
+    modalOverlay.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    `;
+    
+    // Create modal content
+    const modalContent = document.createElement('div');
+    modalContent.style.cssText = `
+        background: white;
+        border-radius: 12px;
+        padding: 24px;
+        max-width: 600px;
+        max-height: 80vh;
+        overflow-y: auto;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    `;
+    
+    // Build modal header using DOM APIs to prevent XSS
+    const headerDiv = document.createElement('div');
+    headerDiv.style.cssText = 'display: flex; justify-content: space-between; align-items: start; margin-bottom: 20px;';
+    
+    const headerContent = document.createElement('div');
+    
+    const titleH3 = document.createElement('h3');
+    titleH3.style.cssText = 'margin: 0; color: #111827; font-size: 18px; font-weight: 600;';
+    titleH3.textContent = tool.name || 'Unknown Tool';
+    
+    const descriptionP = document.createElement('p');
+    descriptionP.style.cssText = 'margin: 4px 0 0 0; color: #6b7280; font-size: 14px;';
+    descriptionP.textContent = tool.description || 'No description available';
+    
+    headerContent.appendChild(titleH3);
+    headerContent.appendChild(descriptionP);
+    
+    const closeButton = document.createElement('button');
+    closeButton.type = 'button';
+    closeButton.textContent = '×';
+    closeButton.style.cssText = 'background: none; border: none; font-size: 24px; cursor: pointer; color: #9ca3af; padding: 0; margin: 0; line-height: 1;';
+    closeButton.onclick = closeToolExecutionModal;
+    
+    headerDiv.appendChild(headerContent);
+    headerDiv.appendChild(closeButton);
+    modalContent.appendChild(headerDiv);
+    
+    // Helper function to escape HTML
+    function escapeHtml(str) {
+        const div = document.createElement('div');
+        div.textContent = str;
+        return div.innerHTML;
+    }
+    
+    // Build parameters form
+    let html = '';
+    
+    // Add parameters form if input schema available
+    if (tool.input_schema && tool.input_schema.properties) {
+        html += `<form id="tool-execution-form" style="margin-bottom: 16px;">`;
+        
+        const properties = tool.input_schema.properties;
+        const required = tool.input_schema.required || [];
+        
+        for (const [paramName, paramSchema] of Object.entries(properties)) {
+            const isRequired = required.includes(paramName);
+            const paramType = paramSchema.type || 'string';
+            const paramDescription = paramSchema.description || '';
+            
+            // Escape all user-provided values that go into HTML
+            const escapedParamName = escapeHtml(paramName);
+            const escapedDescription = escapeHtml(paramDescription);
+            
+            html += `
+                <div style="margin-bottom: 16px;">
+                    <label style="display: block; margin-bottom: 4px; color: #374151; font-size: 14px; font-weight: 500;">
+                        ${escapedParamName}${isRequired ? ' *' : ''}
+                    </label>
+                    ${paramDescription ? `<p style="margin: 0 0 4px 0; color: #6b7280; font-size: 12px;">${escapedDescription}</p>` : ''}
+            `;
+            
+            if (paramType === 'string' || paramType === 'number' || paramType === 'integer') {
+                const inputType = (paramType === 'number' || paramType === 'integer') ? 'number' : 'text';
+                const stepAttr = paramType === 'integer' ? 'step="1"' : '';
+                html += `
+                    <input 
+                        type="${inputType}" 
+                        name="${escapedParamName}" 
+                        ${stepAttr}
+                        ${isRequired ? 'required' : ''} 
+                        data-param-type="${paramType}"
+                        style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px;"
+                        placeholder="Enter ${escapedParamName}"
+                    />
+                `;
+            } else if (paramType === 'boolean') {
+                html += `
+                    <label style="display: flex; align-items: center; gap: 8px;">
+                        <input 
+                            type="checkbox" 
+                            name="${escapedParamName}" 
+                            style="width: 16px; height: 16px;"
+                        />
+                        <span style="color: #6b7280; font-size: 14px;">Enable</span>
+                    </label>
+                `;
+            } else if (paramType === 'array') {
+                html += `
+                    <textarea 
+                        name="${escapedParamName}" 
+                        ${isRequired ? 'required' : ''} 
+                        rows="3"
+                        style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: monospace;"
+                        placeholder="Enter JSON array, e.g., [1, 2, 3]"
+                    ></textarea>
+                `;
+            } else {
+                html += `
+                    <textarea 
+                        name="${escapedParamName}" 
+                        ${isRequired ? 'required' : ''} 
+                        rows="3"
+                        style="width: 100%; padding: 8px 12px; border: 1px solid #d1d5db; border-radius: 6px; font-size: 14px; font-family: monospace;"
+                        placeholder="Enter JSON value"
+                    ></textarea>
+                `;
+            }
+            
+            html += `</div>`;
+        }
+        
+        html += `</form>`;
+    } else {
+        html += `<p style="color: #6b7280; font-size: 14px; margin-bottom: 16px;">No parameters required for this tool.</p>`;
+    }
+    
+    // Build buttons section container
+    const buttonsDiv = document.createElement('div');
+    buttonsDiv.style.cssText = 'display: flex; gap: 8px; margin-bottom: 16px;';
+    
+    const executeButton = document.createElement('button');
+    executeButton.type = 'button';
+    executeButton.textContent = '▶ Execute Tool';
+    executeButton.style.cssText = 'flex: 1; padding: 10px 16px; background: #3b82f6; color: white; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.2s;';
+    executeButton.onclick = () => executeToolFromModal(tool.name);
+    executeButton.addEventListener('mouseenter', function() { this.style.background = '#2563eb'; });
+    executeButton.addEventListener('mouseleave', function() { this.style.background = '#3b82f6'; });
+    
+    const cancelButton = document.createElement('button');
+    cancelButton.type = 'button';
+    cancelButton.textContent = 'Cancel';
+    cancelButton.style.cssText = 'padding: 10px 16px; background: #e5e7eb; color: #374151; border: none; border-radius: 6px; font-size: 14px; font-weight: 500; cursor: pointer;';
+    cancelButton.onclick = closeToolExecutionModal;
+    
+    buttonsDiv.appendChild(executeButton);
+    buttonsDiv.appendChild(cancelButton);
+    
+    // Build result area
+    const resultDiv = document.createElement('div');
+    resultDiv.id = 'tool-execution-result';
+    resultDiv.style.cssText = 'display: none; padding: 12px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px; margin-top: 16px;';
+    
+    const resultTitle = document.createElement('h4');
+    resultTitle.style.cssText = 'margin: 0 0 8px 0; color: #111827; font-size: 14px; font-weight: 600;';
+    resultTitle.textContent = 'Result:';
+    
+    const resultPre = document.createElement('pre');
+    resultPre.id = 'tool-execution-result-content';
+    resultPre.style.cssText = 'margin: 0; white-space: pre-wrap; word-wrap: break-word; font-size: 12px; color: #374151; font-family: monospace;';
+    
+    resultDiv.appendChild(resultTitle);
+    resultDiv.appendChild(resultPre);
+    
+    // Append form HTML safely
+    const formContainer = document.createElement('div');
+    formContainer.innerHTML = html;
+    modalContent.appendChild(formContainer);
+    modalContent.appendChild(buttonsDiv);
+    modalContent.appendChild(resultDiv);
+    
+    modalOverlay.appendChild(modalContent);
+    document.body.appendChild(modalOverlay);
+    
+    // Close modal on overlay click
+    modalOverlay.addEventListener('click', function(e) {
+        if (e.target === modalOverlay) {
+            closeToolExecutionModal();
+        }
+    });
+}
+
+function closeToolExecutionModal() {
+    const modal = document.getElementById('tool-execution-modal');
+    if (modal) {
+        modal.remove();
+    }
+}
+
+function executeToolFromModal(toolName) {
+    console.log('[Dashboard] Executing tool:', toolName);
+    
+    const form = document.getElementById('tool-execution-form');
+    const resultDiv = document.getElementById('tool-execution-result');
+    const resultContent = document.getElementById('tool-execution-result-content');
+    
+    // Collect parameters from form
+    const params = {};
+    if (form) {
+        const formData = new FormData(form);
+        for (const [key, value] of formData.entries()) {
+            const input = form.elements[key];
+            if (input.type === 'checkbox') {
+                params[key] = input.checked;
+            } else if (input.type === 'number') {
+                const rawValue = typeof value === 'string' ? value.trim() : value;
+                // Skip empty numeric fields to avoid NaN for optional fields
+                if (rawValue === '') {
+                    continue;
+                }
+                // Preserve integer semantics when the input has data-param-type="integer"
+                const paramType = input.getAttribute('data-param-type');
+                if (paramType === 'integer') {
+                    params[key] = parseInt(rawValue, 10);
+                } else {
+                    params[key] = parseFloat(rawValue);
+                }
+            } else {
+                // Try to parse as JSON for arrays/objects
+                if (value.trim().startsWith('[') || value.trim().startsWith('{')) {
+                    try {
+                        params[key] = JSON.parse(value);
+                    } catch (e) {
+                        params[key] = value;
+                        // Show user-friendly error message
+                        if (resultDiv && resultContent) {
+                            resultDiv.style.display = 'block';
+                            resultContent.textContent = `Error parsing JSON for parameter "${key}": ${e.message}`;
+                            resultContent.style.color = '#991b1b';
+                        }
+                        return;
+                    }
+                } else {
+                    params[key] = value;
+                }
+            }
+        }
+    }
+    
+    // Show loading state
+    if (resultDiv) {
+        resultDiv.style.display = 'block';
+        resultContent.textContent = 'Executing tool...';
+        resultContent.style.color = '#6b7280';
+    }
+    
+    // Use SDK if available, otherwise fall back to fetch
+    const startTime = Date.now();
+    
+    if (mcpClient) {
+        // Execute tool using SDK
+        mcpClient.callTool(toolName, params)
+            .then(result => {
+                const responseTime = Date.now() - startTime;
+                trackSDKCall(toolName, true, responseTime);
+                
+                console.log('[Dashboard] Tool execution result:', result);
+                resultContent.textContent = JSON.stringify(result, null, 2);
+                resultContent.style.color = '#059669';
+                showToast(`Tool executed successfully (${responseTime}ms)`, 'success');
+            })
+            .catch(error => {
+                const responseTime = Date.now() - startTime;
+                trackSDKCall(toolName, false, responseTime);
+                
+                console.error('[Dashboard] Error executing tool:', error);
+                resultContent.textContent = `Error: ${error.message}`;
+                resultContent.style.color = '#dc2626';
+                showToast(`Tool execution failed: ${error.message}`, 'error', 5000);
+            });
+    } else {
+        // Fallback to direct JSON-RPC fetch
+        const requestBody = {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+                name: toolName,
+                arguments: params
+            },
+            id: Date.now()
+        };
+        
+        fetch('/jsonrpc', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('[Dashboard] Tool execution result:', data);
+            
+            if (data.error) {
+                resultContent.textContent = `Error: ${data.error.message}`;
+                resultContent.style.color = '#dc2626';
+                showToast(`Tool execution failed: ${data.error.message}`, 'error', 5000);
+            } else {
+                resultContent.textContent = JSON.stringify(data.result, null, 2);
+                resultContent.style.color = '#059669';
+                showToast('Tool executed successfully', 'success');
+            }
+        })
+        .catch(error => {
+            console.error('[Dashboard] Error executing tool:', error);
+            resultContent.textContent = `Error: ${error.message}`;
+            resultContent.style.color = '#dc2626';
+            showToast(`Tool execution failed: ${error.message}`, 'error', 5000);
+        });
+    }
+}
+
+// Tool Search and Filter Functions
+let cachedToolsData = null;
+
+function filterTools(searchTerm) {
+    if (!cachedToolsData) {
+        console.warn('[Dashboard] No cached tools data available. Refresh tools first.');
+        return;
+    }
+    
+    const toolsGrid = document.querySelector('.tools-grid');
+    if (!toolsGrid) return;
+    
+    const normalizedSearch = searchTerm.toLowerCase().trim();
+    
+    if (!normalizedSearch) {
+        // Show all tools if search is empty
+        displayToolsFromCache(cachedToolsData);
+        return;
+    }
+    
+    // Filter tools and categories
+    const filteredCategories = {};
+    const filteredTools = [];
+    
+    if (cachedToolsData.categories) {
+        for (const [category, tools] of Object.entries(cachedToolsData.categories)) {
+            const categoryMatch = category.toLowerCase().includes(normalizedSearch);
+            const matchingTools = tools.filter(tool => 
+                categoryMatch || 
+                tool.name.toLowerCase().includes(normalizedSearch) ||
+                (tool.description && tool.description.toLowerCase().includes(normalizedSearch))
+            );
+            
+            if (matchingTools.length > 0) {
+                filteredCategories[category] = matchingTools;
+                filteredTools.push(...matchingTools);
+            }
+        }
+    }
+    
+    // Display filtered results
+    displayToolsFromCache({
+        tools: filteredTools,
+        categories: filteredCategories,
+        total: filteredTools.length
+    });
+    
+    if (filteredTools.length === 0) {
+        toolsGrid.innerHTML = `<div class="tool-tag" style="background: #fef3c7; color: #92400e;">No tools found matching "${searchTerm}"</div>`;
+    }
+}
+
+function clearToolSearch() {
+    const searchInput = document.getElementById('tool-search-input');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    
+    if (cachedToolsData) {
+        displayToolsFromCache(cachedToolsData);
+    }
+}
+
+function displayToolsFromCache(data) {
+    const toolsGrid = document.querySelector('.tools-grid');
+    if (!toolsGrid) return;
+    
+    toolsGrid.innerHTML = '';
+    
+    const tools = data.tools || [];
+    const categories = data.categories || {};
+    
+    if (tools.length === 0) {
+        toolsGrid.innerHTML = '<div class="tool-tag" style="background: #fef3c7; color: #92400e;">⚠️ No tools to display</div>';
+        return;
+    }
+    
+    // Display tools by category if available
+    if (Object.keys(categories).length > 0) {
+        const sortedCategories = Object.keys(categories).sort();
+        
+        sortedCategories.forEach(category => {
+            const categoryTools = categories[category];
+            
+            // Create category section
+            const categoryDiv = document.createElement('div');
+            categoryDiv.className = 'tool-category';
+            categoryDiv.style.cssText = 'margin-bottom: 20px;';
+            
+            // Category header
+            const categoryHeader = document.createElement('h4');
+            categoryHeader.textContent = `${category} (${categoryTools.length})`;
+            categoryHeader.style.cssText = 'margin-bottom: 10px; color: #374151; font-size: 14px; font-weight: 600;';
+            categoryDiv.appendChild(categoryHeader);
+            
+            // Create tools container for this category
+            const categoryToolsDiv = document.createElement('div');
+            categoryToolsDiv.style.cssText = 'display: flex; flex-wrap: wrap; gap: 8px;';
+            
+            // Display each tool in category
+            categoryTools.forEach(tool => {
+                // Normalize tool to an object shape
+                const toolObj = (tool && typeof tool === 'object') ? tool : { name: tool };
+                
+                const toolTag = document.createElement('button');
+                toolTag.type = 'button';
+                toolTag.className = 'tool-tag';
+                toolTag.style.cssText = 'cursor: pointer; padding: 6px 12px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 12px; transition: all 0.2s; border: none;';
+                toolTag.textContent = toolObj.name || tool;
+                
+                if (toolObj.description) {
+                    toolTag.title = toolObj.description;
+                }
+                
+                if (toolObj.status === 'error' || toolObj.status === 'inactive') {
+                    toolTag.style.background = '#fee2e2';
+                    toolTag.style.color = '#991b1b';
+                    toolTag.textContent += ' ⚠️';
+                }
+                
+                toolTag.addEventListener('click', () => showToolExecutionModal(toolObj));
+                
+                toolTag.addEventListener('mouseenter', function() {
+                    this.style.background = '#c7d2fe';
+                    this.style.transform = 'translateY(-1px)';
+                });
+                toolTag.addEventListener('mouseleave', function() {
+                    this.style.background = toolObj.status === 'error' ? '#fee2e2' : '#e0e7ff';
+                    this.style.transform = 'translateY(0)';
+                });
+                
+                categoryToolsDiv.appendChild(toolTag);
+            });
+            
+            categoryDiv.appendChild(categoryToolsDiv);
+            toolsGrid.appendChild(categoryDiv);
+        });
+    } else {
+        // Fallback: display a flat list of tools when there are no categories
+        let flatTools = [];
+        
+        if (Array.isArray(data.tools)) {
+            flatTools = data.tools;
+        } else if (Array.isArray(data)) {
+            flatTools = data;
+        }
+        
+        if (!flatTools || flatTools.length === 0) {
+            return;
+        }
+        
+        flatTools.forEach(tool => {
+            // Normalize tool to an object shape
+            const toolObj = (tool && typeof tool === 'object') ? tool : { name: tool };
+            
+            const toolTag = document.createElement('button');
+            toolTag.type = 'button';
+            toolTag.className = 'tool-tag';
+            toolTag.style.cssText = 'cursor: pointer; padding: 6px 12px; background: #e0e7ff; color: #3730a3; border-radius: 4px; font-size: 12px; transition: all 0.2s; border: none;';
+            toolTag.textContent = toolObj.name || tool;
+            
+            if (toolObj.description) {
+                toolTag.title = toolObj.description;
+            }
+            
+            if (toolObj.status === 'error' || toolObj.status === 'inactive') {
+                toolTag.style.background = '#fee2e2';
+                toolTag.style.color = '#991b1b';
+                toolTag.textContent += ' ⚠️';
+            }
+            
+            toolTag.addEventListener('click', () => showToolExecutionModal(toolObj));
+            
+            toolTag.addEventListener('mouseenter', function() {
+                this.style.background = '#c7d2fe';
+                this.style.transform = 'translateY(-1px)';
+            });
+            toolTag.addEventListener('mouseleave', function() {
+                this.style.background = toolObj.status === 'error' ? '#fee2e2' : '#e0e7ff';
+                this.style.transform = 'translateY(0)';
+            });
+            
+            toolsGrid.appendChild(toolTag);
+        });
+    }
+}
+
+// SDK Playground Functions
+function initializeSDKPlayground() {
+    console.log('[Dashboard] Initializing SDK Playground');
+    
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    // Update SDK stats display
+    updateSDKStats();
+}
+
+// Quick Action Functions for Overview Tab
+async function quickGetHardwareInfo(useCache = true) {
+    const resultDiv = document.getElementById('quick-action-result');
+    const contentDiv = document.getElementById('quick-action-content');
+    
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const cacheKey = 'hardware_info';
+    
+    // Check cache first if enabled
+    if (useCache && sdkCache.has(cacheKey)) {
+        const cached = sdkCache.get(cacheKey);
+        resultDiv.style.display = 'block';
+        contentDiv.textContent = JSON.stringify(cached, null, 2) + '\n\n(Cached data)';
+        showToast('Hardware info loaded from cache', 'info');
+        return;
+    }
+    
+    resultDiv.style.display = 'block';
+    contentDiv.innerHTML = '<div class="spinner-large"></div><div class="loading-text">Loading hardware information...</div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.hardwareGetInfo();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('hardware_get_info', true, responseTime);
+        
+        // Cache the result
+        sdkCache.set(cacheKey, result);
+        
+        contentDiv.textContent = JSON.stringify(result, null, 2);
+        showToast(`Hardware info loaded (${responseTime}ms)`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('hardware_get_info', false, responseTime);
+        
+        contentDiv.innerHTML = `<div class="error-message"><strong>Error</strong>${error.message}</div>`;
+        showToast('Failed to get hardware info', 'error');
+    }
+}
+
+async function quickListContainers(useCache = true) {
+    const resultDiv = document.getElementById('quick-action-result');
+    const contentDiv = document.getElementById('quick-action-content');
+    
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const cacheKey = 'docker_containers';
+    
+    // Check cache first if enabled
+    if (useCache && sdkCache.has(cacheKey)) {
+        const cached = sdkCache.get(cacheKey);
+        resultDiv.style.display = 'block';
+        contentDiv.textContent = JSON.stringify(cached, null, 2) + '\n\n(Cached data)';
+        showToast('Container list loaded from cache', 'info');
+        return;
+    }
+    
+    resultDiv.style.display = 'block';
+    contentDiv.innerHTML = '<div class="spinner-large"></div><div class="loading-text">Loading Docker containers...</div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.dockerListContainers(true);
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('docker_list_containers', true, responseTime);
+        
+        // Cache the result
+        sdkCache.set(cacheKey, result, 2 * 60 * 1000); // 2 minute cache for docker
+        
+        contentDiv.textContent = JSON.stringify(result, null, 2);
+        showToast(`Container list loaded (${responseTime}ms)`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('docker_list_containers', false, responseTime);
+        
+        contentDiv.innerHTML = `<div class="error-message"><strong>Error</strong>${error.message}</div>`;
+        showToast('Failed to list containers', 'error');
+    }
+}
+
+async function quickGetNetworkPeers(useCache = true) {
+    const resultDiv = document.getElementById('quick-action-result');
+    const contentDiv = document.getElementById('quick-action-content');
+    
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const cacheKey = 'network_peers';
+    
+    // Check cache first if enabled
+    if (useCache && sdkCache.has(cacheKey)) {
+        const cached = sdkCache.get(cacheKey);
+        resultDiv.style.display = 'block';
+        contentDiv.textContent = JSON.stringify(cached, null, 2) + '\n\n(Cached data)';
+        showToast('Network peers loaded from cache', 'info');
+        return;
+    }
+    
+    resultDiv.style.display = 'block';
+    contentDiv.innerHTML = '<div class="spinner-large"></div><div class="loading-text">Loading network peers...</div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.networkListPeers();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('network_list_peers', true, responseTime);
+        
+        // Cache the result
+        sdkCache.set(cacheKey, result, 1 * 60 * 1000); // 1 minute cache for network
+        
+        contentDiv.textContent = JSON.stringify(result, null, 2);
+        showToast(`Network peers loaded (${responseTime}ms)`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('network_list_peers', false, responseTime);
+        
+        contentDiv.innerHTML = `<div class="error-message"><strong>Error</strong>${error.message}</div>`;
+        showToast('Failed to get network peers', 'error');
+    }
+}
+
+async function quickRefreshAll() {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    // Clear cache for fresh data
+    sdkCache.clear();
+    
+    const resultDiv = document.getElementById('quick-action-result');
+    const contentDiv = document.getElementById('quick-action-content');
+    
+    resultDiv.style.display = 'block';
+    contentDiv.innerHTML = '<div class="spinner-large"></div><div class="loading-text">Refreshing all data with batch request...</div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        // Use batch SDK call for efficiency
+        const results = await mcpClient.callToolsBatch([
+            { name: 'hardware_get_info', arguments: {} },
+            { name: 'docker_list_containers', arguments: { all: true } },
+            { name: 'network_list_peers', arguments: {} }
+        ]);
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('batch_refresh_all', true, responseTime);
+        
+        const summary = {
+            hardware: results[0].result || results[0].error,
+            docker: results[1].result || results[1].error,
+            network: results[2].result || results[2].error,
+            responseTime: `${responseTime}ms`
+        };
+        
+        contentDiv.textContent = JSON.stringify(summary, null, 2);
+        showToast(`All data refreshed (${responseTime}ms)`, 'success');
+        
+        // Update overview cards
+        updateOverviewCards(summary);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('batch_refresh_all', false, responseTime);
+        
+        contentDiv.textContent = `Error: ${error.message}`;
+        showToast('Failed to refresh data', 'error');
+    }
+}
+
+function updateOverviewCards(data) {
+    // Update available tools count
+    if (data.hardware && data.hardware.status === 'success') {
+        console.log('[Dashboard] Hardware data updated');
+    }
+    
+    // Update Docker container count
+    if (data.docker && data.docker.containers) {
+        const containerCount = data.docker.containers.length;
+        const runningCount = data.docker.containers.filter(c => c.status === 'running').length;
+        console.log(`[Dashboard] Docker: ${runningCount}/${containerCount} containers running`);
+    }
+    
+    // Update network peer count
+    if (data.network && data.network.peers) {
+        const peerCount = data.network.peers.length;
+        console.log(`[Dashboard] Network: ${peerCount} peers connected`);
+    }
+}
+
+function updateSDKStats() {
+    const statsContainer = document.getElementById('sdk-stats');
+    if (!statsContainer) return;
+    
+    const successRate = sdkStats.totalCalls > 0 
+        ? ((sdkStats.successfulCalls / sdkStats.totalCalls) * 100).toFixed(1)
+        : 0;
+    
+    statsContainer.innerHTML = `
+        <div class="stat-item">
+            <div class="stat-value">${sdkStats.totalCalls}</div>
+            <div class="stat-label">Total Calls</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">${sdkStats.successfulCalls}</div>
+            <div class="stat-label">Successful</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">${sdkStats.failedCalls}</div>
+            <div class="stat-label">Failed</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">${successRate}%</div>
+            <div class="stat-label">Success Rate</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-value">${Math.round(sdkStats.avgResponseTime)}ms</div>
+            <div class="stat-label">Avg Response</div>
+        </div>
+    `;
+}
+
+async function runSDKExample(category, method, args = {}) {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return null;
+    }
+    
+    const resultContainer = document.getElementById('sdk-result');
+    const codeContainer = document.getElementById('sdk-code');
+    
+    if (resultContainer) {
+        resultContainer.innerHTML = '<div class="loading">Executing...</div>';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        const methodName = `${category}_${method}`;
+        
+        // Generate code snippet using callTool interface for consistency
+        const argsStr = Object.keys(args).length > 0 
+            ? '\n  ' + JSON.stringify(args, null, 2).split('\n').join('\n  ') + '\n'
+            : '{}';
+        const codeSnippet = `// Using SDK callTool interface
+const client = new MCPClient('/jsonrpc');
+const result = await client.callTool('${methodName}', ${argsStr});
+console.log(result);`;
+        
+        if (codeContainer) {
+            codeContainer.textContent = codeSnippet;
+        }
+        
+        // Call using the universal callTool method for consistency
+        result = await mcpClient.callTool(methodName, args);
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall(methodName, true, responseTime);
+        
+        if (resultContainer) {
+            resultContainer.innerHTML = `
+                <div class="result-success">
+                    <div class="result-header">
+                        <span class="result-status">✅ Success</span>
+                        <span class="result-time">${responseTime}ms</span>
+                    </div>
+                    <pre class="result-json">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        
+        showToast(`${methodName} executed successfully`, 'success');
+        updateSDKStats();
+        
+        return result;
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall(`${category}_${method}`, false, responseTime);
+        
+        if (resultContainer) {
+            resultContainer.innerHTML = `
+                <div class="result-error">
+                    <div class="result-header">
+                        <span class="result-status">❌ Error</span>
+                        <span class="result-time">${responseTime}ms</span>
+                    </div>
+                    <pre class="result-json">${error.message || error}</pre>
+                </div>
+            `;
+        }
+        
+        showToast(`Failed to execute ${category}_${method}`, 'error');
+        updateSDKStats();
+        
+        return null;
+    }
+}
+
+// Batch execution example
+async function runBatchExample() {
+    if (!mcpClient) {
+        showToast('SDK not initialized', 'error');
+        return;
+    }
+    
+    const resultContainer = document.getElementById('sdk-result');
+    const codeContainer = document.getElementById('sdk-code');
+    
+    if (resultContainer) {
+        resultContainer.innerHTML = '<div class="loading">Executing batch...</div>';
+    }
+    
+    const batchCalls = [
+        { name: 'hardware_get_info', arguments: {} },
+        { name: 'network_list_peers', arguments: {} }
+    ];
+    
+    const codeSnippet = `// Batch execution
+const client = new MCPClient('/jsonrpc');
+const results = await client.callToolsBatch([
+    { name: 'hardware_get_info', arguments: {} },
+    { name: 'network_list_peers', arguments: {} }
+]);
+console.log(results);`;
+    
+    if (codeContainer) {
+        codeContainer.textContent = codeSnippet;
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        const results = await mcpClient.callToolsBatch(batchCalls);
+        const responseTime = Date.now() - startTime;
+        
+        trackSDKCall('batch_execution', true, responseTime);
+        
+        if (resultContainer) {
+            resultContainer.innerHTML = `
+                <div class="result-success">
+                    <div class="result-header">
+                        <span class="result-status">✅ Batch Success</span>
+                        <span class="result-time">${responseTime}ms</span>
+                    </div>
+                    <pre class="result-json">${JSON.stringify(results, null, 2)}</pre>
+                </div>
+            `;
+        }
+        
+        showToast('Batch execution completed successfully', 'success');
+        updateSDKStats();
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('batch_execution', false, responseTime);
+        
+        if (resultContainer) {
+            resultContainer.innerHTML = `
+                <div class="result-error">
+                    <div class="result-header">
+                        <span class="result-status">❌ Batch Error</span>
+                        <span class="result-time">${responseTime}ms</span>
+                    </div>
+                    <pre class="result-json">${error.message || error}</pre>
+                </div>
+            `;
+        }
+        
+        showToast('Batch execution failed', 'error');
+        updateSDKStats();
+    }
+}
+
 // Cleanup on page unload
 window.addEventListener('beforeunload', function() {
     if (autoRefreshInterval) {
         clearInterval(autoRefreshInterval);
     }
 });
+// ========================================
+// IPFS Manager Functions (Phase 2.4)
+// ========================================
+
+async function ipfsCat() {
+    const path = document.getElementById('ipfs-path')?.value;
+    const resultDiv = document.getElementById('ipfs-file-result');
+    
+    if (!path) {
+        showToast('Please enter a file path or CID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Reading file...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsCat) {
+            result = await mcpClient.ipfsCat(path);
+            trackSDKCall('ipfsCat', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_cat', { path });
+            trackSDKCall('ipfsCat', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>✅ File Content:</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px; max-height: 400px; overflow-y: auto;">${result.content || result}</pre>
+                </div>
+            `;
+        }
+        showToast('File read successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsCat', false, Date.now() - startTime);
+        console.error('[IPFS] Cat error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to read file: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsList() {
+    const path = document.getElementById('ipfs-path')?.value;
+    const resultDiv = document.getElementById('ipfs-file-result');
+    
+    if (!path) {
+        showToast('Please enter a directory path or CID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Listing directory...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsLs) {
+            result = await mcpClient.ipfsLs(path);
+            trackSDKCall('ipfsLs', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_ls', { path });
+            trackSDKCall('ipfsLs', false, Date.now() - startTime);
+        }
+        
+        const files = result.files || result.objects || result || [];
+        let html = '<div class="result-success"><strong>📋 Directory Listing:</strong><div style="margin-top: 10px;">';
+        
+        if (Array.isArray(files) && files.length > 0) {
+            files.forEach(file => {
+                html += `
+                    <div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">
+                        <strong>${file.name || file.Name}</strong>
+                        <span style="color: #6b7280; margin-left: 10px;">${file.size || file.Size || 0} bytes</span>
+                        <span style="color: #9ca3af; margin-left: 10px;">${file.type || file.Type || 'file'}</span>
+                    </div>
+                `;
+            });
+        } else {
+            html += '<p>No files found or empty directory</p>';
+        }
+        
+        html += '</div></div>';
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = html;
+        }
+        showToast('Directory listed successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsLs', false, Date.now() - startTime);
+        console.error('[IPFS] Ls error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to list directory: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsGetFile() {
+    const path = document.getElementById('ipfs-path')?.value;
+    const resultDiv = document.getElementById('ipfs-file-result');
+    
+    if (!path) {
+        showToast('Please enter a file path or CID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Getting file...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.getFileFromIpfs) {
+            result = await mcpClient.getFileFromIpfs(path);
+            trackSDKCall('getFileFromIpfs', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('get_file_from_ipfs', { cid: path });
+            trackSDKCall('getFileFromIpfs', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>✅ File Retrieved:</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px; max-height: 400px; overflow-y: auto;">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast('File retrieved successfully', 'success');
+    } catch (error) {
+        trackSDKCall('getFileFromIpfs', false, Date.now() - startTime);
+        console.error('[IPFS] Get file error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to get file: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsAddFile() {
+    const content = document.getElementById('ipfs-add-content')?.value;
+    const filename = document.getElementById('ipfs-add-filename')?.value || 'unnamed.txt';
+    const resultDiv = document.getElementById('ipfs-add-result');
+    
+    if (!content) {
+        showToast('Please enter content to add', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Adding file to IPFS...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsAddFile) {
+            result = await mcpClient.ipfsAddFile({ content, filename });
+            trackSDKCall('ipfsAddFile', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_add_file', { content, filename });
+            trackSDKCall('ipfsAddFile', false, Date.now() - startTime);
+        }
+        
+        const cid = result.cid || result.Hash || result.hash;
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>✅ File Added Successfully!</strong>
+                    <div style="margin-top: 10px;">
+                        <strong>CID:</strong> <code style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px;">${cid}</code>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        <strong>Size:</strong> ${result.size || result.Size || 'Unknown'} bytes
+                    </div>
+                </div>
+            `;
+        }
+        showToast(`File added: ${cid}`, 'success');
+    } catch (error) {
+        trackSDKCall('ipfsAddFile', false, Date.now() - startTime);
+        console.error('[IPFS] Add file error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to add file: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsAddFileShared() {
+    const content = document.getElementById('ipfs-add-content')?.value;
+    const filename = document.getElementById('ipfs-add-filename')?.value || 'unnamed.txt';
+    const resultDiv = document.getElementById('ipfs-add-result');
+    
+    if (!content) {
+        showToast('Please enter content to add', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Adding shared file...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.addFileShared) {
+            result = await mcpClient.addFileShared({ content, filename });
+            trackSDKCall('addFileShared', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('add_file_shared', { content, filename });
+            trackSDKCall('addFileShared', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>✅ Shared File Added!</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px;">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast('Shared file added successfully', 'success');
+    } catch (error) {
+        trackSDKCall('addFileShared', false, Date.now() - startTime);
+        console.error('[IPFS] Add shared file error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to add shared file: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsPinAdd() {
+    const cid = document.getElementById('ipfs-pin-cid')?.value;
+    const resultDiv = document.getElementById('ipfs-pin-result');
+    
+    if (!cid) {
+        showToast('Please enter a CID to pin', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Pinning...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsPinAdd) {
+            result = await mcpClient.ipfsPinAdd(cid);
+            trackSDKCall('ipfsPinAdd', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_pin_add', { cid });
+            trackSDKCall('ipfsPinAdd', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="result-success">✅ CID pinned successfully: ${cid}</div>`;
+        }
+        showToast('CID pinned successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsPinAdd', false, Date.now() - startTime);
+        console.error('[IPFS] Pin add error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to pin: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsPinRemove() {
+    const cid = document.getElementById('ipfs-pin-cid')?.value;
+    const resultDiv = document.getElementById('ipfs-pin-result');
+    
+    if (!cid) {
+        showToast('Please enter a CID to unpin', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Unpinning...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsPinRm) {
+            result = await mcpClient.ipfsPinRm(cid);
+            trackSDKCall('ipfsPinRm', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_pin_rm', { cid });
+            trackSDKCall('ipfsPinRm', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="result-success">✅ CID unpinned successfully: ${cid}</div>`;
+        }
+        showToast('CID unpinned successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsPinRm', false, Date.now() - startTime);
+        console.error('[IPFS] Pin remove error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to unpin: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsListPins() {
+    const resultDiv = document.getElementById('ipfs-pin-result');
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Loading pins...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsPinLs) {
+            result = await mcpClient.ipfsPinLs();
+            trackSDKCall('ipfsPinLs', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_pin_ls', {});
+            trackSDKCall('ipfsPinLs', false, Date.now() - startTime);
+        }
+        
+        const pins = result.pins || result.Keys || result || [];
+        let html = '<div class="result-success"><strong>📌 Pinned CIDs:</strong><div style="margin-top: 10px;">';
+        
+        if (Array.isArray(pins) && pins.length > 0) {
+            pins.forEach(pin => {
+                html += `<div style="padding: 5px; font-family: monospace; font-size: 12px;">${pin.cid || pin}</div>`;
+            });
+        } else if (typeof pins === 'object') {
+            Object.keys(pins).forEach(cid => {
+                html += `<div style="padding: 5px; font-family: monospace; font-size: 12px;">${cid}</div>`;
+            });
+        } else {
+            html += '<p>No pinned CIDs found</p>';
+        }
+        
+        html += '</div></div>';
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = html;
+        }
+        showToast('Pins listed successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsPinLs', false, Date.now() - startTime);
+        console.error('[IPFS] Pin list error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to list pins: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsSwarmPeers() {
+    const resultDiv = document.getElementById('ipfs-swarm-result');
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Loading peers...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsSwarmPeers) {
+            result = await mcpClient.ipfsSwarmPeers();
+            trackSDKCall('ipfsSwarmPeers', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_swarm_peers', {});
+            trackSDKCall('ipfsSwarmPeers', false, Date.now() - startTime);
+        }
+        
+        const peers = result.peers || result.Peers || result || [];
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>👥 Connected Peers: ${Array.isArray(peers) ? peers.length : 0}</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px; max-height: 300px; overflow-y: auto; font-size: 11px;">${JSON.stringify(peers, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast(`Found ${Array.isArray(peers) ? peers.length : 0} peers`, 'success');
+    } catch (error) {
+        trackSDKCall('ipfsSwarmPeers', false, Date.now() - startTime);
+        console.error('[IPFS] Swarm peers error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to list peers: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsId() {
+    const resultDiv = document.getElementById('ipfs-swarm-result');
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Getting node ID...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsId) {
+            result = await mcpClient.ipfsId();
+            trackSDKCall('ipfsId', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_id', {});
+            trackSDKCall('ipfsId', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>🆔 Node Information:</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px;">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast('Node ID retrieved', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsId', false, Date.now() - startTime);
+        console.error('[IPFS] ID error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to get node ID: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsSwarmConnect() {
+    const peerAddr = document.getElementById('ipfs-peer-addr')?.value;
+    const resultDiv = document.getElementById('ipfs-swarm-result');
+    
+    if (!peerAddr) {
+        showToast('Please enter a peer address', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Connecting to peer...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsSwarmConnect) {
+            result = await mcpClient.ipfsSwarmConnect(peerAddr);
+            trackSDKCall('ipfsSwarmConnect', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_swarm_connect', { address: peerAddr });
+            trackSDKCall('ipfsSwarmConnect', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="result-success">✅ Connected to peer successfully!</div>`;
+        }
+        showToast('Peer connected', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsSwarmConnect', false, Date.now() - startTime);
+        console.error('[IPFS] Swarm connect error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to connect: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsDhtFindPeer() {
+    const peerId = document.getElementById('ipfs-dht-query')?.value;
+    const resultDiv = document.getElementById('ipfs-dht-result');
+    
+    if (!peerId) {
+        showToast('Please enter a peer ID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Finding peer...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsDhtFindpeer) {
+            result = await mcpClient.ipfsDhtFindpeer(peerId);
+            trackSDKCall('ipfsDhtFindpeer', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_dht_findpeer', { peer_id: peerId });
+            trackSDKCall('ipfsDhtFindpeer', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>🔍 Peer Found:</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px;">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast('Peer found', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsDhtFindpeer', false, Date.now() - startTime);
+        console.error('[IPFS] DHT findpeer error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to find peer: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsDhtFindProvs() {
+    const cid = document.getElementById('ipfs-dht-query')?.value;
+    const resultDiv = document.getElementById('ipfs-dht-result');
+    
+    if (!cid) {
+        showToast('Please enter a CID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Finding providers...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsDhtFindprovs) {
+            result = await mcpClient.ipfsDhtFindprovs(cid);
+            trackSDKCall('ipfsDhtFindprovs', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_dht_findprovs', { cid });
+            trackSDKCall('ipfsDhtFindprovs', false, Date.now() - startTime);
+        }
+        
+        const providers = result.providers || result.Providers || result || [];
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>📦 Providers Found: ${Array.isArray(providers) ? providers.length : 0}</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px; max-height: 300px; overflow-y: auto;">${JSON.stringify(providers, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast(`Found ${Array.isArray(providers) ? providers.length : 0} providers`, 'success');
+    } catch (error) {
+        trackSDKCall('ipfsDhtFindprovs', false, Date.now() - startTime);
+        console.error('[IPFS] DHT findprovs error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to find providers: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsPubsubPub() {
+    const topic = document.getElementById('ipfs-pubsub-topic')?.value;
+    const message = document.getElementById('ipfs-pubsub-message')?.value;
+    const resultDiv = document.getElementById('ipfs-pubsub-result');
+    
+    if (!topic || !message) {
+        showToast('Please enter both topic and message', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Publishing...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsPubsubPub) {
+            result = await mcpClient.ipfsPubsubPub({ topic, message });
+            trackSDKCall('ipfsPubsubPub', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_pubsub_pub', { topic, message });
+            trackSDKCall('ipfsPubsubPub', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="result-success">✅ Message published to topic: ${topic}</div>`;
+        }
+        showToast('Message published', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsPubsubPub', false, Date.now() - startTime);
+        console.error('[IPFS] Pubsub publish error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to publish: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsPubsubSub() {
+    const topic = document.getElementById('ipfs-pubsub-topic')?.value;
+    const resultDiv = document.getElementById('ipfs-pubsub-result');
+    
+    if (!topic) {
+        showToast('Please enter a topic', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = `<div class="info">ℹ️ Subscribing to topic: ${topic}... (Feature requires server-side implementation)</div>`;
+    }
+    
+    showToast('Pubsub subscribe requires server-side streaming', 'info');
+}
+
