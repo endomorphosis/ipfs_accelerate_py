@@ -262,7 +262,7 @@
                     <h3>🤖 AI Inference Testing</h3>
                     <div class="form-group">
                         <label for="inference-type">Inference Type:</label>
-                        <select id="inference-type" onchange="updateInferenceForm()">
+                        <select id="inference-type" onchange="updateInferenceForm(); loadModelRecommendationsForType();">
                             <option value="text-generation">Text Generation</option>
                             <option value="text-classification">Text Classification</option>
                             <option value="text-embeddings">Text Embeddings</option>
@@ -284,6 +284,31 @@
                             <option value="time-series">Time Series Forecasting</option>
                             <option value="tabular-data">Tabular Data Processing</option>
                         </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="inference-mode">Inference Mode:</label>
+                        <select id="inference-mode">
+                            <option value="standard">Standard (Single)</option>
+                            <option value="distributed">Distributed (Multi-Node)</option>
+                            <option value="multiplex">Multiplex (Batch)</option>
+                        </select>
+                        <small style="display: block; margin-top: 5px; color: #666;">
+                            Standard for single input, Distributed for large models, Multiplex for batch processing
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="model-id">Model ID (optional):</label>
+                        <input type="text" id="model-id" placeholder="Leave empty for auto-select">
+                        <button class="btn btn-sm btn-secondary" onclick="getModelRecommendations(document.getElementById('inference-type').value)" style="margin-top: 5px;">
+                            💡 Get Model Recommendations
+                        </button>
+                    </div>
+                    
+                    <!-- Model Recommendations Section -->
+                    <div id="model-recommendations" style="margin: 15px 0; padding: 10px; background: #f8f9fa; border-radius: 8px; min-height: 40px;">
+                        <div class="info">💡 Select an inference type to see recommended models</div>
                     </div>
                     
                     <div id="inference-form">

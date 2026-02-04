@@ -500,6 +500,7 @@ function updateInferenceForm() {
 function runInference() {
     const inferenceType = document.getElementById('inference-type')?.value;
     const modelId = document.getElementById('model-id')?.value;
+    const inferenceMode = document.getElementById('inference-mode')?.value || 'standard';
     const resultsDiv = document.getElementById('inference-results');
     const executionTimeSpan = document.getElementById('execution-time');
     const modelUsedSpan = document.getElementById('model-used');
@@ -507,74 +508,157 @@ function runInference() {
     if (!resultsDiv) return;
     
     // Show loading state
-    resultsDiv.innerHTML = '<div class="spinner"></div>Loading...';
+    resultsDiv.innerHTML = '<div class="spinner large"></div><p>Running inference...</p>';
     
-    // Use SDK if available
-    if (mcpClient) {
-        runInferenceViaSDK(inferenceType, modelId, resultsDiv, executionTimeSpan, modelUsedSpan);
-    } else {
-        // Fallback to mock results
-        setTimeout(() => {
-            const mockResults = generateMockInferenceResult(inferenceType);
-            resultsDiv.innerHTML = mockResults.result;
-            
-            if (executionTimeSpan) {
-                executionTimeSpan.textContent = mockResults.executionTime;
-            }
-            if (modelUsedSpan) {
-                modelUsedSpan.textContent = mockResults.modelUsed;
-            }
-        }, 2000);
+    // Check SDK availability
+    if (!mcpClient) {
+        resultsDiv.innerHTML = `
+            <div class="error-message">
+                <strong>❌ SDK Not Available</strong>
+                <p>The MCP SDK client is not initialized. Please check:</p>
+                <ul>
+                    <li>Server is running and accessible</li>
+                    <li>SDK client initialized on page load</li>
+                    <li>Network connection is stable</li>
+                </ul>
+                <button class="btn btn-primary" onclick="location.reload()">🔄 Reload Page</button>
+            </div>
+        `;
+        return;
     }
+    
+    // Run inference based on selected mode
+    runInferenceViaSDK(inferenceType, modelId, inferenceMode, resultsDiv, executionTimeSpan, modelUsedSpan);
 }
 
-async function runInferenceViaSDK(inferenceType, modelId, resultsDiv, executionTimeSpan, modelUsedSpan) {
+async function runInferenceViaSDK(inferenceType, modelId, inferenceMode, resultsDiv, executionTimeSpan, modelUsedSpan) {
     const startTime = Date.now();
     
     try {
         // Get input based on inference type
         const input = getInferenceInput(inferenceType);
         
-        // Map inference type to SDK method
         let result;
-        const toolName = `run_inference`;
+        let toolName;
         
-        result = await mcpClient.callTool(toolName, {
-            inference_type: inferenceType,
-            model_id: modelId || 'auto',
-            input: input
-        });
+        // Choose inference method based on mode
+        switch (inferenceMode) {
+            case 'distributed':
+                toolName = 'run_distributed_inference';
+                result = await mcpClient.runDistributedInference(inferenceType, modelId || 'auto', input);
+                break;
+            case 'multiplex':
+                toolName = 'multiplex_inference';
+                // For multiplex, we can send multiple inputs
+                const inputs = Array.isArray(input) ? input : [input];
+                result = await mcpClient.multiplexInference(inferenceType, modelId || 'auto', inputs);
+                break;
+            default: // standard
+                toolName = 'run_inference';
+                result = await mcpClient.runInference(inferenceType, modelId || 'auto', input);
+                break;
+        }
         
         const responseTime = Date.now() - startTime;
         trackSDKCall(toolName, true, responseTime);
         
-        // Display results
-        resultsDiv.innerHTML = `<pre>${JSON.stringify(result, null, 2)}</pre>`;
+        // Display results with better formatting
+        displayInferenceResults(result, inferenceType, resultsDiv);
         
         if (executionTimeSpan) {
             executionTimeSpan.textContent = `${(responseTime / 1000).toFixed(2)}s`;
+            executionTimeSpan.style.color = responseTime < 5000 ? '#10b981' : '#f59e0b';
         }
         if (modelUsedSpan) {
-            modelUsedSpan.textContent = modelId || result.model_used || 'auto-selected';
+            modelUsedSpan.textContent = modelId || result.model_used || result.model || 'auto-selected';
         }
         
-        showToast(`Inference completed (${responseTime}ms)`, 'success');
+        showToast(`✅ Inference completed in ${responseTime}ms`, 'success');
     } catch (error) {
         const responseTime = Date.now() - startTime;
         trackSDKCall('run_inference', false, responseTime);
         
-        // Fallback to mock on error
-        console.warn('[Dashboard] Inference via SDK failed, using mock:', error);
-        const mockResults = generateMockInferenceResult(inferenceType);
-        resultsDiv.innerHTML = `<div class="warning">SDK inference unavailable, showing mock result:</div><br>${mockResults.result}`;
+        // Show proper error message (NO mock fallback)
+        console.error('[Dashboard] Inference via SDK failed:', error);
+        resultsDiv.innerHTML = `
+            <div class="error-message">
+                <strong>❌ Inference Failed</strong>
+                <p><strong>Error:</strong> ${error.message || error}</p>
+                <details>
+                    <summary>Technical Details</summary>
+                    <pre>${JSON.stringify(error, null, 2)}</pre>
+                </details>
+                <p><strong>Possible causes:</strong></p>
+                <ul>
+                    <li>Model not available or not loaded</li>
+                    <li>Invalid input format for inference type</li>
+                    <li>Server resource constraints</li>
+                    <li>Network connectivity issues</li>
+                </ul>
+                <div style="margin-top: 10px;">
+                    <button class="btn btn-primary" onclick="runInference()">🔄 Retry</button>
+                    <button class="btn btn-secondary" onclick="getModelRecommendations('${inferenceType}')">💡 Get Model Recommendations</button>
+                </div>
+            </div>
+        `;
         
         if (executionTimeSpan) {
-            executionTimeSpan.textContent = mockResults.executionTime;
+            executionTimeSpan.textContent = 'Failed';
+            executionTimeSpan.style.color = '#ef4444';
         }
         if (modelUsedSpan) {
-            modelUsedSpan.textContent = mockResults.modelUsed;
+            modelUsedSpan.textContent = 'N/A';
         }
+        
+        showToast('❌ Inference failed: ' + (error.message || error), 'error');
     }
+}
+
+function displayInferenceResults(result, inferenceType, resultsDiv) {
+    // Format results based on inference type
+    let html = '';
+    
+    if (result.error) {
+        html = `<div class="warning">⚠️ ${result.error}</div>`;
+    } else if (typeof result === 'string') {
+        html = `<div class="result-text">${result}</div>`;
+    } else if (result.text || result.generated_text) {
+        html = `<div class="result-text">${result.text || result.generated_text}</div>`;
+    } else if (result.embeddings || result.embedding) {
+        const embeddings = result.embeddings || result.embedding;
+        html = `
+            <div class="result-embeddings">
+                <strong>Embeddings Generated:</strong>
+                <p>Dimensions: ${embeddings.length || 'Unknown'}</p>
+                <details>
+                    <summary>View Embeddings</summary>
+                    <pre>${JSON.stringify(embeddings.slice(0, 10), null, 2)}${embeddings.length > 10 ? '\n... (' + (embeddings.length - 10) + ' more)' : ''}</pre>
+                </details>
+            </div>
+        `;
+    } else if (result.labels || result.label) {
+        const labels = result.labels || [result.label];
+        html = `
+            <div class="result-classification">
+                <strong>Classification Results:</strong>
+                <ul>
+                    ${labels.map(l => `<li>${l.label || l}: ${((l.score || 0) * 100).toFixed(2)}%</li>`).join('')}
+                </ul>
+            </div>
+        `;
+    } else if (result.image || result.images) {
+        html = `<div class="result-image"><img src="${result.image || result.images[0]}" alt="Generated image" style="max-width: 100%; border-radius: 8px;"/></div>`;
+    } else {
+        // Fallback to JSON display
+        html = `<pre class="result-json">${JSON.stringify(result, null, 2)}</pre>`;
+    }
+    
+    // Add metadata if available
+    if (result.confidence || result.score) {
+        html += `<div class="result-metadata"><strong>Confidence:</strong> ${((result.confidence || result.score) * 100).toFixed(2)}%</div>`;
+    }
+    
+    resultsDiv.innerHTML = html;
 }
 
 function getInferenceInput(inferenceType) {
@@ -600,37 +684,6 @@ function getInferenceInput(inferenceType) {
     return defaults[inferenceType] || 'Test input';
 }
 
-function generateMockInferenceResult(inferenceType) {
-    const results = {
-        'text-generate': {
-            result: 'Quantum computing is a revolutionary technology that leverages quantum mechanical phenomena...',
-            executionTime: '1.2s',
-            modelUsed: 'gpt2-medium'
-        },
-        'text-classify': {
-            result: 'Classification: Positive (confidence: 0.92)',
-            executionTime: '0.8s',
-            modelUsed: 'distilbert-base-uncased'
-        },
-        'text-embeddings': {
-            result: 'Generated 768-dimensional embedding vector',
-            executionTime: '0.5s',
-            modelUsed: 'sentence-transformers/all-MiniLM-L6-v2'
-        },
-        'image-classify': {
-            result: 'Top predictions: 1. Golden Retriever (0.89), 2. Labrador (0.08), 3. Dog (0.03)',
-            executionTime: '1.5s',
-            modelUsed: 'resnet50'
-        }
-    };
-    
-    return results[inferenceType] || {
-        result: `Inference completed for ${inferenceType}`,
-        executionTime: '1.0s',
-        modelUsed: 'auto-selected'
-    };
-}
-
 function clearInferenceForm() {
     const form = document.querySelector('.inference-form');
     if (form) {
@@ -647,6 +700,83 @@ function clearInferenceForm() {
     const resultsDiv = document.getElementById('inference-results');
     if (resultsDiv) {
         resultsDiv.innerHTML = '<p>Ready to run inference...</p>';
+    }
+}
+
+// Model Recommendations
+async function getModelRecommendations(inferenceType) {
+    const resultsDiv = document.getElementById('model-recommendations');
+    if (!resultsDiv) {
+        console.warn('Model recommendations div not found');
+        return;
+    }
+    
+    resultsDiv.innerHTML = '<div class="spinner"></div><p>Getting model recommendations...</p>';
+    
+    if (!mcpClient) {
+        resultsDiv.innerHTML = '<div class="warning">SDK not available for recommendations</div>';
+        return;
+    }
+    
+    try {
+        const startTime = Date.now();
+        const recommendations = await mcpClient.callTool('recommend_models', {
+            task: inferenceType,
+            limit: 5
+        });
+        
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('recommend_models', true, responseTime);
+        
+        if (!recommendations || !recommendations.models || recommendations.models.length === 0) {
+            resultsDiv.innerHTML = '<div class="info">No specific recommendations available. Using auto-select.</div>';
+            return;
+        }
+        
+        let html = '<div class="model-recommendations"><h4>💡 Recommended Models:</h4><ul>';
+        recommendations.models.forEach((model, index) => {
+            const modelName = model.model_id || model.name || model;
+            const score = model.score || model.confidence || 0;
+            const description = model.description || 'No description available';
+            
+            html += `
+                <li class="model-recommendation-item">
+                    <div class="model-rec-header">
+                        <strong>${index + 1}. ${modelName}</strong>
+                        ${score > 0 ? `<span class="model-score">${(score * 100).toFixed(1)}%</span>` : ''}
+                    </div>
+                    <div class="model-rec-description">${description}</div>
+                    <button class="btn btn-sm btn-primary" onclick="selectRecommendedModel('${modelName}')">
+                        ✨ Use This Model
+                    </button>
+                </li>
+            `;
+        });
+        html += '</ul></div>';
+        
+        resultsDiv.innerHTML = html;
+        showToast(`✅ Found ${recommendations.models.length} recommended models`, 'success');
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('recommend_models', false, responseTime);
+        console.error('Failed to get model recommendations:', error);
+        resultsDiv.innerHTML = `<div class="warning">⚠️ Could not get recommendations: ${error.message}</div>`;
+    }
+}
+
+function selectRecommendedModel(modelId) {
+    const modelIdInput = document.getElementById('model-id');
+    if (modelIdInput) {
+        modelIdInput.value = modelId;
+        showToast(`✅ Selected model: ${modelId}`, 'success');
+    }
+}
+
+// Auto-load recommendations when inference type changes
+function loadModelRecommendationsForType() {
+    const inferenceType = document.getElementById('inference-type')?.value;
+    if (inferenceType && mcpClient) {
+        getModelRecommendations(inferenceType);
     }
 }
 

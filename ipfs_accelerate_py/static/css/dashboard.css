@@ -2022,3 +2022,130 @@ kbd {
     color: #991b1b;
     font-size: 14px;
 }
+
+/* AI Inference Enhancements */
+.model-recommendations {
+    margin: 15px 0;
+}
+
+.model-recommendations h4 {
+    margin-bottom: 10px;
+    color: #1f2937;
+    font-size: 16px;
+}
+
+.model-recommendations ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.model-recommendation-item {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 10px;
+    transition: all 0.2s;
+}
+
+.model-recommendation-item:hover {
+    border-color: #667eea;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.1);
+}
+
+.model-rec-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 5px;
+}
+
+.model-score {
+    background: #10b981;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.model-rec-description {
+    color: #6b7280;
+    font-size: 13px;
+    margin-bottom: 8px;
+}
+
+.btn-sm {
+    padding: 6px 12px;
+    font-size: 13px;
+}
+
+/* Inference Results Display */
+.result-text {
+    padding: 15px;
+    background: #f9fafb;
+    border-radius: 8px;
+    line-height: 1.6;
+    font-size: 14px;
+}
+
+.result-embeddings,
+.result-classification,
+.result-image {
+    padding: 15px;
+}
+
+.result-json {
+    background: #1f2937;
+    color: #f3f4f6;
+    padding: 15px;
+    border-radius: 8px;
+    font-size: 13px;
+    overflow-x: auto;
+}
+
+.result-metadata {
+    margin-top: 10px;
+    padding: 10px;
+    background: #f3f4f6;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.result-classification ul {
+    list-style: none;
+    padding: 0;
+}
+
+.result-classification li {
+    padding: 8px;
+    background: #f9fafb;
+    border-radius: 4px;
+    margin-bottom: 5px;
+    border-left: 3px solid #667eea;
+}
+
+.spinner.large {
+    width: 48px;
+    height: 48px;
+    border-width: 4px;
+}
+
+.info {
+    padding: 12px;
+    background: #dbeafe;
+    border: 1px solid #bfdbfe;
+    border-radius: 6px;
+    color: #1e40af;
+    font-size: 14px;
+}
+
+.warning {
+    padding: 12px;
+    background: #fef3c7;
+    border: 1px solid #fde68a;
+    border-radius: 6px;
+    color: #92400e;
+    font-size: 14px;
+}
