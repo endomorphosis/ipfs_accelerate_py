@@ -30,14 +30,17 @@ setup(
 	python_requires=">=3.8",
 	keywords="machine learning, IPFS, hardware-acceleration, inference, distributed computing, WebGPU, WebNN",
 	dependency_links=[
-		'git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good#egg=ipfs_kit_py',
+		'git+https://github.com/endomorphosis/ipfs_kit_py.git@main#egg=ipfs_kit_py',
+		'git+https://github.com/endomorphosis/ipfs_datasets_py.git@main#egg=ipfs_datasets_py',
+		'git+https://github.com/endomorphosis/ipfs_transformers_py.git@main#egg=ipfs_transformers_py',
+		'git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main#egg=ipfs_model_manager_py',
 	],
 	install_requires=[
-		'ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@known_good',
+		'ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@main',
 		'sentence_transformers',
 		'transformers>=4.46',
-		'ipfs_transformers_py',
-		'ipfs_model_manager_py',
+		'ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main',
+		'ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main',
 		'torch>=2.1',
 		'torchvision',
 		'numpy>=1.24.0',  # Ensure Python 3.12 compatibility
@@ -125,8 +128,8 @@ setup(
 			"uvicorn>=0.27.0",
 			"fastapi>=0.110.0",
 			"sentence_transformers",
-			"ipfs_transformers_py",
-			"ipfs_model_manager_py",
+			"ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
+			"ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
 			"torchvision",
 			"torchtext",
 			"InstructorEmbedding",
@@ -174,6 +177,7 @@ setup(
 			# Distributed dataset manipulation via ipfs_datasets_py
 			# Note: ipfs_datasets_py is available as a git submodule at ipfs_datasets_py
 			# This extra provides dependencies needed for ipfs_datasets_py integration
+			"ipfs_datasets_py @ git+https://github.com/endomorphosis/ipfs_datasets_py.git@main",
 			"reportlab>=3.6.0",  # For PDF processing
 			"beautifulsoup4>=4.12.0",  # For web scraping
 			"lxml>=4.9.0",  # For HTML/XML parsing
@@ -185,8 +189,8 @@ setup(
 			"uvicorn>=0.27.0",
 			"fastapi>=0.110.0",
 			"sentence_transformers",
-			"ipfs_transformers_py",
-			"ipfs_model_manager_py",
+			"ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
+			"ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
 			"torchvision",
 			"torchtext",
 			"InstructorEmbedding",

@@ -2,10 +2,10 @@
 torch
 torchvision
 torchaudio
-ipfs_kit_py==0.0.18
-ipfs_model_manager_py==0.0.23
+ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@main
+ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main
 libp2p_kit_py==0.0.19
-ipfs_transformers_py
+ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main
 transformers==4.46
 numpy
 torchtext
