@@ -542,6 +542,29 @@ class MCPClient {
         });
     }
 
+    /**
+     * Call multiple MCP tools in a batch
+     * @param {Array<{name: string, arguments: Object}>} tools - Array of tool calls
+     * @returns {Promise<Array<{result?: any, error?: MCPError}>>}
+     * 
+     * @example
+     * const results = await client.callToolsBatch([
+     *   { name: 'github_list_repos', arguments: { owner: 'octocat' } },
+     *   { name: 'docker_list_containers', arguments: { all: true } }
+     * ]);
+     */
+    async callToolsBatch(tools) {
+        const requests = tools.map(tool => ({
+            method: 'tools/call',
+            params: {
+                name: tool.name,
+                arguments: tool.arguments || {}
+            }
+        }));
+        
+        return await this.batch(requests);
+    }
+
     // GitHub Tools
     async githubListRepos(owner = null, limit = 30) {
         return await this.callTool('github_list_repos', { owner, limit });
