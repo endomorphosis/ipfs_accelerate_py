@@ -34,7 +34,7 @@ root_dir = script_dir.parent
 sys.path.insert(0, str(root_dir))
 
 try:
-    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
+    from test.tests.web.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
 except ImportError:
     print("Error: Could not import ResourcePoolBridgeIntegration. Make sure the path is correct.")
     sys.exit(1)

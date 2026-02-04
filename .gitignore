@@ -112,3 +112,13 @@ coverage.xml
 # Performance baselines - KEEP IN VERSION CONTROL
 # (Uncomment the line below to exclude from version control if needed)
 # test/.performance_baselines.json
+
+# Playwright E2E test results
+test-results/
+playwright-report/
+test/e2e/test-results/
+test/e2e/playwright-report/
+
+# TypeScript build output
+dist/
+*.tsbuildinfo

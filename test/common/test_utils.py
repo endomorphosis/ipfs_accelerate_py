@@ -403,7 +403,7 @@ class PerformanceTestUtils:
             Dictionary with regression check results
         """
         try:
-            from .performance_baseline import get_baseline_manager
+            from test.common.performance_baseline import get_baseline_manager
         except ImportError:
             return {
                 "error": "Performance baseline manager not available",

@@ -424,7 +424,7 @@ class TemplateRenderer:
                 "memory_management": "device_memory",
                 "precision": "float16",
                 "threading_model": "browser_worker",
-                "initialization_code": "from test.web_platform.webgpu_utils import get_device\ndevice = get_device()"
+                "initialization_code": "from test.tests.web.web_platform.webgpu_utils import get_device\ndevice = get_device()"
             })
             
         # Default variables for other platforms
