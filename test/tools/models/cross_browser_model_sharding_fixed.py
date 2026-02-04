@@ -27,7 +27,7 @@ from typing import Dict, List, Any, Optional, Tuple, Union, Set
 
 # Import base model sharding functionality
 try:
-    from test.web_platform.model_sharding import (
+    from test.tests.web.web_platform.model_sharding import (
         ModelShardingManager,
         create_model_shards,
         shard_model_for_inference,

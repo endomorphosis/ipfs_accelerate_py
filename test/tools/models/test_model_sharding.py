@@ -24,7 +24,7 @@ Usage:
     from typing import Dict, Any, List, Optional
 
 # Import the module to test
-    from test.web_platform.model_sharding import ())))
+    from test.tests.web.web_platform.model_sharding import ())))
     ModelShardingManager,
     create_model_shards,
     shard_model_for_inference,

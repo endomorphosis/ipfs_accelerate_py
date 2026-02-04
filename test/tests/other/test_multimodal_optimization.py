@@ -23,7 +23,7 @@ Example usage:
     sys.path.append())))))))))os.path.dirname())))))))))os.path.dirname())))))))))os.path.abspath())))))))))__file__))))
 
 # Import the multimodal optimizer and integration modules
-    from test.web_platform.multimodal_optimizer import ())))))))))
+    from test.tests.web.web_platform.multimodal_optimizer import ())))))))))
     MultimodalOptimizer,
     optimize_multimodal_model,
     configure_for_browser,

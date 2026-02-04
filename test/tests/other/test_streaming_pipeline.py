@@ -40,13 +40,13 @@ Usage:
     ,
 # Import the streaming pipeline module:
 try:
-    from test.web_platform.webgpu_streaming_pipeline import ()))))))
+    from test.tests.web.web_platform.webgpu_streaming_pipeline import ()))))))
     WebGPUStreamingPipeline,
     create_streaming_pipeline,
     start_streaming_server,
     StreamingRequest
     )
-    from test.web_platform.webgpu_streaming_inference import ()))))))
+    from test.tests.web.web_platform.webgpu_streaming_inference import ()))))))
     WebGPUStreamingInference,
     optimize_for_streaming
     )

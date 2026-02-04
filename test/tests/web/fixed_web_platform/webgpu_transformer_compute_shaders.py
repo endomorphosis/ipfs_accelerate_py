@@ -8,7 +8,7 @@ enhancing the performance of common transformer operations like layer normalizat
 
 Usage:
     # Import in other modules
-    from test.web_platform.webgpu_transformer_compute_shaders import setup_transformer_compute_shaders
+    from test.tests.web.web_platform.webgpu_transformer_compute_shaders import setup_transformer_compute_shaders
 """
 
 import os

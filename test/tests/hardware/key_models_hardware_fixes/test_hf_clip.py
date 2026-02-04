@@ -70,7 +70,7 @@ except ImportError:
 
 # Try to import web platform support
 try::
-    from test.web_platform import create_mock_processors, process_for_web
+    from test.tests.web.web_platform import create_mock_processors, process_for_web
     HAS_WEB_PLATFORM = True
 except ImportError:
     HAS_WEB_PLATFORM = False

@@ -64,7 +64,7 @@ except ImportError:
 
 # Try to import the resource pool bridge
 try:
-    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
     RESOURCE_POOL_AVAILABLE = True
 except ImportError:
     logger.warning())))))))))))))))"ResourcePoolBridge not available")
@@ -72,7 +72,7 @@ except ImportError:
 
 # Try to import the websocket bridge
 try:
-    from test.web_platform.websocket_bridge import WebSocketBridge, create_websocket_bridge
+    from test.tests.web.web_platform.websocket_bridge import WebSocketBridge, create_websocket_bridge
     WEBSOCKET_BRIDGE_AVAILABLE = True
 except ImportError:
     logger.warning())))))))))))))))"WebSocketBridge not available")
@@ -80,8 +80,8 @@ except ImportError:
 
 # Try to import real WebNN/WebGPU implementation
 try:
-    from test.web_platform.webgpu_implementation import WebGPUImplementation
-    from test.web_platform.webnn_implementation import WebNNImplementation
+    from test.tests.web.web_platform.webgpu_implementation import WebGPUImplementation
+    from test.tests.web.web_platform.webnn_implementation import WebNNImplementation
     WEBGPU_IMPLEMENTATION_AVAILABLE = True
     WEBNN_IMPLEMENTATION_AVAILABLE = True
 except ImportError:

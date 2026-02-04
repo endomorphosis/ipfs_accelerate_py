@@ -59,8 +59,8 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 # Import resource pool bridge for backward compatibility
-from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
-from test.web_platform.parallel_model_executor import ParallelModelExecutor
+from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+from test.tests.web.web_platform.parallel_model_executor import ParallelModelExecutor
 
 class EnhancedParallelModelExecutor:
     """
@@ -275,7 +275,7 @@ class EnhancedParallelModelExecutor:
             if not self.resource_pool_integration:
                 try:
                     # Try to import and create resource pool integration
-                    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+                    from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
                     self.resource_pool_integration = ResourcePoolBridgeIntegration(
                         max_connections=self.max_workers,
                         browser_preferences=self.browser_preferences,
@@ -1775,7 +1775,7 @@ async def create_enhanced_parallel_executor(
 # Test function for the enhanced executor
 async def test_enhanced_parallel_executor():
     """Test the enhanced parallel model executor."""
-    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration, EnhancedWebModel
+    from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration, EnhancedWebModel
     
     try:
         # Create resource pool integration

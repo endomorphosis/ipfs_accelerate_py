@@ -172,7 +172,7 @@ class ResourcePoolValidator:
                 
             # Import enhanced resource pool
             try:
-                from test.web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
+                from test.tests.web.web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
                 
                 # Create enhanced resource pool
                 logger.info("Creating enhanced resource pool integration")

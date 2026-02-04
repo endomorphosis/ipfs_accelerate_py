@@ -40,7 +40,7 @@ except ImportError:
 
 # Try to import WebGPU quantization support
 try:
-    from test.web_platform.webgpu_quantization import WebGPUQuantizer
+    from test.tests.web.web_platform.webgpu_quantization import WebGPUQuantizer
     WEBGPU_QUANTIZATION_AVAILABLE = True
 except ImportError:
     logger.warning())"WebGPU quantization module not available")

@@ -110,7 +110,7 @@ async def run_validation():
     try:
         # Import necessary modules
         try:
-            from test.web_platform.fault_tolerance_visualization_integration import FaultToleranceValidationSystem
+            from test.tests.web.web_platform.fault_tolerance_visualization_integration import FaultToleranceValidationSystem
             
             if args.mock:
                 from mock_cross_browser_sharding import MockCrossBrowserModelShardingManager as ModelManager

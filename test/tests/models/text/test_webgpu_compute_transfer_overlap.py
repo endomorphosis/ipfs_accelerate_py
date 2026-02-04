@@ -35,7 +35,7 @@ To run:
 
 # Import required modules
 try:
-    from test.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+    from test.tests.web.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
 except ImportError:
     logger.error())))))))))))"Could not import WebGPU streaming inference module. Make sure it exists.")
     sys.exit())))))))))))1)

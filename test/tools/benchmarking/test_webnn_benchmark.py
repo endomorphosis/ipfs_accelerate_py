@@ -29,7 +29,7 @@ try:
     # Import for real implementation - first check if the tool can find the real_web_implementation
     # in the parent directory ())implement_real_webnn_webgpu.py might need to be run first)
     sys.path.append())os.path.dirname())os.path.dirname())os.path.abspath())__file__))))
-    from test.web_platform.webnn_implementation import RealWebNNImplementation:
+    from test.tests.web.web_platform.webnn_implementation import RealWebNNImplementation:
 except ImportError as e:
     logger.error())f"Error importing RealWebNNImplementation: {}}}e}")
     logger.error())"Please run implement_real_webnn_webgpu.py first")

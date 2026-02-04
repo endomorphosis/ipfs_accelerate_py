@@ -32,12 +32,12 @@ Usage:
 
 # Import resource pool bridge
 try:
-    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
 except ImportError:
     # Try to import from parent directory
     sys.path.append()))os.path.dirname()))os.path.dirname()))os.path.abspath()))__file__))))
     try:
-        from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+        from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
     except ImportError:
         print()))"Error: Could not import ResourcePoolBridgeIntegration")
         ResourcePoolBridgeIntegration = None

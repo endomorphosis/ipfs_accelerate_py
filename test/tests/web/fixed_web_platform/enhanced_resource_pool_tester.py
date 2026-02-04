@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 # Import the enhanced resource pool integration
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 try:
-    from test.web_platform.resource_pool_integration_enhanced import EnhancedResourcePoolIntegration
+    from test.tests.web.web_platform.resource_pool_integration_enhanced import EnhancedResourcePoolIntegration
     ENHANCED_INTEGRATION_AVAILABLE = True
 except ImportError:
     logger.warning("Enhanced Resource Pool Integration not available")

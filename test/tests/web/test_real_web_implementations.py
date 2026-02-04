@@ -28,8 +28,8 @@ Usage:
 
 # Import implementations
 try:
-    from test.web_platform.webgpu_implementation import RealWebGPUImplementation
-    from test.web_platform.webnn_implementation import RealWebNNImplementation
+    from test.tests.web.web_platform.webgpu_implementation import RealWebGPUImplementation
+    from test.tests.web.web_platform.webnn_implementation import RealWebNNImplementation
     HAS_IMPLEMENTATIONS = True
 except ImportError:
     logger.error("Failed to import WebGPU/WebNN implementations")

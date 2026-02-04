@@ -18,7 +18,7 @@ Key features:
 - Cross-model intermediate representation sharing
 
 Usage:
-    from test.web_platform.cross_model_tensor_sharing import (
+    from test.tests.web.web_platform.cross_model_tensor_sharing import (
         TensorSharingManager,
         SharedTensor,
         register_shared_tensor,
@@ -63,7 +63,7 @@ logger = logging.getLogger("cross_model_tensor_sharing")
 
 # Try to import WebGPU components if available
 try:
-    from test.web_platform.webgpu_adapter import WebGPUAdapter
+    from test.tests.web.web_platform.webgpu_adapter import WebGPUAdapter
     WEBGPU_AVAILABLE = True
 except ImportError:
     WEBGPU_AVAILABLE = False

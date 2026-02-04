@@ -10,7 +10,7 @@ to enable running larger language models in browser environments, including:
 - Streaming inference for memory-intensive operations
 
 Usage:
-    from test.web_platform.webgpu_memory_optimization import (
+    from test.tests.web.web_platform.webgpu_memory_optimization import (
         WebGPUMemoryOptimizer,
         optimize_model_for_webgpu
     )

@@ -14,7 +14,7 @@ Key features:
 - Provides a unified interface for sharded model execution
 
 Usage:
-    from test.web_platform.cross_browser_model_sharding import ModelShardingManager
+    from test.tests.web.web_platform.cross_browser_model_sharding import ModelShardingManager
     
     # Create model sharding manager
     manager = ModelShardingManager(
@@ -42,7 +42,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple
 
 # Import resource pool bridge
 try:
-    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
 except ImportError:
     # Use relative import as fallback
     sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

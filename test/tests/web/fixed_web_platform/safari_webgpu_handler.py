@@ -12,7 +12,7 @@ to support running machine learning models in Safari browsers:
 - Enable specialized Metal optimizations for different model types
 
 Usage:
-    from test.web_platform.safari_webgpu_handler import (
+    from test.tests.web.web_platform.safari_webgpu_handler import (
         SafariWebGPUHandler,
         MetalAPIIntegrationLayer,
         optimize_for_safari
@@ -46,7 +46,7 @@ logger = logging.getLogger("safari_webgpu_handler")
 
 # Try to import WebAssembly fallback
 try:
-    from test.web_platform.webgpu_wasm_fallback import WebAssemblyFallback
+    from test.tests.web.web_platform.webgpu_wasm_fallback import WebAssemblyFallback
     WASM_FALLBACK_AVAILABLE = True
 except ImportError:
     WASM_FALLBACK_AVAILABLE = False
@@ -421,7 +421,7 @@ class SafariWebGPUHandler:
         # Use browser capability detection if available
         self.metal_optimizations = False
         try:
-            from test.web_platform.browser_capability_detection import detect_browser_capabilities, is_safari_with_metal_api
+            from test.tests.web.web_platform.browser_capability_detection import detect_browser_capabilities, is_safari_with_metal_api
             self.browser_capabilities = detect_browser_capabilities(user_agent)
             
             # Override safari_version if detected from capabilities
@@ -459,7 +459,7 @@ class SafariWebGPUHandler:
         # Initialize progressive model loader if available
         self.progressive_loader = None
         try:
-            from test.web_platform.progressive_model_loader import ProgressiveModelLoader
+            from test.tests.web.web_platform.progressive_model_loader import ProgressiveModelLoader
             # Will be initialized when needed
             self.progressive_loader_available = True
         except ImportError:
@@ -882,13 +882,13 @@ class SafariWebGPUHandler:
             
         elif operation_type == "model_load" and self.progressive_loader_available:
             # Use progressive model loader for model loading
-            from test.web_platform.progressive_model_loader import load_model_progressively
+            from test.tests.web.web_platform.progressive_model_loader import load_model_progressively
             
             model_name = operation.get("model_name", "unknown")
             
             # Initialize progressive loader if needed
             if not self.progressive_loader:
-                from test.web_platform.progressive_model_loader import ProgressiveModelLoader
+                from test.tests.web.web_platform.progressive_model_loader import ProgressiveModelLoader
                 self.progressive_loader = ProgressiveModelLoader(
                     model_name=model_name,
                     platform="webgpu_metal",  # Special platform for Metal API
@@ -1569,7 +1569,7 @@ def get_safari_capabilities(user_agent: Optional[str] = None) -> Dict[str, Any]:
     """
     try:
         # Try to use browser capability detection first
-        from test.web_platform.browser_capability_detection import detect_browser_capabilities
+        from test.tests.web.web_platform.browser_capability_detection import detect_browser_capabilities
         capabilities = detect_browser_capabilities(user_agent)
         
         # Only return if it's Safari

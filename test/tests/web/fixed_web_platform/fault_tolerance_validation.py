@@ -8,7 +8,7 @@ It includes test scenarios, validation metrics, and analysis tools to ensure
 enterprise-grade fault tolerance features work correctly.
 
 Usage:
-    from test.web_platform.fault_tolerance_validation import FaultToleranceValidator
+    from test.tests.web.web_platform.fault_tolerance_validation import FaultToleranceValidator
     
     # Create validator
     validator = FaultToleranceValidator(model_manager)

@@ -39,7 +39,7 @@ Usage:
     sys.path.append()))))))))))))'test')
 
 try:
-    from test.web_platform.webgpu_4bit_inference import ()))))))))))))
+    from test.tests.web.web_platform.webgpu_4bit_inference import ()))))))))))))
     WebGPU4BitOptimizer,
     create_4bit_optimizer,
     optimize_model_for_4bit_inference
@@ -49,7 +49,7 @@ except ImportError:
     sys.exit()))))))))))))1)
 
 try:
-    from test.web_platform.webgpu_memory_optimization import ()))))))))))))
+    from test.tests.web.web_platform.webgpu_memory_optimization import ()))))))))))))
     WebGPUMemoryOptimizer,
     optimize_model_for_webgpu
     )
@@ -58,7 +58,7 @@ except ImportError:
     sys.exit()))))))))))))1)
 
 try:
-    from test.web_platform.web_platform_handler import ()))))))))))))
+    from test.tests.web.web_platform.web_platform_handler import ()))))))))))))
     process_for_web, init_webgpu, create_mock_processors
     )
 except ImportError:

@@ -32,7 +32,7 @@ Usage:
 
 # Import streaming inference modules
 try:
-    from test.web_platform.streaming_inference import ()))))))))))
+    from test.tests.web.web_platform.streaming_inference import ()))))))))))
     AdaptiveBatchSizeController,
     LowLatencyOptimizer,
     StreamingTelemetryCollector,

@@ -28,10 +28,10 @@ import threading
 from typing import Dict, List, Any, Optional, Tuple, Union, Callable, Set
 
 # Import connection pool manager
-from test.web_platform.connection_pool_manager import ConnectionPoolManager
+from test.tests.web.web_platform.connection_pool_manager import ConnectionPoolManager
 
 # Import circuit breaker manager
-from test.web_platform.resource_pool_circuit_breaker import ResourcePoolCircuitBreakerManager
+from test.tests.web.web_platform.resource_pool_circuit_breaker import ResourcePoolCircuitBreakerManager
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -120,7 +120,7 @@ class ConnectionPoolIntegration:
         self.db_integration = None
         if db_path:
             try:
-                from test.web_platform.resource_pool_db_integration import ResourcePoolDBIntegration
+                from test.tests.web.web_platform.resource_pool_db_integration import ResourcePoolDBIntegration
                 self.db_integration = ResourcePoolDBIntegration(db_path=db_path)
                 logger.info(f"DuckDB integration initialized with database: {db_path}")
             except ImportError:
@@ -151,7 +151,7 @@ class ConnectionPoolIntegration:
         self.tensor_sharing_manager = None
         if self.enable_tensor_sharing:
             try:
-                from test.web_platform.cross_model_tensor_sharing import TensorSharingManager
+                from test.tests.web.web_platform.cross_model_tensor_sharing import TensorSharingManager
                 self.tensor_sharing_manager = TensorSharingManager(max_memory_mb=2048)
                 logger.info("TensorSharingManager imported successfully")
             except ImportError:
@@ -161,7 +161,7 @@ class ConnectionPoolIntegration:
         self.ultra_low_precision_manager = None
         if self.enable_ultra_low_precision:
             try:
-                from test.web_platform.webgpu_ultra_low_precision import UltraLowPrecisionManager
+                from test.tests.web.web_platform.webgpu_ultra_low_precision import UltraLowPrecisionManager
                 self.ultra_low_precision_manager = UltraLowPrecisionManager()
                 logger.info("UltraLowPrecisionManager imported successfully")
             except ImportError:

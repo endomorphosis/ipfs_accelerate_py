@@ -12,7 +12,7 @@ This module implements specialized compute shader implementations for WebGPU
 5. Browser-specific shader implementations
 
 Usage:
-    from test.web_platform.webgpu_compute_shaders import (
+    from test.tests.web.web_platform.webgpu_compute_shaders import (
         generate_compute_shader,
         get_browser_optimized_shader,
         matmul_4bit_shader,

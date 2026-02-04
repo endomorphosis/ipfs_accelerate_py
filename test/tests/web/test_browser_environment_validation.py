@@ -20,7 +20,7 @@ from unittest.mock import patch, MagicMock, AsyncMock
 sys.path.append(str(Path(__file__).resolve().parent))
 
 # Import the browser validation functionality
-from test.web_platform.browser_automation import (
+from test.tests.web.web_platform.browser_automation import (
     find_browser_executable,
     get_browser_args,
     create_test_html,

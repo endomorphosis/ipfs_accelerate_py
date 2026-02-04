@@ -68,7 +68,7 @@ class ModelStub:
         }
 
 # Import the enhanced resource pool integration with stub replacement
-from test.web_platform.adaptive_scaling import AdaptiveConnectionManager
+from test.tests.web.web_platform.adaptive_scaling import AdaptiveConnectionManager
 
 # Create EnhancedResourcePoolIntegration implementation using the stub
 class EnhancedResourcePoolIntegration:

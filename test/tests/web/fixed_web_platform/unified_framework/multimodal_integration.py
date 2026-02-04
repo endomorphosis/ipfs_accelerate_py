@@ -43,7 +43,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple
 import anyio
 
 # Import core multimodal optimizer
-from test.web_platform.multimodal_optimizer import (
+from test.tests.web.web_platform.multimodal_optimizer import (
     MultimodalOptimizer,
     optimize_multimodal_model,
     configure_for_browser,

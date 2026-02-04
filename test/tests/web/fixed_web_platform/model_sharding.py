@@ -11,7 +11,7 @@ This module provides distributed model execution functionality across multiple b
 - Distributed orchestration for large model inference
 
 Usage:
-    from test.web_platform.model_sharding import (
+    from test.tests.web.web_platform.model_sharding import (
         ModelShardingManager,
         create_model_shards,
         shard_model_for_inference,

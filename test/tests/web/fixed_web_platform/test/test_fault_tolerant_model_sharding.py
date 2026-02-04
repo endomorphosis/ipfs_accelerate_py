@@ -35,9 +35,9 @@ sys.path.append(str(Path(__file__).resolve().parent.parent.parent))
 
 # Import required modules
 try:
-    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
-    from test.web_platform.fault_tolerant_model_sharding import FaultTolerantModelSharding
-    from test.web_platform.fault_tolerance_validation import FaultToleranceValidator
+    from test.tests.web.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegration
+    from test.tests.web.web_platform.fault_tolerant_model_sharding import FaultTolerantModelSharding
+    from test.tests.web.web_platform.fault_tolerance_validation import FaultToleranceValidator
     FAULT_TOLERANCE_AVAILABLE = True
 except ImportError as e:
     logger.error(f"Fault tolerance components not available: {e}")

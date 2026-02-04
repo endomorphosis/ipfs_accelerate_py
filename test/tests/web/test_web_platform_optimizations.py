@@ -31,7 +31,7 @@ Usage:
 
 # Import fixed web platform handler
 try:
-    from test.web_platform.web_platform_handler import ()))))))))))))))))))))
+    from test.tests.web.web_platform.web_platform_handler import ()))))))))))))))))))))
     process_for_web,
     init_webnn,
     init_webgpu,
@@ -43,9 +43,9 @@ try:
     
     # Import the specialized optimizations
     try:
-        from test.web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
-        from test.web_platform.webgpu_shader_precompilation import setup_shader_precompilation
-        from test.web_platform.progressive_model_loader import ProgressiveModelLoader
+        from test.tests.web.web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
+        from test.tests.web.web_platform.webgpu_shader_precompilation import setup_shader_precompilation
+        from test.tests.web.web_platform.progressive_model_loader import ProgressiveModelLoader
         OPTIMIZATIONS_AVAILABLE = True
         logger.info()))))))))))))))))))))"Specialized optimization modules imported successfully")
     except ImportError as e:
@@ -115,7 +115,7 @@ def test_compute_shader_optimization()))))))))))))))))))))model_name="whisper"):
             if OPTIMIZATIONS_AVAILABLE:
                 try:
                     # Try to import the Firefox optimization function directly
-                    from test.web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
+                    from test.tests.web.web_platform.webgpu_audio_compute_shaders import optimize_for_firefox
                     # Apply Firefox-specific optimization for audio models
                     firefox_config = optimize_for_firefox())))))))))))))))))))){}}}}}}}}}}}
                     "model_name": model_name,
@@ -264,7 +264,7 @@ def test_parallel_loading_optimization()))))))))))))))))))))model_name="clip-vit
             if OPTIMIZATIONS_AVAILABLE:
                 try:
                     # Check if we have access to the ProgressiveModelLoader
-                    from test.web_platform.progressive_model_loader import ProgressiveModelLoader
+                    from test.tests.web.web_platform.progressive_model_loader import ProgressiveModelLoader
                     logger.info()))))))))))))))))))))f"Setting up progressive model loading for {}}}}}}}}}}}model_name} using dedicated module")
                     
                     # Initialize the progressive loader
@@ -464,7 +464,7 @@ def test_shader_precompilation()))))))))))))))))))))model_name="vit"):
             if OPTIMIZATIONS_AVAILABLE:
                 try:
                     # Try to import the setup function directly
-                    from test.web_platform.webgpu_shader_precompilation import setup_shader_precompilation
+                    from test.tests.web.web_platform.webgpu_shader_precompilation import setup_shader_precompilation
                     logger.info()))))))))))))))))))))f"Setting up shader precompilation for {}}}}}}}}}}}model_name} using dedicated module")
                     
                     # Use the dedicated shader precompiler

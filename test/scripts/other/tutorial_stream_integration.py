@@ -31,12 +31,12 @@ os.environ["WEBGPU_SIMULATION"] = "1"
 ,
 # Import required modules:
 try:
-    from test.web_platform.unified_web_framework import ())))))))
+    from test.tests.web.web_platform.unified_web_framework import ())))))))
     WebPlatformAccelerator,
     create_web_endpoint,
     get_optimal_config
     )
-    from test.web_platform.webgpu_streaming_inference import ())))))))
+    from test.tests.web.web_platform.webgpu_streaming_inference import ())))))))
     WebGPUStreamingInference,
     create_streaming_endpoint
     )

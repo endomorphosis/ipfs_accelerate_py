@@ -15,7 +15,7 @@ Key features:
 - Detailed metrics and telemetry
 
 Usage:
-    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+    from test.tests.web.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
     
     # Create integrated pool with recovery
     pool = ResourcePoolBridgeIntegrationWithRecovery(max_connections=4)
@@ -42,29 +42,29 @@ from typing import Any, Dict, List, Optional, Tuple, Union, Callable, Set
 
 # Import connection pooling and health monitoring
 try:
-    from test.web_platform.connection_pool_manager import ConnectionPoolManager
-    from test.web_platform.resource_pool_circuit_breaker import ResourcePoolCircuitBreakerManager
+    from test.tests.web.web_platform.connection_pool_manager import ConnectionPoolManager
+    from test.tests.web.web_platform.resource_pool_circuit_breaker import ResourcePoolCircuitBreakerManager
     ADVANCED_POOLING_AVAILABLE = True
 except ImportError:
     ADVANCED_POOLING_AVAILABLE = False
 
 # Import tensor sharing
 try:
-    from test.web_platform.cross_model_tensor_sharing import TensorSharingManager
+    from test.tests.web.web_platform.cross_model_tensor_sharing import TensorSharingManager
     TENSOR_SHARING_AVAILABLE = True
 except ImportError:
     TENSOR_SHARING_AVAILABLE = False
     
 # Import ultra-low precision support
 try:
-    from test.web_platform.webgpu_ultra_low_precision import UltraLowPrecisionManager
+    from test.tests.web.web_platform.webgpu_ultra_low_precision import UltraLowPrecisionManager
     ULTRA_LOW_PRECISION_AVAILABLE = True
 except ImportError:
     ULTRA_LOW_PRECISION_AVAILABLE = False
 
 # Import browser performance history tracking
 try:
-    from test.web_platform.browser_performance_history import BrowserPerformanceHistory
+    from test.tests.web.web_platform.browser_performance_history import BrowserPerformanceHistory
     BROWSER_HISTORY_AVAILABLE = True
 except ImportError:
     BROWSER_HISTORY_AVAILABLE = False
@@ -211,7 +211,7 @@ class ResourcePoolBridgeIntegrationWithRecovery:
         """
         try:
             # Import core bridge implementation
-            from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+            from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
             
             # Create base bridge
             self.bridge = ResourcePoolBridgeIntegration(
@@ -333,7 +333,7 @@ class ResourcePoolBridgeIntegrationWithRecovery:
             try:
                 # Use the enhanced BrowserPerformanceOptimizer if available
                 try:
-                    from test.web_platform.browser_performance_optimizer import BrowserPerformanceOptimizer
+                    from test.tests.web.web_platform.browser_performance_optimizer import BrowserPerformanceOptimizer
                     
                     # Create optimizer if not already created
                     if not hasattr(self, 'performance_optimizer'):

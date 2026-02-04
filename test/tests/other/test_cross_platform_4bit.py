@@ -45,7 +45,7 @@ Key features:
 
 # Try to import web platform modules
 try:
-    from test.web_platform.webgpu_quantization import setup_4bit_inference
+    from test.tests.web.web_platform.webgpu_quantization import setup_4bit_inference
     WEBGPU_QUANTIZATION_AVAILABLE = True
 except ImportError:
     logger.warning()))))"WebGPU quantization modules not available")

@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Try to import web platform support
 try:
-    from test.web_platform import process_for_web, create_mock_processors
+    from test.tests.web.web_platform import process_for_web, create_mock_processors
     HAS_WEB_PLATFORM = True
     logger.info("Web platform support available")
 except ImportError:

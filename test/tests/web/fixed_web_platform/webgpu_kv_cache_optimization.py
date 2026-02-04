@@ -14,7 +14,7 @@ Features:
 - Dynamic cache pruning for long-running inference
 
 Usage:
-    from test.web_platform.webgpu_kv_cache_optimization import (
+    from test.tests.web.web_platform.webgpu_kv_cache_optimization import (
         WebGPUKVCacheManager,
         setup_kv_cache_for_llm,
         generate_kv_cache_shaders
@@ -40,7 +40,7 @@ logger = logging.getLogger("webgpu_kv_cache")
 
 try:
     # Try to import the quantization module if available
-    from test.web_platform.webgpu_quantization import WebGPUQuantizer
+    from test.tests.web.web_platform.webgpu_quantization import WebGPUQuantizer
     QUANTIZATION_AVAILABLE = True
 except ImportError:
     QUANTIZATION_AVAILABLE = False

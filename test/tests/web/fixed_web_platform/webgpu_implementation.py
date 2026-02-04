@@ -16,7 +16,7 @@ Key features:
 - Cross-browser compatibility (Chrome, Firefox, Edge, Safari)
 
 Usage:
-    from test.web_platform.webgpu_implementation import RealWebGPUImplementation
+    from test.tests.web.web_platform.webgpu_implementation import RealWebGPUImplementation
 
     # Create implementation
     impl = RealWebGPUImplementation(browser_name="chrome", headless=True)

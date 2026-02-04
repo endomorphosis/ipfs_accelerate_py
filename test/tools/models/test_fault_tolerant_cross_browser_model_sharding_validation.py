@@ -35,7 +35,7 @@ sys.path.append(str(Path(__file__).resolve().parent))
 # Import required modules
 try:
     from cross_browser_model_sharding import CrossBrowserModelShardingManager
-    from test.web_platform.fault_tolerance_validation import FaultToleranceValidator
+    from test.tests.web.web_platform.fault_tolerance_validation import FaultToleranceValidator
     MODULES_AVAILABLE = True
 except ImportError as e:
     logger.error(f"Required modules not available: {e}")

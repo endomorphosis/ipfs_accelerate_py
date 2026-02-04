@@ -63,7 +63,7 @@ def setup_environment()))))))))))))))))))))))))))))))):
     
     try:
         # Import the unified framework
-        from test.web_platform.unified_web_framework import ()))))))))))))))))))))))))))))))
+        from test.tests.web.web_platform.unified_web_framework import ()))))))))))))))))))))))))))))))
         WebPlatformAccelerator,
         create_web_endpoint,
         get_optimal_config
@@ -151,7 +151,7 @@ def setup_environment()))))))))))))))))))))))))))))))):
                     """Test the streaming inference implementation."""
     try:
         # Import streaming inference components
-        from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))))))))))))
+        from test.tests.web.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))))))))))))
         WebGPUStreamingInference,
         create_streaming_endpoint,
         optimize_for_streaming
@@ -849,7 +849,7 @@ def main()))))))))))))))))))))))))))))))):
         # Determine which features to test
         if args.feature != "all":
             # Test only the specified feature
-            from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))))))))))))
+            from test.tests.web.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))))))))))))
             WebGPUStreamingInference,
             create_streaming_endpoint,
             optimize_for_streaming

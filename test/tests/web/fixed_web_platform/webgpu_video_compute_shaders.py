@@ -8,7 +8,7 @@ with specialized compute shaders for temporal operations.
 
 Usage:
     # Import in other modules
-    from test.web_platform.webgpu_video_compute_shaders import setup_video_compute_shaders
+    from test.tests.web.web_platform.webgpu_video_compute_shaders import setup_video_compute_shaders
 """
 
 import os

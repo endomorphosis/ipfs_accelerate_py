@@ -20,7 +20,7 @@ Usage:
     import argparse
     import logging
 
-    from test.web_platform.webnn_inference import ()))))))
+    from test.tests.web.web_platform.webnn_inference import ()))))))
     WebNNInference, 
     get_webnn_capabilities,
     is_webnn_supported,
@@ -29,7 +29,7 @@ Usage:
     get_webnn_browser_support
     )
 
-    from test.web_platform.unified_web_framework import ()))))))
+    from test.tests.web.web_platform.unified_web_framework import ()))))))
     WebPlatformAccelerator,
     get_optimal_config
     )

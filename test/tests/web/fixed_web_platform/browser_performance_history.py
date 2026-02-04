@@ -18,7 +18,7 @@ Performance data is tracked across:
 - Metrics (latency, throughput, memory usage)
 
 Usage:
-    from test.web_platform.browser_performance_history import BrowserPerformanceHistory
+    from test.tests.web.web_platform.browser_performance_history import BrowserPerformanceHistory
     
     # Create performance history tracker
     history = BrowserPerformanceHistory(db_path="./benchmark_db.duckdb")

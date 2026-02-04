@@ -54,7 +54,7 @@ except ImportError as e:
 
 # Import resource pool integration
 try:
-    from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+    from test.tests.web.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
     RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
     logger.warning(f"Error importing ResourcePoolBridgeIntegrationWithRecovery: {e}")

@@ -14,7 +14,7 @@ Features:
 7. DuckDB integration for persistent storage
 
 Usage:
-    from test.web_platform.performance_trend_analyzer import PerformanceTrendAnalyzer
+    from test.tests.web.web_platform.performance_trend_analyzer import PerformanceTrendAnalyzer
 
     # Create analyzer with DuckDB storage
     analyzer = PerformanceTrendAnalyzer(db_path="./benchmark_db.duckdb")

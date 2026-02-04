@@ -14,7 +14,7 @@ Key features:
 - Dynamic workload balancing across heterogeneous browser environments
 
 Usage:
-    from test.web_platform.browser_performance_optimizer import BrowserPerformanceOptimizer
+    from test.tests.web.web_platform.browser_performance_optimizer import BrowserPerformanceOptimizer
     
     # Create optimizer integrated with browser history
     optimizer = BrowserPerformanceOptimizer(

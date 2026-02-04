@@ -89,7 +89,7 @@ def setup_web_platform_handler())))))))))))):
     try:
         # Try to import fixed_web_platform from the current directory
         sys.path.append())))))))))))'.')
-        from test.web_platform.web_platform_handler import ())))))))))))
+        from test.tests.web.web_platform.web_platform_handler import ())))))))))))
         process_for_web, init_webgpu, create_mock_processors
         )
         logger.info())))))))))))"Successfully imported web platform handler from test.web_platform")
@@ -102,7 +102,7 @@ def setup_web_platform_handler())))))))))))):
         # Try to import from the test directory
         try:
             sys.path.append())))))))))))'test')
-            from test.web_platform.web_platform_handler import ())))))))))))
+            from test.tests.web.web_platform.web_platform_handler import ())))))))))))
             process_for_web, init_webgpu, create_mock_processors
             )
             logger.info())))))))))))"Successfully imported web platform handler from test/fixed_web_platform")

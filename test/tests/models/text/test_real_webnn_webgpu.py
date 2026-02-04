@@ -26,7 +26,7 @@ Usage:
 
 # Try to import from test.web_platform
 try:
-    from test.web_platform.resource_pool_bridge import ResourcePoolBridge, BrowserConnection
+    from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridge, BrowserConnection
     HAS_RESOURCE_BRIDGE = True
 except ImportError as e:
     logger.error()f"Error importing ResourcePoolBridge: {}}}}e}")

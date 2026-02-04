@@ -11,7 +11,7 @@ This module provides power-efficient inference optimizations for mobile devices:
 - Mobile GPU shader optimizations
 
 Usage:
-    from test.web_platform.mobile_device_optimization import (
+    from test.tests.web.web_platform.mobile_device_optimization import (
         MobileDeviceOptimizer,
         apply_mobile_optimizations,
         detect_mobile_capabilities,

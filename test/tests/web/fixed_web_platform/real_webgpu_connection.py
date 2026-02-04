@@ -14,7 +14,7 @@ Key features:
 - Hardware-specific optimizations
 
 Usage:
-    from test.web_platform.real_webgpu_connection import RealWebGPUConnection
+    from test.tests.web.web_platform.real_webgpu_connection import RealWebGPUConnection
 
     # Create connection
     connection = RealWebGPUConnection(browser_name="chrome")
@@ -60,7 +60,7 @@ except ImportError:
 
 # Import webgpu_implementation for compatibility
 try:
-    from test.web_platform.webgpu_implementation import RealWebGPUImplementation
+    from test.tests.web.web_platform.webgpu_implementation import RealWebGPUImplementation
 except ImportError:
     logger.error("Failed to import from webgpu_implementation.py")
     RealWebGPUImplementation = None

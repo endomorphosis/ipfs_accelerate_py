@@ -14,7 +14,7 @@ Key features:
 - Compute shader workgroup optimization for latency-critical paths
 
 Usage:
-    from test.web_platform.webgpu_low_latency_optimizer import (
+    from test.tests.web.web_platform.webgpu_low_latency_optimizer import (
         optimize_for_low_latency,
         BrowserLatencyOptimizer,
         TokenBufferManager,

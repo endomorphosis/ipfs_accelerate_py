@@ -36,7 +36,7 @@ Usage:
 
 # Import unified framework components
 try:
-    from test.web_platform.unified_framework import ()))))))
+    from test.tests.web.web_platform.unified_framework import ()))))))
     UnifiedWebPlatform,
     ConfigurationManager,
     ErrorHandler,

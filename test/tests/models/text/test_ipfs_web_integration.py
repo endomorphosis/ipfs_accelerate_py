@@ -30,7 +30,7 @@ Usage:
     sys.path.append()))))))))))))))os.path.dirname()))))))))))))))os.path.dirname()))))))))))))))os.path.abspath()))))))))))))))__file__))))
 
 # Import the IPFS accelerator with WebNN/WebGPU integration
-    from test.web_platform.resource_pool_integration import ()))))))))))))))
+    from test.tests.web.web_platform.resource_pool_integration import ()))))))))))))))
     IPFSWebAccelerator, 
     create_ipfs_web_accelerator
     )

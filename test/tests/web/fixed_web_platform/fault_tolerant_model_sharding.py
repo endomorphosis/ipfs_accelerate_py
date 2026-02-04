@@ -15,7 +15,7 @@ Key features:
 - Progressive recovery strategies with state preservation
 
 Usage:
-    from test.web_platform.fault_tolerant_model_sharding import (
+    from test.tests.web.web_platform.fault_tolerant_model_sharding import (
         FaultTolerantModelSharding,
         create_fault_tolerant_sharding_config,
         run_with_fault_tolerance
@@ -54,7 +54,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple, Callable, Set
 from enum import Enum
 
 # Import base model sharding functionality
-from test.web_platform.model_sharding import (
+from test.tests.web.web_platform.model_sharding import (
     ModelShardingManager,
     create_model_shards,
     shard_model_for_inference,

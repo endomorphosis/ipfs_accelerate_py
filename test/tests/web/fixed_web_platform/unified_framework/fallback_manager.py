@@ -68,8 +68,8 @@ logger = logging.getLogger("fallback_manager")
 
 # Try to import related modules
 try:
-    from test.web_platform.webgpu_wasm_fallback import WebAssemblyFallback
-    from test.web_platform.safari_webgpu_handler import SafariWebGPUHandler
+    from test.tests.web.web_platform.webgpu_wasm_fallback import WebAssemblyFallback
+    from test.tests.web.web_platform.safari_webgpu_handler import SafariWebGPUHandler
     from test.web_platform.unified_framework.configuration_manager import ConfigurationManager
     from test.web_platform.unified_framework.error_handling import ErrorHandler
     MODULES_AVAILABLE = True
@@ -458,7 +458,7 @@ class SafariWebGPUFallback:
         
         # Initialize WebAssembly fallback as final fallback
         try:
-            from test.web_platform.webgpu_wasm_fallback import WebAssemblyFallback
+            from test.tests.web.web_platform.webgpu_wasm_fallback import WebAssemblyFallback
             self.wasm_fallback = WebAssemblyFallback(
                 enable_simd=True,
                 enable_threading=True,
@@ -470,7 +470,7 @@ class SafariWebGPUFallback:
             
         # Initialize Safari WebGPU handler
         try:
-            from test.web_platform.safari_webgpu_handler import SafariWebGPUHandler
+            from test.tests.web.web_platform.safari_webgpu_handler import SafariWebGPUHandler
             self.safari_handler = SafariWebGPUHandler(
                 fallback_to_wasm=True,
                 enable_metal_api=True

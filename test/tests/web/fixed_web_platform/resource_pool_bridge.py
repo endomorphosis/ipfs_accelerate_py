@@ -268,8 +268,8 @@ class ResourcePoolBridgeIntegration:
         """
         try:
             # Try importing WebSocket bridge and browser automation
-            from test.web_platform.websocket_bridge import WebSocketBridge, create_websocket_bridge
-            from test.web_platform.browser_automation import BrowserAutomation
+            from test.tests.web.web_platform.websocket_bridge import WebSocketBridge, create_websocket_bridge
+            from test.tests.web.web_platform.browser_automation import BrowserAutomation
             
             self.websocket_bridge_class = WebSocketBridge
             self.create_websocket_bridge = create_websocket_bridge
@@ -289,7 +289,7 @@ class ResourcePoolBridgeIntegration:
                 logger.info(f"Adaptive scaling enabled, starting with {initial_connections} browser connections")
                 
                 # Initialize adaptive manager if adaptive scaling is enabled
-                from test.web_platform.adaptive_scaling import AdaptiveConnectionManager
+                from test.tests.web.web_platform.adaptive_scaling import AdaptiveConnectionManager
                 self.adaptive_manager = AdaptiveConnectionManager(
                     max_connections=self.max_connections,
                     browser_preferences=self.browser_preferences,
@@ -301,7 +301,7 @@ class ResourcePoolBridgeIntegration:
                 
                 # Initialize circuit breaker manager for connection health monitoring
                 try:
-                    from test.web_platform.resource_pool_circuit_breaker import ResourcePoolCircuitBreakerManager
+                    from test.tests.web.web_platform.resource_pool_circuit_breaker import ResourcePoolCircuitBreakerManager
                     self.circuit_breaker_manager = ResourcePoolCircuitBreakerManager(self.browser_connections)
                     await self.circuit_breaker_manager.initialize()
                     logger.info("Circuit breaker manager initialized for connection health monitoring")
@@ -325,7 +325,7 @@ class ResourcePoolBridgeIntegration:
             # Initialize adaptive manager if adaptive scaling is enabled (simulation mode)
             if self.adaptive_scaling:
                 try:
-                    from test.web_platform.adaptive_scaling import AdaptiveConnectionManager
+                    from test.tests.web.web_platform.adaptive_scaling import AdaptiveConnectionManager
                     self.adaptive_manager = AdaptiveConnectionManager(
                         max_connections=self.max_connections,
                         browser_preferences=self.browser_preferences,
@@ -1906,7 +1906,7 @@ class ResourcePoolBridgeIntegration:
             return None
             
         try:
-            from test.web_platform.cross_model_tensor_sharing import TensorSharingManager
+            from test.tests.web.web_platform.cross_model_tensor_sharing import TensorSharingManager
             
             # Set default memory limit if not provided
             if max_memory_mb is None:

@@ -11,7 +11,7 @@ This module provides automatic optimization of model parameters based on device 
 - Performance feedback loop mechanism
 
 Usage:
-    from test.web_platform.auto_tuning_system import (
+    from test.tests.web.web_platform.auto_tuning_system import (
         AutoTuner,
         create_optimization_space,
         optimize_model_parameters,

@@ -13,7 +13,7 @@ Components:
 - result_formatter.py: Standardized API response formatting
 
 Usage:
-    from test.web_platform.unified_framework import UnifiedWebPlatform
+    from test.tests.web.web_platform.unified_framework import UnifiedWebPlatform
     
     # Create a unified platform handler
     platform = UnifiedWebPlatform(

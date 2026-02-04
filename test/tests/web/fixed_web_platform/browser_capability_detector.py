@@ -12,7 +12,7 @@ with optimization profile generation for different browsers:
 - Provides runtime feature monitoring and adaptation
 
 Usage:
-    from test.web_platform.browser_capability_detector import (
+    from test.tests.web.web_platform.browser_capability_detector import (
         BrowserCapabilityDetector,
         create_browser_optimization_profile,
         get_hardware_capabilities

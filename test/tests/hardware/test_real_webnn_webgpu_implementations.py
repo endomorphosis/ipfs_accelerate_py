@@ -23,8 +23,8 @@ logger = logging.getLogger())))))))))))__name__)
 
 try:
     # Import real implementations
-    from test.web_platform.real_webgpu_connection import RealWebGPUConnection
-    from test.web_platform.real_webnn_connection import RealWebNNConnection
+    from test.tests.web.web_platform.real_webgpu_connection import RealWebGPUConnection
+    from test.tests.web.web_platform.real_webnn_connection import RealWebNNConnection
     # Import from implement_real_webnn_webgpu.py
     from implement_real_webnn_webgpu import ())))))))))))
     WebPlatformImplementation,

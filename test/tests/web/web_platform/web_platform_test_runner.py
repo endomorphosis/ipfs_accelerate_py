@@ -37,7 +37,7 @@ from typing import Dict, List, Any, Optional, Union, Tuple
 
 # Import the fixed web platform handlers if available
 try:
-    from test.web_platform import process_for_web
+    from test.tests.web.web_platform import process_for_web
     WEB_PLATFORM_AVAILABLE = True
 except ImportError:
     WEB_PLATFORM_AVAILABLE = False
@@ -45,8 +45,8 @@ except ImportError:
 
 # Try to import the compute shader modules
 try:
-    from test.web_platform.webgpu_video_compute_shaders import setup_video_compute_shaders
-    from test.web_platform.webgpu_transformer_compute_shaders import setup_transformer_compute_shaders
+    from test.tests.web.web_platform.webgpu_video_compute_shaders import setup_video_compute_shaders
+    from test.tests.web.web_platform.webgpu_transformer_compute_shaders import setup_transformer_compute_shaders
     COMPUTE_SHADERS_AVAILABLE = True
 except ImportError:
     COMPUTE_SHADERS_AVAILABLE = False

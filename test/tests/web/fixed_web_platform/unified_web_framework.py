@@ -15,7 +15,7 @@ Key features:
 - Support for all major browsers and platforms
 
 Usage:
-    from test.web_platform.unified_web_framework import (
+    from test.tests.web.web_platform.unified_web_framework import (
         WebPlatformAccelerator,
         create_web_endpoint,
         get_optimal_config
@@ -47,16 +47,16 @@ import platform
 from typing import Dict, List, Any, Optional, Union, Callable, Tuple
 
 # Import web platform components
-from test.web_platform.browser_capability_detector import BrowserCapabilityDetector
+from test.tests.web.web_platform.browser_capability_detector import BrowserCapabilityDetector
 from test.web_platform.unified_framework.fallback_manager import FallbackManager
-from test.web_platform.progressive_model_loader import ProgressiveModelLoader
-from test.web_platform.webgpu_quantization import setup_4bit_inference
-from test.web_platform.webgpu_ultra_low_precision import setup_ultra_low_precision
-from test.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
-from test.web_platform.webgpu_wasm_fallback import setup_wasm_fallback
-from test.web_platform.webgpu_shader_registry import WebGPUShaderRegistry
-from test.web_platform.safari_webgpu_handler import SafariWebGPUHandler
-from test.web_platform.webnn_inference import WebNNInference, is_webnn_supported, get_webnn_capabilities
+from test.tests.web.web_platform.progressive_model_loader import ProgressiveModelLoader
+from test.tests.web.web_platform.webgpu_quantization import setup_4bit_inference
+from test.tests.web.web_platform.webgpu_ultra_low_precision import setup_ultra_low_precision
+from test.tests.web.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+from test.tests.web.web_platform.webgpu_wasm_fallback import setup_wasm_fallback
+from test.tests.web.web_platform.webgpu_shader_registry import WebGPUShaderRegistry
+from test.tests.web.web_platform.safari_webgpu_handler import SafariWebGPUHandler
+from test.tests.web.web_platform.webnn_inference import WebNNInference, is_webnn_supported, get_webnn_capabilities
 
 # Initialize logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -772,7 +772,7 @@ class WebPlatformAccelerator:
         Returns:
             Dictionary with feature compatibility for current browser
         """
-        from test.web_platform.browser_capability_detector import get_browser_feature_matrix
+        from test.tests.web.web_platform.browser_capability_detector import get_browser_feature_matrix
         return get_browser_feature_matrix()
         
     def _handle_cross_component_error(self, error, component, operation, recoverable=False):
@@ -1356,7 +1356,7 @@ class StreamingAdapter:
             model_type = self.framework.model_type
             
             # Create WebGPU streaming inference handler
-            from test.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+            from test.tests.web.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
             
             # Prepare initial streaming configuration
             streaming_config = {

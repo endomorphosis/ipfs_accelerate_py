@@ -27,8 +27,8 @@ Key features demonstrated:
 
 # Import resource pool bridge
 try:
-    from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
-    from test.web_platform.resource_pool_bridge import create_ipfs_web_accelerator
+    from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.tests.web.web_platform.resource_pool_bridge import create_ipfs_web_accelerator
     RESOURCE_POOL_AVAILABLE = True
 except ImportError as e:
     logger.error())))))f"ResourcePoolBridge not available: {}}}}}}}}e}")

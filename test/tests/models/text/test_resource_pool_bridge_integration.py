@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 # Add path for imports
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from test.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
+from test.tests.web.web_platform.resource_pool_bridge_integration import ResourcePoolBridgeIntegrationWithRecovery
 
 # Import recovery system for testing
 try:

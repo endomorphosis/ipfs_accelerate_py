@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import resource pool bridge
-from test.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
+from test.tests.web.web_platform.resource_pool_bridge import ResourcePoolBridgeIntegration
 
 async def test_adaptive_scaling():
     """Test adaptive scaling functionality."""

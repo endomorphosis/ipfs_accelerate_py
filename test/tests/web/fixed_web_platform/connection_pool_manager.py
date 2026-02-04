@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 
 # Import adaptive scaling
 try:
-    from test.web_platform.adaptive_scaling import AdaptiveConnectionManager
+    from test.tests.web.web_platform.adaptive_scaling import AdaptiveConnectionManager
     ADAPTIVE_SCALING_AVAILABLE = True
 except ImportError:
     logger.warning("AdaptiveConnectionManager not available, falling back to basic scaling")

@@ -13,7 +13,7 @@ Key features:
 - Hardware-specific optimizations
 
 Usage:
-    from test.web_platform.real_webnn_connection import RealWebNNConnection
+    from test.tests.web.web_platform.real_webnn_connection import RealWebNNConnection
 
     # Create connection
     connection = RealWebNNConnection(browser_name="chrome")
@@ -59,7 +59,7 @@ except ImportError:
 
 # Import webnn_implementation for compatibility
 try:
-    from test.web_platform.webnn_implementation import RealWebNNImplementation
+    from test.tests.web.web_platform.webnn_implementation import RealWebNNImplementation
 except ImportError:
     logger.error("Failed to import from webnn_implementation.py")
     RealWebNNImplementation = None

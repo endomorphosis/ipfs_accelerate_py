@@ -14,7 +14,7 @@ Key features:
 - Prefill optimization for faster initial response
 
 Usage:
-    from test.web_platform.webgpu_streaming_inference import (
+    from test.tests.web.web_platform.webgpu_streaming_inference import (
         WebGPUStreamingInference,
         create_streaming_endpoint,
         optimize_for_streaming
@@ -188,7 +188,7 @@ class WebGPUStreamingInference:
         
         try:
             # Import the KV cache module
-            from test.web_platform.webgpu_kv_cache_optimization import create_optimized_kv_cache
+            from test.tests.web.web_platform.webgpu_kv_cache_optimization import create_optimized_kv_cache
             
             # Determine model config based on model name
             if "llama" in model_name.lower():
@@ -551,7 +551,7 @@ class WebGPUStreamingInference:
             # Action 2: Prune KV cache
             try:
                 # Import KV cache manager functions
-                from test.web_platform.webgpu_kv_cache_optimization import WebGPUKVCacheManager
+                from test.tests.web.web_platform.webgpu_kv_cache_optimization import WebGPUKVCacheManager
                 
                 # For simulation, we'll just reduce the estimated memory
                 old_kv_cache_memory = self._memory_metrics["kv_cache_memory_mb"]
@@ -604,7 +604,7 @@ class WebGPUStreamingInference:
             # Reinitialize KV cache with new precision
             try:
                 # Import KV cache creation function
-                from test.web_platform.webgpu_kv_cache_optimization import create_optimized_kv_cache
+                from test.tests.web.web_platform.webgpu_kv_cache_optimization import create_optimized_kv_cache
                 
                 # Get model dimensions
                 num_heads = self._model.get("num_heads", 32)
@@ -1121,7 +1121,7 @@ class WebGPUStreamingInference:
         # Import necessary functions if available
         try:
             import numpy as np
-            from test.web_platform.webgpu_kv_cache_optimization import update_kv_cache
+            from test.tests.web.web_platform.webgpu_kv_cache_optimization import update_kv_cache
             kv_cache_module_available = True
         except ImportError:
             kv_cache_module_available = False
@@ -1132,7 +1132,7 @@ class WebGPUStreamingInference:
                 self._tokens_generated > 0 and self._tokens_generated % 500 == 0):
             try:
                 logger.debug("Checking KV cache for pruning")
-                from test.web_platform.webgpu_kv_cache_optimization import WebGPUKVCacheManager
+                from test.tests.web.web_platform.webgpu_kv_cache_optimization import WebGPUKVCacheManager
                 # In a real implementation, this would check and prune if needed
                 # For simulation, we'll just log that it would happen
                 logger.info(f"KV cache pruning would occur at token {self._tokens_generated}")

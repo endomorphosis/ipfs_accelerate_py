@@ -23,14 +23,14 @@ logger = logging.getLogger()))__name__)
 
 # Try to import the implementations
 try:
-    from test.web_platform.webgpu_implementation import RealWebGPUImplementation
+    from test.tests.web.web_platform.webgpu_implementation import RealWebGPUImplementation
     WEBGPU_AVAILABLE = True
 except ImportError:
     logger.warning()))"WebGPU implementation not available")
     WEBGPU_AVAILABLE = False
 
 try:
-    from test.web_platform.webnn_implementation import RealWebNNImplementation
+    from test.tests.web.web_platform.webnn_implementation import RealWebNNImplementation
     WEBNN_AVAILABLE = True
 except ImportError:
     logger.warning()))"WebNN implementation not available")

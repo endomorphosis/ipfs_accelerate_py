@@ -11,7 +11,7 @@ This module provides comprehensive browser detection and capability analysis:
 - Collect and report telemetry about browser performance
 
 Usage:
-    from test.web_platform.browser_capability_detection import (
+    from test.tests.web.web_platform.browser_capability_detection import (
         detect_browser_capabilities,
         get_optimized_config,
         is_safari_with_metal_api

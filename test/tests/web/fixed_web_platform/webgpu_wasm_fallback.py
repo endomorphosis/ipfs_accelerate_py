@@ -12,7 +12,7 @@ when those APIs are unavailable or for operations not yet supported:
 - Thread-optimized inference for multi-core CPUs
 
 Usage:
-    from test.web_platform.webgpu_wasm_fallback import (
+    from test.tests.web.web_platform.webgpu_wasm_fallback import (
         WebAssemblyFallback,
         create_wasm_module,
         dispatch_operation,

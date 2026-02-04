@@ -27,7 +27,7 @@ def import_enhanced_pool():
     """Import the enhanced resource pool class with proper handling of dependencies"""
     try:
         # Direct import attempt
-        from test.web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
+        from test.tests.web.web_platform.resource_pool_bridge_integration_enhanced import ResourcePoolBridgeIntegrationEnhanced
         logger.info("Successfully imported ResourcePoolBridgeIntegrationEnhanced")
         return ResourcePoolBridgeIntegrationEnhanced
     except ImportError as e:

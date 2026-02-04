@@ -145,14 +145,14 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
         # Try to import fixed_web_platform from the current directory
         sys.path.append()))))))))))))))))))))'.')
         # Import traditional platform handler
-        from test.web_platform.web_platform_handler import ()))))))))))))))))))))
+        from test.tests.web.web_platform.web_platform_handler import ()))))))))))))))))))))
         process_for_web, init_webnn, init_webgpu, create_mock_processors
         )
         
         # Try to import new unified framework components
         try:
-            from test.web_platform.unified_web_framework import WebPlatformAccelerator
-            from test.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+            from test.tests.web.web_platform.unified_web_framework import WebPlatformAccelerator
+            from test.tests.web.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
             has_unified_framework = True
         except ImportError:
             has_unified_framework = False
@@ -166,14 +166,14 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
         try:
             sys.path.append()))))))))))))))))))))'test')
             # Import traditional platform handler
-            from test.web_platform.web_platform_handler import ()))))))))))))))))))))
+            from test.tests.web.web_platform.web_platform_handler import ()))))))))))))))))))))
             process_for_web, init_webnn, init_webgpu, create_mock_processors
             )
             
             # Try to import new unified framework components
             try:
-                from test.web_platform.unified_web_framework import WebPlatformAccelerator
-                from test.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
+                from test.tests.web.web_platform.unified_web_framework import WebPlatformAccelerator
+                from test.tests.web.web_platform.webgpu_streaming_inference import WebGPUStreamingInference
                 has_unified_framework = True
             except ImportError:
                 has_unified_framework = False
@@ -489,7 +489,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     # Import unified framework components
     try:
         sys.path.append()))))))))))))))))))))'.')
-        from test.web_platform.unified_web_framework import WebPlatformAccelerator
+        from test.tests.web.web_platform.unified_web_framework import WebPlatformAccelerator
         
         if verbose:
             logger.info()))))))))))))))))))))"Successfully imported unified framework from test.web_platform")
@@ -497,7 +497,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     except ImportError:
         try:
             sys.path.append()))))))))))))))))))))'test')
-            from test.web_platform.unified_web_framework import WebPlatformAccelerator
+            from test.tests.web.web_platform.unified_web_framework import WebPlatformAccelerator
             
             if verbose:
                 logger.info()))))))))))))))))))))"Successfully imported unified framework from test/fixed_web_platform")
@@ -596,7 +596,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     # Import streaming inference component
     try:
         sys.path.append()))))))))))))))))))))'.')
-        from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
+        from test.tests.web.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
         WebGPUStreamingInference,
         optimize_for_streaming
         )
@@ -607,7 +607,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     except ImportError:
         try:
             sys.path.append()))))))))))))))))))))'test')
-            from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
+            from test.tests.web.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
             WebGPUStreamingInference,
             optimize_for_streaming
             )
@@ -696,7 +696,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     # Import streaming inference component
     try:
         sys.path.append()))))))))))))))))))))'.')
-        from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
+        from test.tests.web.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
         WebGPUStreamingInference,
         optimize_for_streaming
         )
@@ -707,7 +707,7 @@ def setup_web_environment()))))))))))))))))))))platform: str, verbose: bool = Fa
     except ImportError:
         try:
             sys.path.append()))))))))))))))))))))'test')
-            from test.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
+            from test.tests.web.web_platform.webgpu_streaming_inference import ()))))))))))))))))))))
             WebGPUStreamingInference,
             optimize_for_streaming
             )

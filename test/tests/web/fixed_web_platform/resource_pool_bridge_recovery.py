@@ -8,7 +8,7 @@ This module provides fault tolerance features for the WebGPU/WebNN Resource Pool
 4. Automatic failover for WebGPU/WebNN operations
 
 Usage:
-    from test.web_platform.resource_pool_bridge_recovery import (
+    from test.tests.web.web_platform.resource_pool_bridge_recovery import (
         ResourcePoolRecoveryManager,
         BrowserStateManager,
         PerformanceHistoryTracker
