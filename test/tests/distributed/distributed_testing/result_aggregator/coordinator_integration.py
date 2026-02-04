@@ -115,7 +115,7 @@ class ResultAggregatorIntegration:
                         from plugin_architecture import HookType  # type: ignore
                     except Exception:
                         # Some environments expose this under the distributed_testing package.
-                        from .plugin_architecture import HookType  # type: ignore
+                        from test.tests.distributed.distributed_testing.plugin_architecture import HookType  # type: ignore
                 except Exception as e:
                     logger.info(f"Plugin architecture not available ({e}); falling back to method patching")
                     plugin_manager = None

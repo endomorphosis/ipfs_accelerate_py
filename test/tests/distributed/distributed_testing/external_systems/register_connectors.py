@@ -9,7 +9,7 @@ to ensure they are available through the ExternalSystemFactory.
 import logging
 import importlib
 
-from .external_systems.api_interface import ExternalSystemFactory
+from test.tests.distributed.distributed_testing.external_systems.api_interface import ExternalSystemFactory
 
 # Configure logging
 logging.basicConfig(

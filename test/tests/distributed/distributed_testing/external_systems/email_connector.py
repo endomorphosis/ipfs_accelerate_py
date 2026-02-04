@@ -18,7 +18,7 @@ from email.utils import formatdate
 from typing import Dict, List, Any, Optional, Union, Tuple
 
 # Import the standardized interface
-from .external_systems.api_interface import (
+from test.tests.distributed.distributed_testing.external_systems.api_interface import (
     ExternalSystemInterface,
     ConnectorCapabilities,
     ExternalSystemResult,

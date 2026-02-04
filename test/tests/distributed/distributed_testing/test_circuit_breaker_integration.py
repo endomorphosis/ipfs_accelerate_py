@@ -79,7 +79,7 @@ except ImportError:
         UNKNOWN = "unknown"
 
 try:
-    from .circuit_breaker import CircuitBreaker
+    from test.tests.distributed.distributed_testing.circuit_breaker import CircuitBreaker
     CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
     try:

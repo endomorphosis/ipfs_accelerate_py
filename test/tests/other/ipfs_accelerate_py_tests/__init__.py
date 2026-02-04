@@ -7,12 +7,12 @@ with IPFS network-based distribution and acceleration.
 
 # Import original components
 try:
-    from .container_backends import backends
+    from ipfs_accelerate_py.container_backends import backends
 except ImportError:
     backends = None
 
 try:
-    from .install_depends import install_depends
+    from ipfs_accelerate_py.install_depends import install_depends
 except ImportError:
     install_depends = None
 
@@ -32,7 +32,7 @@ except ImportError:
     worker = None
 
 try:
-    from .config import config
+    from ipfs_accelerate_py.config import config
 except ImportError:
     config = None
 

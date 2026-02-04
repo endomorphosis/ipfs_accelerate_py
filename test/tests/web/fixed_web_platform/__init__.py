@@ -65,7 +65,7 @@ except ImportError:
 
 # Import ultra-low precision modules
 try:
-    from .webgpu_quantization import (
+    from test.tests.web.fixed_web_platform.webgpu_quantization import (
         setup_ultra_low_precision,
         create_2bit_compute_shaders,
         create_3bit_compute_shaders

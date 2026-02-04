@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../.
 # Try both import paths for flexibility
 try:
     # Import hardware workload management components
-    from .hardware_workload_management import (
+    from test.tests.distributed.distributed_testing.hardware_workload_management import (
         WorkloadType, WorkloadProfileMetric, WorkloadProfile, WorkloadExecutionPlan,
         HardwareWorkloadManager, MultiDeviceOrchestrator, SubtaskDefinition, SubtaskStatus,
         WorkloadExecutionGraph, create_workload_profile

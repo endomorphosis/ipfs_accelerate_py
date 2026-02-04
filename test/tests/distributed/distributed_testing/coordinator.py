@@ -95,7 +95,7 @@ except Exception:  # pragma: no cover
             pass
 
 try:
-    from .task_scheduler import TaskScheduler  # type: ignore
+    from test.tests.distributed.distributed_testing.task_scheduler import TaskScheduler  # type: ignore
 except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from task_scheduler import TaskScheduler  # type: ignore
@@ -117,7 +117,7 @@ except Exception:  # pragma: no cover
                 return None
 
 try:
-    from .plugin_architecture import PluginManager  # type: ignore
+    from test.tests.distributed.distributed_testing.plugin_architecture import PluginManager  # type: ignore
 except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from plugin_architecture import PluginManager  # type: ignore

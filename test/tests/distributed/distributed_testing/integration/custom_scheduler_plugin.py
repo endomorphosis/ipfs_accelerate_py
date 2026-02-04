@@ -17,7 +17,7 @@ import heapq
 import random
 
 # Import plugin base class
-from .plugin_architecture import Plugin, PluginType, HookType
+from test.tests.distributed.distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
 # Configure logging
 logging.basicConfig(

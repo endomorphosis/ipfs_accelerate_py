@@ -17,9 +17,9 @@ import tempfile
 from unittest.mock import AsyncMock, patch, MagicMock
 
 # Import all components
-from .coordinator import Coordinator
-from .dynamic_resource_manager import DynamicResourceManager
-from .performance_trend_analyzer import PerformanceTrendAnalyzer
+from test.tests.distributed.distributed_testing.coordinator import Coordinator
+from test.tests.distributed.distributed_testing.dynamic_resource_manager import DynamicResourceManager
+from test.tests.distributed.distributed_testing.performance_trend_analyzer import PerformanceTrendAnalyzer
 
 class {{ test_name }}(unittest.TestCase):
     """{{ test_description }}"""

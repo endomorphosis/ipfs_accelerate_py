@@ -19,8 +19,8 @@ from typing import Dict, List, Any
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Import CI client interfaces and implementations
-from ..ci.api_interface import CIProviderInterface, CIProviderFactory, TestRunResult
-from ..ci.register_providers import register_all_providers
+from test.tests.distributed.distributed_testing.ci.api_interface import CIProviderInterface, CIProviderFactory, TestRunResult
+from test.tests.distributed.distributed_testing.ci.register_providers import register_all_providers
 
 # Configure logging
 logging.basicConfig(

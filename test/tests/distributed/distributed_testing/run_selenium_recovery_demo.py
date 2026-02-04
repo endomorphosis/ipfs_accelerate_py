@@ -59,7 +59,7 @@ try:
 except ImportError:
     try:
         # Try to import using relative path if we're importing from elsewhere
-        from .browser_recovery_strategies import (
+        from test.tests.distributed.distributed_testing.browser_recovery_strategies import (
             BrowserType, ModelType, detect_browser_type, detect_model_type
         )
         RECOVERY_AVAILABLE = True

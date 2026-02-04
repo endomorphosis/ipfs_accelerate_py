@@ -17,7 +17,7 @@ import aiohttp
 import json
 
 # Import the standardized interface
-from .external_systems.api_interface import (
+from test.tests.distributed.distributed_testing.external_systems.api_interface import (
     ExternalSystemInterface,
     ConnectorCapabilities,
     ExternalSystemResult,

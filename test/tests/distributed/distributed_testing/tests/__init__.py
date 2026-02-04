@@ -14,7 +14,7 @@ from __future__ import annotations
 import sys as _sys
 
 # Provide package-level aliases so tests can use legacy single-dot relative imports
-# (e.g. from .ci import ...) while the implementation lives one level up.
+# (e.g. from test.tests.distributed.distributed_testing.ci import ...) while the implementation lives one level up.
 from .. import ci as _ci
 from .. import coordinator as _coordinator
 from .. import dynamic_resource_manager as _dynamic_resource_manager

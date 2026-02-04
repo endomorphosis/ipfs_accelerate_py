@@ -26,13 +26,13 @@ from typing import Dict, Any, Optional, List
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
 
 # Import CI system components
-from .ci.api_interface import CIProviderFactory, TestRunResult
-from .ci.result_reporter import TestResultReporter
-from .ci.register_providers import register_all_providers
+from test.tests.distributed.distributed_testing.ci.api_interface import CIProviderFactory, TestRunResult
+from test.tests.distributed.distributed_testing.ci.result_reporter import TestResultReporter
+from test.tests.distributed.distributed_testing.ci.register_providers import register_all_providers
 
 # Import URL validator if available
 try:
-    from .ci.url_validator import (
+    from test.tests.distributed.distributed_testing.ci.url_validator import (
         get_validator,
         validate_url,
         validate_urls,
@@ -557,7 +557,7 @@ class EnhancedReporterDemo:
         
         # Check if Distributed Testing Framework is available
         try:
-            from .coordinator import DistributedTestingCoordinator
+            from test.tests.distributed.distributed_testing.coordinator import DistributedTestingCoordinator
         except ImportError:
             print(f"{YELLOW}Skipping DTF integration (coordinator not available){RESET}")
             return False

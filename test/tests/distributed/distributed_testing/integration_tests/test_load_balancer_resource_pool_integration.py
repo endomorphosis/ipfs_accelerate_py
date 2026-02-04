@@ -20,7 +20,7 @@ import unittest
 from typing import Dict, List, Any, Optional
 from unittest.mock import MagicMock, patch
 
-from ..integration_mode import (
+from test.tests.distributed.distributed_testing.integration_mode import (
     integration_enabled,
     integration_opt_in_message,
 )
@@ -47,7 +47,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(
 
 # Import components
 from .resource_pool_bridge import ResourcePoolBridgeIntegration
-from .model_sharding import ShardedModelExecution
+from test.tests.distributed.distributed_testing.integration_tests.model_sharding import ShardedModelExecution
 from data.duckdb.distributed_testing.load_balancer import LoadBalancerService, WorkerCapabilities, TestRequirements
 
 class TestLoadBalancerResourcePoolIntegration(unittest.TestCase):

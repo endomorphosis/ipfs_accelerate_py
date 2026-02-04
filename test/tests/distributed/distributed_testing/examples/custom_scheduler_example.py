@@ -19,11 +19,11 @@ from typing import Dict, List, Any, Optional
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 # Import distributed testing framework components
-from .coordinator import Coordinator
-from .worker import Worker
-from .task_scheduler import TaskScheduler
-from .plugins.scheduler.scheduler_coordinator import SchedulerCoordinator
-from .plugins.scheduler.scheduler_plugin_interface import SchedulingStrategy
+from test.tests.distributed.distributed_testing.coordinator import Coordinator
+from test.tests.distributed.distributed_testing.worker import Worker
+from test.tests.distributed.distributed_testing.task_scheduler import TaskScheduler
+from test.tests.distributed.distributed_testing.plugins.scheduler.scheduler_coordinator import SchedulerCoordinator
+from test.tests.distributed.distributed_testing.plugins.scheduler.scheduler_plugin_interface import SchedulingStrategy
 
 # Configure logging
 logging.basicConfig(

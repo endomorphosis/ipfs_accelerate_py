@@ -12,8 +12,8 @@ import os
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Set
 
-from .plugin_architecture import Plugin, PluginType, HookType
-from .external_systems import ExternalSystemFactory
+from test.tests.distributed.distributed_testing.plugin_architecture import Plugin, PluginType, HookType
+from test.tests.distributed.distributed_testing.external_systems import ExternalSystemFactory
 
 # Configure logging
 logging.basicConfig(

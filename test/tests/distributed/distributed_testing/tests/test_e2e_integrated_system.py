@@ -33,7 +33,7 @@ import pytest
 # package resolves to `test/distributed_testing`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from .integration_mode import (
+from test.tests.distributed.distributed_testing.integration_mode import (
     integration_opt_in_message,
     real_integration_enabled,
     simulated_integration_enabled,
@@ -46,22 +46,22 @@ if not (real_integration_enabled() or simulated_integration_enabled()):
     )
 
 # Import the components to test
-from .coordinator import TestCoordinator
-from .dynamic_resource_manager import (
+from test.tests.distributed.distributed_testing.coordinator import TestCoordinator
+from test.tests.distributed.distributed_testing.dynamic_resource_manager import (
     DynamicResourceManager,
     ScalingStrategy,
     ProviderType,
     ResourceState,
     WorkerTemplate
 )
-from .performance_trend_analyzer import (
+from test.tests.distributed.distributed_testing.performance_trend_analyzer import (
     PerformanceTrendAnalyzer,
     MetricsCollector,
     AnomalyDetector,
     TrendAnalyzer,
     Visualization
 )
-from .worker import Worker
+from test.tests.distributed.distributed_testing.worker import Worker
 
 
 class TestE2EIntegratedSystem(unittest.TestCase):

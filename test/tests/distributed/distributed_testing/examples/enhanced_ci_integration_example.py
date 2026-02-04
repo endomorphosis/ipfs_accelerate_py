@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 # Add parent directory to path to import from distributed_testing
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from .plugin_architecture import Plugin, PluginType, HookType
-from .coordinator import DistributedTestingCoordinator
-from .task_scheduler import Task
+from test.tests.distributed.distributed_testing.plugin_architecture import Plugin, PluginType, HookType
+from test.tests.distributed.distributed_testing.coordinator import DistributedTestingCoordinator
+from test.tests.distributed.distributed_testing.task_scheduler import Task
 
 
 async def main():

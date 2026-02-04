@@ -24,7 +24,7 @@ logger = logging.getLogger("test_browser_recovery")
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Import the module to test
-from ..browser_recovery_strategies import (
+from test.tests.distributed.distributed_testing.browser_recovery_strategies import (
     BrowserType, ModelType, FailureType, RecoveryLevel,
     BrowserRecoveryStrategy, SimpleRetryStrategy, BrowserRestartStrategy,
     SettingsAdjustmentStrategy, BrowserFallbackStrategy, SimulationFallbackStrategy,

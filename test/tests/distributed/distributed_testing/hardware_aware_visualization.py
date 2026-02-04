@@ -33,11 +33,11 @@ except ImportError:
     PANDAS_AVAILABLE = False
 
 # Import components
-from .hardware_workload_management import (
+from test.tests.distributed.distributed_testing.hardware_workload_management import (
     HardwareWorkloadManager, WorkloadProfile, WorkloadType, WorkloadProfileMetric,
     HardwareTaxonomy, WorkloadExecutionPlan
 )
-from .hardware_aware_scheduler import HardwareAwareScheduler
+from test.tests.distributed.distributed_testing.hardware_aware_scheduler import HardwareAwareScheduler
 from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareCapabilityProfile, HardwareClass, SoftwareBackend, PrecisionType
 )

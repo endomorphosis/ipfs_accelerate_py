@@ -37,7 +37,7 @@ except ImportError:
     # Try with full path
     from .resource_pool_bridge import ResourcePoolBridgeIntegration
     from .resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
-    from .model_sharding import ShardedModelExecution
+    from test.tests.distributed.distributed_testing.model_sharding import ShardedModelExecution
 
 try:
     from data.duckdb.distributed_testing.load_balancer import LoadBalancerService, WorkerCapabilities, TestRequirements

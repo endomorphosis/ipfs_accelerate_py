@@ -24,7 +24,7 @@ from typing import Dict, List, Optional, Any, Tuple
 sys.path.append('/home/barberb/ipfs_accelerate_py/test')
 
 # Import the URL validator
-from .ci.url_validator import (
+from test.tests.distributed.distributed_testing.ci.url_validator import (
     ArtifactURLValidator,
     get_validator,
     validate_url,
@@ -34,8 +34,8 @@ from .ci.url_validator import (
 )
 
 # Import TestResultReporter for integration testing
-from .ci.result_reporter import TestResultReporter
-from .ci.api_interface import TestRunResult
+from test.tests.distributed.distributed_testing.ci.result_reporter import TestResultReporter
+from test.tests.distributed.distributed_testing.ci.api_interface import TestRunResult
 
 # Configure logging
 logging.basicConfig(

@@ -22,10 +22,10 @@ from typing import Dict, List, Any, Optional
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 
 # Import coordinator
-from .coordinator import DistributedTestingCoordinator
+from test.tests.distributed.distributed_testing.coordinator import DistributedTestingCoordinator
 
 # Import plugin architecture
-from .plugin_architecture import Plugin, PluginType, HookType
+from test.tests.distributed.distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
 # Configure logging
 logging.basicConfig(
@@ -178,7 +178,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Any
 
-from .plugin_architecture import Plugin, PluginType, HookType
+from test.tests.distributed.distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
 # Configure logging
 logging.basicConfig(

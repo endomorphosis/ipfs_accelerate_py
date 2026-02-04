@@ -37,8 +37,8 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, current_dir)
 
 # Import framework components
-from .coordinator import DistributedTestingCoordinator
-from .worker import DistributedTestingWorker
+from test.tests.distributed.distributed_testing.coordinator import DistributedTestingCoordinator
+from test.tests.distributed.distributed_testing.worker import DistributedTestingWorker
 from result_aggregator.service import ResultAggregatorService
 from result_aggregator.coordinator_integration import ResultAggregatorIntegration
 from result_aggregator.web_dashboard import app, main as run_dashboard

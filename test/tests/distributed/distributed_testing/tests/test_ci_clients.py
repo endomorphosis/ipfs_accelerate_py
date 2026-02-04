@@ -27,7 +27,7 @@ logger = logging.getLogger(__name__)
 pytest.importorskip("aiohttp")
 
 # Import CI clients
-from .ci import GitHubClient, GitLabClient, JenkinsClient, AzureClient
+from test.tests.distributed.distributed_testing.ci import GitHubClient, GitLabClient, JenkinsClient, AzureClient
 
 if GitHubClient is None or GitLabClient is None or JenkinsClient is None or AzureClient is None:
     pytest.skip("One or more CI clients are unavailable in this environment", allow_module_level=True)

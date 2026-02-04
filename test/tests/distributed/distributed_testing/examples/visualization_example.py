@@ -18,20 +18,20 @@ import argparse
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 
 # Import components
-from .hardware_workload_management import (
+from test.tests.distributed.distributed_testing.hardware_workload_management import (
     HardwareWorkloadManager, WorkloadProfile, WorkloadType, WorkloadProfileMetric,
     HardwareTaxonomy, create_workload_profile
 )
-from .hardware_aware_scheduler import HardwareAwareScheduler
-from .hardware_aware_visualization import (
+from test.tests.distributed.distributed_testing.hardware_aware_scheduler import HardwareAwareScheduler
+from test.tests.distributed.distributed_testing.examples.hardware_aware_visualization import (
     HardwareSchedulingVisualizer, create_visualizer
 )
-from .load_balancer_integration import (
+from test.tests.distributed.distributed_testing.examples.load_balancer_integration import (
     create_hardware_aware_load_balancer, shutdown_integration
 )
 
 # Import for simulating examples
-from .examples.load_balancer_integration_example import (
+from test.tests.distributed.distributed_testing.examples.load_balancer_integration_example import (
     create_sample_worker_capabilities,
     create_sample_test_requirements,
     simulate_worker_load

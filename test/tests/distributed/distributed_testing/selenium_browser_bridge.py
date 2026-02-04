@@ -77,7 +77,7 @@ except ImportError:
 
 # Import recovery strategies
 try:
-    from .browser_recovery_strategies import (
+    from test.tests.distributed.distributed_testing.browser_recovery_strategies import (
         BrowserType, ModelType, FailureType, RecoveryLevel,
         detect_browser_type, detect_model_type, categorize_browser_failure, recover_browser
     )
@@ -140,7 +140,7 @@ except ImportError:
 
 # Import circuit breaker
 try:
-    from .circuit_breaker import (
+    from test.tests.distributed.distributed_testing.circuit_breaker import (
         CircuitBreaker, CircuitState, CircuitOpenError
     )
     CIRCUIT_BREAKER_AVAILABLE = True

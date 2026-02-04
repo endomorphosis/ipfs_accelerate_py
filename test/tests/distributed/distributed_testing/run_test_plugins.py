@@ -21,7 +21,7 @@ import uuid
 from datetime import datetime
 from typing import Dict, List, Any, Optional
 
-from .coordinator import DistributedTestingCoordinator
+from test.tests.distributed.distributed_testing.coordinator import DistributedTestingCoordinator
 from plugin_architecture import PluginManager, HookType, PluginType
 
 # Configure logging

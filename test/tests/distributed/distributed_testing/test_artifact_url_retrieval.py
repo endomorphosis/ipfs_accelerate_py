@@ -25,13 +25,13 @@ if "pytest" in sys.modules:
 
     pytestmark = pytest.mark.anyio
 
-from .ci.jenkins_client import JenkinsClient
-from .ci.circleci_client import CircleCIClient
-from .ci.azure_client import AzureDevOpsClient
-from .ci.github_client import GitHubClient
-from .ci.bitbucket_client import BitbucketClient
-from .ci.teamcity_client import TeamCityClient
-from .ci.travis_client import TravisClient
+from test.tests.distributed.distributed_testing.ci.jenkins_client import JenkinsClient
+from test.tests.distributed.distributed_testing.ci.circleci_client import CircleCIClient
+from test.tests.distributed.distributed_testing.ci.azure_client import AzureDevOpsClient
+from test.tests.distributed.distributed_testing.ci.github_client import GitHubClient
+from test.tests.distributed.distributed_testing.ci.bitbucket_client import BitbucketClient
+from test.tests.distributed.distributed_testing.ci.teamcity_client import TeamCityClient
+from test.tests.distributed.distributed_testing.ci.travis_client import TravisClient
 
 # Configure logging
 logging.basicConfig(

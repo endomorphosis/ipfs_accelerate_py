@@ -33,7 +33,7 @@ import uuid
 import re
 
 # Import plugin base class
-from .plugin_architecture import Plugin, PluginType, HookType
+from test.tests.distributed.distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
 # Configure logging
 logging.basicConfig(
@@ -684,7 +684,7 @@ class CICDIntegrationPlugin(Plugin):
         # Create standardized CI client based on CI system
         if ci_system == "github":
             if token:
-                from .ci import GitHubClient
+                from test.tests.distributed.distributed_testing.ci import GitHubClient
                 return await StandardizedCIClient.create(
                     client_impl=GitHubClient(
                         token=token,
@@ -701,7 +701,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "jenkins":
             if token:
-                from .ci import JenkinsClient
+                from test.tests.distributed.distributed_testing.ci import JenkinsClient
                 user = os.environ.get("JENKINS_USER") or self.config.get("jenkins_user", "")
                 return await StandardizedCIClient.create(
                     client_impl=JenkinsClient(
@@ -719,7 +719,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "gitlab":
             if token:
-                from .ci import GitLabClient
+                from test.tests.distributed.distributed_testing.ci import GitLabClient
                 return await StandardizedCIClient.create(
                     client_impl=GitLabClient(
                         token=token,
@@ -736,7 +736,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "azure":
             if token:
-                from .ci import AzureClient
+                from test.tests.distributed.distributed_testing.ci import AzureClient
                 return await StandardizedCIClient.create(
                     client_impl=AzureClient(
                         token=token,
@@ -753,7 +753,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "circle":
             if token:
-                from .ci import CircleCIClient
+                from test.tests.distributed.distributed_testing.ci import CircleCIClient
                 return await StandardizedCIClient.create(
                     client_impl=CircleCIClient(
                         token=token,
@@ -770,7 +770,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "travis":
             if token:
-                from .ci import TravisCIClient
+                from test.tests.distributed.distributed_testing.ci import TravisCIClient
                 return await StandardizedCIClient.create(
                     client_impl=TravisCIClient(
                         token=token,
@@ -787,7 +787,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "bitbucket":
             if token:
-                from .ci import BitbucketClient
+                from test.tests.distributed.distributed_testing.ci import BitbucketClient
                 return await StandardizedCIClient.create(
                     client_impl=BitbucketClient(
                         token=token,
@@ -804,7 +804,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "teamcity":
             if token:
-                from .ci import TeamCityClient
+                from test.tests.distributed.distributed_testing.ci import TeamCityClient
                 return await StandardizedCIClient.create(
                     client_impl=TeamCityClient(
                         token=token,
@@ -821,7 +821,7 @@ class CICDIntegrationPlugin(Plugin):
         
         elif ci_system == "local":
             # Create a local CI client with file-based storage
-            from .ci import LocalCIClient
+            from test.tests.distributed.distributed_testing.ci import LocalCIClient
             return await StandardizedCIClient.create(
                 client_impl=LocalCIClient(
                     storage_dir=self.config["artifact_dir"],

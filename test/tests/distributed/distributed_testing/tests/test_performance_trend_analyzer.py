@@ -24,7 +24,7 @@ import pytest
 # Add /test to sys.path so that `distributed_testing` resolves to `test/distributed_testing`.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
-from .integration_mode import integration_enabled, integration_opt_in_message
+from test.tests.distributed.distributed_testing.integration_mode import integration_enabled, integration_opt_in_message
 
 if not integration_enabled():
     pytest.skip(integration_opt_in_message(), allow_module_level=True)
@@ -33,13 +33,13 @@ pytest.importorskip("httpx")
 
 # Import the components to test
 from . import performance_trend_analyzer as pta
-from .performance_trend_analyzer import (
+from test.tests.distributed.distributed_testing.performance_trend_analyzer import (
     PerformanceTrendAnalyzer,
     PerformanceMetric,
     PerformanceAlert,
     PerformanceTrend
 )
-from .coordinator import TestCoordinator
+from test.tests.distributed.distributed_testing.coordinator import TestCoordinator
 
 
 class TestPerformanceTrendAnalyzerIntegration(unittest.TestCase):

@@ -123,9 +123,9 @@ class ResourcePoolBridgeIntegration:
             
             # Initialize sharding manager
             try:
-                from .model_sharding import ShardedModelManager
+                from test.tests.distributed.distributed_testing.model_sharding import ShardedModelManager
             except Exception:
-                from .model_sharding import ShardedModelManager
+                from test.tests.distributed.distributed_testing.model_sharding import ShardedModelManager
             self.sharding_manager = ShardedModelManager(
                 recovery_manager=self.recovery_manager,
                 state_manager=self.state_manager,

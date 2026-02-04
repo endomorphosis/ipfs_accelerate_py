@@ -15,7 +15,7 @@ from datetime import datetime
 from typing import Dict, List, Any, Optional, Set, Tuple
 
 # Import plugin base class
-from .plugin_architecture import Plugin, PluginType, HookType
+from test.tests.distributed.distributed_testing.plugin_architecture import Plugin, PluginType, HookType
 
 # Import WebGPU/WebNN Resource Pool components
 try:
