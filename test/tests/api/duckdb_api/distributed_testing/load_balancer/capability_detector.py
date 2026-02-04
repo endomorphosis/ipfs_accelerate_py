@@ -45,7 +45,7 @@ try:
 except ImportError:
     HAS_ORT = False
 
-from .models import WorkerCapabilities
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import WorkerCapabilities
 
 # Setup logging
 logging.basicConfig(

@@ -17,7 +17,7 @@ from pathlib import Path
 from datetime import datetime
 import shutil
 
-from .base import BaseVisualization, PLOTLY_AVAILABLE, MATPLOTLIB_AVAILABLE
+from test.tests.api.duckdb_api.visualization.advanced_visualization.base import BaseVisualization, PLOTLY_AVAILABLE, MATPLOTLIB_AVAILABLE
 
 # Configure logging
 logging.basicConfig(
@@ -39,10 +39,10 @@ if MATPLOTLIB_AVAILABLE:
 
 # Try to import visualization components
 try:
-    from .viz_3d import Visualization3D
-    from .viz_heatmap import HardwareHeatmapVisualization
-    from .viz_time_series import TimeSeriesVisualization
-    from .viz_animated_time_series import AnimatedTimeSeriesVisualization
+    from test.tests.api.duckdb_api.visualization.advanced_visualization.viz_3d import Visualization3D
+    from test.tests.api.duckdb_api.visualization.advanced_visualization.viz_heatmap import HardwareHeatmapVisualization
+    from test.tests.api.duckdb_api.visualization.advanced_visualization.viz_time_series import TimeSeriesVisualization
+    from test.tests.api.duckdb_api.visualization.advanced_visualization.viz_animated_time_series import AnimatedTimeSeriesVisualization
     COMPONENTS_AVAILABLE = True
 except ImportError:
     logger.warning("One or more visualization components not available.")

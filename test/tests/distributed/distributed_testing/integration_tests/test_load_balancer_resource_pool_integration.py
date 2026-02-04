@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 # Import components
-from .resource_pool_bridge import ResourcePoolBridgeIntegration
+from test.tests.distributed.distributed_testing.integration_tests.resource_pool_bridge import ResourcePoolBridgeIntegration
 from test.tests.distributed.distributed_testing.integration_tests.model_sharding import ShardedModelExecution
 from data.duckdb.distributed_testing.load_balancer import LoadBalancerService, WorkerCapabilities, TestRequirements
 

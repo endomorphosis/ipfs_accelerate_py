@@ -51,7 +51,7 @@ try:
 except ImportError:
     webdriver = None
 
-from .hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.hardware_taxonomy import (
     HardwareClass, 
     HardwareArchitecture,
     HardwareVendor,

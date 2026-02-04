@@ -12,8 +12,8 @@ import importlib
 from typing import Dict, List, Any, Optional, Type
 
 from test.tests.distributed.distributed_testing.plugin_architecture import Plugin, PluginType, HookType
-from .scheduler_plugin_interface import SchedulerPluginInterface, SchedulingStrategy
-from .scheduler_plugin_registry import SchedulerPluginRegistry
+from test.tests.distributed.distributed_testing.plugins.scheduler.scheduler_plugin_interface import SchedulerPluginInterface, SchedulingStrategy
+from test.tests.distributed.distributed_testing.plugins.scheduler.scheduler_plugin_registry import SchedulerPluginRegistry
 
 # Configure logging
 logging.basicConfig(

@@ -12,7 +12,7 @@ import logging
 import json
 from typing import Dict, List, Any, Optional
 
-from .api_interface import (
+from test.tests.distributed.distributed_testing.external_systems.api_interface import (
     ExternalSystemInterface,
     ConnectorCapabilities,
     ExternalSystemResult,

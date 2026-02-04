@@ -46,7 +46,7 @@ Key Features:
    backends in the benchmark database system.
 """
 
-from .web_platform_handler import (
+from test.tests.web.fixed_web_platform.web_platform_handler import (
     process_for_web, 
     init_webnn, 
     init_webgpu, 
@@ -55,7 +55,7 @@ from .web_platform_handler import (
 
 # Import Safari WebGPU handler
 try:
-    from .safari_webgpu_handler import (
+    from test.tests.web.fixed_web_platform.safari_webgpu_handler import (
         SafariWebGPUHandler,
         optimize_for_safari
     )
@@ -76,7 +76,7 @@ except ImportError:
 
 # Import progressive model loading
 try:
-    from .progressive_model_loader import (
+    from test.tests.web.fixed_web_platform.progressive_model_loader import (
         ProgressiveModelLoader,
         MultimodalComponentManager,
         load_model_progressively
@@ -87,7 +87,7 @@ except ImportError:
 
 # Import WebGPU audio compute shaders (March 2025)
 try:
-    from .webgpu_audio_compute_shaders import (
+    from test.tests.web.fixed_web_platform.webgpu_audio_compute_shaders import (
         optimize_for_firefox,
         get_optimized_shader_for_firefox,
         enable_firefox_optimizations,
@@ -99,7 +99,7 @@ except ImportError:
 
 # Import WebGPU shader precompilation (March 2025)
 try:
-    from .webgpu_shader_precompilation import (
+    from test.tests.web.fixed_web_platform.webgpu_shader_precompilation import (
         ShaderPrecompiler,
         setup_shader_precompilation,
         precompile_model_shaders
@@ -110,7 +110,7 @@ except ImportError:
 
 # Import WebGPU shader registry (March 2025)
 try:
-    from .webgpu_shader_registry import (
+    from test.tests.web.fixed_web_platform.webgpu_shader_registry import (
         WebGPUShaderRegistry,
         get_shader_registry
     )
@@ -120,7 +120,7 @@ except ImportError:
 
 # Import browser automation if available
 try:
-    from .browser_automation import (
+    from test.tests.web.fixed_web_platform.browser_automation import (
         setup_browser_automation,
         run_browser_test,
         find_browser_executable

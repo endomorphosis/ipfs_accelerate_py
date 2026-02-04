@@ -1158,7 +1158,7 @@ def render_template(template: str, context: Dict[str, Any]) -> str:
         with open(init_path, "w") as f:
             f.write("""\"\"\"Template utilities package\"\"\"
 
-from .placeholder_helpers import (
+from test.templates.enhanced_templates.placeholder_helpers import (
     get_standard_placeholders,
     detect_missing_placeholders,
     get_default_context,

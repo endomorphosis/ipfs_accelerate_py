@@ -55,7 +55,7 @@ class ipfs_accelerate_py:
 
         if "worker" not in globals():
             try:
-                from .worker import worker
+                from test.tests.other.ipfs_accelerate_py_tests.worker import worker
             except:
                 from worker import worker
             self.worker = worker.worker_py(resources, metadata)
@@ -63,7 +63,7 @@ class ipfs_accelerate_py:
 
         if "ipfs_multiformats" not in globals():
             try:
-                from .ipfs_multiformats import ipfs_multiformats_py
+                from test.tests.other.ipfs_accelerate_py_tests.ipfs_multiformats import ipfs_multiformats_py
             except:
                 from ipfs_multiformats import ipfs_multiformats_py
             self.ipfs_multiformats = ipfs_multiformats_py({}, metadata)
@@ -71,7 +71,7 @@ class ipfs_accelerate_py:
             
         if "apis" not in globals():
             try:
-                from .api_backends import apis
+                from test.tests.other.ipfs_accelerate_py_tests.api_backends import apis
             except:
                 from api_backends import apis
             self.apis = apis(resources, metadata)

@@ -9,26 +9,26 @@ __version__ = "1.0.0"
 
 # Import only the modules needed for the multi-model web integration
 try:
-    from .multi_model_execution import MultiModelPredictor
+    from test.tests.other.predictive_performance.multi_model_execution import MultiModelPredictor
 except ImportError:
     pass
 
 try:
-    from .multi_model_empirical_validation import MultiModelEmpiricalValidator
+    from test.tests.other.predictive_performance.multi_model_empirical_validation import MultiModelEmpiricalValidator
 except ImportError:
     pass
 
 try:
-    from .multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
+    from test.tests.other.predictive_performance.multi_model_resource_pool_integration import MultiModelResourcePoolIntegration
 except ImportError:
     pass
 
 try:
-    from .web_resource_pool_adapter import WebResourcePoolAdapter
+    from test.tests.other.predictive_performance.web_resource_pool_adapter import WebResourcePoolAdapter
 except ImportError:
     pass
 
 try:
-    from .multi_model_web_integration import MultiModelWebIntegration
+    from test.tests.other.predictive_performance.multi_model_web_integration import MultiModelWebIntegration
 except ImportError:
     pass

@@ -275,7 +275,7 @@ class BaseTest(unittest.TestCase):
         
         # Create model_test.py
         model_test_content = """
-from .base_test import BaseTest
+from test.tests.other.base_test import BaseTest
 import os
 import tempfile
 
@@ -305,7 +305,7 @@ class ModelTest(BaseTest):
         
         # Create hardware_test.py
         hardware_test_content = """
-from .base_test import BaseTest
+from test.tests.other.base_test import BaseTest
 
 class HardwareTest(BaseTest):
     \"\"\"Base class for hardware tests.\"\"\"
@@ -344,7 +344,7 @@ class HardwareTest(BaseTest):
         
         # Create browser_test.py
         browser_test_content = """
-from .base_test import BaseTest
+from test.tests.other.base_test import BaseTest
 import os
 
 class BrowserTest(BaseTest):
@@ -363,7 +363,7 @@ class BrowserTest(BaseTest):
         
         # Create api_test.py
         api_test_content = """
-from .base_test import BaseTest
+from test.tests.other.base_test import BaseTest
 import requests
 import os
 

@@ -26,7 +26,7 @@ from test.tests.distributed.distributed_testing.ci.result_reporter import TestRe
 from test.tests.distributed.distributed_testing.ci.register_providers import register_all_providers
 
 # Import mock CI providers for testing
-from .test_artifact_url_retrieval import (
+from test.tests.distributed.distributed_testing.test_artifact_url_retrieval import (
     MockGitHubClient, 
     MockJenkinsClient,
     MockCircleCIClient,

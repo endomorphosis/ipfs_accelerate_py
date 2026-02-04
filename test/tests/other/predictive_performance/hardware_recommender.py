@@ -27,7 +27,7 @@ logger = logging.getLogger())))))))))))))))))))))))"hardware_recommender")
 
 # Import the prediction module
 try:
-    from .predict import PerformancePredictor
+    from test.tests.other.predictive_performance.predict import PerformancePredictor
 except ImportError:
     # When running as standalone script
     sys.path.append())))))))))))))))))))))))str())))))))))))))))))))))))Path())))))))))))))))))))))))__file__).parent))

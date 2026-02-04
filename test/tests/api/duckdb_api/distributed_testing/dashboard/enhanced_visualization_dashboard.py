@@ -75,7 +75,7 @@ except ImportError:
 
 # Try to import visualization engine
 try:
-    from .visualization import VisualizationEngine
+    from test.tests.api.duckdb_api.distributed_testing.dashboard.visualization import VisualizationEngine
     VISUALIZATION_ENGINE_AVAILABLE = True
 except ImportError:
     logger.warning("VisualizationEngine not available. Some features will be limited.")
@@ -83,7 +83,7 @@ except ImportError:
 
 # Try to import regression detection
 try:
-    from .regression_detection import RegressionDetector
+    from test.tests.api.duckdb_api.distributed_testing.dashboard.regression_detection import RegressionDetector
     REGRESSION_DETECTOR_AVAILABLE = True
 except ImportError:
     logger.warning("RegressionDetector not available. Regression detection features will be limited.")
@@ -91,7 +91,7 @@ except ImportError:
 
 # Try to import regression visualization
 try:
-    from .regression_visualization import RegressionVisualization
+    from test.tests.api.duckdb_api.distributed_testing.dashboard.regression_visualization import RegressionVisualization
     REGRESSION_VISUALIZATION_AVAILABLE = True
 except ImportError:
     logger.warning("RegressionVisualization not available. Enhanced regression visualization features will be limited.")

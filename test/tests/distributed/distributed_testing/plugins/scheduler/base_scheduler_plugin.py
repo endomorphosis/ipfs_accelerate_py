@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from typing import Dict, List, Any, Optional, Tuple, Set
 
-from .scheduler_plugin_interface import SchedulerPluginInterface, SchedulingStrategy
+from test.tests.distributed.distributed_testing.plugins.scheduler.scheduler_plugin_interface import SchedulerPluginInterface, SchedulingStrategy
 
 # Configure logging
 logging.basicConfig(

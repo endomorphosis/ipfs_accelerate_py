@@ -37,7 +37,7 @@ import json
 import uuid
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union
 
-from .error_handling import ShardingError
+from test.tests.web.fixed_web_platform.unified_framework.error_handling import ShardingError
 
 # Initialize logger
 logging.basicConfig(level=logging.INFO)

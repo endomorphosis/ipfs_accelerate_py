@@ -37,11 +37,11 @@ logger = logging.getLogger("unified_framework")
 
 # Import submodules when available
 try:
-    from .configuration_manager import ConfigurationManager
-    from .error_handling import ErrorHandler, WebPlatformError
+    from test.tests.web.fixed_web_platform.unified_framework.configuration_manager import ConfigurationManager
+    from test.tests.web.fixed_web_platform.unified_framework.error_handling import ErrorHandler, WebPlatformError
     from test.tests.web.fixed_web_platform.unified_framework.platform_detector import PlatformDetector
-    from .result_formatter import ResultFormatter
-    from .model_sharding import ModelShardingManager
+    from test.tests.web.fixed_web_platform.unified_framework.result_formatter import ResultFormatter
+    from test.tests.web.fixed_web_platform.unified_framework.model_sharding import ModelShardingManager
     
     __all__ = [
         "UnifiedWebPlatform",
@@ -193,12 +193,12 @@ class UnifiedWebPlatform:
         if self.platform == "webgpu":
             # Import dynamically to avoid dependency issues
             try:
-                from ..web_platform_handler import WebPlatformHandler
+                from test.tests.web.fixed_web_platform.web_platform_handler import WebPlatformHandler
                 from test.tests.web.fixed_web_platform.webgpu_quantization import setup_4bit_inference
                 
                 # Use Safari-specific handler if detected
                 if browser_info and browser_info.get("name", "").lower() == "safari":
-                    from ..safari_webgpu_handler import SafariWebGPUHandler
+                    from test.tests.web.fixed_web_platform.safari_webgpu_handler import SafariWebGPUHandler
                     self.webgpu_handler = SafariWebGPUHandler(
                         model_path=self.model_name,
                         config=self.config
@@ -232,7 +232,7 @@ class UnifiedWebPlatform:
         if self.platform == "webnn":
             # Import dynamically to avoid dependency issues
             try:
-                from ..web_platform_handler import WebPlatformHandler
+                from test.tests.web.fixed_web_platform.web_platform_handler import WebPlatformHandler
                 self.webnn_handler = WebPlatformHandler(
                     model_path=self.model_name,
                     model_type=self.model_type,
@@ -245,7 +245,7 @@ class UnifiedWebPlatform:
         
         # Initialize WebAssembly fallback
         try:
-            from ..webgpu_wasm_fallback import setup_wasm_fallback
+            from test.tests.web.fixed_web_platform.webgpu_wasm_fallback import setup_wasm_fallback
             self.wasm_fallback = setup_wasm_fallback(
                 model_path=self.model_name,
                 model_type=self.model_type,

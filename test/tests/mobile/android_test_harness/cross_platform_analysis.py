@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 
 # Local imports
 try:
-    from .database_integration import AndroidDatabaseAPI
+    from test.tests.mobile.android_test_harness.database_integration import AndroidDatabaseAPI
     ANDROID_DB_AVAILABLE = True
 except ImportError:
     logger.warning("Could not import Android database integration. Some functionality will be limited.")

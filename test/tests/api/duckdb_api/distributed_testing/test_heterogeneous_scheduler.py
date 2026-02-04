@@ -15,8 +15,8 @@ import time
 import uuid
 from typing import Dict, List, Any, Optional
 
-from .enhanced_hardware_detector import EnhancedHardwareDetector, get_enhanced_hardware_info
-from .hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.enhanced_hardware_detector import EnhancedHardwareDetector, get_enhanced_hardware_info
+from test.tests.api.duckdb_api.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareArchitecture,
     HardwareVendor,
@@ -26,7 +26,7 @@ from .hardware_taxonomy import (
     HardwareCapabilityProfile,
     HardwareTaxonomy
 )
-from .heterogeneous_scheduler import (
+from test.tests.api.duckdb_api.distributed_testing.heterogeneous_scheduler import (
     HeterogeneousScheduler,
     WorkloadProfile,
     TestTask,

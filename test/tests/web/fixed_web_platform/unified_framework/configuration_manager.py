@@ -43,7 +43,7 @@ import logging
 import json
 from typing import Dict, Any, List, Optional, Tuple, Callable, Union, Set, TypeVar
 
-from .error_handling import ConfigurationError
+from test.tests.web.fixed_web_platform.unified_framework.error_handling import ConfigurationError
 
 # Initialize logger
 logging.basicConfig(level=logging.INFO)

@@ -39,7 +39,7 @@ if os.environ.get("SELENIUM_BRIDGE_LOG_LEVEL", "").upper() == "DEBUG":
 
 # Import core components
 try:
-    from .selenium_browser_bridge import (
+    from test.tests.distributed.distributed_testing.selenium_browser_bridge import (
         BrowserConfiguration, SeleniumBrowserBridge, SELENIUM_AVAILABLE
     )
 except ImportError:

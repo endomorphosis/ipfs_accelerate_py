@@ -14,7 +14,7 @@ This package provides hardware detection and support for various hardware platfo
     - WebGPU (Browser Graphics API)
 """
 
-from .capabilities import (
+from test.tests.hardware.hardware_detection.capabilities import (
     detect_all_hardware,
     HardwareDetector,
     HAS_CUDA,
@@ -28,7 +28,7 @@ from .capabilities import (
 
 # Optional imports for specific hardware platforms
 try:
-    from .qnn_support import (
+    from test.tests.hardware.hardware_detection.qnn_support import (
         QNNCapabilityDetector,
         QNNPowerMonitor,
         QNNModelOptimizer

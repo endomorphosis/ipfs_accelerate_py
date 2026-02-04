@@ -96,7 +96,7 @@ class LoadBalancerCoordinatorBridge:
                 return self.coordinator_to_lb_worker_map[coordinator_worker_id]
                 
             # Convert capabilities to WorkerCapabilities
-            from .models import WorkerCapabilities
+            from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import WorkerCapabilities
             
             worker_capabilities = WorkerCapabilities(
                 worker_id=coordinator_worker_id,
@@ -117,7 +117,7 @@ class LoadBalancerCoordinatorBridge:
             self.load_balancer.register_worker(coordinator_worker_id, worker_capabilities)
             
             # Initialize load
-            from .models import WorkerLoad
+            from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import WorkerLoad
             self.load_balancer.update_worker_load(coordinator_worker_id, WorkerLoad(worker_id=coordinator_worker_id))
             
             # Store mapping
@@ -159,7 +159,7 @@ class LoadBalancerCoordinatorBridge:
                 lb_worker_id = self.coordinator_to_lb_worker_map[coordinator_worker_id]
                 
                 # Convert to WorkerLoad
-                from .models import WorkerLoad
+                from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import WorkerLoad
                 
                 worker_load = WorkerLoad(
                     worker_id=lb_worker_id,
@@ -194,7 +194,7 @@ class LoadBalancerCoordinatorBridge:
                 return self.coordinator_to_lb_test_map[coordinator_test_id]
                 
             # Convert to TestRequirements
-            from .models import TestRequirements
+            from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import TestRequirements
             
             test_requirements = TestRequirements(
                 test_id=coordinator_test_id,

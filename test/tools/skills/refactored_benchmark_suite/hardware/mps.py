@@ -6,7 +6,7 @@ Primarily for Apple Silicon devices.
 from typing import Dict, Any, Optional
 import logging
 
-from .base import HardwareBackend
+from test.tools.skills.refactored_benchmark_suite.hardware.base import HardwareBackend
 
 logger = logging.getLogger("benchmark.hardware.mps")
 

@@ -95,9 +95,9 @@ class ResourcePoolBridgeIntegration:
         # Initialize state manager if fault tolerance is enabled
         if self.enable_fault_tolerance:
             try:
-                from .resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
+                from test.tests.distributed.distributed_testing.resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
             except Exception:
-                from .resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
+                from test.tests.distributed.distributed_testing.resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
             
             # Initialize state manager
             self.state_manager = BrowserStateManager(
@@ -115,9 +115,9 @@ class ResourcePoolBridgeIntegration:
             
             # Initialize performance history tracker
             try:
-                from .resource_pool_bridge_recovery import PerformanceHistoryTracker
+                from test.tests.distributed.distributed_testing.resource_pool_bridge_recovery import PerformanceHistoryTracker
             except Exception:
-                from .resource_pool_bridge_recovery import PerformanceHistoryTracker
+                from test.tests.distributed.distributed_testing.resource_pool_bridge_recovery import PerformanceHistoryTracker
             self.performance_tracker = PerformanceHistoryTracker()
             await self.performance_tracker.initialize()
             

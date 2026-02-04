@@ -31,7 +31,7 @@ import websockets
 
 # Import security module
 try:
-    from .security import SecurityManager  # type: ignore
+    from test.tests.distributed.distributed_testing.security import SecurityManager  # type: ignore
 except Exception:  # pragma: no cover
     from security import SecurityManager
 

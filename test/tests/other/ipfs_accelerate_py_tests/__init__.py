@@ -17,17 +17,17 @@ except ImportError:
     install_depends = None
 
 try:
-    from .ipfs_accelerate import ipfs_accelerate_py as original_ipfs_accelerate_py
+    from test.tests.other.ipfs_accelerate_py_tests.ipfs_accelerate import ipfs_accelerate_py as original_ipfs_accelerate_py
 except ImportError:
     original_ipfs_accelerate_py = None
 
 try:
-    from .ipfs_multiformats import ipfs_multiformats_py
+    from test.tests.other.ipfs_accelerate_py_tests.ipfs_multiformats import ipfs_multiformats_py
 except ImportError:
     ipfs_multiformats_py = None
 
 try:
-    from .worker import worker
+    from test.tests.other.ipfs_accelerate_py_tests.worker import worker
 except ImportError:
     worker = None
 

@@ -19,7 +19,7 @@ import copy
 import json
 import random
 
-from .hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareArchitecture,
     HardwareVendor,
@@ -30,7 +30,7 @@ from .hardware_taxonomy import (
     HardwareTaxonomy
 )
 
-from .enhanced_hardware_detector import EnhancedHardwareDetector
+from test.tests.api.duckdb_api.distributed_testing.enhanced_hardware_detector import EnhancedHardwareDetector
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -633,7 +633,7 @@ class HeterogeneousScheduler:
         # Enhanced taxonomy integration
         if use_enhanced_taxonomy:
             try:
-                from .hardware_taxonomy_integrator import HardwareTaxonomyIntegrator
+                from test.tests.api.duckdb_api.distributed_testing.hardware_taxonomy_integrator import HardwareTaxonomyIntegrator
                 self.taxonomy_integrator = HardwareTaxonomyIntegrator()
                 logger.info("Enhanced hardware taxonomy integration enabled")
             except ImportError as e:

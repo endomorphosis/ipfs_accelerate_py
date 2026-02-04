@@ -22,7 +22,7 @@ from transformers import (
     AutoModelForZeroShotImageClassification
 )
 
-from . import ModelAdapter
+from test.tools.skills.refactored_benchmark_suite.models import ModelAdapter
 
 logger = logging.getLogger("benchmark.models.vision")
 

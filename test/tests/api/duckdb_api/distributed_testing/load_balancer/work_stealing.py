@@ -22,7 +22,7 @@ from typing import Dict, List, Any, Optional, Tuple, Set
 from datetime import datetime, timedelta
 from dataclasses import dataclass
 
-from .models import (
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import (
     WorkerCapabilities, 
     WorkerLoad, 
     TestRequirements, 

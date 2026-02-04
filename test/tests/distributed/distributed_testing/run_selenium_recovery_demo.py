@@ -43,7 +43,7 @@ try:
 except ImportError:
     try:
         # Try to import using relative path if we're importing from elsewhere
-        from .selenium_browser_bridge import (
+        from test.tests.distributed.distributed_testing.selenium_browser_bridge import (
             BrowserConfiguration, SeleniumBrowserBridge, SELENIUM_AVAILABLE
         )
     except ImportError:

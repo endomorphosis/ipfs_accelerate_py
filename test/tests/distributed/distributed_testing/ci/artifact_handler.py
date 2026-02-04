@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional, Union, Set, Tuple
 
 from test.tests.distributed.distributed_testing.ci.api_interface import CIProviderInterface
-from .artifact_metadata import ArtifactMetadata, ArtifactDiscovery
+from test.tests.distributed.distributed_testing.ci.artifact_metadata import ArtifactMetadata, ArtifactDiscovery
 
 # Configure logging
 logging.basicConfig(

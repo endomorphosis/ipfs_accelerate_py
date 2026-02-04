@@ -4,8 +4,8 @@ Result Aggregator Module for Distributed Testing Framework
 This module provides components for aggregating and analyzing results from distributed tests.
 """
 
-from .aggregator import ResultAggregator
-from .service import (
+from test.tests.api.duckdb_api.distributed_testing.result_aggregator.aggregator import ResultAggregator
+from test.tests.api.duckdb_api.distributed_testing.result_aggregator.service import (
     ResultAggregatorService,
     RESULT_TYPE_PERFORMANCE,
     RESULT_TYPE_COMPATIBILITY,

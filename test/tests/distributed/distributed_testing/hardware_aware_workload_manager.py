@@ -29,7 +29,7 @@ from data.duckdb.distributed_testing.hardware_taxonomy import (
     HardwareCapabilityProfile, HardwareClass, SoftwareBackend, PrecisionType
 )
 
-from .enhanced_hardware_taxonomy import (
+from test.tests.distributed.distributed_testing.enhanced_hardware_taxonomy import (
     EnhancedHardwareTaxonomy
 )
 

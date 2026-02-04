@@ -16,7 +16,7 @@ from typing import Dict, List, Any, Set, Tuple
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Import components
-from .enhanced_hardware_taxonomy import (
+from test.tests.distributed.distributed_testing.enhanced_hardware_taxonomy import (
     EnhancedHardwareTaxonomy,
     CapabilityDefinition,
     HardwareHierarchy,

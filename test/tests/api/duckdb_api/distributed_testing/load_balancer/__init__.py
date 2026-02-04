@@ -4,16 +4,16 @@ Distributed Testing Framework - Adaptive Load Balancer
 This package implements the adaptive load balancing system for the distributed testing framework.
 """
 
-from .models import (
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import (
     WorkerCapabilities,
     WorkerPerformance,
     WorkerLoad,
     TestRequirements,
     WorkerAssignment
 )
-from .capability_detector import WorkerCapabilityDetector
-from .performance_tracker import PerformanceTracker
-from .scheduling_algorithms import (
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.capability_detector import WorkerCapabilityDetector
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.performance_tracker import PerformanceTracker
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.scheduling_algorithms import (
     SchedulingAlgorithm,
     RoundRobinScheduler,
     WeightedRoundRobinScheduler,
@@ -23,8 +23,8 @@ from .scheduling_algorithms import (
     AffinityBasedScheduler,
     AdaptiveScheduler
 )
-from .service import LoadBalancerService, create_scheduler, create_load_balancer
-from .coordinator_integration import LoadBalancerCoordinatorBridge, CoordinatorClient
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.service import LoadBalancerService, create_scheduler, create_load_balancer
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.coordinator_integration import LoadBalancerCoordinatorBridge, CoordinatorClient
 
 __all__ = [
     'WorkerCapabilities',

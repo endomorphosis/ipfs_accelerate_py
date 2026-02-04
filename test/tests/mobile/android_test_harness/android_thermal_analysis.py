@@ -31,7 +31,7 @@ logger = logging.getLogger(__name__)
 from android_test_harness import AndroidDevice, AndroidModelRunner, AndroidThermalMonitor
 
 try:
-    from .database_integration import AndroidDatabaseAPI
+    from test.tests.mobile.android_test_harness.database_integration import AndroidDatabaseAPI
     ANDROID_DB_AVAILABLE = True
 except ImportError:
     logger.warning("Could not import Android database integration. Database functionality will be limited.")

@@ -248,11 +248,11 @@ def create_distributed_framework_stub():
     # Create __init__.py
     with open(os.path.join(framework_dir, "__init__.py"), "w", encoding="utf-8") as f:
         f.write("""# Distributed Testing Framework
-from .worker import Worker
-from .collector import ResultCollector
-from .distributor import TaskDistributor
-from .hardware import HardwareDetector
-from .registry import register_test
+from test.tools.skills.worker import Worker
+from test.tools.skills.collector import ResultCollector
+from test.tools.skills.distributor import TaskDistributor
+from test.tools.skills.hardware import HardwareDetector
+from test.tools.skills.registry import register_test
 
 __all__ = [
     'Worker',

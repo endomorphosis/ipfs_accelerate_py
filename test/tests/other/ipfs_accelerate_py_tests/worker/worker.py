@@ -19,7 +19,7 @@ import hashlib
 try:
     from ipfs_multiformats import ipfs_multiformats_py
 except:
-    from .ipfs_multiformats import ipfs_multiformats_py
+    from test.tests.other.ipfs_accelerate_py_tests.worker.ipfs_multiformats import ipfs_multiformats_py
     
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 skillset_folder_files = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
@@ -254,7 +254,7 @@ class worker_py:
         try:
             from openvino_utils import openvino_utils
         except:
-            from .openvino_utils import openvino_utils
+            from test.tests.other.ipfs_accelerate_py_tests.worker.openvino_utils import openvino_utils
         self.resources["openvino_utils"] = openvino_utils
         self.openvino_utils = openvino_utils(self.resources, self.metadata)
         self.resources["openvino_utils"] = self.openvino_utils

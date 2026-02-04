@@ -35,8 +35,8 @@ try:
     from model_sharding import ShardedModelExecution
 except ImportError:
     # Try with full path
-    from .resource_pool_bridge import ResourcePoolBridgeIntegration
-    from .resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
+    from test.tests.distributed.distributed_testing.resource_pool_bridge import ResourcePoolBridgeIntegration
+    from test.tests.distributed.distributed_testing.resource_pool_bridge_recovery import BrowserStateManager, ResourcePoolRecoveryManager
     from test.tests.distributed.distributed_testing.model_sharding import ShardedModelExecution
 
 try:

@@ -6,4 +6,4 @@ including storage and retrieval of API performance metrics, predictions,
 anomalies, and recommendations.
 """
 
-from .duckdb_api_metrics import DuckDBAPIMetricsRepository
+from test.tests.api.duckdb_api.api_management.duckdb_api_metrics import DuckDBAPIMetricsRepository

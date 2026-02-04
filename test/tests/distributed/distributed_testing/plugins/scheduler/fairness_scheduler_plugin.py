@@ -14,8 +14,8 @@ from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import Dict, List, Any, Optional, Tuple, Set, DefaultDict
 
-from .base_scheduler_plugin import BaseSchedulerPlugin
-from .scheduler_plugin_interface import SchedulingStrategy
+from test.tests.distributed.distributed_testing.plugins.scheduler.base_scheduler_plugin import BaseSchedulerPlugin
+from test.tests.distributed.distributed_testing.plugins.scheduler.scheduler_plugin_interface import SchedulingStrategy
 
 # Configure logging
 logging.basicConfig(

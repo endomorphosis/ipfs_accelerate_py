@@ -89,7 +89,7 @@ except ImportError:  # pragma: no cover
 import hashlib
 
 from test.tests.distributed.distributed_testing.ci.api_interface import CIProviderInterface
-from .artifact_metadata import ArtifactMetadata, ArtifactDiscovery
+from test.tests.distributed.distributed_testing.ci.artifact_metadata import ArtifactMetadata, ArtifactDiscovery
 
 # Configure logging
 logging.basicConfig(

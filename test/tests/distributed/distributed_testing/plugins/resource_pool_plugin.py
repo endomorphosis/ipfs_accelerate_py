@@ -59,9 +59,9 @@ logger = logging.getLogger(__name__)
 # Import distributed testing framework components
 from test.tests.distributed.distributed_testing.plugin_base import PluginBase
 from test.tests.distributed.distributed_testing.circuit_breaker import CircuitBreaker
-from .state_manager import StateManager
-from .worker_registry import WorkerRegistry
-from .transaction_log import TransactionLog
+from test.tests.distributed.distributed_testing.plugins.state_manager import StateManager
+from test.tests.distributed.distributed_testing.plugins.worker_registry import WorkerRegistry
+from test.tests.distributed.distributed_testing.plugins.transaction_log import TransactionLog
 
 class ResourcePoolPlugin(PluginBase):
     """

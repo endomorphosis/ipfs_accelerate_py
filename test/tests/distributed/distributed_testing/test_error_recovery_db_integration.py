@@ -32,16 +32,16 @@ try:
     import duckdb
     try:
         # Prefer package imports when collected by pytest
-        from .distributed_error_handler import (
+        from test.tests.distributed.distributed_testing.distributed_error_handler import (
             DistributedErrorHandler,
             ErrorType,
             ErrorSeverity,
         )
-        from .error_recovery_strategies import EnhancedErrorRecoveryManager
-        from .error_recovery_with_performance_tracking import (
+        from test.tests.distributed.distributed_testing.error_recovery_strategies import EnhancedErrorRecoveryManager
+        from test.tests.distributed.distributed_testing.error_recovery_with_performance_tracking import (
             PerformanceBasedErrorRecovery,
         )
-        from .enhanced_error_handling_integration import (
+        from test.tests.distributed.distributed_testing.enhanced_error_handling_integration import (
             install_enhanced_error_handling,
         )
     except ImportError:

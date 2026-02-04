@@ -70,7 +70,7 @@ except Exception:  # pragma: no cover
 # Optional coordinator subcomponents. These are patched in unit tests; provide
 # light fallbacks to keep minimal environments working.
 try:
-    from .security import SecurityManager  # type: ignore
+    from test.tests.distributed.distributed_testing.security import SecurityManager  # type: ignore
 except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from security import SecurityManager  # type: ignore
@@ -86,7 +86,7 @@ except Exception:  # pragma: no cover
                 return ""
 
 try:
-    from .health_monitor import HealthMonitor  # type: ignore
+    from test.tests.distributed.distributed_testing.health_monitor import HealthMonitor  # type: ignore
 except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from health_monitor import HealthMonitor  # type: ignore
@@ -104,7 +104,7 @@ except Exception:  # pragma: no cover
             pass
 
 try:
-    from .load_balancer import AdaptiveLoadBalancer  # type: ignore
+    from test.tests.distributed.distributed_testing.load_balancer import AdaptiveLoadBalancer  # type: ignore
 except Exception:  # pragma: no cover
     try:  # Allow importing as a top-level module (e.g. `import coordinator`)
         from load_balancer import AdaptiveLoadBalancer  # type: ignore
@@ -396,7 +396,7 @@ class TestCoordinator:
 
         if self.enable_redundancy:
             try:
-                from .coordinator_redundancy import RedundancyManager
+                from test.tests.distributed.distributed_testing.coordinator_redundancy import RedundancyManager
             except Exception:
                 try:
                     from coordinator_redundancy import RedundancyManager
@@ -1074,7 +1074,7 @@ class DistributedTestingCoordinator(TestCoordinator):
         # Distributed state manager (enables recovery workflows)
         self.state_manager = None
         try:
-            from .distributed_state_management import DistributedStateManager  # type: ignore
+            from test.tests.distributed.distributed_testing.distributed_state_management import DistributedStateManager  # type: ignore
         except Exception:
             try:
                 from distributed_state_management import DistributedStateManager  # type: ignore

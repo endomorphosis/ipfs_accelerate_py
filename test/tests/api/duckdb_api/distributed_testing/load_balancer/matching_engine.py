@@ -23,7 +23,7 @@ from typing import Dict, List, Any, Optional, Tuple, Set, Callable
 from dataclasses import dataclass
 
 # Import models
-from .models import (
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import (
     WorkerCapabilities, 
     WorkerPerformance, 
     WorkerLoad, 

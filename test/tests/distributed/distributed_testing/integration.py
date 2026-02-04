@@ -18,9 +18,9 @@ import json
 from typing import Dict, List, Any, Optional, Tuple, Set, Union
 
 # Import framework components
-from .ml_anomaly_detection import MLAnomalyDetection
-from .prometheus_grafana_integration import PrometheusGrafanaIntegration
-from .advanced_scheduling import AdvancedScheduler, Task, Worker
+from test.tests.distributed.distributed_testing.ml_anomaly_detection import MLAnomalyDetection
+from test.tests.distributed.distributed_testing.prometheus_grafana_integration import PrometheusGrafanaIntegration
+from test.tests.distributed.distributed_testing.advanced_scheduling import AdvancedScheduler, Task, Worker
 
 # Configure logging
 logging.basicConfig(

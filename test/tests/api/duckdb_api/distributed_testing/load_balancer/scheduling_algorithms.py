@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Any, Optional, Tuple, Set
 from dataclasses import dataclass
 
-from .models import TestRequirements, WorkerCapabilities, WorkerLoad, WorkerPerformance
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import TestRequirements, WorkerCapabilities, WorkerLoad, WorkerPerformance
 
 # Setup logging
 logging.basicConfig(

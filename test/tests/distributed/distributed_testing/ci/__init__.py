@@ -45,37 +45,37 @@ except Exception as e:  # pragma: no cover
     logger.debug("GitLabClient unavailable: %s", e)
 
 try:
-    from .jenkins_client import JenkinsClient
+    from test.tests.distributed.distributed_testing.ci.jenkins_client import JenkinsClient
 except Exception as e:  # pragma: no cover
     JenkinsClient = None  # type: ignore[assignment]
     logger.debug("JenkinsClient unavailable: %s", e)
 
 try:
-    from .azure_client import AzureDevOpsClient
+    from test.tests.distributed.distributed_testing.ci.azure_client import AzureDevOpsClient
 except Exception as e:  # pragma: no cover
     AzureDevOpsClient = None  # type: ignore[assignment]
     logger.debug("AzureDevOpsClient unavailable: %s", e)
 
 try:
-    from .circleci_client import CircleCIClient
+    from test.tests.distributed.distributed_testing.ci.circleci_client import CircleCIClient
 except Exception as e:  # pragma: no cover
     CircleCIClient = None  # type: ignore[assignment]
     logger.debug("CircleCIClient unavailable: %s", e)
 
 try:
-    from .bitbucket_client import BitbucketClient
+    from test.tests.distributed.distributed_testing.ci.bitbucket_client import BitbucketClient
 except Exception as e:  # pragma: no cover
     BitbucketClient = None  # type: ignore[assignment]
     logger.debug("BitbucketClient unavailable: %s", e)
 
 try:
-    from .teamcity_client import TeamCityClient
+    from test.tests.distributed.distributed_testing.ci.teamcity_client import TeamCityClient
 except Exception as e:  # pragma: no cover
     TeamCityClient = None  # type: ignore[assignment]
     logger.debug("TeamCityClient unavailable: %s", e)
 
 try:
-    from .travis_client import TravisClient
+    from test.tests.distributed.distributed_testing.ci.travis_client import TravisClient
 except Exception as e:  # pragma: no cover
     TravisClient = None  # type: ignore[assignment]
     logger.debug("TravisClient unavailable: %s", e)

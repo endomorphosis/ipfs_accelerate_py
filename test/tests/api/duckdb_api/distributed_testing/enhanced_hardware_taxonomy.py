@@ -14,7 +14,7 @@ import enum
 from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Set, Tuple, Union, Any
 
-from .hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareArchitecture,
     HardwareVendor,

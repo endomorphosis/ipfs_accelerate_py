@@ -15,7 +15,7 @@ import pkgutil
 import sys
 from typing import Dict, List, Any, Optional, Type, Tuple, Set
 
-from .scheduler_plugin_interface import SchedulerPluginInterface, SchedulingStrategy
+from test.tests.distributed.distributed_testing.plugins.scheduler.scheduler_plugin_interface import SchedulerPluginInterface, SchedulingStrategy
 
 # Configure logging
 logging.basicConfig(

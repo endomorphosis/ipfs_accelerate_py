@@ -10,7 +10,7 @@ import enum
 from typing import Dict, List, Optional, Set, Tuple, Union, Any, Callable
 from dataclasses import dataclass, field
 
-from .hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.hardware_taxonomy import (
     HardwareClass,
     HardwareArchitecture,
     HardwareVendor,
@@ -20,7 +20,7 @@ from .hardware_taxonomy import (
     MemoryProfile,
     HardwareCapabilityProfile
 )
-from .enhanced_hardware_taxonomy import (
+from test.tests.api.duckdb_api.distributed_testing.enhanced_hardware_taxonomy import (
     EnhancedHardwareTaxonomy,
     CapabilityScope,
     CapabilityDefinition

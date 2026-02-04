@@ -16,16 +16,16 @@ Date: April 2025
 Status: Phase 2 (Alpha) Implementation
 """
 
-from .android_test_harness import AndroidDevice, AndroidModelRunner, AndroidTestHarness
+from test.tests.mobile.android_test_harness.android_test_harness import AndroidDevice, AndroidModelRunner, AndroidTestHarness
 
 # Only import these if available
 try:
-    from .android_model_executor import AndroidModelExecutor, ModelFormat, AcceleratorType
+    from test.tests.mobile.android_test_harness.android_model_executor import AndroidModelExecutor, ModelFormat, AcceleratorType
 except ImportError:
     pass
 
 try:
-    from .android_thermal_monitor import AndroidThermalMonitor
+    from test.tests.mobile.android_test_harness.android_thermal_monitor import AndroidThermalMonitor
 except ImportError:
     pass
 

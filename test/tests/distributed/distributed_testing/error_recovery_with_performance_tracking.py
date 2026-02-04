@@ -45,8 +45,8 @@ logger = logging.getLogger("performance_recovery")
 # `distributed_testing.*` (pytest/anyio), while keeping a fallback for
 # script-style execution.
 try:
-    from .distributed_error_handler import DistributedErrorHandler, ErrorReport
-    from .error_recovery_strategies import (
+    from test.tests.distributed.distributed_testing.distributed_error_handler import DistributedErrorHandler, ErrorReport
+    from test.tests.distributed.distributed_testing.error_recovery_strategies import (
         ErrorCategory,
         RecoveryStrategy,
         EnhancedErrorRecoveryManager,

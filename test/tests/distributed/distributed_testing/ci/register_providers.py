@@ -20,7 +20,7 @@ except Exception:  # pragma: no cover
     GitHubClient = None  # type: ignore[assignment]
 
 try:
-    from .jenkins_client import JenkinsClient
+    from test.tests.distributed.distributed_testing.ci.jenkins_client import JenkinsClient
 except Exception:  # pragma: no cover
     JenkinsClient = None  # type: ignore[assignment]
 
@@ -30,31 +30,31 @@ except Exception:  # pragma: no cover
     GitLabClient = None  # type: ignore[assignment]
 
 try:
-    from .azure_client import AzureDevOpsClient
+    from test.tests.distributed.distributed_testing.ci.azure_client import AzureDevOpsClient
 except Exception:  # pragma: no cover
     AzureDevOpsClient = None  # type: ignore[assignment]
 
 try:
-    from .circleci_client import CircleCIClient
+    from test.tests.distributed.distributed_testing.ci.circleci_client import CircleCIClient
 except Exception:  # pragma: no cover
     CircleCIClient = None  # type: ignore[assignment]
 
 try:
-    from .bitbucket_client import BitbucketClient
+    from test.tests.distributed.distributed_testing.ci.bitbucket_client import BitbucketClient
 except Exception:  # pragma: no cover
     BitbucketClient = None  # type: ignore[assignment]
 
 try:
-    from .teamcity_client import TeamCityClient
+    from test.tests.distributed.distributed_testing.ci.teamcity_client import TeamCityClient
 except Exception:  # pragma: no cover
     TeamCityClient = None  # type: ignore[assignment]
 
 try:
-    from .travis_client import TravisClient
+    from test.tests.distributed.distributed_testing.ci.travis_client import TravisClient
 except Exception:  # pragma: no cover
     TravisClient = None  # type: ignore[assignment]
-from .artifact_handler import get_artifact_handler
-from .artifact_retriever import ArtifactRetriever
+from test.tests.distributed.distributed_testing.ci.artifact_handler import get_artifact_handler
+from test.tests.distributed.distributed_testing.ci.artifact_retriever import ArtifactRetriever
 
 # Configure logging
 logging.basicConfig(

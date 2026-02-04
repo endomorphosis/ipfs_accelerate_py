@@ -5,14 +5,14 @@ Hardware detection and management for the benchmark suite.
 import logging
 from typing import Dict, List, Any, Optional, Type, Union
 
-from .base import HardwareBackend
-from .cpu import CPUBackend
-from .cuda import CUDABackend
-from .mps import MPSBackend
-from .rocm import ROCmBackend
-from .openvino import OpenVINOBackend
-from .webnn import WebNNBackend
-from .webgpu import WebGPUBackend
+from test.tools.skills.refactored_benchmark_suite.hardware.base import HardwareBackend
+from test.tools.skills.refactored_benchmark_suite.hardware.cpu import CPUBackend
+from test.tools.skills.refactored_benchmark_suite.hardware.cuda import CUDABackend
+from test.tools.skills.refactored_benchmark_suite.hardware.mps import MPSBackend
+from test.tools.skills.refactored_benchmark_suite.hardware.rocm import ROCmBackend
+from test.tools.skills.refactored_benchmark_suite.hardware.openvino import OpenVINOBackend
+from test.tools.skills.refactored_benchmark_suite.hardware.webnn import WebNNBackend
+from test.tools.skills.refactored_benchmark_suite.hardware.webgpu import WebGPUBackend
 
 logger = logging.getLogger("benchmark.hardware")
 

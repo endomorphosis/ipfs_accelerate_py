@@ -144,7 +144,7 @@ def create_model_test_class():
     print("Creating ModelTest class...")
     
     content = """
-from .base_test import BaseTest
+from test.scripts.setup.base_test import BaseTest
 import pytest
 import os
 import json
@@ -205,7 +205,7 @@ def create_hardware_test_class():
     print("Creating HardwareTest class...")
     
     content = """
-from .base_test import BaseTest
+from test.scripts.setup.base_test import BaseTest
 import pytest
 import os
 import platform
@@ -270,7 +270,7 @@ def create_api_test_class():
     print("Creating APITest class...")
     
     content = """
-from .base_test import BaseTest
+from test.scripts.setup.base_test import BaseTest
 import pytest
 import requests
 import json
@@ -327,7 +327,7 @@ def create_browser_test_class():
     print("Creating BrowserTest class...")
     
     content = """
-from .base_test import BaseTest
+from test.scripts.setup.base_test import BaseTest
 import pytest
 import os
 from typing import Any, Dict, List, Optional, Tuple, Union

@@ -32,7 +32,7 @@ if not integration_enabled():
 pytest.importorskip("httpx")
 
 # Import the components to test
-from . import performance_trend_analyzer as pta
+from test.tests.distributed.distributed_testing.tests import performance_trend_analyzer as pta
 from test.tests.distributed.distributed_testing.performance_trend_analyzer import (
     PerformanceTrendAnalyzer,
     PerformanceMetric,

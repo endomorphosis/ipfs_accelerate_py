@@ -56,14 +56,14 @@ except ImportError:
     METRICS_AVAILABLE = False
 
 try:
-    from .database_integration import AndroidDatabaseAPI
+    from test.tests.mobile.android_test_harness.database_integration import AndroidDatabaseAPI
     ANDROID_DB_AVAILABLE = True
 except ImportError:
     logger.warning("Could not import Android database integration. Database functionality will be limited.")
     ANDROID_DB_AVAILABLE = False
 
 try:
-    from .android_model_executor import AndroidModelExecutor, ModelFormat, AcceleratorType
+    from test.tests.mobile.android_test_harness.android_model_executor import AndroidModelExecutor, ModelFormat, AcceleratorType
     MODEL_EXECUTOR_AVAILABLE = True
 except ImportError:
     logger.warning("Could not import AndroidModelExecutor. Falling back to simulated execution.")

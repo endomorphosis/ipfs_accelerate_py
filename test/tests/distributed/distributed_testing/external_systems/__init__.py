@@ -17,7 +17,7 @@ different systems and make it easy to add new connectors.
 """
 
 # Import standardized interface
-from .api_interface import (
+from test.tests.distributed.distributed_testing.external_systems.api_interface import (
     ExternalSystemInterface, 
     ConnectorCapabilities,
     ExternalSystemResult,
@@ -25,10 +25,10 @@ from .api_interface import (
 )
 
 # Import implementation classes
-from .jira_connector import JiraConnector
-from .slack_connector import SlackConnector
-from .discord_connector import DiscordConnector
-from .telegram_connector import TelegramConnector
+from test.tests.distributed.distributed_testing.external_systems.jira_connector import JiraConnector
+from test.tests.distributed.distributed_testing.external_systems.slack_connector import SlackConnector
+from test.tests.distributed.distributed_testing.external_systems.discord_connector import DiscordConnector
+from test.tests.distributed.distributed_testing.external_systems.telegram_connector import TelegramConnector
 
 # Export key classes for easy import
 __all__ = [

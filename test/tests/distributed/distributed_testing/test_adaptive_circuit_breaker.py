@@ -42,7 +42,7 @@ def _log_optional_dependency(message: str) -> None:
 
 # Import the adaptive circuit breaker
 try:
-    from .adaptive_circuit_breaker import AdaptiveCircuitBreaker
+    from test.tests.distributed.distributed_testing.adaptive_circuit_breaker import AdaptiveCircuitBreaker
     ADAPTIVE_CIRCUIT_BREAKER_AVAILABLE = True
 except ImportError:
     try:

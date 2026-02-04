@@ -16,7 +16,7 @@ import sqlite3
 import hashlib
 from dataclasses import asdict
 
-from .models import WorkerPerformance, TestRequirements, WorkerAssignment
+from test.tests.api.duckdb_api.distributed_testing.load_balancer.models import WorkerPerformance, TestRequirements, WorkerAssignment
 
 # Setup logging
 logging.basicConfig(

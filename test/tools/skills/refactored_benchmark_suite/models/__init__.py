@@ -58,10 +58,10 @@ def get_model_adapter(model_id: str, task: Optional[str] = None) -> ModelAdapter
         ModelAdapter instance
     """
     # Import here to avoid circular imports
-    from .text_models import TextModelAdapter
-    from .vision_models import VisionModelAdapter
-    from .speech_models import SpeechModelAdapter
-    from .multimodal_models import MultimodalModelAdapter
+    from test.tools.skills.refactored_benchmark_suite.models.text_models import TextModelAdapter
+    from test.tools.skills.refactored_benchmark_suite.models.vision_models import VisionModelAdapter
+    from test.tools.skills.refactored_benchmark_suite.models.speech_models import SpeechModelAdapter
+    from test.tools.skills.refactored_benchmark_suite.models.multimodal_models import MultimodalModelAdapter
     
     # Determine model type based on model ID and task
     if not task:

@@ -31,7 +31,7 @@ from test.tests.distributed.distributed_testing.browser_recovery_strategies impo
     ModelSpecificRecoveryStrategy, ProgressiveRecoveryManager,
     detect_browser_type, detect_model_type, categorize_browser_failure, recover_browser
 )
-from .. import browser_recovery_strategies as _browser_recovery_strategies
+from test.tests.distributed.distributed_testing import browser_recovery_strategies as _browser_recovery_strategies
 
 # Ensure the browser recovery module is reachable via the legacy alias used in patches.
 _sys.modules["distributed_testing.browser_recovery_strategies"] = _browser_recovery_strategies

@@ -233,7 +233,7 @@ class WebPlatformAccelerator:
         where possible with appropriate browser-specific alternatives.
         """
         # Import ConfigurationManager for validation logic
-        from .unified_framework.configuration_manager import ConfigurationManager
+        from test.tests.web.fixed_web_platform.unified_framework.configuration_manager import ConfigurationManager
         
         try:
             # Create configuration manager with current browser and model information

@@ -10,7 +10,7 @@ import logging
 from datetime import datetime
 from typing import List, Optional
 
-from . import ModelBenchmark, BenchmarkSuite
+from test.tools.skills.refactored_benchmark_suite import ModelBenchmark, BenchmarkSuite
 from test.tools.skills.refactored_benchmark_suite.utils.logging import setup_logger
 
 # Configure logger

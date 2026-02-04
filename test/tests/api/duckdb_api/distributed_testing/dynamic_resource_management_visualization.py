@@ -80,7 +80,7 @@ try:
 except ImportError:
     try:
         # Try relative import
-        from .dynamic_resource_manager import DynamicResourceManager, ScalingDecision
+        from test.tests.api.duckdb_api.distributed_testing.dynamic_resource_manager import DynamicResourceManager, ScalingDecision
         DRM_AVAILABLE = True
     except ImportError:
         logger.warning("DynamicResourceManager not available, some features will be limited")
@@ -92,7 +92,7 @@ try:
 except ImportError:
     try:
         # Try relative import
-        from .cloud_provider_manager import CloudProviderManager
+        from test.tests.api.duckdb_api.distributed_testing.cloud_provider_manager import CloudProviderManager
         CPM_AVAILABLE = True
     except ImportError:
         logger.warning("CloudProviderManager not available, some features will be limited")
@@ -104,7 +104,7 @@ try:
 except ImportError:
     try:
         # Try relative import
-        from .resource_optimization import ResourceOptimizer
+        from test.tests.api.duckdb_api.distributed_testing.resource_optimization import ResourceOptimizer
         OPTIMIZER_AVAILABLE = True
     except ImportError:
         logger.warning("ResourceOptimizer not available, some features will be limited")

@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 # Local imports
-from .android_test_harness import AndroidDevice
+from test.tests.mobile.android_test_harness.android_test_harness import AndroidDevice
 
 
 class ModelFormat:

@@ -24,7 +24,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any, Set, Tuple, Union, Callable
 
 # Import the Result Aggregator Service
-from .service import ResultAggregatorService
+from test.tests.distributed.distributed_testing.result_aggregator.service import ResultAggregatorService
 
 # Configure logging
 logging.basicConfig(
