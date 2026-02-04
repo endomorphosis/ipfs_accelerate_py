@@ -1,0 +1,105 @@
+name: Playwright E2E Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    timeout-minutes: 60
+    runs-on: ubuntu-latest
+    
+    strategy:
+      fail-fast: false
+      matrix:
+        browser: [chromium, firefox, webkit]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+      
+      - name: Install Node dependencies
+        run: npm ci
+      
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps ${{ matrix.browser }}
+      
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements_dashboard.txt
+          pip install flask flask-cors requests huggingface_hub
+      
+      - name: Start MCP Dashboard Server
+        run: |
+          python -m ipfs_accelerate_py.mcp_dashboard --port 3001 &
+          echo "Waiting for server to start..."
+          sleep 15
+          curl -f http://localhost:3001/ || (echo "Server failed to start" && exit 1)
+      
+      - name: Run Playwright tests
+        run: npx playwright test --project=${{ matrix.browser }}
+        env:
+          DASHBOARD_URL: http://localhost:3001
+          CI: true
+      
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report-${{ matrix.browser }}
+          path: test-results/
+          retention-days: 30
+      
+      - name: Upload screenshots
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: screenshots-${{ matrix.browser }}
+          path: test-results/screenshots/
+          retention-days: 30
+      
+      - name: Publish test report
+        uses: dorny/test-reporter@v1
+        if: always()
+        with:
+          name: Playwright Tests - ${{ matrix.browser }}
+          path: test-results/junit.xml
+          reporter: java-junit
+
+  # Consolidated report job
+  report:
+    needs: test
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results
+      
+      - name: Merge reports
+        run: |
+          mkdir -p merged-reports
+          find all-results -name "*.json" -exec cp {} merged-reports/ \;
+      
+      - name: Upload merged report
+        uses: actions/upload-artifact@v4
+        with:
+          name: merged-test-report
+          path: merged-reports/
+          retention-days: 30
