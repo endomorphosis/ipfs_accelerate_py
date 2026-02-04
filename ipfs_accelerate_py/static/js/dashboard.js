@@ -71,10 +71,6 @@ function updateConnectionStatus(connected) {
         statusIndicator.title = connected ? 'SDK Connected' : 'SDK Disconnected';
     }
 }
-        showToast('Failed to initialize MCP SDK', 'error');
-        return false;
-    }
-}
 
 // Track SDK method calls
 function trackSDKCall(method, success, responseTime) {
