@@ -46,6 +46,7 @@
             <button class="nav-tab active" onclick="showTab('overview')">🏠 Overview</button>
             <button class="nav-tab" onclick="showTab('ai-inference')">🤖 AI Inference</button>
             <button class="nav-tab" onclick="showTab('model-manager')">📚 Model Manager</button>
+            <button class="nav-tab" onclick="showTab('ipfs-manager')">📁 IPFS Manager</button>
             <button class="nav-tab" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
             <button class="nav-tab" onclick="showTab('github-workflows')">⚡ GitHub Workflows</button>
             <button class="nav-tab" onclick="showTab('sdk-playground')">🎮 SDK Playground</button>
@@ -471,6 +472,118 @@
                             <div class="stat-value" id="tested-models">0</div>
                             <div class="stat-label">Tested Models</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- IPFS Manager Tab -->
+        <div id="ipfs-manager" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- File Operations Card -->
+                <div class="card">
+                    <h3>📁 IPFS File Operations</h3>
+                    <div class="form-group">
+                        <label>File Path/CID:</label>
+                        <input type="text" id="ipfs-path" placeholder="/ipfs/Qm... or /ipns/..." />
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="ipfsCat()">📄 Cat (Read)</button>
+                        <button class="btn btn-info" onclick="ipfsList()">📋 List (ls)</button>
+                        <button class="btn btn-success" onclick="ipfsGetFile()">⬇️ Get File</button>
+                    </div>
+                    <div id="ipfs-file-result" style="margin-top: 15px;">
+                        <!-- File operation results -->
+                    </div>
+                </div>
+
+                <!-- Add File Card -->
+                <div class="card">
+                    <h3>➕ Add File to IPFS</h3>
+                    <div class="form-group">
+                        <label>File Content:</label>
+                        <textarea id="ipfs-add-content" rows="4" placeholder="Enter content to add to IPFS..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label>File Name (optional):</label>
+                        <input type="text" id="ipfs-add-filename" placeholder="myfile.txt" />
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-success" onclick="ipfsAddFile()">📤 Add File</button>
+                        <button class="btn btn-info" onclick="ipfsAddFileShared()">🔗 Add Shared</button>
+                    </div>
+                    <div id="ipfs-add-result" style="margin-top: 15px;">
+                        <!-- Add results -->
+                    </div>
+                </div>
+
+                <!-- Pin Management Card -->
+                <div class="card">
+                    <h3>📌 Pin Management</h3>
+                    <div class="form-group">
+                        <label>CID to Pin/Unpin:</label>
+                        <input type="text" id="ipfs-pin-cid" placeholder="Qm..." />
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-success" onclick="ipfsPinAdd()">📌 Pin Add</button>
+                        <button class="btn btn-danger" onclick="ipfsPinRemove()">🔓 Pin Remove</button>
+                        <button class="btn btn-info" onclick="ipfsListPins()">📋 List Pins</button>
+                    </div>
+                    <div id="ipfs-pin-result" style="margin-top: 15px;">
+                        <!-- Pin results -->
+                    </div>
+                </div>
+
+                <!-- Swarm/Network Card -->
+                <div class="card">
+                    <h3>🌐 IPFS Network & Swarm</h3>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="ipfsSwarmPeers()">👥 List Peers</button>
+                        <button class="btn btn-info" onclick="ipfsId()">🆔 Node ID</button>
+                        <button class="btn btn-success" onclick="ipfsSwarmConnect()">🔗 Connect Peer</button>
+                    </div>
+                    <div class="form-group" style="margin-top: 10px;">
+                        <label>Peer Address (for connect):</label>
+                        <input type="text" id="ipfs-peer-addr" placeholder="/ip4/127.0.0.1/tcp/4001/p2p/..." />
+                    </div>
+                    <div id="ipfs-swarm-result" style="margin-top: 15px;">
+                        <!-- Swarm results -->
+                    </div>
+                </div>
+
+                <!-- DHT Operations Card -->
+                <div class="card">
+                    <h3>🔍 DHT Operations</h3>
+                    <div class="form-group">
+                        <label>Peer ID or CID:</label>
+                        <input type="text" id="ipfs-dht-query" placeholder="Peer ID or Content CID" />
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-primary" onclick="ipfsDhtFindPeer()">🔍 Find Peer</button>
+                        <button class="btn btn-info" onclick="ipfsDhtFindProvs()">📦 Find Providers</button>
+                    </div>
+                    <div id="ipfs-dht-result" style="margin-top: 15px;">
+                        <!-- DHT results -->
+                    </div>
+                </div>
+
+                <!-- Pubsub Card -->
+                <div class="card">
+                    <h3>💬 Pubsub</h3>
+                    <div class="form-group">
+                        <label>Topic:</label>
+                        <input type="text" id="ipfs-pubsub-topic" placeholder="my-topic" />
+                    </div>
+                    <div class="form-group">
+                        <label>Message:</label>
+                        <input type="text" id="ipfs-pubsub-message" placeholder="Hello IPFS!" />
+                    </div>
+                    <div class="button-group">
+                        <button class="btn btn-success" onclick="ipfsPubsubPub()">📤 Publish</button>
+                        <button class="btn btn-info" onclick="ipfsPubsubSub()">📥 Subscribe</button>
+                    </div>
+                    <div id="ipfs-pubsub-result" style="margin-top: 15px;">
+                        <!-- Pubsub results -->
                     </div>
                 </div>
             </div>

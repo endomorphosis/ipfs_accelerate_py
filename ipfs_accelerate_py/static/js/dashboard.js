@@ -4618,3 +4618,641 @@ window.addEventListener('beforeunload', function() {
         clearInterval(autoRefreshInterval);
     }
 });
+// ========================================
+// IPFS Manager Functions (Phase 2.4)
+// ========================================
+
+async function ipfsCat() {
+    const path = document.getElementById('ipfs-path')?.value;
+    const resultDiv = document.getElementById('ipfs-file-result');
+    
+    if (!path) {
+        showToast('Please enter a file path or CID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Reading file...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsCat) {
+            result = await mcpClient.ipfsCat(path);
+            trackSDKCall('ipfsCat', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_cat', { path });
+            trackSDKCall('ipfsCat', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>✅ File Content:</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px; max-height: 400px; overflow-y: auto;">${result.content || result}</pre>
+                </div>
+            `;
+        }
+        showToast('File read successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsCat', false, Date.now() - startTime);
+        console.error('[IPFS] Cat error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to read file: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsList() {
+    const path = document.getElementById('ipfs-path')?.value;
+    const resultDiv = document.getElementById('ipfs-file-result');
+    
+    if (!path) {
+        showToast('Please enter a directory path or CID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Listing directory...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsLs) {
+            result = await mcpClient.ipfsLs(path);
+            trackSDKCall('ipfsLs', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_ls', { path });
+            trackSDKCall('ipfsLs', false, Date.now() - startTime);
+        }
+        
+        const files = result.files || result.objects || result || [];
+        let html = '<div class="result-success"><strong>📋 Directory Listing:</strong><div style="margin-top: 10px;">';
+        
+        if (Array.isArray(files) && files.length > 0) {
+            files.forEach(file => {
+                html += `
+                    <div style="padding: 8px; border-bottom: 1px solid #e5e7eb;">
+                        <strong>${file.name || file.Name}</strong>
+                        <span style="color: #6b7280; margin-left: 10px;">${file.size || file.Size || 0} bytes</span>
+                        <span style="color: #9ca3af; margin-left: 10px;">${file.type || file.Type || 'file'}</span>
+                    </div>
+                `;
+            });
+        } else {
+            html += '<p>No files found or empty directory</p>';
+        }
+        
+        html += '</div></div>';
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = html;
+        }
+        showToast('Directory listed successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsLs', false, Date.now() - startTime);
+        console.error('[IPFS] Ls error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to list directory: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsGetFile() {
+    const path = document.getElementById('ipfs-path')?.value;
+    const resultDiv = document.getElementById('ipfs-file-result');
+    
+    if (!path) {
+        showToast('Please enter a file path or CID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Getting file...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.getFileFromIpfs) {
+            result = await mcpClient.getFileFromIpfs(path);
+            trackSDKCall('getFileFromIpfs', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('get_file_from_ipfs', { cid: path });
+            trackSDKCall('getFileFromIpfs', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>✅ File Retrieved:</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px; max-height: 400px; overflow-y: auto;">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast('File retrieved successfully', 'success');
+    } catch (error) {
+        trackSDKCall('getFileFromIpfs', false, Date.now() - startTime);
+        console.error('[IPFS] Get file error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to get file: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsAddFile() {
+    const content = document.getElementById('ipfs-add-content')?.value;
+    const filename = document.getElementById('ipfs-add-filename')?.value || 'unnamed.txt';
+    const resultDiv = document.getElementById('ipfs-add-result');
+    
+    if (!content) {
+        showToast('Please enter content to add', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Adding file to IPFS...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsAddFile) {
+            result = await mcpClient.ipfsAddFile({ content, filename });
+            trackSDKCall('ipfsAddFile', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_add_file', { content, filename });
+            trackSDKCall('ipfsAddFile', false, Date.now() - startTime);
+        }
+        
+        const cid = result.cid || result.Hash || result.hash;
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>✅ File Added Successfully!</strong>
+                    <div style="margin-top: 10px;">
+                        <strong>CID:</strong> <code style="background: #f3f4f6; padding: 4px 8px; border-radius: 4px;">${cid}</code>
+                    </div>
+                    <div style="margin-top: 5px;">
+                        <strong>Size:</strong> ${result.size || result.Size || 'Unknown'} bytes
+                    </div>
+                </div>
+            `;
+        }
+        showToast(`File added: ${cid}`, 'success');
+    } catch (error) {
+        trackSDKCall('ipfsAddFile', false, Date.now() - startTime);
+        console.error('[IPFS] Add file error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to add file: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsAddFileShared() {
+    const content = document.getElementById('ipfs-add-content')?.value;
+    const filename = document.getElementById('ipfs-add-filename')?.value || 'unnamed.txt';
+    const resultDiv = document.getElementById('ipfs-add-result');
+    
+    if (!content) {
+        showToast('Please enter content to add', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Adding shared file...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.addFileShared) {
+            result = await mcpClient.addFileShared({ content, filename });
+            trackSDKCall('addFileShared', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('add_file_shared', { content, filename });
+            trackSDKCall('addFileShared', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>✅ Shared File Added!</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px;">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast('Shared file added successfully', 'success');
+    } catch (error) {
+        trackSDKCall('addFileShared', false, Date.now() - startTime);
+        console.error('[IPFS] Add shared file error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to add shared file: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsPinAdd() {
+    const cid = document.getElementById('ipfs-pin-cid')?.value;
+    const resultDiv = document.getElementById('ipfs-pin-result');
+    
+    if (!cid) {
+        showToast('Please enter a CID to pin', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Pinning...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsPinAdd) {
+            result = await mcpClient.ipfsPinAdd(cid);
+            trackSDKCall('ipfsPinAdd', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_pin_add', { cid });
+            trackSDKCall('ipfsPinAdd', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="result-success">✅ CID pinned successfully: ${cid}</div>`;
+        }
+        showToast('CID pinned successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsPinAdd', false, Date.now() - startTime);
+        console.error('[IPFS] Pin add error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to pin: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsPinRemove() {
+    const cid = document.getElementById('ipfs-pin-cid')?.value;
+    const resultDiv = document.getElementById('ipfs-pin-result');
+    
+    if (!cid) {
+        showToast('Please enter a CID to unpin', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Unpinning...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsPinRm) {
+            result = await mcpClient.ipfsPinRm(cid);
+            trackSDKCall('ipfsPinRm', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_pin_rm', { cid });
+            trackSDKCall('ipfsPinRm', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="result-success">✅ CID unpinned successfully: ${cid}</div>`;
+        }
+        showToast('CID unpinned successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsPinRm', false, Date.now() - startTime);
+        console.error('[IPFS] Pin remove error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to unpin: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsListPins() {
+    const resultDiv = document.getElementById('ipfs-pin-result');
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Loading pins...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsPinLs) {
+            result = await mcpClient.ipfsPinLs();
+            trackSDKCall('ipfsPinLs', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_pin_ls', {});
+            trackSDKCall('ipfsPinLs', false, Date.now() - startTime);
+        }
+        
+        const pins = result.pins || result.Keys || result || [];
+        let html = '<div class="result-success"><strong>📌 Pinned CIDs:</strong><div style="margin-top: 10px;">';
+        
+        if (Array.isArray(pins) && pins.length > 0) {
+            pins.forEach(pin => {
+                html += `<div style="padding: 5px; font-family: monospace; font-size: 12px;">${pin.cid || pin}</div>`;
+            });
+        } else if (typeof pins === 'object') {
+            Object.keys(pins).forEach(cid => {
+                html += `<div style="padding: 5px; font-family: monospace; font-size: 12px;">${cid}</div>`;
+            });
+        } else {
+            html += '<p>No pinned CIDs found</p>';
+        }
+        
+        html += '</div></div>';
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = html;
+        }
+        showToast('Pins listed successfully', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsPinLs', false, Date.now() - startTime);
+        console.error('[IPFS] Pin list error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to list pins: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsSwarmPeers() {
+    const resultDiv = document.getElementById('ipfs-swarm-result');
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Loading peers...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsSwarmPeers) {
+            result = await mcpClient.ipfsSwarmPeers();
+            trackSDKCall('ipfsSwarmPeers', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_swarm_peers', {});
+            trackSDKCall('ipfsSwarmPeers', false, Date.now() - startTime);
+        }
+        
+        const peers = result.peers || result.Peers || result || [];
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>👥 Connected Peers: ${Array.isArray(peers) ? peers.length : 0}</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px; max-height: 300px; overflow-y: auto; font-size: 11px;">${JSON.stringify(peers, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast(`Found ${Array.isArray(peers) ? peers.length : 0} peers`, 'success');
+    } catch (error) {
+        trackSDKCall('ipfsSwarmPeers', false, Date.now() - startTime);
+        console.error('[IPFS] Swarm peers error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to list peers: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsId() {
+    const resultDiv = document.getElementById('ipfs-swarm-result');
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Getting node ID...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsId) {
+            result = await mcpClient.ipfsId();
+            trackSDKCall('ipfsId', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_id', {});
+            trackSDKCall('ipfsId', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>🆔 Node Information:</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px;">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast('Node ID retrieved', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsId', false, Date.now() - startTime);
+        console.error('[IPFS] ID error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to get node ID: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsSwarmConnect() {
+    const peerAddr = document.getElementById('ipfs-peer-addr')?.value;
+    const resultDiv = document.getElementById('ipfs-swarm-result');
+    
+    if (!peerAddr) {
+        showToast('Please enter a peer address', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Connecting to peer...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsSwarmConnect) {
+            result = await mcpClient.ipfsSwarmConnect(peerAddr);
+            trackSDKCall('ipfsSwarmConnect', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_swarm_connect', { address: peerAddr });
+            trackSDKCall('ipfsSwarmConnect', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="result-success">✅ Connected to peer successfully!</div>`;
+        }
+        showToast('Peer connected', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsSwarmConnect', false, Date.now() - startTime);
+        console.error('[IPFS] Swarm connect error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to connect: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsDhtFindPeer() {
+    const peerId = document.getElementById('ipfs-dht-query')?.value;
+    const resultDiv = document.getElementById('ipfs-dht-result');
+    
+    if (!peerId) {
+        showToast('Please enter a peer ID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Finding peer...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsDhtFindpeer) {
+            result = await mcpClient.ipfsDhtFindpeer(peerId);
+            trackSDKCall('ipfsDhtFindpeer', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_dht_findpeer', { peer_id: peerId });
+            trackSDKCall('ipfsDhtFindpeer', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>🔍 Peer Found:</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px;">${JSON.stringify(result, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast('Peer found', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsDhtFindpeer', false, Date.now() - startTime);
+        console.error('[IPFS] DHT findpeer error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to find peer: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsDhtFindProvs() {
+    const cid = document.getElementById('ipfs-dht-query')?.value;
+    const resultDiv = document.getElementById('ipfs-dht-result');
+    
+    if (!cid) {
+        showToast('Please enter a CID', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Finding providers...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsDhtFindprovs) {
+            result = await mcpClient.ipfsDhtFindprovs(cid);
+            trackSDKCall('ipfsDhtFindprovs', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_dht_findprovs', { cid });
+            trackSDKCall('ipfsDhtFindprovs', false, Date.now() - startTime);
+        }
+        
+        const providers = result.providers || result.Providers || result || [];
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `
+                <div class="result-success">
+                    <strong>📦 Providers Found: ${Array.isArray(providers) ? providers.length : 0}</strong>
+                    <pre style="background: #f3f4f6; padding: 15px; border-radius: 6px; margin-top: 10px; max-height: 300px; overflow-y: auto;">${JSON.stringify(providers, null, 2)}</pre>
+                </div>
+            `;
+        }
+        showToast(`Found ${Array.isArray(providers) ? providers.length : 0} providers`, 'success');
+    } catch (error) {
+        trackSDKCall('ipfsDhtFindprovs', false, Date.now() - startTime);
+        console.error('[IPFS] DHT findprovs error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to find providers: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsPubsubPub() {
+    const topic = document.getElementById('ipfs-pubsub-topic')?.value;
+    const message = document.getElementById('ipfs-pubsub-message')?.value;
+    const resultDiv = document.getElementById('ipfs-pubsub-result');
+    
+    if (!topic || !message) {
+        showToast('Please enter both topic and message', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = '<div class="spinner"></div> Publishing...';
+    }
+    
+    const startTime = Date.now();
+    
+    try {
+        let result;
+        if (mcpClient && mcpClient.ipfsPubsubPub) {
+            result = await mcpClient.ipfsPubsubPub({ topic, message });
+            trackSDKCall('ipfsPubsubPub', true, Date.now() - startTime);
+        } else {
+            result = await mcpClient.callTool('ipfs_pubsub_pub', { topic, message });
+            trackSDKCall('ipfsPubsubPub', false, Date.now() - startTime);
+        }
+        
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="result-success">✅ Message published to topic: ${topic}</div>`;
+        }
+        showToast('Message published', 'success');
+    } catch (error) {
+        trackSDKCall('ipfsPubsubPub', false, Date.now() - startTime);
+        console.error('[IPFS] Pubsub publish error:', error);
+        if (resultDiv) {
+            resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        }
+        showToast(`Failed to publish: ${error.message}`, 'error');
+    }
+}
+
+async function ipfsPubsubSub() {
+    const topic = document.getElementById('ipfs-pubsub-topic')?.value;
+    const resultDiv = document.getElementById('ipfs-pubsub-result');
+    
+    if (!topic) {
+        showToast('Please enter a topic', 'warning');
+        return;
+    }
+    
+    if (resultDiv) {
+        resultDiv.innerHTML = `<div class="info">ℹ️ Subscribing to topic: ${topic}... (Feature requires server-side implementation)</div>`;
+    }
+    
+    showToast('Pubsub subscribe requires server-side streaming', 'info');
+}
+
