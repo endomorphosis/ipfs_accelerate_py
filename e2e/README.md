@@ -116,7 +116,7 @@ npm run test:ui
 ## Test Structure
 
 ```
-test/e2e/
+e2e/
 ├── fixtures/           # Test fixtures and utilities
 │   ├── dashboard.fixture.ts      # Dashboard-specific helpers
 │   └── mcp-server.fixture.ts     # MCP server log capture
@@ -369,7 +369,7 @@ If logs aren't correlating:
 
 ### Adding New Tests
 
-1. Create a new spec file in `test/e2e/tests/`
+1. Create a new spec file in `e2e/tests/`
 2. Import required fixtures and utilities
 3. Use the dashboard fixture for console log capture
 4. Use the screenshot manager for visual documentation
@@ -394,7 +394,7 @@ test.describe('My New Feature', () => {
 
 ### Extending Fixtures
 
-Add custom fixtures in `test/e2e/fixtures/`:
+Add custom fixtures in `e2e/fixtures/`:
 
 ```typescript
 export const test = base.extend<{ myFixture: MyFixture }>({

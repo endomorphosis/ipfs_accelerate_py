@@ -10,7 +10,7 @@ import { defineConfig, devices } from '@playwright/test';
  * - Log correlation with MCP server
  */
 export default defineConfig({
-  testDir: './test/e2e',
+  testDir: './e2e',
   
   // Maximum time one test can run
   timeout: 120 * 1000,

@@ -73,7 +73,7 @@ All phases have been implemented and are ready for use.
 
 #### Directory Structure
 ```
-test/e2e/
+e2e/
 ├── fixtures/
 │   ├── dashboard.fixture.ts      # Dashboard testing utilities
 │   └── mcp-server.fixture.ts     # MCP server log capture
@@ -612,7 +612,7 @@ For CI/CD integration:
 
 1. **Create test file:**
 ```typescript
-// test/e2e/tests/06-my-feature.spec.ts
+// e2e/tests/06-my-feature.spec.ts
 import { test, expect } from '@playwright/test';
 import { ScreenshotManager } from '../utils/screenshot-manager';
 
@@ -646,7 +646,7 @@ test.describe('My Feature', () => {
 ### Creating Custom Fixtures
 
 ```typescript
-// test/e2e/fixtures/my-fixture.ts
+// e2e/fixtures/my-fixture.ts
 import { test as base } from '@playwright/test';
 
 export interface MyFixture {

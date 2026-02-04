@@ -195,7 +195,7 @@ Each Screenshot Includes:
 ## 🎭 Test Suite Organization
 
 ```
-test/e2e/
+e2e/
 │
 ├── fixtures/                    ← Reusable test helpers
 │   ├── dashboard.fixture.ts    ← Dashboard utilities

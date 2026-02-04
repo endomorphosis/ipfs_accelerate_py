@@ -187,25 +187,25 @@
 ## Files Created
 
 ### Test Files (10)
-1. `test/e2e/tests/01-dashboard-core.spec.ts` (146 lines)
-2. `test/e2e/tests/02-github-runners.spec.ts` (228 lines)
-3. `test/e2e/tests/03-model-download.spec.ts` (268 lines)
-4. `test/e2e/tests/04-model-inference.spec.ts` (292 lines)
-5. `test/e2e/tests/05-comprehensive.spec.ts` (276 lines)
-6. `test/e2e/tests/06-ipfs-operations.spec.ts` (255 lines)
-7. `test/e2e/tests/07-advanced-features.spec.ts` (324 lines)
-8. `test/e2e/tests/08-system-monitoring.spec.ts` (308 lines)
-9. `test/e2e/tests/09-distributed-backend.spec.ts` (354 lines)
-10. `test/e2e/tests/10-complete-tool-coverage.spec.ts` (726 lines)
+1. `e2e/tests/01-dashboard-core.spec.ts` (146 lines)
+2. `e2e/tests/02-github-runners.spec.ts` (228 lines)
+3. `e2e/tests/03-model-download.spec.ts` (268 lines)
+4. `e2e/tests/04-model-inference.spec.ts` (292 lines)
+5. `e2e/tests/05-comprehensive.spec.ts` (276 lines)
+6. `e2e/tests/06-ipfs-operations.spec.ts` (255 lines)
+7. `e2e/tests/07-advanced-features.spec.ts` (324 lines)
+8. `e2e/tests/08-system-monitoring.spec.ts` (308 lines)
+9. `e2e/tests/09-distributed-backend.spec.ts` (354 lines)
+10. `e2e/tests/10-complete-tool-coverage.spec.ts` (726 lines)
 
 ### Utility Files (3)
-- `test/e2e/utils/log-correlator.ts`
-- `test/e2e/utils/screenshot-manager.ts`
-- `test/e2e/utils/report-generator.ts`
+- `e2e/utils/log-correlator.ts`
+- `e2e/utils/screenshot-manager.ts`
+- `e2e/utils/report-generator.ts`
 
 ### Fixture Files (2)
-- `test/e2e/fixtures/dashboard.fixture.ts`
-- `test/e2e/fixtures/mcp-server.fixture.ts`
+- `e2e/fixtures/dashboard.fixture.ts`
+- `e2e/fixtures/mcp-server.fixture.ts`
 
 ### Configuration Files (3)
 - `playwright.config.ts`
@@ -213,7 +213,7 @@
 - `package.json`
 
 ### Documentation Files (5)
-- `test/e2e/README.md`
+- `e2e/README.md`
 - `MCP_FEATURE_TEST_COVERAGE.md`
 - `PLAYWRIGHT_IMPLEMENTATION_PLAN.md`
 - `PLAYWRIGHT_QUICK_START.md`
@@ -294,7 +294,7 @@ npm run report
 
 4. **Examine Documentation**: Check `MCP_FEATURE_TEST_COVERAGE.md`
 
-5. **View Test Files**: All 10 test suites in `test/e2e/tests/`
+5. **View Test Files**: All 10 test suites in `e2e/tests/`
 
 ---
 

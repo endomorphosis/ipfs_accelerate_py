@@ -170,7 +170,7 @@ npx playwright install --with-deps chromium firefox webkit
 ## 📂 Directory Structure
 
 ```
-test/e2e/
+e2e/
 ├── fixtures/               # Test utilities
 │   ├── dashboard.fixture.ts
 │   └── mcp-server.fixture.ts
@@ -204,9 +204,9 @@ View results in GitHub Actions tab.
 
 ## 📚 Next Steps
 
-1. **Read the full documentation**: `test/e2e/README.md`
+1. **Read the full documentation**: `e2e/README.md`
 2. **Review implementation plan**: `PLAYWRIGHT_IMPLEMENTATION_PLAN.md`
-3. **Add custom tests**: Follow patterns in `test/e2e/tests/`
+3. **Add custom tests**: Follow patterns in `e2e/tests/`
 4. **Customize**: Modify `playwright.config.ts` as needed
 
 ## 💡 Pro Tips
@@ -228,7 +228,7 @@ Your tests are working correctly if:
 
 ## 📞 Support
 
-- **Documentation**: `test/e2e/README.md`
+- **Documentation**: `e2e/README.md`
 - **Implementation**: `PLAYWRIGHT_IMPLEMENTATION_PLAN.md`
 - **Issues**: GitHub Issues
 

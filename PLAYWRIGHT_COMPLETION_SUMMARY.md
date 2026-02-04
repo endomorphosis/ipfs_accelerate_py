@@ -44,8 +44,8 @@ Successfully implemented a comprehensive, production-ready Playwright end-to-end
 ### 2. Test Fixtures (Phase 1) ✅
 
 **Files Created:**
-- `test/e2e/fixtures/dashboard.fixture.ts` (5.1 KB)
-- `test/e2e/fixtures/mcp-server.fixture.ts` (2.9 KB)
+- `e2e/fixtures/dashboard.fixture.ts` (5.1 KB)
+- `e2e/fixtures/mcp-server.fixture.ts` (2.9 KB)
 
 **Capabilities:**
 - Console log capture (all types: log, info, warn, error, debug)
@@ -59,9 +59,9 @@ Successfully implemented a comprehensive, production-ready Playwright end-to-end
 ### 3. Utility Modules (Phase 1) ✅
 
 **Files Created:**
-- `test/e2e/utils/log-correlator.ts` (7.0 KB)
-- `test/e2e/utils/screenshot-manager.ts` (4.9 KB)
-- `test/e2e/utils/report-generator.ts` (11.1 KB)
+- `e2e/utils/log-correlator.ts` (7.0 KB)
+- `e2e/utils/screenshot-manager.ts` (4.9 KB)
+- `e2e/utils/report-generator.ts` (11.1 KB)
 
 **Features:**
 - **Log Correlator:**
@@ -85,7 +85,7 @@ Successfully implemented a comprehensive, production-ready Playwright end-to-end
 ### 4. Test Suites (Phases 2-6) ✅
 
 #### Test Suite 1: Dashboard Core (4.7 KB)
-**File:** `test/e2e/tests/01-dashboard-core.spec.ts`
+**File:** `e2e/tests/01-dashboard-core.spec.ts`
 
 **Tests:**
 - ✅ Dashboard loading and MCP SDK initialization
@@ -95,7 +95,7 @@ Successfully implemented a comprehensive, production-ready Playwright end-to-end
 - ✅ Responsive design (5 viewports)
 
 #### Test Suite 2: GitHub Runners (7.6 KB)
-**File:** `test/e2e/tests/02-github-runners.spec.ts`
+**File:** `e2e/tests/02-github-runners.spec.ts`
 
 **Tests:**
 - ✅ GitHub Workflows tab display
@@ -105,7 +105,7 @@ Successfully implemented a comprehensive, production-ready Playwright end-to-end
 - ✅ End-to-end provisioning workflow
 
 #### Test Suite 3: Model Download (9.1 KB)
-**File:** `test/e2e/tests/03-model-download.spec.ts`
+**File:** `e2e/tests/03-model-download.spec.ts`
 
 **Tests:**
 - ✅ Model Manager tab and search
@@ -116,7 +116,7 @@ Successfully implemented a comprehensive, production-ready Playwright end-to-end
 - ✅ Log correlation
 
 #### Test Suite 4: Model Inference (10.1 KB)
-**File:** `test/e2e/tests/04-model-inference.spec.ts`
+**File:** `e2e/tests/04-model-inference.spec.ts`
 
 **Tests:**
 - ✅ AI Inference tab display
@@ -128,7 +128,7 @@ Successfully implemented a comprehensive, production-ready Playwright end-to-end
 - ✅ Log correlation
 
 #### Test Suite 5: Comprehensive Workflows (9.8 KB)
-**File:** `test/e2e/tests/05-comprehensive.spec.ts`
+**File:** `e2e/tests/05-comprehensive.spec.ts`
 
 **Tests:**
 - ✅ Complete workflow: dashboard → runners → models → inference
@@ -152,7 +152,7 @@ Successfully implemented a comprehensive, production-ready Playwright end-to-end
 ### 6. Documentation (Phase 11) ✅
 
 **Files Created:**
-- `test/e2e/README.md` (9.0 KB) - Comprehensive guide
+- `e2e/README.md` (9.0 KB) - Comprehensive guide
 - `PLAYWRIGHT_IMPLEMENTATION_PLAN.md` (21.6 KB) - Detailed plan
 - `PLAYWRIGHT_QUICK_START.md` (4.9 KB) - Quick start guide
 
@@ -351,11 +351,11 @@ package.json               1.4 KB   Dependencies and scripts
 
 ### Test Infrastructure
 ```
-test/e2e/fixtures/
+e2e/fixtures/
   dashboard.fixture.ts     5.1 KB   Dashboard testing utilities
   mcp-server.fixture.ts    2.9 KB   MCP server log capture
 
-test/e2e/utils/
+e2e/utils/
   log-correlator.ts        7.0 KB   Log correlation engine
   screenshot-manager.ts    4.9 KB   Screenshot utilities
   report-generator.ts     11.1 KB   Report generation
@@ -363,7 +363,7 @@ test/e2e/utils/
 
 ### Test Suites
 ```
-test/e2e/tests/
+e2e/tests/
   01-dashboard-core.spec.ts      4.7 KB   Core functionality
   02-github-runners.spec.ts      7.6 KB   GitHub runners
   03-model-download.spec.ts      9.1 KB   Model downloads
@@ -379,7 +379,7 @@ test/e2e/tests/
 
 ### Documentation
 ```
-test/e2e/README.md                     9.0 KB   Comprehensive guide
+e2e/README.md                     9.0 KB   Comprehensive guide
 PLAYWRIGHT_IMPLEMENTATION_PLAN.md     21.6 KB   Implementation plan
 PLAYWRIGHT_QUICK_START.md             4.9 KB   Quick start guide
 ```
@@ -513,7 +513,7 @@ The Playwright E2E testing suite is **complete, tested, and production-ready**. 
 
 ## Contact & Support
 
-- **Documentation:** See `test/e2e/README.md`
+- **Documentation:** See `e2e/README.md`
 - **Quick Start:** See `PLAYWRIGHT_QUICK_START.md`
 - **Implementation Details:** See `PLAYWRIGHT_IMPLEMENTATION_PLAN.md`
 - **Issues:** GitHub Issues
