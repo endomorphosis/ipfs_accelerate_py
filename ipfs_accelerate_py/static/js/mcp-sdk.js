@@ -649,6 +649,39 @@ class MCPClient {
         return await this.callTool('runner_stop_container', { container_id });
     }
 
+    // Additional Runner Management Methods (Phase 3)
+    async runnerGetCapabilities() {
+        return await this.callTool('runner_get_capabilities', {});
+    }
+
+    async runnerSetConfig(config) {
+        return await this.callTool('runner_set_config', config);
+    }
+
+    async runnerStartTask(taskConfig) {
+        return await this.callTool('runner_start_task', taskConfig);
+    }
+
+    async runnerStopTask(taskId) {
+        return await this.callTool('runner_stop_task', { task_id: taskId });
+    }
+
+    async runnerGetLogs(runnerId, options = {}) {
+        return await this.callTool('runner_get_logs', { runner_id: runnerId, ...options });
+    }
+
+    async runnerListTasks(runnerId) {
+        return await this.callTool('runner_list_tasks', { runner_id: runnerId });
+    }
+
+    async runnerGetMetrics(runnerId) {
+        return await this.callTool('runner_get_metrics', { runner_id: runnerId });
+    }
+
+    async runnerHealthCheck(runnerId) {
+        return await this.callTool('runner_health_check', { runner_id: runnerId });
+    }
+
     // IPFS Files Tools
     async ipfsFilesAdd(path, content) {
         return await this.callTool('ipfs_files_add', { path, content });
@@ -709,6 +742,23 @@ class MCPClient {
 
     async networkPingPeer(peer_id) {
         return await this.callTool('network_ping_peer', { peer_id });
+    }
+
+    // Additional Network Management Methods (Phase 5)
+    async networkGetLatency(peerId) {
+        return await this.callTool('network_get_latency', { peer_id: peerId });
+    }
+
+    async networkListConnections() {
+        return await this.callTool('network_list_connections', {});
+    }
+
+    async networkConfigureLimits(limits) {
+        return await this.callTool('network_configure_limits', limits);
+    }
+
+    async networkGetPeerInfo(peerId) {
+        return await this.callTool('network_get_peer_info', { peer_id: peerId });
     }
 
     async checkNetworkStatus() {
@@ -833,6 +883,11 @@ class MCPClient {
         return await this.callTool('list_cli_endpoints_tool', {});
     }
 
+    // Additional CLI Management Methods (Phase 5)
+    async registerCliEndpoint(config) {
+        return await this.callTool('register_cli_endpoint', config);
+    }
+
     // Status and Health Tools
     async getServerStatus() {
         return await this.callTool('get_server_status', {});
@@ -840,6 +895,15 @@ class MCPClient {
 
     async getSystemStatus() {
         return await this.callTool('get_system_status', {});
+    }
+
+    // Additional Status & Monitoring Methods (Phase 5)
+    async getServiceStatus(service) {
+        return await this.callTool('get_service_status', { service });
+    }
+
+    async getResourceUsage() {
+        return await this.callTool('get_resource_usage', {});
     }
 
     async getQueueStatus() {

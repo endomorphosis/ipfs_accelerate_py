@@ -45,10 +45,13 @@
         <div class="nav-tabs">
             <button class="nav-tab active" onclick="showTab('overview')">🏠 Overview</button>
             <button class="nav-tab" onclick="showTab('ai-inference')">🤖 AI Inference</button>
+            <button class="nav-tab" onclick="showTab('advanced-ai')">🚀 Advanced AI</button>
             <button class="nav-tab" onclick="showTab('model-manager')">📚 Model Manager</button>
             <button class="nav-tab" onclick="showTab('ipfs-manager')">📁 IPFS Manager</button>
+            <button class="nav-tab" onclick="showTab('network-status')">🌐 Network & Status</button>
             <button class="nav-tab" onclick="showTab('queue-monitor')">📊 Queue Monitor</button>
             <button class="nav-tab" onclick="showTab('github-workflows')">⚡ GitHub Workflows</button>
+            <button class="nav-tab" onclick="showTab('runner-management')">🏃 Runner Management</button>
             <button class="nav-tab" onclick="showTab('sdk-playground')">🎮 SDK Playground</button>
             <button class="nav-tab" onclick="showTab('mcp-tools')">🔧 MCP Tools</button>
             <button class="nav-tab" onclick="showTab('coverage')">🎯 Coverage Analysis</button>
@@ -343,6 +346,316 @@
                             <span>Model Used:</span>
                             <span id="model-used">-</span>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Advanced AI Operations Tab -->
+        <div id="advanced-ai" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- Question Answering Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>❓ Question Answering</h3>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Context:</label>
+                        <textarea id="qa-context" class="form-control" rows="4" placeholder="Enter the context or passage..."></textarea>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="display: block; margin-bottom: 5px; font-weight: 600;">Question:</label>
+                        <input type="text" id="qa-question" class="form-control" placeholder="What question do you want to ask?" />
+                    </div>
+                    <button class="btn btn-primary" onclick="performQuestionAnswering()">🔍 Get Answer</button>
+                    <div id="qa-result" style="margin-top: 15px; display: none;">
+                        <h4 style="font-size: 14px; margin-bottom: 8px;">Answer:</h4>
+                        <div id="qa-answer" style="padding: 15px; background: #f0fdf4; border-left: 4px solid #10b981; border-radius: 6px;"></div>
+                    </div>
+                </div>
+
+                <!-- Audio Operations Card -->
+                <div class="card">
+                    <h3>🎵 Audio Operations</h3>
+                    <div class="ai-operation-tabs" style="margin-bottom: 15px;">
+                        <button class="ai-tab-btn active" data-tab="audio-transcribe" onclick="switchAudioTab('audio-transcribe')">Transcribe</button>
+                        <button class="ai-tab-btn" data-tab="audio-classify" onclick="switchAudioTab('audio-classify')">Classify</button>
+                        <button class="ai-tab-btn" data-tab="audio-generate" onclick="switchAudioTab('audio-generate')">Generate</button>
+                        <button class="ai-tab-btn" data-tab="audio-tts" onclick="switchAudioTab('audio-tts')">TTS</button>
+                    </div>
+                    
+                    <!-- Audio Transcribe -->
+                    <div id="audio-transcribe" class="ai-tab-content" style="display: block;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Audio File:</label>
+                            <input type="file" id="audio-file-transcribe" accept="audio/*" class="form-control" />
+                        </div>
+                        <button class="btn btn-primary" onclick="transcribeAudioFile()">🎤 Transcribe</button>
+                        <div id="audio-transcribe-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Audio Classify -->
+                    <div id="audio-classify" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Audio File:</label>
+                            <input type="file" id="audio-file-classify" accept="audio/*" class="form-control" />
+                        </div>
+                        <button class="btn btn-primary" onclick="classifyAudioFile()">🎯 Classify</button>
+                        <div id="audio-classify-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Audio Generate -->
+                    <div id="audio-generate" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Prompt:</label>
+                            <textarea id="audio-prompt" class="form-control" rows="3" placeholder="Describe the audio you want to generate..."></textarea>
+                        </div>
+                        <button class="btn btn-success" onclick="generateAudioFromPrompt()">🎵 Generate</button>
+                        <div id="audio-generate-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Text-to-Speech -->
+                    <div id="audio-tts" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Text:</label>
+                            <textarea id="tts-text" class="form-control" rows="3" placeholder="Enter text to synthesize..."></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="synthesizeSpeechFromText()">🗣️ Synthesize</button>
+                        <div id="tts-result" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+
+                <!-- Image Operations Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>🖼️ Image Operations</h3>
+                    <div class="ai-operation-tabs" style="margin-bottom: 15px;">
+                        <button class="ai-tab-btn active" data-tab="img-classify" onclick="switchImageTab('img-classify')">Classify</button>
+                        <button class="ai-tab-btn" data-tab="img-detect" onclick="switchImageTab('img-detect')">Detect</button>
+                        <button class="ai-tab-btn" data-tab="img-segment" onclick="switchImageTab('img-segment')">Segment</button>
+                        <button class="ai-tab-btn" data-tab="img-caption" onclick="switchImageTab('img-caption')">Caption</button>
+                        <button class="ai-tab-btn" data-tab="img-generate" onclick="switchImageTab('img-generate')">Generate</button>
+                        <button class="ai-tab-btn" data-tab="img-vqa" onclick="switchImageTab('img-vqa')">Visual Q&A</button>
+                    </div>
+                    
+                    <!-- Image Classify -->
+                    <div id="img-classify" class="ai-tab-content" style="display: block;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                                <input type="file" id="img-file-classify" accept="image/*" class="form-control" />
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" onclick="classifyImageFile()">🎯 Classify Image</button>
+                            </div>
+                        </div>
+                        <div id="img-classify-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Object Detection -->
+                    <div id="img-detect" class="ai-tab-content" style="display: none;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                                <input type="file" id="img-file-detect" accept="image/*" class="form-control" />
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" onclick="detectObjectsInImage()">🔍 Detect Objects</button>
+                            </div>
+                        </div>
+                        <div id="img-detect-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Image Segmentation -->
+                    <div id="img-segment" class="ai-tab-content" style="display: none;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                                <input type="file" id="img-file-segment" accept="image/*" class="form-control" />
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" onclick="segmentImageFile()">✂️ Segment Image</button>
+                            </div>
+                        </div>
+                        <div id="img-segment-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Image Captioning -->
+                    <div id="img-caption" class="ai-tab-content" style="display: none;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                                <input type="file" id="img-file-caption" accept="image/*" class="form-control" />
+                            </div>
+                            <div>
+                                <button class="btn btn-primary" onclick="generateImageCaption()">📝 Generate Caption</button>
+                            </div>
+                        </div>
+                        <div id="img-caption-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Image Generation -->
+                    <div id="img-generate" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image Prompt:</label>
+                            <textarea id="img-generate-prompt" class="form-control" rows="3" placeholder="Describe the image you want to generate..."></textarea>
+                        </div>
+                        <button class="btn btn-success" onclick="generateImageFromPrompt()">🎨 Generate Image</button>
+                        <div id="img-generate-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Visual Q&A -->
+                    <div id="img-vqa" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Image File:</label>
+                            <input type="file" id="img-file-vqa" accept="image/*" class="form-control" />
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Question:</label>
+                            <input type="text" id="vqa-question" class="form-control" placeholder="What do you want to ask about this image?" />
+                        </div>
+                        <button class="btn btn-primary" onclick="answerVisualQuestionImage()">❓ Ask Question</button>
+                        <div id="img-vqa-result" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+
+                <!-- Text Operations Card -->
+                <div class="card">
+                    <h3>📝 Advanced Text Operations</h3>
+                    <div class="ai-operation-tabs" style="margin-bottom: 15px;">
+                        <button class="ai-tab-btn active" data-tab="text-summarize" onclick="switchTextTab('text-summarize')">Summarize</button>
+                        <button class="ai-tab-btn" data-tab="text-translate" onclick="switchTextTab('text-translate')">Translate</button>
+                        <button class="ai-tab-btn" data-tab="text-fillmask" onclick="switchTextTab('text-fillmask')">Fill Mask</button>
+                        <button class="ai-tab-btn" data-tab="text-code" onclick="switchTextTab('text-code')">Gen Code</button>
+                    </div>
+                    
+                    <!-- Text Summarization -->
+                    <div id="text-summarize" class="ai-tab-content" style="display: block;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Text to Summarize:</label>
+                            <textarea id="text-summarize-input" class="form-control" rows="5" placeholder="Enter text to summarize..."></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="summarizeTextInput()">📄 Summarize</button>
+                        <div id="text-summarize-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Translation -->
+                    <div id="text-translate" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Text to Translate:</label>
+                            <textarea id="text-translate-input" class="form-control" rows="3" placeholder="Enter text to translate..."></textarea>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Target Language:</label>
+                            <select id="translate-target-lang" class="form-control">
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                                <option value="de">German</option>
+                                <option value="zh">Chinese</option>
+                                <option value="ja">Japanese</option>
+                                <option value="ko">Korean</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="translateTextInput()">🌐 Translate</button>
+                        <div id="text-translate-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Fill Mask -->
+                    <div id="text-fillmask" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Text with [MASK]:</label>
+                            <input type="text" id="text-fillmask-input" class="form-control" placeholder="Paris is the [MASK] of France." />
+                        </div>
+                        <button class="btn btn-primary" onclick="fillMaskInput()">🎭 Fill Mask</button>
+                        <div id="text-fillmask-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Code Generation -->
+                    <div id="text-code" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Code Description:</label>
+                            <textarea id="text-code-input" class="form-control" rows="3" placeholder="Describe the code you want to generate..."></textarea>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Language:</label>
+                            <select id="code-language" class="form-control">
+                                <option value="python">Python</option>
+                                <option value="javascript">JavaScript</option>
+                                <option value="java">Java</option>
+                                <option value="cpp">C++</option>
+                                <option value="go">Go</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-success" onclick="generateCodeFromDesc()">💻 Generate Code</button>
+                        <div id="text-code-result" style="margin-top: 15px;"></div>
+                    </div>
+                </div>
+
+                <!-- Extended ML Operations Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>🔬 Extended ML Operations</h3>
+                    <div class="ai-operation-tabs" style="margin-bottom: 15px;">
+                        <button class="ai-tab-btn active" data-tab="ml-embeddings" onclick="switchMLTab('ml-embeddings')">Embeddings</button>
+                        <button class="ai-tab-btn" data-tab="ml-document" onclick="switchMLTab('ml-document')">Document</button>
+                        <button class="ai-tab-btn" data-tab="ml-tabular" onclick="switchMLTab('ml-tabular')">Tabular</button>
+                        <button class="ai-tab-btn" data-tab="ml-timeseries" onclick="switchMLTab('ml-timeseries')">Time Series</button>
+                    </div>
+                    
+                    <!-- Embeddings -->
+                    <div id="ml-embeddings" class="ai-tab-content" style="display: block;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Input Text:</label>
+                            <textarea id="embeddings-input" class="form-control" rows="3" placeholder="Enter text to generate embeddings..."></textarea>
+                        </div>
+                        <button class="btn btn-primary" onclick="generateEmbeddingsFromText()">🔢 Generate Embeddings</button>
+                        <div id="embeddings-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Document Processing -->
+                    <div id="ml-document" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Document File:</label>
+                            <input type="file" id="document-file" accept=".pdf,.docx,.txt" class="form-control" />
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Operation:</label>
+                            <select id="document-operation" class="form-control">
+                                <option value="extract">Extract Text</option>
+                                <option value="summarize">Summarize</option>
+                                <option value="analyze">Analyze</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="processDocumentFile()">📄 Process Document</button>
+                        <div id="document-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Tabular Data -->
+                    <div id="ml-tabular" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">CSV File:</label>
+                            <input type="file" id="tabular-file" accept=".csv" class="form-control" />
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Operation:</label>
+                            <select id="tabular-operation" class="form-control">
+                                <option value="analyze">Analyze</option>
+                                <option value="predict">Predict</option>
+                                <option value="transform">Transform</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="processTabularDataFile()">📊 Process Data</button>
+                        <div id="tabular-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Time Series -->
+                    <div id="ml-timeseries" class="ai-tab-content" style="display: none;">
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Time Series Data (JSON):</label>
+                            <textarea id="timeseries-data" class="form-control" rows="4" placeholder='[{"time": "2024-01", "value": 100}, ...]'></textarea>
+                        </div>
+                        <div style="margin-bottom: 15px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Periods to Predict:</label>
+                            <input type="number" id="timeseries-periods" class="form-control" value="5" min="1" max="100" />
+                        </div>
+                        <button class="btn btn-primary" onclick="predictTimeseriesData()">📈 Predict</button>
+                        <div id="timeseries-result" style="margin-top: 15px;"></div>
                     </div>
                 </div>
             </div>
@@ -644,6 +957,175 @@
                             <div class="stat-value" id="last-test-date">2024-01-15</div>
                             <div class="stat-label">Last Test Date</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Network & Status Tab -->
+        <div id="network-status" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- Advanced Network Operations Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>🌐 Advanced Network Operations</h3>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px;">
+                        <!-- Bandwidth Monitor -->
+                        <div>
+                            <h4 style="font-size: 14px; margin-bottom: 10px;">📊 Bandwidth Statistics</h4>
+                            <div id="bandwidth-stats" style="background: #f9fafb; padding: 15px; border-radius: 8px;">
+                                <div style="margin-bottom: 8px;"><strong>Total In:</strong> <span id="bandwidth-in">Loading...</span></div>
+                                <div style="margin-bottom: 8px;"><strong>Total Out:</strong> <span id="bandwidth-out">Loading...</span></div>
+                                <div><strong>Rate:</strong> <span id="bandwidth-rate">Loading...</span></div>
+                            </div>
+                            <button class="btn btn-sm btn-primary" onclick="refreshBandwidthStats()" style="margin-top: 10px; width: 100%;">🔄 Refresh</button>
+                        </div>
+                        
+                        <!-- Connection List -->
+                        <div>
+                            <h4 style="font-size: 14px; margin-bottom: 10px;">🔗 Active Connections</h4>
+                            <div id="connection-list" style="background: #f9fafb; padding: 15px; border-radius: 8px; max-height: 120px; overflow-y: auto;">
+                                <p style="margin: 0; color: #6b7280;">Loading connections...</p>
+                            </div>
+                            <button class="btn btn-sm btn-primary" onclick="refreshNetworkConnections()" style="margin-top: 10px; width: 100%;">🔄 Refresh</button>
+                        </div>
+                    </div>
+                    
+                    <!-- Peer Management -->
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 10px;">
+                        <h4 style="font-size: 14px; margin-bottom: 15px;">👥 Peer Management</h4>
+                        <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 15px;">
+                            <div>
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Peer ID:</label>
+                                <input type="text" id="peer-id-input" class="form-control" placeholder="Enter peer ID" />
+                            </div>
+                            <div style="display: flex; gap: 8px; align-items: flex-end;">
+                                <button class="btn btn-primary" onclick="getPeerInfo()" style="flex: 1;">ℹ️ Info</button>
+                                <button class="btn btn-secondary" onclick="getPeerLatency()" style="flex: 1;">⏱️ Latency</button>
+                            </div>
+                        </div>
+                        <div id="peer-info-result" style="margin-top: 15px;"></div>
+                    </div>
+                    
+                    <!-- Network Limits Configuration -->
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 15px;">⚙️ Network Limits Configuration</h4>
+                        <form id="network-limits-form" onsubmit="configureNetworkLimits(event); return false;">
+                            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 15px;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max Connections:</label>
+                                    <input type="number" id="max-connections" class="form-control" value="100" min="1" max="10000" />
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max Bandwidth (MB/s):</label>
+                                    <input type="number" id="max-bandwidth" class="form-control" value="100" min="1" max="10000" />
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Timeout (seconds):</label>
+                                    <input type="number" id="connection-timeout" class="form-control" value="30" min="5" max="300" />
+                                </div>
+                            </div>
+                            <button type="submit" class="btn btn-success">💾 Apply Network Limits</button>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- System Status & Monitoring Card -->
+                <div class="card">
+                    <h3>📈 System Status & Monitoring</h3>
+                    
+                    <!-- Overall System Status -->
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 10px;">🖥️ System Health</h4>
+                        <div id="system-health" style="background: #f9fafb; padding: 15px; border-radius: 8px;">
+                            <div style="margin-bottom: 8px;"><strong>Status:</strong> <span id="system-status">Loading...</span></div>
+                            <div style="margin-bottom: 8px;"><strong>Uptime:</strong> <span id="system-uptime">Loading...</span></div>
+                            <div><strong>Version:</strong> <span id="system-version">Loading...</span></div>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="refreshSystemStatus()" style="margin-top: 10px; width: 100%;">🔄 Refresh</button>
+                    </div>
+                    
+                    <!-- Resource Usage -->
+                    <div style="margin-bottom: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 10px;">💻 Resource Usage</h4>
+                        <div id="resource-usage" style="background: #f9fafb; padding: 15px; border-radius: 8px;">
+                            <div style="margin-bottom: 8px;">
+                                <strong>CPU:</strong>
+                                <div style="background: #e5e7eb; height: 20px; border-radius: 10px; margin-top: 5px; overflow: hidden;">
+                                    <div id="cpu-bar" style="background: #667eea; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                </div>
+                                <span id="cpu-percent" style="font-size: 12px; color: #6b7280;">0%</span>
+                            </div>
+                            <div style="margin-bottom: 8px;">
+                                <strong>Memory:</strong>
+                                <div style="background: #e5e7eb; height: 20px; border-radius: 10px; margin-top: 5px; overflow: hidden;">
+                                    <div id="memory-bar" style="background: #10b981; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                </div>
+                                <span id="memory-percent" style="font-size: 12px; color: #6b7280;">0%</span>
+                            </div>
+                            <div>
+                                <strong>Disk:</strong>
+                                <div style="background: #e5e7eb; height: 20px; border-radius: 10px; margin-top: 5px; overflow: hidden;">
+                                    <div id="disk-bar" style="background: #f59e0b; height: 100%; width: 0%; transition: width 0.3s ease;"></div>
+                                </div>
+                                <span id="disk-percent" style="font-size: 12px; color: #6b7280;">0%</span>
+                            </div>
+                        </div>
+                        <button class="btn btn-sm btn-primary" onclick="refreshResourceUsage()" style="margin-top: 10px; width: 100%;">🔄 Refresh</button>
+                    </div>
+                    
+                    <!-- Service Status -->
+                    <div>
+                        <h4 style="font-size: 14px; margin-bottom: 10px;">🔧 Service Status</h4>
+                        <div style="margin-bottom: 10px;">
+                            <label style="display: block; margin-bottom: 5px; font-weight: 600;">Service:</label>
+                            <select id="service-select" class="form-control">
+                                <option value="mcp">MCP Server</option>
+                                <option value="ipfs">IPFS</option>
+                                <option value="docker">Docker</option>
+                                <option value="inference">Inference Engine</option>
+                                <option value="queue">Queue System</option>
+                            </select>
+                        </div>
+                        <button class="btn btn-primary" onclick="checkServiceStatus()" style="width: 100%; margin-bottom: 10px;">🔍 Check Status</button>
+                        <div id="service-status-result"></div>
+                    </div>
+                </div>
+
+                <!-- CLI Tools Interface Card -->
+                <div class="card" style="grid-column: span 2;">
+                    <h3>🛠️ CLI Endpoint Management</h3>
+                    
+                    <!-- CLI Endpoints List -->
+                    <div style="margin-bottom: 20px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                            <h4 style="font-size: 14px; margin: 0;">📋 Registered CLI Endpoints</h4>
+                            <button class="btn btn-sm btn-primary" onclick="refreshCliEndpoints()">🔄 Refresh</button>
+                        </div>
+                        <div id="cli-endpoints-list" style="background: #f9fafb; padding: 15px; border-radius: 8px; min-height: 100px;">
+                            <p style="margin: 0; color: #6b7280;">Loading CLI endpoints...</p>
+                        </div>
+                    </div>
+                    
+                    <!-- Register New CLI Endpoint -->
+                    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px;">
+                        <h4 style="font-size: 14px; margin-bottom: 15px;">➕ Register New CLI Endpoint</h4>
+                        <form id="cli-endpoint-form" onsubmit="registerNewCliEndpoint(event); return false;">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Endpoint Name:</label>
+                                    <input type="text" id="cli-endpoint-name" class="form-control" placeholder="my-endpoint" required />
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600;">Endpoint URL:</label>
+                                    <input type="text" id="cli-endpoint-url" class="form-control" placeholder="http://localhost:8080" required />
+                                </div>
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Description:</label>
+                                <textarea id="cli-endpoint-description" class="form-control" rows="2" placeholder="Endpoint description..."></textarea>
+                            </div>
+                            <button type="submit" class="btn btn-success">✅ Register Endpoint</button>
+                        </form>
                     </div>
                 </div>
             </div>
@@ -1138,6 +1620,140 @@
                 <div id="log-container" class="log-container">
                     <div class="log-placeholder">
                         <p class="text-muted">Loading system logs...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Runner Management Tab -->
+        <div id="runner-management" class="tab-content">
+            <div class="dashboard-grid">
+                <!-- Runner Dashboard Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0;">🏃 Active Runners</h3>
+                        <div>
+                            <button class="btn btn-primary" onclick="loadRunnerCapabilities()">🔄 Refresh</button>
+                            <button class="btn btn-success" onclick="runAllRunnerHealthChecks()">🏥 Check All Health</button>
+                        </div>
+                    </div>
+                    <div id="runner-list" class="runner-list">
+                        <div class="loading-placeholder">
+                            <p>Loading runners...</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Runner Configuration Card -->
+                <div class="card">
+                    <h3>⚙️ Runner Configuration</h3>
+                    <div id="runner-config-section">
+                        <div style="margin-bottom: 15px;">
+                            <label for="runner-id-select" style="display: block; margin-bottom: 5px; font-weight: 600;">Select Runner:</label>
+                            <select id="runner-id-select" class="form-control" onchange="loadRunnerConfig(this.value)">
+                                <option value="">-- Select a runner --</option>
+                            </select>
+                        </div>
+                        <form id="runner-config-form" onsubmit="saveRunnerConfig(event); return false;">
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max CPU Cores:</label>
+                                <input type="number" id="config-max-cpu" class="form-control" min="1" max="128" value="4">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max Memory (GB):</label>
+                                <input type="number" id="config-max-memory" class="form-control" min="1" max="512" value="8">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: block; margin-bottom: 5px; font-weight: 600;">Max Concurrent Tasks:</label>
+                                <input type="number" id="config-max-tasks" class="form-control" min="1" max="100" value="5">
+                            </div>
+                            <div style="margin-bottom: 15px;">
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" id="config-auto-scale" style="margin-right: 8px;">
+                                    <span>Enable Auto-scaling</span>
+                                </label>
+                            </div>
+                            <div style="display: flex; gap: 10px;">
+                                <button type="submit" class="btn btn-primary">💾 Save Configuration</button>
+                                <button type="button" class="btn btn-secondary" onclick="resetRunnerConfig()">🔄 Reset to Defaults</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+
+                <!-- Task Management Card -->
+                <div class="card">
+                    <h3>📋 Task Management</h3>
+                    <div id="task-management-section">
+                        <div style="margin-bottom: 15px;">
+                            <label for="task-runner-select" style="display: block; margin-bottom: 5px; font-weight: 600;">Runner:</label>
+                            <select id="task-runner-select" class="form-control" onchange="loadRunnerTasks(this.value)">
+                                <option value="">-- Select a runner --</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Start New Task -->
+                        <div style="padding: 15px; background: #f9fafb; border-radius: 8px; margin-bottom: 15px;">
+                            <h4 style="margin: 0 0 10px 0; font-size: 14px;">➕ Start New Task</h4>
+                            <form id="start-task-form" onsubmit="startNewRunnerTask(event); return false;">
+                                <div style="margin-bottom: 10px;">
+                                    <input type="text" id="task-name" class="form-control" placeholder="Task name" required>
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <textarea id="task-command" class="form-control" placeholder="Command to run" rows="2" required></textarea>
+                                </div>
+                                <button type="submit" class="btn btn-success btn-sm" style="width: 100%;">▶️ Start Task</button>
+                            </form>
+                        </div>
+                        
+                        <!-- Active Tasks List -->
+                        <div id="runner-tasks-list">
+                            <p class="text-muted" style="text-align: center; padding: 20px;">Select a runner to view tasks</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Metrics & Monitoring Card -->
+                <div class="card" style="grid-column: 1 / -1;">
+                    <h3>📊 Runner Metrics & Monitoring</h3>
+                    <div id="runner-metrics-section">
+                        <div style="margin-bottom: 15px;">
+                            <label for="metrics-runner-select" style="display: block; margin-bottom: 5px; font-weight: 600;">Select Runner:</label>
+                            <select id="metrics-runner-select" class="form-control" onchange="loadRunnerMetrics(this.value)">
+                                <option value="">-- Select a runner --</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Metrics Display -->
+                        <div id="runner-metrics-display" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px;">
+                            <div class="stat-item">
+                                <div class="stat-value" id="metric-cpu">--</div>
+                                <div class="stat-label">CPU Usage (%)</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="metric-memory">--</div>
+                                <div class="stat-label">Memory Usage (%)</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="metric-tasks">--</div>
+                                <div class="stat-label">Active Tasks</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-value" id="metric-uptime">--</div>
+                                <div class="stat-label">Uptime</div>
+                            </div>
+                        </div>
+                        
+                        <!-- Runner Logs -->
+                        <div style="margin-top: 20px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                                <h4 style="margin: 0;">📝 Runner Logs</h4>
+                                <button class="btn btn-sm btn-secondary" onclick="refreshRunnerLogs()">🔄 Refresh</button>
+                            </div>
+                            <div id="runner-logs-display" style="background: #1f2937; color: #f3f4f6; padding: 15px; border-radius: 6px; max-height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px;">
+                                <p style="color: #9ca3af; margin: 0;">Select a runner to view logs...</p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>

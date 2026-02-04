@@ -5256,3 +5256,1516 @@ async function ipfsPubsubSub() {
     showToast('Pubsub subscribe requires server-side streaming', 'info');
 }
 
+// ==========================================
+// RUNNER MANAGEMENT FUNCTIONS
+// ==========================================
+
+let currentRunners = [];
+let selectedRunnerId = null;
+
+/**
+ * Load runner capabilities and display all runners
+ */
+async function loadRunnerCapabilities() {
+    const runnerListDiv = document.getElementById('runner-list');
+    if (!runnerListDiv) return;
+    
+    runnerListDiv.innerHTML = '<div class="spinner"></div> Loading runners...';
+    
+    try {
+        const capabilities = await mcpClient.runnerGetCapabilities();
+        currentRunners = capabilities.runners || [];
+        
+        // Update runner select dropdowns
+        updateRunnerSelects();
+        
+        // Display runners
+        if (currentRunners.length === 0) {
+            runnerListDiv.innerHTML = '<p class="text-muted">No runners available</p>';
+            return;
+        }
+        
+        let html = '<div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">';
+        
+        for (const runner of currentRunners) {
+            const statusClass = runner.status === 'online' ? 'status-running' : 'status-stopped';
+            const healthClass = runner.health === 'healthy' ? 'status-success' : 'status-warning';
+            
+            html += `
+                <div class="runner-card" style="border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 10px;">
+                        <h4 style="margin: 0; font-size: 16px;">${runner.id || 'Unknown Runner'}</h4>
+                        <span class="${statusClass}" style="padding: 4px 8px; border-radius: 4px; font-size: 12px;">${runner.status || 'unknown'}</span>
+                    </div>
+                    <div style="margin-bottom: 10px;">
+                        <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">
+                            <strong>Type:</strong> ${runner.type || 'standard'}
+                        </div>
+                        <div style="font-size: 13px; color: #6b7280; margin-bottom: 5px;">
+                            <strong>Capacity:</strong> ${runner.capacity || 'N/A'}
+                        </div>
+                        <div style="font-size: 13px; color: #6b7280;">
+                            <strong>Health:</strong> <span class="${healthClass}">${runner.health || 'unknown'}</span>
+                        </div>
+                    </div>
+                    <div style="display: flex; gap: 8px;">
+                        <button class="btn btn-sm btn-primary" onclick="viewRunnerDetails('${runner.id}')" style="flex: 1;">📊 Details</button>
+                        <button class="btn btn-sm btn-secondary" onclick="runRunnerHealthCheck('${runner.id}')" style="flex: 1;">🏥 Health</button>
+                    </div>
+                </div>
+            `;
+        }
+        
+        html += '</div>';
+        runnerListDiv.innerHTML = html;
+        showToast(`Loaded ${currentRunners.length} runner(s)`, 'success');
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load capabilities:', error);
+        runnerListDiv.innerHTML = `<div class="error-message">❌ Failed to load runners: ${error.message}</div>`;
+        showToast('Failed to load runners', 'error');
+    }
+}
+
+/**
+ * Update all runner select dropdowns
+ */
+function updateRunnerSelects() {
+    const selects = ['runner-id-select', 'task-runner-select', 'metrics-runner-select'];
+    
+    for (const selectId of selects) {
+        const select = document.getElementById(selectId);
+        if (!select) continue;
+        
+        // Clear existing options except first
+        select.innerHTML = '<option value="">-- Select a runner --</option>';
+        
+        // Add runner options
+        for (const runner of currentRunners) {
+            const option = document.createElement('option');
+            option.value = runner.id;
+            option.textContent = `${runner.id} (${runner.type || 'standard'})`;
+            select.appendChild(option);
+        }
+    }
+}
+
+/**
+ * View detailed runner information
+ */
+async function viewRunnerDetails(runnerId) {
+    try {
+        const status = await mcpClient.runnerGetStatus(runnerId);
+        const metrics = await mcpClient.runnerGetMetrics(runnerId);
+        
+        const details = {
+            ...status,
+            metrics: metrics
+        };
+        
+        // Display in a formatted way instead of alert
+        const detailsJson = JSON.stringify(details, null, 2);
+        const message = `Runner Details for ${runnerId}:\n\n${detailsJson}`;
+        
+        // Create a temporary display area or use toast for now
+        showToast(`Runner details loaded for ${runnerId}`, 'success');
+        console.log('[Runner] Details:', details);
+        
+        // Could be enhanced with a proper modal in future
+        // For now, log to console and show toast
+        
+    } catch (error) {
+        console.error('[Runner] Failed to get details:', error);
+        showToast(`Failed to get runner details: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Run health check for a specific runner
+ */
+async function runRunnerHealthCheck(runnerId) {
+    try {
+        showToast('Running health check...', 'info');
+        const health = await mcpClient.runnerHealthCheck(runnerId);
+        
+        const healthStatus = health.healthy ? '✅ Healthy' : '⚠️ Unhealthy';
+        const message = health.message || 'No additional information';
+        
+        showToast(`${healthStatus}: ${message}`, health.healthy ? 'success' : 'warning');
+        
+        // Refresh runner list
+        await loadRunnerCapabilities();
+        
+    } catch (error) {
+        console.error('[Runner] Health check failed:', error);
+        showToast(`Health check failed: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Run health check for all runners
+ */
+async function runAllRunnerHealthChecks() {
+    if (currentRunners.length === 0) {
+        showToast('No runners available', 'warning');
+        return;
+    }
+    
+    showToast('Checking health of all runners...', 'info');
+    
+    const healthCheckPromises = currentRunners.map(runner =>
+        mcpClient.runnerHealthCheck(runner.id).then(health => ({
+            runner,
+            health
+        }))
+    );
+    
+    const results = await Promise.allSettled(healthCheckPromises);
+    
+    let healthy = 0;
+    let unhealthy = 0;
+    
+    results.forEach((result, index) => {
+        const runner = currentRunners[index];
+        
+        if (result.status === 'fulfilled') {
+            const { health } = result.value;
+            if (health.healthy) {
+                healthy++;
+            } else {
+                unhealthy++;
+            }
+        } else {
+            console.error(`[Runner] Health check failed for ${runner.id}:`, result.reason);
+            unhealthy++;
+        }
+    });
+    
+    showToast(`Health check complete: ${healthy} healthy, ${unhealthy} unhealthy`, 'success');
+    await loadRunnerCapabilities();
+}
+
+/**
+ * Load runner configuration
+ */
+async function loadRunnerConfig(runnerId) {
+    if (!runnerId) return;
+    
+    selectedRunnerId = runnerId;
+    
+    try {
+        const status = await mcpClient.runnerGetStatus(runnerId);
+        const config = status.config || {};
+        
+        // Update form fields
+        document.getElementById('config-max-cpu').value = config.maxCpu || 4;
+        document.getElementById('config-max-memory').value = config.maxMemory || 8;
+        document.getElementById('config-max-tasks').value = config.maxTasks || 5;
+        document.getElementById('config-auto-scale').checked = config.autoScale || false;
+        
+        showToast('Configuration loaded', 'success');
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load config:', error);
+        showToast(`Failed to load configuration: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Save runner configuration
+ */
+async function saveRunnerConfig(event) {
+    event.preventDefault();
+    
+    const runnerId = document.getElementById('runner-id-select').value;
+    if (!runnerId) {
+        showToast('Please select a runner', 'warning');
+        return;
+    }
+    
+    const config = {
+        maxCpu: parseInt(document.getElementById('config-max-cpu').value),
+        maxMemory: parseInt(document.getElementById('config-max-memory').value),
+        maxTasks: parseInt(document.getElementById('config-max-tasks').value),
+        autoScale: document.getElementById('config-auto-scale').checked
+    };
+    
+    try {
+        await mcpClient.runnerSetConfig({ runner_id: runnerId, config });
+        showToast('Configuration saved successfully', 'success');
+        
+    } catch (error) {
+        console.error('[Runner] Failed to save config:', error);
+        showToast(`Failed to save configuration: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Reset runner configuration to defaults
+ */
+function resetRunnerConfig() {
+    document.getElementById('config-max-cpu').value = 4;
+    document.getElementById('config-max-memory').value = 8;
+    document.getElementById('config-max-tasks').value = 5;
+    document.getElementById('config-auto-scale').checked = false;
+    showToast('Configuration reset to defaults', 'info');
+}
+
+/**
+ * Load tasks for a specific runner
+ */
+async function loadRunnerTasks(runnerId) {
+    const tasksListDiv = document.getElementById('runner-tasks-list');
+    if (!tasksListDiv) return;
+    
+    if (!runnerId) {
+        tasksListDiv.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">Select a runner to view tasks</p>';
+        return;
+    }
+    
+    tasksListDiv.innerHTML = '<div class="spinner"></div> Loading tasks...';
+    
+    try {
+        const tasks = await mcpClient.runnerListTasks(runnerId);
+        
+        if (!tasks || tasks.length === 0) {
+            tasksListDiv.innerHTML = '<p class="text-muted" style="text-align: center; padding: 20px;">No tasks running</p>';
+            return;
+        }
+        
+        // Clear existing content and build DOM nodes instead of using innerHTML with untrusted data
+        tasksListDiv.innerHTML = '';
+        const container = document.createElement('div');
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.gap = '10px';
+
+        for (const task of tasks) {
+            const statusClass = task.status === 'running' ? 'status-running' :
+                              task.status === 'completed' ? 'status-success' : 'status-stopped';
+
+            const card = document.createElement('div');
+            card.style.border = '1px solid #e5e7eb';
+            card.style.borderRadius = '6px';
+            card.style.padding = '12px';
+
+            const header = document.createElement('div');
+            header.style.display = 'flex';
+            header.style.justifyContent = 'space-between';
+            header.style.alignItems = 'center';
+            header.style.marginBottom = '8px';
+
+            const nameEl = document.createElement('strong');
+            nameEl.style.fontSize = '14px';
+            nameEl.textContent = task.name || task.id;
+
+            const statusEl = document.createElement('span');
+            statusEl.className = statusClass;
+            statusEl.style.padding = '3px 8px';
+            statusEl.style.borderRadius = '4px';
+            statusEl.style.fontSize = '11px';
+            statusEl.textContent = task.status;
+
+            header.appendChild(nameEl);
+            header.appendChild(statusEl);
+
+            const details = document.createElement('div');
+            details.style.fontSize = '12px';
+            details.style.color = '#6b7280';
+            details.style.marginBottom = '8px';
+
+            const idDiv = document.createElement('div');
+            const idLabel = document.createElement('strong');
+            idLabel.textContent = 'ID:';
+            idDiv.appendChild(idLabel);
+            idDiv.appendChild(document.createTextNode(' ' + String(task.id)));
+            details.appendChild(idDiv);
+
+            if (task.command) {
+                const cmdDiv = document.createElement('div');
+                const cmdLabel = document.createElement('strong');
+                cmdLabel.textContent = 'Command:';
+                const cmdCode = document.createElement('code');
+                cmdCode.style.background = '#f3f4f6';
+                cmdCode.style.padding = '2px 6px';
+                cmdCode.style.borderRadius = '3px';
+                cmdCode.textContent = String(task.command);
+                cmdDiv.appendChild(cmdLabel);
+                cmdDiv.appendChild(document.createTextNode(' '));
+                cmdDiv.appendChild(cmdCode);
+                details.appendChild(cmdDiv);
+            }
+
+            const stopButton = document.createElement('button');
+            stopButton.className = 'btn btn-sm btn-danger';
+            stopButton.textContent = '⏹️ Stop Task';
+            stopButton.disabled = task.status !== 'running';
+            stopButton.addEventListener('click', function () {
+                stopRunnerTask(runnerId, task.id);
+            });
+
+            card.appendChild(header);
+            card.appendChild(details);
+            card.appendChild(stopButton);
+
+            container.appendChild(card);
+        }
+
+        tasksListDiv.appendChild(container);
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load tasks:', error);
+        tasksListDiv.innerHTML = '';
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = '❌ Failed to load tasks: ' + (error && error.message ? error.message : String(error));
+        tasksListDiv.appendChild(errorDiv);
+        showToast('Failed to load tasks', 'error');
+    }
+}
+
+/**
+ * Start a new task on a runner
+ */
+async function startNewRunnerTask(event) {
+    event.preventDefault();
+    
+    const runnerId = document.getElementById('task-runner-select').value;
+    if (!runnerId) {
+        showToast('Please select a runner', 'warning');
+        return;
+    }
+    
+    const taskName = document.getElementById('task-name').value;
+    const taskCommand = document.getElementById('task-command').value;
+    
+    const taskConfig = {
+        name: taskName,
+        command: taskCommand,
+        runnerId: runnerId
+    };
+    
+    try {
+        showToast('Starting task...', 'info');
+        const result = await mcpClient.runnerStartTask(taskConfig);
+        
+        showToast(`Task started: ${result.taskId || 'success'}`, 'success');
+        
+        // Clear form
+        document.getElementById('task-name').value = '';
+        document.getElementById('task-command').value = '';
+        
+        // Refresh task list
+        await loadRunnerTasks(runnerId);
+        
+    } catch (error) {
+        console.error('[Runner] Failed to start task:', error);
+        showToast(`Failed to start task: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Stop a running task
+ */
+async function stopRunnerTask(runnerId, taskId) {
+    if (!confirm('Are you sure you want to stop this task?')) {
+        return;
+    }
+    
+    try {
+        await mcpClient.runnerStopTask(taskId);
+        showToast('Task stopped', 'success');
+        
+        // Refresh task list
+        await loadRunnerTasks(runnerId);
+        
+    } catch (error) {
+        console.error('[Runner] Failed to stop task:', error);
+        showToast(`Failed to stop task: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Load metrics for a specific runner
+ */
+async function loadRunnerMetrics(runnerId) {
+    if (!runnerId) {
+        // Reset metrics display
+        document.getElementById('metric-cpu').textContent = '--';
+        document.getElementById('metric-memory').textContent = '--';
+        document.getElementById('metric-tasks').textContent = '--';
+        document.getElementById('metric-uptime').textContent = '--';
+        document.getElementById('runner-logs-display').innerHTML = '<p style="color: #9ca3af; margin: 0;">Select a runner to view logs...</p>';
+        return;
+    }
+    
+    try {
+        const metrics = await mcpClient.runnerGetMetrics(runnerId);
+        
+        // Update metrics display
+        document.getElementById('metric-cpu').textContent = metrics.cpuUsage ? `${metrics.cpuUsage.toFixed(1)}%` : '--';
+        document.getElementById('metric-memory').textContent = metrics.memoryUsage ? `${metrics.memoryUsage.toFixed(1)}%` : '--';
+        document.getElementById('metric-tasks').textContent = metrics.activeTasks || '0';
+        document.getElementById('metric-uptime').textContent = metrics.uptime || '--';
+        
+        showToast('Metrics loaded', 'success');
+        
+        // Also load logs
+        await loadRunnerLogs(runnerId);
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load metrics:', error);
+        showToast(`Failed to load metrics: ${error.message}`, 'error');
+    }
+}
+
+/**
+ * Load logs for a specific runner
+ */
+async function loadRunnerLogs(runnerId) {
+    if (!runnerId) return;
+    
+    const logsDiv = document.getElementById('runner-logs-display');
+    if (!logsDiv) return;
+    
+    try {
+        const logs = await mcpClient.runnerGetLogs(runnerId, { limit: 100 });
+        
+        if (!logs || logs.length === 0) {
+            logsDiv.innerHTML = '<p style="color: #9ca3af; margin: 0;">No logs available</p>';
+            return;
+        }
+        
+        let html = '';
+        for (const log of logs) {
+            const timestamp = log.timestamp || '';
+            const level = log.level || 'INFO';
+            const message = log.message || '';
+            
+            const levelColor = level === 'ERROR' ? '#ef4444' : 
+                             level === 'WARN' ? '#f59e0b' : '#10b981';
+            
+            html += `<div style="margin-bottom: 4px;">
+                <span style="color: #6b7280;">[${timestamp}]</span>
+                <span style="color: ${levelColor}; font-weight: 600;">[${level}]</span>
+                <span>${message}</span>
+            </div>`;
+        }
+        
+        logsDiv.innerHTML = html;
+        // Auto-scroll to bottom
+        logsDiv.scrollTop = logsDiv.scrollHeight;
+        
+    } catch (error) {
+        console.error('[Runner] Failed to load logs:', error);
+        logsDiv.innerHTML = `<p style="color: #ef4444; margin: 0;">Failed to load logs: ${error.message}</p>`;
+    }
+}
+
+/**
+ * Refresh runner logs display
+ */
+async function refreshRunnerLogs() {
+    const runnerId = document.getElementById('metrics-runner-select').value;
+    if (!runnerId) {
+        showToast('Please select a runner first', 'warning');
+        return;
+    }
+    
+    await loadRunnerLogs(runnerId);
+    showToast('Logs refreshed', 'success');
+}
+
+// Initialize Runner Management tab when it's shown
+document.addEventListener('DOMContentLoaded', function() {
+    // Auto-load runners when Runner Management tab is clicked
+    const runnerTab = document.querySelector('[onclick*="runner-management"]');
+    if (runnerTab) {
+        runnerTab.addEventListener('click', function() {
+            if (currentRunners.length === 0) {
+                loadRunnerCapabilities();
+            }
+        });
+    }
+});
+
+// ==========================================
+// ADVANCED AI OPERATIONS FUNCTIONS
+// ==========================================
+
+// Tab switching functions for Advanced AI
+function switchAudioTab(tabId) {
+    const tabs = document.querySelectorAll('#advanced-ai .ai-tab-content');
+    tabs.forEach(tab => {
+        if (tab.id.startsWith('audio-')) {
+            tab.style.display = 'none';
+        }
+    });
+    document.getElementById(tabId).style.display = 'block';
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[data-tab^="audio-"]');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+}
+
+function switchImageTab(tabId) {
+    const tabs = document.querySelectorAll('#advanced-ai .ai-tab-content');
+    tabs.forEach(tab => {
+        if (tab.id.startsWith('img-')) {
+            tab.style.display = 'none';
+        }
+    });
+    document.getElementById(tabId).style.display = 'block';
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[data-tab^="img-"]');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+}
+
+function switchTextTab(tabId) {
+    const tabs = document.querySelectorAll('#advanced-ai .ai-tab-content');
+    tabs.forEach(tab => {
+        if (tab.id.startsWith('text-')) {
+            tab.style.display = 'none';
+        }
+    });
+    document.getElementById(tabId).style.display = 'block';
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[data-tab^="text-"]');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+}
+
+function switchMLTab(tabId) {
+    const tabs = document.querySelectorAll('#advanced-ai .ai-tab-content');
+    tabs.forEach(tab => {
+        if (tab.id.startsWith('ml-')) {
+            tab.style.display = 'none';
+        }
+    });
+    document.getElementById(tabId).style.display = 'block';
+    
+    // Update button states
+    const buttons = document.querySelectorAll('[data-tab^="ml-"]');
+    buttons.forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`[data-tab="${tabId}"]`).classList.add('active');
+}
+
+// Question Answering
+async function performQuestionAnswering() {
+    const context = document.getElementById('qa-context').value;
+    const question = document.getElementById('qa-question').value;
+    const resultDiv = document.getElementById('qa-result');
+    const answerDiv = document.getElementById('qa-answer');
+    
+    if (!context || !question) {
+        showToast('Please provide both context and question', 'warning');
+        return;
+    }
+    
+    resultDiv.style.display = 'block';
+    answerDiv.innerHTML = '<div class="spinner"></div> Finding answer...';
+    
+    try {
+        const result = await mcpClient.answerQuestion(question, context);
+        answerDiv.innerHTML = `<strong>${result.answer || result.text || JSON.stringify(result)}</strong>`;
+        showToast('Answer found', 'success');
+    } catch (error) {
+        console.error('[AI] Question answering failed:', error);
+        answerDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to answer question', 'error');
+    }
+}
+
+// Audio Operations
+async function transcribeAudioFile() {
+    const fileInput = document.getElementById('audio-file-transcribe');
+    const resultDiv = document.getElementById('audio-transcribe-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an audio file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Transcribing audio...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read audio file</div>';
+            showToast('Failed to read audio file', 'error');
+        };
+        
+        reader.onload = async function(e) {
+            try {
+                const audioData = e.target.result;
+                const result = await mcpClient.transcribeAudio(audioData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Transcription:</strong><br>${result.text || JSON.stringify(result)}</div>`;
+                showToast('Audio transcribed', 'success');
+            } catch (error) {
+                console.error('[AI] Audio transcription failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to transcribe audio', 'error');
+            }
+        };
+        
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Audio transcription failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to transcribe audio', 'error');
+    }
+}
+
+async function classifyAudioFile() {
+    const fileInput = document.getElementById('audio-file-classify');
+    const resultDiv = document.getElementById('audio-classify-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an audio file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Classifying audio...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read audio file</div>';
+            showToast('Failed to read audio file', 'error');
+        };
+        
+        reader.onload = async function(e) {
+            try {
+                const audioData = e.target.result;
+                const result = await mcpClient.classifyAudio(audioData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Classification:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
+                showToast('Audio classified', 'success');
+            } catch (error) {
+                console.error('[AI] Audio classification failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to classify audio', 'error');
+            }
+        };
+        
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Audio classification failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to classify audio', 'error');
+    }
+}
+
+async function generateAudioFromPrompt() {
+    const prompt = document.getElementById('audio-prompt').value;
+    const resultDiv = document.getElementById('audio-generate-result');
+    
+    if (!prompt) {
+        showToast('Please enter a prompt', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating audio...';
+    
+    try {
+        const result = await mcpClient.generateAudio(prompt);
+        resultDiv.innerHTML = `<div class="result-success">✅ Audio generated<br><audio controls src="${result.audio || result.url}"></audio></div>`;
+        showToast('Audio generated', 'success');
+    } catch (error) {
+        console.error('[AI] Audio generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate audio', 'error');
+    }
+}
+
+async function synthesizeSpeechFromText() {
+    const text = document.getElementById('tts-text').value;
+    const resultDiv = document.getElementById('tts-result');
+    
+    if (!text) {
+        showToast('Please enter text', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Synthesizing speech...';
+    
+    try {
+        const result = await mcpClient.synthesizeSpeech(text);
+        resultDiv.innerHTML = `<div class="result-success">✅ Speech synthesized<br><audio controls src="${result.audio || result.url}"></audio></div>`;
+        showToast('Speech synthesized', 'success');
+    } catch (error) {
+        console.error('[AI] Speech synthesis failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to synthesize speech', 'error');
+    }
+}
+
+// Image Operations
+async function classifyImageFile() {
+    const fileInput = document.getElementById('img-file-classify');
+    const resultDiv = document.getElementById('img-classify-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Classifying image...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
+        };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.classifyImage(imageData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Classification:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
+                showToast('Image classified', 'success');
+            } catch (error) {
+                console.error('[AI] Image classification failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to classify image', 'error');
+            }
+        };
+        
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Image classification failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to classify image', 'error');
+    }
+}
+
+async function detectObjectsInImage() {
+    const fileInput = document.getElementById('img-file-detect');
+    const resultDiv = document.getElementById('img-detect-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Detecting objects...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
+        };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.detectObjects(imageData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Objects Detected:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
+                showToast('Objects detected', 'success');
+            } catch (error) {
+                console.error('[AI] Object detection failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to detect objects', 'error');
+            }
+        };
+        
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Object detection failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to detect objects', 'error');
+    }
+}
+
+async function segmentImageFile() {
+    const fileInput = document.getElementById('img-file-segment');
+    const resultDiv = document.getElementById('img-segment-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Segmenting image...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
+        };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.segmentImage(imageData);
+                resultDiv.innerHTML = `<div class="result-success">✅ Image segmented<br><img src="${result.segmented_image || result.url}" style="max-width: 100%; border-radius: 8px;"/></div>`;
+                showToast('Image segmented', 'success');
+            } catch (error) {
+                console.error('[AI] Image segmentation failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to segment image', 'error');
+            }
+        };
+        
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Image segmentation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to segment image', 'error');
+    }
+}
+
+async function generateImageCaption() {
+    const fileInput = document.getElementById('img-file-caption');
+    const resultDiv = document.getElementById('img-caption-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating caption...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
+        };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.generateImageCaption(imageData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Caption:</strong><br>${result.caption || result.text || JSON.stringify(result)}</div>`;
+                showToast('Caption generated', 'success');
+            } catch (error) {
+                console.error('[AI] Caption generation failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to generate caption', 'error');
+            }
+        };
+        
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Caption generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate caption', 'error');
+    }
+}
+
+async function generateImageFromPrompt() {
+    const prompt = document.getElementById('img-generate-prompt').value;
+    const resultDiv = document.getElementById('img-generate-result');
+    
+    if (!prompt) {
+        showToast('Please enter a prompt', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating image...';
+    
+    try {
+        const result = await mcpClient.generateImage(prompt);
+        resultDiv.innerHTML = `<div class="result-success">✅ Image generated<br><img src="${result.image || result.url}" style="max-width: 100%; border-radius: 8px;"/></div>`;
+        showToast('Image generated', 'success');
+    } catch (error) {
+        console.error('[AI] Image generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate image', 'error');
+    }
+}
+
+async function answerVisualQuestionImage() {
+    const fileInput = document.getElementById('img-file-vqa');
+    const question = document.getElementById('vqa-question').value;
+    const resultDiv = document.getElementById('img-vqa-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select an image file', 'warning');
+        return;
+    }
+    
+    if (!question) {
+        showToast('Please enter a question', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Answering question...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
+        };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.answerVisualQuestion(imageData, question);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Answer:</strong><br>${result.answer || result.text || JSON.stringify(result)}</div>`;
+                showToast('Question answered', 'success');
+            } catch (error) {
+                console.error('[AI] Visual Q&A failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to answer question', 'error');
+            }
+        };
+        
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Visual Q&A failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to answer question', 'error');
+    }
+}
+
+// Text Operations
+async function summarizeTextInput() {
+    const text = document.getElementById('text-summarize-input').value;
+    const resultDiv = document.getElementById('text-summarize-result');
+    
+    if (!text) {
+        showToast('Please enter text to summarize', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Summarizing text...';
+    
+    try {
+        const result = await mcpClient.summarizeText(text);
+        resultDiv.innerHTML = `<div class="result-success"><strong>Summary:</strong><br>${result.summary || result.text || JSON.stringify(result)}</div>`;
+        showToast('Text summarized', 'success');
+    } catch (error) {
+        console.error('[AI] Text summarization failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to summarize text', 'error');
+    }
+}
+
+async function translateTextInput() {
+    const text = document.getElementById('text-translate-input').value;
+    const targetLang = document.getElementById('translate-target-lang').value;
+    const resultDiv = document.getElementById('text-translate-result');
+    
+    if (!text) {
+        showToast('Please enter text to translate', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Translating text...';
+    
+    try {
+        const result = await mcpClient.translateText(text, targetLang);
+        resultDiv.innerHTML = `<div class="result-success"><strong>Translation:</strong><br>${result.translation || result.text || JSON.stringify(result)}</div>`;
+        showToast('Text translated', 'success');
+    } catch (error) {
+        console.error('[AI] Translation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to translate text', 'error');
+    }
+}
+
+async function fillMaskInput() {
+    const text = document.getElementById('text-fillmask-input').value;
+    const resultDiv = document.getElementById('text-fillmask-result');
+    
+    if (!text || !text.includes('[MASK]')) {
+        showToast('Please enter text with [MASK] token', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Filling mask...';
+    
+    try {
+        const result = await mcpClient.fillMask(text);
+        let html = '<div class="result-success"><strong>Predictions:</strong><br>';
+        if (Array.isArray(result)) {
+            result.forEach((pred, i) => {
+                html += `${i + 1}. ${pred.token_str || pred.sequence} (${(pred.score * 100).toFixed(1)}%)<br>`;
+            });
+        } else {
+            html += JSON.stringify(result);
+        }
+        html += '</div>';
+        resultDiv.innerHTML = html;
+        showToast('Mask filled', 'success');
+    } catch (error) {
+        console.error('[AI] Fill mask failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to fill mask', 'error');
+    }
+}
+
+async function generateCodeFromDesc() {
+    const description = document.getElementById('text-code-input').value;
+    const language = document.getElementById('code-language').value;
+    const resultDiv = document.getElementById('text-code-result');
+    
+    if (!description) {
+        showToast('Please enter a code description', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating code...';
+    
+    try {
+        const result = await mcpClient.generateCode(description, { language });
+        resultDiv.innerHTML = `<div class="result-success"><strong>Generated Code:</strong><br><pre style="background: #1f2937; color: #f3f4f6; padding: 15px; border-radius: 6px; overflow-x: auto;">${result.code || result.text || JSON.stringify(result)}</pre></div>`;
+        showToast('Code generated', 'success');
+    } catch (error) {
+        console.error('[AI] Code generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate code', 'error');
+    }
+}
+
+// Extended ML Operations
+async function generateEmbeddingsFromText() {
+    const text = document.getElementById('embeddings-input').value;
+    const resultDiv = document.getElementById('embeddings-result');
+    
+    if (!text) {
+        showToast('Please enter text', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Generating embeddings...';
+    
+    try {
+        const result = await mcpClient.generateEmbeddings(text);
+        let html = '<div class="result-success"><strong>Embeddings Generated:</strong><br>';
+        if (Array.isArray(result.embeddings)) {
+            html += `<div>Vector dimension: ${result.embeddings.length}</div>`;
+            html += `<div>First 10 values: [${result.embeddings.slice(0, 10).map(v => v.toFixed(4)).join(', ')}...]</div>`;
+        } else {
+            html += JSON.stringify(result);
+        }
+        html += '</div>';
+        resultDiv.innerHTML = html;
+        showToast('Embeddings generated', 'success');
+    } catch (error) {
+        console.error('[AI] Embeddings generation failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to generate embeddings', 'error');
+    }
+}
+
+async function processDocumentFile() {
+    const fileInput = document.getElementById('document-file');
+    const operation = document.getElementById('document-operation').value;
+    const resultDiv = document.getElementById('document-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select a document file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Processing document...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read document file</div>';
+            showToast('Failed to read document file', 'error');
+        };
+        
+        reader.onload = async function(e) {
+            try {
+                const documentData = e.target.result;
+                const result = await mcpClient.processDocument(documentData, { operation });
+                resultDiv.innerHTML = `<div class="result-success"><strong>Result:</strong><br>${result.text || JSON.stringify(result, null, 2)}</div>`;
+                showToast('Document processed', 'success');
+            } catch (error) {
+                console.error('[AI] Document processing failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to process document', 'error');
+            }
+        };
+        
+        reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('[AI] Document processing failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to process document', 'error');
+    }
+}
+
+async function processTabularDataFile() {
+    const fileInput = document.getElementById('tabular-file');
+    const operation = document.getElementById('tabular-operation').value;
+    const resultDiv = document.getElementById('tabular-result');
+    
+    if (!fileInput.files || !fileInput.files[0]) {
+        showToast('Please select a CSV file', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Processing tabular data...';
+    
+    try {
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read CSV file</div>';
+            showToast('Failed to read CSV file', 'error');
+        };
+        
+        reader.onload = async function(e) {
+            try {
+                const data = e.target.result;
+                const result = await mcpClient.processTabularData(data, { operation });
+                resultDiv.innerHTML = `<div class="result-success"><strong>Result:</strong><br><pre>${JSON.stringify(result, null, 2)}</pre></div>`;
+                showToast('Data processed', 'success');
+            } catch (error) {
+                console.error('[AI] Tabular data processing failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to process data', 'error');
+            }
+        };
+        
+        reader.readAsText(file);
+    } catch (error) {
+        console.error('[AI] Tabular data processing failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to process data', 'error');
+    }
+}
+
+async function predictTimeseriesData() {
+    const dataText = document.getElementById('timeseries-data').value;
+    const periods = parseInt(document.getElementById('timeseries-periods').value);
+    const resultDiv = document.getElementById('timeseries-result');
+    
+    if (!dataText) {
+        showToast('Please enter time series data', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Predicting time series...';
+    
+    try {
+        const data = JSON.parse(dataText);
+        const result = await mcpClient.predictTimeseries(data, { periods });
+        resultDiv.innerHTML = `<div class="result-success"><strong>Predictions:</strong><br><pre>${JSON.stringify(result, null, 2)}</pre></div>`;
+        showToast('Time series predicted', 'success');
+    } catch (error) {
+        console.error('[AI] Time series prediction failed:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to predict time series', 'error');
+    }
+}
+
+// ==========================================
+// NETWORK & STATUS MANAGEMENT FUNCTIONS
+// ==========================================
+
+// Bandwidth Statistics
+async function refreshBandwidthStats() {
+    try {
+        const stats = await mcpClient.networkGetBandwidth();
+        
+        document.getElementById('bandwidth-in').textContent = formatBytes(stats.totalIn || 0);
+        document.getElementById('bandwidth-out').textContent = formatBytes(stats.totalOut || 0);
+        document.getElementById('bandwidth-rate').textContent = `${formatBytes(stats.rateIn || 0)}/s in, ${formatBytes(stats.rateOut || 0)}/s out`;
+        
+        showToast('Bandwidth stats refreshed', 'success');
+    } catch (error) {
+        console.error('[Network] Failed to get bandwidth stats:', error);
+        document.getElementById('bandwidth-in').textContent = 'Error';
+        document.getElementById('bandwidth-out').textContent = 'Error';
+        document.getElementById('bandwidth-rate').textContent = 'Error';
+        showToast('Failed to load bandwidth stats', 'error');
+    }
+}
+
+// Helper function to format bytes
+function formatBytes(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+}
+
+// Network Connections
+async function refreshNetworkConnections() {
+    const listDiv = document.getElementById('connection-list');
+    listDiv.innerHTML = '<div class="spinner"></div> Loading connections...';
+    
+    try {
+        const connections = await mcpClient.networkListConnections();
+        
+        if (!connections || connections.length === 0) {
+            listDiv.innerHTML = '<p style="margin: 0; color: #6b7280;">No active connections</p>';
+            return;
+        }
+        
+        let html = '<div style="font-size: 12px;">';
+        connections.forEach((conn, i) => {
+            html += `<div style="margin-bottom: 5px; padding: 5px; background: #fff; border-radius: 4px;">
+                <strong>${i + 1}.</strong> ${conn.peerId || conn.id || 'Unknown'} 
+                <span style="color: #10b981;">(${conn.status || 'active'})</span>
+            </div>`;
+        });
+        html += '</div>';
+        
+        listDiv.innerHTML = html;
+        showToast(`${connections.length} connections loaded`, 'success');
+    } catch (error) {
+        console.error('[Network] Failed to list connections:', error);
+        listDiv.innerHTML = `<p style="margin: 0; color: #ef4444;">Failed to load connections</p>`;
+        showToast('Failed to load connections', 'error');
+    }
+}
+
+// Peer Information
+async function getPeerInfo() {
+    const peerId = document.getElementById('peer-id-input').value;
+    const resultDiv = document.getElementById('peer-info-result');
+    
+    if (!peerId) {
+        showToast('Please enter a peer ID', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Getting peer info...';
+    
+    try {
+        const info = await mcpClient.networkGetPeerInfo(peerId);
+        resultDiv.innerHTML = `<div class="result-success">
+            <strong>Peer Information:</strong><br>
+            <pre style="margin-top: 10px; font-size: 12px;">${JSON.stringify(info, null, 2)}</pre>
+        </div>`;
+        showToast('Peer info retrieved', 'success');
+    } catch (error) {
+        console.error('[Network] Failed to get peer info:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to get peer info', 'error');
+    }
+}
+
+// Peer Latency
+async function getPeerLatency() {
+    const peerId = document.getElementById('peer-id-input').value;
+    const resultDiv = document.getElementById('peer-info-result');
+    
+    if (!peerId) {
+        showToast('Please enter a peer ID', 'warning');
+        return;
+    }
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Measuring latency...';
+    
+    try {
+        const latency = await mcpClient.networkGetLatency(peerId);
+        resultDiv.innerHTML = `<div class="result-success">
+            <strong>Latency to Peer:</strong><br>
+            <div style="font-size: 24px; margin-top: 10px; color: #667eea;">${latency.latency || latency}ms</div>
+        </div>`;
+        showToast('Latency measured', 'success');
+    } catch (error) {
+        console.error('[Network] Failed to get latency:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to measure latency', 'error');
+    }
+}
+
+// Configure Network Limits
+async function configureNetworkLimits(event) {
+    event.preventDefault();
+    
+    const limits = {
+        maxConnections: parseInt(document.getElementById('max-connections').value),
+        maxBandwidth: parseInt(document.getElementById('max-bandwidth').value) * 1024 * 1024, // Convert MB to bytes
+        connectionTimeout: parseInt(document.getElementById('connection-timeout').value)
+    };
+    
+    try {
+        await mcpClient.networkConfigureLimits(limits);
+        showToast('Network limits configured successfully', 'success');
+    } catch (error) {
+        console.error('[Network] Failed to configure limits:', error);
+        showToast(`Failed to configure limits: ${error.message}`, 'error');
+    }
+}
+
+// System Status
+async function refreshSystemStatus() {
+    try {
+        const status = await mcpClient.getSystemStatus();
+        
+        document.getElementById('system-status').innerHTML = status.healthy ? 
+            '<span class="status-success">✅ Healthy</span>' : 
+            '<span class="status-warning">⚠️ Issues Detected</span>';
+        
+        document.getElementById('system-uptime').textContent = status.uptime || 'Unknown';
+        document.getElementById('system-version').textContent = status.version || 'Unknown';
+        
+        showToast('System status refreshed', 'success');
+    } catch (error) {
+        console.error('[Status] Failed to get system status:', error);
+        document.getElementById('system-status').innerHTML = '<span style="color: #ef4444;">Error</span>';
+        showToast('Failed to load system status', 'error');
+    }
+}
+
+// Resource Usage
+async function refreshResourceUsage() {
+    try {
+        const usage = await mcpClient.getResourceUsage();
+        
+        const cpuPercent = usage.cpu || 0;
+        const memoryPercent = usage.memory || 0;
+        const diskPercent = usage.disk || 0;
+        
+        document.getElementById('cpu-bar').style.width = `${cpuPercent}%`;
+        document.getElementById('cpu-percent').textContent = `${cpuPercent}%`;
+        
+        document.getElementById('memory-bar').style.width = `${memoryPercent}%`;
+        document.getElementById('memory-percent').textContent = `${memoryPercent}%`;
+        
+        document.getElementById('disk-bar').style.width = `${diskPercent}%`;
+        document.getElementById('disk-percent').textContent = `${diskPercent}%`;
+        
+        showToast('Resource usage refreshed', 'success');
+    } catch (error) {
+        console.error('[Status] Failed to get resource usage:', error);
+        showToast('Failed to load resource usage', 'error');
+    }
+}
+
+// Service Status
+async function checkServiceStatus() {
+    const service = document.getElementById('service-select').value;
+    const resultDiv = document.getElementById('service-status-result');
+    
+    resultDiv.innerHTML = '<div class="spinner"></div> Checking service status...';
+    
+    try {
+        const status = await mcpClient.getServiceStatus(service);
+        
+        const statusHtml = status.running ? 
+            '<span class="status-success">✅ Running</span>' : 
+            '<span class="status-warning">⚠️ Stopped</span>';
+        
+        resultDiv.innerHTML = `<div class="result-success" style="margin-top: 10px;">
+            <strong>Service: ${service}</strong><br>
+            <div style="margin-top: 8px;">Status: ${statusHtml}</div>
+            ${status.info ? `<div style="margin-top: 5px;">Info: ${status.info}</div>` : ''}
+        </div>`;
+        
+        showToast('Service status checked', 'success');
+    } catch (error) {
+        console.error('[Status] Failed to check service status:', error);
+        resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+        showToast('Failed to check service status', 'error');
+    }
+}
+
+// CLI Endpoints
+async function refreshCliEndpoints() {
+    const listDiv = document.getElementById('cli-endpoints-list');
+    listDiv.innerHTML = '<div class="spinner"></div> Loading CLI endpoints...';
+    
+    try {
+        const endpoints = await mcpClient.listCliEndpoints();
+        
+        if (!endpoints || endpoints.length === 0) {
+            listDiv.innerHTML = '<p style="margin: 0; color: #6b7280;">No CLI endpoints registered</p>';
+            return;
+        }
+        
+        let html = '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px;">';
+        endpoints.forEach(endpoint => {
+            html += `<div style="padding: 12px; background: #fff; border: 1px solid #e5e7eb; border-radius: 6px;">
+                <div style="font-weight: 600; margin-bottom: 5px;">${endpoint.name || 'Unnamed'}</div>
+                <div style="font-size: 12px; color: #6b7280; margin-bottom: 3px;">${endpoint.url || 'No URL'}</div>
+                ${endpoint.description ? `<div style="font-size: 11px; color: #9ca3af;">${endpoint.description}</div>` : ''}
+            </div>`;
+        });
+        html += '</div>';
+        
+        listDiv.innerHTML = html;
+        showToast(`${endpoints.length} endpoints loaded`, 'success');
+    } catch (error) {
+        console.error('[CLI] Failed to list endpoints:', error);
+        listDiv.innerHTML = '<p style="margin: 0; color: #ef4444;">Failed to load endpoints</p>';
+        showToast('Failed to load CLI endpoints', 'error');
+    }
+}
+
+// Register CLI Endpoint
+async function registerNewCliEndpoint(event) {
+    event.preventDefault();
+    
+    const config = {
+        name: document.getElementById('cli-endpoint-name').value,
+        url: document.getElementById('cli-endpoint-url').value,
+        description: document.getElementById('cli-endpoint-description').value
+    };
+    
+    try {
+        await mcpClient.registerCliEndpoint(config);
+        showToast('CLI endpoint registered successfully', 'success');
+        
+        // Clear form
+        document.getElementById('cli-endpoint-name').value = '';
+        document.getElementById('cli-endpoint-url').value = '';
+        document.getElementById('cli-endpoint-description').value = '';
+        
+        // Refresh list
+        await refreshCliEndpoints();
+    } catch (error) {
+        console.error('[CLI] Failed to register endpoint:', error);
+        showToast(`Failed to register endpoint: ${error.message}`, 'error');
+    }
+}
+
+// Auto-load network & status data when tab is shown
+document.addEventListener('DOMContentLoaded', function() {
+    const networkStatusTab = document.querySelector('[onclick*="network-status"]');
+    if (networkStatusTab) {
+        networkStatusTab.addEventListener('click', function() {
+            refreshBandwidthStats();
+            refreshNetworkConnections();
+            refreshSystemStatus();
+            refreshResourceUsage();
+            refreshCliEndpoints();
+        });
+    }
+});
+
