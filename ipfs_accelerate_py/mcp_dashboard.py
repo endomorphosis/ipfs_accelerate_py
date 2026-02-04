@@ -45,7 +45,8 @@ class MCPDashboard:
     """MCP Dashboard with links to various services."""
     
     def __init__(self, port: int = 8899, host: str = '127.0.0.1', mcp_server=None, 
-                 enable_autoscaler: bool = True, autoscaler_config: Optional[Dict[str, Any]] = None):
+                 enable_autoscaler: bool = True, autoscaler_config: Optional[Dict[str, Any]] = None,
+                 use_unified_registry: bool = True):
         """Initialize the MCP dashboard.
         
         Args:
@@ -54,6 +55,7 @@ class MCPDashboard:
             mcp_server: Optional MCP server instance to get tools from
             enable_autoscaler: Whether to start GitHub Actions autoscaler (default: True)
             autoscaler_config: Configuration for autoscaler (owner, interval, etc.)
+            use_unified_registry: Whether to use the unified tool registry (default: True)
         """
         if not HAVE_FLASK:
             raise ImportError("Flask is required for the MCP Dashboard. Install with: pip install flask flask-cors")
@@ -67,6 +69,22 @@ class MCPDashboard:
         self.autoscaler_config = autoscaler_config or {}
         self.autoscaler_instance = None
         self.autoscaler_thread = None
+        self.use_unified_registry = use_unified_registry
+        
+        # Initialize unified tool registry if enabled
+        if self.use_unified_registry:
+            try:
+                from .mcp.unified_registry import get_global_registry
+                from .mcp.tool_migration import populate_unified_registry
+                
+                populate_unified_registry()
+                self.tool_registry = get_global_registry()
+                logger.info(f"Unified tool registry initialized with {len(self.tool_registry.list_tool_names())} tools")
+            except Exception as e:
+                logger.warning(f"Failed to initialize unified registry: {e}")
+                self.tool_registry = None
+        else:
+            self.tool_registry = None
         
         # Initialize storage wrapper for distributed storage
         self._storage = get_storage_wrapper() if HAVE_STORAGE_WRAPPER else None
@@ -720,6 +738,16 @@ class MCPDashboard:
         @self.app.route('/api/mcp/tools')
         def get_mcp_tools():
             """Get list of available MCP tools with full metadata and categorization."""
+            
+            # Use unified registry if available
+            if self.tool_registry:
+                try:
+                    return jsonify(self.tool_registry.to_api_response())
+                except Exception as e:
+                    logger.error(f"Error getting tools from unified registry: {e}")
+                    # Fall through to legacy path
+            
+            # Legacy path - get tools from MCP server or create temp server
             tools_by_category = {}
             tools_list = []
             
@@ -1236,7 +1264,30 @@ class MCPDashboard:
                     
                     logger.info(f"Calling tool: {tool_name} with args: {tool_args}")
                     
-                    # Try to call tool from MCP server first
+                    # Try unified registry first
+                    if self.tool_registry:
+                        try:
+                            result = self.tool_registry.call_tool(tool_name, **tool_args)
+                            return jsonify({
+                                'jsonrpc': '2.0',
+                                'result': result,
+                                'id': request_id
+                            })
+                        except KeyError:
+                            # Tool not in unified registry, fall through to legacy paths
+                            logger.debug(f"Tool {tool_name} not in unified registry, trying legacy paths")
+                        except Exception as e:
+                            logger.error(f"Error calling tool {tool_name} from unified registry: {e}", exc_info=True)
+                            return jsonify({
+                                'jsonrpc': '2.0',
+                                'error': {
+                                    'code': -32603,
+                                    'message': f'Tool execution error: {str(e)}'
+                                },
+                                'id': request_id
+                            }), 500
+                    
+                    # Try to call tool from MCP server
                     if self.mcp_server and hasattr(self.mcp_server, 'tools'):
                         if tool_name in self.mcp_server.tools:
                             try:
