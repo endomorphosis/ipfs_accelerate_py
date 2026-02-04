@@ -1286,28 +1286,348 @@ function refreshMetrics() {
 }
 
 // Queue Functions
+// Queue Monitor auto-refresh interval
+let queueRefreshInterval = null;
+
 function refreshQueue() {
-    console.log('Refreshing queue status...');
+    console.log('[Dashboard] Refreshing queue status via SDK...');
+    
+    if (!mcpClient) {
+        console.warn('[Dashboard] SDK not available for queue monitoring');
+        displayQueueError('SDK not initialized');
+        return;
+    }
+    
+    // Load all queue-related data
+    loadQueueStatusFromSDK();
+    loadQueueHistoryFromSDK();
+    loadPerformanceMetricsFromSDK();
+    
+    // Start auto-refresh if not already running
+    if (!queueRefreshInterval) {
+        startQueueAutoRefresh();
+    }
+}
+
+async function loadQueueStatusFromSDK() {
+    const queueStatusDiv = document.getElementById('queue-status-data');
+    if (!queueStatusDiv) return;
+    
+    // Check cache
+    const cached = sdkCache.get('queue_status');
+    if (cached) {
+        displayQueueStatus(cached);
+        return;
+    }
+    
+    // Show loading
+    queueStatusDiv.innerHTML = '<div class="spinner large"></div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getQueueStatus();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getQueueStatus', true, responseTime);
+        
+        // Cache for 5 seconds
+        sdkCache.set('queue_status', result, 5000);
+        
+        displayQueueStatus(result);
+        console.log('[Dashboard] Queue status loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getQueueStatus', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load queue status:', error);
+        queueStatusDiv.innerHTML = `<div class="error-message">Failed to load queue status: ${error.message}</div>`;
+    }
+}
+
+function displayQueueStatus(data) {
+    const queueStatusDiv = document.getElementById('queue-status-data');
+    if (!queueStatusDiv) return;
+    
+    const queueSize = data.queue_size || 0;
+    const pending = data.pending || 0;
+    const running = data.running || 0;
+    const completed = data.completed || 0;
+    const failed = data.failed || 0;
+    const workers = data.workers || 0;
+    const throughput = data.throughput || '0/s';
+    
+    queueStatusDiv.innerHTML = `
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div class="metric-card">
+                <div class="metric-label">Queue Size</div>
+                <div class="metric-value">${queueSize}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Pending</div>
+                <div class="metric-value" style="color: #f59e0b;">${pending}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Running</div>
+                <div class="metric-value" style="color: #3b82f6;">${running}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Completed</div>
+                <div class="metric-value" style="color: #10b981;">${completed}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Failed</div>
+                <div class="metric-value" style="color: #ef4444;">${failed}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Workers</div>
+                <div class="metric-value">${workers}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Throughput</div>
+                <div class="metric-value">${throughput}</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">Last Updated</div>
+                <div class="metric-value" style="font-size: 14px;">${new Date().toLocaleTimeString()}</div>
+            </div>
+        </div>
+    `;
+}
+
+async function loadQueueHistoryFromSDK() {
+    const historyDiv = document.getElementById('queue-history-data');
+    if (!historyDiv) return;
+    
+    // Check cache
+    const cached = sdkCache.get('queue_history');
+    if (cached) {
+        displayQueueHistory(cached);
+        return;
+    }
+    
+    // Show loading
+    historyDiv.innerHTML = '<div class="spinner large"></div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getQueueHistory();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getQueueHistory', true, responseTime);
+        
+        // Cache for 5 seconds
+        sdkCache.set('queue_history', result, 5000);
+        
+        displayQueueHistory(result);
+        console.log('[Dashboard] Queue history loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getQueueHistory', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load queue history:', error);
+        historyDiv.innerHTML = `<div class="error-message">Failed to load queue history: ${error.message}</div>`;
+    }
+}
+
+function displayQueueHistory(data) {
+    const historyDiv = document.getElementById('queue-history-data');
+    if (!historyDiv) return;
+    
+    const history = data.history || [];
+    
+    if (history.length === 0) {
+        historyDiv.innerHTML = '<div style="padding: 20px; text-align: center; color: #6b7280;">No queue history available</div>';
+        return;
+    }
+    
+    const historyHtml = history.slice(0, 10).map(item => `
+        <div style="padding: 10px; border-bottom: 1px solid #e5e7eb; display: flex; justify-content: space-between;">
+            <span>${item.task_name || 'Unknown task'}</span>
+            <span style="color: ${item.status === 'completed' ? '#10b981' : '#ef4444'};">
+                ${item.status} (${item.duration || 'N/A'})
+            </span>
+        </div>
+    `).join('');
+    
+    historyDiv.innerHTML = historyHtml;
+}
+
+async function loadPerformanceMetricsFromSDK() {
+    const metricsDiv = document.getElementById('performance-metrics-data');
+    if (!metricsDiv) return;
+    
+    // Check cache
+    const cached = sdkCache.get('performance_metrics');
+    if (cached) {
+        displayPerformanceMetrics(cached);
+        return;
+    }
+    
+    // Show loading
+    metricsDiv.innerHTML = '<div class="spinner large"></div>';
+    
+    const startTime = Date.now();
+    
+    try {
+        const result = await mcpClient.getPerformanceMetrics();
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getPerformanceMetrics', true, responseTime);
+        
+        // Cache for 5 seconds
+        sdkCache.set('performance_metrics', result, 5000);
+        
+        displayPerformanceMetrics(result);
+        console.log('[Dashboard] Performance metrics loaded:', result);
+    } catch (error) {
+        const responseTime = Date.now() - startTime;
+        trackSDKCall('getPerformanceMetrics', false, responseTime);
+        
+        console.error('[Dashboard] Failed to load performance metrics:', error);
+        metricsDiv.innerHTML = `<div class="error-message">Failed to load performance metrics: ${error.message}</div>`;
+    }
+}
+
+function displayPerformanceMetrics(data) {
+    const metricsDiv = document.getElementById('performance-metrics-data');
+    if (!metricsDiv) return;
+    
+    const cpu = data.cpu_usage || 0;
+    const memory = data.memory_usage || 0;
+    const disk = data.disk_usage || 0;
+    const network = data.network_throughput || '0 MB/s';
+    
+    metricsDiv.innerHTML = `
+        <div style="display: grid; gap: 15px;">
+            <div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>CPU Usage</span>
+                    <span>${cpu}%</span>
+                </div>
+                <div style="background: #e5e7eb; height: 10px; border-radius: 5px; overflow: hidden;">
+                    <div style="background: ${cpu > 80 ? '#ef4444' : '#3b82f6'}; height: 100%; width: ${cpu}%;"></div>
+                </div>
+            </div>
+            <div>
+                <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+                    <span>Memory Usage</span>
+                    <span>${memory}%</span>
+                </div>
+                <div style="background: #e5e7eb; height: 10px; border-radius: 5px; overflow: hidden;">
+                    <div style="background: ${memory > 80 ? '#ef4444' : '#10b981'}; height: 100%; width: ${memory}%;"></div>
+                </div>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding-top: 10px;">
+                <div class="metric-card">
+                    <div class="metric-label">Disk Usage</div>
+                    <div class="metric-value">${disk}%</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Network</div>
+                    <div class="metric-value" style="font-size: 16px;">${network}</div>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function startQueueAutoRefresh() {
+    // Clear existing interval if any
+    if (queueRefreshInterval) {
+        clearInterval(queueRefreshInterval);
+    }
+    
+    // Refresh every 5 seconds
+    queueRefreshInterval = setInterval(() => {
+        console.log('[Dashboard] Auto-refreshing queue data...');
+        
+        // Clear cache to force fresh data
+        sdkCache.clear('queue_status');
+        sdkCache.clear('queue_history');
+        sdkCache.clear('performance_metrics');
+        
+        // Reload data
+        loadQueueStatusFromSDK();
+        loadQueueHistoryFromSDK();
+        loadPerformanceMetricsFromSDK();
+    }, 5000);
+    
+    console.log('[Dashboard] Queue auto-refresh started (5s interval)');
+}
+
+function stopQueueAutoRefresh() {
+    if (queueRefreshInterval) {
+        clearInterval(queueRefreshInterval);
+        queueRefreshInterval = null;
+        console.log('[Dashboard] Queue auto-refresh stopped');
+    }
+}
+
+function displayQueueError(message) {
+    const statusDiv = document.getElementById('queue-status-data');
+    const historyDiv = document.getElementById('queue-history-data');
+    const metricsDiv = document.getElementById('performance-metrics-data');
+    
+    const errorHtml = `<div class="error-message">${message}</div>`;
+    
+    if (statusDiv) statusDiv.innerHTML = errorHtml;
+    if (historyDiv) historyDiv.innerHTML = errorHtml;
+    if (metricsDiv) metricsDiv.innerHTML = errorHtml;
 }
 
 function clearQueue() {
     if (confirm('Are you sure you want to clear the queue?')) {
-        alert('Queue cleared');
+        if (mcpClient) {
+            // TODO: Add SDK method for clearing queue when available
+            showToast('Queue clear not yet implemented via SDK', 'warning');
+        } else {
+            alert('Queue cleared');
+        }
     }
 }
 
 function addWorker() {
-    alert('Adding new worker to pool...');
+    if (mcpClient) {
+        // TODO: Add SDK method for adding workers when available
+        showToast('Add worker not yet implemented via SDK', 'warning');
+    } else {
+        alert('Adding new worker to pool...');
+    }
 }
 
 function removeWorker() {
     if (confirm('Remove a worker from the pool?')) {
-        alert('Worker removed');
+        if (mcpClient) {
+            // TODO: Add SDK method for removing workers when available
+            showToast('Remove worker not yet implemented via SDK', 'warning');
+        } else {
+            alert('Worker removed');
+        }
     }
 }
 
 function exportQueueStats() {
-    alert('Exporting queue statistics...');
+    if (mcpClient) {
+        // Export current queue data as JSON
+        const queueData = {
+            status: sdkCache.get('queue_status'),
+            history: sdkCache.get('queue_history'),
+            metrics: sdkCache.get('performance_metrics'),
+            timestamp: new Date().toISOString()
+        };
+        
+        const dataStr = JSON.stringify(queueData, null, 2);
+        const dataBlob = new Blob([dataStr], { type: 'application/json' });
+        const url = URL.createObjectURL(dataBlob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `queue-stats-${Date.now()}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+        
+        showToast('Queue stats exported', 'success');
+    } else {
+        alert('Exporting queue statistics...');
+    }
 }
 
 // MCP Tools Functions

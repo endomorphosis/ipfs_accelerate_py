@@ -502,63 +502,49 @@
             <div class="dashboard-grid">
                 <div class="card">
                     <h3>📊 Queue Status</h3>
-                    <div class="info-row">
-                        <span>Pending Jobs:</span>
-                        <span id="pending-jobs">0</span>
+                    <div id="queue-status-data">
+                        <div style="padding: 20px; text-align: center; color: #6b7280;">
+                            Click "Refresh Queue" to load status
+                        </div>
                     </div>
-                    <div class="info-row">
-                        <span>Running Jobs:</span>
-                        <span id="running-jobs">0</span>
-                    </div>
-                    <div class="info-row">
-                        <span>Completed Jobs:</span>
-                        <span id="completed-jobs">0</span>
-                    </div>
-                    <div class="info-row">
-                        <span>Failed Jobs:</span>
-                        <span id="failed-jobs">0</span>
-                    </div>
-                    <div class="button-group">
+                    <div class="button-group" style="margin-top: 15px;">
                         <button class="btn btn-primary" onclick="refreshQueue()">🔄 Refresh Queue</button>
                         <button class="btn btn-warning" onclick="clearQueue()">🗑️ Clear Queue</button>
+                        <button class="btn btn-info" onclick="exportQueueStats()">📊 Export Stats</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>📈 Performance Metrics</h3>
+                    <div id="performance-metrics-data">
+                        <div style="padding: 20px; text-align: center; color: #6b7280;">
+                            Loading performance metrics...
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h3>🕒 Queue History</h3>
+                    <div id="queue-history-data" style="max-height: 400px; overflow-y: auto;">
+                        <div style="padding: 20px; text-align: center; color: #6b7280;">
+                            Loading queue history...
+                        </div>
                     </div>
                 </div>
 
                 <div class="card">
                     <h3>👷 Worker Management</h3>
                     <div class="info-row">
-                        <span>Active Workers:</span>
-                        <span id="active-workers">1</span>
-                    </div>
-                    <div class="info-row">
-                        <span>Worker Pool Size:</span>
-                        <span id="worker-pool-size">4</span>
-                    </div>
-                    <div class="info-row">
-                        <span>Average Job Time:</span>
-                        <span id="avg-job-time">-</span>
+                        <span>Worker Control:</span>
+                        <span style="color: #6b7280; font-size: 14px;">Managed by SDK</span>
                     </div>
                     <div class="button-group">
                         <button class="btn btn-success" onclick="addWorker()">➕ Add Worker</button>
                         <button class="btn btn-danger" onclick="removeWorker()">➖ Remove Worker</button>
                     </div>
-                </div>
-
-                <div class="card">
-                    <h3>📈 Queue Analytics</h3>
-                    <div class="info-row">
-                        <span>Jobs/Hour:</span>
-                        <span id="jobs-per-hour">0</span>
+                    <div style="margin-top: 10px; padding: 10px; background: #fef3c7; border-radius: 5px; font-size: 13px;">
+                        <strong>Note:</strong> Worker management features coming soon
                     </div>
-                    <div class="info-row">
-                        <span>Success Rate:</span>
-                        <span id="success-rate">100%</span>
-                    </div>
-                    <div class="info-row">
-                        <span>Peak Queue Size:</span>
-                        <span id="peak-queue-size">0</span>
-                    </div>
-                    <button class="btn btn-info" onclick="exportQueueStats()">📊 Export Stats</button>
                 </div>
             </div>
         </div>
