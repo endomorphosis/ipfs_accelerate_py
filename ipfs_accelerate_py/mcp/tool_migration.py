@@ -7,7 +7,7 @@ and kit-wrapper tools into the unified registry.
 
 import logging
 from typing import Any, Dict, List
-from .unified_registry import get_global_registry, ToolMetadata
+from .unified_registry import get_global_registry
 
 logger = logging.getLogger(__name__)
 

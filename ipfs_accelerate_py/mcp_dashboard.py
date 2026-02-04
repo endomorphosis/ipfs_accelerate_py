@@ -1375,7 +1375,7 @@ class MCPDashboard:
                                 'id': request_id
                             }), 500
                     
-                    # Tool not found
+                    # Tool not found - return JSON-RPC error with HTTP 200
                     return jsonify({
                         'jsonrpc': '2.0',
                         'error': {
@@ -1383,7 +1383,7 @@ class MCPDashboard:
                             'message': f'Tool not found: {tool_name}'
                         },
                         'id': request_id
-                    }), 404
+                    }), 200
                 
                 # Legacy direct method calls for model tools
                 # Lazy import MCP tools wrapper
