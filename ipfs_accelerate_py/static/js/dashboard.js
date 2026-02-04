@@ -25,9 +25,52 @@ function initializeSDK() {
             reportErrors: true
         });
         console.log('[Dashboard] MCP SDK client initialized');
+        
+        // Perform health check
+        checkSDKConnection();
+        
         return true;
     } catch (error) {
         console.error('[Dashboard] Failed to initialize MCP SDK:', error);
+        updateConnectionStatus(false);
+        return false;
+    }
+}
+
+// Check SDK connection health
+async function checkSDKConnection() {
+    try {
+        // Try a simple SDK call to verify connection
+        const response = await fetch('/jsonrpc', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                jsonrpc: '2.0',
+                method: 'tools/list',
+                params: {},
+                id: Date.now()
+            })
+        });
+        
+        const connected = response.ok;
+        updateConnectionStatus(connected);
+        
+        return connected;
+    } catch (error) {
+        console.warn('[Dashboard] SDK connection check failed:', error);
+        updateConnectionStatus(false);
+        return false;
+    }
+}
+
+// Update connection status indicator
+function updateConnectionStatus(connected) {
+    const statusIndicator = document.getElementById('server-status');
+    if (statusIndicator) {
+        statusIndicator.className = connected ? 'status-indicator online' : 'status-indicator offline';
+        statusIndicator.title = connected ? 'SDK Connected' : 'SDK Disconnected';
+    }
+}
         showToast('Failed to initialize MCP SDK', 'error');
         return false;
     }
@@ -2409,6 +2452,30 @@ document.addEventListener('DOMContentLoaded', function() {
 // Keyboard Shortcuts
 function initializeKeyboardShortcuts() {
     document.addEventListener('keydown', function(e) {
+        // Prevent shortcuts when typing in input fields (except for special keys)
+        const isInputField = e.target.tagName === 'INPUT' || 
+                           e.target.tagName === 'TEXTAREA' || 
+                           e.target.isContentEditable;
+        
+        // ? key: Show keyboard shortcuts help (works anywhere)
+        if (e.key === '?' && !isInputField) {
+            e.preventDefault();
+            showKeyboardShortcuts();
+            return;
+        }
+        
+        // Esc key: Close modals
+        if (e.key === 'Escape') {
+            closeKeyboardShortcuts();
+            closeCommandPalette();
+            return;
+        }
+        
+        // Don't process other shortcuts when in input fields
+        if (isInputField && !e.ctrlKey && !e.metaKey) {
+            return;
+        }
+        
         // Ctrl/Cmd + K: Open command palette
         if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
             e.preventDefault();
@@ -2438,7 +2505,7 @@ function initializeKeyboardShortcuts() {
             quickListContainers();
         }
         
-        // Ctrl/Cmd + R: Refresh all
+        // Ctrl/Cmd + Shift + R: Refresh all
         if ((e.ctrlKey || e.metaKey) && e.key === 'r' && e.shiftKey) {
             e.preventDefault();
             quickRefreshAll();
@@ -2446,6 +2513,21 @@ function initializeKeyboardShortcuts() {
     });
     
     console.log('[Dashboard] Keyboard shortcuts initialized');
+}
+
+// Keyboard Shortcuts Modal Functions
+function showKeyboardShortcuts() {
+    const modal = document.getElementById('keyboard-shortcuts-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+    }
+}
+
+function closeKeyboardShortcuts() {
+    const modal = document.getElementById('keyboard-shortcuts-modal');
+    if (modal) {
+        modal.style.display = 'none';
+    }
 }
 
 // Floating SDK Menu

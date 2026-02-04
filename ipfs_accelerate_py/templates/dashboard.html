@@ -14,6 +14,9 @@
         <div class="header">
             <h1>🚀 IPFS Accelerate MCP Server</h1>
             <p>Comprehensive AI Inference • Model Management • Performance Monitoring</p>
+            <button id="keyboard-shortcuts-btn" class="help-btn" onclick="showKeyboardShortcuts()" title="Keyboard Shortcuts (?)">
+                ⌨️ Shortcuts
+            </button>
         </div>
 
         <div class="status-bar">
@@ -55,18 +58,26 @@
         <div id="overview" class="tab-content active">
             <!-- SDK Quick Actions Bar -->
             <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-bottom: 20px;">
-                <h3 style="color: white; margin-bottom: 15px;">⚡ Quick Actions</h3>
+                <h3 style="color: white; margin-bottom: 15px;">⚡ Quick Actions <span style="font-size: 12px; opacity: 0.8; font-weight: normal;">Press ? to see keyboard shortcuts</span></h3>
                 <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px;">
-                    <button class="btn btn-light" onclick="quickGetHardwareInfo()" style="background: rgba(255,255,255,0.9); color: #667eea;">
+                    <button class="btn btn-light" onclick="quickGetHardwareInfo()" 
+                            title="Get hardware information (Ctrl/Cmd+H)"
+                            style="background: rgba(255,255,255,0.9); color: #667eea;">
                         🔧 Hardware Info
                     </button>
-                    <button class="btn btn-light" onclick="quickListContainers()" style="background: rgba(255,255,255,0.9); color: #667eea;">
+                    <button class="btn btn-light" onclick="quickListContainers()" 
+                            title="List Docker containers (Ctrl/Cmd+D)"
+                            style="background: rgba(255,255,255,0.9); color: #667eea;">
                         🐳 Docker Status
                     </button>
-                    <button class="btn btn-light" onclick="quickGetNetworkPeers()" style="background: rgba(255,255,255,0.9); color: #667eea;">
+                    <button class="btn btn-light" onclick="quickGetNetworkPeers()" 
+                            title="Get network peers information"
+                            style="background: rgba(255,255,255,0.9); color: #667eea;">
                         🌐 Network Peers
                     </button>
-                    <button class="btn btn-light" onclick="quickRefreshAll()" style="background: rgba(255,255,255,0.9); color: #667eea;">
+                    <button class="btn btn-light" onclick="quickRefreshAll()" 
+                            title="Batch refresh all data (Ctrl/Cmd+Shift+R)"
+                            style="background: rgba(255,255,255,0.9); color: #667eea;">
                         🔄 Refresh All
                     </button>
                 </div>
@@ -1214,5 +1225,61 @@
             }
         });
     </script>
+
+    <!-- Keyboard Shortcuts Modal -->
+    <div id="keyboard-shortcuts-modal" class="modal" style="display: none;">
+        <div class="modal-content" style="max-width: 700px;">
+            <span class="close" onclick="closeKeyboardShortcuts()">&times;</span>
+            <h2>⌨️ Keyboard Shortcuts</h2>
+            
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px;">
+                <div>
+                    <h3 style="margin-bottom: 15px; color: #667eea;">Navigation</h3>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl/Cmd + 1-9</kbd>
+                        <span>Switch between tabs</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl/Cmd + K</kbd>
+                        <span>Open command palette</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>?</kbd>
+                        <span>Show this help</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Esc</kbd>
+                        <span>Close modals</span>
+                    </div>
+                </div>
+                
+                <div>
+                    <h3 style="margin-bottom: 15px; color: #667eea;">Quick Actions</h3>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl/Cmd + H</kbd>
+                        <span>Hardware info</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl/Cmd + D</kbd>
+                        <span>Docker status</span>
+                    </div>
+                    <div class="shortcut-item">
+                        <kbd>Ctrl/Cmd + Shift + R</kbd>
+                        <span>Refresh all data</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div style="margin-top: 30px; padding: 15px; background: #f9fafb; border-radius: 8px; border-left: 4px solid #667eea;">
+                <h3 style="margin: 0 0 10px 0; color: #667eea;">💡 Tips</h3>
+                <ul style="margin: 0; padding-left: 20px; color: #6b7280;">
+                    <li>Use the floating ⚡ menu for quick access from any tab</li>
+                    <li>Press <kbd>Ctrl/Cmd + K</kbd> to search and execute any command</li>
+                    <li>Keyboard shortcuts work in most input contexts</li>
+                    <li>All SDK operations are tracked in the SDK Playground tab</li>
+                </ul>
+            </div>
+        </div>
+    </div>
 </body>
 </html>
