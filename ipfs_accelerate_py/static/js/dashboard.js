@@ -5363,7 +5363,16 @@ async function viewRunnerDetails(runnerId) {
             metrics: metrics
         };
         
-        alert(`Runner Details:\n\n${JSON.stringify(details, null, 2)}`);
+        // Display in a formatted way instead of alert
+        const detailsJson = JSON.stringify(details, null, 2);
+        const message = `Runner Details for ${runnerId}:\n\n${detailsJson}`;
+        
+        // Create a temporary display area or use toast for now
+        showToast(`Runner details loaded for ${runnerId}`, 'success');
+        console.log('[Runner] Details:', details);
+        
+        // Could be enhanced with a proper modal in future
+        // For now, log to console and show toast
         
     } catch (error) {
         console.error('[Runner] Failed to get details:', error);
@@ -5404,22 +5413,33 @@ async function runAllRunnerHealthChecks() {
     
     showToast('Checking health of all runners...', 'info');
     
+    const healthCheckPromises = currentRunners.map(runner =>
+        mcpClient.runnerHealthCheck(runner.id).then(health => ({
+            runner,
+            health
+        }))
+    );
+    
+    const results = await Promise.allSettled(healthCheckPromises);
+    
     let healthy = 0;
     let unhealthy = 0;
     
-    for (const runner of currentRunners) {
-        try {
-            const health = await mcpClient.runnerHealthCheck(runner.id);
+    results.forEach((result, index) => {
+        const runner = currentRunners[index];
+        
+        if (result.status === 'fulfilled') {
+            const { health } = result.value;
             if (health.healthy) {
                 healthy++;
             } else {
                 unhealthy++;
             }
-        } catch (error) {
-            console.error(`[Runner] Health check failed for ${runner.id}:`, error);
+        } else {
+            console.error(`[Runner] Health check failed for ${runner.id}:`, result.reason);
             unhealthy++;
         }
-    }
+    });
     
     showToast(`Health check complete: ${healthy} healthy, ${unhealthy} unhealthy`, 'success');
     await loadRunnerCapabilities();
@@ -5471,7 +5491,7 @@ async function saveRunnerConfig(event) {
     };
     
     try {
-        await mcpClient.runnerSetConfig({ runnerId, config });
+        await mcpClient.runnerSetConfig({ runner_id: runnerId, config });
         showToast('Configuration saved successfully', 'success');
         
     } catch (error) {
@@ -5513,35 +5533,93 @@ async function loadRunnerTasks(runnerId) {
             return;
         }
         
-        let html = '<div style="display: flex; flex-direction: column; gap: 10px;">';
-        
+        // Clear existing content and build DOM nodes instead of using innerHTML with untrusted data
+        tasksListDiv.innerHTML = '';
+        const container = document.createElement('div');
+        container.style.display = 'flex';
+        container.style.flexDirection = 'column';
+        container.style.gap = '10px';
+
         for (const task of tasks) {
-            const statusClass = task.status === 'running' ? 'status-running' : 
+            const statusClass = task.status === 'running' ? 'status-running' :
                               task.status === 'completed' ? 'status-success' : 'status-stopped';
-            
-            html += `
-                <div style="border: 1px solid #e5e7eb; border-radius: 6px; padding: 12px;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-                        <strong style="font-size: 14px;">${task.name || task.id}</strong>
-                        <span class="${statusClass}" style="padding: 3px 8px; border-radius: 4px; font-size: 11px;">${task.status}</span>
-                    </div>
-                    <div style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">
-                        <div><strong>ID:</strong> ${task.id}</div>
-                        ${task.command ? `<div><strong>Command:</strong> <code style="background: #f3f4f6; padding: 2px 6px; border-radius: 3px;">${task.command}</code></div>` : ''}
-                    </div>
-                    <button class="btn btn-sm btn-danger" onclick="stopRunnerTask('${runnerId}', '${task.id}')" ${task.status !== 'running' ? 'disabled' : ''}>
-                        ⏹️ Stop Task
-                    </button>
-                </div>
-            `;
+
+            const card = document.createElement('div');
+            card.style.border = '1px solid #e5e7eb';
+            card.style.borderRadius = '6px';
+            card.style.padding = '12px';
+
+            const header = document.createElement('div');
+            header.style.display = 'flex';
+            header.style.justifyContent = 'space-between';
+            header.style.alignItems = 'center';
+            header.style.marginBottom = '8px';
+
+            const nameEl = document.createElement('strong');
+            nameEl.style.fontSize = '14px';
+            nameEl.textContent = task.name || task.id;
+
+            const statusEl = document.createElement('span');
+            statusEl.className = statusClass;
+            statusEl.style.padding = '3px 8px';
+            statusEl.style.borderRadius = '4px';
+            statusEl.style.fontSize = '11px';
+            statusEl.textContent = task.status;
+
+            header.appendChild(nameEl);
+            header.appendChild(statusEl);
+
+            const details = document.createElement('div');
+            details.style.fontSize = '12px';
+            details.style.color = '#6b7280';
+            details.style.marginBottom = '8px';
+
+            const idDiv = document.createElement('div');
+            const idLabel = document.createElement('strong');
+            idLabel.textContent = 'ID:';
+            idDiv.appendChild(idLabel);
+            idDiv.appendChild(document.createTextNode(' ' + String(task.id)));
+            details.appendChild(idDiv);
+
+            if (task.command) {
+                const cmdDiv = document.createElement('div');
+                const cmdLabel = document.createElement('strong');
+                cmdLabel.textContent = 'Command:';
+                const cmdCode = document.createElement('code');
+                cmdCode.style.background = '#f3f4f6';
+                cmdCode.style.padding = '2px 6px';
+                cmdCode.style.borderRadius = '3px';
+                cmdCode.textContent = String(task.command);
+                cmdDiv.appendChild(cmdLabel);
+                cmdDiv.appendChild(document.createTextNode(' '));
+                cmdDiv.appendChild(cmdCode);
+                details.appendChild(cmdDiv);
+            }
+
+            const stopButton = document.createElement('button');
+            stopButton.className = 'btn btn-sm btn-danger';
+            stopButton.textContent = '⏹️ Stop Task';
+            stopButton.disabled = task.status !== 'running';
+            stopButton.addEventListener('click', function () {
+                stopRunnerTask(runnerId, task.id);
+            });
+
+            card.appendChild(header);
+            card.appendChild(details);
+            card.appendChild(stopButton);
+
+            container.appendChild(card);
         }
-        
-        html += '</div>';
-        tasksListDiv.innerHTML = html;
+
+        tasksListDiv.appendChild(container);
         
     } catch (error) {
         console.error('[Runner] Failed to load tasks:', error);
-        tasksListDiv.innerHTML = `<div class="error-message">❌ Failed to load tasks: ${error.message}</div>`;
+        tasksListDiv.innerHTML = '';
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'error-message';
+        errorDiv.textContent = '❌ Failed to load tasks: ' + (error && error.message ? error.message : String(error));
+        tasksListDiv.appendChild(errorDiv);
         showToast('Failed to load tasks', 'error');
     }
 }
@@ -5817,12 +5895,26 @@ async function transcribeAudioFile() {
     try {
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = async function(e) {
-            const audioData = e.target.result;
-            const result = await mcpClient.transcribeAudio(audioData);
-            resultDiv.innerHTML = `<div class="result-success"><strong>Transcription:</strong><br>${result.text || JSON.stringify(result)}</div>`;
-            showToast('Audio transcribed', 'success');
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read audio file</div>';
+            showToast('Failed to read audio file', 'error');
         };
+        
+        reader.onload = async function(e) {
+            try {
+                const audioData = e.target.result;
+                const result = await mcpClient.transcribeAudio(audioData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Transcription:</strong><br>${result.text || JSON.stringify(result)}</div>`;
+                showToast('Audio transcribed', 'success');
+            } catch (error) {
+                console.error('[AI] Audio transcription failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to transcribe audio', 'error');
+            }
+        };
+        
         reader.readAsDataURL(file);
     } catch (error) {
         console.error('[AI] Audio transcription failed:', error);
@@ -5845,12 +5937,26 @@ async function classifyAudioFile() {
     try {
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = async function(e) {
-            const audioData = e.target.result;
-            const result = await mcpClient.classifyAudio(audioData);
-            resultDiv.innerHTML = `<div class="result-success"><strong>Classification:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
-            showToast('Audio classified', 'success');
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read audio file</div>';
+            showToast('Failed to read audio file', 'error');
         };
+        
+        reader.onload = async function(e) {
+            try {
+                const audioData = e.target.result;
+                const result = await mcpClient.classifyAudio(audioData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Classification:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
+                showToast('Audio classified', 'success');
+            } catch (error) {
+                console.error('[AI] Audio classification failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to classify audio', 'error');
+            }
+        };
+        
         reader.readAsDataURL(file);
     } catch (error) {
         console.error('[AI] Audio classification failed:', error);
@@ -5918,12 +6024,26 @@ async function classifyImageFile() {
     try {
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = async function(e) {
-            const imageData = e.target.result;
-            const result = await mcpClient.classifyImage(imageData);
-            resultDiv.innerHTML = `<div class="result-success"><strong>Classification:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
-            showToast('Image classified', 'success');
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
         };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.classifyImage(imageData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Classification:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
+                showToast('Image classified', 'success');
+            } catch (error) {
+                console.error('[AI] Image classification failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to classify image', 'error');
+            }
+        };
+        
         reader.readAsDataURL(file);
     } catch (error) {
         console.error('[AI] Image classification failed:', error);
@@ -5946,12 +6066,26 @@ async function detectObjectsInImage() {
     try {
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = async function(e) {
-            const imageData = e.target.result;
-            const result = await mcpClient.detectObjects(imageData);
-            resultDiv.innerHTML = `<div class="result-success"><strong>Objects Detected:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
-            showToast('Objects detected', 'success');
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
         };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.detectObjects(imageData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Objects Detected:</strong><br>${JSON.stringify(result, null, 2)}</div>`;
+                showToast('Objects detected', 'success');
+            } catch (error) {
+                console.error('[AI] Object detection failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to detect objects', 'error');
+            }
+        };
+        
         reader.readAsDataURL(file);
     } catch (error) {
         console.error('[AI] Object detection failed:', error);
@@ -5974,12 +6108,26 @@ async function segmentImageFile() {
     try {
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = async function(e) {
-            const imageData = e.target.result;
-            const result = await mcpClient.segmentImage(imageData);
-            resultDiv.innerHTML = `<div class="result-success">✅ Image segmented<br><img src="${result.segmented_image || result.url}" style="max-width: 100%; border-radius: 8px;"/></div>`;
-            showToast('Image segmented', 'success');
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
         };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.segmentImage(imageData);
+                resultDiv.innerHTML = `<div class="result-success">✅ Image segmented<br><img src="${result.segmented_image || result.url}" style="max-width: 100%; border-radius: 8px;"/></div>`;
+                showToast('Image segmented', 'success');
+            } catch (error) {
+                console.error('[AI] Image segmentation failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to segment image', 'error');
+            }
+        };
+        
         reader.readAsDataURL(file);
     } catch (error) {
         console.error('[AI] Image segmentation failed:', error);
@@ -6002,12 +6150,26 @@ async function generateImageCaption() {
     try {
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = async function(e) {
-            const imageData = e.target.result;
-            const result = await mcpClient.generateImageCaption(imageData);
-            resultDiv.innerHTML = `<div class="result-success"><strong>Caption:</strong><br>${result.caption || result.text || JSON.stringify(result)}</div>`;
-            showToast('Caption generated', 'success');
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
         };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.generateImageCaption(imageData);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Caption:</strong><br>${result.caption || result.text || JSON.stringify(result)}</div>`;
+                showToast('Caption generated', 'success');
+            } catch (error) {
+                console.error('[AI] Caption generation failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to generate caption', 'error');
+            }
+        };
+        
         reader.readAsDataURL(file);
     } catch (error) {
         console.error('[AI] Caption generation failed:', error);
@@ -6058,12 +6220,26 @@ async function answerVisualQuestionImage() {
     try {
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = async function(e) {
-            const imageData = e.target.result;
-            const result = await mcpClient.answerVisualQuestion(imageData, question);
-            resultDiv.innerHTML = `<div class="result-success"><strong>Answer:</strong><br>${result.answer || result.text || JSON.stringify(result)}</div>`;
-            showToast('Question answered', 'success');
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read image file</div>';
+            showToast('Failed to read image file', 'error');
         };
+        
+        reader.onload = async function(e) {
+            try {
+                const imageData = e.target.result;
+                const result = await mcpClient.answerVisualQuestion(imageData, question);
+                resultDiv.innerHTML = `<div class="result-success"><strong>Answer:</strong><br>${result.answer || result.text || JSON.stringify(result)}</div>`;
+                showToast('Question answered', 'success');
+            } catch (error) {
+                console.error('[AI] Visual Q&A failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to answer question', 'error');
+            }
+        };
+        
         reader.readAsDataURL(file);
     } catch (error) {
         console.error('[AI] Visual Q&A failed:', error);
@@ -6218,12 +6394,26 @@ async function processDocumentFile() {
     try {
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = async function(e) {
-            const documentData = e.target.result;
-            const result = await mcpClient.processDocument(documentData, { operation });
-            resultDiv.innerHTML = `<div class="result-success"><strong>Result:</strong><br>${result.text || JSON.stringify(result, null, 2)}</div>`;
-            showToast('Document processed', 'success');
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read document file</div>';
+            showToast('Failed to read document file', 'error');
         };
+        
+        reader.onload = async function(e) {
+            try {
+                const documentData = e.target.result;
+                const result = await mcpClient.processDocument(documentData, { operation });
+                resultDiv.innerHTML = `<div class="result-success"><strong>Result:</strong><br>${result.text || JSON.stringify(result, null, 2)}</div>`;
+                showToast('Document processed', 'success');
+            } catch (error) {
+                console.error('[AI] Document processing failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to process document', 'error');
+            }
+        };
+        
         reader.readAsDataURL(file);
     } catch (error) {
         console.error('[AI] Document processing failed:', error);
@@ -6247,12 +6437,26 @@ async function processTabularDataFile() {
     try {
         const file = fileInput.files[0];
         const reader = new FileReader();
-        reader.onload = async function(e) {
-            const data = e.target.result;
-            const result = await mcpClient.processTabularData(data, { operation });
-            resultDiv.innerHTML = `<div class="result-success"><strong>Result:</strong><br><pre>${JSON.stringify(result, null, 2)}</pre></div>`;
-            showToast('Data processed', 'success');
+        
+        reader.onerror = function() {
+            console.error('[AI] File read error');
+            resultDiv.innerHTML = '<div class="error-message">❌ Error: Failed to read CSV file</div>';
+            showToast('Failed to read CSV file', 'error');
         };
+        
+        reader.onload = async function(e) {
+            try {
+                const data = e.target.result;
+                const result = await mcpClient.processTabularData(data, { operation });
+                resultDiv.innerHTML = `<div class="result-success"><strong>Result:</strong><br><pre>${JSON.stringify(result, null, 2)}</pre></div>`;
+                showToast('Data processed', 'success');
+            } catch (error) {
+                console.error('[AI] Tabular data processing failed:', error);
+                resultDiv.innerHTML = `<div class="error-message">❌ Error: ${error.message}</div>`;
+                showToast('Failed to process data', 'error');
+            }
+        };
+        
         reader.readAsText(file);
     } catch (error) {
         console.error('[AI] Tabular data processing failed:', error);
