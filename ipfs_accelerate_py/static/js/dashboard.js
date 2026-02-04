@@ -6134,7 +6134,7 @@ async function fillMaskInput() {
         let html = '<div class="result-success"><strong>Predictions:</strong><br>';
         if (Array.isArray(result)) {
             result.forEach((pred, i) => {
-                html += `${i+1}. ${pred.token_str || pred.sequence} (${(pred.score * 100).toFixed(1)}%)<br>`;
+                html += `${i + 1}. ${pred.token_str || pred.sequence} (${(pred.score * 100).toFixed(1)}%)<br>`;
             });
         } else {
             html += JSON.stringify(result);
