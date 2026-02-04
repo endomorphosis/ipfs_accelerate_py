@@ -36,7 +36,7 @@ class DependencyInstaller:
         self.git_sources = {
             "ipfs_kit_py": {
                 "repo": "https://github.com/endomorphosis/ipfs_kit_py.git",
-                "branch": "known_good",
+                "branch": "main",
             },
             "ipfs_model_manager_py": {
                 "repo": "https://github.com/endomorphosis/ipfs_model_manager_py.git",
