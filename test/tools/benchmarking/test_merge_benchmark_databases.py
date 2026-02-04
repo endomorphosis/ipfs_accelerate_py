@@ -16,7 +16,7 @@ from unittest.mock import patch, MagicMock
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 # Local imports
-from test.merge_benchmark_databases import BenchmarkDatabaseMerger
+from test.tools.benchmarking.merge_benchmark_databases import BenchmarkDatabaseMerger
 
 
 @pytest.fixture

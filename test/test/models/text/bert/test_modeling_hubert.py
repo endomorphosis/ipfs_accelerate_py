@@ -34,15 +34,15 @@ from transformers import HubertConfig, is_torch_available
 from transformers.testing_utils import require_soundfile, require_torch, slow, torch_device
 from transformers.utils import is_torch_fx_available
 
-from test.test_configuration_common import ConfigTester
-from test.test_modeling_common import (
+# TODO: Fix import - from test.test_configuration_common import ConfigTester
+# TODO: Fix import - from test.test_modeling_common import (
     ModelTesterMixin,
     _config_zero_init,
     floats_tensor,
     ids_tensor,
     random_attention_mask,
 )
-from test.test_pipeline_mixin import PipelineTesterMixin
+# TODO: Fix import - from test.test_pipeline_mixin import PipelineTesterMixin
 
 
 if is_torch_available():

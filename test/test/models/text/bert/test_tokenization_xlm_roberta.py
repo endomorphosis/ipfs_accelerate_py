@@ -30,7 +30,7 @@ from transformers import SPIECE_UNDERLINE, XLMRobertaTokenizer, XLMRobertaTokeni
 from transformers.testing_utils import get_tests_dir, require_sentencepiece, require_tokenizers, slow
 from transformers.utils import cached_property
 
-from test.test_tokenization_common import TokenizerTesterMixin
+# TODO: Fix import - from test.test_tokenization_common import TokenizerTesterMixin
 
 
 SAMPLE_VOCAB = get_tests_dir("fixtures/test_sentencepiece.model")

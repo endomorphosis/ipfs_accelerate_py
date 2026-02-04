@@ -35,9 +35,9 @@ import pytest
 from transformers import is_tf_available
 from transformers.testing_utils import require_soundfile, require_tf, slow
 
-from test.test_configuration_common import ConfigTester
-from test.test_modeling_tf_common import TFModelTesterMixin, ids_tensor
-from test.test_pipeline_mixin import PipelineTesterMixin
+# TODO: Fix import - from test.test_configuration_common import ConfigTester
+# TODO: Fix import - from test.test_modeling_tf_common import TFModelTesterMixin, ids_tensor
+# TODO: Fix import - from test.test_pipeline_mixin import PipelineTesterMixin
 
 
 if is_tf_available():

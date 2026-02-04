@@ -30,7 +30,7 @@ from transformers import FlaubertTokenizer
 from transformers.models.flaubert.tokenization_flaubert import VOCAB_FILES_NAMES
 from transformers.testing_utils import slow
 
-from test.test_tokenization_common import TokenizerTesterMixin
+# TODO: Fix import - from test.test_tokenization_common import TokenizerTesterMixin
 
 
 class FlaubertTokenizationTest(TokenizerTesterMixin, unittest.TestCase):

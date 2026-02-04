@@ -22,9 +22,9 @@ from pathlib import Path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 # Import the components
-from test.merge_benchmark_databases import BenchmarkDatabaseMerger
-from test.check_mobile_regressions import MobileRegressionDetector
-from test.generate_mobile_dashboard import MobileDashboardGenerator
+from test.tools.benchmarking.merge_benchmark_databases import BenchmarkDatabaseMerger
+from test.scripts.utilities.check_mobile_regressions import MobileRegressionDetector
+from test.generators.generate_mobile_dashboard import MobileDashboardGenerator
 
 
 class TestMobileCIIntegration(unittest.TestCase):

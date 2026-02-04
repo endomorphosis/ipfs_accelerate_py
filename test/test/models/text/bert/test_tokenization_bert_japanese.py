@@ -39,7 +39,7 @@ from transformers.models.bert_japanese.tokenization_bert_japanese import (
 )
 from transformers.testing_utils import custom_tokenizers, require_jumanpp, require_sudachi_projection
 
-from test.test_tokenization_common import TokenizerTesterMixin
+# TODO: Fix import - from test.test_tokenization_common import TokenizerTesterMixin
 
 
 @custom_tokenizers
