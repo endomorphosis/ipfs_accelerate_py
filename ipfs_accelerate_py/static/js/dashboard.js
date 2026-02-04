@@ -2417,44 +2417,70 @@ function executeToolFromModal(toolName) {
         resultContent.style.color = '#6b7280';
     }
     
-    // Execute tool via JSON-RPC
-    const requestBody = {
-        jsonrpc: '2.0',
-        method: 'tools/call',
-        params: {
-            name: toolName,
-            arguments: params
-        },
-        id: Date.now()
-    };
+    // Use SDK if available, otherwise fall back to fetch
+    const startTime = Date.now();
     
-    fetch('/jsonrpc', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(requestBody)
-    })
-    .then(response => response.json())
-    .then(data => {
-        console.log('[Dashboard] Tool execution result:', data);
+    if (mcpClient) {
+        // Execute tool using SDK
+        mcpClient.callTool(toolName, params)
+            .then(result => {
+                const responseTime = Date.now() - startTime;
+                trackSDKCall(toolName, true, responseTime);
+                
+                console.log('[Dashboard] Tool execution result:', result);
+                resultContent.textContent = JSON.stringify(result, null, 2);
+                resultContent.style.color = '#059669';
+                showToast(`Tool executed successfully (${responseTime}ms)`, 'success');
+            })
+            .catch(error => {
+                const responseTime = Date.now() - startTime;
+                trackSDKCall(toolName, false, responseTime);
+                
+                console.error('[Dashboard] Error executing tool:', error);
+                resultContent.textContent = `Error: ${error.message}`;
+                resultContent.style.color = '#dc2626';
+                showToast(`Tool execution failed: ${error.message}`, 'error', 5000);
+            });
+    } else {
+        // Fallback to direct JSON-RPC fetch
+        const requestBody = {
+            jsonrpc: '2.0',
+            method: 'tools/call',
+            params: {
+                name: toolName,
+                arguments: params
+            },
+            id: Date.now()
+        };
         
-        if (data.error) {
-            resultContent.textContent = `Error: ${data.error.message}`;
+        fetch('/jsonrpc', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(requestBody)
+        })
+        .then(response => response.json())
+        .then(data => {
+            console.log('[Dashboard] Tool execution result:', data);
+            
+            if (data.error) {
+                resultContent.textContent = `Error: ${data.error.message}`;
+                resultContent.style.color = '#dc2626';
+                showToast(`Tool execution failed: ${data.error.message}`, 'error', 5000);
+            } else {
+                resultContent.textContent = JSON.stringify(data.result, null, 2);
+                resultContent.style.color = '#059669';
+                showToast('Tool executed successfully', 'success');
+            }
+        })
+        .catch(error => {
+            console.error('[Dashboard] Error executing tool:', error);
+            resultContent.textContent = `Error: ${error.message}`;
             resultContent.style.color = '#dc2626';
-            showToast(`Tool execution failed: ${data.error.message}`, 'error', 5000);
-        } else {
-            resultContent.textContent = JSON.stringify(data.result, null, 2);
-            resultContent.style.color = '#059669';
-            showToast('Tool executed successfully', 'success');
-        }
-    })
-    .catch(error => {
-        console.error('[Dashboard] Error executing tool:', error);
-        resultContent.textContent = `Error: ${error.message}`;
-        resultContent.style.color = '#dc2626';
-        showToast(`Tool execution failed: ${error.message}`, 'error', 5000);
-    });
+            showToast(`Tool execution failed: ${error.message}`, 'error', 5000);
+        });
+    }
 }
 
 // Tool Search and Filter Functions
