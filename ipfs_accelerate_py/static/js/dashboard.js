@@ -2372,6 +2372,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize MCP SDK client first
     initializeSDK();
     
+    // Initialize keyboard shortcuts
+    initializeKeyboardShortcuts();
+    
+    // Add floating SDK menu
+    createFloatingSDKMenu();
+    
     // Initialize overview tab
     showTab('overview');
     
@@ -2399,6 +2405,255 @@ document.addEventListener('DOMContentLoaded', function() {
         initializeModelAutocomplete(testModelInput);
     }
 });
+
+// Keyboard Shortcuts
+function initializeKeyboardShortcuts() {
+    document.addEventListener('keydown', function(e) {
+        // Ctrl/Cmd + K: Open command palette
+        if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+            e.preventDefault();
+            toggleCommandPalette();
+        }
+        
+        // Ctrl/Cmd + 1-9: Switch tabs
+        if ((e.ctrlKey || e.metaKey) && e.key >= '1' && e.key <= '9') {
+            e.preventDefault();
+            const tabs = ['overview', 'ai-inference', 'model-manager', 'queue-monitor', 
+                          'github-workflows', 'sdk-playground', 'mcp-tools', 'coverage', 'system-logs'];
+            const index = parseInt(e.key) - 1;
+            if (index < tabs.length) {
+                showTab(tabs[index]);
+            }
+        }
+        
+        // Ctrl/Cmd + H: Quick hardware info
+        if ((e.ctrlKey || e.metaKey) && e.key === 'h') {
+            e.preventDefault();
+            quickGetHardwareInfo();
+        }
+        
+        // Ctrl/Cmd + D: Quick Docker status
+        if ((e.ctrlKey || e.metaKey) && e.key === 'd') {
+            e.preventDefault();
+            quickListContainers();
+        }
+        
+        // Ctrl/Cmd + R: Refresh all
+        if ((e.ctrlKey || e.metaKey) && e.key === 'r' && e.shiftKey) {
+            e.preventDefault();
+            quickRefreshAll();
+        }
+    });
+    
+    console.log('[Dashboard] Keyboard shortcuts initialized');
+}
+
+// Floating SDK Menu
+function createFloatingSDKMenu() {
+    const menu = document.createElement('div');
+    menu.id = 'floating-sdk-menu';
+    menu.style.cssText = `
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        z-index: 9999;
+    `;
+    
+    menu.innerHTML = `
+        <button id="sdk-menu-btn" style="
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            transition: transform 0.2s;
+        ">⚡</button>
+        <div id="sdk-quick-menu" style="
+            display: none;
+            position: absolute;
+            bottom: 70px;
+            right: 0;
+            background: white;
+            border-radius: 12px;
+            padding: 10px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2);
+            min-width: 200px;
+        ">
+            <div style="font-weight: 600; margin-bottom: 10px; padding: 5px 10px; border-bottom: 1px solid #e5e7eb;">
+                Quick SDK Actions
+            </div>
+            <button onclick="quickGetHardwareInfo()" class="quick-menu-item">🔧 Hardware Info</button>
+            <button onclick="quickListContainers()" class="quick-menu-item">🐳 Docker Status</button>
+            <button onclick="quickGetNetworkPeers()" class="quick-menu-item">🌐 Network Peers</button>
+            <button onclick="quickRefreshAll()" class="quick-menu-item">🔄 Refresh All</button>
+            <div style="margin: 5px 0; border-top: 1px solid #e5e7eb;"></div>
+            <button onclick="showTab('sdk-playground')" class="quick-menu-item">🎮 SDK Playground</button>
+            <button onclick="showSDKStats()" class="quick-menu-item">📊 SDK Stats</button>
+        </div>
+    `;
+    
+    document.body.appendChild(menu);
+    
+    // Toggle menu
+    const btn = document.getElementById('sdk-menu-btn');
+    const quickMenu = document.getElementById('sdk-quick-menu');
+    
+    btn.addEventListener('click', function() {
+        const isVisible = quickMenu.style.display === 'block';
+        quickMenu.style.display = isVisible ? 'none' : 'block';
+    });
+    
+    btn.addEventListener('mouseenter', function() {
+        this.style.transform = 'scale(1.1)';
+    });
+    
+    btn.addEventListener('mouseleave', function() {
+        this.style.transform = 'scale(1)';
+    });
+    
+    // Close menu when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!menu.contains(e.target)) {
+            quickMenu.style.display = 'none';
+        }
+    });
+    
+    console.log('[Dashboard] Floating SDK menu created');
+}
+
+// Command Palette
+let commandPaletteOpen = false;
+
+function toggleCommandPalette() {
+    if (commandPaletteOpen) {
+        closeCommandPalette();
+    } else {
+        openCommandPalette();
+    }
+}
+
+function openCommandPalette() {
+    const palette = document.createElement('div');
+    palette.id = 'command-palette';
+    palette.style.cssText = `
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0,0,0,0.5);
+        z-index: 10000;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 100px;
+    `;
+    
+    palette.innerHTML = `
+        <div style="
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            max-width: 600px;
+            width: 90%;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+        ">
+            <input type="text" id="command-input" placeholder="Type a command or search..." 
+                style="width: 100%; padding: 15px; border: 2px solid #667eea; border-radius: 8px; font-size: 16px; outline: none;" />
+            <div id="command-results" style="margin-top: 15px; max-height: 400px; overflow-y: auto;"></div>
+        </div>
+    `;
+    
+    document.body.appendChild(palette);
+    
+    const input = document.getElementById('command-input');
+    input.focus();
+    
+    // Command list
+    const commands = [
+        { name: 'Hardware Info', action: () => { quickGetHardwareInfo(); closeCommandPalette(); }, icon: '🔧' },
+        { name: 'Docker Status', action: () => { quickListContainers(); closeCommandPalette(); }, icon: '🐳' },
+        { name: 'Network Peers', action: () => { quickGetNetworkPeers(); closeCommandPalette(); }, icon: '🌐' },
+        { name: 'Refresh All', action: () => { quickRefreshAll(); closeCommandPalette(); }, icon: '🔄' },
+        { name: 'SDK Playground', action: () => { showTab('sdk-playground'); closeCommandPalette(); }, icon: '🎮' },
+        { name: 'SDK Stats', action: () => { showSDKStats(); closeCommandPalette(); }, icon: '📊' },
+        { name: 'MCP Tools', action: () => { showTab('mcp-tools'); closeCommandPalette(); }, icon: '🔧' },
+        { name: 'AI Inference', action: () => { showTab('ai-inference'); closeCommandPalette(); }, icon: '🤖' },
+        { name: 'Model Manager', action: () => { showTab('model-manager'); closeCommandPalette(); }, icon: '📚' },
+    ];
+    
+    input.addEventListener('input', function(e) {
+        const query = e.target.value.toLowerCase();
+        const results = commands.filter(cmd => cmd.name.toLowerCase().includes(query));
+        
+        const resultsDiv = document.getElementById('command-results');
+        resultsDiv.innerHTML = results.map((cmd, index) => `
+            <div class="command-item" data-index="${index}" style="
+                padding: 12px 15px;
+                cursor: pointer;
+                border-radius: 6px;
+                transition: background 0.2s;
+                margin-bottom: 5px;
+            " onclick='${cmd.action.toString().replace(/'/g, "\\'")}'>
+                ${cmd.icon} ${cmd.name}
+            </div>
+        `).join('');
+        
+        // Add hover effects
+        document.querySelectorAll('.command-item').forEach(item => {
+            item.addEventListener('mouseenter', function() {
+                this.style.background = '#f3f4f6';
+            });
+            item.addEventListener('mouseleave', function() {
+                this.style.background = 'transparent';
+            });
+            item.addEventListener('click', function() {
+                const index = parseInt(this.dataset.index);
+                commands.filter(cmd => cmd.name.toLowerCase().includes(query))[index].action();
+            });
+        });
+    });
+    
+    input.dispatchEvent(new Event('input'));
+    
+    // Close on Escape
+    palette.addEventListener('click', function(e) {
+        if (e.target === palette) {
+            closeCommandPalette();
+        }
+    });
+    
+    document.addEventListener('keydown', function escHandler(e) {
+        if (e.key === 'Escape') {
+            closeCommandPalette();
+            document.removeEventListener('keydown', escHandler);
+        }
+    });
+    
+    commandPaletteOpen = true;
+}
+
+function closeCommandPalette() {
+    const palette = document.getElementById('command-palette');
+    if (palette) {
+        palette.remove();
+        commandPaletteOpen = false;
+    }
+}
+
+function showSDKStats() {
+    showTab('sdk-playground');
+    setTimeout(() => {
+        const statsSection = document.getElementById('sdk-stats');
+        if (statsSection) {
+            statsSection.scrollIntoView({ behavior: 'smooth' });
+        }
+    }, 100);
+}
 
 // Tool Execution Modal Functions
 function showToolExecutionModal(tool) {
