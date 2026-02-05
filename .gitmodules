@@ -10,7 +10,7 @@
 [submodule "ipfs_kit_py"]
 	path = ipfs_kit_py
 	url = https://github.com/endomorphosis/ipfs_kit_py.git
-	branch = known_good
+	branch = main
 [submodule "ipfs_model_manager_py"]
 	path = ipfs_model_manager_py
 	url = https://github.com/endomorphosis/ipfs_model_manager_py.git
