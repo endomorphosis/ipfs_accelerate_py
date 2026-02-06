@@ -22,6 +22,9 @@ Usage:
     auto_patch_transformers.disable()
 """
 
+import importlib
+import importlib.abc
+import importlib.util
 import os
 import sys
 import logging
@@ -34,6 +37,42 @@ logger = logging.getLogger(__name__)
 _patching_enabled = False
 _original_from_pretrained = {}
 _patch_applied = False
+_lazy_hook_installed = False
+
+
+class _TransformersLazyPatchHook(importlib.abc.MetaPathFinder, importlib.abc.Loader):
+    """Meta path hook that patches transformers on first import."""
+
+    def find_spec(self, fullname, path, target=None):
+        if fullname != "transformers":
+            return None
+
+        spec = importlib.util.find_spec(fullname)
+        if spec is None:
+            return None
+
+        # Wrap the loader to apply patches after module execution.
+        original_loader = spec.loader
+
+        class _Loader(importlib.abc.Loader):
+            def create_module(self, spec):
+                if hasattr(original_loader, "create_module"):
+                    return original_loader.create_module(spec)
+                return None
+
+            def exec_module(self, module):
+                if hasattr(original_loader, "exec_module"):
+                    original_loader.exec_module(module)
+                else:
+                    importlib.import_module(fullname)
+
+                try:
+                    apply()
+                except Exception as e:
+                    logger.warning(f"Failed to auto-apply transformers patches: {e}")
+
+        spec.loader = _Loader()
+        return spec
 
 
 def is_patching_enabled() -> bool:
@@ -242,6 +281,25 @@ def apply() -> bool:
     return True
 
 
+def install_lazy_patch_hook() -> None:
+    """Install a meta path hook to patch transformers on first import."""
+    global _lazy_hook_installed
+
+    if _lazy_hook_installed:
+        return
+
+    if "transformers" in sys.modules:
+        try:
+            apply()
+        except Exception as e:
+            logger.warning(f"Failed to auto-apply transformers patches: {e}")
+        return
+
+    sys.meta_path.insert(0, _TransformersLazyPatchHook())
+    _lazy_hook_installed = True
+    logger.info("Installed lazy transformers patch hook")
+
+
 def restore() -> bool:
     """
     Restore original transformers methods.
@@ -305,9 +363,6 @@ def get_status() -> Dict[str, Any]:
     }
 
 
-# Auto-apply patches on import if environment allows
+# Install lazy patch hook on import if environment allows
 if should_patch():
-    try:
-        apply()
-    except Exception as e:
-        logger.warning(f"Failed to auto-apply transformers patches: {e}")
+    install_lazy_patch_hook()
