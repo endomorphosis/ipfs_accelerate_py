@@ -38,6 +38,67 @@ _patching_enabled = False
 _original_from_pretrained = {}
 _patch_applied = False
 _lazy_hook_installed = False
+_lazy_attr_hook_installed = False
+
+_CLASSES_TO_PATCH = [
+    'AutoModel',
+    'AutoModelForCausalLM',
+    'AutoModelForSeq2SeqLM',
+    'AutoModelForSequenceClassification',
+    'AutoModelForTokenClassification',
+    'AutoModelForQuestionAnswering',
+    'AutoModelForMaskedLM',
+    'AutoModelForImageClassification',
+    'AutoModelForObjectDetection',
+    'AutoModelForImageSegmentation',
+    'AutoModelForSemanticSegmentation',
+    'AutoModelForInstanceSegmentation',
+    'AutoModelForUniversalSegmentation',
+    'AutoModelForZeroShotImageClassification',
+    'AutoModelForDepthEstimation',
+    'AutoModelForVideoClassification',
+    'AutoModelForVision2Seq',
+    'AutoModelForVisualQuestionAnswering',
+    'AutoModelForDocumentQuestionAnswering',
+    'AutoModelForMaskedImageModeling',
+    'AutoModelForAudioClassification',
+    'AutoModelForAudioFrameClassification',
+    'AutoModelForCTC',
+    'AutoModelForSpeechSeq2Seq',
+    'AutoModelForAudioXVector',
+    'AutoModelForTextToSpectrogram',
+    'AutoModelForTextToWaveform',
+    'AutoModelForTableQuestionAnswering',
+    'AutoTokenizer',
+    'AutoProcessor',
+    'AutoConfig',
+    'AutoFeatureExtractor',
+    'AutoImageProcessor',
+]
+
+
+def _install_transformers_attr_hook(transformers_module) -> None:
+    """Patch transformers lazily when a supported class is first accessed."""
+    global _lazy_attr_hook_installed
+
+    if _lazy_attr_hook_installed:
+        return
+
+    original_getattr = getattr(transformers_module, "__getattr__", None)
+    if original_getattr is None:
+        return
+
+    def _patched_getattr(name: str):
+        attr = original_getattr(name)
+        if name in _CLASSES_TO_PATCH and hasattr(attr, "from_pretrained"):
+            try:
+                patch_transformers_class(attr, f"transformers.{name}")
+            except Exception as e:
+                logger.warning(f"Failed to patch {name} on access: {e}")
+        return attr
+
+    transformers_module.__getattr__ = _patched_getattr  # type: ignore[assignment]
+    _lazy_attr_hook_installed = True
 
 
 class _TransformersLazyPatchHook(importlib.abc.MetaPathFinder, importlib.abc.Loader):
@@ -67,7 +128,8 @@ class _TransformersLazyPatchHook(importlib.abc.MetaPathFinder, importlib.abc.Loa
                     importlib.import_module(fullname)
 
                 try:
-                    apply()
+                    _install_transformers_attr_hook(module)
+                    apply(patch_loaded_only=True)
                 except Exception as e:
                     logger.warning(f"Failed to auto-apply transformers patches: {e}")
 
@@ -195,7 +257,7 @@ def patch_transformers_class(cls, class_name: str) -> None:
         logger.info(f"Patched {class_name}.from_pretrained for distributed storage")
 
 
-def apply() -> bool:
+def apply(patch_loaded_only: bool = False) -> bool:
     """
     Apply patches to transformers classes.
     
@@ -223,45 +285,12 @@ def apply() -> bool:
         logger.warning("transformers not available, cannot apply patches")
         return False
     
-    # List of classes to patch
-    classes_to_patch = [
-        'AutoModel',
-        'AutoModelForCausalLM',
-        'AutoModelForSeq2SeqLM',
-        'AutoModelForSequenceClassification',
-        'AutoModelForTokenClassification',
-        'AutoModelForQuestionAnswering',
-        'AutoModelForMaskedLM',
-        'AutoModelForImageClassification',
-        'AutoModelForObjectDetection',
-        'AutoModelForImageSegmentation',
-        'AutoModelForSemanticSegmentation',
-        'AutoModelForInstanceSegmentation',
-        'AutoModelForUniversalSegmentation',
-        'AutoModelForZeroShotImageClassification',
-        'AutoModelForDepthEstimation',
-        'AutoModelForVideoClassification',
-        'AutoModelForVision2Seq',
-        'AutoModelForVisualQuestionAnswering',
-        'AutoModelForDocumentQuestionAnswering',
-        'AutoModelForMaskedImageModeling',
-        'AutoModelForAudioClassification',
-        'AutoModelForAudioFrameClassification',
-        'AutoModelForCTC',
-        'AutoModelForSpeechSeq2Seq',
-        'AutoModelForAudioXVector',
-        'AutoModelForTextToSpectrogram',
-        'AutoModelForTextToWaveform',
-        'AutoModelForTableQuestionAnswering',
-        'AutoTokenizer',
-        'AutoProcessor',
-        'AutoConfig',
-        'AutoFeatureExtractor',
-        'AutoImageProcessor',
-    ]
+    _install_transformers_attr_hook(transformers)
     
     patched_count = 0
-    for class_name in classes_to_patch:
+    for class_name in _CLASSES_TO_PATCH:
+        if patch_loaded_only and class_name not in transformers.__dict__:
+            continue
         if hasattr(transformers, class_name):
             cls = getattr(transformers, class_name)
             try:
@@ -275,9 +304,10 @@ def apply() -> bool:
     _patching_enabled = True
     _patch_applied = True
     
-    logger.info(
-        f"Successfully patched {patched_count} transformers classes for distributed storage"
-    )
+    if patched_count:
+        logger.info(
+            f"Successfully patched {patched_count} transformers classes for distributed storage"
+        )
     return True
 
 
@@ -290,7 +320,8 @@ def install_lazy_patch_hook() -> None:
 
     if "transformers" in sys.modules:
         try:
-            apply()
+            _install_transformers_attr_hook(sys.modules["transformers"])
+            apply(patch_loaded_only=True)
         except Exception as e:
             logger.warning(f"Failed to auto-apply transformers patches: {e}")
         return
