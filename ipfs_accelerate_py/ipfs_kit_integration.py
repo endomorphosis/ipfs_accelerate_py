@@ -126,13 +126,18 @@ class IPFSKitStorage:
         Falls back to local mode if unavailable.
         """
         try:
-            # Add the ipfs_kit_py directory to the path
+            # Add local ipfs_kit_py directory to the path (prefer workspace copy)
             repo_root = Path(__file__).parent.parent.parent
-            ipfs_kit_path = repo_root / "external" / "ipfs_kit_py"
-            
-            if ipfs_kit_path.exists():
-                sys.path.insert(0, str(ipfs_kit_path))
-                logger.debug(f"Added ipfs_kit_py path: {ipfs_kit_path}")
+            candidate_paths = [
+                repo_root / "ipfs_kit_py",
+                repo_root / "external" / "ipfs_kit_py",
+            ]
+
+            for ipfs_kit_path in candidate_paths:
+                if ipfs_kit_path.exists():
+                    sys.path.insert(0, str(ipfs_kit_path))
+                    logger.debug(f"Added ipfs_kit_py path: {ipfs_kit_path}")
+                    break
             
             # Try to import ipfs_kit_py modules directly (avoid backends/__init__.py due to missing synapse_storage)
             from ipfs_kit_py.backends.base_adapter import BackendAdapter
@@ -140,7 +145,14 @@ class IPFSKitStorage:
             from ipfs_kit_py.backends.ipfs_backend import IPFSBackendAdapter
             
             # Initialize the client with local-first configuration
-            logger.info("Successfully imported ipfs_kit_py modules from local workspace")
+            try:
+                import ipfs_kit_py as _ipfs_kit_py
+                logger.info(
+                    "Successfully imported ipfs_kit_py modules from %s",
+                    getattr(_ipfs_kit_py, "__file__", "unknown")
+                )
+            except Exception:
+                logger.info("Successfully imported ipfs_kit_py modules")
             
             # Create a simple client wrapper
             self.ipfs_kit_client = {
@@ -152,7 +164,7 @@ class IPFSKitStorage:
             }
             
             self.using_fallback = False
-            logger.info("IPFS Kit integration enabled successfully (local workspace)")
+            logger.info("IPFS Kit integration enabled successfully")
             
         except ImportError as e:
             logger.warning(
