@@ -140,7 +140,7 @@ class IPFSKitStorage:
             from ipfs_kit_py.backends.ipfs_backend import IPFSBackendAdapter
             
             # Initialize the client with local-first configuration
-            logger.info("Successfully imported ipfs_kit_py modules from known_good branch")
+            logger.info("Successfully imported ipfs_kit_py modules from local workspace")
             
             # Create a simple client wrapper
             self.ipfs_kit_client = {
@@ -152,7 +152,7 @@ class IPFSKitStorage:
             }
             
             self.using_fallback = False
-            logger.info("IPFS Kit integration enabled successfully (known_good branch)")
+            logger.info("IPFS Kit integration enabled successfully (local workspace)")
             
         except ImportError as e:
             logger.warning(
