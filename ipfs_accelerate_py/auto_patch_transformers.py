@@ -93,6 +93,7 @@ def _install_transformers_attr_hook(transformers_module) -> None:
         if name in _CLASSES_TO_PATCH and hasattr(attr, "from_pretrained"):
             try:
                 patch_transformers_class(attr, f"transformers.{name}")
+                logger.info(f"Patched transformers.{name} on first access")
             except Exception as e:
                 logger.warning(f"Failed to patch {name} on access: {e}")
         return attr
