@@ -49,6 +49,34 @@ except (ImportError, ValueError):
 logger = logging.getLogger(__name__)
 
 
+def _deps_get(deps: object | None, key: str) -> Any | None:
+    if deps is None or not key:
+        return None
+    getter = getattr(deps, "get_cached", None)
+    if callable(getter):
+        try:
+            return getter(key)
+        except Exception:
+            return None
+    if isinstance(deps, dict):
+        return deps.get(key)
+    return None
+
+
+def _deps_set(deps: object | None, key: str, value: Any) -> Any:
+    if deps is None or not key:
+        return value
+    setter = getattr(deps, "set_cached", None)
+    if callable(setter):
+        try:
+            return setter(key, value)
+        except Exception:
+            return value
+    if isinstance(deps, dict):
+        deps[key] = value
+    return value
+
+
 @dataclass
 class StorageBackendConfig:
     """Configuration for storage backends"""
@@ -79,7 +107,10 @@ class IPFSKitStorage:
         enable_ipfs_kit: bool = True,
         cache_dir: Optional[str] = None,
         config: Optional[Dict[str, Any]] = None,
-        force_fallback: bool = False
+        force_fallback: bool = False,
+        *,
+        deps: object | None = None,
+        ipfs_kit_client: Optional[Dict[str, Any]] = None,
     ):
         """
         Initialize the IPFS Kit storage interface.
@@ -93,6 +124,7 @@ class IPFSKitStorage:
         self.config = config or {}
         self.force_fallback = force_fallback or os.environ.get('IPFS_KIT_DISABLE', '').lower() in ('1', 'true', 'yes')
         self.enable_ipfs_kit = enable_ipfs_kit and not self.force_fallback
+        self.deps = deps
         
         # Initialize storage wrapper
         if storage_wrapper:
@@ -111,11 +143,14 @@ class IPFSKitStorage:
         
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         
-        # Try to import and initialize ipfs_kit_py
+        # Try to import and initialize ipfs_kit_py, unless a client is injected.
         self.ipfs_kit_client = None
         self.using_fallback = True
-        
-        if self.enable_ipfs_kit:
+
+        if ipfs_kit_client is not None:
+            self.ipfs_kit_client = ipfs_kit_client
+            self.using_fallback = False
+        elif self.enable_ipfs_kit:
             self._try_init_ipfs_kit()
         else:
             logger.info("IPFS Kit integration disabled by configuration")
@@ -594,7 +629,11 @@ def get_storage(
     enable_ipfs_kit: bool = True,
     cache_dir: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
-    force_fallback: bool = False
+    force_fallback: bool = False,
+    *,
+    deps: object | None = None,
+    storage_instance: Optional[IPFSKitStorage] = None,
+    ipfs_kit_client: Optional[Dict[str, Any]] = None,
 ) -> IPFSKitStorage:
     """
     Get or create the singleton IPFSKitStorage instance.
@@ -609,19 +648,41 @@ def get_storage(
         IPFSKitStorage instance
     """
     global _storage_instance
-    
+
+    # Allow explicit injection.
+    if storage_instance is not None:
+        _storage_instance = storage_instance
+        _deps_set(deps, "ipfs_accelerate_py::storage", storage_instance)
+        return storage_instance
+
+    cached = _deps_get(deps, "ipfs_accelerate_py::storage")
+    if cached is not None:
+        return cached
+
     if _storage_instance is None:
         _storage_instance = IPFSKitStorage(
             enable_ipfs_kit=enable_ipfs_kit,
             cache_dir=cache_dir,
             config=config,
-            force_fallback=force_fallback
+            force_fallback=force_fallback,
+            deps=deps,
+            ipfs_kit_client=ipfs_kit_client,
         )
-    
+
+    _deps_set(deps, "ipfs_accelerate_py::storage", _storage_instance)
     return _storage_instance
 
 
-def reset_storage():
+def reset_storage(*, deps: object | None = None):
     """Reset the singleton storage instance (useful for testing)."""
     global _storage_instance
     _storage_instance = None
+    if isinstance(deps, dict):
+        deps.pop("ipfs_accelerate_py::storage", None)
+    else:
+        setter = getattr(deps, "set_cached", None)
+        if callable(setter):
+            try:
+                setter("ipfs_accelerate_py::storage", None)
+            except Exception:
+                pass

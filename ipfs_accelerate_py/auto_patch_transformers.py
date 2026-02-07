@@ -33,6 +33,24 @@ from functools import wraps
 
 logger = logging.getLogger(__name__)
 
+try:
+    from .deps_resolver import deps_get as _deps_get
+    from .deps_resolver import deps_set as _deps_set
+    from .deps_resolver import resolve_module as _resolve_module
+except Exception:  # pragma: no cover
+    _deps_get = None  # type: ignore
+    _deps_set = None  # type: ignore
+    _resolve_module = None  # type: ignore
+
+
+_default_deps: object | None = None
+
+
+def set_default_deps(deps: object | None) -> None:
+    """Set a default deps container used by lazy patch hooks."""
+    global _default_deps
+    _default_deps = deps
+
 # Track patching state
 _patching_enabled = False
 _original_from_pretrained = {}
@@ -130,7 +148,7 @@ class _TransformersLazyPatchHook(importlib.abc.MetaPathFinder, importlib.abc.Loa
 
                 try:
                     _install_transformers_attr_hook(module)
-                    apply(patch_loaded_only=True)
+                    apply(patch_loaded_only=True, deps=_default_deps, transformers_module=module)
                 except Exception as e:
                     logger.warning(f"Failed to auto-apply transformers patches: {e}")
 
@@ -258,7 +276,12 @@ def patch_transformers_class(cls, class_name: str) -> None:
         logger.info(f"Patched {class_name}.from_pretrained for distributed storage")
 
 
-def apply(patch_loaded_only: bool = False) -> bool:
+def apply(
+    patch_loaded_only: bool = False,
+    *,
+    deps: object | None = None,
+    transformers_module=None,
+) -> bool:
     """
     Apply patches to transformers classes.
     
@@ -269,22 +292,47 @@ def apply(patch_loaded_only: bool = False) -> bool:
         True if patches were applied, False otherwise
     """
     global _patching_enabled, _patch_applied
+
+    if deps is None:
+        deps = _default_deps
     
     # Check if we should patch
     if not should_patch():
         logger.info("Transformers auto-patching disabled by environment")
         return False
     
-    # Check if already patched
+    # Check if already patched (module-global or deps-cached)
     if _patch_applied:
+        if deps is not None and callable(_deps_set):
+            try:
+                _deps_set(deps, "ipfs_accelerate_py::transformers_patched", True)
+                if "transformers" in sys.modules:
+                    _deps_set(deps, "pip::transformers", sys.modules["transformers"])
+            except Exception:
+                pass
         logger.debug("Transformers already patched, skipping")
         return True
+    if deps is not None and callable(_deps_get):
+        try:
+            if _deps_get(deps, "ipfs_accelerate_py::transformers_patched"):
+                _patching_enabled = True
+                _patch_applied = True
+                logger.debug("Transformers already patched (deps cache), skipping")
+                return True
+        except Exception:
+            pass
     
-    try:
-        import transformers
-    except ImportError:
-        logger.warning("transformers not available, cannot apply patches")
-        return False
+    transformers = None
+    if transformers_module is not None:
+        transformers = transformers_module
+    elif callable(_resolve_module):
+        transformers = _resolve_module("transformers", deps=deps, cache_key="pip::transformers")
+    if transformers is None:
+        try:
+            import transformers  # type: ignore
+        except ImportError:
+            logger.warning("transformers not available, cannot apply patches")
+            return False
     
     _install_transformers_attr_hook(transformers)
     
@@ -304,6 +352,14 @@ def apply(patch_loaded_only: bool = False) -> bool:
     
     _patching_enabled = True
     _patch_applied = True
+
+    if deps is not None and callable(_deps_set):
+        try:
+            _deps_set(deps, "ipfs_accelerate_py::transformers_patched", True)
+            if transformers is not None:
+                _deps_set(deps, "pip::transformers", transformers)
+        except Exception:
+            pass
     
     if patched_count:
         logger.info(
@@ -322,7 +378,7 @@ def install_lazy_patch_hook() -> None:
     if "transformers" in sys.modules:
         try:
             _install_transformers_attr_hook(sys.modules["transformers"])
-            apply(patch_loaded_only=True)
+            apply(patch_loaded_only=True, deps=_default_deps, transformers_module=sys.modules["transformers"])
         except Exception as e:
             logger.warning(f"Failed to auto-apply transformers patches: {e}")
         return

@@ -49,9 +49,26 @@ except ImportError:
     get_storage_wrapper = None
 
 class ipfs_accelerate_py:
-    def __init__(self, resources=None, metadata=None):
+    def __init__(
+        self,
+        resources=None,
+        metadata=None,
+        *,
+        deps: object | None = None,
+        ipfs_kit=None,
+        ipfs_datasets=None,
+        ipfs_kit_storage=None,
+    ):
         self.resources = resources
         self.metadata = metadata
+        self.deps = deps
+
+        # Optional injected cross-package dependencies.
+        # These are stored both as attributes and (best-effort) into resources
+        # so downstream components can reuse them without re-importing.
+        self.ipfs_kit = ipfs_kit
+        self.ipfs_datasets = ipfs_datasets
+        self.ipfs_kit_storage = ipfs_kit_storage
 
         # Initialize storage wrapper with CI/CD auto-detection
         self._storage_wrapper = None
@@ -69,6 +86,25 @@ class ipfs_accelerate_py:
             resources = {}
         if metadata is None:
             metadata = {}
+
+        # Inherit injected objects from resources/metadata if present.
+        if self.ipfs_kit is None:
+            self.ipfs_kit = self.resources.get("ipfs_kit")
+        if self.ipfs_datasets is None:
+            self.ipfs_datasets = self.resources.get("ipfs_datasets")
+        if self.ipfs_kit_storage is None:
+            self.ipfs_kit_storage = self.resources.get("ipfs_kit_storage")
+        if self.deps is None:
+            self.deps = self.resources.get("deps") or self.metadata.get("deps")
+
+        if self.ipfs_kit is not None:
+            self.resources.setdefault("ipfs_kit", self.ipfs_kit)
+        if self.ipfs_datasets is not None:
+            self.resources.setdefault("ipfs_datasets", self.ipfs_datasets)
+        if self.ipfs_kit_storage is not None:
+            self.resources.setdefault("ipfs_kit_storage", self.ipfs_kit_storage)
+        if self.deps is not None:
+            self.resources.setdefault("deps", self.deps)
         if "role" in list(metadata.keys()):
             self.role = metadata["role"]
         if "queues" not in list(self.resources.keys()):

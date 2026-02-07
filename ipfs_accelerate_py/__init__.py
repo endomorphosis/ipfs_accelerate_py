@@ -123,11 +123,22 @@ _global_instance = None
 if original_ipfs_accelerate_py is not None:
     ipfs_accelerate_py = original_ipfs_accelerate_py
 
-    def get_instance():
-        """Get or create a process-wide singleton instance of ipfs_accelerate_py."""
+    def get_instance(**kwargs):
+        """Get or create a process-wide singleton instance of ipfs_accelerate_py.
+
+        Accepts optional dependency injections (e.g., ``deps``, ``ipfs_kit``) and
+        forwards them to the constructor on first creation.
+        """
         global _global_instance
         if _global_instance is None:
-            _global_instance = ipfs_accelerate_py()
+            _global_instance = ipfs_accelerate_py(**kwargs)
+        elif kwargs:
+            # Best-effort: attach injected deps to existing singleton.
+            for k, v in kwargs.items():
+                try:
+                    setattr(_global_instance, k, v)
+                except Exception:
+                    pass
         return _global_instance
 else:
     def ipfs_accelerate_py(*args, **kwargs):
