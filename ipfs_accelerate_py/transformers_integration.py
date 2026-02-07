@@ -1,34 +1,56 @@
-"""Integration between ipfs_accelerate_py and ipfs_transformers_py."""
+"""Integration between ipfs_accelerate_py and HuggingFace transformers.
 
-import os
+This module previously depended on the separate `ipfs_transformers_py` project.
+That path is now deprecated in favor of lightweight monkeypatching via
+`ipfs_accelerate_py.auto_patch_transformers`.
+"""
+
 import logging
+import os
 import tempfile
-from typing import Dict, Any, Optional, List, Union
+from typing import Any, Dict, Optional
 
-# Import the modified ipfs_transformers_py
+logger = logging.getLogger(__name__)
+
+HAS_TRANSFORMERS = False
 try:
-    from ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel
-    #from ipfs_transformers_py.ipfs_transformers_py.ipfs_kit_bridge import IPFSKitBridge
-    from ipfs_kit_py.ipfs_kit_py.high_level_api import IPFSSimpleAPI
-    TRANSFORMERS_AVAILABLE = True
-    print("`from ipfs_transformers_py.ipfs_transformers_py.ipfs_transformers import AutoModel` is successful")
+    import transformers
+    from transformers import AutoModel as _AutoModel
+
+    HAS_TRANSFORMERS = True
 except ImportError:
+    transformers = None  # type: ignore[assignment]
+    _AutoModel = None  # type: ignore[assignment]
+
+
+def _try_apply_transformers_patches() -> None:
+    """Best-effort: patch transformers to support IPFS helpers.
+
+    If `ipfs_accelerate_py.auto_patch_transformers` is present, it can add
+    methods like `AutoModel.from_ipfs` / `AutoModel.from_auto_download`.
+    """
+    if not HAS_TRANSFORMERS:
+        return
     try:
-        # Try alternative import paths
-        from ipfs_transformers_py.ipfs_transformers import AutoModel
-        #from ipfs_transformers_py.ipfs_kit_bridge import IPFSKitBridge
-        from ipfs_kit_py.high_level_api import IPFSSimpleAPI
-        TRANSFORMERS_AVAILABLE = True
-        print("`from ipfs_transformers_py.ipfs_transformers import AutoModel` is successful")
-    except ImportError:
-        TRANSFORMERS_AVAILABLE = False
-        logging.warning("ipfs_transformers_py not available. Using regular transformers.")
-        try:
-            from transformers import AutoModel as HFAutoModel
-            HAS_TRANSFORMERS = True
-        except ImportError:
-            HAS_TRANSFORMERS = False
-            logging.error("Neither ipfs_transformers_py nor transformers is available.")
+        from ipfs_accelerate_py import auto_patch_transformers
+
+        if auto_patch_transformers is not None:
+            auto_patch_transformers.apply()
+    except Exception:
+        return
+
+
+def _get_automodel():
+    if not HAS_TRANSFORMERS:
+        return None
+    _try_apply_transformers_patches()
+    # Re-resolve after patching (it may wrap/replace attributes)
+    try:
+        from transformers import AutoModel as AutoModel
+
+        return AutoModel
+    except Exception:
+        return _AutoModel
 
 
 # Try to import ipfs_kit_py for IPFS functionality
@@ -154,15 +176,19 @@ class IPFSKitBridge:
 
 
 class TransformersModelProvider:
-    """Provider class that loads models using ipfs_transformers_py."""
+    """Provider class that loads models using transformers.
+
+    When available, transformers is patched with IPFS helpers via
+    `ipfs_accelerate_py.auto_patch_transformers`.
+    """
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         """Initialize with configuration options."""
         self.config = config or {}
         self.ipfs_bridge = None
 
-        # Initialize the IPFS bridge if transformers are available
-        if TRANSFORMERS_AVAILABLE:
+        # Initialize the IPFS bridge if available.
+        if HAS_IPFS_KIT:
             self.ipfs_bridge = IPFSKitBridge(self.config.get("ipfs_kit", {}))
 
         # Track loaded models
@@ -170,7 +196,7 @@ class TransformersModelProvider:
 
     def is_available(self) -> bool:
         """Check if transformers integration is available."""
-        return TRANSFORMERS_AVAILABLE or HAS_TRANSFORMERS
+        return HAS_TRANSFORMERS
 
     def load_model(
         self,
@@ -217,21 +243,17 @@ class TransformersModelProvider:
                 import torch
                 kwargs["torch_dtype"] = torch.float16
 
-            # Load the model - use ipfs_transformers_py if available
-            if TRANSFORMERS_AVAILABLE:
-                if ipfs_cid:
-                    # Load directly from IPFS
-                    model = AutoModel.from_ipfs(ipfs_cid, **kwargs)
-                else:
-                    # Auto-download from fastest source
-                    model = AutoModel.from_auto_download(
-                        model_name=model_name,
-                        s3cfg=s3_config,
-                        **kwargs
-                    )
+            AutoModel = _get_automodel()
+            if AutoModel is None:
+                return {"success": False, "error": "transformers not available"}
+
+            # Prefer patched helpers when present; otherwise fall back to HF.
+            if ipfs_cid and hasattr(AutoModel, "from_ipfs"):
+                model = AutoModel.from_ipfs(ipfs_cid, **kwargs)
+            elif hasattr(AutoModel, "from_auto_download"):
+                model = AutoModel.from_auto_download(model_name=model_name, s3cfg=s3_config, **kwargs)
             else:
-                # Fallback to regular transformers
-                model = HFAutoModel.from_pretrained(model_name, **kwargs)
+                model = AutoModel.from_pretrained(model_name, **kwargs)
 
             # Generate a unique ID for this model
             import uuid
