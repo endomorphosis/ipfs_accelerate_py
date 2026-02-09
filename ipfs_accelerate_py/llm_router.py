@@ -284,7 +284,7 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
 def _get_codex_cli_provider() -> Optional[LLMProvider]:
     """Get Codex CLI provider using existing CLI integration wrapper."""
     try:
-        from ipfs_accelerate_py.cli_integrations.openai_codex_cli_integration import OpenAICodexCLI
+        from ipfs_accelerate_py.cli_integrations.openai_codex_cli_integration import OpenAICodexCLIIntegration
     except Exception:
         return None
 
@@ -294,23 +294,32 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
         def _get_client(self):
             if self._client is None:
-                self._client = OpenAICodexCLI()
+                try:
+                    self._client = OpenAICodexCLIIntegration()
+                except Exception as e:
+                    logger.debug(f"Failed to initialize Codex integration: {e}")
+                    return None
             return self._client
 
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
             client = self._get_client()
-            model = model_name or _coalesce_env("IPFS_ACCELERATE_PY_CODEX_CLI_MODEL", "IPFS_ACCELERATE_PY_CODEX_MODEL")
+            if client is None:
+                raise RuntimeError("Codex integration not available")
+            
+            model = model_name or _coalesce_env("IPFS_ACCELERATE_PY_CODEX_CLI_MODEL", "IPFS_ACCELERATE_PY_CODEX_MODEL") or "gpt-3.5-turbo"
             
             result = client.generate_code(
                 prompt=prompt,
-                model=model if model else None,
-                max_tokens=int(kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))),
-                temperature=float(kwargs.get("temperature", 0.2)),
-                use_cache=kwargs.get("use_cache", True)
+                model=model,
+                temperature=float(kwargs.get("temperature", 0.2))
             )
             
             if result.get("success"):
-                return result.get("code", "").strip()
+                # Extract the generated code from the result
+                output = result.get("output", "")
+                if isinstance(output, dict):
+                    return output.get("text", "").strip()
+                return str(output).strip()
             raise RuntimeError(result.get("error", "Codex CLI failed"))
 
     return _CodexCLIProvider()
@@ -399,7 +408,7 @@ def _get_copilot_sdk_provider() -> Optional[LLMProvider]:
 def _get_gemini_cli_provider() -> Optional[LLMProvider]:
     """Get Gemini CLI provider using existing CLI integration wrapper."""
     try:
-        from ipfs_accelerate_py.cli_integrations.gemini_cli_integration import GeminiCLI
+        from ipfs_accelerate_py.cli_integrations.gemini_cli_integration import GeminiCLIIntegration
     except Exception:
         return None
 
@@ -409,18 +418,24 @@ def _get_gemini_cli_provider() -> Optional[LLMProvider]:
 
         def _get_client(self):
             if self._client is None:
-                self._client = GeminiCLI()
+                try:
+                    self._client = GeminiCLIIntegration()
+                except Exception as e:
+                    logger.debug(f"Failed to initialize Gemini integration: {e}")
+                    return None
             return self._client
 
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
             client = self._get_client()
+            if client is None:
+                raise RuntimeError("Gemini integration not available")
+            
+            model = model_name or os.getenv("IPFS_ACCELERATE_PY_GEMINI_MODEL", "gemini-pro")
             
             result = client.generate_text(
                 prompt=prompt,
-                model=model_name,
-                max_tokens=int(kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))),
-                temperature=float(kwargs.get("temperature", 0.2)),
-                use_cache=kwargs.get("use_cache", True)
+                model=model,
+                temperature=float(kwargs.get("temperature", 0.7))
             )
             
             if result.get("success"):
@@ -433,7 +448,7 @@ def _get_gemini_cli_provider() -> Optional[LLMProvider]:
 def _get_claude_code_provider() -> Optional[LLMProvider]:
     """Get Claude Code provider using existing CLI integration wrapper."""
     try:
-        from ipfs_accelerate_py.cli_integrations.claude_code_cli_integration import ClaudeCodeCLI
+        from ipfs_accelerate_py.cli_integrations.claude_code_cli_integration import ClaudeCodeCLIIntegration
     except Exception:
         return None
 
@@ -443,17 +458,24 @@ def _get_claude_code_provider() -> Optional[LLMProvider]:
 
         def _get_client(self):
             if self._client is None:
-                self._client = ClaudeCodeCLI()
+                try:
+                    self._client = ClaudeCodeCLIIntegration()
+                except Exception as e:
+                    logger.debug(f"Failed to initialize Claude integration: {e}")
+                    return None
             return self._client
 
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
             client = self._get_client()
+            if client is None:
+                raise RuntimeError("Claude integration not available")
+            
+            model = model_name or os.getenv("IPFS_ACCELERATE_PY_CLAUDE_MODEL", "claude-3-5-sonnet-20241022")
             
             result = client.chat(
                 message=prompt,
-                model=model_name,
-                max_tokens=int(kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256))),
-                use_cache=kwargs.get("use_cache", True)
+                model=model,
+                temperature=float(kwargs.get("temperature", 0.7))
             )
             
             if result.get("success"):
