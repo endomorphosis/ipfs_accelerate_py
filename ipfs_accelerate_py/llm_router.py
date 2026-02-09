@@ -182,6 +182,19 @@ def _response_cache_key(*, provider: Optional[str], model_name: Optional[str], p
 @runtime_checkable
 class LLMProvider(Protocol):
     def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str: ...
+    
+    # Optional provider name for cache key tracking
+    provider_name: Optional[str] = None
+
+
+class _NamedProvider:
+    """Wrapper that adds provider name tracking to any provider."""
+    def __init__(self, provider: LLMProvider, name: str):
+        self._provider = provider
+        self.provider_name = name
+    
+    def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
+        return self._provider.generate(prompt, model_name=model_name, **kwargs)
 
 
 ProviderFactory = Callable[[], LLMProvider]
@@ -490,7 +503,11 @@ def _get_claude_code_provider() -> Optional[LLMProvider]:
 
 
 def _get_backend_manager_provider(deps: RouterDeps) -> Optional[LLMProvider]:
-    """Get provider that uses InferenceBackendManager for distributed/multiplexed inference."""
+    """Get provider that uses InferenceBackendManager for distributed/multiplexed inference.
+    
+    Note: This is a best-effort provider that requires backends to expose a callable
+    'instance' attribute. The actual execution depends on backend implementation.
+    """
     if not _truthy(os.getenv("IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER")):
         return None
 
@@ -509,30 +526,44 @@ def _get_backend_manager_provider(deps: RouterDeps) -> Optional[LLMProvider]:
                 backend = manager.select_backend_for_task(
                     task="text-generation",
                     model=model_name or os.getenv("IPFS_ACCELERATE_PY_LLM_MODEL", ""),
-                    protocol="any"
+                    required_protocols=None  # Accept any protocol
                 )
                 
                 if backend is None:
                     raise RuntimeError("No available backend for text-generation")
                 
-                # Execute inference via backend
+                # Prepare payload for backend
                 payload = {
                     "prompt": prompt,
                     "max_tokens": kwargs.get("max_tokens", kwargs.get("max_new_tokens", 256)),
                     "temperature": kwargs.get("temperature", 0.2),
                 }
                 
-                result = manager.execute_inference(
-                    backend_id=backend["id"],
-                    task="text-generation",
-                    payload=payload
-                )
+                # Execute inference via backend.instance (must be callable)
+                backend_instance = getattr(backend, "instance", None)
+                backend_id = getattr(backend, "backend_id", "<unknown>")
+                
+                if backend_instance is None or not callable(backend_instance):
+                    raise RuntimeError(
+                        f"Selected backend {backend_id} does not expose a callable 'instance' for inference"
+                    )
+                
+                try:
+                    result = backend_instance(payload)
+                except Exception as exc:
+                    raise RuntimeError(f"Backend execution failed for {backend_id}") from exc
                 
                 # Extract generated text from result
-                text = result.get("generated_text") or result.get("text") or result.get("output")
+                if isinstance(result, str):
+                    text = result
+                elif isinstance(result, dict):
+                    text = result.get("generated_text") or result.get("text") or result.get("output")
+                else:
+                    text = None
+                
                 if isinstance(text, str) and text:
                     return text
-                raise RuntimeError("Backend manager provider did not return generated text")
+                raise RuntimeError(f"Backend {backend_id} did not return generated text")
 
         return _BackendManagerProvider()
     except Exception as e:
@@ -625,36 +656,38 @@ def _resolve_provider_uncached(preferred: Optional[str], *, deps: RouterDeps) ->
     if preferred:
         info = _PROVIDER_REGISTRY.get(preferred)
         if info is not None:
-            return info.factory()
+            provider = info.factory()
+            return _NamedProvider(provider, preferred) if not hasattr(provider, 'provider_name') else provider
         builtin = _builtin_provider_by_name(preferred, deps)
         if builtin is not None:
-            return builtin
+            return _NamedProvider(builtin, preferred) if not hasattr(builtin, 'provider_name') else builtin
         raise ValueError(f"Unknown LLM provider: {preferred}")
 
     forced = os.getenv("IPFS_ACCELERATE_PY_LLM_PROVIDER", "").strip()
     if forced:
         info = _PROVIDER_REGISTRY.get(forced)
         if info is not None:
-            return info.factory()
+            provider = info.factory()
+            return _NamedProvider(provider, forced) if not hasattr(provider, 'provider_name') else provider
         builtin = _builtin_provider_by_name(forced, deps)
         if builtin is not None:
-            return builtin
+            return _NamedProvider(builtin, forced) if not hasattr(builtin, 'provider_name') else builtin
         raise ValueError(f"Unknown LLM provider: {forced}")
 
     # Try backend manager first (for distributed/multiplexed inference)
     backend_manager_provider = _get_backend_manager_provider(deps)
     if backend_manager_provider is not None:
-        return backend_manager_provider
+        return _NamedProvider(backend_manager_provider, "backend_manager")
 
     # Try common optional CLI/API providers if available.
     for name in ["openrouter", "codex_cli", "copilot_cli", "copilot_sdk", "gemini_cli", "claude_code"]:
         candidate = _builtin_provider_by_name(name, deps)
         if candidate is not None:
-            return candidate
+            return _NamedProvider(candidate, name)
 
     local_hf = _get_local_hf_provider(deps=deps)
     if local_hf is not None:
-        return local_hf
+        return _NamedProvider(local_hf, "local_hf")
 
     raise RuntimeError(
         "No LLM provider available. Install `transformers` or register a custom provider."
@@ -720,9 +753,14 @@ def generate_text(
     """
 
     resolved_deps = deps or get_default_router_deps()
+    
+    # Resolve the actual provider and get its name for cache keys
+    backend = provider_instance or get_llm_provider(provider, deps=resolved_deps)
+    effective_provider_name = getattr(backend, 'provider_name', None) or provider or 'auto'
+    
     if _response_cache_enabled():
         try:
-            cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
+            cache_key = _response_cache_key(provider=effective_provider_name, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
             getter = getattr(resolved_deps, "get_cached_or_remote", None)
             cached = getter(cache_key) if callable(getter) else resolved_deps.get_cached(cache_key)
             if isinstance(cached, str):
@@ -731,12 +769,11 @@ def generate_text(
         except Exception:
             pass
 
-    backend = provider_instance or get_llm_provider(provider, deps=resolved_deps)
     try:
         result = backend.generate(prompt, model_name=model_name, **kwargs)
         if _response_cache_enabled():
             try:
-                cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
+                cache_key = _response_cache_key(provider=effective_provider_name, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
                 setter = getattr(resolved_deps, "set_cached_and_remote", None)
                 if callable(setter):
                     setter(cache_key, str(result))
@@ -756,7 +793,7 @@ def generate_text(
                 result = backend.generate(prompt, model_name=None, **kwargs)
                 if _response_cache_enabled():
                     try:
-                        cache_key = _response_cache_key(provider=provider, model_name=None, prompt=prompt, kwargs=dict(kwargs))
+                        cache_key = _response_cache_key(provider=effective_provider_name, model_name=None, prompt=prompt, kwargs=dict(kwargs))
                         setter = getattr(resolved_deps, "set_cached_and_remote", None)
                         if callable(setter):
                             setter(cache_key, str(result))
@@ -773,10 +810,11 @@ def generate_text(
             local_hf = _get_local_hf_provider(deps=resolved_deps)
             if local_hf is not None and backend is not local_hf:
                 try:
-                    result = local_hf.generate(prompt, model_name=model_name, **kwargs)
+                    local_hf_wrapped = _NamedProvider(local_hf, "local_hf")
+                    result = local_hf_wrapped.generate(prompt, model_name=model_name, **kwargs)
                     if _response_cache_enabled():
                         try:
-                            cache_key = _response_cache_key(provider=provider, model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
+                            cache_key = _response_cache_key(provider="local_hf", model_name=model_name, prompt=prompt, kwargs=dict(kwargs))
                             setter = getattr(resolved_deps, "set_cached_and_remote", None)
                             if callable(setter):
                                 setter(cache_key, str(result))
@@ -788,10 +826,10 @@ def generate_text(
                 except Exception as hf_error:
                     logger.debug(f"HuggingFace fallback failed: {hf_error}")
                     if model_name is not None:
-                        result = local_hf.generate(prompt, model_name=None, **kwargs)
+                        result = local_hf_wrapped.generate(prompt, model_name=None, **kwargs)
                         if _response_cache_enabled():
                             try:
-                                cache_key = _response_cache_key(provider=provider, model_name=None, prompt=prompt, kwargs=dict(kwargs))
+                                cache_key = _response_cache_key(provider="local_hf", model_name=None, prompt=prompt, kwargs=dict(kwargs))
                                 setter = getattr(resolved_deps, "set_cached_and_remote", None)
                                 if callable(setter):
                                     setter(cache_key, str(result))

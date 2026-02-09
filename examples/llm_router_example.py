@@ -162,19 +162,18 @@ def example_backend_manager_integration():
     # Enable backend manager provider
     os.environ["IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER"] = "1"
     
+    print("Note: Backend manager provider requires backends with callable 'instance' attribute.")
+    print("This is a best-effort provider for future backend integration.")
+    
     try:
         # Get the backend manager provider
         provider = get_llm_provider("backend_manager")
         
         if provider:
-            result = generate_text(
-                "Test distributed inference",
-                provider="backend_manager",
-                max_tokens=128
-            )
-            print(f"Backend manager result: {result[:100]}...")
+            print("✓ Backend manager provider is available")
+            print("  (Actual execution depends on backend implementation)")
         else:
-            print("Backend manager not available")
+            print("✗ Backend manager not available")
             
     except Exception as e:
         print(f"Backend manager error: {e}")

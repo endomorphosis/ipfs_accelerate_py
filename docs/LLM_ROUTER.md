@@ -196,6 +196,10 @@ response = generate_text(
 #### 7. Backend Manager (`backend_manager`)
 Uses InferenceBackendManager for distributed/multiplexed inference.
 
+**Note**: This provider requires backends to expose a callable `instance` attribute.
+The actual execution behavior depends on backend implementation. This is a best-effort
+provider intended for future integration with fully-featured backend instances.
+
 **Configuration:**
 ```bash
 export IPFS_ACCELERATE_PY_ENABLE_BACKEND_MANAGER="1"
@@ -209,6 +213,10 @@ response = generate_text(
     provider="backend_manager"
 )
 ```
+
+**Current Limitations:**
+- Requires backends with callable `instance` attribute for inference execution
+- The InferenceBackendManager singleton is used (config parameters documented for future use)
 
 #### 8. Local HuggingFace (`local_hf`)
 Fallback to local transformers models.
