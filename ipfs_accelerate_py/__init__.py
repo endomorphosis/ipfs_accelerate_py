@@ -236,6 +236,40 @@ try:
 except ImportError:
     auto_patch_transformers = None
 
+# Add LLM router functionality
+try:
+    from .llm_router import (
+        generate_text,
+        get_llm_provider,
+        register_llm_provider,
+        clear_llm_router_caches,
+        LLMProvider
+    )
+    from .router_deps import (
+        RouterDeps,
+        get_default_router_deps,
+        set_default_router_deps
+    )
+    export["generate_text"] = generate_text
+    export["get_llm_provider"] = get_llm_provider
+    export["register_llm_provider"] = register_llm_provider
+    export["clear_llm_router_caches"] = clear_llm_router_caches
+    export["LLMProvider"] = LLMProvider
+    export["RouterDeps"] = RouterDeps
+    export["get_default_router_deps"] = get_default_router_deps
+    export["set_default_router_deps"] = set_default_router_deps
+    llm_router_available = True
+except ImportError:
+    generate_text = None
+    get_llm_provider = None
+    register_llm_provider = None
+    clear_llm_router_caches = None
+    LLMProvider = None
+    RouterDeps = None
+    get_default_router_deps = None
+    set_default_router_deps = None
+    llm_router_available = False
+
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
     'install_depends', 'worker', 'ipfs_multiformats_py',
@@ -245,7 +279,10 @@ __all__ = [
     'P2PWorkflowScheduler', 'P2PTask', 'WorkflowTag', 'MerkleClock',
     'FibonacciHeap', 'calculate_hamming_distance',
     'IPFSKitStorage', 'get_storage', 'reset_storage', 'StorageBackendConfig',
-    'auto_patch_transformers'
+    'auto_patch_transformers',
+    'generate_text', 'get_llm_provider', 'register_llm_provider',
+    'clear_llm_router_caches', 'LLMProvider', 'RouterDeps',
+    'get_default_router_deps', 'set_default_router_deps', 'llm_router_available'
 ]
 
 # Package version
