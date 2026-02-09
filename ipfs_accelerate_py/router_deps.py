@@ -20,24 +20,22 @@ from __future__ import annotations
 
 import threading
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, Protocol
 
 
-class RemoteCacheProtocol:
+class RemoteCacheProtocol(Protocol):
     """Optional remote cache interface.
 
-    This is intentionally duck-typed: implementations only need `get(key)` and
-    `set(key, value)`.
+    This is a Protocol defining the interface for remote caches. Implementations
+    only need to provide `get(key)` and `set(key, value)` methods.
 
     The default RouterDeps does not provide a remote cache; callers can inject
     one (e.g., backed by libp2p, IPFS Kit, etc.).
     """
 
-    def get(self, key: str) -> Any | None:  # pragma: no cover
-        raise NotImplementedError
+    def get(self, key: str) -> Any | None: ...
 
-    def set(self, key: str, value: Any) -> Any:  # pragma: no cover
-        raise NotImplementedError
+    def set(self, key: str, value: Any) -> Any: ...
 
 
 @dataclass

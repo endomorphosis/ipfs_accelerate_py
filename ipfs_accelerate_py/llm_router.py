@@ -142,10 +142,8 @@ def _effective_model_key(*, provider_key: str, model_name: Optional[str], kwargs
             or "openai/gpt-4o-mini"
         ).strip()
     if pk in {"codex", "codex_cli"}:
-        return (
-            _coalesce_env("IPFS_ACCELERATE_PY_CODEX_CLI_MODEL", "IPFS_ACCELERATE_PY_CODEX_MODEL")
-            or "gpt-4-turbo"
-        ).strip()
+        codex_model = _coalesce_env("IPFS_ACCELERATE_PY_CODEX_CLI_MODEL", "IPFS_ACCELERATE_PY_CODEX_MODEL")
+        return (codex_model or "gpt-3.5-turbo").strip()
     if pk == "copilot_sdk":
         return (os.environ.get("IPFS_ACCELERATE_PY_COPILOT_SDK_MODEL", "") or "gpt-4o").strip()
     if pk in {"hf", "huggingface", "local_hf"}:
@@ -218,6 +216,8 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
         return None
 
     base_url = os.getenv("IPFS_ACCELERATE_PY_OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1").rstrip("/")
+    referer = os.getenv("OPENROUTER_HTTP_REFERER")
+    app_title = os.getenv("OPENROUTER_APP_TITLE")
 
     class _OpenRouterProvider:
         def generate(self, prompt: str, *, model_name: Optional[str] = None, **kwargs: object) -> str:
@@ -238,17 +238,21 @@ def _get_openrouter_provider() -> Optional[LLMProvider]:
                 "temperature": float(temperature),
             }
 
+            headers = {
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            if referer:
+                headers["HTTP-Referer"] = referer
+            if app_title:
+                headers["X-Title"] = app_title
+
             req = urllib.request.Request(
                 f"{base_url}/chat/completions",
                 data=json.dumps(payload).encode("utf-8"),
                 method="POST",
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                    **({"HTTP-Referer": os.getenv("OPENROUTER_HTTP_REFERER")} if os.getenv("OPENROUTER_HTTP_REFERER") else {}),
-                    **({"X-Title": os.getenv("OPENROUTER_APP_TITLE")} if os.getenv("OPENROUTER_APP_TITLE") else {}),
-                },
+                headers=headers
             )
 
             try:
@@ -582,7 +586,8 @@ def _get_local_hf_provider(*, deps: Optional[RouterDeps] = None) -> Optional[LLM
                 pipe = pipeline("text-generation", model=model)
                 self._pipelines[model] = pipe
 
-            max_new_tokens = int(kwargs.pop("max_new_tokens", kwargs.pop("max_tokens", 128)))
+            # Use max_new_tokens if available, otherwise max_tokens, default to 128
+            max_new_tokens = int(kwargs.get("max_new_tokens") or kwargs.get("max_tokens") or 128)
             out = pipe(prompt, max_new_tokens=max_new_tokens)
             if isinstance(out, list) and out:
                 item = out[0]
@@ -740,7 +745,10 @@ def generate_text(
             except Exception:
                 pass
         return result
-    except Exception:
+    except Exception as primary_error:
+        # Log the primary error for debugging
+        logger.debug(f"Primary provider failed: {primary_error}")
+        
         # If a specific model was requested but isn't available for this provider,
         # retry with the provider's default model before other fallbacks.
         if model_name is not None:
@@ -757,8 +765,8 @@ def generate_text(
                     except Exception:
                         pass
                 return result
-            except Exception:
-                pass
+            except Exception as model_fallback_error:
+                logger.debug(f"Model fallback failed: {model_fallback_error}")
 
         # Fall back to local HF provider if optional provider fails.
         if provider is None:
@@ -777,7 +785,8 @@ def generate_text(
                         except Exception:
                             pass
                     return result
-                except Exception:
+                except Exception as hf_error:
+                    logger.debug(f"HuggingFace fallback failed: {hf_error}")
                     if model_name is not None:
                         result = local_hf.generate(prompt, model_name=None, **kwargs)
                         if _response_cache_enabled():
