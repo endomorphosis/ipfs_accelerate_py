@@ -270,6 +270,32 @@ except ImportError:
     set_default_router_deps = None
     llm_router_available = False
 
+# Add Embeddings router functionality
+try:
+    from .embeddings_router import (
+        embed_texts,
+        embed_text,
+        get_embeddings_provider,
+        register_embeddings_provider,
+        clear_embeddings_router_caches,
+        EmbeddingsProvider
+    )
+    export["embed_texts"] = embed_texts
+    export["embed_text"] = embed_text
+    export["get_embeddings_provider"] = get_embeddings_provider
+    export["register_embeddings_provider"] = register_embeddings_provider
+    export["clear_embeddings_router_caches"] = clear_embeddings_router_caches
+    export["EmbeddingsProvider"] = EmbeddingsProvider
+    embeddings_router_available = True
+except ImportError:
+    embed_texts = None
+    embed_text = None
+    get_embeddings_provider = None
+    register_embeddings_provider = None
+    clear_embeddings_router_caches = None
+    EmbeddingsProvider = None
+    embeddings_router_available = False
+
 __all__ = [
     'ipfs_accelerate_py', 'get_instance', 'backends', 'config', 
     'install_depends', 'worker', 'ipfs_multiformats_py',
@@ -282,7 +308,9 @@ __all__ = [
     'auto_patch_transformers',
     'generate_text', 'get_llm_provider', 'register_llm_provider',
     'clear_llm_router_caches', 'LLMProvider', 'RouterDeps',
-    'get_default_router_deps', 'set_default_router_deps', 'llm_router_available'
+    'get_default_router_deps', 'set_default_router_deps', 'llm_router_available',
+    'embed_texts', 'embed_text', 'get_embeddings_provider', 'register_embeddings_provider',
+    'clear_embeddings_router_caches', 'EmbeddingsProvider', 'embeddings_router_available'
 ]
 
 # Package version
