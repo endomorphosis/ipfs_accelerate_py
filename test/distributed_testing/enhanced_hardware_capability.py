@@ -233,6 +233,74 @@ class HardwareCapabilityDetector:
                 return float(page_size * phys_pages) / (1024**3)
             except Exception:
                 return 0.0
+
+        def _safe_first(value, default=None):
+            try:
+                if isinstance(value, (list, tuple)) and value:
+                    return value[0]
+            except Exception:
+                pass
+            return value if value is not None else default
+
+        def _safe_float(value, default: float = 0.0) -> float:
+            value = _safe_first(value, default)
+            if value is None:
+                return default
+            if isinstance(value, (int, float)):
+                return float(value)
+            if isinstance(value, str):
+                text = value.strip()
+                if not text:
+                    return default
+
+                # Extract first numeric token (handles "3200 MHz", "3.2GHz", "3400000000")
+                import re
+
+                match = re.search(r"[-+]?(?:\d+\.\d+|\d+)", text)
+                if not match:
+                    return default
+                number = float(match.group(0))
+
+                lowered = text.lower()
+                if "ghz" in lowered:
+                    return number * 1_000_000_000.0
+                if "mhz" in lowered:
+                    return number * 1_000_000.0
+                if "khz" in lowered:
+                    return number * 1_000.0
+                if "hz" in lowered:
+                    return number
+
+                return number
+            return default
+
+        def _safe_size_to_kb(value, default: float = 0.0) -> float:
+            value = _safe_first(value, default)
+            if value is None:
+                return default
+            if isinstance(value, (int, float)):
+                # Assume bytes from cpuinfo when numeric
+                return float(value) / 1024.0
+            if isinstance(value, str):
+                text = value.strip().lower()
+                if not text:
+                    return default
+                import re
+
+                match = re.search(r"[-+]?(?:\d+\.\d+|\d+)", text)
+                if not match:
+                    return default
+                number = float(match.group(0))
+
+                if "mb" in text:
+                    return number * 1024.0
+                if "kb" in text:
+                    return number
+                if "b" in text or "byte" in text:
+                    return number / 1024.0
+                # cpuinfo may provide values like "32768" with no unit; assume bytes
+                return number / 1024.0
+            return default
         
         try:
             # Get CPU info
@@ -268,10 +336,10 @@ class HardwareCapabilityDetector:
                 capabilities={
                     'threads': _safe_cpu_count_logical(),
                     'architecture': cpu_info.get('arch', 'unknown'),
-                    'frequency_mhz': cpu_info.get('hz_advertised_raw', [0])[0] / 1000000,
-                    'l1_cache_kb': cpu_info.get('l1_data_cache_size', 0) / 1024 if 'l1_data_cache_size' in cpu_info else None,
-                    'l2_cache_kb': cpu_info.get('l2_cache_size', 0) / 1024 if 'l2_cache_size' in cpu_info else None,
-                    'l3_cache_kb': cpu_info.get('l3_cache_size', 0) / 1024 if 'l3_cache_size' in cpu_info else None,
+                    'frequency_mhz': _safe_float(cpu_info.get('hz_advertised_raw', [0]), 0.0) / 1_000_000.0,
+                    'l1_cache_kb': _safe_size_to_kb(cpu_info.get('l1_data_cache_size', None), 0.0) if 'l1_data_cache_size' in cpu_info else None,
+                    'l2_cache_kb': _safe_size_to_kb(cpu_info.get('l2_cache_size', None), 0.0) if 'l2_cache_size' in cpu_info else None,
+                    'l3_cache_kb': _safe_size_to_kb(cpu_info.get('l3_cache_size', None), 0.0) if 'l3_cache_size' in cpu_info else None,
                     'avx': 'avx' in cpu_info.get('flags', []),
                     'avx2': 'avx2' in cpu_info.get('flags', []),
                     'avx512': any('avx512' in flag for flag in cpu_info.get('flags', [])),
@@ -535,7 +603,12 @@ class HardwareCapabilityDetector:
                         nvidia_gpus.append(gpu_capability)
                     
                     except Exception as e:
-                        logger.error(f"Error getting info for NVIDIA GPU {i}: {str(e)}")
+                        # NVML can legitimately report "Not Supported" for some fields/drivers.
+                        msg = str(e)
+                        if msg.strip().lower() == "not supported" or "nvmLError_notSupported".lower() in e.__class__.__name__.lower():
+                            logger.warning(f"NVIDIA GPU {i} info not fully supported: {msg}")
+                        else:
+                            logger.error(f"Error getting info for NVIDIA GPU {i}: {msg}")
                 
                 return nvidia_gpus
             
