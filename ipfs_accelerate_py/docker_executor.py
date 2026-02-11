@@ -26,6 +26,37 @@ import time
 logger = logging.getLogger(__name__)
 
 
+_DOCKER_DAEMON_CACHE: Dict[str, Any] = {"ts": 0.0, "ok": False}
+
+
+def docker_daemon_available(docker_command: str = "docker", timeout_s: float = 3.0, cache_s: float = 5.0) -> bool:
+    """Return True if the Docker daemon appears reachable.
+
+    This is intentionally lightweight and safe to call frequently.
+    """
+
+    now = time.time()
+    ts = float(_DOCKER_DAEMON_CACHE.get("ts") or 0.0)
+    if cache_s and now - ts < float(cache_s):
+        return bool(_DOCKER_DAEMON_CACHE.get("ok"))
+
+    ok = False
+    try:
+        proc = subprocess.run(
+            [docker_command, "info"],
+            capture_output=True,
+            text=True,
+            timeout=float(timeout_s),
+        )
+        ok = proc.returncode == 0
+    except Exception:
+        ok = False
+
+    _DOCKER_DAEMON_CACHE["ts"] = now
+    _DOCKER_DAEMON_CACHE["ok"] = ok
+    return bool(ok)
+
+
 @dataclass
 class DockerExecutionConfig:
     """Configuration for Docker execution"""

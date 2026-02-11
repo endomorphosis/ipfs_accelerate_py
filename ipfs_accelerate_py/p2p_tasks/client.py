@@ -12,6 +12,10 @@ Environment:
 - IPFS_DATASETS_PY_TASK_P2P_DHT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_DHT
 - IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS
 - IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default: ipfs-accelerate-task-queue) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
+- IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE (compat) / IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE
+    - unset: read default XDG cache announce file(s)
+    - set to a path: read announce JSON from that path
+    - set to 0/false/no: disable announce-file dialing
 """
 
 from __future__ import annotations
@@ -81,6 +85,44 @@ def _mdns_port() -> int:
         return 9710
 
 
+def _default_announce_files() -> list[str]:
+    cache_root = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return [
+        os.path.join(cache_root, "ipfs_accelerate_py", "task_p2p_announce.json"),
+        os.path.join(cache_root, "ipfs_datasets_py", "task_p2p_announce.json"),
+    ]
+
+
+def _read_announce_multiaddr() -> str:
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE")
+    )
+    if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
+        return ""
+
+    candidates: list[str] = []
+    if raw is not None and str(raw).strip():
+        candidates.append(str(raw).strip())
+    candidates.extend(_default_announce_files())
+
+    for path in candidates:
+        try:
+            if not path or not os.path.exists(path):
+                continue
+            text = open(path, "r", encoding="utf-8").read().strip()
+            if not text:
+                continue
+            info = json.loads(text)
+            if isinstance(info, dict):
+                ma = str(info.get("multiaddr") or "").strip()
+                if ma and "/p2p/" in ma:
+                    return ma
+        except Exception:
+            continue
+    return ""
+
+
 async def _read_one_json_line(stream) -> Dict[str, Any]:
     raw = bytearray()
     max_bytes = 1024 * 1024
@@ -131,6 +173,28 @@ async def _dial_via_bootstrap(*, host, message: Dict[str, Any]) -> Optional[Dict
         except Exception:
             continue
     return None
+
+
+async def _dial_via_announce_file(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Optional[Dict[str, Any]]:
+    ma = _read_announce_multiaddr()
+    if not ma:
+        return None
+
+    # If the caller requested a specific peer, avoid dialing the announce hint
+    # when it clearly doesn't match.
+    if require_peer_id:
+        try:
+            pid = str(ma).rsplit("/p2p/", 1)[-1].strip()
+            if pid and pid != require_peer_id:
+                return None
+        except Exception:
+            pass
+
+    try:
+        resp = await _try_peer_multiaddr(host=host, peer_multiaddr=ma, message=message)
+        return resp if isinstance(resp, dict) else None
+    except Exception:
+        return None
 
 
 async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Dict[str, Any]:
@@ -354,21 +418,28 @@ async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> 
             if (remote.multiaddr or "").strip():
                 resp = await _try_peer_multiaddr(host=host, peer_multiaddr=remote.multiaddr, message=message)  # type: ignore[assignment]
             else:
-                # Try bootstrap peers first (cross-subnet), then LAN mDNS.
-                boot = await _dial_via_bootstrap(host=host, message=message)
-                if isinstance(boot, dict):
-                    resp = boot
+                require_peer_id = (remote.peer_id or "").strip()
+
+                # Zero-config: if a local service is running, it writes an
+                # announce file in XDG cache; dial it first.
+                ann = await _dial_via_announce_file(host=host, message=message, require_peer_id=require_peer_id)
+                if isinstance(ann, dict):
+                    resp = ann
                 else:
-                    require_peer_id = (remote.peer_id or "").strip()
-                    rv = await _dial_via_rendezvous(host=host, message=message, require_peer_id=require_peer_id)
-                    if isinstance(rv, dict):
-                        resp = rv
+                    # Then try cross-subnet mechanisms, and finally LAN mDNS.
+                    boot = await _dial_via_bootstrap(host=host, message=message)
+                    if isinstance(boot, dict):
+                        resp = boot
                     else:
-                        dht = await _dial_via_dht(host=host, message=message, require_peer_id=require_peer_id)
-                        if isinstance(dht, dict):
-                            resp = dht
+                        rv = await _dial_via_rendezvous(host=host, message=message, require_peer_id=require_peer_id)
+                        if isinstance(rv, dict):
+                            resp = rv
                         else:
-                            resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
+                            dht = await _dial_via_dht(host=host, message=message, require_peer_id=require_peer_id)
+                            if isinstance(dht, dict):
+                                resp = dht
+                            else:
+                                resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
 
     try:
         await host.close()
@@ -388,6 +459,189 @@ async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, p
     return str(resp.get("task_id"))
 
 
+def _maybe_str_dict(value: Any) -> Dict[str, str]:
+    if not isinstance(value, dict):
+        return {}
+    out: Dict[str, str] = {}
+    for k, v in value.items():
+        try:
+            out[str(k)] = str(v)
+        except Exception:
+            continue
+    return out
+
+
+def _maybe_str_dict2(value: Any) -> Dict[str, str]:
+    # Alias for readability in docker helpers.
+    return _maybe_str_dict(value)
+
+
+def _normalize_cmd(value: Any) -> Any:
+    # Preserve as list[str] if provided, else accept str.
+    if value is None:
+        return None
+    if isinstance(value, list) and all(isinstance(x, str) for x in value):
+        return [x for x in value if x]
+    if isinstance(value, str):
+        return value
+    return value
+
+
+async def submit_docker_hub_task(
+    *,
+    remote: RemoteQueue,
+    image: str,
+    command: Any = None,
+    entrypoint: Any = None,
+    environment: Dict[str, Any] | None = None,
+    volumes: Dict[str, Any] | None = None,
+    model_name: str = "docker",
+    task_type: str = "docker.execute",
+    **kwargs: Any,
+) -> str:
+    """Submit a Docker Hub container run to the TaskQueue.
+
+    This only submits the task; execution depends on workers enabling Docker via
+    `IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1`.
+    """
+
+    payload: Dict[str, Any] = {
+        "image": str(image),
+    }
+    if command is not None:
+        payload["command"] = _normalize_cmd(command)
+    if entrypoint is not None:
+        payload["entrypoint"] = _normalize_cmd(entrypoint)
+    if environment is not None:
+        payload["environment"] = _maybe_str_dict(environment)
+    if volumes is not None:
+        payload["volumes"] = _maybe_str_dict2(volumes)
+
+    # Pass through common docker execution settings (memory_limit, cpu_limit, timeout,
+    # network_mode, working_dir, read_only, no_new_privileges, user, stream_output, etc.)
+    for k, v in kwargs.items():
+        if v is None:
+            continue
+        payload[str(k)] = v
+
+    return await submit_task(remote=remote, task_type=str(task_type), model_name=str(model_name), payload=payload)
+
+
+def submit_docker_hub_task_sync(
+    *,
+    remote: RemoteQueue,
+    image: str,
+    command: Any = None,
+    entrypoint: Any = None,
+    environment: Dict[str, Any] | None = None,
+    volumes: Dict[str, Any] | None = None,
+    model_name: str = "docker",
+    task_type: str = "docker.execute",
+    **kwargs: Any,
+) -> str:
+    import anyio
+
+    async def _do() -> str:
+        return await submit_docker_hub_task(
+            remote=remote,
+            image=image,
+            command=command,
+            entrypoint=entrypoint,
+            environment=environment,
+            volumes=volumes,
+            model_name=model_name,
+            task_type=task_type,
+            **kwargs,
+        )
+
+    return anyio.run(_do, backend="trio")
+
+
+async def submit_docker_github_task(
+    *,
+    remote: RemoteQueue,
+    repo_url: str,
+    branch: str = "main",
+    dockerfile_path: str = "Dockerfile",
+    context_path: str = ".",
+    command: Any = None,
+    entrypoint: Any = None,
+    environment: Dict[str, Any] | None = None,
+    build_args: Dict[str, Any] | None = None,
+    model_name: str = "docker",
+    task_type: str = "docker.github",
+    **kwargs: Any,
+) -> str:
+    """Submit a GitHub repo build+run (Dockerfile) to the TaskQueue."""
+
+    payload: Dict[str, Any] = {
+        "repo_url": str(repo_url),
+        "branch": str(branch),
+        "dockerfile_path": str(dockerfile_path),
+        "context_path": str(context_path),
+    }
+    if command is not None:
+        payload["command"] = _normalize_cmd(command)
+    if entrypoint is not None:
+        payload["entrypoint"] = _normalize_cmd(entrypoint)
+    if environment is not None:
+        payload["environment"] = _maybe_str_dict(environment)
+    if build_args is not None:
+        payload["build_args"] = _maybe_str_dict(build_args)
+
+    for k, v in kwargs.items():
+        if v is None:
+            continue
+        payload[str(k)] = v
+
+    return await submit_task(remote=remote, task_type=str(task_type), model_name=str(model_name), payload=payload)
+
+
+def submit_docker_github_task_sync(
+    *,
+    remote: RemoteQueue,
+    repo_url: str,
+    branch: str = "main",
+    dockerfile_path: str = "Dockerfile",
+    context_path: str = ".",
+    command: Any = None,
+    entrypoint: Any = None,
+    environment: Dict[str, Any] | None = None,
+    build_args: Dict[str, Any] | None = None,
+    model_name: str = "docker",
+    task_type: str = "docker.github",
+    **kwargs: Any,
+) -> str:
+    import anyio
+
+    async def _do() -> str:
+        return await submit_docker_github_task(
+            remote=remote,
+            repo_url=repo_url,
+            branch=branch,
+            dockerfile_path=dockerfile_path,
+            context_path=context_path,
+            command=command,
+            entrypoint=entrypoint,
+            environment=environment,
+            build_args=build_args,
+            model_name=model_name,
+            task_type=task_type,
+            **kwargs,
+        )
+
+    return anyio.run(_do, backend="trio")
+
+
+def submit_task_sync(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> str:
+    import anyio
+
+    async def _do() -> str:
+        return await submit_task(remote=remote, task_type=task_type, model_name=model_name, payload=payload)
+
+    return anyio.run(_do, backend="trio")
+
+
 async def submit_task_with_info(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> Dict[str, str]:
     resp = await _dial_and_request(
         remote=remote,
@@ -396,6 +650,144 @@ async def submit_task_with_info(*, remote: RemoteQueue, task_type: str, model_na
     if not resp.get("ok"):
         raise RuntimeError(f"submit failed: {resp}")
     return {"task_id": str(resp.get("task_id")), "peer_id": str(resp.get("peer_id") or "").strip()}
+
+
+def submit_task_with_info_sync(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> Dict[str, str]:
+    import anyio
+
+    async def _do() -> Dict[str, str]:
+        return await submit_task_with_info(remote=remote, task_type=task_type, model_name=model_name, payload=payload)
+
+    return anyio.run(_do, backend="trio")
+
+
+async def claim_next(
+    *,
+    remote: RemoteQueue,
+    worker_id: str,
+    supported_task_types: list[str] | None = None,
+    peer_id: str | None = None,
+    clock: Dict[str, Any] | None = None,
+) -> Optional[Dict[str, Any]]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={
+            "op": "claim",
+            "worker_id": str(worker_id),
+            "supported_task_types": list(supported_task_types or []),
+            "peer_id": str(peer_id) if peer_id else "",
+            "clock": clock,
+        },
+    )
+    if not resp.get("ok"):
+        raise RuntimeError(f"claim failed: {resp}")
+    task = resp.get("task")
+    return task if isinstance(task, dict) else None
+
+
+def claim_next_sync(
+    *,
+    remote: RemoteQueue,
+    worker_id: str,
+    supported_task_types: list[str] | None = None,
+    peer_id: str | None = None,
+    clock: Dict[str, Any] | None = None,
+) -> Optional[Dict[str, Any]]:
+    import anyio
+
+    async def _do() -> Optional[Dict[str, Any]]:
+        return await claim_next(remote=remote, worker_id=worker_id, supported_task_types=supported_task_types, peer_id=peer_id, clock=clock)
+
+    return anyio.run(_do, backend="trio")
+
+
+async def heartbeat(*, remote: RemoteQueue, peer_id: str, clock: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={"op": "peer.heartbeat", "peer_id": str(peer_id), "clock": clock},
+    )
+    if not resp.get("ok"):
+        raise RuntimeError(f"heartbeat failed: {resp}")
+    return resp
+
+
+def heartbeat_sync(*, remote: RemoteQueue, peer_id: str, clock: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    import anyio
+
+    async def _do() -> Dict[str, Any]:
+        return await heartbeat(remote=remote, peer_id=peer_id, clock=clock)
+
+    return anyio.run(_do, backend="trio")
+
+
+async def list_tasks(
+    *,
+    remote: RemoteQueue,
+    status: str | None = None,
+    limit: int = 50,
+    task_types: list[str] | None = None,
+) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={"op": "list", "status": status, "limit": int(limit), "task_types": list(task_types or [])},
+    )
+    if not resp.get("ok"):
+        raise RuntimeError(f"list failed: {resp}")
+    return resp
+
+
+def list_tasks_sync(
+    *,
+    remote: RemoteQueue,
+    status: str | None = None,
+    limit: int = 50,
+    task_types: list[str] | None = None,
+) -> Dict[str, Any]:
+    import anyio
+
+    async def _do() -> Dict[str, Any]:
+        return await list_tasks(remote=remote, status=status, limit=limit, task_types=task_types)
+
+    return anyio.run(_do, backend="trio")
+
+
+async def complete_task(
+    *,
+    remote: RemoteQueue,
+    task_id: str,
+    status: str = "completed",
+    result: Dict[str, Any] | None = None,
+    error: str | None = None,
+) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={
+            "op": "complete",
+            "task_id": str(task_id),
+            "status": str(status),
+            "result": result,
+            "error": error,
+        },
+    )
+    if not resp.get("ok"):
+        raise RuntimeError(f"complete failed: {resp}")
+    return resp
+
+
+def complete_task_sync(
+    *,
+    remote: RemoteQueue,
+    task_id: str,
+    status: str = "completed",
+    result: Dict[str, Any] | None = None,
+    error: str | None = None,
+) -> Dict[str, Any]:
+    import anyio
+
+    async def _do() -> Dict[str, Any]:
+        return await complete_task(remote=remote, task_id=task_id, status=status, result=result, error=error)
+
+    return anyio.run(_do, backend="trio")
 
 
 async def get_task(*, remote: RemoteQueue, task_id: str) -> Optional[Dict[str, Any]]:

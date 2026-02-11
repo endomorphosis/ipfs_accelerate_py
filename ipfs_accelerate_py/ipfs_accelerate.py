@@ -1628,8 +1628,42 @@ class ipfs_accelerate_py:
         CLI, MCP, and P2P discovery without leaking internal objects.
         """
 
+        task_types = {"text-generation"}
+        try:
+            # If this instance can invoke MCP tools, advertise the queue task.
+            if callable(getattr(self, "call_tool", None)):
+                task_types.add("tool.call")
+        except Exception:
+            pass
+
+        try:
+            raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER")
+            if raw is None:
+                try:
+                    from ipfs_accelerate_py.docker_executor import docker_daemon_available
+
+                    docker_enabled = bool(docker_daemon_available())
+                except Exception:
+                    docker_enabled = False
+            else:
+                docker_enabled = str(raw).strip().lower() in {"1", "true", "yes", "on"}
+            if docker_enabled:
+                # Keep names aligned with worker aliases.
+                task_types.update(
+                    {
+                        "docker.execute",
+                        "docker.hub",
+                        "docker.execute_docker_container",
+                        "docker.github",
+                        "docker.github_repo",
+                        "docker.build_and_execute_github_repo",
+                    }
+                )
+        except Exception:
+            pass
+
         capabilities = {
-            "task_types": ["text-generation"],
+            "task_types": sorted(task_types),
             "models": [],
             "endpoints_by_model": {},
             "endpoint_types_by_model": {},

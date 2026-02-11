@@ -53,7 +53,7 @@ def main():
     parser.add_argument(
         "--p2p-task-worker",
         action="store_true",
-        help="Also start accelerate-owned DuckDB task worker (+ optional libp2p service) in a background thread",
+        help="Also start accelerate-owned DuckDB task worker (+ optional libp2p TaskQueue service) in a background thread",
     )
     parser.add_argument(
         "--p2p-queue",
@@ -71,7 +71,10 @@ def main():
     parser.add_argument(
         "--p2p-service",
         action="store_true",
-        help="When used with --p2p-task-worker, also start the libp2p TaskQueue RPC service",
+        help=(
+            "When used with --p2p-task-worker, also start the libp2p TaskQueue RPC service "
+            "(writes an announce file for zero-config client auto-discovery)"
+        ),
     )
     parser.add_argument(
         "--p2p-listen-port",

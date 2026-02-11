@@ -21,6 +21,12 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional, Set, Any
 from pathlib import Path
 
+
+def _truthy_env(value: Optional[str], *, default: bool = False) -> bool:
+    if value is None:
+        return bool(default)
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
 # Try to import storage wrapper
 try:
     from .common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
@@ -68,6 +74,25 @@ except ImportError:
         logger.warning(f"GitHub CLI not available: {e}")
         GitHubCLI = None
         GitHubGraphQL = None
+
+
+# Optional: integrate with the libp2p TaskQueue RPC layer.
+try:
+    from ipfs_accelerate_py.p2p_tasks.client import (
+        RemoteQueue as TaskQueueRemote,
+        submit_task_with_info as taskqueue_submit_task_with_info,
+        claim_next as taskqueue_claim_next,
+        complete_task as taskqueue_complete_task,
+    )
+
+    HAVE_TASKQUEUE_P2P = True
+except Exception as e:
+    HAVE_TASKQUEUE_P2P = False
+    TaskQueueRemote = None  # type: ignore[assignment]
+    taskqueue_submit_task_with_info = None  # type: ignore[assignment]
+    taskqueue_claim_next = None  # type: ignore[assignment]
+    taskqueue_complete_task = None  # type: ignore[assignment]
+    logger.debug(f"TaskQueue p2p integration unavailable: {e}")
 
 
 @dataclass
@@ -152,6 +177,243 @@ class P2PWorkflowDiscoveryService:
         logger.info(f"P2P Workflow Discovery Service initialized")
         logger.info(f"  Owner: {self.owner or 'All accessible repos'}")
         logger.info(f"  Poll interval: {self.poll_interval}s")
+
+        # Best-effort: a configured remote TaskQueue to publish to / consume from.
+        self._taskqueue_remote = self._build_taskqueue_remote()
+
+    def _build_taskqueue_remote(self):
+        if not HAVE_TASKQUEUE_P2P or TaskQueueRemote is None:
+            return None
+
+        remote_peer_id = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_PEER_ID")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_PEER_ID")
+            or ""
+        ).strip()
+        remote_multiaddr = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_MULTIADDR")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_MULTIADDR")
+            or ""
+        ).strip()
+
+        # If nothing is explicitly configured, use an empty RemoteQueue which
+        # triggers the client's dial chain (announce-file → bootstrap → rendezvous → dht → mdns).
+        return TaskQueueRemote(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
+
+    def _taskqueue_enabled(self) -> bool:
+        return _truthy_env(
+            os.environ.get("IPFS_ACCELERATE_PY_P2P_WORKFLOW_TASKQUEUE", os.environ.get("IPFS_DATASETS_PY_P2P_WORKFLOW_TASKQUEUE")),
+            default=True,
+        )
+
+    def _taskqueue_task_types(self) -> List[str]:
+        return ["p2p-workflow-discovery", "p2p-workflow-scheduler-snapshot"]
+
+    def _workflow_payload_from_discovery(self, discovery: WorkflowDiscovery, *, priority: int) -> Dict[str, Any]:
+        return {
+            "kind": "workflow_discovery",
+            "source_peer": str(getattr(self.scheduler, "peer_id", "")),
+            "owner": discovery.owner,
+            "repo": discovery.repo,
+            "workflow_id": discovery.workflow_id,
+            "workflow_name": discovery.workflow_name,
+            "workflow_path": discovery.workflow_path,
+            "tags": list(discovery.tags or []),
+            "priority": int(priority),
+            "created_at": float(discovery.created_at or time.time()),
+        }
+
+    def _scheduler_snapshot_payload(self) -> Dict[str, Any]:
+        # Keep payload compact but sufficient to converge on tasks + clocks.
+        def _task_to_dict(t: P2PTask) -> Dict[str, Any]:
+            return {
+                "task_id": t.task_id,
+                "workflow_id": t.workflow_id,
+                "name": t.name,
+                "tags": [getattr(tag, "value", str(tag)) for tag in (t.tags or [])],
+                "priority": int(t.priority),
+                "created_at": float(t.created_at),
+                "task_hash": t.task_hash,
+                "assigned_peer": t.assigned_peer,
+            }
+
+        return {
+            "kind": "scheduler_snapshot",
+            "peer_id": str(getattr(self.scheduler, "peer_id", "")),
+            "timestamp": float(time.time()),
+            "merkle_clock": self.scheduler.merkle_clock.to_dict() if hasattr(self.scheduler, "merkle_clock") else {},
+            "pending_tasks": [_task_to_dict(t) for t in list(getattr(self.scheduler, "pending_tasks", {}).values())],
+            "assigned_tasks": [_task_to_dict(t) for t in list(getattr(self.scheduler, "assigned_tasks", {}).values())],
+            "completed_tasks": [_task_to_dict(t) for t in list(getattr(self.scheduler, "completed_tasks", {}).values())],
+        }
+
+    def _merge_workflow_payload_into_scheduler(self, payload: Dict[str, Any]) -> bool:
+        try:
+            owner = str(payload.get("owner") or "").strip()
+            repo = str(payload.get("repo") or "").strip()
+            workflow_name = str(payload.get("workflow_name") or "").strip()
+            workflow_id = str(payload.get("workflow_id") or f"{owner}/{repo}").strip()
+            tags_raw = payload.get("tags") or []
+            priority = int(payload.get("priority") or 5)
+            created_at = float(payload.get("created_at") or time.time())
+
+            if not owner or not repo or not workflow_name:
+                return False
+
+            workflow_tags: List[WorkflowTag] = []
+            if isinstance(tags_raw, (list, tuple, set)):
+                for tag_str in tags_raw:
+                    try:
+                        enum_name = str(tag_str).upper().replace('-', '_')
+                        workflow_tags.append(WorkflowTag[enum_name])
+                    except Exception:
+                        continue
+
+            task_id = f"{owner}/{repo}/{workflow_name}"
+            task = P2PTask(
+                task_id=task_id,
+                workflow_id=workflow_id,
+                name=f"{workflow_name} ({owner}/{repo})",
+                tags=workflow_tags,
+                priority=max(1, min(10, int(priority))),
+                created_at=created_at,
+            )
+            return bool(self.scheduler.submit_task(task))
+        except Exception:
+            return False
+
+    def _merge_snapshot_payload_into_scheduler(self, payload: Dict[str, Any]) -> int:
+        merged = 0
+        try:
+            from ipfs_accelerate_py.p2p_workflow_scheduler import MerkleClock
+
+            peer_id = str(payload.get("peer_id") or "").strip()
+            if not peer_id or peer_id == getattr(self.scheduler, "peer_id", ""):
+                return 0
+
+            clock_dict = payload.get("merkle_clock")
+            if isinstance(clock_dict, dict) and clock_dict.get("node_id"):
+                try:
+                    clock = MerkleClock.from_dict(clock_dict)
+                    self.scheduler.update_peer_state(peer_id, clock)
+                except Exception:
+                    pass
+
+            tasks = payload.get("pending_tasks") or []
+            if isinstance(tasks, (list, tuple)):
+                for t in tasks:
+                    if not isinstance(t, dict):
+                        continue
+                    # Reuse merge logic by mapping into a workflow payload-like dict.
+                    wf_id = str(t.get("workflow_id") or "").strip()
+                    name = str(t.get("name") or "").strip()
+                    # name is "workflow (owner/repo)"; we also may not have owner/repo.
+                    # Fall back to decoding from task_id.
+                    task_id = str(t.get("task_id") or "").strip()
+                    owner = ""
+                    repo = ""
+                    wf_name = ""
+                    if task_id.count("/") >= 2:
+                        owner, repo, wf_name = task_id.split("/", 2)
+                    if not wf_name and name:
+                        wf_name = name.split("(", 1)[0].strip()
+
+                    if owner and repo and wf_name:
+                        ok = self._merge_workflow_payload_into_scheduler(
+                            {
+                                "owner": owner,
+                                "repo": repo,
+                                "workflow_id": wf_id or f"{owner}/{repo}",
+                                "workflow_name": wf_name,
+                                "tags": t.get("tags") or [],
+                                "priority": t.get("priority") or 5,
+                                "created_at": t.get("created_at") or time.time(),
+                            }
+                        )
+                        if ok:
+                            merged += 1
+        except Exception:
+            return merged
+        return merged
+
+    async def _taskqueue_submit(self, *, task_type: str, payload: Dict[str, Any]) -> Optional[Dict[str, str]]:
+        if not (HAVE_TASKQUEUE_P2P and self._taskqueue_enabled() and self._taskqueue_remote is not None):
+            return None
+        if taskqueue_submit_task_with_info is None:
+            return None
+        try:
+            return await taskqueue_submit_task_with_info(remote=self._taskqueue_remote, task_type=task_type, model_name="", payload=payload)
+        except Exception as e:
+            logger.debug(f"TaskQueue submit failed ({task_type}): {e}")
+            return None
+
+    async def _taskqueue_drain(self, *, max_tasks: int = 50) -> int:
+        if not (HAVE_TASKQUEUE_P2P and self._taskqueue_enabled() and self._taskqueue_remote is not None):
+            return 0
+        if taskqueue_claim_next is None or taskqueue_complete_task is None:
+            return 0
+
+        drained = 0
+        worker_id = str(getattr(self.scheduler, "peer_id", "workflow-discovery"))
+        for _ in range(max(1, int(max_tasks))):
+            try:
+                task = await taskqueue_claim_next(
+                    remote=self._taskqueue_remote,
+                    worker_id=worker_id,
+                    supported_task_types=self._taskqueue_task_types(),
+                )
+            except Exception as e:
+                logger.debug(f"TaskQueue claim failed: {e}")
+                return drained
+
+            if task is None:
+                return drained
+
+            drained += 1
+            task_id = str(task.get("task_id") or "")
+            task_type = str(task.get("task_type") or "")
+            payload = task.get("payload") if isinstance(task.get("payload"), dict) else {}
+
+            try:
+                if task_type == "p2p-workflow-discovery":
+                    merged = bool(self._merge_workflow_payload_into_scheduler(payload))
+                    await taskqueue_complete_task(
+                        remote=self._taskqueue_remote,
+                        task_id=task_id,
+                        status="completed" if merged else "failed",
+                        result={"merged": bool(merged)},
+                        error=None if merged else "invalid_or_duplicate",
+                    )
+                elif task_type == "p2p-workflow-scheduler-snapshot":
+                    merged_count = int(self._merge_snapshot_payload_into_scheduler(payload))
+                    await taskqueue_complete_task(
+                        remote=self._taskqueue_remote,
+                        task_id=task_id,
+                        status="completed",
+                        result={"merged_tasks": merged_count},
+                        error=None,
+                    )
+                else:
+                    await taskqueue_complete_task(
+                        remote=self._taskqueue_remote,
+                        task_id=task_id,
+                        status="completed",
+                        result={"ignored": True},
+                        error=None,
+                    )
+            except Exception as e:
+                try:
+                    await taskqueue_complete_task(
+                        remote=self._taskqueue_remote,
+                        task_id=task_id,
+                        status="failed",
+                        result=None,
+                        error=str(e),
+                    )
+                except Exception:
+                    pass
+
+        return drained
     
     def _parse_workflow_tags(self, workflow_content: str) -> List[str]:
         """
@@ -389,6 +651,19 @@ class P2PWorkflowDiscoveryService:
             if success:
                 self.discovered_workflows.add(task_id)
                 logger.info(f"✓ Submitted workflow to P2P scheduler: {task_id} (priority: {priority})")
+
+                # Task A: also submit to TaskQueue over libp2p as a portable payload.
+                if HAVE_TASKQUEUE_P2P and self._taskqueue_enabled() and self._taskqueue_remote is not None:
+                    try:
+                        import anyio
+
+                        async def _do_submit() -> None:
+                            payload = self._workflow_payload_from_discovery(discovery, priority=priority)
+                            await self._taskqueue_submit(task_type="p2p-workflow-discovery", payload=payload)
+
+                        anyio.run(_do_submit, backend="trio")
+                    except Exception as e:
+                        logger.debug(f"Failed to submit workflow to TaskQueue: {e}")
                 return True
             else:
                 logger.warning(f"Failed to submit workflow: {task_id}")
@@ -406,6 +681,21 @@ class P2PWorkflowDiscoveryService:
             Statistics about the discovery cycle
         """
         logger.info("Starting discovery cycle...")
+
+        # Task B (pull): consume any inbound workflow/snapshot messages first.
+        drained = 0
+        if HAVE_TASKQUEUE_P2P and self._taskqueue_enabled() and self._taskqueue_remote is not None:
+            try:
+                import anyio
+
+                async def _do_drain() -> int:
+                    return await self._taskqueue_drain(max_tasks=50)
+
+                drained = int(anyio.run(_do_drain, backend="trio"))
+                if drained:
+                    logger.info(f"✓ Merged {drained} inbound TaskQueue message(s)")
+            except Exception as e:
+                logger.debug(f"TaskQueue drain failed: {e}")
         
         # Discover workflows
         discoveries = self.discover_workflows()
@@ -422,9 +712,22 @@ class P2PWorkflowDiscoveryService:
         stats = {
             'discovered': len(discoveries),
             'submitted': submitted,
+            'taskqueue_drained': drained,
             'scheduler': scheduler_status,
             'timestamp': time.time()
         }
+
+        # Task B (push): publish a scheduler snapshot as a TaskQueue task.
+        if HAVE_TASKQUEUE_P2P and self._taskqueue_enabled() and self._taskqueue_remote is not None:
+            try:
+                import anyio
+
+                async def _do_snap() -> None:
+                    await self._taskqueue_submit(task_type="p2p-workflow-scheduler-snapshot", payload=self._scheduler_snapshot_payload())
+
+                anyio.run(_do_snap, backend="trio")
+            except Exception as e:
+                logger.debug(f"TaskQueue snapshot publish failed: {e}")
         
         # Try to store discovery stats in distributed storage
         if self._storage and hasattr(self._storage, 'is_distributed') and self._storage.is_distributed:

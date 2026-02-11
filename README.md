@@ -123,11 +123,20 @@ python -m ipfs_accelerate_py.mcp.cli \
   --p2p-task-worker --p2p-service --p2p-listen-port 9710 \
   --p2p-queue ~/.cache/ipfs_datasets_py/task_queue.duckdb
 
-# If clients are off-host, set the public IP that will be embedded in the announced multiaddr
+# Optional (off-host clients): set the public IP that will be embedded in the announced multiaddr
 export IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP="YOUR_PUBLIC_IP"
 ```
 
-The process prints a `multiaddr=...` line. On the client machine, set:
+By default, the libp2p TaskQueue service writes an **announce file** into your XDG cache dir
+and clients will try to use it automatically:
+
+- Default announce file: `~/.cache/ipfs_accelerate_py/task_p2p_announce.json`
+- Disable announce file (opt-out): `IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=0` (or `IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE=0`)
+
+If your client machine can read that announce file (same host/user, or a shared filesystem path you set via
+`IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE` / `IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE`), you do **not** need to set any remote multiaddr env vars.
+
+Otherwise, the process also prints a `multiaddr=...` line. On the client machine, set:
 
 ```bash
 export IPFS_DATASETS_PY_TASK_P2P_REMOTE_MULTIADDR="/ip4/.../tcp/9710/p2p/..."

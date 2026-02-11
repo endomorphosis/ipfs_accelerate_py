@@ -415,6 +415,95 @@ async def serve_task_queue(
     queue = TaskQueue(queue_path)
     cache_store = DiskTTLCache(default_cache_dir())
 
+    # Deterministic scheduling state (best-effort, in-memory). This enables a
+    # swarm to claim from a *global* queue deterministically when all peers talk
+    # to the same TaskQueue service.
+    from .deterministic_scheduler import MerkleClock as _MerkleClock
+    from .deterministic_scheduler import select_owner_peer as _select_owner_peer
+    from .deterministic_scheduler import task_hash as _task_hash
+
+    deterministic_enabled = str(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DETERMINISTIC")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DETERMINISTIC")
+        or "1"
+    ).strip().lower() not in {"0", "false", "no", "off"}
+
+    peer_timeout_s = float(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_PEER_TIMEOUT_S")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_PEER_TIMEOUT_S")
+        or 300.0
+    )
+
+    sched_clock = _MerkleClock(node_id="taskqueue-service")
+    known_peers: dict[str, dict[str, object]] = {}
+
+    def _update_peer_state(peer: str, clock_dict: object | None = None) -> None:
+        pid = str(peer or "").strip()
+        if not pid:
+            return
+        info = known_peers.get(pid) or {}
+        info["peer_id"] = pid
+        info["last_seen"] = float(time.time())
+        if isinstance(clock_dict, dict):
+            try:
+                other = _MerkleClock.from_dict(clock_dict)
+                info["clock"] = other.to_dict()
+                sched_clock.update(other)
+            except Exception:
+                pass
+        known_peers[pid] = info
+
+    def _alive_peers(requesting_peer: str) -> list[str]:
+        now = time.time()
+        peers: list[str] = []
+        for pid, info in list(known_peers.items()):
+            try:
+                last_seen = float(info.get("last_seen") or 0.0)
+                if (now - last_seen) <= float(peer_timeout_s):
+                    peers.append(pid)
+            except Exception:
+                continue
+        req = str(requesting_peer or "").strip()
+        if req and req not in peers:
+            peers.append(req)
+        return peers
+
+    def _pick_task_for_peer(*, peer_id_hint: str, supported_types: list[str]) -> dict | None:
+        try:
+            candidates = queue.list(status="queued", limit=200, task_types=supported_types or None)
+        except Exception:
+            return None
+
+        def _prio_key(t: dict) -> tuple[int, float]:
+            payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+            try:
+                pr = int(payload.get("priority") or 5)
+            except Exception:
+                pr = 5
+            pr = max(1, min(10, pr))
+            try:
+                created = float(t.get("created_at") or 0.0)
+            except Exception:
+                created = 0.0
+            return (10 - pr, created)
+
+        candidates.sort(key=_prio_key)
+
+        peers = _alive_peers(peer_id_hint)
+        clock_hash = sched_clock.get_hash()
+        for t in candidates:
+            try:
+                tid = str(t.get("task_id") or "")
+                ttype = str(t.get("task_type") or "")
+                mname = str(t.get("model_name") or "")
+                th = _task_hash(task_id=tid, task_type=ttype, model_name=mname)
+                owner = _select_owner_peer(peer_ids=peers, clock_hash=clock_hash, task_hash_hex=th)
+                if owner and owner == peer_id_hint:
+                    return t
+            except Exception:
+                continue
+        return None
+
     print("ipfs_accelerate_py task queue p2p service: creating host...", file=sys.stderr, flush=True)
     host_obj = new_host()
     host = await host_obj if inspect.isawaitable(host_obj) else host_obj
@@ -458,6 +547,137 @@ async def serve_task_queue(
                     payload = {"payload": payload}
                 task_id = queue.submit(task_type=task_type, model_name=model_name, payload=payload)
                 await stream.write(json.dumps({"ok": True, "task_id": task_id, "peer_id": peer_id}).encode("utf-8") + b"\n")
+                return
+
+            if op in {"claim", "claim_next"}:
+                worker_id = str(msg.get("worker_id") or "").strip()
+                if not worker_id:
+                    await stream.write(json.dumps({"ok": False, "error": "missing_worker_id", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                peer_ident = str(msg.get("peer") or msg.get("peer_id") or worker_id).strip()
+                clock_dict = msg.get("clock") if isinstance(msg.get("clock"), dict) else None
+                _update_peer_state(peer_ident, clock_dict)
+
+                supported = msg.get("supported_task_types")
+                if supported is None:
+                    supported = msg.get("task_types")
+                if isinstance(supported, str):
+                    supported_list = [p.strip() for p in supported.split(",") if p.strip()]
+                elif isinstance(supported, (list, tuple, set)):
+                    supported_list = [str(t).strip() for t in supported if str(t).strip()]
+                else:
+                    supported_list = []
+
+                try:
+                    if deterministic_enabled:
+                        picked = _pick_task_for_peer(peer_id_hint=peer_ident, supported_types=supported_list)
+                        if picked is None:
+                            claimed = None
+                        else:
+                            claimed = queue.claim(task_id=str(picked.get("task_id") or ""), worker_id=worker_id)
+                    else:
+                        claimed = queue.claim_next(worker_id=worker_id, supported_task_types=supported_list)
+                except Exception as exc:
+                    await stream.write(
+                        json.dumps({"ok": False, "error": str(exc), "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    )
+                    return
+
+                if claimed is None:
+                    await stream.write(json.dumps({"ok": True, "task": None, "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                await stream.write(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "task": {
+                                "task_id": claimed.task_id,
+                                "task_type": claimed.task_type,
+                                "model_name": claimed.model_name,
+                                "payload": claimed.payload,
+                                "created_at": claimed.created_at,
+                                "status": claimed.status,
+                                "assigned_worker": claimed.assigned_worker,
+                            },
+                            "peer_id": peer_id,
+                        }
+                    ).encode("utf-8")
+                    + b"\n"
+                )
+                return
+
+            if op in {"complete", "task.complete", "complete_task"}:
+                task_id = str(msg.get("task_id") or "").strip()
+                if not task_id:
+                    await stream.write(json.dumps({"ok": False, "error": "missing_task_id", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                status = str(msg.get("status") or "completed").strip().lower()
+                result = msg.get("result")
+                if result is not None and not isinstance(result, dict):
+                    result = {"result": result}
+                error = msg.get("error")
+                try:
+                    ok = bool(queue.complete(task_id=task_id, status=status, result=result if isinstance(result, dict) else None, error=str(error) if error else None))
+                except Exception as exc:
+                    await stream.write(json.dumps({"ok": False, "error": str(exc), "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                await stream.write(json.dumps({"ok": ok, "task_id": task_id, "peer_id": peer_id}).encode("utf-8") + b"\n")
+                return
+
+            if op in {"peer.heartbeat", "heartbeat", "peer"}:
+                pid = str(msg.get("peer") or msg.get("peer_id") or "").strip()
+                if not pid:
+                    await stream.write(json.dumps({"ok": False, "error": "missing_peer_id", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+                clock_dict = msg.get("clock") if isinstance(msg.get("clock"), dict) else None
+                _update_peer_state(pid, clock_dict)
+                await stream.write(
+                    json.dumps(
+                        {
+                            "ok": True,
+                            "peer": pid,
+                            "scheduler": {
+                                "clock": sched_clock.to_dict(),
+                                "known_peers": [
+                                    {
+                                        "peer_id": str(info.get("peer_id") or ""),
+                                        "last_seen": float(info.get("last_seen") or 0.0),
+                                    }
+                                    for info in known_peers.values()
+                                ],
+                            },
+                            "peer_id": peer_id,
+                        }
+                    ).encode("utf-8")
+                    + b"\n"
+                )
+                return
+
+            if op in {"list", "tasks.list", "queue.list"}:
+                status = msg.get("status")
+                try:
+                    limit = int(msg.get("limit") or 50)
+                except Exception:
+                    limit = 50
+                task_types = msg.get("task_types")
+                if isinstance(task_types, str):
+                    types_list = [p.strip() for p in task_types.split(",") if p.strip()]
+                elif isinstance(task_types, (list, tuple, set)):
+                    types_list = [str(t).strip() for t in task_types if str(t).strip()]
+                else:
+                    types_list = None
+
+                try:
+                    tasks = queue.list(status=str(status).strip().lower() if status else None, limit=limit, task_types=types_list)
+                except Exception as exc:
+                    await stream.write(json.dumps({"ok": False, "error": str(exc), "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                await stream.write(json.dumps({"ok": True, "tasks": tasks, "peer_id": peer_id}).encode("utf-8") + b"\n")
                 return
 
             if op in {"status", "capabilities", "describe"}:
