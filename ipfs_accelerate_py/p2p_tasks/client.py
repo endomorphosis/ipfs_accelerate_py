@@ -7,7 +7,8 @@ Supports:
 
 Environment:
 - IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (comma-separated multiaddrs)
-- IPFS_DATASETS_PY_TASK_P2P_DISCOVERY_TIMEOUT_S (default: 5)
+- IPFS_DATASETS_PY_TASK_P2P_DISCOVERY_TIMEOUT_S (compat, default: 5) / IPFS_ACCELERATE_PY_TASK_P2P_DISCOVERY_TIMEOUT_S
+- IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT (compat, default: 9710) / IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT (used for mDNS)
 """
 
 from __future__ import annotations
@@ -42,6 +43,16 @@ def _parse_bootstrap_peers() -> list[str]:
     )
     parts = [p.strip() for p in str(raw).split(",")]
     return [p for p in parts if p]
+
+
+def _mdns_port() -> int:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", "9710"
+    )
+    try:
+        return int(str(raw).strip())
+    except Exception:
+        return 9710
 
 
 async def _read_one_json_line(stream) -> Dict[str, Any]:
@@ -105,9 +116,12 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
     except Exception as exc:
         return {"ok": False, "error": f"mdns_unavailable: {exc}"}
 
-    discover_timeout_s = float(os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DISCOVERY_TIMEOUT_S", "5.0"))
+    discover_timeout_s = float(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DISCOVERY_TIMEOUT_S")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DISCOVERY_TIMEOUT_S", "5.0")
+    )
 
-    mdns = MDNSDiscovery(host.get_network(), port=8000)
+    mdns = MDNSDiscovery(host.get_network(), port=_mdns_port())
 
     try:
         deadline = anyio.current_time() + max(0.1, discover_timeout_s)

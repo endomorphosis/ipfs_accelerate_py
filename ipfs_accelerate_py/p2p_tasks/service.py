@@ -6,10 +6,10 @@ It enables other peers to submit tasks and wait for results.
 Environment:
 - IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT (compat) / IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT
 - IPFS_DATASETS_PY_TASK_P2P_TOKEN (compat) / IPFS_ACCELERATE_PY_TASK_P2P_TOKEN
-- IPFS_DATASETS_PY_TASK_P2P_MDNS (default: 1)
-- IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (comma-separated multiaddrs)
-- IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP (for announce string)
-- IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE (optional announce JSON)
+- IPFS_DATASETS_PY_TASK_P2P_MDNS (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_MDNS
+- IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (compat) / IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS
+- IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP (compat) / IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP (for announce string)
+- IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE (compat) / IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE (optional announce JSON)
 
 Protocol:
 - /ipfs-datasets/task-queue/1.0.0
@@ -151,7 +151,10 @@ async def serve_task_queue(*, queue_path: str, listen_port: Optional[int] = None
     listen_addr = Multiaddr(f"/ip4/0.0.0.0/tcp/{cfg.listen_port}")
     print(f"ipfs_accelerate_py task queue p2p service: listening on {listen_addr}", file=sys.stderr, flush=True)
 
-    mdns_enabled = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS", "1").strip().lower() not in {"0", "false", "no"}
+    mdns_enabled = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS", "1")
+    ).strip().lower() not in {"0", "false", "no"}
 
     async with background_trio_service(host.get_network()):
         await host.get_network().listen(listen_addr)
@@ -181,13 +184,19 @@ async def serve_task_queue(*, queue_path: str, listen_port: Optional[int] = None
             except Exception as exc:
                 print(f"ipfs_accelerate_py task queue p2p service: failed to start mDNS: {exc}", file=sys.stderr, flush=True)
 
-        public_ip = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP", "127.0.0.1").strip() or "127.0.0.1"
+        public_ip = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP", "127.0.0.1")
+        ).strip() or "127.0.0.1"
         announced = f"/ip4/{public_ip}/tcp/{cfg.listen_port}/p2p/{peer_id}"
         print("ipfs_accelerate_py task queue p2p service started", flush=True)
         print(f"peer_id={peer_id}", flush=True)
         print(f"multiaddr={announced}", flush=True)
 
-        announce_file = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE", "").strip()
+        announce_file = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE", "")
+        ).strip()
         if announce_file:
             try:
                 os.makedirs(os.path.dirname(announce_file) or ".", exist_ok=True)
