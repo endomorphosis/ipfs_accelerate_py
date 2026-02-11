@@ -10,6 +10,7 @@ import threading
 from typing import Any, Dict, Optional
 
 from .base_cache import BaseAPICache
+from .provider_secrets import get_provider_cache_secret
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +110,13 @@ def get_global_hf_hub_cache() -> HuggingFaceHubCache:
     
     with _hf_cache_lock:
         if _global_hf_cache is None:
-            _global_hf_cache = HuggingFaceHubCache()
+            secret = get_provider_cache_secret("huggingface")
+            _global_hf_cache = HuggingFaceHubCache(
+                enable_p2p=bool(secret),
+                p2p_shared_secret=secret,
+                p2p_secret_salt=b"huggingface-hub-task-p2p-cache",
+                enable_pubsub=bool(secret),
+            )
             from .base_cache import register_cache
             register_cache("huggingface_hub", _global_hf_cache)
         

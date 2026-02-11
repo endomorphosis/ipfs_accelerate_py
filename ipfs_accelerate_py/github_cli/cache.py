@@ -149,6 +149,7 @@ class GitHubAPICache:
         max_cache_size: int = 1000,
         enable_persistence: bool = True,
         enable_p2p: bool = True,
+        enable_task_p2p_cache: bool | None = None,
         p2p_listen_port: int = 9100,  # Default P2P port (avoiding 9000 for MCP server)
         p2p_bootstrap_peers: Optional[List[str]] = None,
         github_repo: Optional[str] = None,
@@ -184,6 +185,30 @@ class GitHubAPICache:
         self.enable_persistence = enable_persistence
         self.enable_p2p = enable_p2p and HAVE_LIBP2P
         self.enable_universal_connectivity = enable_universal_connectivity
+
+        # Optional: reuse the accelerate libp2p task-service cache (cache.get/set)
+        # to avoid hammering the GitHub API across machines.
+        if enable_task_p2p_cache is None:
+            raw_disable = os.environ.get("IPFS_ACCELERATE_PY_GITHUB_CACHE_DISABLE_TASK_P2P") or os.environ.get(
+                "IPFS_DATASETS_PY_GITHUB_CACHE_DISABLE_TASK_P2P"
+            )
+            disabled = str(raw_disable or "").strip().lower() in {"1", "true", "yes", "on"}
+            self.enable_task_p2p_cache = not disabled
+        else:
+            self.enable_task_p2p_cache = bool(enable_task_p2p_cache)
+
+        # Encryption for task-p2p cache values (must be derived from GitHub auth token).
+        self._task_p2p_cipher = None
+        if self.enable_task_p2p_cache:
+            if not HAVE_CRYPTO:
+                logger.warning("⚠ Task P2P cache disabled: cryptography not available for encryption")
+                self.enable_task_p2p_cache = False
+            else:
+                try:
+                    self._init_task_p2p_encryption()
+                except Exception as e:
+                    logger.warning(f"⚠ Task P2P cache disabled: encryption init failed: {e}")
+                    self.enable_task_p2p_cache = False
         
         # Set up cache directory
         if cache_dir:
@@ -680,33 +705,68 @@ class GitHubAPICache:
             Cached data or None if not found/expired/stale
         """
         cache_key = self._make_cache_key(operation, *args, **kwargs)
-        
+
+        # 1) Local cache first (fast path)
         with self._lock:
             entry = self._cache.get(cache_key)
-            
-            if entry is None:
-                self._stats["misses"] += 1
-                return None
-            
-            # Check TTL-based expiration
-            if entry.is_expired():
-                logger.debug(f"Cache entry expired for {cache_key}")
-                del self._cache[cache_key]
-                self._stats["expirations"] += 1
-                self._stats["misses"] += 1
-                return None
-            
-            # Check content-based staleness
-            if validation_fields and entry.is_stale(validation_fields):
-                logger.debug(f"Cache entry stale (hash mismatch) for {cache_key}")
-                del self._cache[cache_key]
-                self._stats["expirations"] += 1
-                self._stats["misses"] += 1
-                return None
-            
-            self._stats["hits"] += 1
-            logger.debug(f"Cache hit for {cache_key}")
-            return entry.data
+
+            if entry is not None:
+                if entry.is_expired():
+                    logger.debug(f"Cache entry expired for {cache_key}")
+                    del self._cache[cache_key]
+                    self._stats["expirations"] += 1
+                elif validation_fields and entry.is_stale(validation_fields):
+                    logger.debug(f"Cache entry stale (hash mismatch) for {cache_key}")
+                    del self._cache[cache_key]
+                    self._stats["expirations"] += 1
+                else:
+                    self._stats["hits"] += 1
+                    logger.debug(f"Cache hit for {cache_key}")
+                    return entry.data
+
+        # 2) Optional remote/libp2p task-service cache on miss.
+        remote_entry = None
+        if self.enable_task_p2p_cache:
+            try:
+                remote_entry = self._task_p2p_cache_get(cache_key)
+            except Exception:
+                remote_entry = None
+
+        if isinstance(remote_entry, dict):
+            try:
+                data = remote_entry.get("data")
+                ts = float(remote_entry.get("timestamp") or 0)
+                ttl = int(remote_entry.get("ttl") or self.default_ttl)
+                content_hash = remote_entry.get("content_hash")
+                vfields = remote_entry.get("validation_fields")
+                recovered = CacheEntry(
+                    data=data,
+                    timestamp=ts,
+                    ttl=ttl,
+                    content_hash=content_hash,
+                    validation_fields=vfields if isinstance(vfields, dict) else None,
+                )
+            except Exception:
+                recovered = None
+
+            if recovered is not None and not recovered.is_expired():
+                # Validate staleness if caller provided validation fields.
+                if validation_fields and recovered.is_stale(validation_fields):
+                    recovered = None
+
+            if recovered is not None:
+                with self._lock:
+                    self._cache[cache_key] = recovered
+                    self._stats["peer_hits"] += 1
+                    self._stats["api_calls_saved"] += 1
+                    if self.enable_persistence:
+                        self._save_to_disk(cache_key, recovered)
+                return recovered.data
+
+        # Miss
+        with self._lock:
+            self._stats["misses"] += 1
+        return None
     
     def get_stale(
         self,
@@ -786,9 +846,169 @@ class GitHubAPICache:
             if self.enable_persistence:
                 self._save_to_disk(cache_key, entry)
 
+        # Write-through to the libp2p task-service cache (best-effort).
+        if self.enable_task_p2p_cache and entry is not None:
+            try:
+                remote_payload = {
+                    "cache_key": cache_key,
+                    "data": entry.data,
+                    "timestamp": entry.timestamp,
+                    "ttl": entry.ttl,
+                    "content_hash": entry.content_hash,
+                    "validation_fields": entry.validation_fields,
+                }
+                self._task_p2p_cache_set(cache_key, remote_payload, ttl_s=float(entry.ttl))
+            except Exception:
+                pass
+
         # Broadcast to P2P peers if enabled (outside the lock)
         if self.enable_p2p and entry is not None:
             self._broadcast_in_background(cache_key, entry)
+
+    def _get_github_auth_secret(self) -> str:
+        """Return GitHub auth token to use as shared secret.
+
+        Uses `GITHUB_TOKEN` if available, otherwise tries `gh auth token`.
+        """
+
+        github_token = (os.environ.get("GITHUB_TOKEN") or "").strip()
+        if github_token:
+            return github_token
+
+        # Try to get token from gh CLI
+        try:
+            import subprocess
+
+            result = subprocess.run(
+                ["gh", "auth", "token"],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+            if result.returncode == 0:
+                token = (result.stdout or "").strip()
+                if token:
+                    return token
+        except Exception:
+            pass
+
+        raise RuntimeError("GitHub auth token unavailable (set GITHUB_TOKEN or run 'gh auth login')")
+
+    def _init_task_p2p_encryption(self) -> None:
+        """Initialize task-p2p encryption cipher derived from GitHub auth token."""
+
+        if not HAVE_CRYPTO:
+            raise RuntimeError("cryptography not available")
+
+        shared_secret = self._get_github_auth_secret()
+
+        # Deterministic derivation so nodes with the same token decrypt each other.
+        kdf = PBKDF2HMAC(
+            algorithm=hashes.SHA256(),
+            length=32,
+            salt=b"github-task-p2p-cache",  # fixed salt
+            iterations=100000,
+            backend=default_backend(),
+        )
+        key = base64.urlsafe_b64encode(kdf.derive(shared_secret.encode("utf-8")))
+        self._task_p2p_cipher = Fernet(key)
+
+    def _task_p2p_encrypt_value(self, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Encrypt a JSON-serializable dict for storage in task-p2p cache."""
+
+        if not self._task_p2p_cipher:
+            raise RuntimeError("Task P2P cipher not initialized")
+        plaintext = json.dumps(value, sort_keys=True).encode("utf-8")
+        ct = self._task_p2p_cipher.encrypt(plaintext)
+        return {"enc": "fernet-v1", "ct": ct.decode("ascii")}
+
+    def _task_p2p_decrypt_value(self, wrapped: Any) -> Any:
+        """Decrypt a task-p2p cache value if it is encrypted; otherwise return as-is."""
+
+        if not isinstance(wrapped, dict) or "enc" not in wrapped:
+            return wrapped
+
+        if wrapped.get("enc") != "fernet-v1":
+            return None
+        ct = wrapped.get("ct")
+        if not isinstance(ct, str) or not ct:
+            return None
+        if not self._task_p2p_cipher:
+            return None
+        try:
+            pt = self._task_p2p_cipher.decrypt(ct.encode("ascii"))
+            return json.loads(pt.decode("utf-8"))
+        except Exception:
+            return None
+
+    def _task_p2p_remote(self):
+        """Build a p2p_tasks RemoteQueue from environment (best-effort).
+
+        Returns None when remote is not configured.
+        """
+
+        remote_peer_id = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_PEER_ID")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_PEER_ID")
+            or ""
+        ).strip()
+        remote_multiaddr = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_MULTIADDR")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_MULTIADDR")
+            or ""
+        ).strip()
+
+        if not remote_multiaddr and not remote_peer_id:
+            return None
+
+        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+
+        return RemoteQueue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
+
+    def _task_p2p_cache_get(self, cache_key: str) -> Any | None:
+        """Best-effort get from accelerate's libp2p task-service cache."""
+
+        if not cache_key:
+            return None
+        try:
+            from ipfs_accelerate_py.p2p_tasks.client import cache_get_sync
+
+            remote = self._task_p2p_remote()
+            if remote is None:
+                return None
+
+            resp = cache_get_sync(remote=remote, key=str(cache_key), timeout_s=10.0)
+            if not isinstance(resp, dict) or not resp.get("ok"):
+                return None
+            if not resp.get("hit"):
+                return None
+            value = resp.get("value")
+            return self._task_p2p_decrypt_value(value)
+        except Exception:
+            return None
+
+    def _task_p2p_cache_set(self, cache_key: str, value: Any, *, ttl_s: float | None = None) -> None:
+        """Best-effort set to accelerate's libp2p task-service cache."""
+
+        if not cache_key:
+            return
+        try:
+            from ipfs_accelerate_py.p2p_tasks.client import cache_set_sync
+
+            remote = self._task_p2p_remote()
+            if remote is None:
+                return
+
+            # Require encryption for remote storage.
+            if isinstance(value, dict):
+                wrapped = self._task_p2p_encrypt_value(value)
+            else:
+                # Only dict payloads are supported (keeps remote format stable)
+                wrapped = self._task_p2p_encrypt_value({"value": value})
+
+            cache_set_sync(remote=remote, key=str(cache_key), value=wrapped, ttl_s=ttl_s, timeout_s=10.0)
+        except Exception:
+            return
     
     def _evict_oldest(self) -> None:
         """Evict the oldest cache entry."""

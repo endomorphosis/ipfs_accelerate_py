@@ -10,7 +10,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from .dual_mode_wrapper import DualModeWrapper, detect_cli_tool
-from ..common.llm_cache import LLMAPICache, get_global_llm_cache
+from ..common.llm_cache import LLMAPICache, get_global_llm_cache, get_llm_cache
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,8 @@ class ClaudeCodeCLIIntegration(DualModeWrapper):
             prefer_cli: Whether to prefer CLI over SDK (default: False)
             **kwargs: Additional arguments
         """
-        if cache is None:
+        cache_was_none = cache is None
+        if cache_was_none:
             cache = get_global_llm_cache()
         
         super().__init__(
@@ -55,6 +56,11 @@ class ClaudeCodeCLIIntegration(DualModeWrapper):
             prefer_cli=prefer_cli,
             **kwargs
         )
+
+        # If caller didn't provide a custom cache, use per-provider cache
+        # keyed/encrypted by the resolved API key (env or secrets manager).
+        if cache_was_none:
+            self.cache = get_llm_cache("anthropic", api_key=self.api_key)
     
     def get_tool_name(self) -> str:
         return "Claude (Anthropic)"

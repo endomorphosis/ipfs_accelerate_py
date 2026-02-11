@@ -10,7 +10,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from .dual_mode_wrapper import DualModeWrapper, detect_cli_tool
-from ..common.llm_cache import LLMAPICache, get_global_llm_cache
+from ..common.llm_cache import LLMAPICache, get_global_llm_cache, get_llm_cache
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +44,8 @@ class GeminiCLIIntegration(DualModeWrapper):
             prefer_cli: Whether to prefer CLI over SDK (default: False)
             **kwargs: Additional arguments
         """
-        if cache is None:
+        cache_was_none = cache is None
+        if cache_was_none:
             cache = get_global_llm_cache()
         
         super().__init__(
@@ -55,6 +56,10 @@ class GeminiCLIIntegration(DualModeWrapper):
             prefer_cli=prefer_cli,
             **kwargs
         )
+
+        if cache_was_none:
+            # Prefer GEMINI_API_KEY/GOOGLE_API_KEY, else secrets manager resolved key.
+            self.cache = get_llm_cache("gemini", api_key=self.api_key)
         
         # Lazy import and configure google-generativeai
         self._configured = False

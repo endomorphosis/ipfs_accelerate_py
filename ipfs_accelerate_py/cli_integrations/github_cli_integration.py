@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from .base_cli_wrapper import BaseCLIWrapper
 from ..common.base_cache import BaseAPICache, register_cache
+from ..common.provider_secrets import get_provider_cache_secret
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +111,13 @@ class GitHubCLIIntegration(BaseCLIWrapper):
                 logger.debug(f"Datasets integration initialization skipped: {e}")
         
         if cache is None:
-            cache = GitHubCLICache()
+            secret = get_provider_cache_secret("github")
+            cache = GitHubCLICache(
+                enable_p2p=bool(secret),
+                p2p_shared_secret=secret,
+                p2p_secret_salt=b"github-cli-task-p2p-cache",
+                enable_pubsub=bool(secret),
+            )
             register_cache("github_cli", cache)
         
         super().__init__(

@@ -63,6 +63,10 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+def _truthy_env(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 @dataclass
 class CacheEntry:
     """Represents a cached API response with content-based validation."""
@@ -124,7 +128,10 @@ class BaseAPICache(ABC):
         max_cache_size: int = 1000,
         enable_persistence: bool = True,
         enable_p2p: bool = False,
-        cache_name: Optional[str] = None
+        cache_name: Optional[str] = None,
+        p2p_shared_secret: Optional[str] = None,
+        p2p_secret_salt: Optional[bytes] = None,
+        enable_pubsub: Optional[bool] = None
     ):
         """
         Initialize the API cache.
@@ -142,6 +149,25 @@ class BaseAPICache(ABC):
         self.enable_persistence = enable_persistence
         self.enable_p2p = enable_p2p
         self.cache_name = cache_name or self.get_cache_namespace()
+
+        # Task-P2P remote cache encryption (required for any remote caching)
+        self._p2p_shared_secret = p2p_shared_secret
+        self._p2p_secret_salt = p2p_secret_salt
+        self._p2p_fernet: Optional["Fernet"] = None
+        self._enable_pubsub = bool(enable_pubsub) if enable_pubsub is not None else bool(enable_p2p)
+        self._init_task_p2p_encryption()
+
+        # Optional: store large payloads in IPFS and keep only a CID pointer in remote p2p cache.
+        # This does NOT make lookup itself "IPFS-native" (IPFS is content-addressed); it just
+        # moves bulk bytes to IPFS so peers can fetch by CID.
+        self._ipfs_payload_pointers = _truthy_env(
+            os.environ.get("IPFS_ACCELERATE_CACHE_IPFS_POINTERS")
+            or os.environ.get("IPFS_DATASETS_PY_CACHE_IPFS_POINTERS")
+        )
+
+        # Optional: mutable key→payloadCID index using IPNS snapshots + pubsub replication.
+        from .ipfs_mutable_index import get_global_mutable_index
+        self._mutable_index = get_global_mutable_index()
         
         # Set up cache directory
         if cache_dir:
@@ -220,6 +246,161 @@ class BaseAPICache(ABC):
             self._load_from_disk()
         
         logger.info(f"✓ {self.cache_name} cache initialized (persistence={enable_persistence}, p2p={enable_p2p})")
+
+    # ---------------------------
+    # Task-P2P cache integration
+    # ---------------------------
+
+    def _task_p2p_remote(self):
+        """Return a RemoteQueue-like object or None.
+
+        Default behavior: only enable dialing when bootstrap peers are configured.
+        Subclasses/tests can monkeypatch this to force a remote.
+        """
+        if not self.enable_p2p:
+            return None
+        if os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_DISABLE", "").lower() in {"1", "true", "yes"}:
+            return None
+
+        # Only attempt if there are configured peers (avoid accidental LAN discovery).
+        raw = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS")
+            or ""
+        ).strip()
+        if not raw:
+            return None
+
+        try:
+            from ..p2p_tasks.client import RemoteQueue
+
+            return RemoteQueue(peer_id="", multiaddr="")
+        except Exception:
+            return None
+
+    def _task_p2p_replication_multiaddrs(self) -> list[str]:
+        """Multiaddrs to replicate to (pubsub-like fanout).
+
+        By default uses the configured bootstrap peers.
+        """
+        raw = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS")
+            or ""
+        )
+        parts = [p.strip() for p in str(raw).split(",")]
+        return [p for p in parts if p]
+
+    def _task_p2p_key(self, cache_key: str) -> str:
+        return f"{self.cache_name}:{cache_key}"
+
+    def _init_task_p2p_encryption(self) -> None:
+        if not self.enable_p2p:
+            self._p2p_fernet = None
+            return
+        if not HAVE_CRYPTO:
+            self._p2p_fernet = None
+            return
+        secret = (self._p2p_shared_secret or "").strip()
+        if not secret:
+            # Do not allow remote caching without a shared secret (prevents plaintext leakage).
+            self._p2p_fernet = None
+            return
+
+        salt = self._p2p_secret_salt
+        if salt is None:
+            salt = (f"{self.cache_name}-task-p2p-cache").encode("utf-8")
+
+        try:
+            kdf = PBKDF2HMAC(
+                algorithm=hashes.SHA256(),
+                length=32,
+                salt=salt,
+                iterations=200_000,
+                backend=default_backend(),
+            )
+            import base64
+
+            key = base64.urlsafe_b64encode(kdf.derive(secret.encode("utf-8")))
+            self._p2p_fernet = Fernet(key)
+        except Exception:
+            self._p2p_fernet = None
+
+    def _task_p2p_encrypt_value(self, payload: Any) -> Any:
+        if self._p2p_fernet is None:
+            return None
+        try:
+            raw = json.dumps(payload, sort_keys=True).encode("utf-8")
+            ct = self._p2p_fernet.encrypt(raw).decode("utf-8")
+            return {"enc": "fernet-v1", "ct": ct}
+        except Exception:
+            return None
+
+    def _task_p2p_decrypt_value(self, wrapper: Any) -> Optional[Any]:
+        if self._p2p_fernet is None:
+            return None
+        if not isinstance(wrapper, dict):
+            return None
+        if wrapper.get("enc") != "fernet-v1":
+            return None
+        ct = wrapper.get("ct")
+        if not isinstance(ct, str) or not ct:
+            return None
+        try:
+            raw = self._p2p_fernet.decrypt(ct.encode("utf-8"))
+            return json.loads(raw.decode("utf-8"))
+        except Exception:
+            return None
+
+    def _task_p2p_get(self, cache_key: str) -> Optional[Dict[str, Any]]:
+        remote = self._task_p2p_remote()
+        if remote is None or self._p2p_fernet is None:
+            return None
+        try:
+            from ..p2p_tasks import client as p2p_client
+
+            remote_key = self._task_p2p_key(cache_key)
+            resp = p2p_client.cache_get_sync(remote=remote, key=remote_key, timeout_s=10.0)
+            if not isinstance(resp, dict) or not resp.get("ok") or not resp.get("hit"):
+                return None
+            decrypted = self._task_p2p_decrypt_value(resp.get("value"))
+            return decrypted if isinstance(decrypted, dict) else None
+        except Exception:
+            return None
+
+    def _task_p2p_set_one(self, *, remote, cache_key: str, payload: Dict[str, Any], ttl_s: Optional[float]) -> None:
+        if remote is None or self._p2p_fernet is None:
+            return
+        try:
+            from ..p2p_tasks import client as p2p_client
+
+            remote_key = self._task_p2p_key(cache_key)
+            encrypted = self._task_p2p_encrypt_value(payload)
+            if encrypted is None:
+                return
+            p2p_client.cache_set_sync(remote=remote, key=remote_key, value=encrypted, ttl_s=ttl_s, timeout_s=10.0)
+        except Exception:
+            return
+
+    def _task_p2p_set(self, cache_key: str, payload: Dict[str, Any], ttl_s: Optional[float]) -> None:
+        remote = self._task_p2p_remote()
+        if remote is not None:
+            self._task_p2p_set_one(remote=remote, cache_key=cache_key, payload=payload, ttl_s=ttl_s)
+
+        # Pubsub-like fanout: replicate to all configured bootstrap peers.
+        if not self._enable_pubsub:
+            return
+
+        try:
+            from ..p2p_tasks.client import RemoteQueue
+        except Exception:
+            return
+
+        for addr in self._task_p2p_replication_multiaddrs():
+            try:
+                self._task_p2p_set_one(remote=RemoteQueue(peer_id="", multiaddr=addr), cache_key=cache_key, payload=payload, ttl_s=ttl_s)
+            except Exception:
+                continue
     
     @abstractmethod
     def get_cache_namespace(self) -> str:
@@ -286,6 +467,69 @@ class BaseAPICache(ABC):
         
         # Create content-addressed identifier (CID)
         return self._compute_cid(query_json)
+
+    @staticmethod
+    def _ipfs_router():
+        """Best-effort import of the IPFS backend router.
+
+        Returns the module-like router (with block_put/block_get) or None.
+        """
+        try:
+            from ipfs_datasets_py import ipfs_backend_router as ipfs_router  # type: ignore
+
+            return ipfs_router
+        except Exception:
+            return None
+
+    def _ipfs_put_payload(self, payload: Dict[str, Any]) -> Optional[str]:
+        """Store payload bytes in IPFS and return its CID (or None)."""
+        router = self._ipfs_router()
+        if router is None:
+            return None
+
+        try:
+            # If remote caching is configured (shared secret), store encrypted payloads in IPFS.
+            # This prevents bypassing the Task-P2P encryption invariant via IPFS/index lookups.
+            if self._p2p_fernet is not None:
+                wrapper = self._task_p2p_encrypt_value(payload)
+                if not isinstance(wrapper, dict):
+                    return None
+                content = json.dumps(wrapper, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            else:
+                content = json.dumps(payload, sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+            # Use raw blocks for predictable, immutable payload blobs.
+            return str(router.block_put(content, codec="raw"))
+        except Exception:
+            return None
+
+    def _ipfs_get_payload(self, cid: str) -> Optional[Dict[str, Any]]:
+        """Fetch payload bytes from IPFS by CID and decode JSON."""
+        router = self._ipfs_router()
+        if router is None:
+            return None
+
+        try:
+            raw = router.block_get(cid)
+            if isinstance(raw, str):
+                raw_b = raw.encode("utf-8")
+            else:
+                raw_b = raw
+            obj = json.loads(raw_b.decode("utf-8"))
+            if not isinstance(obj, dict):
+                return None
+
+            # If we have a shared secret configured, only accept encrypted payload wrappers.
+            # (Plaintext payloads would allow injection/cross-secret reads.)
+            if self._p2p_fernet is not None:
+                if obj.get("enc") == "fernet-v1":
+                    decrypted = self._task_p2p_decrypt_value(obj)
+                    return decrypted if isinstance(decrypted, dict) else None
+                return None
+
+            # Without a shared secret, accept plaintext payload dicts.
+            return obj
+        except Exception:
+            return None
     
     @staticmethod
     def _compute_cid(content: str) -> str:
@@ -355,68 +599,120 @@ class BaseAPICache(ABC):
                 self._stats["misses"] += 1
                 self._stats["api_calls_made"] += 1
             return None
-        
+
         cache_key = self.make_cache_key(operation, *args, **kwargs)
-        
+
+        # 1) Local in-memory cache
         with self._lock:
-            if cache_key in self._cache:
-                entry = self._cache[cache_key]
-                
-                # Check if entry is expired
+            entry = self._cache.get(cache_key)
+            if entry is not None:
                 if entry.is_expired():
                     del self._cache[cache_key]
                     self._stats["expirations"] += 1
-                    self._stats["misses"] += 1
-                    self._stats["api_calls_made"] += 1
-                    return None
-                
-                # Entry is valid
-                self._stats["hits"] += 1
-                self._stats["api_calls_saved"] += 1
-                return entry.data
-            
-            # Cache miss - try IPFS fallback
-            self._stats["misses"] += 1
-            
-            # Try to retrieve from IPFS fallback store
-            if self._ipfs_fallback and self._ipfs_fallback.is_available():
-                try:
-                    ipfs_data = self._ipfs_fallback.get(cache_key)
-                    if ipfs_data:
-                        # Successfully retrieved from IPFS
-                        logger.info(f"Cache retrieved from IPFS fallback for key: {cache_key[:16]}...")
-                        self._stats["ipfs_fallback_hits"] += 1
+                else:
+                    self._stats["hits"] += 1
+                    self._stats["api_calls_saved"] += 1
+                    return entry.data
+
+        # 2) Task-P2P remote cache (encrypted)
+        remote_payload = self._task_p2p_get(cache_key)
+        if isinstance(remote_payload, dict) and "ipfs_cid" in remote_payload:
+            # Pointer mode: resolve payload via IPFS
+            ipfs_cid = remote_payload.get("ipfs_cid")
+            if isinstance(ipfs_cid, str) and ipfs_cid:
+                resolved = self._ipfs_get_payload(ipfs_cid)
+                if isinstance(resolved, dict) and "data" in resolved:
+                    remote_payload = resolved
+
+        if isinstance(remote_payload, dict) and "data" in remote_payload:
+            try:
+                remote_entry = CacheEntry(
+                    data=remote_payload.get("data"),
+                    timestamp=float(remote_payload.get("timestamp", time.time())),
+                    ttl=int(remote_payload.get("ttl", self.default_ttl)),
+                    content_hash=remote_payload.get("content_hash"),
+                    validation_fields=remote_payload.get("validation_fields"),
+                    metadata=remote_payload.get("metadata"),
+                )
+                if not remote_entry.is_expired():
+                    with self._lock:
+                        self._cache[cache_key] = remote_entry
+                        self._cid_index.add(cache_key, operation, remote_entry.metadata or {})
+                        self._stats["peer_hits"] += 1
+                        self._stats["hits"] += 1
                         self._stats["api_calls_saved"] += 1
-                        
-                        # Store in local cache for future use
-                        if isinstance(ipfs_data, dict) and "data" in ipfs_data:
-                            # Reconstruct cache entry
-                            entry = CacheEntry(
-                                data=ipfs_data.get("data"),
-                                timestamp=ipfs_data.get("timestamp", time.time()),
-                                ttl=ipfs_data.get("ttl", self.default_ttl),
-                                content_hash=ipfs_data.get("content_hash"),
-                                validation_fields=ipfs_data.get("validation_fields"),
-                                metadata=ipfs_data.get("metadata")
-                            )
-                            
-                            # Check if still valid
-                            if not entry.is_expired():
+                    return remote_entry.data
+            except Exception:
+                pass
+
+        # 3) IPFS fallback store
+        if self._ipfs_fallback and self._ipfs_fallback.is_available():
+            try:
+                ipfs_data = self._ipfs_fallback.get(cache_key)
+                if ipfs_data:
+                    logger.info(f"Cache retrieved from IPFS fallback for key: {cache_key[:16]}...")
+                    with self._lock:
+                        self._stats["ipfs_fallback_hits"] += 1
+                        self._stats["hits"] += 1
+                        self._stats["api_calls_saved"] += 1
+
+                    if isinstance(ipfs_data, dict) and "data" in ipfs_data:
+                        entry = CacheEntry(
+                            data=ipfs_data.get("data"),
+                            timestamp=ipfs_data.get("timestamp", time.time()),
+                            ttl=ipfs_data.get("ttl", self.default_ttl),
+                            content_hash=ipfs_data.get("content_hash"),
+                            validation_fields=ipfs_data.get("validation_fields"),
+                            metadata=ipfs_data.get("metadata"),
+                        )
+                        if not entry.is_expired():
+                            with self._lock:
                                 self._cache[cache_key] = entry
-                                # Add to CID index
                                 self._cid_index.add(cache_key, operation, entry.metadata or {})
-                                return entry.data
-                        else:
-                            # Direct data return
-                            return ipfs_data
-                except Exception as e:
-                    logger.debug(f"IPFS fallback retrieval failed for {cache_key[:16]}...: {e}")
+                            return entry.data
+
+                    return ipfs_data
+            except Exception as e:
+                logger.debug(f"IPFS fallback retrieval failed for {cache_key[:16]}...: {e}")
+                with self._lock:
                     self._stats["ipfs_fallback_misses"] += 1
-            else:
+        else:
+            with self._lock:
                 self._stats["ipfs_fallback_misses"] += 1
-            
+
+        # 4) Mutable index lookup (IPNS snapshot + pubsub replication)
+        if self._mutable_index is not None:
+            try:
+                payload_cid = self._mutable_index.lookup(cache_key)
+                if isinstance(payload_cid, str) and payload_cid:
+                    resolved = self._ipfs_get_payload(payload_cid)
+                    if isinstance(resolved, dict) and "data" in resolved:
+                        try:
+                            remote_entry = CacheEntry(
+                                data=resolved.get("data"),
+                                timestamp=float(resolved.get("timestamp", time.time())),
+                                ttl=int(resolved.get("ttl", self.default_ttl)),
+                                content_hash=resolved.get("content_hash"),
+                                validation_fields=resolved.get("validation_fields"),
+                                metadata=resolved.get("metadata"),
+                            )
+                            if not remote_entry.is_expired():
+                                with self._lock:
+                                    self._cache[cache_key] = remote_entry
+                                    self._cid_index.add(cache_key, operation, remote_entry.metadata or {})
+                                    self._stats["hits"] += 1
+                                    self._stats["api_calls_saved"] += 1
+                                return remote_entry.data
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+        # Full miss
+        with self._lock:
+            self._stats["misses"] += 1
             self._stats["api_calls_made"] += 1
-            return None
+        return None
     
     def put(
         self,
@@ -506,6 +802,80 @@ class BaseAPICache(ABC):
         # Save to disk if persistence is enabled
         if self.enable_persistence:
             self._save_to_disk(cache_key, entry)
+
+        # Task-P2P remote write-through (encrypted)
+        ipfs_payload_cid: Optional[str] = None
+        index_updated = False
+        if self.enable_p2p and self._p2p_fernet is not None:
+            try:
+                payload = {
+                    "data": entry.data,
+                    "timestamp": entry.timestamp,
+                    "ttl": entry.ttl,
+                    "content_hash": entry.content_hash,
+                    "validation_fields": entry.validation_fields,
+                    "metadata": entry.metadata,
+                    "operation": operation,
+                }
+
+                # If pointer mode OR mutable index is enabled, store payload in IPFS (raw block)
+                # and publish the key→payloadCID mapping.
+                if self._ipfs_payload_pointers or self._mutable_index is not None:
+                    ipfs_payload_cid = self._ipfs_put_payload(payload)
+                    if isinstance(ipfs_payload_cid, str) and ipfs_payload_cid and self._mutable_index is not None:
+                        try:
+                            self._mutable_index.update(
+                                cache_key=cache_key,
+                                payload_cid=ipfs_payload_cid,
+                                ts=entry.timestamp,
+                                ttl_s=float(entry.ttl),
+                                operation=str(operation),
+                                cache_name=str(self.cache_name),
+                            )
+                            index_updated = True
+                        except Exception:
+                            pass
+
+                if self._ipfs_payload_pointers and isinstance(ipfs_payload_cid, str) and ipfs_payload_cid:
+                    # Store the pointer remotely; keep the full payload locally.
+                    pointer = {
+                        "ipfs_cid": ipfs_payload_cid,
+                        "timestamp": entry.timestamp,
+                        "ttl": entry.ttl,
+                        "operation": operation,
+                    }
+                    self._task_p2p_set(cache_key, pointer, ttl_s=float(entry.ttl))
+                    return
+
+                self._task_p2p_set(cache_key, payload, ttl_s=float(entry.ttl))
+            except Exception:
+                pass
+
+        # Even without p2p (or if p2p indexing failed), allow IPNS/pubsub indexing if enabled.
+        if self._mutable_index is not None and not index_updated:
+            try:
+                if not (isinstance(ipfs_payload_cid, str) and ipfs_payload_cid):
+                    payload = {
+                        "data": entry.data,
+                        "timestamp": entry.timestamp,
+                        "ttl": entry.ttl,
+                        "content_hash": entry.content_hash,
+                        "validation_fields": entry.validation_fields,
+                        "metadata": entry.metadata,
+                        "operation": operation,
+                    }
+                    ipfs_payload_cid = self._ipfs_put_payload(payload)
+                if isinstance(ipfs_payload_cid, str) and ipfs_payload_cid:
+                    self._mutable_index.update(
+                        cache_key=cache_key,
+                        payload_cid=ipfs_payload_cid,
+                        ts=entry.timestamp,
+                        ttl_s=float(entry.ttl),
+                        operation=str(operation),
+                        cache_name=str(self.cache_name),
+                    )
+            except Exception:
+                pass
     
     def invalidate(self, operation: str, *args, **kwargs) -> bool:
         """
@@ -718,6 +1088,11 @@ class BaseAPICache(ABC):
     
     def shutdown(self) -> None:
         """Gracefully shutdown and save cache."""
+        if getattr(self, "_mutable_index", None) is not None:
+            try:
+                self._mutable_index.shutdown()
+            except Exception:
+                pass
         if self.enable_persistence:
             try:
                 with self._lock:

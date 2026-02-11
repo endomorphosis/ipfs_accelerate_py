@@ -293,3 +293,99 @@ def call_tool_sync(*, remote: RemoteQueue, tool_name: str, args: Dict[str, Any] 
 
     trio.run(_main)
     return result
+
+
+async def cache_get(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={"op": "cache.get", "key": str(key), "timeout_s": float(timeout_s)},
+    )
+    if not isinstance(resp, dict):
+        return {"ok": False, "error": "invalid_response"}
+    return resp
+
+
+def cache_get_sync(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) -> Dict[str, Any]:
+    import trio
+
+    result: Dict[str, Any] = {}
+
+    async def _main() -> None:
+        nonlocal result
+        result = await cache_get(remote=remote, key=str(key), timeout_s=float(timeout_s))
+
+    trio.run(_main)
+    return result
+
+
+async def cache_has(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={"op": "cache.has", "key": str(key), "timeout_s": float(timeout_s)},
+    )
+    if not isinstance(resp, dict):
+        return {"ok": False, "error": "invalid_response"}
+    return resp
+
+
+def cache_has_sync(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) -> Dict[str, Any]:
+    import trio
+
+    result: Dict[str, Any] = {}
+
+    async def _main() -> None:
+        nonlocal result
+        result = await cache_has(remote=remote, key=str(key), timeout_s=float(timeout_s))
+
+    trio.run(_main)
+    return result
+
+
+async def cache_set(*, remote: RemoteQueue, key: str, value: Any, ttl_s: float | None = None, timeout_s: float = 10.0) -> Dict[str, Any]:
+    message: Dict[str, Any] = {"op": "cache.set", "key": str(key), "value": value, "timeout_s": float(timeout_s)}
+    if ttl_s is not None:
+        try:
+            message["ttl_s"] = float(ttl_s)
+        except Exception:
+            pass
+
+    resp = await _dial_and_request(remote=remote, message=message)
+    if not isinstance(resp, dict):
+        return {"ok": False, "error": "invalid_response"}
+    return resp
+
+
+def cache_set_sync(*, remote: RemoteQueue, key: str, value: Any, ttl_s: float | None = None, timeout_s: float = 10.0) -> Dict[str, Any]:
+    import trio
+
+    result: Dict[str, Any] = {}
+
+    async def _main() -> None:
+        nonlocal result
+        result = await cache_set(remote=remote, key=str(key), value=value, ttl_s=ttl_s, timeout_s=float(timeout_s))
+
+    trio.run(_main)
+    return result
+
+
+async def cache_delete(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={"op": "cache.delete", "key": str(key), "timeout_s": float(timeout_s)},
+    )
+    if not isinstance(resp, dict):
+        return {"ok": False, "error": "invalid_response"}
+    return resp
+
+
+def cache_delete_sync(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) -> Dict[str, Any]:
+    import trio
+
+    result: Dict[str, Any] = {}
+
+    async def _main() -> None:
+        nonlocal result
+        result = await cache_delete(remote=remote, key=str(key), timeout_s=float(timeout_s))
+
+    trio.run(_main)
+    return result

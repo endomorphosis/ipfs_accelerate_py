@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 
 from .base_cli_wrapper import BaseCLIWrapper
 from ..common.base_cache import BaseAPICache, register_cache
+from ..common.provider_secrets import get_provider_cache_secret
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +57,13 @@ class VastAICLIIntegration(BaseCLIWrapper):
             **kwargs: Additional arguments for BaseCLIWrapper
         """
         if cache is None:
-            cache = VastAICLICache()
+            secret = get_provider_cache_secret("vastai")
+            cache = VastAICLICache(
+                enable_p2p=bool(secret),
+                p2p_shared_secret=secret,
+                p2p_secret_salt=b"vastai-cli-task-p2p-cache",
+                enable_pubsub=bool(secret),
+            )
             register_cache("vastai_cli", cache)
         
         super().__init__(

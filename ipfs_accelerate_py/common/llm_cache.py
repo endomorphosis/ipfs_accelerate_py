@@ -15,6 +15,7 @@ import threading
 from typing import Any, Dict, List, Optional
 
 from .base_cache import BaseAPICache
+from .provider_secrets import get_provider_cache_secret
 
 try:
     from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
@@ -274,6 +275,9 @@ class LLMAPICache(BaseAPICache):
 _global_llm_cache: Optional[LLMAPICache] = None
 _llm_cache_lock = threading.Lock()
 
+# Per-provider LLM cache instances (for per-provider encrypted distributed caching)
+_provider_llm_caches: Dict[str, LLMAPICache] = {}
+
 
 def get_global_llm_cache() -> LLMAPICache:
     """Get or create the global LLM API cache instance."""
@@ -286,6 +290,40 @@ def get_global_llm_cache() -> LLMAPICache:
             register_cache("llm_api", _global_llm_cache)
         
         return _global_llm_cache
+
+
+def get_llm_cache(provider: str, api_key: Optional[str] = None) -> LLMAPICache:
+    """Get or create a per-provider LLM cache.
+
+    This is the preferred entrypoint for CLI/provider integrations.
+    It scopes cache directories + remote encryption by provider.
+    """
+
+    provider_key = (provider or "default").strip().lower() or "default"
+
+    with _llm_cache_lock:
+        existing = _provider_llm_caches.get(provider_key)
+        if existing is not None:
+            return existing
+
+        secret = get_provider_cache_secret(provider_key, explicit_secret=api_key)
+
+        # Only enable remote cache when we have a secret (encryption required).
+        enable_p2p = bool(secret)
+
+        cache = LLMAPICache(
+            cache_name=f"llm_api_{provider_key}",
+            enable_p2p=enable_p2p,
+            p2p_shared_secret=secret,
+            p2p_secret_salt=f"llm-api-{provider_key}-task-p2p-cache".encode("utf-8"),
+            enable_pubsub=enable_p2p,
+        )
+
+        from .base_cache import register_cache
+
+        register_cache(f"llm_api_{provider_key}", cache)
+        _provider_llm_caches[provider_key] = cache
+        return cache
 
 
 def configure_llm_cache(**kwargs) -> LLMAPICache:

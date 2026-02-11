@@ -19,6 +19,12 @@ from .client import (
     get_capabilities_sync,
     call_tool,
     call_tool_sync,
+    cache_get,
+    cache_get_sync,
+    cache_has,
+    cache_has_sync,
+    cache_set,
+    cache_set_sync,
 )
 from .worker import run_worker
 
@@ -38,5 +44,11 @@ __all__ = [
     "get_capabilities_sync",
     "call_tool",
     "call_tool_sync",
+    "cache_get",
+    "cache_get_sync",
+    "cache_has",
+    "cache_has_sync",
+    "cache_set",
+    "cache_set_sync",
     "run_worker",
 ]

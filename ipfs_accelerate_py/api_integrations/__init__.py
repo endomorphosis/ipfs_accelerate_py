@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 # Import cache infrastructure
 try:
-    from ..common.llm_cache import LLMAPICache, get_global_llm_cache
+    from ..common.llm_cache import LLMAPICache, get_global_llm_cache, get_llm_cache
     from ..common.hf_hub_cache import HuggingFaceHubCache, get_global_hf_hub_cache
     from ..common.docker_cache import DockerAPICache, get_global_docker_cache
     from ..common.base_cache import BaseAPICache, register_cache
@@ -57,7 +57,17 @@ class CachedLLMAPI:
         """
         self._api = api_instance
         self._api_name = api_name
-        self._cache = cache or get_global_llm_cache() if CACHE_AVAILABLE else None
+        if not CACHE_AVAILABLE:
+            self._cache = None
+        elif cache is not None:
+            self._cache = cache
+        else:
+            # Use per-provider cache (encrypted task-p2p keyed by provider secret)
+            # falling back to local-only global cache when no secret exists.
+            try:
+                self._cache = get_llm_cache(str(api_name))
+            except Exception:
+                self._cache = get_global_llm_cache()
     
     def __getattr__(self, name):
         """Delegate unknown attributes to the wrapped API."""

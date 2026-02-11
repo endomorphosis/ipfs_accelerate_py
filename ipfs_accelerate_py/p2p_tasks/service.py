@@ -27,6 +27,7 @@ from typing import Any, Dict, Optional
 
 from .protocol import PROTOCOL_V1, auth_ok
 from .task_queue import TaskQueue
+from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
 
 
 def _have_libp2p() -> bool:
@@ -251,6 +252,7 @@ async def serve_task_queue(
         cfg.listen_port = int(listen_port)
 
     queue = TaskQueue(queue_path)
+    cache_store = DiskTTLCache(default_cache_dir())
 
     print("ipfs_accelerate_py task queue p2p service: creating host...", file=sys.stderr, flush=True)
     host_obj = new_host()
@@ -350,6 +352,72 @@ async def serve_task_queue(
                         json.dumps({"ok": False, "tool": tool_name, "error": str(exc), "peer_id": peer_id}).encode("utf-8") + b"\n"
                     )
                     return
+
+            if op in {"cache.get", "cache_get", "cache"}:
+                if not _cache_enabled():
+                    await stream.write(json.dumps({"ok": False, "error": "cache_disabled", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                key = str(msg.get("key") or "").strip()
+                if not key:
+                    await stream.write(json.dumps({"ok": False, "error": "missing_key", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                value = cache_store.get(key)
+                await stream.write(
+                    json.dumps({"ok": True, "key": key, "hit": value is not None, "value": _jsonable(value), "peer_id": peer_id}).encode("utf-8")
+                    + b"\n"
+                )
+                return
+
+            if op in {"cache.has", "cache_has"}:
+                if not _cache_enabled():
+                    await stream.write(json.dumps({"ok": False, "error": "cache_disabled", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                key = str(msg.get("key") or "").strip()
+                if not key:
+                    await stream.write(json.dumps({"ok": False, "error": "missing_key", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                hit = bool(cache_store.has(key))
+                await stream.write(json.dumps({"ok": True, "key": key, "hit": hit, "peer_id": peer_id}).encode("utf-8") + b"\n")
+                return
+
+            if op in {"cache.set", "cache_set"}:
+                if not _cache_enabled():
+                    await stream.write(json.dumps({"ok": False, "error": "cache_disabled", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                key = str(msg.get("key") or "").strip()
+                if not key:
+                    await stream.write(json.dumps({"ok": False, "error": "missing_key", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                value = msg.get("value")
+                ttl_s = msg.get("ttl_s")
+                try:
+                    ttl_value = float(ttl_s) if ttl_s is not None else None
+                except Exception:
+                    ttl_value = None
+
+                cache_store.set(key, value, ttl_s=ttl_value)
+                await stream.write(json.dumps({"ok": True, "key": key, "peer_id": peer_id}).encode("utf-8") + b"\n")
+                return
+
+            if op in {"cache.delete", "cache_del", "cache_delete"}:
+                if not _cache_enabled():
+                    await stream.write(json.dumps({"ok": False, "error": "cache_disabled", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                key = str(msg.get("key") or "").strip()
+                if not key:
+                    await stream.write(json.dumps({"ok": False, "error": "missing_key", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+
+                deleted = bool(cache_store.delete(key))
+                await stream.write(json.dumps({"ok": True, "key": key, "deleted": deleted, "peer_id": peer_id}).encode("utf-8") + b"\n")
+                return
 
             if op == "get":
                 task_id = str(msg.get("task_id") or "")

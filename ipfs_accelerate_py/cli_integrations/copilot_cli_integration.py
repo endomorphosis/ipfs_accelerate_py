@@ -8,7 +8,7 @@ import logging
 from typing import Any, Dict, Optional
 
 from .base_cli_wrapper import BaseCLIWrapper
-from ..common.llm_cache import LLMAPICache, get_global_llm_cache
+from ..common.llm_cache import get_llm_cache
 from ..common.base_cache import BaseAPICache
 
 logger = logging.getLogger(__name__)
@@ -38,7 +38,7 @@ class CopilotCLIIntegration(BaseCLIWrapper):
             **kwargs: Additional arguments for BaseCLIWrapper
         """
         if cache is None:
-            cache = get_global_llm_cache()
+            cache = get_llm_cache("copilot")
         
         super().__init__(
             cli_path=copilot_path,
