@@ -435,43 +435,71 @@ class TaskQueue:
 
         # Merge any existing progress/logs with the final result so peers can
         # keep observing stdout/stderr after completion.
-        conn = self._connect()
-        try:
-            existing_row = conn.execute(
-                "SELECT result_json FROM tasks WHERE task_id=?",
-                (str(task_id),),
-            ).fetchone()
-            existing = _json_dict(existing_row[0]) if existing_row else {}
-            incoming = result if isinstance(result, dict) else {}
-
-            merged: Dict[str, Any] = {}
-            if isinstance(existing, dict):
-                merged.update(existing)
-            if isinstance(incoming, dict):
-                merged.update(incoming)
-
-            # Preserve existing logs if incoming doesn't provide them.
-            if "logs" in existing and "logs" not in incoming:
-                merged["logs"] = existing.get("logs")
-            if "progress" in existing and "progress" not in incoming:
-                merged["progress"] = existing.get("progress")
-
-            result_json = json.dumps(merged, sort_keys=True) if merged else None
-
-            conn.execute(
-                """
-                UPDATE tasks
-                SET status=?, updated_at=?, result_json=?, error=?
-                WHERE task_id=?
-                """,
-                (status_norm, now, result_json, str(error) if error else None, str(task_id)),
-            )
-        finally:
+        last_exc: Exception | None = None
+        for attempt in range(8):
+            conn = self._connect()
             try:
-                conn.close()
-            except Exception:
-                pass
-        return True
+                existing_row = conn.execute(
+                    "SELECT result_json FROM tasks WHERE task_id=?",
+                    (str(task_id),),
+                ).fetchone()
+                existing = _json_dict(existing_row[0]) if existing_row else {}
+                incoming = result if isinstance(result, dict) else {}
+
+                merged: Dict[str, Any] = {}
+                if isinstance(existing, dict):
+                    merged.update(existing)
+                if isinstance(incoming, dict):
+                    merged.update(incoming)
+
+                # Preserve existing logs/progress if incoming doesn't provide them.
+                if "logs" in existing and "logs" not in incoming:
+                    merged["logs"] = existing.get("logs")
+                if "progress" in existing and "progress" not in incoming:
+                    merged["progress"] = existing.get("progress")
+
+                result_json = json.dumps(merged, sort_keys=True) if merged else None
+
+                conn.execute(
+                    """
+                    UPDATE tasks
+                    SET status=?, updated_at=?, result_json=?, error=?
+                    WHERE task_id=?
+                    """,
+                    (status_norm, now, result_json, str(error) if error else None, str(task_id)),
+                )
+                return True
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc).lower()
+                if (
+                    "write-write conflict" in msg
+                    or "catalog" in msg
+                    and "conflict" in msg
+                    or "conflict on tuple" in msg
+                    or "transactioncontext error" in msg
+                ):
+                    time.sleep(0.02 * (attempt + 1))
+                    continue
+                raise
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        if last_exc is not None:
+            msg = str(last_exc).lower()
+            if (
+                "write-write conflict" in msg
+                or "catalog" in msg
+                and "conflict" in msg
+                or "conflict on tuple" in msg
+                or "transactioncontext error" in msg
+            ):
+                return False
+            raise last_exc
+        return False
 
 
     def update(
@@ -530,7 +558,15 @@ class TaskQueue:
                     # Shallow merge patches into result dict.
                     for k, v in result_patch.items():
                         try:
-                            current[str(k)] = v
+                            key = str(k)
+                            if isinstance(current.get(key), dict) and isinstance(v, dict):
+                                # Prefer merging nested dicts (e.g. progress) so
+                                # independent updaters can cooperate.
+                                merged = dict(current.get(key) or {})
+                                merged.update(v)
+                                current[key] = merged
+                            else:
+                                current[key] = v
                         except Exception:
                             continue
 
@@ -563,7 +599,13 @@ class TaskQueue:
             except Exception as exc:
                 last_exc = exc
                 msg = str(exc).lower()
-                if "write-write conflict" in msg or "catalog" in msg and "conflict" in msg:
+                if (
+                    "write-write conflict" in msg
+                    or "catalog" in msg
+                    and "conflict" in msg
+                    or "conflict on tuple" in msg
+                    or "transactioncontext error" in msg
+                ):
                     time.sleep(0.02 * (attempt + 1))
                     continue
                 raise

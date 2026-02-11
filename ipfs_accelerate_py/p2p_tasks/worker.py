@@ -453,7 +453,50 @@ def run_worker(
     handlers["generation"] = _wrap(_run_text_generation)
     handlers["tool.call"] = _wrap(_run_tool_call)
     handlers["tool"] = _wrap(_run_tool_call)
-    handlers["shell"] = lambda t: _run_shell(t)
+    def _shell_handler(task_dict: Dict[str, Any]) -> Dict[str, Any]:
+        payload = task_dict.get("payload") or {}
+        if not isinstance(payload, dict):
+            raise ValueError("shell payload must be a dict")
+
+        allow = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if not allow:
+            raise RuntimeError("shell task_type disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL=1)")
+
+        task_id = str(task_dict.get("task_id") or "")
+        argv = payload.get("argv")
+        if not isinstance(argv, list) or not argv or not all(isinstance(x, str) and x for x in argv):
+            raise ValueError("shell payload.argv must be a non-empty list[str]")
+
+        timeout_s = payload.get("timeout_s")
+        try:
+            timeout_v = float(timeout_s) if timeout_s is not None else None
+        except Exception:
+            timeout_v = None
+
+        stream_mode = bool(payload.get("stream_output"))
+        if stream_mode:
+            queue.update(task_id=task_id, status="running", append_log=f"[worker] exec: {' '.join(argv)}", log_stream="stderr")
+            return _stream_subprocess(argv=argv, task_id=task_id, queue=queue, timeout_s=timeout_v)
+
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            timeout=timeout_v,
+            check=False,
+        )
+        for line in (proc.stdout or "").splitlines():
+            queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
+        for line in (proc.stderr or "").splitlines():
+            queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
+        return {"returncode": int(proc.returncode), "stdout": proc.stdout, "stderr": proc.stderr}
+
+    handlers["shell"] = _shell_handler
 
     def _docker_hub_handler(task_dict: Dict[str, Any]) -> Dict[str, Any]:
         if not _docker_tasks_enabled():
@@ -746,11 +789,57 @@ def run_worker(
             time.sleep(max(0.05, float(poll_interval_s)))
             continue
 
+        # Generic heartbeat/progress so peers can observe long-running tasks via
+        # RPC get/wait polling even for non-docker handlers.
+        stop_hb = threading.Event()
+
+        def _task_hb() -> None:
+            while not stop_hb.is_set():
+                try:
+                    queue.update(
+                        task_id=task.task_id,
+                        status="running",
+                        result_patch={
+                            "progress": {
+                                "heartbeat_ts": time.time(),
+                                "worker_id": str(worker_id),
+                                "task_type": str(task.task_type),
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
+                stop_hb.wait(0.5)
+
+        # Also mark initial start.
+        try:
+            queue.update(
+                task_id=task.task_id,
+                status="running",
+                result_patch={
+                    "progress": {
+                        "phase": "starting",
+                        "ts": time.time(),
+                        "worker_id": str(worker_id),
+                        "task_type": str(task.task_type),
+                    }
+                },
+            )
+        except Exception:
+            pass
+
+        hb_thread = threading.Thread(target=_task_hb, name=f"task_hb[{task.task_id}]", daemon=True)
+        hb_thread.start()
+
+        result: Dict[str, Any] | None = None
+        error: str | None = None
+        status: str = "failed"
         try:
             ttype = str(task.task_type or "").strip().lower()
             handler = handlers.get(ttype)
             if handler is None:
-                queue.complete(task_id=task.task_id, status="failed", error=f"Unsupported task_type: {task.task_type}")
+                status = "failed"
+                error = f"Unsupported task_type: {task.task_type}"
             else:
                 result = handler(
                     {
@@ -760,9 +849,22 @@ def run_worker(
                         "payload": task.payload,
                     }
                 )
-                queue.complete(task_id=task.task_id, status="completed", result=result)
+                status = "completed"
         except Exception as exc:
-            queue.complete(task_id=task.task_id, status="failed", error=str(exc))
+            status = "failed"
+            error = str(exc)
+        finally:
+            # Stop heartbeat before completing to avoid DuckDB write conflicts.
+            stop_hb.set()
+            try:
+                hb_thread.join(timeout=0.5)
+            except Exception:
+                pass
+
+        if status == "completed":
+            queue.complete(task_id=task.task_id, status="completed", result=result or {})
+        else:
+            queue.complete(task_id=task.task_id, status="failed", error=error or "unknown error")
 
         if once:
             return 0

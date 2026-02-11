@@ -30,7 +30,9 @@ def test_task_worker_tool_call_completes(tmp_path):
 	out = queue.get(task_id)
 	assert out is not None
 	assert out.get("status") == "completed"
-	assert out.get("result") == {"tool": "echo", "result": {"echo": {"x": 1}}}
+	assert isinstance(out.get("result"), dict)
+	assert out["result"].get("tool") == "echo"
+	assert out["result"].get("result") == {"echo": {"x": 1}}
 
 	# Ensure timestamps exist.
 	assert float(out.get("updated_at") or 0) > 0
