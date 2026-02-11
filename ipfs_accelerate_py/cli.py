@@ -65,7 +65,15 @@ def _load_heavy_imports():
     
     try:
         from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
-        from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
+        from ipfs_accelerate_py.shared import (
+            FileOperations,
+            InferenceOperations,
+            ModelOperations,
+            NetworkOperations,
+            QueueOperations,
+            SharedCore,
+            TestOperations,
+        )
         
         IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
         HAVE_CORE = True
@@ -82,11 +90,19 @@ def _load_heavy_imports():
     except ImportError as e:
         logger.warning(f"Core modules not available: {e}")
         try:
-            # Try alternative import paths
+            # Try alternative import paths (editable checkouts, non-standard layouts)
             import sys
             import os
             sys.path.append(os.path.dirname(__file__))
-            from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
+            from ipfs_accelerate_py.shared import (
+                FileOperations,
+                InferenceOperations,
+                ModelOperations,
+                NetworkOperations,
+                QueueOperations,
+                SharedCore,
+                TestOperations,
+            )
             from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
             
             IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
@@ -104,7 +120,7 @@ def _load_heavy_imports():
         except ImportError as e2:
             logger.warning(f"Alternative import also failed: {e2}")
             HAVE_CORE = False
-        
+
     except ImportError as e:
         logger.warning(f"Core modules not available: {e}")
         try:
@@ -112,7 +128,15 @@ def _load_heavy_imports():
             import sys
             import os
             sys.path.append(os.path.dirname(__file__))
-            from shared import SharedCore, InferenceOperations, FileOperations, ModelOperations, NetworkOperations, QueueOperations, TestOperations
+            from ipfs_accelerate_py.shared import (
+                FileOperations,
+                InferenceOperations,
+                ModelOperations,
+                NetworkOperations,
+                QueueOperations,
+                SharedCore,
+                TestOperations,
+            )
             from ipfs_accelerate_py.mcp.server import IPFSAccelerateMCPServer as _IPFSAccelerateMCPServer
             
             IPFSAccelerateMCPServer = _IPFSAccelerateMCPServer
@@ -163,7 +187,7 @@ class IPFSAccelerateCLI:
         if self._github_ops is None:
             _load_heavy_imports()
             try:
-                from shared import GitHubOperations
+                from ipfs_accelerate_py.shared import GitHubOperations
                 self._github_ops = GitHubOperations(shared_core)
             except Exception as e:
                 logger.warning(f"Failed to load GitHub operations: {e}")
@@ -176,7 +200,7 @@ class IPFSAccelerateCLI:
         if self._copilot_ops is None:
             _load_heavy_imports()
             try:
-                from shared import CopilotOperations
+                from ipfs_accelerate_py.shared import CopilotOperations
                 self._copilot_ops = CopilotOperations(shared_core)
             except Exception as e:
                 logger.warning(f"Failed to load Copilot operations: {e}")
@@ -192,7 +216,7 @@ class IPFSAccelerateCLI:
         if self._copilot_sdk_ops is None:
             _load_heavy_imports()
             try:
-                from shared import CopilotSDKOperations
+                from ipfs_accelerate_py.shared import CopilotSDKOperations
                 self._copilot_sdk_ops = CopilotSDKOperations(shared_core)
             except Exception as e:
                 logger.warning(f"Failed to load Copilot SDK operations: {e}")
@@ -1520,7 +1544,7 @@ class IPFSAccelerateCLI:
             autoscaler_instance = None
             if not getattr(args, 'disable_autoscaler', False):  # Enabled by default
                 try:
-                    from github_autoscaler import GitHubRunnerAutoscaler
+                    from ipfs_accelerate_py.github_autoscaler import GitHubRunnerAutoscaler
                     
                     # Check if GitHub CLI is authenticated
                     from ipfs_accelerate_py.github_cli import GitHubCLI

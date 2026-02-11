@@ -1,28 +1,27 @@
-# Core dependencies
+# Core runtime dependencies
 anyio>=4.0.0
 aiohttp>=3.8.1
 duckdb>=0.7.0
 ipfshttpclient>=0.8.0a2
 websockets>=10.1
-urllib3<2  # ipfshttpclient currently incompatible with urllib3>=2
-requests>=2.28.0  # For error reporting to GitHub
-anyio>=3.7.0
-cryptography>=41.0.0  # For secrets manager encryption (Phase 4)
 
-# P2P networking for distributed cache sharing
-libp2p @ git+https://github.com/libp2p/py-libp2p@main  # For peer-to-peer connectivity (tracking upstream main)
-pymultihash>=0.8.2  # Required by libp2p for peer IDs
+# Compatibility: ipfshttpclient may still depend on urllib3<2
+urllib3<2
 
-# Optional dependencies for WebNN/WebGPU support
-# Uncomment the one that works best for your platform
-# playwright>=1.31.0  # Recommended for browser automation
-# selenium>=4.8.0     # Alternative for browser automation
+# HTTP + auth helpers
+requests>=2.28.0
+cryptography>=41.0.0
 
-# Optional visualization dependencies
-# matplotlib>=3.5.0
-# seaborn>=0.11.2
+# MCP server + dashboard (used by the systemd service)
+fastmcp>=0.1.0
+flask>=3.0.0
+flask-cors>=4.0.0
+werkzeug>=3.0.0
 
-# Optional utilities
+# GitHub integration (provides the `github` module)
+PyGithub>=2.3.0
+
+# Utilities
 tqdm>=4.64.0
 numpy>=1.23.0
-multiformats>=0.3.0  # For content-addressed cache validation
+multiformats>=0.3.0
