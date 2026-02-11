@@ -11,6 +11,7 @@ SERVICE_NAME="ipfs-accelerate"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
 PROJECT_DIR="/home/barberb/ipfs_accelerate_py"
 USER="barberb"
+UNIT_SOURCE_FILE="${PROJECT_DIR}/deployments/systemd/${SERVICE_NAME}.service"
 
 echo "Installing IPFS Accelerate Service..."
 
@@ -42,7 +43,12 @@ fi
 
 # Copy service file
 echo "Installing systemd service file..."
-cp "$PROJECT_DIR/ipfs-accelerate.service" "$SERVICE_FILE"
+if [ ! -f "$UNIT_SOURCE_FILE" ]; then
+    echo "Error: Unit file not found at $UNIT_SOURCE_FILE"
+    exit 1
+fi
+
+cp "$UNIT_SOURCE_FILE" "$SERVICE_FILE"
 
 # Set correct permissions
 chown root:root "$SERVICE_FILE"
