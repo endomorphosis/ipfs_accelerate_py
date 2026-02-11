@@ -57,7 +57,10 @@ def main():
     )
     parser.add_argument(
         "--p2p-queue",
-        default=os.environ.get("IPFS_DATASETS_PY_TASK_QUEUE_PATH", "~/.cache/ipfs_datasets_py/task_queue.duckdb"),
+        default=os.environ.get(
+            "IPFS_ACCELERATE_PY_TASK_QUEUE_PATH",
+            os.environ.get("IPFS_DATASETS_PY_TASK_QUEUE_PATH", "~/.cache/ipfs_datasets_py/task_queue.duckdb"),
+        ),
         help="DuckDB task queue path for P2P tasks (default: ~/.cache/ipfs_datasets_py/task_queue.duckdb)",
     )
     parser.add_argument(
@@ -95,7 +98,7 @@ def main():
 
             def _run_p2p_worker() -> None:
                 try:
-                    from ipfs_datasets_py.ml.accelerate_integration.worker import run_worker
+                    from ipfs_accelerate_py.p2p_tasks.worker import run_worker
 
                     run_worker(
                         queue_path=queue_path,
@@ -106,16 +109,16 @@ def main():
                         p2p_listen_port=args.p2p_listen_port,
                     )
                 except Exception as exc:
-                    logger.error(f"Failed to start ipfs_datasets_py P2P task worker: {exc}")
+                    logger.error(f"Failed to start ipfs_accelerate_py P2P task worker: {exc}")
 
             t = threading.Thread(
                 target=_run_p2p_worker,
-                name="ipfs_datasets_py_p2p_task_worker",
+                name="ipfs_accelerate_py_p2p_task_worker",
                 daemon=True,
             )
             t.start()
             logger.info(
-                "Started ipfs_datasets_py task worker thread "
+                "Started ipfs_accelerate_py task worker thread "
                 f"(queue={queue_path}, worker_id={args.p2p_worker_id}, p2p_service={bool(args.p2p_service)})"
             )
 
