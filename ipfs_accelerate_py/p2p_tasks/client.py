@@ -9,6 +9,9 @@ Environment:
 - IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (comma-separated multiaddrs)
 - IPFS_DATASETS_PY_TASK_P2P_DISCOVERY_TIMEOUT_S (compat, default: 5) / IPFS_ACCELERATE_PY_TASK_P2P_DISCOVERY_TIMEOUT_S
 - IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT (compat, default: 9710) / IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT (used for mDNS)
+- IPFS_DATASETS_PY_TASK_P2P_DHT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_DHT
+- IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS
+- IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default: ipfs-accelerate-task-queue) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
 """
 
 from __future__ import annotations
@@ -19,6 +22,29 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from .protocol import PROTOCOL_V1, get_shared_token
+
+
+def _truthy(text: str | None, *, default: bool = False) -> bool:
+    if text is None:
+        return bool(default)
+    return str(text).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_bool(*, primary: str, compat: str, default: bool) -> bool:
+    raw = os.environ.get(primary)
+    if raw is None:
+        raw = os.environ.get(compat)
+    if raw is None:
+        return bool(default)
+    return _truthy(str(raw), default=default)
+
+
+def _env_str(*, primary: str, compat: str, default: str) -> str:
+    raw = os.environ.get(primary)
+    if raw is None:
+        raw = os.environ.get(compat)
+    text = str(raw).strip() if raw is not None else ""
+    return text or str(default)
 
 
 def _have_libp2p() -> bool:
@@ -171,6 +197,142 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
             pass
 
 
+async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Optional[Dict[str, Any]]:
+    if not _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS",
+        default=True,
+    ):
+        return None
+
+    ns = _env_str(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
+        default="ipfs-accelerate-task-queue",
+    )
+
+    candidates = [
+        ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
+        ("libp2p.discovery.rendezvous", "RendezvousClient"),
+        ("libp2p.rendezvous", "RendezvousClient"),
+    ]
+    for module_name, symbol in candidates:
+        try:
+            mod = __import__(module_name, fromlist=[symbol])
+            cls = getattr(mod, symbol)
+            cli = cls(host)
+            start = getattr(cli, "start", None)
+            if callable(start):
+                maybe = start()
+                if hasattr(maybe, "__await__"):
+                    await maybe
+
+            discover = getattr(cli, "discover", None)
+            if not callable(discover):
+                continue
+
+            found = discover(ns)
+            if hasattr(found, "__aiter__"):
+                async for peer_info in found:
+                    try:
+                        pid = getattr(peer_info, "peer_id", None)
+                        pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                        if require_peer_id and pid_text != require_peer_id:
+                            continue
+                        await host.connect(peer_info)
+                        stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
+                        try:
+                            resp = await _request_over_stream(stream=stream, message=message)
+                            return resp if isinstance(resp, dict) else None
+                        finally:
+                            try:
+                                await stream.close()
+                            except Exception:
+                                pass
+                    except Exception:
+                        continue
+            else:
+                # Some implementations may return a list.
+                for peer_info in list(found or []):
+                    try:
+                        pid = getattr(peer_info, "peer_id", None)
+                        pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                        if require_peer_id and pid_text != require_peer_id:
+                            continue
+                        await host.connect(peer_info)
+                        stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
+                        try:
+                            resp = await _request_over_stream(stream=stream, message=message)
+                            return resp if isinstance(resp, dict) else None
+                        finally:
+                            try:
+                                await stream.close()
+                            except Exception:
+                                pass
+                    except Exception:
+                        continue
+        except Exception:
+            continue
+    return None
+
+
+async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Optional[Dict[str, Any]]:
+    if not require_peer_id:
+        return None
+    if not _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_DHT",
+        compat="IPFS_DATASETS_PY_TASK_P2P_DHT",
+        default=True,
+    ):
+        return None
+
+    candidates = [
+        ("libp2p.kad_dht.kad_dht", "KadDHT"),
+        ("libp2p.kad_dht", "KadDHT"),
+    ]
+    for module_name, symbol in candidates:
+        try:
+            mod = __import__(module_name, fromlist=[symbol])
+            cls = getattr(mod, symbol)
+            dht = cls(host)
+
+            start = getattr(dht, "start", None)
+            if callable(start):
+                maybe = start()
+                if hasattr(maybe, "__await__"):
+                    await maybe
+
+            bootstrap = getattr(dht, "bootstrap", None)
+            if callable(bootstrap):
+                maybe = bootstrap()
+                if hasattr(maybe, "__await__"):
+                    await maybe
+
+            find_peer = getattr(dht, "find_peer", None)
+            if not callable(find_peer):
+                continue
+
+            peer_info = find_peer(require_peer_id)
+            if hasattr(peer_info, "__await__"):
+                peer_info = await peer_info
+            if not peer_info:
+                continue
+
+            await host.connect(peer_info)
+            stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
+            try:
+                resp = await _request_over_stream(stream=stream, message=message)
+                return resp if isinstance(resp, dict) else None
+            finally:
+                try:
+                    await stream.close()
+                except Exception:
+                    pass
+        except Exception:
+            continue
+    return None
+
+
 async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> Dict[str, Any]:
     if not _have_libp2p():
         raise RuntimeError("libp2p is not installed")
@@ -197,7 +359,16 @@ async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> 
                 if isinstance(boot, dict):
                     resp = boot
                 else:
-                    resp = await _dial_via_mdns(host=host, message=message, require_peer_id=(remote.peer_id or ""))
+                    require_peer_id = (remote.peer_id or "").strip()
+                    rv = await _dial_via_rendezvous(host=host, message=message, require_peer_id=require_peer_id)
+                    if isinstance(rv, dict):
+                        resp = rv
+                    else:
+                        dht = await _dial_via_dht(host=host, message=message, require_peer_id=require_peer_id)
+                        if isinstance(dht, dict):
+                            resp = dht
+                        else:
+                            resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
 
     try:
         await host.close()

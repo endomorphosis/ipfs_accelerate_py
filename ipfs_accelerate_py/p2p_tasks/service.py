@@ -7,9 +7,16 @@ Environment:
 - IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT (compat) / IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT
 - IPFS_DATASETS_PY_TASK_P2P_TOKEN (compat) / IPFS_ACCELERATE_PY_TASK_P2P_TOKEN
 - IPFS_DATASETS_PY_TASK_P2P_MDNS (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_MDNS
+- IPFS_DATASETS_PY_TASK_P2P_DHT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_DHT
+- IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS
+- IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default: ipfs-accelerate-task-queue) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
+- IPFS_DATASETS_PY_TASK_P2P_AUTONAT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT
 - IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (compat) / IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS
 - IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP (compat) / IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP (for announce string)
-- IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE (compat) / IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE (optional announce JSON)
+- IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE (compat) / IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE
+    - unset: write announce JSON to a default XDG cache path
+    - set to a path: write announce JSON to that path
+    - set to 0/false/no: disable announce file writing
 
 Protocol:
 - /ipfs-datasets/task-queue/1.0.0
@@ -28,6 +35,160 @@ from typing import Any, Dict, Optional
 from .protocol import PROTOCOL_V1, auth_ok
 from .task_queue import TaskQueue
 from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
+
+
+def _truthy(text: str | None, *, default: bool = False) -> bool:
+    if text is None:
+        return bool(default)
+    return str(text).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_bool(*, primary: str, compat: str, default: bool) -> bool:
+    raw = os.environ.get(primary)
+    if raw is None:
+        raw = os.environ.get(compat)
+    if raw is None:
+        return bool(default)
+    return _truthy(str(raw), default=default)
+
+
+def _env_str(*, primary: str, compat: str, default: str) -> str:
+    raw = os.environ.get(primary)
+    if raw is None:
+        raw = os.environ.get(compat)
+    text = str(raw).strip() if raw is not None else ""
+    return text or str(default)
+
+
+def _default_announce_file() -> str:
+    cache_root = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(cache_root, "ipfs_accelerate_py", "task_p2p_announce.json")
+
+
+def _announce_file_path() -> str:
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE")
+    )
+    text = str(raw).strip() if raw is not None else ""
+    if text.lower() in {"0", "false", "no", "off"}:
+        return ""
+    if text:
+        return text
+    return _default_announce_file()
+
+
+async def _maybe_start_autonat(*, host) -> object | None:
+    if not _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT",
+        compat="IPFS_DATASETS_PY_TASK_P2P_AUTONAT",
+        default=True,
+    ):
+        return None
+
+    # Best-effort: py-libp2p support varies by version.
+    candidates = [
+        ("libp2p.nat.autonat", "AutoNAT"),
+        ("libp2p.autonat", "AutoNAT"),
+    ]
+    for module_name, symbol in candidates:
+        try:
+            mod = __import__(module_name, fromlist=[symbol])
+            cls = getattr(mod, symbol)
+            svc = cls(host)
+            start = getattr(svc, "start", None)
+            if callable(start):
+                maybe = start()
+                if hasattr(maybe, "__await__"):
+                    await maybe
+            print(f"ipfs_accelerate_py task queue p2p service: AutoNAT enabled ({module_name}.{symbol})", file=sys.stderr, flush=True)
+            return svc
+        except Exception:
+            continue
+    print("ipfs_accelerate_py task queue p2p service: AutoNAT unavailable in installed libp2p; skipping", file=sys.stderr, flush=True)
+    return None
+
+
+async def _maybe_start_dht(*, host, bootstrap_peers: list[str]) -> object | None:
+    if not _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_DHT",
+        compat="IPFS_DATASETS_PY_TASK_P2P_DHT",
+        default=True,
+    ):
+        return None
+
+    candidates = [
+        ("libp2p.kad_dht.kad_dht", "KadDHT"),
+        ("libp2p.kad_dht", "KadDHT"),
+    ]
+    for module_name, symbol in candidates:
+        try:
+            mod = __import__(module_name, fromlist=[symbol])
+            cls = getattr(mod, symbol)
+            dht = cls(host)
+
+            # Many versions require explicit start/bootstrap.
+            start = getattr(dht, "start", None)
+            if callable(start):
+                maybe = start()
+                if hasattr(maybe, "__await__"):
+                    await maybe
+
+            # Best-effort bootstrap via already-configured peers.
+            bootstrap = getattr(dht, "bootstrap", None)
+            if callable(bootstrap):
+                maybe = bootstrap()
+                if hasattr(maybe, "__await__"):
+                    await maybe
+
+            print(f"ipfs_accelerate_py task queue p2p service: DHT enabled ({module_name}.{symbol})", file=sys.stderr, flush=True)
+            if bootstrap_peers:
+                print("ipfs_accelerate_py task queue p2p service: DHT bootstrap peers configured", file=sys.stderr, flush=True)
+            return dht
+        except Exception:
+            continue
+
+    print("ipfs_accelerate_py task queue p2p service: DHT unavailable in installed libp2p; skipping", file=sys.stderr, flush=True)
+    return None
+
+
+async def _maybe_start_rendezvous(*, host, namespace: str) -> object | None:
+    if not _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS",
+        default=True,
+    ):
+        return None
+
+    ns = namespace.strip() or "ipfs-accelerate-task-queue"
+
+    # Best-effort: rendezvous support varies by py-libp2p version.
+    candidates = [
+        ("libp2p.discovery.rendezvous.rendezvous", "RendezvousService"),
+        ("libp2p.discovery.rendezvous", "RendezvousService"),
+        ("libp2p.rendezvous", "RendezvousService"),
+    ]
+    for module_name, symbol in candidates:
+        try:
+            mod = __import__(module_name, fromlist=[symbol])
+            cls = getattr(mod, symbol)
+            svc = cls(host)
+            start = getattr(svc, "start", None)
+            if callable(start):
+                maybe = start()
+                if hasattr(maybe, "__await__"):
+                    await maybe
+            register = getattr(svc, "register", None)
+            if callable(register):
+                maybe = register(ns)
+                if hasattr(maybe, "__await__"):
+                    await maybe
+            print(f"ipfs_accelerate_py task queue p2p service: rendezvous enabled (ns={ns})", file=sys.stderr, flush=True)
+            return svc
+        except Exception:
+            continue
+    print("ipfs_accelerate_py task queue p2p service: rendezvous unavailable in installed libp2p; skipping", file=sys.stderr, flush=True)
+    return None
 
 
 def _have_libp2p() -> bool:
@@ -455,6 +616,12 @@ async def serve_task_queue(
         or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS", "1")
     ).strip().lower() not in {"0", "false", "no"}
 
+    rendezvous_ns = _env_str(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
+        default="ipfs-accelerate-task-queue",
+    )
+
     async with background_trio_service(host.get_network()):
         await host.get_network().listen(listen_addr)
 
@@ -483,6 +650,22 @@ async def serve_task_queue(
             except Exception as exc:
                 print(f"ipfs_accelerate_py task queue p2p service: failed to start mDNS: {exc}", file=sys.stderr, flush=True)
 
+        autonat = None
+        dht = None
+        rendezvous = None
+        try:
+            autonat = await _maybe_start_autonat(host=host)
+        except Exception as exc:
+            print(f"ipfs_accelerate_py task queue p2p service: AutoNAT start failed: {exc}", file=sys.stderr, flush=True)
+        try:
+            dht = await _maybe_start_dht(host=host, bootstrap_peers=_parse_bootstrap_peers())
+        except Exception as exc:
+            print(f"ipfs_accelerate_py task queue p2p service: DHT start failed: {exc}", file=sys.stderr, flush=True)
+        try:
+            rendezvous = await _maybe_start_rendezvous(host=host, namespace=rendezvous_ns)
+        except Exception as exc:
+            print(f"ipfs_accelerate_py task queue p2p service: rendezvous start failed: {exc}", file=sys.stderr, flush=True)
+
         public_ip = (
             os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP")
             or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP", "127.0.0.1")
@@ -492,10 +675,7 @@ async def serve_task_queue(
         print(f"peer_id={peer_id}", flush=True)
         print(f"multiaddr={announced}", flush=True)
 
-        announce_file = (
-            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
-            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE", "")
-        ).strip()
+        announce_file = _announce_file_path()
         if announce_file:
             try:
                 os.makedirs(os.path.dirname(announce_file) or ".", exist_ok=True)
@@ -517,6 +697,16 @@ async def serve_task_queue(
                     mdns.stop()
             except Exception:
                 pass
+
+            for svc in (rendezvous, dht, autonat):
+                try:
+                    stop = getattr(svc, "stop", None)
+                    if callable(stop):
+                        maybe = stop()
+                        if hasattr(maybe, "__await__"):
+                            await maybe
+                except Exception:
+                    pass
 
 
 def main(argv: Optional[list[str]] = None) -> int:
