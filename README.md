@@ -112,6 +112,30 @@ ipfs-accelerate hardware status
 ipfs-accelerate github autoscaler
 ```
 
+#### Remote libp2p task pickup (ipfs_datasets_py)
+
+If you want a remote machine running the `ipfs_accelerate_py` MCP server to also **pick up libp2p task submissions** coming from `ipfs_datasets_py`, you can start the MCP server CLI with the built-in P2P task worker:
+
+```bash
+# Remote machine (runs MCP + worker + libp2p TaskQueue service)
+python -m ipfs_accelerate_py.mcp.cli \
+  --host 0.0.0.0 --port 9000 \
+  --p2p-task-worker --p2p-service --p2p-listen-port 9710 \
+  --p2p-queue ~/.cache/ipfs_datasets_py/task_queue.duckdb
+
+# If clients are off-host, set the public IP that will be embedded in the announced multiaddr
+export IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP="YOUR_PUBLIC_IP"
+```
+
+The process prints a `multiaddr=...` line. On the client machine, set:
+
+```bash
+export IPFS_DATASETS_PY_TASK_P2P_REMOTE_MULTIADDR="/ip4/.../tcp/9710/p2p/..."
+```
+
+Notes:
+- This mode requires `ipfs_datasets_py` to be installed on the remote machine (and `libp2p` installed via `ipfs_datasets_py[p2p]`).
+
 ### Real-World Examples
 
 | Example | Description | Complexity |

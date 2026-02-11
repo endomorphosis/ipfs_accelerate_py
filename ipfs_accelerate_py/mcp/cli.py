@@ -46,6 +46,36 @@ def main():
         action="store_true", 
         help="Run in development mode with auto-reload"
     )
+
+    # Optional: also run ipfs_datasets_py P2P task worker/service in-process.
+    # This enables a remote machine running the MCP server to pick up libp2p
+    # task submissions from other nodes.
+    parser.add_argument(
+        "--p2p-task-worker",
+        action="store_true",
+        help="Also start ipfs_datasets_py DuckDB task worker (+ optional libp2p service) in a background thread",
+    )
+    parser.add_argument(
+        "--p2p-queue",
+        default=os.environ.get("IPFS_DATASETS_PY_TASK_QUEUE_PATH", "~/.cache/ipfs_datasets_py/task_queue.duckdb"),
+        help="DuckDB task queue path for P2P tasks (default: ~/.cache/ipfs_datasets_py/task_queue.duckdb)",
+    )
+    parser.add_argument(
+        "--p2p-worker-id",
+        default="accelerate-mcp-worker",
+        help="Worker id used when claiming tasks (default: accelerate-mcp-worker)",
+    )
+    parser.add_argument(
+        "--p2p-service",
+        action="store_true",
+        help="When used with --p2p-task-worker, also start the libp2p TaskQueue RPC service",
+    )
+    parser.add_argument(
+        "--p2p-listen-port",
+        type=int,
+        default=None,
+        help="TCP port for the libp2p TaskQueue service (default: env IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT or 9710)",
+    )
     
     # Parse arguments
     args = parser.parse_args()
@@ -58,6 +88,37 @@ def main():
     from ipfs_accelerate_py.mcp.server import create_mcp_server
     
     try:
+        if args.p2p_task_worker:
+            import threading
+
+            queue_path = os.path.expanduser(str(args.p2p_queue))
+
+            def _run_p2p_worker() -> None:
+                try:
+                    from ipfs_datasets_py.ml.accelerate_integration.worker import run_worker
+
+                    run_worker(
+                        queue_path=queue_path,
+                        worker_id=str(args.p2p_worker_id),
+                        poll_interval_s=0.25,
+                        once=False,
+                        p2p_service=bool(args.p2p_service),
+                        p2p_listen_port=args.p2p_listen_port,
+                    )
+                except Exception as exc:
+                    logger.error(f"Failed to start ipfs_datasets_py P2P task worker: {exc}")
+
+            t = threading.Thread(
+                target=_run_p2p_worker,
+                name="ipfs_datasets_py_p2p_task_worker",
+                daemon=True,
+            )
+            t.start()
+            logger.info(
+                "Started ipfs_datasets_py task worker thread "
+                f"(queue={queue_path}, worker_id={args.p2p_worker_id}, p2p_service={bool(args.p2p_service)})"
+            )
+
         # Create IPFS Accelerate instance
         logger.info("Initializing IPFS Accelerate...")
         accelerate = ipfs_accelerate_py()
