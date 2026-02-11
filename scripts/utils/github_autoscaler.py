@@ -18,7 +18,8 @@ import logging
 import signal
 import argparse
 from datetime import datetime
-from typing import Optional, Dict
+from pathlib import Path
+from typing import Optional, Dict, Iterable, List, Tuple
 
 # Setup path for imports
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -51,6 +52,79 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("github_autoscaler")
+
+
+def _repo_root() -> Path:
+    # scripts/utils/<this file> -> parents[2] is repo root
+    return Path(__file__).resolve().parents[2]
+
+
+def _dedupe_paths(paths: Iterable[Path]) -> List[Path]:
+    seen: set[str] = set()
+    result: List[Path] = []
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
+
+
+def _candidate_token_files(explicit_token_file: Optional[str]) -> List[Path]:
+    env_token_file = (
+        os.environ.get("GITHUB_RUNNER_AUTOSCALER_TOKEN_FILE")
+        or os.environ.get("GITHUB_AUTOSCALER_TOKEN_FILE")
+    )
+    if env_token_file:
+        return [Path(env_token_file)]
+
+    candidates: List[Path] = []
+    if explicit_token_file:
+        candidates.append(Path(explicit_token_file))
+
+    candidates.append(Path("/var/lib/github-runner-autoscaler/runner_tokens.json"))
+
+    state_dir = (
+        os.environ.get("GITHUB_RUNNER_AUTOSCALER_STATE_DIR")
+        or os.environ.get("GITHUB_AUTOSCALER_STATE_DIR")
+    )
+    if state_dir:
+        candidates.append(Path(state_dir) / "runner_tokens.json")
+
+    ipfs_cache_dir = os.environ.get("IPFS_ACCELERATE_CACHE_DIR")
+    if ipfs_cache_dir:
+        candidates.append(Path(ipfs_cache_dir) / "runner_tokens.json")
+
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache:
+        candidates.append(Path(xdg_cache) / "ipfs_accelerate" / "runner_tokens.json")
+
+    candidates.append(_repo_root() / ".cache" / "ipfs_accelerate" / "runner_tokens.json")
+    candidates.append(Path("/tmp") / "ipfs_accelerate" / "runner_tokens.json")
+    return _dedupe_paths(candidates)
+
+
+def _write_json_atomic(path: Path, data: Dict) -> None:
+    import json
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    try:
+        with open(tmp_path, "w") as f:
+            json.dump(data, f, indent=2)
+        os.replace(tmp_path, path)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:
+            # Best-effort on filesystems that don't support chmod.
+            pass
+    finally:
+        try:
+            if tmp_path.exists():
+                tmp_path.unlink()
+        except OSError:
+            pass
 
 
 class GitHubRunnerAutoscaler:
@@ -163,7 +237,6 @@ class GitHubRunnerAutoscaler:
             system_arch: System architecture (x64, arm64, etc.)
             token_file: Path to token file
         """
-        import json
         from datetime import datetime
         
         tokens = []
@@ -192,19 +265,38 @@ class GitHubRunnerAutoscaler:
 
         
         if tokens:
-            try:
-                data = {
-                    "tokens": tokens,
-                    "generated_at": datetime.utcnow().isoformat() + "Z",
-                    "architecture": system_arch
-                }
-                
-                with open(token_file, 'w') as f:
-                    json.dump(data, f, indent=2)
-                
-                logger.info(f"✓ Wrote {len(tokens)} token(s) to {token_file}")
-            except IOError as e:
-                logger.error(f"Failed to write tokens to file: {e}")
+            data = {
+                "tokens": tokens,
+                "generated_at": datetime.utcnow().isoformat() + "Z",
+                "architecture": system_arch,
+            }
+
+            candidates = _candidate_token_files(token_file)
+            errors: List[Tuple[Path, Exception]] = []
+            for candidate in candidates:
+                try:
+                    _write_json_atomic(candidate, data)
+                    if str(candidate) != str(token_file):
+                        logger.warning(
+                            "Token file '%s' not writable; wrote tokens to '%s'. "
+                            "Set GITHUB_RUNNER_AUTOSCALER_TOKEN_FILE to control this.",
+                            token_file,
+                            str(candidate),
+                        )
+                    else:
+                        logger.info(f"✓ Wrote {len(tokens)} token(s) to {token_file}")
+                    return
+                except OSError as e:
+                    errors.append((candidate, e))
+                    continue
+
+            # If we get here, every candidate failed.
+            last_path, last_error = errors[-1] if errors else (Path(token_file), RuntimeError("unknown error"))
+            logger.error(
+                "Failed to write runner tokens to any token file location. Last attempt '%s': %s",
+                str(last_path),
+                last_error,
+            )
     
     def _get_queues_via_graphql(self, system_arch: Optional[str] = None) -> Dict:
         """

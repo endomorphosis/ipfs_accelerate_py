@@ -19,7 +19,7 @@ import sys
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Set
+from typing import Dict, Iterable, List, Optional, Set
 
 # Setup logging
 logging.basicConfig(
@@ -27,6 +27,93 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+def _repo_root() -> Path:
+    # scripts/utils/<this file> -> parents[2] is repo root
+    return Path(__file__).resolve().parents[2]
+
+
+def _dedupe_paths(paths: Iterable[Path]) -> List[Path]:
+    seen: set[str] = set()
+    result: List[Path] = []
+    for path in paths:
+        key = str(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(path)
+    return result
+
+
+def _candidate_token_files(explicit_token_file: Optional[str]) -> List[Path]:
+    env_token_file = (
+        os.environ.get("GITHUB_RUNNER_AUTOSCALER_TOKEN_FILE")
+        or os.environ.get("GITHUB_AUTOSCALER_TOKEN_FILE")
+    )
+    if env_token_file:
+        return [Path(env_token_file)]
+
+    candidates: List[Path] = []
+    if explicit_token_file:
+        candidates.append(Path(explicit_token_file))
+
+    candidates.append(Path("/var/lib/github-runner-autoscaler/runner_tokens.json"))
+
+    state_dir = (
+        os.environ.get("GITHUB_RUNNER_AUTOSCALER_STATE_DIR")
+        or os.environ.get("GITHUB_AUTOSCALER_STATE_DIR")
+    )
+    if state_dir:
+        candidates.append(Path(state_dir) / "runner_tokens.json")
+
+    ipfs_cache_dir = os.environ.get("IPFS_ACCELERATE_CACHE_DIR")
+    if ipfs_cache_dir:
+        candidates.append(Path(ipfs_cache_dir) / "runner_tokens.json")
+
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache:
+        candidates.append(Path(xdg_cache) / "ipfs_accelerate" / "runner_tokens.json")
+
+    candidates.append(_repo_root() / ".cache" / "ipfs_accelerate" / "runner_tokens.json")
+    candidates.append(Path("/tmp") / "ipfs_accelerate" / "runner_tokens.json")
+    return _dedupe_paths(candidates)
+
+
+def _dir_is_writable(path: Path) -> bool:
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        test_file = path / ".__writetest__"
+        with open(test_file, "w") as f:
+            f.write("ok")
+        test_file.unlink(missing_ok=True)
+        return True
+    except OSError:
+        return False
+
+
+def _resolve_token_file(explicit_token_file: Optional[str]) -> str:
+    candidates = _candidate_token_files(explicit_token_file)
+
+    # Prefer an existing file first (already written by autoscaler)
+    for candidate in candidates:
+        if candidate.exists():
+            return str(candidate)
+
+    # Otherwise, prefer a location where autoscaler can likely write.
+    for candidate in candidates:
+        # Avoid trying to create /var/lib under hardening.
+        if str(candidate).startswith("/var/"):
+            parent = candidate.parent
+            if parent.exists() and os.access(parent, os.W_OK):
+                return str(candidate)
+            continue
+
+        if _dir_is_writable(candidate.parent):
+            return str(candidate)
+
+    # Fallback to the first candidate.
+    return str(candidates[0]) if candidates else (explicit_token_file or "/var/lib/github-runner-autoscaler/runner_tokens.json")
 
 
 class DockerRunnerLauncher:
@@ -50,7 +137,7 @@ class DockerRunnerLauncher:
             cleanup_interval: Seconds between cleanup checks
             runner_work_dir: Work directory for runners (will be volume-mounted)
         """
-        self.token_file = token_file
+        self.token_file = _resolve_token_file(token_file)
         self.runner_image = runner_image
         self.max_containers = max_containers
         self.cleanup_interval = cleanup_interval

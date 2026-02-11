@@ -395,6 +395,20 @@ def check_dependencies() -> Dict[str, bool]:
 
     for dep in list(deps.keys()):
         try:
+            if dep == "fastmcp":
+                # `fastmcp` depends on the PyPI `mcp` package. When running from
+                # a repo checkout, a top-level `./mcp` folder can shadow that
+                # dependency via CWD on sys.path.
+                original_sys_path = list(sys.path)
+                try:
+                    cwd = os.getcwd()
+                    sys.path = [p for p in sys.path if p not in ("", ".", cwd)]
+                    __import__(dep)
+                    deps[dep] = True
+                finally:
+                    sys.path = original_sys_path
+                continue
+
             __import__(dep)
             deps[dep] = True
         except Exception:

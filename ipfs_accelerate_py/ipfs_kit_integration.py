@@ -136,12 +136,8 @@ class IPFSKitStorage:
             self.storage = None
         
         # Set up cache directory
-        if cache_dir:
-            self.cache_dir = Path(cache_dir).expanduser()
-        else:
-            self.cache_dir = Path.home() / ".cache" / "ipfs_accelerate"
-        
-        self.cache_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir = self._select_cache_dir(cache_dir)
+        self._ensure_cache_dir_writable()
         
         # Try to import and initialize ipfs_kit_py, unless a client is injected.
         self.ipfs_kit_client = None
@@ -154,6 +150,85 @@ class IPFSKitStorage:
             self._try_init_ipfs_kit()
         else:
             logger.info("IPFS Kit integration disabled by configuration")
+
+    def _select_cache_dir(self, cache_dir: Optional[str]) -> Path:
+        """Pick a cache dir that is likely writable.
+
+        Under systemd hardening, the user's home can be read-only even when it
+        exists. Prefer explicit `cache_dir`, then env overrides, then XDG.
+        """
+        if cache_dir:
+            return Path(cache_dir).expanduser()
+
+        env_dir = os.environ.get("IPFS_ACCELERATE_CACHE_DIR") or os.environ.get("IPFS_KIT_CACHE_DIR")
+        if env_dir:
+            return Path(env_dir).expanduser()
+
+        xdg = os.environ.get("XDG_CACHE_HOME")
+        if xdg:
+            return Path(xdg).expanduser() / "ipfs_accelerate"
+
+        return Path.home() / ".cache" / "ipfs_accelerate"
+
+    def _ensure_cache_dir_writable(self) -> None:
+        """Ensure cache_dir exists and is writable; fall back if not."""
+
+        def _fallback_candidates() -> list[Path]:
+            # Prefer repo-local cache if running from a checkout; systemd units
+            # commonly allow writing there via ReadWritePaths.
+            repo_root = Path(__file__).resolve().parent.parent
+            return [
+                repo_root / ".cache" / "ipfs_accelerate",
+                Path("/tmp") / "ipfs_accelerate",
+            ]
+
+        for candidate in [self.cache_dir] + _fallback_candidates():
+            try:
+                candidate.mkdir(parents=True, exist_ok=True)
+                probe = candidate / ".write_probe"
+                with open(probe, "wb") as f:
+                    f.write(b"1")
+                try:
+                    probe.unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+                if candidate != self.cache_dir:
+                    logger.warning(
+                        "Cache dir '%s' not writable; using '%s'",
+                        str(self.cache_dir),
+                        str(candidate),
+                    )
+                    self.cache_dir = candidate
+                return
+            except OSError as e:
+                # Common under systemd with ProtectHome=read-only (Errno 30)
+                if getattr(e, "errno", None) in (30, 13):
+                    continue
+                continue
+            except Exception:
+                continue
+
+        # If everything fails, keep original and let the write attempt raise.
+        logger.error("No writable cache dir available (current: %s)", str(self.cache_dir))
+
+    def _write_bytes_to_cache(self, cid: str, data_bytes: bytes) -> Path:
+        """Write bytes to cache, retrying with a fallback dir on RO/permission errors."""
+        try:
+            self._ensure_cache_dir_writable()
+            storage_path = self.cache_dir / cid
+            with open(storage_path, "wb") as f:
+                f.write(data_bytes)
+            return storage_path
+        except OSError as e:
+            if getattr(e, "errno", None) in (30, 13):
+                # Re-evaluate cache dir and retry once
+                self._ensure_cache_dir_writable()
+                storage_path = self.cache_dir / cid
+                with open(storage_path, "wb") as f:
+                    f.write(data_bytes)
+                return storage_path
+            raise
     
     def _try_init_ipfs_kit(self):
         """
@@ -299,9 +374,7 @@ class IPFSKitStorage:
             cid = self._generate_cid(data_bytes)
             
             # Store locally with CID as filename
-            storage_path = self.cache_dir / cid
-            with open(storage_path, 'wb') as f:
-                f.write(data_bytes)
+            storage_path = self._write_bytes_to_cache(cid, data_bytes)
             
             # Store in distributed storage
             if self.storage:
@@ -312,10 +385,17 @@ class IPFSKitStorage:
             
             # Store metadata
             if filename:
-                metadata_path = self.cache_dir / f"{cid}.meta"
                 metadata_json = json.dumps({'filename': filename, 'pinned': pin})
-                with open(metadata_path, 'w') as f:
-                    f.write(metadata_json)
+                try:
+                    self._ensure_cache_dir_writable()
+                    metadata_path = self.cache_dir / f"{cid}.meta"
+                    with open(metadata_path, 'w') as f:
+                        f.write(metadata_json)
+                except OSError as e:
+                    if getattr(e, "errno", None) in (30, 13):
+                        logger.warning("Metadata cache not writable; skipping: %s", e)
+                    else:
+                        logger.warning("Failed to write metadata cache: %s", e)
                 # Store metadata in distributed storage
                 if self.storage:
                     try:
@@ -367,9 +447,7 @@ class IPFSKitStorage:
             cid = self._generate_cid(data_bytes)
             
             # Store locally
-            storage_path = self.cache_dir / cid
-            with open(storage_path, 'wb') as f:
-                f.write(data_bytes)
+            storage_path = self._write_bytes_to_cache(cid, data_bytes)
             
             # Store in distributed storage
             if self.storage:
@@ -380,10 +458,17 @@ class IPFSKitStorage:
             
             # Store metadata if filename provided
             if filename:
-                metadata_path = self.cache_dir / f"{cid}.meta"
                 metadata_json = json.dumps({'filename': filename, 'fallback': True, 'pinned': pin})
-                with open(metadata_path, 'w') as f:
-                    f.write(metadata_json)
+                try:
+                    self._ensure_cache_dir_writable()
+                    metadata_path = self.cache_dir / f"{cid}.meta"
+                    with open(metadata_path, 'w') as f:
+                        f.write(metadata_json)
+                except OSError as e:
+                    if getattr(e, "errno", None) in (30, 13):
+                        logger.warning("Metadata cache not writable; skipping: %s", e)
+                    else:
+                        logger.warning("Failed to write metadata cache: %s", e)
                 # Store metadata in distributed storage
                 if self.storage:
                     try:

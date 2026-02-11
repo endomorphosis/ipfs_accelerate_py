@@ -223,7 +223,7 @@ class MCPDashboard:
             """List active Copilot SDK sessions."""
             try:
                 from scripts.shared.operations import CopilotSDKOperations
-                from scripts.shared.core import SharedCore
+                from ipfs_accelerate_py.shared import SharedCore
                 
                 ops = CopilotSDKOperations(SharedCore())
                 result = ops.list_sessions()
@@ -241,7 +241,7 @@ class MCPDashboard:
             """Create a new Copilot SDK session."""
             try:
                 from scripts.shared.operations import CopilotSDKOperations
-                from scripts.shared.core import SharedCore
+                from ipfs_accelerate_py.shared import SharedCore
                 
                 data = request.get_json() or {}
                 model = data.get('model', 'gpt-4o')
@@ -261,7 +261,7 @@ class MCPDashboard:
             """Send a message to a Copilot SDK session."""
             try:
                 from scripts.shared.operations import CopilotSDKOperations
-                from scripts.shared.core import SharedCore
+                from ipfs_accelerate_py.shared import SharedCore
                 
                 data = request.get_json() or {}
                 prompt = data.get('prompt', '')
@@ -291,7 +291,7 @@ class MCPDashboard:
             """Destroy a Copilot SDK session."""
             try:
                 from scripts.shared.operations import CopilotSDKOperations
-                from scripts.shared.core import SharedCore
+                from ipfs_accelerate_py.shared import SharedCore
                 
                 ops = CopilotSDKOperations(SharedCore())
                 result = ops.destroy_session(session_id=session_id)
@@ -4021,7 +4021,7 @@ class MCPDashboard:
             if parent_dir not in sys.path:
                 sys.path.insert(0, parent_dir)
             
-            from github_autoscaler import GitHubRunnerAutoscaler
+            from ipfs_accelerate_py.github_autoscaler import GitHubRunnerAutoscaler
             from ipfs_accelerate_py.github_cli import GitHubCLI
             
             # Check GitHub CLI authentication
@@ -4071,6 +4071,26 @@ class MCPDashboard:
         Args:
             debug: Enable debug mode
         """
+        # If the configured port is already in use, fall back to the next port
+        # instead of crashing the service.
+        import socket
+
+        def _is_port_available(host: str, port: int) -> bool:
+            try:
+                with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                    s.bind((host, port))
+                return True
+            except OSError:
+                return False
+
+        original_port = self.port
+        if not _is_port_available(self.host, self.port):
+            fallback_port = self.port + 1
+            if _is_port_available(self.host, fallback_port):
+                logger.warning(f"Port {self.port} in use. Falling back to port {fallback_port}.")
+                self.port = fallback_port
+
         logger.info(f"Starting MCP Dashboard on http://{self.host}:{self.port}/mcp")
         
         # Start autoscaler before running the Flask app
@@ -4087,6 +4107,8 @@ class MCPDashboard:
             logger.error(f"Dashboard error: {e}")
             if self.autoscaler_instance:
                 self.autoscaler_instance.stop()
+            # Restore port for future runs if we changed it.
+            self.port = original_port
             raise
 
 

@@ -387,4 +387,50 @@ __all__ = [
     'GitHubKit',
     'GitHubResult',
     'get_github_kit',
+    'list_repos',
+    'get_repo',
+    'list_prs',
+    'get_pr',
+    'list_issues',
+    'get_issue',
 ]
+
+
+_DEFAULT_KIT: Optional[GitHubKit] = None
+
+
+def _get_default_kit() -> GitHubKit:
+    global _DEFAULT_KIT
+    if _DEFAULT_KIT is None:
+        _DEFAULT_KIT = GitHubKit()
+    return _DEFAULT_KIT
+
+
+def list_repos(owner: Optional[str] = None, limit: int = 30) -> GitHubResult:
+    """Module-level wrapper for unified registry tooling."""
+    return _get_default_kit().list_repos(owner=owner, limit=limit)
+
+
+def get_repo(owner: str, repo: str) -> GitHubResult:
+    """Module-level wrapper for unified registry tooling."""
+    return _get_default_kit().get_repo(f"{owner}/{repo}")
+
+
+def list_prs(owner: str, repo: str, state: str = "open", limit: int = 30) -> GitHubResult:
+    """Module-level wrapper for unified registry tooling."""
+    return _get_default_kit().list_prs(f"{owner}/{repo}", state=state, limit=limit)
+
+
+def get_pr(owner: str, repo: str, pr_number: int) -> GitHubResult:
+    """Module-level wrapper for unified registry tooling."""
+    return _get_default_kit().get_pr(f"{owner}/{repo}", number=pr_number)
+
+
+def list_issues(owner: str, repo: str, state: str = "open", limit: int = 30) -> GitHubResult:
+    """Module-level wrapper for unified registry tooling."""
+    return _get_default_kit().list_issues(f"{owner}/{repo}", state=state, limit=limit)
+
+
+def get_issue(owner: str, repo: str, issue_number: int) -> GitHubResult:
+    """Module-level wrapper for unified registry tooling."""
+    return _get_default_kit().get_issue(f"{owner}/{repo}", number=issue_number)

@@ -1602,6 +1602,16 @@ class IPFSAccelerateCLI:
 
 def main():
     """Main entry point for the CLI"""
+    # When running from a repo checkout, a top-level folder can shadow PyPI
+    # dependencies via the implicit CWD entry in sys.path (e.g., ./mcp vs PyPI
+    # `mcp`, which is required by `fastmcp`). Prune CWD entries to prefer the
+    # installed site-packages.
+    try:
+        cwd = os.getcwd()
+        sys.path = [p for p in sys.path if p not in ("", ".", cwd)]
+    except Exception:
+        pass
+
     # Initialize error handler
     error_handler = None
     
