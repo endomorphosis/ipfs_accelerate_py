@@ -1620,6 +1620,251 @@ class ipfs_accelerate_py:
             new_resources[resource] = self.resources[resource]
         new_resources["endpoints"] = self.endpoints
         return new_resources
+
+    def get_capabilities(self, *, detail: bool = False):
+        """Return a JSON-friendly summary of available models/endpoints/resources.
+
+        This is intentionally a summary (no callables), so it can be shared across
+        CLI, MCP, and P2P discovery without leaking internal objects.
+        """
+
+        capabilities = {
+            "task_types": ["text-generation"],
+            "models": [],
+            "endpoints_by_model": {},
+            "endpoint_types_by_model": {},
+            "hwtest": {},
+            "resource_keys": [],
+            "mcp": {"counts": {"tools": 0, "resources": 0, "prompts": 0}, "tools": []},
+        }
+
+        if detail:
+            # Stable keys for consumers (CLI/libp2p/swarm planners)
+            capabilities["endpoint_handlers"] = {}
+            capabilities["endpoints"] = {}
+
+        try:
+            if isinstance(getattr(self, "resources", None), dict):
+                capabilities["resource_keys"] = sorted([str(k) for k in self.resources.keys()])
+        except Exception:
+            pass
+
+        # Optionally include resource types (still JSON-safe)
+        if detail:
+            try:
+                if isinstance(getattr(self, "resources", None), dict):
+                    capabilities["resource_types"] = {
+                        str(k): type(v).__name__ for k, v in self.resources.items()
+                    }
+            except Exception:
+                pass
+
+        try:
+            hwtest = getattr(self, "hwtest", None)
+            if isinstance(hwtest, dict):
+                capabilities["hwtest"] = {str(k): bool(v) for k, v in hwtest.items()}
+        except Exception:
+            pass
+
+        # From endpoint_handler keys (most stable signal for "model exists")
+        try:
+            eh = None
+            if isinstance(getattr(self, "resources", None), dict):
+                eh = self.resources.get("endpoint_handler")
+            if isinstance(eh, dict):
+                for model, by_endpoint in eh.items():
+                    m = str(model)
+                    capabilities["models"].append(m)
+                    if isinstance(by_endpoint, dict):
+                        # Historically this is "endpoint" (label), but some code
+                        # treats it as "endpoint_type"; we surface both views.
+                        capabilities["endpoints_by_model"].setdefault(m, sorted([str(k) for k in by_endpoint.keys()]))
+                        capabilities["endpoint_types_by_model"].setdefault(m, sorted([str(k) for k in by_endpoint.keys()]))
+                        if detail:
+                            capabilities.setdefault("endpoint_handlers", {})[m] = sorted([str(k) for k in by_endpoint.keys()])
+        except Exception:
+            pass
+
+        # If there's also an attribute-level endpoint_handler, surface its keys too.
+        if detail:
+            try:
+                attr_eh = getattr(self, "endpoint_handler", None)
+                if isinstance(attr_eh, dict):
+                    for model, by_endpoint in attr_eh.items():
+                        m = str(model)
+                        if isinstance(by_endpoint, dict):
+                            existing = set((capabilities.get("endpoint_handlers") or {}).get(m, []))
+                            existing.update([str(k) for k in by_endpoint.keys()])
+                            capabilities.setdefault("endpoint_handlers", {})[m] = sorted(existing)
+            except Exception:
+                pass
+
+        # From endpoints registry if populated (more structured)
+        try:
+            endpoints = getattr(self, "endpoints", None)
+            if isinstance(endpoints, dict):
+                for endpoint_group, by_model in endpoints.items():
+                    if not isinstance(by_model, dict):
+                        continue
+                    for model, entries in by_model.items():
+                        m = str(model)
+                        if m not in capabilities["models"]:
+                            capabilities["models"].append(m)
+                        if isinstance(entries, (list, tuple)):
+                            current = set(capabilities["endpoints_by_model"].get(m, []))
+                            current.update([str(x) for x in entries])
+                            capabilities["endpoints_by_model"][m] = sorted(current)
+
+                if detail:
+                    # JSON-safe summary of endpoints registry
+                    endpoints_summary = {}
+                    for endpoint_group, by_model in endpoints.items():
+                        if not isinstance(by_model, dict):
+                            continue
+                        group_summary = {}
+                        for model, entries in by_model.items():
+                            m = str(model)
+                            if isinstance(entries, (list, tuple)):
+                                group_summary[m] = [str(x) for x in entries]
+                            elif isinstance(entries, dict):
+                                group_summary[m] = sorted([str(k) for k in entries.keys()])
+                            else:
+                                group_summary[m] = [str(entries)]
+                        endpoints_summary[str(endpoint_group)] = group_summary
+                    capabilities["endpoints"] = endpoints_summary
+        except Exception:
+            pass
+
+        capabilities["models"] = sorted(set(capabilities["models"]))
+
+        # Hardware info (optional; best-effort; JSON-only)
+        if detail:
+            try:
+                import platform
+
+                hw = {
+                    "system": {
+                        "platform": platform.system(),
+                        "platform_release": platform.release(),
+                        "platform_version": platform.version(),
+                        "architecture": platform.machine(),
+                        "processor": platform.processor() or platform.machine(),
+                    }
+                }
+
+                # Prefer the existing detector (may use torch/openvino if installed)
+                try:
+                    from ipfs_accelerate_py.hf_model_server.hardware.detector import HardwareDetector
+
+                    det = HardwareDetector()
+                    acc = {}
+                    for name, cap in (det.capabilities or {}).items():
+                        try:
+                            acc[str(name)] = {
+                                "available": bool(getattr(cap, "available", False)),
+                                "device_count": int(getattr(cap, "device_count", 0) or 0),
+                                "memory_total_mb": float(getattr(cap, "memory_total_mb", 0) or 0),
+                                "memory_available_mb": float(getattr(cap, "memory_available_mb", 0) or 0),
+                                "compute_capability": getattr(cap, "compute_capability", None),
+                                "metadata": getattr(cap, "metadata", {}) or {},
+                            }
+                        except Exception:
+                            acc[str(name)] = {"available": bool(getattr(cap, "available", False))}
+                    hw["accelerators"] = acc
+                    hw["available"] = sorted([k for k, v in acc.items() if isinstance(v, dict) and v.get("available")])
+                except Exception:
+                    pass
+
+                capabilities["hardware"] = hw
+            except Exception:
+                pass
+
+        # MCP tools/resources/prompts manifest (optional + JSON-only)
+        try:
+            mcp_like = None
+            if isinstance(getattr(self, "resources", None), dict):
+                mcp_like = self.resources.get("mcp_server") or self.resources.get("mcp")
+
+            if mcp_like is None:
+                # Best-effort: if an MCP server was created via the package wrapper,
+                # it may be available via the module-level singleton.
+                try:
+                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+
+                    mcp_like = get_mcp_server_instance()
+                except Exception:
+                    mcp_like = None
+
+            if mcp_like is not None:
+                from ipfs_accelerate_py.tool_manifest import extract_mcp_manifest
+
+                manifest = extract_mcp_manifest(mcp_like, include_schemas=bool(detail))
+                if isinstance(manifest, dict):
+                    if detail:
+                        capabilities["mcp"] = manifest
+                    else:
+                        # Keep payload small by default.
+                        counts = manifest.get("counts") if isinstance(manifest.get("counts"), dict) else {}
+                        tools = manifest.get("tools") if isinstance(manifest.get("tools"), list) else []
+                        capabilities["mcp"] = {
+                            "counts": counts,
+                            "tools": [{"name": t.get("name", ""), "description": t.get("description", "")} for t in tools if isinstance(t, dict)],
+                        }
+        except Exception:
+            pass
+        return capabilities
+
+    def get_mcp_manifest(self, *, detail: bool = False):
+        """Return MCP tool/resource/prompt manifest for this instance (JSON-friendly)."""
+
+        try:
+            mcp_like = None
+            if isinstance(getattr(self, "resources", None), dict):
+                mcp_like = self.resources.get("mcp_server") or self.resources.get("mcp")
+
+            if mcp_like is None:
+                try:
+                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+
+                    mcp_like = get_mcp_server_instance()
+                except Exception:
+                    mcp_like = None
+
+            if mcp_like is None:
+                return {"tools": [], "resources": [], "prompts": [], "counts": {"tools": 0, "resources": 0, "prompts": 0}}
+
+            from ipfs_accelerate_py.tool_manifest import extract_mcp_manifest
+
+            return extract_mcp_manifest(mcp_like, include_schemas=bool(detail))
+        except Exception:
+            return {"tools": [], "resources": [], "prompts": [], "counts": {"tools": 0, "resources": 0, "prompts": 0}}
+
+    async def call_tool(self, tool_name: str, args: dict | None = None):
+        """Invoke an MCP tool registered in this instance (async)."""
+
+        mcp_like = None
+        if isinstance(getattr(self, "resources", None), dict):
+            mcp_like = self.resources.get("mcp_server") or self.resources.get("mcp")
+
+        if mcp_like is None:
+            try:
+                from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+
+                mcp_like = get_mcp_server_instance()
+            except Exception:
+                mcp_like = None
+
+        if mcp_like is None:
+            return {"ok": False, "tool": str(tool_name), "error": "no_mcp_server"}
+
+        from ipfs_accelerate_py.tool_manifest import invoke_mcp_tool
+
+        return await invoke_mcp_tool(
+            mcp_like,
+            tool_name=str(tool_name),
+            args=args if isinstance(args, dict) else {},
+            accelerate_instance=self,
+        )
     
     async def infer(self, model, data, endpoint=None, endpoint_type=None):
         infer_results = {}

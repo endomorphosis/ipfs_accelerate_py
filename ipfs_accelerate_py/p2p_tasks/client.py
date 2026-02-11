@@ -241,3 +241,55 @@ async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.
         raise RuntimeError(f"wait failed: {resp}")
     task = resp.get("task")
     return task if isinstance(task, dict) else None
+
+
+async def get_capabilities(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)},
+    )
+    if not resp.get("ok"):
+        raise RuntimeError(f"status failed: {resp}")
+    caps = resp.get("capabilities")
+    return caps if isinstance(caps, dict) else {}
+
+
+def get_capabilities_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+    """Synchronous wrapper around `get_capabilities`.
+
+    Note: libp2p uses Trio internally; this wrapper runs a Trio event loop.
+    """
+
+    import trio
+
+    result: Dict[str, Any] = {}
+
+    async def _main() -> None:
+        nonlocal result
+        result = await get_capabilities(remote=remote, timeout_s=timeout_s, detail=detail)
+
+    trio.run(_main)
+    return result
+
+
+async def call_tool(*, remote: RemoteQueue, tool_name: str, args: Dict[str, Any] | None = None, timeout_s: float = 30.0) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={"op": "call_tool", "tool_name": str(tool_name), "args": (args if isinstance(args, dict) else {}), "timeout_s": float(timeout_s)},
+    )
+    if not isinstance(resp, dict):
+        return {"ok": False, "tool": str(tool_name), "error": "invalid_response"}
+    return resp
+
+
+def call_tool_sync(*, remote: RemoteQueue, tool_name: str, args: Dict[str, Any] | None = None, timeout_s: float = 30.0) -> Dict[str, Any]:
+    import trio
+
+    result: Dict[str, Any] = {}
+
+    async def _main() -> None:
+        nonlocal result
+        result = await call_tool(remote=remote, tool_name=tool_name, args=args, timeout_s=timeout_s)
+
+    trio.run(_main)
+    return result

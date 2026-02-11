@@ -17,13 +17,58 @@ import importlib
 from .task_queue import TaskQueue
 
 
-def _run_text_generation(task: Dict[str, Any]) -> Dict[str, Any]:
-    # Import lazily to keep worker startup lightweight.
-    from ipfs_accelerate_py import llm_router
+def _extract_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("text", "generated_text", "output"):
+            v = value.get(key)
+            if isinstance(v, str) and v:
+                return v
+        if "infer" in value:
+            return _extract_text(value.get("infer"))
+    return str(value)
 
+
+def _run_text_generation(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
     model_name = str(task.get("model_name") or "")
     payload = task.get("payload") or {}
     prompt = payload.get("prompt") if isinstance(payload, dict) else payload
+
+    # Prefer dispatching through the main ipfs_accelerate_py instance if provided.
+    # This allows the worker to reuse the same endpoint handlers / queues / model
+    # management configuration as the MCP service.
+    if accelerate_instance is not None and isinstance(payload, dict):
+        try:
+            import anyio
+            import inspect
+
+            infer = getattr(accelerate_instance, "infer", None)
+            if callable(infer):
+                endpoint_hint = payload.get("endpoint")
+                endpoint_type_hint = payload.get("endpoint_type")
+
+                data = {
+                    "prompt": str(prompt or ""),
+                    "max_new_tokens": int(payload.get("max_new_tokens") or payload.get("max_tokens") or 128),
+                    "temperature": float(payload.get("temperature") or 0.2),
+                }
+
+                async def _do_infer() -> Any:
+                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    if inspect.isawaitable(result):
+                        return await result
+                    return result
+
+                accel_result = anyio.run(_do_infer, backend="trio")
+                return {"text": _extract_text(accel_result)}
+        except Exception:
+            # Fall back to router-based generation.
+            pass
+
+    # Fallback path: use the accelerate llm_router, which can still integrate
+    # with InferenceBackendManager multiplexing when enabled via env vars.
+    from ipfs_accelerate_py import llm_router
 
     text = llm_router.generate_text(
         str(prompt or ""),
@@ -43,6 +88,7 @@ def run_worker(
     once: bool = False,
     p2p_service: bool = False,
     p2p_listen_port: Optional[int] = None,
+    accelerate_instance: object | None = None,
 ) -> int:
     if p2p_service:
         # Run the libp2p service in a background thread so the worker loop can
@@ -55,7 +101,11 @@ def run_worker(
                 a_serve_task_queue = getattr(service_module, "serve_task_queue")
 
                 async def _main() -> None:
-                    await a_serve_task_queue(queue_path=queue_path, listen_port=p2p_listen_port)
+                    await a_serve_task_queue(
+                        queue_path=queue_path,
+                        listen_port=p2p_listen_port,
+                        accelerate_instance=accelerate_instance,
+                    )
 
                 anyio.run(_main, backend="trio")
             except Exception as exc:
@@ -90,7 +140,8 @@ def run_worker(
                         "task_type": task.task_type,
                         "model_name": task.model_name,
                         "payload": task.payload,
-                    }
+                    },
+                    accelerate_instance=accelerate_instance,
                 )
                 queue.complete(task_id=task.task_id, status="completed", result=result)
             else:

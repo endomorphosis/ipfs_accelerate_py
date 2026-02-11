@@ -61,30 +61,45 @@ class TaskQueue:
         return duckdb.connect(self.path)
 
     def _init_db(self) -> None:
-        conn = self._connect()
-        try:
-            conn.execute(
-                """
-                CREATE TABLE IF NOT EXISTS tasks (
-                    task_id VARCHAR PRIMARY KEY,
-                    task_type VARCHAR NOT NULL,
-                    model_name VARCHAR NOT NULL,
-                    payload_json VARCHAR NOT NULL,
-                    status VARCHAR NOT NULL,
-                    assigned_worker VARCHAR,
-                    created_at DOUBLE NOT NULL,
-                    updated_at DOUBLE NOT NULL,
-                    result_json VARCHAR,
-                    error VARCHAR
-                )
-                """
-            )
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)")
-        finally:
+        # DuckDB can throw transient write-write conflicts if multiple processes
+        # (or threads) try to create the schema at the same time.
+        last_exc: Exception | None = None
+        for attempt in range(12):
+            conn = self._connect()
             try:
-                conn.close()
-            except Exception:
-                pass
+                conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS tasks (
+                        task_id VARCHAR PRIMARY KEY,
+                        task_type VARCHAR NOT NULL,
+                        model_name VARCHAR NOT NULL,
+                        payload_json VARCHAR NOT NULL,
+                        status VARCHAR NOT NULL,
+                        assigned_worker VARCHAR,
+                        created_at DOUBLE NOT NULL,
+                        updated_at DOUBLE NOT NULL,
+                        result_json VARCHAR,
+                        error VARCHAR
+                    )
+                    """
+                )
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)")
+                return
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc).lower()
+                if "write-write conflict" in msg or "catalog" in msg and "conflict" in msg:
+                    time.sleep(0.05 * (attempt + 1))
+                    continue
+                raise
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        if last_exc is not None:
+            raise last_exc
 
     def submit(
         self,

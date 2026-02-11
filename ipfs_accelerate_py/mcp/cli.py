@@ -53,7 +53,7 @@ def main():
     parser.add_argument(
         "--p2p-task-worker",
         action="store_true",
-        help="Also start ipfs_datasets_py DuckDB task worker (+ optional libp2p service) in a background thread",
+        help="Also start accelerate-owned DuckDB task worker (+ optional libp2p service) in a background thread",
     )
     parser.add_argument(
         "--p2p-queue",
@@ -91,6 +91,10 @@ def main():
     from ipfs_accelerate_py.mcp.server import create_mcp_server
     
     try:
+        # Create IPFS Accelerate instance
+        logger.info("Initializing IPFS Accelerate...")
+        accelerate = ipfs_accelerate_py()
+
         if args.p2p_task_worker:
             import threading
 
@@ -107,6 +111,7 @@ def main():
                         once=False,
                         p2p_service=bool(args.p2p_service),
                         p2p_listen_port=args.p2p_listen_port,
+                        accelerate_instance=accelerate,
                     )
                 except Exception as exc:
                     logger.error(f"Failed to start ipfs_accelerate_py P2P task worker: {exc}")
@@ -121,10 +126,6 @@ def main():
                 "Started ipfs_accelerate_py task worker thread "
                 f"(queue={queue_path}, worker_id={args.p2p_worker_id}, p2p_service={bool(args.p2p_service)})"
             )
-
-        # Create IPFS Accelerate instance
-        logger.info("Initializing IPFS Accelerate...")
-        accelerate = ipfs_accelerate_py()
         
         # Create MCP server
         logger.info("Creating MCP server...")
