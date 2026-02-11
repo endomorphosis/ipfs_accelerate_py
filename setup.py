@@ -1,234 +1,70 @@
-from setuptools import setup, find_packages
+from __future__ import annotations
+
 from pathlib import Path
 
+from setuptools import find_packages, setup
+
+
+def _read_requirements(req_path: Path) -> list[str]:
+    if not req_path.exists():
+        return []
+    requirements: list[str] = []
+    for line in req_path.read_text().splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        requirements.append(stripped)
+    return requirements
+
+
+def _read_optional_deps(pyproject_path: Path) -> dict[str, list[str]]:
+    if not pyproject_path.exists():
+        return {}
+    try:
+        import tomllib  # py3.11+
+    except Exception:  # pragma: no cover
+        import tomli as tomllib  # type: ignore
+    data = tomllib.loads(pyproject_path.read_text())
+    return (data.get("project", {}) or {}).get("optional-dependencies", {}) or {}
+
+
 this_directory = Path(__file__).parent
-long_description = (this_directory / "README.md").read_text()
+long_description = (this_directory / "README.md").read_text() if (this_directory / "README.md").exists() else ""
+
+install_requires = _read_requirements(this_directory / "requirements.txt")
+extras_require = _read_optional_deps(this_directory / "pyproject.toml")
 
 setup(
-	name='ipfs_accelerate_py',
-	version='0.0.45',
-	packages=find_packages(include=['ipfs_accelerate_py', 'ipfs_accelerate_py.*', 'shared', 'shared.*', 'mcp', 'mcp.*']),
-	include_package_data=True,
-	description="A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution",
-	long_description=long_description,
-	long_description_content_type="text/markdown",
-	author="Benjamin Barber",
-	author_email="starworks5@gmail.com",
-	url="https://github.com/endomorphosis/ipfs_accelerate_py",
-	classifiers=[
-		"Programming Language :: Python :: 3",
-		"Programming Language :: Python :: 3.8", 
-		"Programming Language :: Python :: 3.9",
-		"Programming Language :: Python :: 3.10",
-		"Programming Language :: Python :: 3.11",
-		"Programming Language :: Python :: 3.12",
-		"License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
-		"Operating System :: POSIX :: Linux",
-		"Operating System :: Microsoft :: Windows",
-		"Operating System :: MacOS",
-	],
-	python_requires=">=3.8",
-	keywords="machine learning, IPFS, hardware-acceleration, inference, distributed computing, WebGPU, WebNN",
-	dependency_links=[
-		'git+https://github.com/endomorphosis/ipfs_kit_py.git@main#egg=ipfs_kit_py',
-		'git+https://github.com/endomorphosis/ipfs_datasets_py.git@main#egg=ipfs_datasets_py',
-		'git+https://github.com/endomorphosis/ipfs_transformers_py.git@main#egg=ipfs_transformers_py',
-		'git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main#egg=ipfs_model_manager_py',
-	],
-	install_requires=[
-		'ipfs_kit_py @ git+https://github.com/endomorphosis/ipfs_kit_py.git@main',
-		'sentence_transformers',
-		'transformers>=4.46',
-		'ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main',
-		'ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main',
-		'torch>=2.1',
-		'torchvision',
-		'numpy>=1.24.0',  # Ensure Python 3.12 compatibility
-		'torchtext',
-		'urllib3>=2.0.0',  # Updated for security and compatibility
-		'requests>=2.28.0',
-		'boto3',
-		'trio',
-		'InstructorEmbedding',
-		'FlagEmbedding',
-		'llama-cpp-python',
-		'gguf',
-		'optimum',
-		'optimum[openvino]',
-		'optimum[exporters]',
-		'optimum[intel]',
-		'toml',
-		'pydantic>=2.0.0',  # Updated for Python 3.12
-		'einops',
-		'timm',
-		'Pillow>=10.0.0',  # Updated for Python 3.12 support
-		'multiformats',
-		'pydub',
-		'openai>=1.0.0',
-		'tiktoken',
-		'open_clip_torch',
-		'librosa',
-		'pysbd',
-		'ffmpeg-python',
-		'opencv-python',
-		'decord',
-		'websocket-client',
-		'google-generativeai',
-		'anthropic',
-		'duckdb>=0.10.0',
-		'pandas>=2.2.0',
-		'fastapi>=0.110.0',
-		'uvicorn>=0.27.0',
-		'websockets>=12.0.0',
-		'jinja2>=3.1.0',
-		'plotly>=5.22.0',
-		'seaborn>=0.13.0',
-		'pytest>=8.0.0',
-		'python-dotenv>=1.0.0',
-		'pyarrow>=14.0.0',
-		'psutil>=5.9.0',
-		'selenium>=4.10.0',
-		'scikit-learn>=1.0.0',
-		'statsmodels>=0.14.0',
-		'matplotlib>=3.7.0',
-		'sseclient-py',
-		'aiohttp>=3.8.1',
-		'ipfshttpclient>=0.8.0'
-	],
-	extras_require={
-		"minimal": [
-			"aiohttp>=3.8.1",
-			"duckdb>=0.7.0", 
-			"numpy>=1.24.0",
-			"tqdm>=4.64.0",
-			"requests>=2.28.0",
-			"psutil>=5.9.0",
-		],
-		"cache": [
-			# Cache infrastructure with CLI and API integrations
-			"multiformats>=0.3.0",
-			"aiohttp>=3.8.1",
-			"requests>=2.28.0",
-			"openai>=1.0.0",
-			"anthropic",
-			"google-generativeai",
-			"huggingface-hub[cli]",
-			"boto3",
-			"psutil>=5.9.0",
-		],
-		"cli": [
-			# CLI integrations only
-			"multiformats>=0.3.0",
-			"requests>=2.28.0",
-			"huggingface-hub[cli]",
-		],
-		"full": [
-			"torch>=2.1",
-			"transformers>=4.46", 
-			"uvicorn>=0.27.0",
-			"fastapi>=0.110.0",
-			"sentence_transformers",
-			"ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
-			"ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
-			"torchvision",
-			"torchtext",
-			"InstructorEmbedding",
-			"FlagEmbedding",
-			"llama-cpp-python",
-			"gguf",
-			"optimum",
-			"optimum[openvino]",
-			"optimum[exporters]",
-			"optimum[intel]",
-			"einops",
-			"timm",
-			"open_clip_torch",
-			"librosa",
-			"pydub",
-			"opencv-python",
-			"decord",
-		],
-		"testing": [
-			"pytest>=8.0.0",
-			"pytest-timeout>=2.4.0",
-			"pytest-cov>=4.0.0",
-			"pytest-anyio>=0.21.0",
-			"nvidia-ml-py",
-		],
-		"webnn": [
-			"playwright>=1.31.0",
-			"aiohttp>=3.8.1",
-			"websockets>=12.0.0",
-		],
-		"viz": [
-			"matplotlib>=3.7.0",
-			"seaborn>=0.13.0",
-			"plotly>=5.22.0",
-		],
-		"mcp": [
-			"fastmcp>=0.1.0",
-			"libp2p @ git+https://github.com/libp2p/py-libp2p@main",
-			"async-timeout>=4.0.0",
-			"flask>=3.0.0",
-			"flask-cors>=4.0.0",
-			"werkzeug>=3.0.0",
-		],
-		"datasets": [
-			# Distributed dataset manipulation via ipfs_datasets_py
-			# Note: ipfs_datasets_py is available as a git submodule at ipfs_datasets_py
-			# This extra provides dependencies needed for ipfs_datasets_py integration
-			"ipfs_datasets_py @ git+https://github.com/endomorphosis/ipfs_datasets_py.git@main",
-			"reportlab>=3.6.0",  # For PDF processing
-			"beautifulsoup4>=4.12.0",  # For web scraping
-			"lxml>=4.9.0",  # For HTML/XML parsing
-		],
-		"all": [
-			# Include all dependencies from full, testing, webnn, viz, mcp
-			"torch>=2.1",
-			"transformers>=4.46", 
-			"uvicorn>=0.27.0",
-			"fastapi>=0.110.0",
-			"sentence_transformers",
-			"ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main",
-			"ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_py.git@main",
-			"torchvision",
-			"torchtext",
-			"InstructorEmbedding",
-			"FlagEmbedding",
-			"llama-cpp-python",
-			"gguf",
-			"optimum",
-			"optimum[openvino]",
-			"optimum[exporters]",
-			"optimum[intel]",
-			"einops",
-			"timm",
-			"open_clip_torch",
-			"librosa",
-			"pydub",
-			"opencv-python",
-			"decord",
-			"playwright>=1.31.0",
-			"websockets>=12.0.0",
-			"matplotlib>=3.7.0",
-			"seaborn>=0.13.0",
-			"plotly>=5.22.0",
-			"fastmcp>=0.1.0",
-			"libp2p @ git+https://github.com/libp2p/py-libp2p@main",
-			"async-timeout>=4.0.0",
-			"flask>=3.0.0",
-			"flask-cors>=4.0.0",
-			"werkzeug>=3.0.0",
-			"pytest>=8.0.0",
-			"pytest-timeout>=2.4.0",
-			"pytest-cov>=4.0.0",
-			"pytest-anyio>=0.21.0",
-		],
-	},
-	entry_points={
-		'console_scripts': [
-			'ipfs_accelerate=ipfs_accelerate_py.cli:main',
-			'ipfs-accelerate=ipfs_accelerate_py.cli:main',
-		],
-	}
+    name="ipfs_accelerate_py",
+    version="0.0.45",
+    packages=find_packages(include=["ipfs_accelerate_py", "ipfs_accelerate_py.*"]),
+    include_package_data=True,
+    description="A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
+    author="Benjamin Barber",
+    author_email="starworks5@gmail.com",
+    url="https://github.com/endomorphosis/ipfs_accelerate_py",
+    classifiers=[
+        "Programming Language :: Python :: 3",
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
+        "License :: OSI Approved :: GNU Affero General Public License v3 or later (AGPLv3+)",
+        "Operating System :: POSIX :: Linux",
+        "Operating System :: Microsoft :: Windows",
+        "Operating System :: MacOS",
+    ],
+    python_requires=">=3.8",
+    keywords="machine learning, IPFS, hardware-acceleration, inference, distributed computing, WebGPU, WebNN",
+    install_requires=install_requires,
+    extras_require=extras_require,
+    entry_points={
+        "console_scripts": [
+            "ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main",
+            "ipfs-accelerate=ipfs_accelerate_py.cli_entry:main",
+        ]
+    },
 )

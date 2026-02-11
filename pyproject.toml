@@ -105,6 +105,10 @@ testing = [
 mcp = [
   "fastmcp>=0.1.0",
   "async-timeout>=4.0.0",
+  "flask>=3.0.0",
+  "flask-cors>=4.0.0",
+  "werkzeug>=3.0.0",
+  "PyGithub>=2.3.0",
 ]
 mcp-p2p = [
   "libp2p @ git+https://github.com/libp2p/py-libp2p@main",
