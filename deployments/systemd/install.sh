@@ -17,6 +17,7 @@ UNITS=("ipfs-accelerate-mcp.service")
 TARGET_DIR="/etc/systemd/system"
 NO_START="0"
 INSTALL_BOTH="0"
+PURGE_DROPINS="0"
 
 print_usage() {
   cat <<'EOF'
@@ -27,6 +28,7 @@ Options:
   --both          Install both MCP units (ipfs-accelerate.service + ipfs-accelerate-mcp.service)
   --user USER     Set User=/Group= in the unit (default: SUDO_USER, else current user)
   --no-start      Do not enable/restart the service
+  --purge-dropins Move aside existing /etc/systemd/system/<unit>.d drop-ins (backs up then removes)
   -h, --help      Show help
 
 Notes:
@@ -135,6 +137,10 @@ main() {
         NO_START="1"
         shift 1
         ;;
+      --purge-dropins)
+        PURGE_DROPINS="1"
+        shift 1
+        ;;
       -h|--help)
         print_usage
         exit 0
@@ -165,6 +171,19 @@ main() {
       echo "ERROR: unit not found: ${src_unit}" >&2
       exit 2
     fi
+
+    if [[ "${PURGE_DROPINS}" == "1" ]]; then
+      local dropin_dir="${TARGET_DIR}/${unit}.d"
+      if [[ -d "${dropin_dir}" ]]; then
+        local ts
+        ts="$(date +%Y%m%d%H%M%S)"
+        local backup_dir="${dropin_dir}.bak.${ts}"
+        echo "Found drop-ins: ${dropin_dir}" >&2
+        echo "Moving to backup: ${backup_dir}" >&2
+        mv "${dropin_dir}" "${backup_dir}"
+      fi
+    fi
+
     patch_unit_user_group "${src_unit}" "${TARGET_DIR}/${unit}" "${user}"
   done
 
