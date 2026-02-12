@@ -95,6 +95,41 @@ If you have exactly two boxes and want them to find each other immediately (with
 
 This only affects TaskQueue service discovery/dialing (used by MCP-over-P2P tool calls and cache RPC).
 
+## Validate P2P Transport (cache/tools/tasks)
+
+Each MCP unit runs a TaskQueue libp2p service (RPC over `/ipfs-datasets/task-queue/1.0.0`).
+
+Announce files (contain `{peer_id, multiaddr}`):
+
+- `ipfs-accelerate.service`: `/var/cache/ipfs-accelerate/task_p2p_announce.json`
+- `ipfs-accelerate-mcp.service`: `%h/ipfs_accelerate_py/state/task_p2p_announce_mcp.json`
+
+On any box with the repo + venv available, you can run:
+
+```bash
+. ./.venv/bin/activate
+
+# Status
+python scripts/p2p_rpc.py --announce-file /var/cache/ipfs-accelerate/task_p2p_announce.json status --pretty
+
+# Cache roundtrip
+python scripts/p2p_rpc.py --announce-file /var/cache/ipfs-accelerate/task_p2p_announce.json cache-set --key demo --value '{"a":1}'
+python scripts/p2p_rpc.py --announce-file /var/cache/ipfs-accelerate/task_p2p_announce.json cache-get --key demo --pretty
+
+# Tool call over P2P
+python scripts/p2p_rpc.py --announce-file /var/cache/ipfs-accelerate/task_p2p_announce.json call-tool --tool get_server_status --args '{}' --pretty
+
+# Task submit + wait (executes on the remote peer's worker)
+python scripts/p2p_rpc.py --announce-file /var/cache/ipfs-accelerate/task_p2p_announce.json task-submit \
+  --task-type tool.call --model-name demo --payload '{"tool":"get_server_status","args":{}}'
+```
+
+Tip: for “no pre-shared multiaddr” runs, try `discover` with a peer-id hint:
+
+```bash
+python scripts/p2p_rpc.py --peer-id <REMOTE_PEER_ID> discover --timeout 10 --detail --pretty
+```
+
 ## Logs
 - All logs go to journald by default:
   - `sudo journalctl -u ipfs-accelerate -f`
