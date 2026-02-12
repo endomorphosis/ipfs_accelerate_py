@@ -64,6 +64,21 @@ def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
     return targets
 
 
+def _extract_text(value: Any) -> str:
+    if isinstance(value, str):
+        return value
+    if isinstance(value, dict):
+        for key in ("text", "generated_text", "output"):
+            v = value.get(key)
+            if isinstance(v, str) and v:
+                return v
+        if "infer" in value:
+            return _extract_text(value.get("infer"))
+        if "result" in value:
+            return _extract_text(value.get("result"))
+    return str(value)
+
+
 async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
     if args.count <= 0:
         raise SystemExit("--count must be > 0")
@@ -147,6 +162,7 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
         failed = 0
         timed_out = 0
         latencies_s: list[float] = []
+        outputs: list[Dict[str, Any]] = []
 
         async def _wait_one(item: Dict[str, Any]) -> None:
             nonlocal completed, failed, timed_out
@@ -167,6 +183,30 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
                         completed += 1
                     else:
                         failed += 1
+                if bool(args.collect_results):
+                    if task is None:
+                        outputs.append(
+                            {
+                                "task_id": task_id,
+                                "peer_id": peer_id,
+                                "multiaddr": str(getattr(remote, "multiaddr", "") or ""),
+                                "status": "timed_out",
+                                "text": None,
+                            }
+                        )
+                    else:
+                        result = task.get("result")
+                        outputs.append(
+                            {
+                                "task_id": task_id,
+                                "peer_id": peer_id,
+                                "multiaddr": str(getattr(remote, "multiaddr", "") or ""),
+                                "status": str(task.get("status") or ""),
+                                "text": _extract_text(result),
+                                "result": result,
+                                "error": task.get("error"),
+                            }
+                        )
                 latencies_s.append(dt)
 
         wait_start = time.time()
@@ -198,6 +238,8 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
                 },
             }
         )
+        if bool(args.collect_results):
+            out["outputs"] = outputs
         return out
     finally:
         sys.stdout = json_stdout
@@ -236,6 +278,11 @@ def main(argv: Optional[list[str]] = None) -> int:
     parser.add_argument("--concurrency", type=int, default=10, help="Submit/wait concurrency")
     parser.add_argument("--wait", action="store_true", help="Wait for completion")
     parser.add_argument("--timeout-s", type=float, default=120.0, help="Per-task wait timeout")
+    parser.add_argument(
+        "--collect-results",
+        action="store_true",
+        help="Include per-task outputs in the final JSON (can be large).",
+    )
 
     args = parser.parse_args(argv)
 

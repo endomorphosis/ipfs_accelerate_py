@@ -66,6 +66,11 @@ def _run_text_generation(task: Dict[str, Any], *, accelerate_instance: object | 
                     return result
 
                 accel_result = anyio.run(_do_infer, backend="trio")
+                # Some implementations return an Exception object instead of
+                # raising it. Treat that as an error so we fall back to router-
+                # based generation below.
+                if isinstance(accel_result, BaseException):
+                    raise accel_result
                 return {"text": _extract_text(accel_result)}
         except Exception:
             # Fall back to router-based generation.
