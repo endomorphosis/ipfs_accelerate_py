@@ -493,20 +493,24 @@ class GitHubCLI:
         Returns:
             List of repository dictionaries
         """
+        # Prefetch up to a reasonable ceiling so multiple callers requesting different
+        # limits can share the same cached value.
+        target_limit = min(max(int(limit), 200), 500)
+
         # Check cache first
         if use_cache and self.cache:
-            cached_result = self.cache.get("list_repos", owner=owner, limit=limit, visibility=visibility)
-            if cached_result is not None:
+            cached_result = self.cache.get("list_repos", owner=owner, visibility=visibility)
+            if cached_result is not None and len(cached_result) >= limit:
                 logger.debug(f"Using cached repo list for owner={owner}")
-                return cached_result
+                return cached_result[:limit]
 
         # If we're rate-limited, do not attempt API calls; prefer stale cache.
         if self._rest_cooldown_active():
             if self.cache:
-                stale_data = self.cache.get_stale("list_repos", owner=owner, limit=limit, visibility=visibility)
+                stale_data = self.cache.get_stale("list_repos", owner=owner, visibility=visibility)
                 if stale_data is not None:
                     logger.info("Returning stale cache data for repos (rate limit cooldown)")
-                    return stale_data
+                    return stale_data[:limit]
             return []
         
         # Use REST API instead of GraphQL to avoid separate rate limit
@@ -515,15 +519,17 @@ class GitHubCLI:
         
         # Use REST API with bounded pagination (avoid `--paginate`, which can exhaust rate limits).
         # We fetch pages until we reach `limit`.
-        endpoint = f"users/{owner}/repos" if owner else "user/repos"
+        # Owner might be either a user or an org. Use an endpoint that exists.
+        endpoints = ["user/repos"] if not owner else [f"orgs/{owner}/repos", f"users/{owner}/repos"]
+        endpoint = endpoints[0]
         per_page = 100
         page = 1
         repos: List[Dict[str, Any]] = []
 
         # Safety: limit excessive looping even if an endpoint behaves unexpectedly.
-        max_pages = max(1, (max(1, int(limit)) + per_page - 1) // per_page)
+        max_pages = max(1, (max(1, int(target_limit)) + per_page - 1) // per_page)
 
-        while len(repos) < limit and page <= max_pages:
+        while len(repos) < target_limit and page <= max_pages:
             args = ["api", endpoint, "-F", f"per_page={per_page}", "-F", f"page={page}"]
             if not owner and visibility and visibility != "all":
                 args += ["-F", f"visibility={visibility}"]
@@ -534,15 +540,31 @@ class GitHubCLI:
                 )
 
             result = self._run_command(args, max_retries=0)
+            # If we picked the wrong endpoint type (org vs user), try the alternate.
+            if (
+                owner
+                and (not result["success"])
+                and result.get("stderr")
+                and ("http 404" in result["stderr"].lower() or "not found" in result["stderr"].lower())
+                and len(endpoints) > 1
+            ):
+                alt = endpoints[1] if endpoint == endpoints[0] else endpoints[0]
+                logger.info(f"Repo list endpoint {endpoint} returned 404; retrying with {alt}")
+                endpoint = alt
+                args = ["api", endpoint, "-F", f"per_page={per_page}", "-F", f"page={page}"]
+                if not owner and visibility and visibility != "all":
+                    args += ["-F", f"visibility={visibility}"]
+                result = self._run_command(args, max_retries=0)
+
             if not (result["success"] and result["stdout"]):
                 if result.get("stderr") and self._stderr_indicates_rate_limit(result["stderr"]):
                     # Prefer stale cache and avoid logging the full gh stderr repeatedly.
                     logger.warning("REST API rate limit hit while listing repos")
                     if self.cache:
-                        stale_data = self.cache.get_stale("list_repos", owner=owner, limit=limit, visibility=visibility)
+                        stale_data = self.cache.get_stale("list_repos", owner=owner, visibility=visibility)
                         if stale_data is not None:
                             logger.info("Returning stale cache data for repos (rate limit fallback)")
-                            return stale_data
+                            return stale_data[:limit]
                 elif result.get("stderr"):
                     logger.warning(f"Failed to list repos: {result['stderr']}")
                 return []
@@ -572,7 +594,7 @@ class GitHubCLI:
                     "updatedAt": item.get("updated_at"),
                 }
                 repos.append(repo_obj)
-                if len(repos) >= limit:
+                if len(repos) >= target_limit:
                     break
 
             # If the API returned less than a full page, we're done.
@@ -581,13 +603,13 @@ class GitHubCLI:
 
             page += 1
 
-        repos = repos[:limit]
+        repos = repos[:target_limit]
 
         if use_cache and self.cache:
-            self.cache.put("list_repos", repos, ttl=self.cache_ttl, owner=owner, limit=limit, visibility=visibility)
+            self.cache.put("list_repos", repos, ttl=self.cache_ttl, owner=owner, visibility=visibility)
 
         logger.info(f"Successfully fetched {len(repos)} repositories via REST API")
-        return repos
+        return repos[:limit]
     
     def get_repo_info(self, repo: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
         """
