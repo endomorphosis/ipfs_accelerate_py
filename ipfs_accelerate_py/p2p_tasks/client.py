@@ -346,7 +346,11 @@ def _repo_local_announce_files() -> list[str]:
     # Best-effort: when running from a repo checkout (common for LAN ops),
     # systemd-friendly deployments write announce state under ./state.
     try:
-        return [os.path.join(os.getcwd(), "state", "task_p2p_announce.json")]
+        state_dir = os.path.join(os.getcwd(), "state")
+        return [
+            os.path.join(state_dir, "task_p2p_announce.json"),
+            os.path.join(state_dir, "task_p2p_announce_mcp.json"),
+        ]
     except Exception:
         return []
 
@@ -395,6 +399,7 @@ def _read_announce_multiaddr() -> str:
     candidates: list[str] = []
     if raw is not None and str(raw).strip():
         candidates.append(str(raw).strip())
+    candidates.extend(_repo_local_announce_files())
     candidates.extend(_default_announce_files())
 
     for path in candidates:

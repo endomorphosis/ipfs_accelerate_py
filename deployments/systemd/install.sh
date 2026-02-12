@@ -13,16 +13,18 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-UNIT="ipfs-accelerate-mcp.service"
+UNITS=("ipfs-accelerate-mcp.service")
 TARGET_DIR="/etc/systemd/system"
 NO_START="0"
+INSTALL_BOTH="0"
 
 print_usage() {
   cat <<'EOF'
 Usage: sudo deployments/systemd/install.sh [options]
 
 Options:
-  --unit NAME     Unit file to install (default: ipfs-accelerate-mcp.service)
+  --unit NAME     Unit file to install (repeatable; default: ipfs-accelerate-mcp.service)
+  --both          Install both MCP units (ipfs-accelerate.service + ipfs-accelerate-mcp.service)
   --user USER     Set User=/Group= in the unit (default: SUDO_USER, else current user)
   --no-start      Do not enable/restart the service
   -h, --help      Show help
@@ -109,8 +111,21 @@ main() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --unit)
-        UNIT="$2"
+        if [[ "${INSTALL_BOTH}" == "1" ]]; then
+          echo "ERROR: --unit cannot be used with --both" >&2
+          exit 2
+        fi
+        UNITS+=("$2")
         shift 2
+        ;;
+      --both)
+        if [[ "${#UNITS[@]}" -gt 1 || "${UNITS[0]}" != "ipfs-accelerate-mcp.service" ]]; then
+          echo "ERROR: --both cannot be combined with --unit" >&2
+          exit 2
+        fi
+        INSTALL_BOTH="1"
+        UNITS=("ipfs-accelerate.service" "ipfs-accelerate-mcp.service")
+        shift 1
         ;;
       --user)
         user="$2"
@@ -136,29 +151,36 @@ main() {
     user="$(infer_user)"
   fi
 
-  local src_unit="${SCRIPT_DIR}/${UNIT}"
-  if [[ ! -f "${src_unit}" ]]; then
-    echo "ERROR: unit not found: ${src_unit}" >&2
-    exit 2
+  # Remove the default placeholder unit when explicit units were provided.
+  if [[ "${#UNITS[@]}" -gt 1 && "${UNITS[0]}" == "ipfs-accelerate-mcp.service" ]]; then
+    UNITS=("${UNITS[@]:1}")
   fi
 
   ensure_secrets_env
 
   mkdir -p "${TARGET_DIR}"
-  patch_unit_user_group "${src_unit}" "${TARGET_DIR}/${UNIT}" "${user}"
+  for unit in "${UNITS[@]}"; do
+    local src_unit="${SCRIPT_DIR}/${unit}"
+    if [[ ! -f "${src_unit}" ]]; then
+      echo "ERROR: unit not found: ${src_unit}" >&2
+      exit 2
+    fi
+    patch_unit_user_group "${src_unit}" "${TARGET_DIR}/${unit}" "${user}"
+  done
 
   systemctl daemon-reload
 
   if [[ "${NO_START}" == "1" ]]; then
-    echo "Installed ${UNIT} to ${TARGET_DIR}. Not enabling/starting (per --no-start)."
+    echo "Installed ${UNITS[*]} to ${TARGET_DIR}. Not enabling/starting (per --no-start)."
     exit 0
   fi
 
-  systemctl enable "${UNIT}"
-  systemctl restart "${UNIT}"
-
-  echo "Installed + restarted ${UNIT}."
-  echo "Follow logs: journalctl -u ${UNIT} -f"
+  for unit in "${UNITS[@]}"; do
+    systemctl enable "${unit}"
+    systemctl restart "${unit}"
+    echo "Installed + restarted ${unit}."
+    echo "Follow logs: journalctl -u ${unit} -f"
+  done
 }
 
 main "$@"
