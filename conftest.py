@@ -12,6 +12,16 @@ os.environ.setdefault("IPFS_ACCEL_RUN_INTEGRATION_TESTS_SIMULATED", "1")
 os.environ.setdefault("IPFS_ACCEL_RUN_INTEGRATION_TESTS", "1")
 os.environ.setdefault("RUN_LONG_TESTS", "1")
 
+# Local-first libp2p defaults for the test suite.
+#
+# Many CI/dev environments do not have reliable access to the public libp2p
+# bootstrap network (DNS restrictions, blocked egress, rate limits, etc.).
+# Our P2P TaskQueue tests generally dial peers directly via loopback multiaddrs,
+# so public bootstrap/DHT/rendezvous are unnecessary and can destabilize tests.
+os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS", "0")
+os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_DHT", "0")
+os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS", "0")
+
 warnings.filterwarnings(
     "ignore",
     message=r"Can't initialize NVML",

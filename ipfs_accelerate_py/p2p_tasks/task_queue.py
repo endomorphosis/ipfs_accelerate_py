@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import threading
 import time
 import uuid
 from dataclasses import dataclass
@@ -50,6 +51,16 @@ class TaskQueue:
     def __init__(self, path: Optional[str] = None):
         self.path = path or default_queue_path()
         os.makedirs(os.path.dirname(self.path), exist_ok=True)
+
+        # DuckDB connection management:
+        # - In practice, p2p stream handlers may invoke TaskQueue concurrently.
+        # - DuckDB 1.4.x can intermittently raise binder errors like
+        #   "Unique file handle conflict: Cannot attach ... already attached"
+        #   when connections are created concurrently.
+        # Use a single shared connection per TaskQueue instance and serialize
+        # access with a lock to keep behavior deterministic.
+        self._conn_lock = threading.RLock()
+        self._conn: object | None = None
         self._init_db()
 
     def _connect(self):
@@ -58,16 +69,63 @@ class TaskQueue:
         except Exception as exc:
             raise RuntimeError("duckdb is required for TaskQueue") from exc
 
-        return duckdb.connect(self.path)
+        # Best-effort retries to handle transient connection races.
+        last_exc: Exception | None = None
+        for attempt in range(8):
+            try:
+                return duckdb.connect(self.path)
+            except Exception as exc:
+                last_exc = exc
+                msg = str(exc)
+                low = msg.lower()
+                if (
+                    "unique file handle conflict" in low
+                    or "already attached" in low
+                    or "catalog" in low
+                    and "conflict" in low
+                ):
+                    time.sleep(0.02 * (attempt + 1))
+                    continue
+                raise
+
+        if last_exc is not None:
+            raise last_exc
+        raise RuntimeError("duckdb.connect failed")
+
+    def _get_conn(self):
+        with self._conn_lock:
+            if self._conn is None:
+                self._conn = self._connect()
+            return self._conn
+
+    def close(self) -> None:
+        with self._conn_lock:
+            conn = self._conn
+            self._conn = None
+        if conn is not None:
+            try:
+                conn.close()  # type: ignore[attr-defined]
+            except Exception:
+                pass
 
     def _init_db(self) -> None:
         # DuckDB can throw transient write-write conflicts if multiple processes
         # (or threads) try to create the schema at the same time.
         last_exc: Exception | None = None
         for attempt in range(12):
-            conn = self._connect()
-            try:
-                conn.execute(
+            with self._conn_lock:
+                # Force a fresh connection if init previously failed.
+                try:
+                    if self._conn is None:
+                        self._conn = self._connect()
+                    conn = self._conn
+                except Exception as exc:
+                    last_exc = exc
+                    time.sleep(0.05 * (attempt + 1))
+                    continue
+
+                try:
+                    conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS tasks (
                         task_id VARCHAR PRIMARY KEY,
@@ -83,20 +141,28 @@ class TaskQueue:
                     )
                     """
                 )
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)")
-                return
-            except Exception as exc:
-                last_exc = exc
-                msg = str(exc).lower()
-                if "write-write conflict" in msg or "catalog" in msg and "conflict" in msg:
-                    time.sleep(0.05 * (attempt + 1))
-                    continue
-                raise
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
+                    conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)")
+                    return
+                except Exception as exc:
+                    last_exc = exc
+                    msg = str(exc).lower()
+                    # Reset connection and retry on transient write/attach conflicts.
+                    if (
+                        "write-write conflict" in msg
+                        or "unique file handle conflict" in msg
+                        or "already attached" in msg
+                        or "catalog" in msg
+                        and "conflict" in msg
+                    ):
+                        try:
+                            if self._conn is not None:
+                                self._conn.close()  # type: ignore[attr-defined]
+                        except Exception:
+                            pass
+                        self._conn = None
+                        time.sleep(0.05 * (attempt + 1))
+                        continue
+                    raise
 
         if last_exc is not None:
             raise last_exc
@@ -113,8 +179,8 @@ class TaskQueue:
         now = time.time()
         payload_json = json.dumps(payload, sort_keys=True)
 
-        conn = self._connect()
-        try:
+        with self._conn_lock:
+            conn = self._get_conn()
             conn.execute(
                 """
                 INSERT INTO tasks(task_id, task_type, model_name, payload_json, status, assigned_worker, created_at, updated_at)
@@ -122,25 +188,15 @@ class TaskQueue:
                 """,
                 (tid, str(task_type), str(model_name), payload_json, now, now),
             )
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
         return tid
 
     def get(self, task_id: str) -> Optional[Dict[str, Any]]:
         if not task_id:
             return None
 
-        conn = self._connect()
-        try:
+        with self._conn_lock:
+            conn = self._get_conn()
             row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
         if row is None:
             return None
 
@@ -195,8 +251,8 @@ class TaskQueue:
         status_norm = str(status).strip().lower() if status is not None else ""
         types = [t for t in (task_types or []) if isinstance(t, str) and t.strip()]
 
-        conn = self._connect()
-        try:
+        with self._conn_lock:
+            conn = self._get_conn()
             if status_norm and types:
                 placeholders = ",".join(["?"] * len(types))
                 rows = conn.execute(
@@ -219,11 +275,6 @@ class TaskQueue:
                     "SELECT * FROM tasks ORDER BY created_at ASC LIMIT ?",
                     (lim,),
                 ).fetchall()
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
 
         out: list[Dict[str, Any]] = []
         for row in rows or []:

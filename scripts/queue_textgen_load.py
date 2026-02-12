@@ -43,6 +43,26 @@ def _print_json(obj: Any) -> None:
         pass
 
 
+def _write_json_file(path: str, obj: Any) -> None:
+    # Atomic write so callers never observe a partial/empty file.
+    # (Especially useful when runs are interrupted.)
+    path = str(path)
+    if not path or path == "-":
+        return
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+    tmp_path = f"{path}.tmp"
+    data = json.dumps(obj, ensure_ascii=False)
+    with open(tmp_path, "w", encoding="utf-8") as handle:
+        handle.write(data)
+        handle.write("\n")
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(tmp_path, path)
+
+
 def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
     targets: list[Tuple[str, str]] = []
     for ap in args.announce_file or []:
@@ -387,6 +407,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         action="store_true",
         help="Include per-task outputs in the final JSON (can be large).",
     )
+    parser.add_argument(
+        "--output",
+        default="-",
+        help="Write the final JSON report to this file (atomic). Use '-' to disable file output.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -410,12 +435,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         import anyio
 
         result = anyio.run(_main_async, args, backend="trio")
+        _write_json_file(str(getattr(args, "output", "-") or "-"), result)
         _print_json(result)
         return 0
     except SystemExit:
         raise
     except Exception as exc:
-        _print_json({"ok": False, "error": str(exc)})
+        err_obj = {"ok": False, "error": str(exc)}
+        _write_json_file(str(getattr(args, "output", "-") or "-"), err_obj)
+        _print_json(err_obj)
         return 1
 
 

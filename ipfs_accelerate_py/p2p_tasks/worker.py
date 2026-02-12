@@ -22,6 +22,63 @@ import importlib
 from .task_queue import TaskQueue
 
 
+def _truthy(value: str | None) -> bool:
+    return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+_HF_TEXTGEN_LOCK = threading.RLock()
+_HF_TEXTGEN_PIPELINE: object | None = None
+_HF_TEXTGEN_MODEL_ID: str | None = None
+
+
+def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, temperature: float) -> str:
+    """Minimal local text-generation without importing ipfs_accelerate_py core."""
+
+    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID
+
+    try:
+        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(f"transformers is required for minimal text-generation: {exc}")
+
+    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip() or "gpt2"
+    safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
+    temp = float(temperature) if temperature is not None else 0.2
+
+    with _HF_TEXTGEN_LOCK:
+        if _HF_TEXTGEN_PIPELINE is None or _HF_TEXTGEN_MODEL_ID != requested_model:
+            tokenizer = AutoTokenizer.from_pretrained(requested_model)
+            model = AutoModelForCausalLM.from_pretrained(requested_model)
+            if getattr(tokenizer, "pad_token_id", None) is None and getattr(tokenizer, "eos_token_id", None) is not None:
+                tokenizer.pad_token_id = tokenizer.eos_token_id
+
+            _HF_TEXTGEN_PIPELINE = pipeline(
+                "text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                device=-1,
+            )
+            _HF_TEXTGEN_MODEL_ID = requested_model
+
+        gen = _HF_TEXTGEN_PIPELINE
+
+    # Pipeline calls are not guaranteed thread-safe; guard the call.
+    with _HF_TEXTGEN_LOCK:
+        out = gen(
+            str(prompt or ""),
+            max_new_tokens=safe_max_new,
+            do_sample=temp > 0,
+            temperature=max(temp, 1e-6),
+            pad_token_id=getattr(getattr(gen, "tokenizer", None), "pad_token_id", None),
+        )
+
+    if isinstance(out, list) and out and isinstance(out[0], dict):
+        text = out[0].get("generated_text")
+        if isinstance(text, str):
+            return text
+    return str(out)
+
+
 def _extract_text(value: Any) -> str:
     if isinstance(value, str):
         return value
@@ -76,7 +133,23 @@ def _run_text_generation(task: Dict[str, Any], *, accelerate_instance: object | 
             # Fall back to router-based generation.
             pass
 
-    # Fallback path: use the accelerate llm_router, which can still integrate
+    max_new_tokens = int(payload.get("max_new_tokens") or payload.get("max_tokens") or 128)
+    temperature = float(payload.get("temperature") or 0.2)
+
+    # Minimal path for deterministic/local-first testing: avoid importing the
+    # full ipfs_accelerate_py package (which can enable optional integrations).
+    if _truthy(os.environ.get("IPFS_ACCEL_SKIP_CORE")) or _truthy(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_LLM")
+    ):
+        text = _hf_textgen(
+            str(prompt or ""),
+            model_name=model_name or None,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+        )
+        return {"text": str(text)}
+
+    # Default fallback: use the accelerate llm_router, which can still integrate
     # with InferenceBackendManager multiplexing when enabled via env vars.
     from ipfs_accelerate_py import llm_router
 
@@ -84,8 +157,8 @@ def _run_text_generation(task: Dict[str, Any], *, accelerate_instance: object | 
         str(prompt or ""),
         provider=None,
         model_name=model_name or None,
-        max_new_tokens=int(payload.get("max_new_tokens") or payload.get("max_tokens") or 128),
-        temperature=float(payload.get("temperature") or 0.2),
+        max_new_tokens=max_new_tokens,
+        temperature=temperature,
     )
     return {"text": str(text)}
 
