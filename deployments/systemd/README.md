@@ -61,6 +61,16 @@ EOF
 sudo chmod 600 /etc/ipfs-accelerate/secrets.env
 ```
 
+### Fast two-node bring-up (recommended)
+
+If you have exactly two boxes and want them to find each other immediately (without waiting on DHT/rendezvous propagation), set each node to explicitly dial the other as a TaskQueue bootstrap endpoint:
+
+- On box A: get box B's multiaddr from its journal line `multiaddr=...` (must include `/p2p/<peer_id>`)
+- On box B: set `IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS` to that multiaddr (comma-separated list supported)
+- Repeat the same in the other direction (A dials B, B dials A)
+
+This only affects TaskQueue service discovery/dialing (used by MCP-over-P2P tool calls and cache RPC).
+
 ## Logs
 - All logs go to journald by default:
   - `sudo journalctl -u ipfs-accelerate -f`
