@@ -679,6 +679,16 @@ class WorkflowQueue:
             if cached_result is not None:
                 logger.debug(f"Using cached workflow runs for {repo}")
                 return cached_result
+
+        # If the underlying GitHub CLI is in a rate-limit cooldown, prefer stale cache
+        # and avoid spamming warnings.
+        if self.gh._rest_cooldown_active():
+            if self.gh.cache:
+                stale_data = self.gh.cache.get_stale("list_workflow_runs", repo=repo, status=status, limit=limit, branch=branch)
+                if stale_data is not None:
+                    logger.info("Returning stale cache data for workflow runs (rate limit cooldown)")
+                    return stale_data
+            return []
         
         args = ["run", "list", "--repo", repo, "--json",
                 "databaseId,name,status,conclusion,createdAt,updatedAt,event,headBranch,workflowName",
@@ -705,8 +715,12 @@ class WorkflowQueue:
         else:
             # Check if it's a rate limit error and try stale cache
             if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
-                logger.warning("API rate limit hit for list_workflow_runs")
-                logger.debug(f"list_workflow_runs rate limit details: {result['stderr']}")
+                # If we're in cooldown, this is expected; keep logs quiet.
+                if "cooldown active" in result.get("stderr", "").lower():
+                    logger.debug("list_workflow_runs skipped due to cooldown")
+                else:
+                    logger.warning("API rate limit hit for list_workflow_runs")
+                    logger.debug(f"list_workflow_runs rate limit details: {result['stderr']}")
                 if self.gh.cache:
                     stale_data = self.gh.cache.get_stale("list_workflow_runs", repo=repo, status=status, limit=limit, branch=branch)
                     if stale_data is not None:
@@ -732,6 +746,14 @@ class WorkflowQueue:
             if cached_result is not None:
                 logger.debug(f"Using cached workflow run {run_id} for {repo}")
                 return cached_result
+
+        if self.gh._rest_cooldown_active():
+            if self.gh.cache:
+                stale_data = self.gh.cache.get_stale("get_workflow_run", repo=repo, run_id=run_id)
+                if stale_data is not None:
+                    logger.info("Returning stale cache data for workflow run (rate limit cooldown)")
+                    return stale_data
+            return None
         
         args = ["run", "view", run_id, "--repo", repo, "--json",
                 "databaseId,name,status,conclusion,createdAt,updatedAt,event,headBranch,workflowName,jobs"]
@@ -752,8 +774,11 @@ class WorkflowQueue:
         else:
             # Check if it's a rate limit error and try stale cache
             if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
-                logger.warning("API rate limit hit for get_workflow_run")
-                logger.debug(f"get_workflow_run rate limit details: {result['stderr']}")
+                if "cooldown active" in result.get("stderr", "").lower():
+                    logger.debug("get_workflow_run skipped due to cooldown")
+                else:
+                    logger.warning("API rate limit hit for get_workflow_run")
+                    logger.debug(f"get_workflow_run rate limit details: {result['stderr']}")
                 if self.gh.cache:
                     stale_data = self.gh.cache.get_stale("get_workflow_run", repo=repo, run_id=run_id)
                     if stale_data is not None:
