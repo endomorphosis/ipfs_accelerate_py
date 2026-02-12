@@ -62,6 +62,24 @@ These are disabled by default.
 - Discovery trace:
   - `./scripts/p2p_rpc.py discover --pretty`
 
+Example (truncated):
+
+```json
+{
+  "ok": true,
+  "nat": {
+    "autonat": {
+      "supported": true,
+      "status": "unknown",
+      "code": 0
+    }
+  },
+  "attempts": [
+    {"method": "rendezvous", "ok": true, "peer_id": "...", "multiaddr": "..."}
+  ]
+}
+```
+
 - Once it can reach a peer, normal operations:
   - `./scripts/p2p_rpc.py status --pretty`
   - `./scripts/p2p_rpc.py call-tool --tool get_server_status --pretty`

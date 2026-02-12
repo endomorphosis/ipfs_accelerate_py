@@ -9,16 +9,21 @@ Environment:
 - IPFS_DATASETS_PY_TASK_P2P_MDNS (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_MDNS
 - IPFS_DATASETS_PY_TASK_P2P_DHT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_DHT
 - IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS
-- IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default: ipfs-accelerate-task-queue) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
+- IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default:
+    ipfs-accelerate-task-queue) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
 - IPFS_DATASETS_PY_TASK_P2P_AUTONAT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT
-- IPFS_DATASETS_PY_TASK_P2P_RELAY (compat, default: 0) / IPFS_ACCELERATE_PY_TASK_P2P_RELAY
-    - Enables Circuit Relay v2 protocol handlers (/libp2p/circuit/relay/2.0.0)
+- IPFS_DATASETS_PY_TASK_P2P_RELAY (compat, default: 0)
+    / IPFS_ACCELERATE_PY_TASK_P2P_RELAY
+        - Enables Circuit Relay v2 protocol handlers
+            (/libp2p/circuit/relay/2.0.0)
 - IPFS_DATASETS_PY_TASK_P2P_RELAY_HOP (compat, default: 0) / IPFS_ACCELERATE_PY_TASK_P2P_RELAY_HOP
     - When enabled alongside *_P2P_RELAY, allow this node to act as a relay (HOP)
 - IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH (compat, default: 0) / IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH
-    - Enables DCUtR hole punching protocol handler (/libp2p/dcutr)
+        - Enables DCUtR hole punching protocol handler
+            (/libp2p/dcutr)
 - IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (compat) / IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS
-- IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP (compat) / IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP (for announce string; supports 'auto')
+- IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP (compat) / IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP
+    (for announce string; supports 'auto')
 - IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE (compat) / IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE
     - unset: write announce JSON to a default XDG cache path
     - set to a path: write announce JSON to that path
@@ -264,7 +269,11 @@ async def _maybe_start_autonat(*, host) -> object | None:
             return svc
         except Exception:
             continue
-    print("ipfs_accelerate_py task queue p2p service: AutoNAT unavailable in installed libp2p; skipping", file=sys.stderr, flush=True)
+    print(
+        "ipfs_accelerate_py task queue p2p service: AutoNAT unavailable in installed libp2p; skipping",
+        file=sys.stderr,
+        flush=True,
+    )
     return None
 
 
@@ -308,11 +317,8 @@ async def _maybe_make_relay_v2(*, host) -> object | None:
         from libp2p.relay.circuit_v2.protocol import CircuitV2Protocol
 
         svc = CircuitV2Protocol(host, allow_hop=bool(allow_hop))
-        print(
-            f"ipfs_accelerate_py task queue p2p service: Circuit Relay v2 enabled (allow_hop={bool(allow_hop)})",
-            file=sys.stderr,
-            flush=True,
-        )
+        msg = f"ipfs_accelerate_py task queue p2p service: Circuit Relay v2 enabled (allow_hop={bool(allow_hop)})"
+        print(msg, file=sys.stderr, flush=True)
         return svc
     except Exception as exc:
         print(
@@ -342,11 +348,8 @@ async def _maybe_make_dcutr(*, host) -> object | None:
         )
         return svc
     except Exception as exc:
-        print(
-            f"ipfs_accelerate_py task queue p2p service: DCUtR unavailable; skipping: {exc}",
-            file=sys.stderr,
-            flush=True,
-        )
+        msg = f"ipfs_accelerate_py task queue p2p service: DCUtR unavailable; skipping: {exc}"
+        print(msg, file=sys.stderr, flush=True)
         return None
 
 
