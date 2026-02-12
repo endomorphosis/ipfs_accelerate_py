@@ -1512,6 +1512,109 @@ def discover_multiaddr_via_mdns_sync(*, peer_id: str, timeout_s: float = 10.0) -
     return str(result or "")
 
 
+async def discover_peers_via_mdns(*, timeout_s: float = 10.0, limit: int = 10, exclude_self: bool = True) -> list[RemoteQueue]:
+    """Discover peers on the LAN via mDNS and return dialable RemoteQueue targets.
+
+    Notes:
+    - Returns best-effort results; order is discovery order.
+    - When `exclude_self=True`, excludes the local peer-id if available via the
+      local announce file hint.
+    """
+
+    if not _have_libp2p():
+        raise RuntimeError("libp2p is not installed")
+
+    import anyio
+    import inspect
+
+    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
+    from libp2p import new_host
+    from libp2p.tools.async_service import background_trio_service
+    from multiaddr import Multiaddr
+
+    if not ensure_libp2p_compatible():
+        raise RuntimeError(
+            "libp2p is installed but dependency compatibility patches could not be applied. "
+            "This environment likely has an incompatible `multihash` module."
+        )
+
+    try:
+        from libp2p.discovery.mdns.mdns import MDNSDiscovery
+    except Exception as exc:
+        raise RuntimeError(f"mdns_unavailable: {exc}")
+
+    limit = max(1, int(limit))
+    exclude_peer_id = _read_announce_peer_id_hint() if bool(exclude_self) else ""
+
+    host_obj = new_host()
+    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+
+    found: dict[str, str] = {}
+
+    async with background_trio_service(host.get_network()):
+        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+
+        mdns = MDNSDiscovery(host.get_network(), port=_mdns_port())
+        try:
+            mdns.start()
+        except Exception as exc:
+            raise RuntimeError(f"mdns_start_failed: {exc}")
+
+        try:
+            deadline = anyio.current_time() + max(0.1, float(timeout_s))
+            while anyio.current_time() < deadline and len(found) < limit:
+                for pid in list(mdns.listener.discovered_services.values()):
+                    pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid)
+                    pid_text = str(pid_text or "").strip()
+                    if not pid_text or pid_text in found:
+                        continue
+                    if exclude_peer_id and pid_text == exclude_peer_id:
+                        continue
+
+                    addrs = host.get_network().peerstore.addrs(pid)
+                    dial_ma = ""
+                    for a in list(addrs or []):
+                        dial_ma = _addr_to_peer_multiaddr_text(a, pid_text)
+                        if dial_ma:
+                            break
+                    if not dial_ma:
+                        continue
+
+                    found[pid_text] = dial_ma
+                    _cache_set_multiaddr(pid_text, dial_ma)
+
+                await anyio.sleep(0.1)
+        finally:
+            try:
+                try:
+                    mdns.listener.stop()
+                except Exception:
+                    pass
+                mdns.stop()
+            except Exception:
+                pass
+
+    try:
+        await host.close()
+    except Exception:
+        pass
+
+    return [RemoteQueue(peer_id=pid, multiaddr=ma) for (pid, ma) in found.items()]
+
+
+def discover_peers_via_mdns_sync(*, timeout_s: float = 10.0, limit: int = 10, exclude_self: bool = True) -> list[RemoteQueue]:
+    import trio
+
+    result: list[RemoteQueue] = []
+
+    async def _main() -> None:
+        nonlocal result
+        result = await discover_peers_via_mdns(timeout_s=float(timeout_s), limit=int(limit), exclude_self=bool(exclude_self))
+
+    trio.run(_main)
+    return list(result or [])
+
+
 def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
     import trio
 
