@@ -67,6 +67,67 @@ def _tcp_port_from_multiaddr_text(multiaddr: str) -> int:
         return 0
 
 
+def _discover_other_peer_multiaddr(
+    *,
+    self_peer_id: str,
+    expected_tcp_port: int,
+    timeout_s: float,
+    poll_s: float = 0.25,
+) -> Tuple[str, str]:
+    """Return (peer_id, multiaddr) for a non-self peer discovered via mDNS.
+
+    Strategy:
+    - Prefer peers advertising the same TCP port as our local listen port.
+    - Verify the peer responds to a `status` RPC before returning.
+    """
+
+    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, discover_peers_via_mdns_sync, request_status_sync
+
+    deadline = time.time() + max(0.1, float(timeout_s))
+    self_peer_id = str(self_peer_id or "").strip()
+    if not self_peer_id:
+        raise ValueError("self_peer_id is required")
+
+    last_seen: list[Tuple[str, str]] = []
+    while time.time() < deadline:
+        peers = discover_peers_via_mdns_sync(timeout_s=1.0, limit=25, exclude_self=True)
+        candidates: list[Tuple[str, str]] = []
+        for p in list(peers or []):
+            pid = str(getattr(p, "peer_id", "") or "").strip()
+            ma = str(getattr(p, "multiaddr", "") or "").strip()
+            if not pid or not ma:
+                continue
+            if pid == self_peer_id:
+                continue
+            candidates.append((pid, ma))
+
+        # Prefer same port to avoid accidentally selecting unrelated LAN peers.
+        preferred = [c for c in candidates if _tcp_port_from_multiaddr_text(c[1]) == int(expected_tcp_port)]
+        ordered = preferred + [c for c in candidates if c not in preferred]
+        last_seen = ordered
+
+        for pid, ma in ordered:
+            if int(expected_tcp_port) and _tcp_port_from_multiaddr_text(ma) != int(expected_tcp_port):
+                continue
+            try:
+                resp = request_status_sync(remote=RemoteQueue(peer_id=pid, multiaddr=ma), timeout_s=5.0, detail=False)
+                if isinstance(resp, dict) and resp.get("ok"):
+                    return pid, ma
+            except Exception:
+                continue
+
+        time.sleep(max(0.05, float(poll_s)))
+
+    if last_seen:
+        # Give a useful hint when we saw peers but none matched/answered.
+        seen = ", ".join([f"{pid} ({ma})" for pid, ma in last_seen[:5]])
+        raise RuntimeError(
+            "mDNS discovery timed out: saw peers but none responded on the expected port. "
+            f"expected_tcp_port={int(expected_tcp_port)}; seen={seen}"
+        )
+    raise RuntimeError("mDNS discovery timed out: no non-self peers found")
+
+
 def _run_worker_process(
     *, queue_path: str, listen_host: str, listen_port: int, announce_file: str, worker_id: str, public_ip: str
 ) -> None:
@@ -179,19 +240,13 @@ def main(argv: list[str] | None = None) -> int:
 
         from ipfs_accelerate_py.p2p_tasks.client import discover_peers_via_mdns_sync
 
-        # Discover one remote peer (exclude self). If the LAN has more peers,
-        # this will pick one.
-        peers = discover_peers_via_mdns_sync(timeout_s=float(args.mdns_timeout_s), limit=10, exclude_self=True)
-        # Prefer peers that are running on the expected listen port (the common
-        # two-machine setup runs the same port on both boxes).
+        # Discover the other peer via mDNS and verify it answers a `status` RPC.
         expected_port = int(args.listen_port)
-        peers = [p for p in peers if _tcp_port_from_multiaddr_text(str(p.multiaddr)) == expected_port] or peers
-        if not peers:
-            raise RuntimeError("no peers discovered via mDNS (excluding self)")
-        other = peers[0]
-
-        if str(other.peer_id).strip() == self_peer_id:
-            raise RuntimeError("mDNS selected self; no distinct remote peer discovered")
+        other_peer_id, other_multiaddr = _discover_other_peer_multiaddr(
+            self_peer_id=self_peer_id,
+            expected_tcp_port=expected_port,
+            timeout_s=float(args.mdns_timeout_s),
+        )
 
         # Run load across BOTH peers using explicit multiaddrs for stability.
         script = Path(__file__).resolve().parents[1] / "scripts" / "queue_textgen_load.py"
@@ -208,7 +263,7 @@ def main(argv: list[str] | None = None) -> int:
                     "--multiaddr",
                     self_ma,
                     "--multiaddr",
-                    str(other.multiaddr),
+                    str(other_multiaddr),
                     "--count",
                     str(int(args.count)),
                     "--concurrency",
