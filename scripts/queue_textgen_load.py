@@ -28,6 +28,13 @@ import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
 
+def _peer_id_from_multiaddr(multiaddr: str) -> str:
+    try:
+        return str(multiaddr).rsplit("/p2p/", 1)[-1].strip()
+    except Exception:
+        return ""
+
+
 def _load_announce(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as handle:
         data = json.loads(handle.read())
@@ -81,7 +88,12 @@ def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
         if len(peer_ids) > 1:
             raise SystemExit("--multiaddr supports at most one --peer-id hint")
         pid_hint = str(peer_ids[0]).strip() if peer_ids else ""
-        targets.append((pid_hint, str(multiaddr).strip()))
+
+        ma_text = str(multiaddr).strip()
+        pid_from_ma = _peer_id_from_multiaddr(ma_text)
+        if pid_hint and pid_from_ma and pid_hint != pid_from_ma:
+            raise SystemExit("--peer-id hint does not match --multiaddr /p2p/<peerid>")
+        targets.append(((pid_from_ma or pid_hint), ma_text))
 
     if not targets:
         # Allow peer-id-only discovery (e.g., via mDNS/DHT/rendezvous) when

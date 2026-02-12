@@ -71,6 +71,56 @@ class RemoteQueue:
     multiaddr: str = ""
 
 
+# Best-effort in-process cache for discovery-derived dial multiaddrs.
+#
+# The convenience helpers in this module create a new libp2p host per request.
+# When relying on mDNS, recreating discovery repeatedly can race announcements
+# and yield `discovery_timeout` on submit/wait loops. Caching the last known
+# dialable multiaddr per peer makes repeated RPCs much more stable.
+_DISCOVERED_MULTIADDR_CACHE: dict[str, str] = {}
+
+
+def _cache_get_multiaddr(peer_id: str) -> str:
+    try:
+        return str(_DISCOVERED_MULTIADDR_CACHE.get(str(peer_id).strip()) or "")
+    except Exception:
+        return ""
+
+
+def _cache_set_multiaddr(peer_id: str, multiaddr: str) -> None:
+    pid = str(peer_id or "").strip()
+    ma = str(multiaddr or "").strip()
+    if not pid or not ma:
+        return
+    _DISCOVERED_MULTIADDR_CACHE[pid] = ma
+
+
+def _cache_del_multiaddr(peer_id: str) -> None:
+    try:
+        _DISCOVERED_MULTIADDR_CACHE.pop(str(peer_id).strip(), None)
+    except Exception:
+        pass
+
+
+def _addr_to_peer_multiaddr_text(addr: object, peer_id: str) -> str:
+    """Convert a peerstore address to a dialable /p2p/... multiaddr string."""
+    pid = str(peer_id or "").strip()
+    if not pid:
+        return ""
+    try:
+        text = str(addr).strip()
+    except Exception:
+        return ""
+    if not text:
+        return ""
+    # Avoid undialable wildcard/unspecified addresses.
+    if text.startswith("/ip4/0.0.0.0/") or text.startswith("/ip6/::/"):
+        return ""
+    if "/p2p/" not in text:
+        text = f"{text}/p2p/{pid}"
+    return text
+
+
 def _multiaddr_peer_id(multiaddr: str) -> str:
     try:
         return str(multiaddr).rsplit("/p2p/", 1)[-1].strip()
@@ -301,21 +351,20 @@ async def _best_effort_connect_multiaddrs(*, host, addrs: list[str]) -> None:
 
 
 def _mdns_port() -> int:
-    # mDNS uses a shared UDP port for discovery. This is intentionally *not*
-    # the TaskQueue TCP listen port, so multiple peers can run on one host
-    # (or multiple hosts) with distinct TCP ports and still discover each other.
+    # Keep backwards-compatible behavior: in py-libp2p, the mDNS discovery
+    # implementation expects a port value aligned with the peer's libp2p
+    # listen port. Tests that run multiple peers on one host can do so by
+    # binding to distinct loopback IPs while sharing the same port.
     raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS_PORT")
-        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
         or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
         or os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
-        or "5353"
+        or "9710"
     )
     try:
         return int(str(raw).strip())
     except Exception:
-        return 5353
+        return 9710
 
 
 def _client_listen_host() -> str:
@@ -563,12 +612,27 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
                 if not addrs:
                     continue
 
-                peer_info = PeerInfo(peer_id=pid, addrs=addrs)
+                dial_addrs = []
+                dial_ma = ""
+                for a in list(addrs or []):
+                    # Filter out undialable wildcard addresses.
+                    if str(a).startswith("/ip4/0.0.0.0/") or str(a).startswith("/ip6/::/"):
+                        continue
+                    dial_addrs.append(a)
+                    if not dial_ma:
+                        dial_ma = _addr_to_peer_multiaddr_text(a, pid_text)
+
+                if not dial_addrs:
+                    continue
+
+                peer_info = PeerInfo(peer_id=pid, addrs=dial_addrs)
                 try:
                     await host.connect(peer_info)
                     stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
                     try:
                         resp = await _request_over_stream(stream=stream, message=message)
+                        if dial_ma:
+                            _cache_set_multiaddr(pid_text, dial_ma)
                         return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
                     finally:
                         try:
@@ -834,6 +898,20 @@ async def _dial_and_request(
                 )  # type: ignore[assignment]
             else:
                 require_peer_id = (remote.peer_id or "").strip()
+
+                # If we've recently discovered this peer via mDNS/DHT/etc in this
+                # process, try the cached multiaddr first to avoid rediscovery
+                # races during submit/wait loops.
+                if require_peer_id:
+                    cached_ma = _cache_get_multiaddr(require_peer_id)
+                    if cached_ma:
+                        try:
+                            resp = await _try_peer_multiaddr(host=host, peer_multiaddr=cached_ma, message=message)
+                            if isinstance(resp, dict):
+                                return resp
+                        except Exception:
+                            pass
+                        _cache_del_multiaddr(require_peer_id)
 
                 # Zero-config: if a local service is running, it writes an
                 # announce file in XDG cache; dial it first.
@@ -1342,6 +1420,96 @@ async def discover_status(
             result = a.get("response")
             break
     return {"ok": bool(ok), "result": result, "nat": _nat_from_resp(result), "attempts": attempts}
+
+
+async def discover_multiaddr_via_mdns(*, peer_id: str, timeout_s: float = 10.0) -> str:
+    """Discover a peer's dialable multiaddr via mDNS.
+
+    This is intended as a one-time resolver for callers that want to rely on
+    mDNS for zero-config peer discovery, but then dial by explicit multiaddr for
+    repeated RPCs (submit/wait loops).
+    """
+
+    if not _have_libp2p():
+        raise RuntimeError("libp2p is not installed")
+
+    import anyio
+    import inspect
+
+    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
+    from libp2p import new_host
+    from libp2p.tools.async_service import background_trio_service
+    from multiaddr import Multiaddr
+
+    if not ensure_libp2p_compatible():
+        raise RuntimeError(
+            "libp2p is installed but dependency compatibility patches could not be applied. "
+            "This environment likely has an incompatible `multihash` module."
+        )
+
+    require_peer_id = str(peer_id or "").strip()
+    if not require_peer_id:
+        raise ValueError("peer_id is required")
+
+    try:
+        from libp2p.discovery.mdns.mdns import MDNSDiscovery
+    except Exception as exc:
+        raise RuntimeError(f"mdns_unavailable: {exc}")
+
+    host_obj = new_host()
+    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+
+    async with background_trio_service(host.get_network()):
+        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+
+        mdns = MDNSDiscovery(host.get_network(), port=_mdns_port())
+        try:
+            mdns.start()
+        except Exception as exc:
+            raise RuntimeError(f"mdns_start_failed: {exc}")
+
+        try:
+            deadline = anyio.current_time() + max(0.1, float(timeout_s))
+            while anyio.current_time() < deadline:
+                for pid in list(mdns.listener.discovered_services.values()):
+                    pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid)
+                    if pid_text != require_peer_id:
+                        continue
+                    addrs = host.get_network().peerstore.addrs(pid)
+                    for a in list(addrs or []):
+                        ma = _addr_to_peer_multiaddr_text(a, pid_text)
+                        if ma:
+                            _cache_set_multiaddr(pid_text, ma)
+                            return ma
+                await anyio.sleep(0.1)
+        finally:
+            try:
+                try:
+                    mdns.listener.stop()
+                except Exception:
+                    pass
+                mdns.stop()
+            except Exception:
+                pass
+
+    try:
+        await host.close()
+    except Exception:
+        pass
+    return ""
+
+
+def discover_multiaddr_via_mdns_sync(*, peer_id: str, timeout_s: float = 10.0) -> str:
+    import trio
+
+    result: str = ""
+
+    async def _main() -> None:
+        nonlocal result
+        result = await discover_multiaddr_via_mdns(peer_id=str(peer_id), timeout_s=float(timeout_s))
+
+    trio.run(_main)
+    return str(result or "")
 
 
 def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:

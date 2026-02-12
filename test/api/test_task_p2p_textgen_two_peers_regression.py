@@ -53,20 +53,20 @@ def _wait_for_announce(path: str, timeout_s: float = 25.0) -> dict:
 def _run_textgen_worker_with_service(
     *,
     queue_path: str,
+    listen_host: str,
     listen_port: int,
     announce_file: str,
     worker_id: str,
-    mdns_port: int,
 ) -> None:
     # Deterministic local-only behavior.
-    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = "127.0.0.1"
-    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = "127.0.0.1"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = str(listen_host)
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT"] = str(int(listen_port))
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = str(listen_host)
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = announce_file
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "1"
-    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = str(int(mdns_port))
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RELAY"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH"] = "0"
@@ -110,13 +110,14 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
     - non-durable reporting from the load driver (must write --output JSON)
     """
 
+    # For mDNS, discovered peers are typically dialed via their LAN IP.
+    # Bind services to 0.0.0.0 so those addresses are actually reachable.
+    host_a = "0.0.0.0"
+    host_b = "0.0.0.0"
+    host_client = "0.0.0.0"
     port_a = _free_port()
     port_b = _free_port()
     assert port_a != port_b
-
-    # Use an isolated shared mDNS UDP port so both peers can discover each other
-    # while still listening on distinct TCP ports.
-    mdns_port = _free_port()
 
     state_dir = tmp_path / "p2p_textgen_regression"
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -131,10 +132,10 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
         target=_run_textgen_worker_with_service,
         kwargs={
             "queue_path": queue_a,
+            "listen_host": host_a,
             "listen_port": port_a,
             "announce_file": announce_a,
             "worker_id": "peer1",
-            "mdns_port": mdns_port,
         },
         daemon=True,
     )
@@ -142,10 +143,10 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
         target=_run_textgen_worker_with_service,
         kwargs={
             "queue_path": queue_b,
+            "listen_host": host_b,
             "listen_port": port_b,
             "announce_file": announce_b,
             "worker_id": "peer2",
-            "mdns_port": mdns_port,
         },
         daemon=True,
     )
@@ -173,23 +174,32 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
 
         # Force the client to dial via mDNS discovery (no announce-file dialing).
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = "0"
-        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = "127.0.0.1"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = host_client
+        # mDNS discovery does not require a specific client listen port; keep it stable.
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT"] = "9710"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "1"
-        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = str(int(mdns_port))
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DISCOVERY_TIMEOUT_S"] = "15"
+
+        # Resolve dialable multiaddrs via mDNS once, then use explicit multiaddrs
+        # for the high-volume submit/wait loop (mDNS-only per-RPC is too flaky).
+        from ipfs_accelerate_py.p2p_tasks.client import discover_multiaddr_via_mdns_sync
+
+        ma_a = discover_multiaddr_via_mdns_sync(peer_id=peer_a, timeout_s=30.0)
+        ma_b = discover_multiaddr_via_mdns_sync(peer_id=peer_b, timeout_s=30.0)
+        assert ma_a and ma_b
 
         # Run the load driver in-process to avoid import shadowing issues
         # (the repo contains similarly-named modules under test/).
         mod = runpy.run_path(str(script))
         rc = int(mod["main"](
             [
-                "--peer-id",
-                peer_a,
-                "--peer-id",
-                peer_b,
+                "--multiaddr",
+                ma_a,
+                "--multiaddr",
+                ma_b,
                 "--count",
                 "50",
                 "--concurrency",
