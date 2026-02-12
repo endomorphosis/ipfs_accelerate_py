@@ -13,6 +13,7 @@ import sys
 import time
 import random
 from datetime import datetime, timedelta, timezone
+from threading import Lock
 from typing import Any, Dict, List, Optional, Union
 
 from .cache import GitHubAPICache, get_global_cache
@@ -138,10 +139,46 @@ class GitHubCLI:
             self.cache = None
         
         self._verify_installation()
+
+        # Global REST API rate-limit backoff.
+        # When `gh api ...` hits a rate limit, continuing to call it every loop
+        # just burns CPU/logs. We apply a cooldown so callers can fall back to
+        # stale cache while GitHub resets the limit.
+        self._rest_rate_limit_until: float = 0.0
+        self._rest_rate_limit_backoff: float = 60.0
+        self._rest_rate_limit_lock = Lock()
+        self._last_rest_rate_limit_log: float = 0.0
         
         # Check token status on initialization
         if self.auto_refresh_token:
             self._check_and_refresh_token()
+
+    @staticmethod
+    def _stderr_indicates_rate_limit(stderr: str) -> bool:
+        stderr_lower = (stderr or "").lower()
+        return any(keyword in stderr_lower for keyword in ["rate limit", "api rate limit", "too many requests"])
+
+    def _rest_cooldown_active(self) -> bool:
+        return time.time() < self._rest_rate_limit_until
+
+    def _note_rest_rate_limit(self, stderr: str) -> None:
+        now = time.time()
+        with self._rest_rate_limit_lock:
+            # Escalate the backoff if we're still in a cooldown window.
+            if now < self._rest_rate_limit_until:
+                self._rest_rate_limit_backoff = min(self._rest_rate_limit_backoff * 2.0, 3600.0)
+            else:
+                self._rest_rate_limit_backoff = max(self._rest_rate_limit_backoff, 60.0)
+            self._rest_rate_limit_until = now + self._rest_rate_limit_backoff
+
+            # Avoid log spam if multiple calls hit the same limit.
+            if now - self._last_rest_rate_limit_log >= 60:
+                logger.warning(
+                    f"REST API rate limit hit; backing off for {int(self._rest_rate_limit_backoff)}s (stale cache will be used when available)"
+                )
+                self._last_rest_rate_limit_log = now
+            else:
+                logger.debug(f"REST API rate limit hit (suppressed): {stderr}")
     
     def _verify_installation(self) -> None:
         """Verify that gh CLI is installed and authenticated."""
@@ -307,6 +344,19 @@ class GitHubCLI:
             self._check_and_refresh_token()
         
         last_error = None
+
+        # If we're currently in a rate-limit cooldown window, avoid invoking gh commands
+        # that hit the GitHub API. This is especially important for long-running
+        # services that would otherwise hammer the API repeatedly and spam the journal.
+        # Allow `gh auth ...` to run even during cooldown.
+        if args and args[0] != "auth" and self._rest_cooldown_active():
+            return {
+                "stdout": "",
+                "stderr": "GitHub API rate limit cooldown active (rate limit)",
+                "returncode": 1,
+                "success": False,
+                "attempts": 0,
+            }
         
         for attempt in range(max_retries + 1):
             try:
@@ -325,14 +375,17 @@ class GitHubCLI:
                 )
                 
                 # Check for rate limiting in stderr
-                stderr_lower = result.stderr.lower()
-                if result.returncode != 0 and any(keyword in stderr_lower for keyword in ['rate limit', 'api rate limit', 'too many requests']):
-                    if attempt < max_retries:
-                        # Exponential backoff with jitter
-                        delay = min(base_delay * (2 ** attempt) + random.uniform(0, 1), max_delay)
-                        logger.warning(f"Rate limit detected, retrying in {delay:.2f}s (attempt {attempt + 1}/{max_retries})")
-                        time.sleep(delay)
-                        continue
+                if result.returncode != 0 and self._stderr_indicates_rate_limit(result.stderr):
+                    # Note rate limit and return immediately; retrying within seconds
+                    # rarely helps for GitHub rate limits.
+                    self._note_rest_rate_limit(result.stderr)
+                    return {
+                        "stdout": result.stdout.strip(),
+                        "stderr": result.stderr.strip(),
+                        "returncode": result.returncode,
+                        "success": False,
+                        "attempts": attempt + 1,
+                    }
                 
                 # Success or non-retryable error
                 return {
@@ -446,68 +499,95 @@ class GitHubCLI:
             if cached_result is not None:
                 logger.debug(f"Using cached repo list for owner={owner}")
                 return cached_result
+
+        # If we're rate-limited, do not attempt API calls; prefer stale cache.
+        if self._rest_cooldown_active():
+            if self.cache:
+                stale_data = self.cache.get_stale("list_repos", owner=owner, limit=limit, visibility=visibility)
+                if stale_data is not None:
+                    logger.info("Returning stale cache data for repos (rate limit cooldown)")
+                    return stale_data
+            return []
         
         # Use REST API instead of GraphQL to avoid separate rate limit
         # gh repo list uses GraphQL which has its own (often exhausted) rate limit
         # REST API: GET /user/repos or GET /users/{username}/repos
         
-        if owner:
-            # List repos for specific user/org
-            args = ["api", f"users/{owner}/repos", "--paginate", "--jq", 
-                   f".[] | select(.archived == false) | {{name, owner: .owner.login, url: .html_url, updatedAt: .updated_at}} | select(. != null) | @json"]
-        else:
-            # List authenticated user's repos
-            args = ["api", "user/repos", "--paginate", "--jq",
-                   f".[] | select(.archived == false) | {{name, owner: .owner.login, url: .html_url, updatedAt: .updated_at}} | select(. != null) | @json"]
-        
-        # Track API call with operation details
-        if self.cache:
-            self.cache.increment_api_call_count(api_type="rest", operation=f"list_repos(owner={owner}, limit={limit})")
-        
-        # Use REST API with no retries since it's faster
-        result = self._run_command(args, max_retries=0)
-        if result["success"] and result["stdout"]:
-            try:
-                # Parse JSON lines from jq output
-                repos = []
-                for line in result["stdout"].strip().split('\n'):
-                    if line.strip():
-                        try:
-                            repo = json.loads(line)
-                            # Convert owner string to dict format for compatibility
-                            if isinstance(repo.get('owner'), str):
-                                repo['owner'] = {'login': repo['owner']}
-                            repos.append(repo)
-                        except json.JSONDecodeError:
-                            continue
-                
-                # Apply limit
-                repos = repos[:limit]
-                
-                # Cache the result
-                if use_cache and self.cache:
-                    self.cache.put("list_repos", repos, ttl=self.cache_ttl, owner=owner, limit=limit, visibility=visibility)
-                
-                logger.info(f"Successfully fetched {len(repos)} repositories via REST API")
-                return repos
-            except Exception as e:
-                logger.error(f"Failed to parse repo list: {e}")
-                return []
-        else:
-            # Log the error if available
-            if result.get("stderr"):
-                # Check if it's a rate limit error
-                if "rate limit" in result["stderr"].lower() or "API rate limit" in result["stderr"]:
-                    logger.warning(f"REST API rate limit hit: {result['stderr']}")
-                    # Try to return stale cache data as fallback
+        # Use REST API with bounded pagination (avoid `--paginate`, which can exhaust rate limits).
+        # We fetch pages until we reach `limit`.
+        endpoint = f"users/{owner}/repos" if owner else "user/repos"
+        per_page = 100
+        page = 1
+        repos: List[Dict[str, Any]] = []
+
+        # Safety: limit excessive looping even if an endpoint behaves unexpectedly.
+        max_pages = max(1, (max(1, int(limit)) + per_page - 1) // per_page)
+
+        while len(repos) < limit and page <= max_pages:
+            args = ["api", endpoint, "-F", f"per_page={per_page}", "-F", f"page={page}"]
+            if not owner and visibility and visibility != "all":
+                args += ["-F", f"visibility={visibility}"]
+
+            if self.cache:
+                self.cache.increment_api_call_count(
+                    api_type="rest", operation=f"list_repos(owner={owner}, limit={limit}, page={page})"
+                )
+
+            result = self._run_command(args, max_retries=0)
+            if not (result["success"] and result["stdout"]):
+                if result.get("stderr") and self._stderr_indicates_rate_limit(result["stderr"]):
+                    # Prefer stale cache and avoid logging the full gh stderr repeatedly.
+                    logger.warning("REST API rate limit hit while listing repos")
                     if self.cache:
                         stale_data = self.cache.get_stale("list_repos", owner=owner, limit=limit, visibility=visibility)
                         if stale_data is not None:
-                            logger.info(f"Returning stale cache data for repos (rate limit fallback)")
+                            logger.info("Returning stale cache data for repos (rate limit fallback)")
                             return stale_data
-                else:
+                elif result.get("stderr"):
                     logger.warning(f"Failed to list repos: {result['stderr']}")
-        return []
+                return []
+
+            try:
+                page_data = json.loads(result["stdout"])
+            except json.JSONDecodeError:
+                logger.error("Failed to parse repo list JSON from gh api")
+                return []
+
+            if not isinstance(page_data, list) or not page_data:
+                break
+
+            for item in page_data:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("archived") is True:
+                    continue
+                owner_login = None
+                owner_obj = item.get("owner")
+                if isinstance(owner_obj, dict):
+                    owner_login = owner_obj.get("login")
+                repo_obj: Dict[str, Any] = {
+                    "name": item.get("name"),
+                    "owner": {"login": owner_login} if owner_login else owner_obj,
+                    "url": item.get("html_url"),
+                    "updatedAt": item.get("updated_at"),
+                }
+                repos.append(repo_obj)
+                if len(repos) >= limit:
+                    break
+
+            # If the API returned less than a full page, we're done.
+            if len(page_data) < per_page:
+                break
+
+            page += 1
+
+        repos = repos[:limit]
+
+        if use_cache and self.cache:
+            self.cache.put("list_repos", repos, ttl=self.cache_ttl, owner=owner, limit=limit, visibility=visibility)
+
+        logger.info(f"Successfully fetched {len(repos)} repositories via REST API")
+        return repos
     
     def get_repo_info(self, repo: str, use_cache: bool = True) -> Optional[Dict[str, Any]]:
         """
@@ -550,7 +630,8 @@ class GitHubCLI:
         else:
             # Check if it's a rate limit error and try stale cache
             if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
-                logger.warning(f"API rate limit hit for get_repo_info: {result['stderr']}")
+                logger.warning("API rate limit hit for get_repo_info")
+                logger.debug(f"get_repo_info rate limit details: {result['stderr']}")
                 if self.cache:
                     stale_data = self.cache.get_stale("get_repo_info", repo=repo)
                     if stale_data is not None:
@@ -624,7 +705,8 @@ class WorkflowQueue:
         else:
             # Check if it's a rate limit error and try stale cache
             if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
-                logger.warning(f"API rate limit hit for list_workflow_runs: {result['stderr']}")
+                logger.warning("API rate limit hit for list_workflow_runs")
+                logger.debug(f"list_workflow_runs rate limit details: {result['stderr']}")
                 if self.gh.cache:
                     stale_data = self.gh.cache.get_stale("list_workflow_runs", repo=repo, status=status, limit=limit, branch=branch)
                     if stale_data is not None:
@@ -670,7 +752,8 @@ class WorkflowQueue:
         else:
             # Check if it's a rate limit error and try stale cache
             if result.get("stderr") and "rate limit" in result.get("stderr", "").lower():
-                logger.warning(f"API rate limit hit for get_workflow_run: {result['stderr']}")
+                logger.warning("API rate limit hit for get_workflow_run")
+                logger.debug(f"get_workflow_run rate limit details: {result['stderr']}")
                 if self.gh.cache:
                     stale_data = self.gh.cache.get_stale("get_workflow_run", repo=repo, run_id=run_id)
                     if stale_data is not None:
