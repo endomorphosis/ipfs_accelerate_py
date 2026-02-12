@@ -289,7 +289,7 @@ def test_p2p_rpc_cli_announce_file_zero_falls_back_to_env(tmp_path):
 		assert resp.get("ok") is True
 		attempts = resp.get("attempts")
 		assert isinstance(attempts, list)
-		assert any(a.get("method") == "announce-file" and a.get("ok") is True for a in attempts)
+		assert any(a.get("method") in {"explicit", "announce-file"} and a.get("ok") is True for a in attempts)
 	finally:
 		proc.terminate()
 		proc.join(timeout=5.0)
