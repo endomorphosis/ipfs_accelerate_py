@@ -252,6 +252,15 @@ class IPFSAccelerateCLI:
         # Always enable dashboard integration
         args.dashboard = True
 
+        # Optional: start the TaskQueue libp2p service inside this process.
+        # Systemd units typically run `ipfs-accelerate mcp start` (this codepath)
+        # rather than `ipfs_accelerate_py.mcp.cli`, so we honor the same env
+        # toggles here to enable unified p2p transport (tools/tasks/cache).
+        try:
+            self._maybe_start_taskqueue_p2p_from_env()
+        except Exception as e:
+            logger.warning(f"Failed to start TaskQueue p2p service (best-effort): {e}")
+
         # Allow forcing the integrated HTTP dashboard (useful for environments without Flask,
         # or for testing endpoint parity).
         if os.environ.get("IPFS_ACCELERATE_FORCE_INTEGRATED_DASHBOARD", "").lower() in ("1", "true", "yes"):
@@ -314,6 +323,128 @@ class IPFSAccelerateCLI:
                 logger.error(f"Integrated dashboard also failed: {e2}")
                 import traceback; traceback.print_exc()
                 return 1
+
+    def _default_taskqueue_path(self) -> str:
+        env_path = os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_PATH") or os.environ.get("IPFS_DATASETS_PY_TASK_QUEUE_PATH")
+        if env_path and str(env_path).strip():
+            return str(env_path).strip()
+
+        def _repo_root() -> str:
+            try:
+                # /path/to/repo/ipfs_accelerate_py/cli.py -> /path/to/repo
+                return os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+            except Exception:
+                return os.getcwd()
+
+        # When the TaskQueue p2p service is enabled for systemd deployments,
+        # the unit typically runs with ProtectHome=read-only. Prefer a path
+        # under the repo working directory, which is already granted write
+        # access via ReadWritePaths.
+        if str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            try:
+                return os.path.join(_repo_root(), "state", "task_queue.duckdb")
+            except Exception:
+                return "state/task_queue.duckdb"
+
+        cache_root = os.environ.get("XDG_CACHE_HOME")
+        if cache_root and str(cache_root).strip():
+            return os.path.join(str(cache_root).strip(), "ipfs_datasets_py", "task_queue.duckdb")
+
+        return "~/.cache/ipfs_datasets_py/task_queue.duckdb"
+
+    def _ensure_parent_dir(self, path: str) -> bool:
+        try:
+            parent = os.path.dirname(path) or "."
+            os.makedirs(parent, exist_ok=True)
+            return os.access(parent, os.W_OK)
+        except Exception:
+            return False
+
+    def _repo_state_taskqueue_path(self) -> str:
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+            return os.path.join(repo_root, "state", "task_queue.duckdb")
+        except Exception:
+            return "state/task_queue.duckdb"
+
+    def _maybe_start_taskqueue_p2p_from_env(self) -> None:
+        """Start TaskQueue libp2p service when enabled via env.
+
+        This is a best-effort compatibility layer so deployments using
+        `ipfs-accelerate mcp start` can still host the unified libp2p transport.
+        """
+
+        enabled = str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") or "").strip().lower() in {"1", "true", "yes", "on"}
+        if not enabled:
+            return
+
+        # Avoid starting multiple runtimes if CLI is re-entered.
+        if getattr(self, "_taskqueue_p2p_started", False):
+            return
+
+        # Prefer a single shared port for MCP-adjacent libp2p.
+        listen_port_raw = (
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
+            or os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
+            or "9100"
+        )
+        try:
+            listen_port = int(str(listen_port_raw).strip())
+        except Exception:
+            listen_port = 9100
+
+        # Enable cache sharing and tool bridge when requested.
+        # (These are enforced by the TaskQueue p2p service itself.)
+        if str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS"] = "1"
+        if str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE"] = "1"
+
+        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(listen_port))
+        os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(listen_port))
+
+        # When hosting the TaskQueue p2p service, prefer using it for cache
+        # sharing rather than starting a second libp2p host.
+        os.environ.setdefault("IPFS_ACCELERATE_PY_GITHUB_CACHE_TASK_P2P_DISCOVERY", "1")
+        os.environ.setdefault("CACHE_ENABLE_P2P", "false")
+
+        queue_path = os.path.expanduser(self._default_taskqueue_path())
+
+        # If the chosen path isn't writable (common with systemd ProtectHome),
+        # fall back to a repo-local state path and pin it via env so downstream
+        # components stay consistent.
+        if not self._ensure_parent_dir(queue_path):
+            fallback = os.path.expanduser(self._repo_state_taskqueue_path())
+            if self._ensure_parent_dir(fallback):
+                logger.warning(
+                    f"TaskQueue queue path not writable ({queue_path}); using {fallback}"
+                )
+                queue_path = fallback
+                os.environ["IPFS_ACCELERATE_PY_TASK_QUEUE_PATH"] = queue_path
+                os.environ["IPFS_DATASETS_PY_TASK_QUEUE_PATH"] = queue_path
+
+        # Create a local accelerate instance for tool invocation.
+        # This is intentionally best-effort and isolated from the dashboard.
+        accelerate_instance = None
+        try:
+            from ipfs_accelerate_py import ipfs_accelerate_py
+
+            accelerate_instance = ipfs_accelerate_py()
+        except Exception as exc:
+            logger.warning(f"Could not initialize accelerate core for p2p tool bridge: {exc}")
+
+        try:
+            from ipfs_accelerate_py.p2p_tasks.runtime import TaskQueueP2PServiceRuntime
+
+            rt = TaskQueueP2PServiceRuntime()
+            rt.start(queue_path=queue_path, listen_port=listen_port, accelerate_instance=accelerate_instance)
+            self._taskqueue_p2p_runtime = rt
+            self._taskqueue_p2p_started = True
+            logger.info(f"Started TaskQueue p2p service thread (queue={queue_path}, listen_port={listen_port})")
+        except Exception:
+            # Do not mark started on failure.
+            raise
     
     def run_mcp_dashboard(self, args):
         """Start MCP dashboard only"""

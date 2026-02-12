@@ -615,7 +615,7 @@ async def serve_task_queue(
     sched_clock = _MerkleClock(node_id="taskqueue-service")
     known_peers: dict[str, dict[str, object]] = {}
 
-    def _update_peer_state(peer: str, clock_dict: object | None = None) -> None:
+    def _update_peer_state(peer: str, clock_dict: object | None = None, extra: object | None = None) -> None:
         pid = str(peer or "").strip()
         if not pid:
             return
@@ -629,11 +629,46 @@ async def serve_task_queue(
                 sched_clock.update(other)
             except Exception:
                 pass
+        if isinstance(extra, dict):
+            try:
+                for k, v in extra.items():
+                    if k in {"peer_id", "last_seen", "clock"}:
+                        continue
+                    info[str(k)] = v
+            except Exception:
+                pass
         known_peers[pid] = info
         try:
             record_peer_seen(peer_id=pid, info={k: v for k, v in info.items() if k not in {"peer_id", "last_seen"}})
         except Exception:
             pass
+
+    def _remote_peer_id_from_stream(stream: object) -> str:
+        """Best-effort extraction of remote peer id from a py-libp2p stream."""
+
+        candidates: list[tuple[str, ...]] = [
+            ("muxed_conn", "peer_id"),
+            ("conn", "peer_id"),
+            ("_stream", "muxed_conn", "peer_id"),
+            ("_stream", "conn", "peer_id"),
+        ]
+        for path in candidates:
+            try:
+                obj: object | None = stream
+                for attr in path:
+                    obj = getattr(obj, attr, None)
+                if obj is None:
+                    continue
+                pretty = getattr(obj, "pretty", None)
+                if callable(pretty):
+                    text = str(pretty() or "").strip()
+                else:
+                    text = str(obj or "").strip()
+                if text:
+                    return text
+            except Exception:
+                continue
+        return ""
 
     def _alive_peers(requesting_peer: str) -> list[str]:
         now = time.time()
@@ -730,6 +765,10 @@ async def serve_task_queue(
 
             op = (msg.get("op") or "").strip().lower()
 
+            # Prefer the actual remote peer id from the transport over any
+            # caller-provided hint.
+            remote_peer_id = _remote_peer_id_from_stream(stream)
+
             if op == "submit":
                 task_type = str(msg.get("task_type") or "text-generation")
                 model_name = str(msg.get("model_name") or "")
@@ -746,9 +785,16 @@ async def serve_task_queue(
                     await stream.write(json.dumps({"ok": False, "error": "missing_worker_id", "peer_id": peer_id}).encode("utf-8") + b"\n")
                     return
 
-                peer_ident = str(msg.get("peer") or msg.get("peer_id") or worker_id).strip()
+                peer_ident = (remote_peer_id or str(msg.get("peer") or msg.get("peer_id") or worker_id)).strip()
                 clock_dict = msg.get("clock") if isinstance(msg.get("clock"), dict) else None
-                _update_peer_state(peer_ident, clock_dict)
+                _update_peer_state(
+                    peer_ident,
+                    clock_dict,
+                    extra={
+                        "worker_id": worker_id,
+                        "peer_hint": str(msg.get("peer") or msg.get("peer_id") or "").strip(),
+                    },
+                )
 
                 supported = msg.get("supported_task_types")
                 if supported is None:
@@ -820,12 +866,16 @@ async def serve_task_queue(
                 return
 
             if op in {"peer.heartbeat", "heartbeat", "peer"}:
-                pid = str(msg.get("peer") or msg.get("peer_id") or "").strip()
+                pid = (remote_peer_id or str(msg.get("peer") or msg.get("peer_id") or "")).strip()
                 if not pid:
                     await stream.write(json.dumps({"ok": False, "error": "missing_peer_id", "peer_id": peer_id}).encode("utf-8") + b"\n")
                     return
                 clock_dict = msg.get("clock") if isinstance(msg.get("clock"), dict) else None
-                _update_peer_state(pid, clock_dict)
+                _update_peer_state(
+                    pid,
+                    clock_dict,
+                    extra={"peer_hint": str(msg.get("peer") or msg.get("peer_id") or "").strip()},
+                )
                 await stream.write(
                     json.dumps(
                         {
