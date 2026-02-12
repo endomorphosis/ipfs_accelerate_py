@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -35,6 +36,105 @@ from typing import Any, Dict, Optional
 from .protocol import PROTOCOL_V1, auth_ok
 from .task_queue import TaskQueue
 from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
+
+
+_SERVICE_STATE_LOCK = threading.RLock()
+_SERVICE_STATE: Dict[str, Any] = {
+    "running": False,
+    "peer_id": "",
+    "listen_port": None,
+    "started_at": 0.0,
+}
+
+_KNOWN_PEERS_LOCK = threading.RLock()
+_KNOWN_PEERS: Dict[str, Dict[str, object]] = {}
+
+
+def _service_mark_running(*, peer_id: str, listen_port: Optional[int]) -> None:
+    with _SERVICE_STATE_LOCK:
+        _SERVICE_STATE["running"] = True
+        _SERVICE_STATE["peer_id"] = str(peer_id or "")
+        _SERVICE_STATE["listen_port"] = int(listen_port) if listen_port is not None else None
+        _SERVICE_STATE["started_at"] = float(time.time())
+
+
+def _service_mark_stopped() -> None:
+    with _SERVICE_STATE_LOCK:
+        _SERVICE_STATE["running"] = False
+        _SERVICE_STATE["peer_id"] = ""
+        _SERVICE_STATE["listen_port"] = None
+        _SERVICE_STATE["started_at"] = 0.0
+    with _KNOWN_PEERS_LOCK:
+        _KNOWN_PEERS.clear()
+
+
+def get_local_service_state() -> Dict[str, Any]:
+    """Return best-effort local TaskQueue p2p service state.
+
+    Intended for in-process callers (e.g., MCP tools).
+    """
+
+    with _SERVICE_STATE_LOCK:
+        return dict(_SERVICE_STATE)
+
+
+def record_peer_seen(*, peer_id: str, info: Optional[Dict[str, object]] = None) -> None:
+    pid = str(peer_id or "").strip()
+    if not pid:
+        return
+    with _KNOWN_PEERS_LOCK:
+        cur = _KNOWN_PEERS.get(pid) or {}
+        cur["peer_id"] = pid
+        cur["last_seen"] = float(time.time())
+        if isinstance(info, dict):
+            for k, v in info.items():
+                if k in {"peer_id", "last_seen"}:
+                    continue
+                cur[str(k)] = v
+        _KNOWN_PEERS[pid] = cur
+
+
+def list_known_peers(*, alive_only: bool = True, limit: int = 200, exclude_peer_id: str = "") -> list[Dict[str, Any]]:
+    """List peers recently seen by this TaskQueue p2p service."""
+
+    now = time.time()
+    peer_timeout_s = float(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_PEER_TIMEOUT_S")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_PEER_TIMEOUT_S")
+        or 300.0
+    )
+    exclude = str(exclude_peer_id or "").strip()
+
+    items: list[Dict[str, Any]] = []
+    with _KNOWN_PEERS_LOCK:
+        for pid, info in list(_KNOWN_PEERS.items()):
+            if exclude and pid == exclude:
+                continue
+            try:
+                last_seen = float(info.get("last_seen") or 0.0)
+            except Exception:
+                last_seen = 0.0
+            age_s = max(0.0, now - last_seen)
+            if alive_only and age_s > peer_timeout_s:
+                continue
+            row: Dict[str, Any] = {
+                "peer_id": pid,
+                "last_seen": last_seen,
+                "age_s": age_s,
+                "alive": age_s <= peer_timeout_s,
+            }
+            # Include any extra fields recorded.
+            try:
+                for k, v in info.items():
+                    if k in row:
+                        continue
+                    row[str(k)] = v
+            except Exception:
+                pass
+            items.append(row)
+
+    items.sort(key=lambda x: float(x.get("last_seen") or 0.0), reverse=True)
+    return items[: max(0, int(limit))]
 
 
 def _truthy(text: str | None, *, default: bool = False) -> bool:
@@ -499,6 +599,10 @@ async def serve_task_queue(
             except Exception:
                 pass
         known_peers[pid] = info
+        try:
+            record_peer_seen(peer_id=pid, info={k: v for k, v in info.items() if k not in {"peer_id", "last_seen"}})
+        except Exception:
+            pass
 
     def _alive_peers(requesting_peer: str) -> list[str]:
         now = time.time()
@@ -563,6 +667,7 @@ async def serve_task_queue(
     host_obj = new_host()
     host = await host_obj if inspect.isawaitable(host_obj) else host_obj
     peer_id = host.get_id().pretty()
+    _service_mark_running(peer_id=peer_id, listen_port=cfg.listen_port)
     print("ipfs_accelerate_py task queue p2p service: host created", file=sys.stderr, flush=True)
 
     async def _handle(stream) -> None:
@@ -1014,6 +1119,13 @@ async def serve_task_queue(
                             await maybe
                 except Exception:
                     pass
+
+            # Mark service stopped (best-effort) so in-process tooling can
+            # detect the service lifecycle.
+            try:
+                _service_mark_stopped()
+            except Exception:
+                pass
 
 
 def main(argv: Optional[list[str]] = None) -> int:

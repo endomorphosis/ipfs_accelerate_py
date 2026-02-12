@@ -347,3 +347,59 @@ def register_tools(mcp: Any) -> None:
         except Exception as exc:
             logger.exception("p2p_taskqueue_submit_docker_github failed")
             return {"ok": False, "error": str(exc)}
+
+    @mcp.tool()
+    def list_peers(
+        include_capabilities: bool = False,
+        capabilities_timeout_s: float = 5.0,
+        capabilities_detail: bool = False,
+        limit: int = 50,
+    ) -> Dict[str, Any]:
+        """List peers currently seen by this node's TaskQueue libp2p service.
+
+        "Connected" here means the peer has recently contacted this server
+        (heartbeat/claim/etc), within the peer timeout window.
+
+        If `include_capabilities` is true, this tool will best-effort query each
+        peer's TaskQueue `status` (capabilities) using discovery filtered by
+        `peer_id`. This requires the peer to be running a TaskQueue p2p service.
+        """
+
+        try:
+            from ipfs_accelerate_py.p2p_tasks.service import get_local_service_state, list_known_peers
+
+            state = get_local_service_state()
+            if not bool(state.get("running")):
+                return {"ok": False, "error": "p2p_service_not_running"}
+
+            self_peer_id = str(state.get("peer_id") or "").strip()
+            peers = list_known_peers(alive_only=True, limit=int(limit), exclude_peer_id=self_peer_id)
+
+            if include_capabilities:
+                from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_capabilities_sync
+
+                for row in peers:
+                    pid = str(row.get("peer_id") or "").strip()
+                    if not pid:
+                        continue
+                    try:
+                        caps = get_capabilities_sync(
+                            remote=RemoteQueue(peer_id=pid, multiaddr=""),
+                            timeout_s=float(capabilities_timeout_s),
+                            detail=bool(capabilities_detail),
+                        )
+                        row["capabilities"] = caps if isinstance(caps, dict) else {}
+                    except Exception as exc:
+                        row["capabilities_error"] = str(exc)
+
+            return {
+                "ok": True,
+                "self_peer_id": self_peer_id,
+                "listen_port": state.get("listen_port"),
+                "started_at": state.get("started_at"),
+                "count": len(peers),
+                "peers": peers,
+            }
+        except Exception as exc:
+            logger.exception("list_peers failed")
+            return {"ok": False, "error": str(exc)}
