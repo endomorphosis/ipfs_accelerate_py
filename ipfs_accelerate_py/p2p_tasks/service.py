@@ -127,21 +127,24 @@ async def _maybe_start_dht(*, host, bootstrap_peers: list[str]) -> object | None
             cls = getattr(mod, symbol)
             dht = cls(host)
 
-            # Many versions require explicit start/bootstrap.
+            # Newer py-libp2p uses a background `run()` coroutine (started by the caller).
+            # Older versions may expose `start()` / `bootstrap()`.
             start = getattr(dht, "start", None)
             if callable(start):
                 maybe = start()
                 if hasattr(maybe, "__await__"):
                     await maybe
-
-            # Best-effort bootstrap via already-configured peers.
             bootstrap = getattr(dht, "bootstrap", None)
             if callable(bootstrap):
                 maybe = bootstrap()
                 if hasattr(maybe, "__await__"):
                     await maybe
 
-            print(f"ipfs_accelerate_py task queue p2p service: DHT enabled ({module_name}.{symbol})", file=sys.stderr, flush=True)
+            print(
+                f"ipfs_accelerate_py task queue p2p service: DHT enabled ({module_name}.{symbol})",
+                file=sys.stderr,
+                flush=True,
+            )
             if bootstrap_peers:
                 print("ipfs_accelerate_py task queue p2p service: DHT bootstrap peers configured", file=sys.stderr, flush=True)
             return dht
@@ -163,12 +166,13 @@ async def _maybe_start_rendezvous(*, host, namespace: str) -> object | None:
     ns = namespace.strip() or "ipfs-accelerate-task-queue"
 
     # Best-effort: rendezvous support varies by py-libp2p version.
-    candidates = [
+    # Prefer client-side `register()` when a server-side service is not available.
+    service_candidates = [
         ("libp2p.discovery.rendezvous.rendezvous", "RendezvousService"),
         ("libp2p.discovery.rendezvous", "RendezvousService"),
         ("libp2p.rendezvous", "RendezvousService"),
     ]
-    for module_name, symbol in candidates:
+    for module_name, symbol in service_candidates:
         try:
             mod = __import__(module_name, fromlist=[symbol])
             cls = getattr(mod, symbol)
@@ -183,10 +187,29 @@ async def _maybe_start_rendezvous(*, host, namespace: str) -> object | None:
                 maybe = register(ns)
                 if hasattr(maybe, "__await__"):
                     await maybe
-            print(f"ipfs_accelerate_py task queue p2p service: rendezvous enabled (ns={ns})", file=sys.stderr, flush=True)
+            print(f"ipfs_accelerate_py task queue p2p service: rendezvous enabled (service, ns={ns})", file=sys.stderr, flush=True)
             return svc
         except Exception:
             continue
+
+    client_candidates = [
+        ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
+        ("libp2p.discovery.rendezvous", "RendezvousClient"),
+        ("libp2p.rendezvous", "RendezvousClient"),
+    ]
+    for module_name, symbol in client_candidates:
+        try:
+            mod = __import__(module_name, fromlist=[symbol])
+            cls = getattr(mod, symbol)
+            cli = cls(host)
+            register = getattr(cli, "register", None)
+            if callable(register):
+                await register(ns, ttl=7200)
+                print(f"ipfs_accelerate_py task queue p2p service: rendezvous enabled (client register, ns={ns})", file=sys.stderr, flush=True)
+                return cli
+        except Exception:
+            continue
+
     print("ipfs_accelerate_py task queue p2p service: rendezvous unavailable in installed libp2p; skipping", file=sys.stderr, flush=True)
     return None
 
@@ -905,8 +928,30 @@ async def serve_task_queue(
             except Exception as exc:
                 print(f"ipfs_accelerate_py task queue p2p service: failed to write announce file {announce_file}: {exc}", file=sys.stderr, flush=True)
 
+        # Run long-lived background services (e.g., KadDHT.run) while the
+        # service is alive.
         try:
-            await anyio.Event().wait()
+            async with anyio.create_task_group() as tg:
+                # Start DHT background loop when present.
+                try:
+                    run = getattr(dht, "run", None)
+                    if callable(run):
+                        tg.start_soon(run)
+                        provide = getattr(dht, "provide", None)
+                        if callable(provide):
+                            try:
+                                await provide(rendezvous_ns)
+                                print(
+                                    f"ipfs_accelerate_py task queue p2p service: DHT providing namespace {rendezvous_ns}",
+                                    file=sys.stderr,
+                                    flush=True,
+                                )
+                            except Exception as exc:
+                                print(f"ipfs_accelerate_py task queue p2p service: DHT provide failed: {exc}", file=sys.stderr, flush=True)
+                except Exception:
+                    pass
+
+                await anyio.Event().wait()
         finally:
             try:
                 if mdns is not None:

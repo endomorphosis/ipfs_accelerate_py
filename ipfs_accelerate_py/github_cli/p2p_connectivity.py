@@ -13,8 +13,8 @@ In this repo we focus on what is currently reliable:
 - Best-effort discovery inputs (explicit bootstrap multiaddrs, local registry)
 
 Higher-level mesh convergence is handled in the cache layer via a peer-exchange
-protocol rather than relying on DHT/relay/hole-punching features that are not
-implemented here.
+protocol. This module provides *seed discovery* via multiple mechanisms
+(GitHub registry, LAN mDNS, DHT provider records, rendezvous).
 """
 
 import anyio
@@ -109,9 +109,22 @@ class UniversalConnectivity:
         self._mdns_stop = None
         self._mdns_error = None
         self._dht = None
+        self._dht_namespace = (
+            os.environ.get("IPFS_ACCELERATE_P2P_NAMESPACE")
+            or os.environ.get("CACHE_P2P_NAMESPACE")
+            or "ipfs-accelerate-cache"
+        )
         self._dht_bootstrap_interval = int(os.environ.get("CACHE_DHT_BOOTSTRAP_INTERVAL", "300"))
         self._dht_bootstrap_task = None
         self._portal = None
+
+        self._rv = None
+        self._rv_namespace = (
+            os.environ.get("IPFS_ACCELERATE_P2P_RENDEZVOUS_NS")
+            or os.environ.get("CACHE_P2P_RENDEZVOUS_NS")
+            or self._dht_namespace
+        )
+        self._rv_cookie: bytes = b""
 
         # Track what this helper actually implements (vs. what is merely "enabled" in config).
         self.implemented = {
@@ -120,6 +133,7 @@ class UniversalConnectivity:
             "webrtc": False,
             "mdns": False,
             "dht": False,
+            "rendezvous": False,
             "relay": False,
             "autonat": False,
             "hole_punching": False,
@@ -339,24 +353,23 @@ class UniversalConnectivity:
         while True:
             try:
                 await anyio.sleep(self._dht_bootstrap_interval)
-                await anyio.sleep(self._dht_bootstrap_interval)
-                if not self._dht:
-                    continue
-
-                await self._seed_dht_from_peerstore(host)
-
-                bootstrap = getattr(self._dht, "bootstrap", None)
-                if callable(bootstrap):
-                    result = bootstrap()
-                    if inspect.isawaitable(result):
-                        await result
-
-                logger.debug("DHT bootstrap tick completed")
-            except anyio.get_cancelled_exc_class():
             except anyio.get_cancelled_exc_class():
                 break
-            except Exception as e:
-                logger.debug(f"DHT bootstrap tick failed: {e}")
+            except Exception:
+                continue
+
+            # Legacy best-effort hooks for older KadDHT implementations.
+            try:
+                if not self._dht:
+                    continue
+                await self._seed_dht_from_peerstore(host)
+                refresh = getattr(self._dht, "refresh_routing_table", None)
+                if callable(refresh):
+                    maybe = refresh()
+                    if hasattr(maybe, "__await__"):
+                        await maybe
+            except Exception:
+                continue
 
     async def _seed_dht_from_peerstore(self, host) -> None:
         """Best-effort: add known peers to the DHT routing table if available."""
@@ -460,36 +473,170 @@ class UniversalConnectivity:
         Args:
             host: libp2p host instance
         """
-        if not self.config.enable_autonat:
+        if not self.config.enable_dht:
             return
         try:
-            await self._check_reachability(host)
-            self.implemented["autonat"] = True
+            # py-libp2p DHT support varies by version; prefer the newer KadDHT API.
+            from libp2p.kad_dht.kad_dht import KadDHT  # type: ignore
+
+            self._dht = KadDHT(host)
+            self.implemented["dht"] = True
+            logger.info("✓ DHT enabled (KadDHT)")
         except Exception as e:
-            logger.warning(f"AutoNAT check failed: {e}")
-    
-    async def _check_reachability(self, host) -> None:
-        """
-        Check network reachability status.
-        
-        Args:
-            host: libp2p host instance
-        """
+            self._dht = None
+            logger.warning(f"DHT setup failed: {e}")
+
+    async def run_dht(self) -> None:
+        """Run the DHT service loop (must be kept alive in background)."""
+        if not self._dht:
+            return
+        run = getattr(self._dht, "run", None)
+        if not callable(run):
+            return
+        await run()
+
+    async def dht_provide(self, namespace: Optional[str] = None) -> bool:
+        """Advertise this host as a provider for the given namespace."""
+        if not (self._dht and self.implemented.get("dht")):
+            return False
+        key = (namespace or self._dht_namespace or "").strip()
+        if not key:
+            return False
+        provide = getattr(self._dht, "provide", None)
+        if not callable(provide):
+            return False
         try:
-            advertised = os.environ.get("CACHE_ADVERTISE_IP") or self._detect_local_ip()
-            try:
-                ip = ipaddress.ip_address(advertised)
-                if ip.is_private or ip.is_loopback:
-                    self.reachability_status = "private"
-                else:
-                    self.reachability_status = "public"
-            except Exception:
-                self.reachability_status = "unknown"
-            
-            logger.info(f"Reachability status: {self.reachability_status}")
-            
+            ok = await provide(key)
+            return bool(ok)
         except Exception as e:
-            logger.error(f"Reachability check failed: {e}")
+            logger.debug(f"DHT provide failed: {e}")
+            return False
+
+    async def dht_find_providers(self, namespace: Optional[str] = None, *, count: int = 20) -> List[str]:
+        """Find provider peers for the given namespace; returns multiaddr strings."""
+        if not (self._dht and self.implemented.get("dht")):
+            return []
+        key = (namespace or self._dht_namespace or "").strip()
+        if not key:
+            return []
+        find_providers = getattr(self._dht, "find_providers", None)
+        if not callable(find_providers):
+            return []
+        try:
+            peers = await find_providers(key, int(count))
+        except Exception as e:
+            logger.debug(f"DHT find_providers failed: {e}")
+            return []
+        return self._peerinfo_addrs_to_multiaddrs(peers)
+
+    async def configure_rendezvous(self, host) -> None:
+        """Configure rendezvous client (best-effort)."""
+        try:
+            candidates = [
+                ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
+                ("libp2p.discovery.rendezvous", "RendezvousClient"),
+                ("libp2p.rendezvous", "RendezvousClient"),
+            ]
+            for module_name, symbol in candidates:
+                try:
+                    mod = __import__(module_name, fromlist=[symbol])
+                    cls = getattr(mod, symbol)
+                    self._rv = cls(host)
+                    self.implemented["rendezvous"] = True
+                    logger.info("✓ Rendezvous client enabled")
+                    return
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        self._rv = None
+
+    async def rendezvous_register(self, namespace: Optional[str] = None, *, ttl_s: int = 7200) -> bool:
+        if not (self._rv and self.implemented.get("rendezvous")):
+            return False
+        ns = (namespace or self._rv_namespace or "").strip()
+        if not ns:
+            return False
+        register = getattr(self._rv, "register", None)
+        if not callable(register):
+            return False
+        try:
+            await register(ns, ttl=int(ttl_s))
+            return True
+        except Exception as e:
+            logger.debug(f"Rendezvous register failed: {e}")
+            return False
+
+    async def rendezvous_discover(self, namespace: Optional[str] = None, *, limit: int = 100) -> List[str]:
+        if not (self._rv and self.implemented.get("rendezvous")):
+            return []
+        ns = (namespace or self._rv_namespace or "").strip()
+        if not ns:
+            return []
+        discover = getattr(self._rv, "discover", None)
+        if not callable(discover):
+            return []
+        try:
+            peers, cookie = await discover(ns, limit=int(limit), cookie=self._rv_cookie)
+            if isinstance(cookie, (bytes, bytearray)):
+                self._rv_cookie = bytes(cookie)
+        except Exception as e:
+            logger.debug(f"Rendezvous discover failed: {e}")
+            return []
+        return self._peerinfo_addrs_to_multiaddrs(peers)
+
+    def _peerinfo_addrs_to_multiaddrs(self, peer_infos) -> List[str]:
+        out: List[str] = []
+        for pi in list(peer_infos or []):
+            try:
+                pid = getattr(pi, "peer_id", None)
+                pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                addrs = getattr(pi, "addrs", None) or []
+                for ma in list(addrs or []):
+                    s = str(ma)
+                    if pid_text and "/p2p/" not in s:
+                        s = f"{s}/p2p/{pid_text}"
+                    if s:
+                        out.append(s)
+            except Exception:
+                continue
+        # Dedup preserve order.
+        seen = set()
+        deduped: List[str] = []
+        for a in out:
+            if a not in seen:
+                seen.add(a)
+                deduped.append(a)
+        return deduped
+
+    async def attach(self, *, host, nursery, namespace: Optional[str] = None) -> None:
+        """Attach connectivity services to a running libp2p host."""
+        ns = (namespace or self._dht_namespace or "").strip() or "ipfs-accelerate-cache"
+        self._dht_namespace = ns
+        self._rv_namespace = ns
+
+        # Best-effort: start mDNS (LAN).
+        try:
+            await self.start_mdns_discovery(host)
+        except Exception:
+            pass
+
+        # DHT provider discovery.
+        try:
+            await self.configure_dht(host)
+            if self.implemented.get("dht") and self._dht is not None:
+                nursery.start_soon(self.run_dht)
+                await self.dht_provide(ns)
+        except Exception:
+            pass
+
+        # Rendezvous discovery.
+        try:
+            await self.configure_rendezvous(host)
+            if self.implemented.get("rendezvous"):
+                await self.rendezvous_register(ns)
+        except Exception:
+            pass
     
     async def enable_hole_punching(self, host) -> None:
         """
@@ -544,10 +691,21 @@ class UniversalConnectivity:
         if self.config.enable_mdns and self.discovered_peers:
             discovered.update(self.discovered_peers)
 
-        # DHT discovery (best-effort placeholder)
-        if self.config.enable_dht and self.implemented.get("dht"):
-            # No concrete DHT discovery in py-libp2p helper yet.
-            pass
+        # DHT provider discovery (internet-wide, best-effort)
+        if self.config.enable_dht and self.implemented.get("dht") and self._dht is not None:
+            try:
+                for addr in await self.dht_find_providers():
+                    discovered.add(addr)
+            except Exception as e:
+                logger.debug(f"DHT discovery failed: {e}")
+
+        # Rendezvous discovery (best-effort)
+        if self.implemented.get("rendezvous") and self._rv is not None:
+            try:
+                for addr in await self.rendezvous_discover():
+                    discovered.add(addr)
+            except Exception as e:
+                logger.debug(f"Rendezvous discovery failed: {e}")
         
         # Method 4: Bootstrap peers
         if bootstrap_peers:

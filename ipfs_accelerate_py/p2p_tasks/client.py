@@ -285,70 +285,55 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
             mod = __import__(module_name, fromlist=[symbol])
             cls = getattr(mod, symbol)
             cli = cls(host)
-            start = getattr(cli, "start", None)
-            if callable(start):
-                maybe = start()
-                if hasattr(maybe, "__await__"):
-                    await maybe
-
             discover = getattr(cli, "discover", None)
             if not callable(discover):
                 continue
 
-            found = discover(ns)
-            if hasattr(found, "__aiter__"):
-                async for peer_info in found:
-                    try:
-                        pid = getattr(peer_info, "peer_id", None)
-                        pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
-                        if require_peer_id and pid_text != require_peer_id:
-                            continue
-                        await host.connect(peer_info)
-                        stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
-                        try:
-                            resp = await _request_over_stream(stream=stream, message=message)
-                            return resp if isinstance(resp, dict) else None
-                        finally:
-                            try:
-                                await stream.close()
-                            except Exception:
-                                pass
-                    except Exception:
+            # Newer py-libp2p returns (peers, cookie).
+            cookie: bytes = b""
+            try:
+                peers, cookie = await discover(ns, limit=100, cookie=cookie)
+            except TypeError:
+                # Older implementations may have a simpler signature.
+                found = discover(ns)
+                peers = list(found or [])
+
+            for peer_info in list(peers or []):
+                try:
+                    pid = getattr(peer_info, "peer_id", None)
+                    pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                    if require_peer_id and pid_text != require_peer_id:
                         continue
-            else:
-                # Some implementations may return a list.
-                for peer_info in list(found or []):
+                    await host.connect(peer_info)
+                    stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
                     try:
-                        pid = getattr(peer_info, "peer_id", None)
-                        pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
-                        if require_peer_id and pid_text != require_peer_id:
-                            continue
-                        await host.connect(peer_info)
-                        stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
+                        resp = await _request_over_stream(stream=stream, message=message)
+                        return resp if isinstance(resp, dict) else None
+                    finally:
                         try:
-                            resp = await _request_over_stream(stream=stream, message=message)
-                            return resp if isinstance(resp, dict) else None
-                        finally:
-                            try:
-                                await stream.close()
-                            except Exception:
-                                pass
-                    except Exception:
-                        continue
+                            await stream.close()
+                        except Exception:
+                            pass
+                except Exception:
+                    continue
         except Exception:
             continue
     return None
 
 
 async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Optional[Dict[str, Any]]:
-    if not require_peer_id:
-        return None
     if not _env_bool(
         primary="IPFS_ACCELERATE_PY_TASK_P2P_DHT",
         compat="IPFS_DATASETS_PY_TASK_P2P_DHT",
         default=True,
     ):
         return None
+
+    ns = _env_str(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
+        default="ipfs-accelerate-task-queue",
+    )
 
     candidates = [
         ("libp2p.kad_dht.kad_dht", "KadDHT"),
@@ -360,38 +345,58 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
             cls = getattr(mod, symbol)
             dht = cls(host)
 
-            start = getattr(dht, "start", None)
-            if callable(start):
-                maybe = start()
-                if hasattr(maybe, "__await__"):
-                    await maybe
+            # Keep the DHT background loop alive while we query it.
+            import anyio
 
-            bootstrap = getattr(dht, "bootstrap", None)
-            if callable(bootstrap):
-                maybe = bootstrap()
-                if hasattr(maybe, "__await__"):
-                    await maybe
+            async with anyio.create_task_group() as tg:
+                run = getattr(dht, "run", None)
+                if callable(run):
+                    tg.start_soon(run)
 
-            find_peer = getattr(dht, "find_peer", None)
-            if not callable(find_peer):
-                continue
+                if require_peer_id:
+                    find_peer = getattr(dht, "find_peer", None)
+                    if not callable(find_peer):
+                        tg.cancel_scope.cancel()
+                        continue
+                    peer_info = await find_peer(require_peer_id)
+                    if not peer_info:
+                        tg.cancel_scope.cancel()
+                        continue
+                    await host.connect(peer_info)
+                    stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
+                    try:
+                        resp = await _request_over_stream(stream=stream, message=message)
+                        return resp if isinstance(resp, dict) else None
+                    finally:
+                        try:
+                            await stream.close()
+                        except Exception:
+                            pass
+                else:
+                    # Namespace-based provider discovery: ask DHT for providers
+                    # and try them in sequence.
+                    find_providers = getattr(dht, "find_providers", None)
+                    if not callable(find_providers):
+                        tg.cancel_scope.cancel()
+                        continue
+                    providers = await find_providers(ns, 20)
+                    for peer_info in list(providers or []):
+                        try:
+                            await host.connect(peer_info)
+                            stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
+                            try:
+                                resp = await _request_over_stream(stream=stream, message=message)
+                                if isinstance(resp, dict):
+                                    return resp
+                            finally:
+                                try:
+                                    await stream.close()
+                                except Exception:
+                                    pass
+                        except Exception:
+                            continue
 
-            peer_info = find_peer(require_peer_id)
-            if hasattr(peer_info, "__await__"):
-                peer_info = await peer_info
-            if not peer_info:
-                continue
-
-            await host.connect(peer_info)
-            stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
-            try:
-                resp = await _request_over_stream(stream=stream, message=message)
-                return resp if isinstance(resp, dict) else None
-            finally:
-                try:
-                    await stream.close()
-                except Exception:
-                    pass
+                tg.cancel_scope.cancel()
         except Exception:
             continue
     return None

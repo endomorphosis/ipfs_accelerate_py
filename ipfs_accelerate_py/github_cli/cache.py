@@ -186,6 +186,16 @@ class GitHubAPICache:
         self.enable_p2p = enable_p2p and HAVE_LIBP2P
         self.enable_universal_connectivity = enable_universal_connectivity
 
+        # Universal connectivity (DHT provider discovery, rendezvous, mDNS).
+        self._universal_connectivity = None
+        if self.enable_p2p and self.enable_universal_connectivity:
+            try:
+                from .p2p_connectivity import get_universal_connectivity
+
+                self._universal_connectivity = get_universal_connectivity()
+            except Exception:
+                self._universal_connectivity = None
+
         # Optional: reuse the accelerate libp2p task-service cache (cache.get/set)
         # to avoid hammering the GitHub API across machines.
         if enable_task_p2p_cache is None:
@@ -284,7 +294,7 @@ class GitHubAPICache:
         self._max_bootstrap_peers = 10  # Limit bootstrap peers to prevent connection overload
         self._p2p_init_lock = Lock()  # Lock to prevent concurrent P2P initialization
         self._p2p_initialized = False  # Flag to track if P2P is already initialized
-        self._universal_connectivity = None  # Universal connectivity manager
+        # self._universal_connectivity is initialized above when enabled.
         self._last_bootstrap_refresh = 0  # Timestamp of last bootstrap refresh
         self._bootstrap_refresh_interval = 300  # Re-bootstrap every 5 minutes (like rust-peer)
         self._last_discovery_refresh = 0
@@ -1646,6 +1656,18 @@ class GitHubAPICache:
             self._p2p_ready.set()
 
             async with trio.open_nursery() as nursery:
+                # Attach universal discovery mechanisms (best-effort).
+                try:
+                    if self._universal_connectivity is not None:
+                        ns = (
+                            os.environ.get("IPFS_ACCELERATE_P2P_NAMESPACE")
+                            or os.environ.get("CACHE_P2P_NAMESPACE")
+                            or "ipfs-accelerate-cache"
+                        )
+                        await self._universal_connectivity.attach(host=self._p2p_host, nursery=nursery, namespace=ns)
+                except Exception:
+                    pass
+
                 nursery.start_soon(self._broadcast_worker, recv)
                 nursery.start_soon(self._bootstrap_and_maintain)
                 await trio.sleep_forever()
@@ -1828,6 +1850,14 @@ class GitHubAPICache:
                             self._p2p_known_peer_addrs.add(addr)
                             if addr not in self._p2p_bootstrap_peers and len(self._p2p_bootstrap_peers) < self._max_bootstrap_peers:
                                 self._p2p_bootstrap_peers.append(addr)
+        except Exception:
+            pass
+
+        # Refresh peers via universal discovery (DHT/rendezvous/mDNS) and attempt
+        # to connect to a few newly discovered peers.
+        try:
+            if self._universal_connectivity is not None:
+                await self._refresh_discovery_and_connect()
         except Exception:
             pass
 
