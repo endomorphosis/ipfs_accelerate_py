@@ -95,9 +95,8 @@ def main(argv: list[str] | None = None) -> int:
             if not peer_id:
                 peer_id = str(info.get("peer_id") or "").strip()
 
-    if not multiaddr:
-        print("error: missing remote multiaddr (use --multiaddr or --announce-file)", file=sys.stderr)
-        return 2
+    # Allow zero-config discovery: when multiaddr is empty, the TaskQueue client
+    # will try the discovery cascade (announce-file -> bootstrap -> rendezvous -> DHT -> mDNS).
 
     tool_args = _parse_args_json(str(args.args or ""))
 

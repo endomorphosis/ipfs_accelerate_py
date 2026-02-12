@@ -14,6 +14,13 @@ Typical two-box flow:
        ./scripts/p2p_rpc.py --multiaddr '...' cache-get --key demo
        ./scripts/p2p_rpc.py --multiaddr '...' task-submit --task-type demo --model-name demo --payload '{"x": 1}'
 
+Zero-config discovery (no pre-shared multiaddr):
+    If you omit both `--multiaddr` and `--announce-file`, the client will attempt
+    discovery in this order:
+        announce-file -> explicitly configured bootstrap peers -> rendezvous -> DHT -> mDNS
+    For cross-box / internet use, you typically must set at least one shared
+    discovery mechanism (e.g. `IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS`).
+
 Note: requires optional dependency `libp2p` (install with: `pip install -e '.[libp2p]'`).
 """
 
@@ -78,7 +85,14 @@ def _remote_from_args(args: argparse.Namespace) -> "RemoteQueue":
                 peer_id = str(info.get("peer_id") or "").strip()
 
     if not multiaddr:
-        raise SystemExit("missing remote multiaddr (use --multiaddr or --announce-file)")
+        # Allow zero-config discovery.
+        # When multiaddr is empty, the TaskQueue client will try (in order):
+        #   announce-file -> explicitly configured bootstrap peers -> rendezvous -> DHT -> mDNS
+        # This enables cross-box operation without pre-sharing multiaddrs, as long as
+        # both peers can participate in at least one shared discovery mechanism.
+        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+
+        return RemoteQueue(peer_id=peer_id, multiaddr="")
 
     from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
 
@@ -94,9 +108,9 @@ def _print_result(result: Any, *, pretty: bool) -> None:
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="TaskQueue P2P RPC client (tools + cache + tasks)")
-    parser.add_argument("--multiaddr", default="", help="Remote multiaddr (/ip4/.../tcp/.../p2p/...)")
-    parser.add_argument("--announce-file", default="", help="Path to a JSON announce file containing {peer_id, multiaddr}")
-    parser.add_argument("--peer-id", default="", help="Optional peer id hint")
+    parser.add_argument("--multiaddr", default="", help="Remote multiaddr (/ip4/.../tcp/.../p2p/...) (optional)")
+    parser.add_argument("--announce-file", default="", help="Path to a JSON announce file containing {peer_id, multiaddr} (optional)")
+    parser.add_argument("--peer-id", default="", help="Optional peer id hint (used to target a specific peer during discovery)")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
 
     sub = parser.add_subparsers(dest="cmd", required=True)
