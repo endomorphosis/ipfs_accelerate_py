@@ -119,11 +119,22 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
 
+    def _add_pretty(subparser: argparse.ArgumentParser) -> None:
+        # Support both:
+        #   ./scripts/p2p_rpc.py --pretty status
+        # and
+        #   ./scripts/p2p_rpc.py status --pretty
+        # by accepting the same flag at the subcommand level.
+        if any(a.option_strings == ["--pretty"] for a in subparser._actions):
+            return
+        subparser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
+
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     p_status = sub.add_parser("status", help="Query remote status")
     p_status.add_argument("--timeout", type=float, default=10.0)
     p_status.add_argument("--detail", action="store_true")
+    _add_pretty(p_status)
 
     p_disc = sub.add_parser(
         "discover",
@@ -131,56 +142,68 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     p_disc.add_argument("--timeout", type=float, default=10.0)
     p_disc.add_argument("--detail", action="store_true")
+    _add_pretty(p_disc)
 
     p_call = sub.add_parser("call-tool", help="Call an MCP tool via P2P")
     p_call.add_argument("--tool", required=True)
     p_call.add_argument("--args", default="{}", help="Tool args as JSON object")
     p_call.add_argument("--timeout", type=float, default=30.0)
+    _add_pretty(p_call)
 
     p_cget = sub.add_parser("cache-get", help="Fetch a cache value")
     p_cget.add_argument("--key", required=True)
     p_cget.add_argument("--timeout", type=float, default=10.0)
+    _add_pretty(p_cget)
 
     p_chas = sub.add_parser("cache-has", help="Check cache existence")
     p_chas.add_argument("--key", required=True)
     p_chas.add_argument("--timeout", type=float, default=10.0)
+    _add_pretty(p_chas)
 
     p_cset = sub.add_parser("cache-set", help="Set a cache value")
     p_cset.add_argument("--key", required=True)
     p_cset.add_argument("--value", required=True, help="Value as JSON (e.g. '""hello""' or '{""a"":1}')")
     p_cset.add_argument("--ttl", type=float, default=None, help="Optional TTL seconds")
     p_cset.add_argument("--timeout", type=float, default=10.0)
+    _add_pretty(p_cset)
 
     p_cdel = sub.add_parser("cache-delete", help="Delete a cache key")
     p_cdel.add_argument("--key", required=True)
     p_cdel.add_argument("--timeout", type=float, default=10.0)
+    _add_pretty(p_cdel)
 
     p_tsub = sub.add_parser("task-submit", help="Submit a task")
     p_tsub.add_argument("--task-type", required=True)
     p_tsub.add_argument("--model-name", required=True)
     p_tsub.add_argument("--payload", default="{}", help="Payload as JSON object")
+    _add_pretty(p_tsub)
 
     p_tlist = sub.add_parser("task-list", help="List tasks")
     p_tlist.add_argument("--status", default=None)
     p_tlist.add_argument("--limit", type=int, default=50)
     p_tlist.add_argument("--task-types", default="", help="Comma-separated list")
+    _add_pretty(p_tlist)
 
     p_tget = sub.add_parser("task-get", help="Get a task by id")
     p_tget.add_argument("--task-id", required=True)
+    _add_pretty(p_tget)
 
     p_twait = sub.add_parser("task-wait", help="Wait for a task")
     p_twait.add_argument("--task-id", required=True)
     p_twait.add_argument("--timeout", type=float, default=60.0)
+    _add_pretty(p_twait)
 
     p_tclaim = sub.add_parser("task-claim", help="Claim next task (worker)")
     p_tclaim.add_argument("--worker-id", required=True)
     p_tclaim.add_argument("--supported-task-types", default="", help="Comma-separated list")
+    _add_pretty(p_tclaim)
 
     p_tcomp = sub.add_parser("task-complete", help="Complete a task")
     p_tcomp.add_argument("--task-id", required=True)
     p_tcomp.add_argument("--status", default="completed")
     p_tcomp.add_argument("--result", default="{}", help="Result as JSON object")
     p_tcomp.add_argument("--error", default="")
+    _add_pretty(p_tcomp)
 
     args = parser.parse_args(argv)
 
