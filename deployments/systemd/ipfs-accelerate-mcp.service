@@ -25,17 +25,21 @@ Environment="MCP_PORT=9000"
 #   IPFS_ACCELERATE_GITHUB_REPO=owner/repo
 EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
 
-# P2P Cache Configuration (libp2p)
-Environment="CACHE_ENABLE_P2P=true"
-Environment="CACHE_LISTEN_PORT=9100"
+# P2P Cache Configuration (GitHub CLI cache)
+# When the TaskQueue P2P service is enabled, prefer sharing cache entries via
+# TaskQueue cache.get/set over a *second* libp2p host (avoids port conflicts).
+Environment="CACHE_ENABLE_P2P=false"
 Environment="IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py"
 
 # TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
 Environment="IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1"
+Environment="IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER=1"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9100"
 Environment="IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT=9100"
+# Persist the local queue DB somewhere stable
+Environment="IPFS_ACCELERATE_PY_TASK_QUEUE_PATH=%h/ipfs_accelerate_py/state/task_queue.duckdb"
 # Auto-detect a non-loopback IP for the announce multiaddr
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP=auto"
 # Ensure announce file is accessible (used for local self-dial avoidance)
