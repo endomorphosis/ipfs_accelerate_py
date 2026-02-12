@@ -1578,7 +1578,7 @@ class GitHubAPICache:
 
                     trio.run(_main)
                 except Exception as e:
-                    logger.error(f"P2P runtime error: {e}")
+                    logger.exception("P2P runtime error")
                 finally:
                     self._p2p_thread_running = False
 

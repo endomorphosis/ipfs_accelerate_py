@@ -72,10 +72,46 @@ def patch_libp2p_compatibility():
             except Exception:
                 pass
 
+        def _ensure_digest_encodeable(target_mod) -> None:
+            """Ensure target_mod.digest returns an encode()-capable value.
+
+            Some environments (notably when `multihash` is provided by
+            `multiformats.multihash`) return raw bytes. libp2p expects the
+            digest return value to provide `.encode()`.
+
+            We wrap raw bytes in a bytes subclass with an encode() method,
+            preserving bytes-compatibility for other call sites.
+            """
+
+            orig_digest = getattr(target_mod, "digest", None)
+            if not callable(orig_digest):
+                return
+
+            class _BytesWithEncode(bytes):
+                def encode(self) -> bytes:  # type: ignore[override]
+                    return bytes(self)
+
+            def digest(data, hash_func_name):
+                out = orig_digest(data, hash_func_name)
+                if hasattr(out, "encode") and callable(getattr(out, "encode")):
+                    return out
+                if isinstance(out, (bytes, bytearray)):
+                    return _BytesWithEncode(out)
+                return out
+
+            target_mod.digest = digest
+
         # Check if Func already exists
         if hasattr(multihash, 'Func'):
             logger.debug("multihash.Func already exists, skipping patch")
             _ensure_multiformats_func(getattr(multihash, 'Func'))
+            _ensure_digest_encodeable(multihash)
+            try:
+                from multiformats import multihash as mf_multihash  # type: ignore
+
+                _ensure_digest_encodeable(mf_multihash)
+            except Exception:
+                pass
             return True
 
         # Get hash codes from multihash.constants
@@ -108,60 +144,15 @@ def patch_libp2p_compatibility():
         multihash.Func = Func
         _ensure_multiformats_func(Func)
         
-        # Add digest function if it doesn't exist
-        if not hasattr(multihash, 'digest'):
-            class MultihashWrapper:
-                """Wrapper for Multihash that adds encode() method for libp2p compatibility."""
-                def __init__(self, mh_obj, mh_bytes):
-                    self._mh_obj = mh_obj
-                    self._mh_bytes = mh_bytes
-                    # Forward all attributes from the original Multihash
-                    self.code = mh_obj.code
-                    self.name = mh_obj.name
-                    self.length = mh_obj.length
-                    self.digest = mh_obj.digest
-                
-                def encode(self):
-                    """Return the encoded multihash bytes."""
-                    return self._mh_bytes
-                
-                def __repr__(self):
-                    return f"MultihashWrapper({self._mh_obj})"
-            
-            def digest(data, hash_func_name):
-                """
-                Create a multihash from data using the specified hash function.
-                
-                Args:
-                    data: bytes to hash
-                    hash_func_name: name of hash function (e.g., 'sha2-256') or hash code (int)
-                    
-                Returns:
-                    MultihashWrapper object with digest and encode() method
-                """
-                # Handle hash function name or code
-                if isinstance(hash_func_name, int):
-                    # It's a hash code, need to find the name
-                    hash_code = hash_func_name
-                    # Find the name from HASH_CODES
-                    hash_name = None
-                    for name, code in multihash.constants.HASH_CODES.items():
-                        if code == hash_code:
-                            hash_name = name
-                            break
-                    if hash_name is None:
-                        raise ValueError(f"Unknown hash code: {hash_code}")
-                    hash_func_name = hash_name
-                
-                # Encode the data with the hash function
-                mh_bytes = multihash.encode(data, hash_func_name)
-                # Decode to get Multihash object
-                mh_obj = multihash.decode(mh_bytes)
-                # Return wrapper with encode() method
-                return MultihashWrapper(mh_obj, mh_bytes)
-            
-            multihash.digest = digest
-            logger.debug("  Added multihash.digest function with encode() support")
+        _ensure_digest_encodeable(multihash)
+        try:
+            from multiformats import multihash as mf_multihash  # type: ignore
+
+            _ensure_digest_encodeable(mf_multihash)
+        except Exception:
+            pass
+
+        logger.debug("  Ensured multihash.digest returns encode()-capable values")
         
         logger.info("✓ Successfully patched multihash.Func for libp2p compatibility")
         logger.debug(f"  multihash.Func.sha2_256 = {multihash.Func.sha2_256}")
