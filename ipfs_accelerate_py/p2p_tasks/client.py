@@ -181,6 +181,13 @@ def _mdns_port() -> int:
         return 9710
 
 
+def _dht_key_for_namespace(ns: str) -> bytes:
+    # Some py-libp2p KadDHT builds expect provide/find_providers keys to be
+    # bytes-like (and will call `.hex()` on it). Passing a str can crash or
+    # simply not match provider records stored under the bytes key.
+    return str(ns or "").encode("utf-8")
+
+
 def _default_announce_files() -> list[str]:
     cache_root = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
     return [
@@ -440,6 +447,7 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
         compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
         default="ipfs-accelerate-task-queue",
     )
+    ns_key = _dht_key_for_namespace(ns)
 
     candidates = [
         ("libp2p.kad_dht.kad_dht", "KadDHT"),
@@ -501,7 +509,11 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                     if not callable(find_providers):
                         tg.cancel_scope.cancel()
                         continue
-                    providers = await find_providers(ns, 20)
+                    try:
+                        providers = await find_providers(ns_key, 20)
+                    except Exception:
+                        # Best-effort compatibility: older libp2p may accept str keys.
+                        providers = await find_providers(ns, 20)
                     for peer_info in list(providers or []):
                         try:
                             await host.connect(peer_info)
@@ -819,6 +831,7 @@ async def discover_status(
                 compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
                 default="ipfs-accelerate-task-queue",
             )
+            ns_key = _dht_key_for_namespace(ns)
             candidates = [
                 ("libp2p.kad_dht.kad_dht", "KadDHT"),
                 ("libp2p.kad_dht", "KadDHT"),
@@ -892,7 +905,10 @@ async def discover_status(
                             if not callable(find_providers):
                                 await _record(method="dht", ok=False, error="find_providers_unavailable")
                             else:
-                                providers = await find_providers(ns, 20)
+                                try:
+                                    providers = await find_providers(ns_key, 20)
+                                except Exception:
+                                    providers = await find_providers(ns, 20)
                                 if not providers:
                                     await _record(method="dht", ok=False, error="no_providers")
                                 for peer_info in list(providers or []):

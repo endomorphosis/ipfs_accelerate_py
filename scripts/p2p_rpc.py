@@ -67,6 +67,41 @@ def _parse_json_any(text: str, *, flag: str) -> Any:
         raise SystemExit(f"{flag} must be valid JSON: {exc}")
 
 
+def _remote_from_args(args: argparse.Namespace) -> RemoteQueue:
+    multiaddr = str(getattr(args, "multiaddr", "") or "").strip()
+    peer_id = str(getattr(args, "peer_id", "") or "").strip()
+
+    announce_file = str(getattr(args, "announce_file", "") or "").strip()
+    if announce_file and announce_file.lower() in {"0", "false", "no", "off"}:
+        announce_file = ""
+
+    if announce_file and not multiaddr:
+        info = _load_announce(announce_file)
+        multiaddr = str(info.get("multiaddr") or "").strip()
+        if not peer_id:
+            peer_id = str(info.get("peer_id") or "").strip()
+
+    if not multiaddr:
+        env_announce = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
+            "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
+        )
+        if env_announce and str(env_announce).strip().lower() not in {"0", "false", "no", "off"}:
+            info = _load_announce(env_announce)
+            multiaddr = str(info.get("multiaddr") or "").strip()
+            if not peer_id:
+                peer_id = str(info.get("peer_id") or "").strip()
+
+    if not multiaddr:
+        # Allow zero-config discovery.
+        # When multiaddr is empty, the TaskQueue client will try (in order):
+        #   announce-file -> explicitly configured bootstrap peers -> rendezvous -> DHT -> mDNS
+        # This enables cross-box operation without pre-sharing multiaddrs, as long as
+        # both peers can participate in at least one shared discovery mechanism.
+        return RemoteQueue(peer_id=peer_id, multiaddr="")
+
+    return RemoteQueue(peer_id=peer_id, multiaddr=multiaddr)
+
+
 def _print_result(result: Any, *, pretty: bool) -> None:
     if pretty:
         print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
