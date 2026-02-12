@@ -4,6 +4,14 @@ This directory contains optional systemd unit files to run the MCP API and the P
 
 ## Install
 
+Quick install helper:
+
+```bash
+sudo deployments/systemd/install.sh
+```
+
+Manual install:
+
 ```bash
 # Copy units
 sudo cp deployments/systemd/ipfs-accelerate.service /etc/systemd/system/
@@ -66,3 +74,11 @@ sudo ufw allow 9100/tcp
 # mDNS peer discovery (LAN)
 sudo ufw allow 5353/udp
 ```
+
+## Troubleshooting
+
+### "Changing to the requested working directory failed: Permission denied"
+
+If you see a CHDIR permission error on boot, it usually means system services can't reliably `chdir` into a home-directory checkout (common with encrypted/automounted homes).
+
+Use the provided `ipfs-accelerate-mcp.service` which sets `WorkingDirectory=/` and relies on `IPFS_ACCELERATE_REPO_DIR` instead.

@@ -8,13 +8,14 @@ After=network-online.target
 Type=simple
 User=barberb
 Group=barberb
-WorkingDirectory=%h/ipfs_accelerate_py
+WorkingDirectory=/
 
 # Environment variables
 Environment="PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONPATH=%h/ipfs_accelerate_py"
 Environment="VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv"
+Environment="IPFS_ACCELERATE_REPO_DIR=%h/ipfs_accelerate_py"
 Environment="MCP_HOST=0.0.0.0"
 Environment="MCP_PORT=9000"
 
