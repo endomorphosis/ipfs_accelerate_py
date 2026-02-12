@@ -54,6 +54,20 @@ class ServerConfig(BaseModel):
     metrics_port: int = Field(default=9090, description="Metrics port")
     enable_health_checks: bool = Field(default=True, description="Enable health endpoints")
     
+    # Authentication & Authorization (Phase 5)
+    enable_auth: bool = Field(default=False, description="Enable API key authentication")
+    require_auth: bool = Field(default=False, description="Require authentication for all endpoints")
+    admin_api_key: Optional[str] = Field(default=None, description="Admin API key for management endpoints")
+    
+    # Rate Limiting (Phase 5)
+    enable_rate_limiting: bool = Field(default=False, description="Enable rate limiting")
+    default_rate_limit: int = Field(default=100, description="Default rate limit (requests per minute)")
+    
+    # Request Queuing (Phase 5)
+    enable_request_queue: bool = Field(default=False, description="Enable request queuing")
+    max_queue_size: int = Field(default=100, description="Maximum queue size")
+    queue_timeout_seconds: int = Field(default=30, description="Queue timeout in seconds")
+    
     # Logging
     log_level: str = Field(default="INFO", description="Logging level")
     log_format: str = Field(default="json", description="Log format (json or text)")
@@ -75,6 +89,11 @@ class ServerConfig(BaseModel):
             enable_batching=os.getenv("HF_SERVER_ENABLE_BATCHING", "true").lower() == "true",
             enable_caching=os.getenv("HF_SERVER_ENABLE_CACHING", "true").lower() == "true",
             enable_circuit_breaker=os.getenv("HF_SERVER_ENABLE_CIRCUIT_BREAKER", "true").lower() == "true",
+            enable_auth=os.getenv("HF_SERVER_ENABLE_AUTH", "false").lower() == "true",
+            require_auth=os.getenv("HF_SERVER_REQUIRE_AUTH", "false").lower() == "true",
+            admin_api_key=os.getenv("HF_SERVER_ADMIN_API_KEY"),
+            enable_rate_limiting=os.getenv("HF_SERVER_ENABLE_RATE_LIMITING", "false").lower() == "true",
+            enable_request_queue=os.getenv("HF_SERVER_ENABLE_REQUEST_QUEUE", "false").lower() == "true",
         )
     
     class Config:
