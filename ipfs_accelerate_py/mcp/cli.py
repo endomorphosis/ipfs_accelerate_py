@@ -72,8 +72,8 @@ def main():
         "--p2p-service",
         action="store_true",
         help=(
-            "When used with --p2p-task-worker, also start the libp2p TaskQueue RPC service "
-            "(writes an announce file for zero-config client auto-discovery)"
+            "Start the libp2p TaskQueue RPC service (writes an announce file for zero-config client auto-discovery). "
+            "If used with --p2p-task-worker, the worker will host the service; otherwise the service runs standalone."
         ),
     )
     parser.add_argument(
@@ -82,9 +82,32 @@ def main():
         default=None,
         help="TCP port for the libp2p TaskQueue service (default: env IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT or 9710)",
     )
+
+    parser.add_argument(
+        "--p2p-enable-tools",
+        action="store_true",
+        help="Enable remote op=call_tool on the TaskQueue p2p service (sets IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1)",
+    )
     
     # Parse arguments
     args = parser.parse_args()
+
+    # Allow systemd to toggle p2p features via env without changing unit args.
+    if not args.p2p_service:
+        env_p2p_service = os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE")
+        if str(env_p2p_service or "").strip().lower() in {"1", "true", "yes", "on"}:
+            args.p2p_service = True
+    if not args.p2p_task_worker:
+        env_p2p_worker = os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER")
+        if str(env_p2p_worker or "").strip().lower() in {"1", "true", "yes", "on"}:
+            args.p2p_task_worker = True
+    if not args.p2p_enable_tools:
+        env_enable_tools = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS")
+        if str(env_enable_tools or "").strip().lower() in {"1", "true", "yes", "on"}:
+            args.p2p_enable_tools = True
+
+    if args.p2p_enable_tools:
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS"] = "1"
     
     # Set log level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
@@ -97,6 +120,18 @@ def main():
         # Create IPFS Accelerate instance
         logger.info("Initializing IPFS Accelerate...")
         accelerate = ipfs_accelerate_py()
+
+        # Proactively initialize the GitHub API cache so its P2P subsystem can
+        # start (best-effort). This keeps cache sharing active even if no MCP
+        # tool calls it immediately.
+        try:
+            from ipfs_accelerate_py.github_cli.cache import get_global_cache
+
+            _cache = get_global_cache()
+            _ = getattr(_cache, "get_stats", lambda: {})()
+            logger.info("Initialized GitHub API cache (best-effort)")
+        except Exception as exc:
+            logger.debug(f"GitHub API cache init skipped: {exc}")
 
         if args.p2p_task_worker:
             import threading
@@ -128,6 +163,38 @@ def main():
             logger.info(
                 "Started ipfs_accelerate_py task worker thread "
                 f"(queue={queue_path}, worker_id={args.p2p_worker_id}, p2p_service={bool(args.p2p_service)})"
+            )
+
+        # If the user asked for the p2p service but did not start the worker,
+        # run the TaskQueue libp2p RPC service standalone.
+        if (not args.p2p_task_worker) and args.p2p_service:
+            import threading
+
+            queue_path = os.path.expanduser(str(args.p2p_queue))
+
+            def _run_p2p_service_only() -> None:
+                try:
+                    from ipfs_accelerate_py.p2p_tasks.runtime import TaskQueueP2PServiceRuntime
+
+                    rt = TaskQueueP2PServiceRuntime()
+                    rt.start(queue_path=queue_path, listen_port=args.p2p_listen_port, accelerate_instance=accelerate)
+                    # Keep thread alive as long as the process is alive.
+                    while True:
+                        import time
+
+                        time.sleep(3600)
+                except Exception as exc:
+                    logger.error(f"Failed to start standalone ipfs_accelerate_py TaskQueue p2p service: {exc}")
+
+            t2 = threading.Thread(
+                target=_run_p2p_service_only,
+                name="ipfs_accelerate_py_p2p_task_service",
+                daemon=True,
+            )
+            t2.start()
+            logger.info(
+                "Started ipfs_accelerate_py TaskQueue p2p service thread "
+                f"(queue={queue_path}, listen_port={args.p2p_listen_port or 'env/default'})"
             )
         
         # Create MCP server

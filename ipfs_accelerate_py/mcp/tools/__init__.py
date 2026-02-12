@@ -66,6 +66,13 @@ def register_all_tools(mcp: Any) -> None:
                 logger.debug("Registered status tools")
             except Exception as e:
                 logger.warning(f"Status tools not registered: {e}")
+
+            try:
+                from .manifest import register_tools as register_manifest_tools
+                register_manifest_tools(mcp)
+                logger.debug("Registered manifest tools")
+            except Exception as e:
+                logger.warning(f"Manifest tools not registered: {e}")
             
             try:
                 from .workflows import register_tools as register_workflow_tools
