@@ -244,9 +244,21 @@ def _parse_bootstrap_peers() -> list[str]:
     raw = (
         os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS")
         or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS")
-        or ""
     )
-    parts = [p.strip() for p in str(raw).split(",")]
+    if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
+        return []
+
+    default = [
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
+    ]
+    text = str(raw).strip() if raw is not None else ""
+    if not text:
+        return list(default)
+
+    parts = [p.strip() for p in text.split(",")]
     return [p for p in parts if p]
 
 

@@ -69,10 +69,41 @@ def _parse_bootstrap_peers() -> list[str]:
     raw = (
         os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS")
         or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS")
-        or ""
     )
-    parts = [p.strip() for p in str(raw).split(",")]
+    if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
+        return []
+
+    # Default to the public libp2p bootstrap set when not provided.
+    # This is required for internet-wide DHT discovery to function.
+    default = [
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb",
+        "/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt",
+    ]
+    text = str(raw).strip() if raw is not None else ""
+    if not text:
+        return list(default)
+
+    parts = [p.strip() for p in text.split(",")]
     return [p for p in parts if p]
+
+
+async def _best_effort_connect_multiaddrs(*, host, addrs: list[str]) -> None:
+    if not addrs:
+        return
+    try:
+        from multiaddr import Multiaddr
+        from libp2p.peer.peerinfo import info_from_p2p_addr
+    except Exception:
+        return
+
+    for addr in list(addrs or []):
+        try:
+            peer_info = info_from_p2p_addr(Multiaddr(addr))
+            await host.connect(peer_info)
+        except Exception:
+            continue
 
 
 def _mdns_port() -> int:
@@ -362,6 +393,12 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
 
             async with anyio.create_task_group() as tg:
                 tg.start_soon(_run_dht_service)
+
+                # Seed routing table: connect to bootstrap peers.
+                try:
+                    await _best_effort_connect_multiaddrs(host=host, addrs=_parse_bootstrap_peers())
+                except Exception:
+                    pass
 
                 if require_peer_id:
                     find_peer = getattr(dht, "find_peer", None)
