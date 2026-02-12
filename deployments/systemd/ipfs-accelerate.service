@@ -27,14 +27,22 @@ RuntimeDirectory=ipfs-accelerate
 Environment=PIP_CACHE_DIR=/var/cache/ipfs-accelerate/pip
 Environment=IPFS_ACCELERATE_STATE_DIR=/var/lib/ipfs-accelerate
 Environment=HOME=/var/lib/ipfs-accelerate
-Environment=XDG_CACHE_HOME=/var/cache/ipfs-accelerate
+Environment=XDG_CACHE_HOME=/tmp
 Environment=XDG_STATE_HOME=/var/lib/ipfs-accelerate
 Environment=XDG_CONFIG_HOME=/var/lib/ipfs-accelerate/config
 
 # P2P Cache Configuration (libp2p)
-Environment=CACHE_ENABLE_P2P=true
+Environment=CACHE_ENABLE_P2P=false
 Environment=CACHE_LISTEN_PORT=9100
 Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
+
+# TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
+Environment=IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9100
+Environment=IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT=9100
+# Make announce file visible outside the PrivateTmp sandbox
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=/var/cache/ipfs-accelerate/task_p2p_announce.json
 
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0
