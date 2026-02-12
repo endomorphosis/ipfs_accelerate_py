@@ -333,13 +333,14 @@ class ModelManager:
     - Query models by various criteria
     """
     
-    def __init__(self, storage_path: str = None, use_database: bool = None):
+    def __init__(self, storage_path: str = None, use_database: bool = None, enable_ipfs: bool = None):
         """
         Initialize the model manager.
         
         Args:
             storage_path: Path for storage backend (JSON file or DuckDB database)
             use_database: Whether to use DuckDB backend. If None, auto-detect.
+            enable_ipfs: Whether to enable IPFS backend for model storage. If None, auto-detect.
         """
         # Determine storage backend
         if use_database is None:
@@ -356,6 +357,13 @@ class ModelManager:
         
         self.storage_path = storage_path
         self.models: Dict[str, ModelMetadata] = {}
+        
+        # Initialize IPFS backend router for distributed model storage
+        self._ipfs_backend = None
+        self.enable_ipfs = enable_ipfs if enable_ipfs is not None else \
+                          os.getenv("ENABLE_IPFS_MODEL_STORAGE", "").lower() in ("1", "true", "yes")
+        if self.enable_ipfs:
+            self._init_ipfs_backend()
         
         # Initialize datasets integration for provenance tracking and IPFS storage
         self._datasets_manager = None
@@ -394,6 +402,16 @@ class ModelManager:
         
         # Load existing data
         self._load_data()
+    
+    def _init_ipfs_backend(self):
+        """Initialize IPFS backend router for model storage."""
+        try:
+            from . import ipfs_backend_router
+            self._ipfs_backend = ipfs_backend_router
+            logger.info("✓ IPFS backend router initialized for model storage")
+        except Exception as e:
+            logger.warning(f"Failed to initialize IPFS backend router: {e}")
+            self._ipfs_backend = None
         
     def _init_database(self):
         """Initialize DuckDB database backend."""
@@ -729,7 +747,99 @@ class ModelManager:
             logger.error(f"Error removing model {model_id}: {e}")
             return False
     
-    def list_models(self, model_type: Optional[ModelType] = None, 
+    def store_model_to_ipfs(self, model_path: str, model_id: str = None) -> Optional[str]:
+        """
+        Store model weights to IPFS and return CID.
+        
+        This uses the IPFS backend router with preference for:
+        1. ipfs_kit_py (distributed storage)
+        2. HuggingFace cache (local storage with IPFS-like addressing)
+        3. Kubo CLI (fallback)
+        
+        Args:
+            model_path: Path to model weights/directory
+            model_id: Optional model identifier for logging
+            
+        Returns:
+            CID string if successful, None otherwise
+        """
+        if not self._ipfs_backend:
+            logger.warning("IPFS backend not available for model storage")
+            return None
+        
+        try:
+            cid = self._ipfs_backend.add_path(
+                model_path,
+                recursive=True,
+                pin=True
+            )
+            logger.info(f"Stored model {model_id or model_path} to IPFS: {cid}")
+            return cid
+        except Exception as e:
+            logger.error(f"Failed to store model to IPFS: {e}")
+            return None
+    
+    def retrieve_model_from_ipfs(self, cid: str, output_path: str, model_id: str = None) -> bool:
+        """
+        Retrieve model weights from IPFS by CID.
+        
+        Args:
+            cid: Content identifier
+            output_path: Where to save the model
+            model_id: Optional model identifier for logging
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._ipfs_backend:
+            logger.warning("IPFS backend not available for model retrieval")
+            return False
+        
+        try:
+            self._ipfs_backend.get_to_path(cid, output_path=output_path)
+            logger.info(f"Retrieved model {model_id or cid} from IPFS to {output_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to retrieve model from IPFS: {e}")
+            return False
+    
+    def add_model_with_ipfs_storage(
+        self,
+        metadata: ModelMetadata,
+        model_path: Optional[str] = None,
+        store_to_ipfs: bool = True
+    ) -> Tuple[bool, Optional[str]]:
+        """
+        Add model metadata and optionally store weights to IPFS.
+        
+        Args:
+            metadata: ModelMetadata object
+            model_path: Optional path to model weights
+            store_to_ipfs: Whether to store weights to IPFS
+            
+        Returns:
+            Tuple of (success: bool, cid: Optional[str])
+        """
+        # Add metadata first
+        if not self.add_model(metadata):
+            return False, None
+        
+        # Store to IPFS if requested and path provided
+        cid = None
+        if store_to_ipfs and model_path and self._ipfs_backend:
+            cid = self.store_model_to_ipfs(model_path, metadata.model_id)
+            if cid:
+                # Update metadata with IPFS CID
+                if not hasattr(metadata, 'ipfs_cid') or not metadata.__dict__.get('ipfs_cid'):
+                    # Add IPFS CID to metadata if not already present
+                    if metadata.repository_structure is None:
+                        metadata.repository_structure = {}
+                    metadata.repository_structure['ipfs_cid'] = cid
+                    self.add_model(metadata)  # Update with CID
+        
+        return True, cid
+    
+    def list_models(self, model_type: Optional[ModelType] = None,
                    architecture: Optional[str] = None,
                    tags: Optional[List[str]] = None) -> List[ModelMetadata]:
         """

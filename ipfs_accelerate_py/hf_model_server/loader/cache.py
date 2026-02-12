@@ -1,11 +1,12 @@
 """
-LRU cache for loaded models.
+LRU cache for loaded models with IPFS backend support.
 """
 
 import anyio
 from collections import OrderedDict
 from typing import Dict, Optional, Any
 import logging
+import os
 
 from .types import LoadedModel, ModelStatus
 
@@ -13,15 +14,16 @@ logger = logging.getLogger(__name__)
 
 
 class ModelCache:
-    """LRU cache for loaded models with memory management."""
+    """LRU cache for loaded models with memory management and IPFS backend support."""
     
-    def __init__(self, max_size: int = 10, max_memory_mb: float = 16384):
+    def __init__(self, max_size: int = 10, max_memory_mb: float = 16384, enable_ipfs: bool = None):
         """
         Initialize model cache.
         
         Args:
             max_size: Maximum number of models to cache
             max_memory_mb: Maximum memory usage in MB
+            enable_ipfs: Enable IPFS backend for model storage (auto-detected if None)
         """
         self.max_size = max_size
         self.max_memory_mb = max_memory_mb
@@ -29,6 +31,23 @@ class ModelCache:
         self._lock = anyio.Lock()
         self._hits = 0
         self._misses = 0
+        
+        # IPFS backend integration
+        self.enable_ipfs = enable_ipfs if enable_ipfs is not None else \
+                          os.getenv("ENABLE_IPFS_MODEL_CACHE", "").lower() in ("1", "true", "yes")
+        self._ipfs_backend = None
+        if self.enable_ipfs:
+            self._init_ipfs_backend()
+    
+    def _init_ipfs_backend(self):
+        """Initialize IPFS backend for model storage."""
+        try:
+            from ... import ipfs_backend_router
+            self._ipfs_backend = ipfs_backend_router
+            logger.info("✓ IPFS backend initialized for model cache")
+        except Exception as e:
+            logger.warning(f"Failed to initialize IPFS backend: {e}")
+            self._ipfs_backend = None
     
     async def get(self, model_id: str) -> Optional[LoadedModel]:
         """
@@ -129,7 +148,64 @@ class ModelCache:
             "hits": self._hits,
             "misses": self._misses,
             "hit_rate": hit_rate,
+            "ipfs_enabled": self.enable_ipfs,
+            "ipfs_available": self._ipfs_backend is not None,
         }
+    
+    async def store_model_to_ipfs(self, model_id: str, model_path: str) -> Optional[str]:
+        """
+        Store model weights to IPFS and return CID.
+        
+        Args:
+            model_id: Model identifier
+            model_path: Path to model weights
+            
+        Returns:
+            CID if successful, None otherwise
+        """
+        if not self._ipfs_backend:
+            logger.debug("IPFS backend not available for model storage")
+            return None
+        
+        try:
+            cid = await anyio.to_thread.run_sync(
+                self._ipfs_backend.add_path,
+                model_path,
+                recursive=True,
+                pin=True
+            )
+            logger.info(f"Stored model {model_id} to IPFS: {cid}")
+            return cid
+        except Exception as e:
+            logger.error(f"Failed to store model {model_id} to IPFS: {e}")
+            return None
+    
+    async def retrieve_model_from_ipfs(self, cid: str, output_path: str) -> bool:
+        """
+        Retrieve model weights from IPFS by CID.
+        
+        Args:
+            cid: Content identifier
+            output_path: Where to save the model
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        if not self._ipfs_backend:
+            logger.debug("IPFS backend not available for model retrieval")
+            return False
+        
+        try:
+            await anyio.to_thread.run_sync(
+                self._ipfs_backend.get_to_path,
+                cid,
+                output_path=output_path
+            )
+            logger.info(f"Retrieved model from IPFS: {cid} -> {output_path}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to retrieve model from IPFS {cid}: {e}")
+            return False
     
     def __len__(self) -> int:
         """Get number of cached models."""
