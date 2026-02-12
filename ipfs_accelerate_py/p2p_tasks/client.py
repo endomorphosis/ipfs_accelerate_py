@@ -325,11 +325,11 @@ def _client_listen_host() -> str:
     return text or "0.0.0.0"
 
 
-def _dht_key_for_namespace(ns: str) -> bytes:
-    # Some py-libp2p KadDHT builds expect provide/find_providers keys to be
-    # bytes-like (and will call `.hex()` on it). Passing a str can crash or
-    # simply not match provider records stored under the bytes key.
-    return str(ns or "").encode("utf-8")
+def _dht_key_for_namespace(ns: str) -> str:
+    # The installed py-libp2p KadDHT in this environment expects *string* keys
+    # (see KadDHT.put_value/get_value/provide/find_providers signatures).
+    # We still keep bytes fallbacks at call sites for older layouts.
+    return str(ns or "").strip()
 
 
 def _default_announce_files() -> list[str]:
@@ -655,8 +655,13 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
         compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
         default="ipfs-accelerate-task-queue",
     )
+<<<<<<< Updated upstream
     ns_key = str(ns or "").strip()
     ns_key_bytes = _dht_key_for_namespace(ns_key)
+=======
+    ns_key = _dht_key_for_namespace(ns)
+    ns_key_bytes = ns_key.encode("utf-8") if ns_key else b""
+>>>>>>> Stashed changes
 
     exclude_peer_id = "" if require_peer_id else _read_announce_peer_id_hint()
 
@@ -680,6 +685,7 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
             import anyio
             from libp2p.tools.async_service.trio_service import background_trio_service
 
+<<<<<<< Updated upstream
             async with background_trio_service(dht):
                 # Seed routing table: connect to bootstrap peers.
                 try:
@@ -702,10 +708,95 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                 if require_peer_id:
                     find_peer = getattr(dht, "find_peer", None)
                     if not callable(find_peer):
+=======
+            async def _run_dht_service() -> None:
+                async def _run_dht_service() -> None:
+                    async with background_trio_service(dht):
+                        await trio.sleep_forever()
+
+                async with anyio.create_task_group() as tg:
+                    tg.start_soon(_run_dht_service)
+
+                    # Seed routing table: connect to bootstrap peers.
+                    try:
+                        await _best_effort_connect_multiaddrs(host=host, addrs=_parse_bootstrap_peers())
+                    except Exception:
+                        pass
+
+                    # Some KadDHT implementations require explicit start/bootstrap.
+                    try:
+                        start = getattr(dht, "start", None)
+                        if callable(start):
+                            maybe = start()
+                            if hasattr(maybe, "__await__"):
+                                await maybe
+                    except Exception:
+                        pass
+                    try:
+                        bootstrap = getattr(dht, "bootstrap", None)
+                        if callable(bootstrap):
+                            maybe = bootstrap()
+                            if hasattr(maybe, "__await__"):
+                                await maybe
+                    except Exception:
+                        pass
+
+                    # First try deterministic namespace -> multiaddr record.
+                    if not require_peer_id:
+                        get_value = getattr(dht, "get_value", None)
+                        if callable(get_value):
+                            raw = None
+                            try:
+                                raw = await get_value(_dht_value_record_key(ns_key))
+                            except Exception:
+                                raw = None
+
+                            value_text = ""
+                            try:
+                                if isinstance(raw, (bytes, bytearray)):
+                                    value_text = bytes(raw).decode("utf-8", errors="ignore")
+                                elif isinstance(raw, str):
+                                    value_text = raw
+                            except Exception:
+                                value_text = ""
+
+                            if value_text:
+                                data = None
+                                try:
+                                    data = json.loads(value_text)
+                                except Exception:
+                                    data = None
+                                if isinstance(data, dict):
+                                    ma = str(data.get("multiaddr") or "").strip()
+                                    if ma:
+                                        resp = await _dial_multiaddr(host=host, multiaddr=ma, message=message)
+                                        if isinstance(resp, dict):
+                                            tg.cancel_scope.cancel()
+                                            return resp
+
+                    if require_peer_id:
+                        find_peer = getattr(dht, "find_peer", None)
+                        if not callable(find_peer):
+                            tg.cancel_scope.cancel()
+                            continue
+                        peer_info = await find_peer(require_peer_id)
+                        if not peer_info:
+                            tg.cancel_scope.cancel()
+                            continue
+                        resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                        tg.cancel_scope.cancel()
+                        return resp if isinstance(resp, dict) else None
+
+                    # Otherwise, namespace-based provider discovery.
+                    find_providers = getattr(dht, "find_providers", None)
+                    if not callable(find_providers):
+                        tg.cancel_scope.cancel()
+>>>>>>> Stashed changes
                         continue
                     try:
                         peer_info = await find_peer(require_peer_id)
                     except Exception:
+<<<<<<< Updated upstream
                         peer_info = None
                     if not peer_info:
                         continue
@@ -813,6 +904,31 @@ async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> 
                 )  # type: ignore[assignment]
             else:
                 require_peer_id = (remote.peer_id or "").strip()
+=======
+                        try:
+                            providers = await find_providers(ns_key_bytes, 20)
+                        except Exception:
+                            tg.cancel_scope.cancel()
+                            continue
+
+                    for peer_info in list(providers or []):
+                        try:
+                            try:
+                                pid = getattr(peer_info, "peer_id", None)
+                                pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                            except Exception:
+                                pid_text = ""
+                            if exclude_peer_id and pid_text and pid_text == exclude_peer_id:
+                                continue
+                            resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                            if isinstance(resp, dict):
+                                tg.cancel_scope.cancel()
+                                return resp
+                        except Exception:
+                            continue
+
+                    tg.cancel_scope.cancel()
+>>>>>>> Stashed changes
 
                 # Zero-config: if a local service is running, it writes an
                 # announce file in XDG cache; dial it first.
