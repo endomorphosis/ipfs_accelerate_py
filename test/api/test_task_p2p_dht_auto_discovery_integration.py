@@ -212,14 +212,12 @@ def test_task_p2p_dht_auto_discovery_allows_tools_cache_and_tasks(tmp_path, monk
 
 		remote = RemoteQueue(peer_id="", multiaddr="")
 
-		# Poll until DHT provider record is visible.
-		deadline = time.time() + 20.0
-		last = None
-		while time.time() < deadline:
-			last = discover_status_sync(remote=remote, timeout_s=3.0, detail=True)
-			if isinstance(last, dict) and last.get("ok") is True:
-				break
-			time.sleep(0.2)
+		# Give the service a moment to connect/bootstrap/provide.
+		time.sleep(1.5)
+
+		# Single discovery attempt: avoids creating multiple ephemeral peers that
+		# can pollute the local DHT routing table.
+		last = discover_status_sync(remote=remote, timeout_s=15.0, detail=True)
 
 		assert isinstance(last, dict)
 		assert last.get("ok") is True

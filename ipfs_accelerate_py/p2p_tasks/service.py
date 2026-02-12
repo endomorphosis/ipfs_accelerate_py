@@ -1443,19 +1443,33 @@ async def serve_task_queue(
                         provide = getattr(dht, "provide", None)
                         if callable(provide):
                             try:
-                                async def _provide_once() -> None:
+                                async def _provide_once() -> bool:
                                     try:
                                         await provide(_dht_key_for_namespace(rendezvous_ns))
+                                        return True
                                     except Exception:
-                                        # Best-effort compatibility: older libp2p may accept str keys.
-                                        await provide(rendezvous_ns)
+                                        try:
+                                            # Best-effort compatibility: older libp2p may accept str keys.
+                                            await provide(rendezvous_ns)
+                                            return True
+                                        except Exception:
+                                            return False
 
-                                await _provide_once()
-                                print(
-                                    f"ipfs_accelerate_py task queue p2p service: DHT providing namespace {rendezvous_ns}",
-                                    file=sys.stderr,
-                                    flush=True,
-                                )
+                                # Give the DHT service a chance to start and
+                                # populate routing state before advertising.
+                                ok = False
+                                for _ in range(10):
+                                    ok = await _provide_once()
+                                    if ok:
+                                        break
+                                    await anyio.sleep(0.2)
+
+                                if ok:
+                                    print(
+                                        f"ipfs_accelerate_py task queue p2p service: DHT providing namespace {rendezvous_ns}",
+                                        file=sys.stderr,
+                                        flush=True,
+                                    )
 
                                 # Refresh provider record periodically (helps public networks).
                                 try:
