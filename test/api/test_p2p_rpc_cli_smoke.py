@@ -293,3 +293,49 @@ def test_p2p_rpc_cli_announce_file_zero_falls_back_to_env(tmp_path):
 	finally:
 		proc.terminate()
 		proc.join(timeout=5.0)
+
+
+@pytest.mark.skipif(not _have_libp2p(), reason="libp2p not installed")
+def test_p2p_rpc_cli_discover_peer_id_hint_uses_env_announce_file(tmp_path):
+	"""E2E: `discover` works with `--peer-id` hint and env announce-file.
+
+	This matches the README's suggested flow for "no pre-shared multiaddr" cases:
+	call `discover` with a peer-id hint, relying on discovery mechanisms.
+	In this deterministic test we rely on the announce-file (via env var).
+	"""
+	port = _free_port()
+	queue_path = str(tmp_path / "task_queue.duckdb")
+	announce_file = str(tmp_path / "announce.json")
+	cache_dir = str(tmp_path / "p2p_cache")
+
+	ctx = mp.get_context("spawn")
+	proc = ctx.Process(target=_run_service_cache, args=(queue_path, port, announce_file, cache_dir), daemon=True)
+	proc.start()
+	try:
+		ann = _wait_for_announce(announce_file)
+		peer_id = str(ann.get("peer_id") or "").strip()
+		assert peer_id
+
+		env = dict(os.environ)
+		env["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = announce_file
+
+		resp = _run_cli_json(
+			[
+				"--announce-file",
+				"0",
+				"--peer-id",
+				peer_id,
+				"discover",
+				"--timeout",
+				"10",
+				"--detail",
+			],
+			env=env,
+		)
+		assert resp.get("ok") is True
+		attempts = resp.get("attempts")
+		assert isinstance(attempts, list) and attempts
+		assert any(a.get("method") in {"announce-file", "explicit", "announce-file:env"} and a.get("ok") is True for a in attempts)
+	finally:
+		proc.terminate()
+		proc.join(timeout=5.0)
