@@ -8,7 +8,7 @@ After=network-online.target
 Type=simple
 User=barberb
 Group=barberb
-WorkingDirectory=/
+WorkingDirectory=%h/ipfs_accelerate_py
 
 # Environment variables
 Environment="PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin"
@@ -54,9 +54,12 @@ Environment="IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=%h/ipfs_accelerate_py/sta
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE=1"
 Environment="IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1"
 
-# Update before starting
+# NOTE: Avoid auto-updating on every restart; it can be slow and brittle.
+# Run scripts/auto-update.sh manually when you actually want to update.
 ExecStartPre=/bin/mkdir -p %h/ipfs_accelerate_py/state
-ExecStartPre=/bin/bash %h/ipfs_accelerate_py/scripts/auto-update.sh
+
+# Updates + pip installs can take longer than systemd's default 90s
+TimeoutStartSec=0
 
 # Start the MCP server using wrapper script
 ExecStart=/bin/bash %h/ipfs_accelerate_py/scripts/start_mcp_server.sh
