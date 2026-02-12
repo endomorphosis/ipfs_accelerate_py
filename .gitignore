@@ -69,6 +69,10 @@ transformers_docs_build
 test/doc-builder
 state/cache/
 state/cache/*
+
+# Generated LAN mDNS two-machine demo state
+state/lan_mdns_two_machine*/
+*.duckdb.wal
 # Refactored screenshot/test output directories in data folder
 data/test_screenshots/
 data/screenshots/
