@@ -54,6 +54,8 @@ echo ""
 # Install MCP Server service
 echo "📦 Installing IPFS Accelerate MCP Server service..."
 sudo cp "$SYSTEMD_DIR/ipfs-accelerate.service" /etc/systemd/system/
+sudo sed -i "s/^User=.*/User=${USER}/" /etc/systemd/system/ipfs-accelerate.service || true
+sudo sed -i "s/^Group=.*/Group=${USER}/" /etc/systemd/system/ipfs-accelerate.service || true
 sudo systemctl daemon-reload
 sudo systemctl enable ipfs-accelerate.service
 echo "✅ MCP Server service installed"

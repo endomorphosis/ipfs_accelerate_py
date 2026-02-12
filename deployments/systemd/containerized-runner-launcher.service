@@ -9,7 +9,7 @@ Requires=docker.service
 Type=simple
 User=devel
 Group=devel
-WorkingDirectory=/home/devel/ipfs_accelerate_py
+WorkingDirectory=%h/ipfs_accelerate_py
 
 # Ensure Docker socket is accessible
 SupplementaryGroups=docker
@@ -19,10 +19,10 @@ Environment="PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 
 # Update before starting
-ExecStartPre=/home/barberb/ipfs_accelerate_py/scripts/auto-update.sh
+ExecStartPre=/bin/bash %h/ipfs_accelerate_py/scripts/auto-update.sh
 
 # Run the launcher
-ExecStart=/home/devel/.venvs/ipfs-accelerate/bin/python /home/devel/ipfs_accelerate_py/tools/containerized_runner_launcher.py \
+ExecStart=%h/ipfs_accelerate_py/.venv/bin/python %h/ipfs_accelerate_py/scripts/utils/containerized_runner_launcher.py \
     --token-file=/var/lib/github-runner-autoscaler/runner_tokens.json \
     --max-containers=10 \
     --cleanup-interval=300

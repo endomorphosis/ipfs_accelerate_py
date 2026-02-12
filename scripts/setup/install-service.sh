@@ -9,8 +9,9 @@ set -e
 # Configuration
 SERVICE_NAME="ipfs-accelerate"
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
-PROJECT_DIR="/home/barberb/ipfs_accelerate_py"
-USER="barberb"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+USER="${SUDO_USER:-$(whoami)}"
 UNIT_SOURCE_FILE="${PROJECT_DIR}/deployments/systemd/${SERVICE_NAME}.service"
 
 echo "Installing IPFS Accelerate Service..."
@@ -49,6 +50,10 @@ if [ ! -f "$UNIT_SOURCE_FILE" ]; then
 fi
 
 cp "$UNIT_SOURCE_FILE" "$SERVICE_FILE"
+
+# Update unit to run as the installing user (avoids hard-coded user mismatches)
+sed -i "s/^User=.*/User=${USER}/" "$SERVICE_FILE" || true
+sed -i "s/^Group=.*/Group=${USER}/" "$SERVICE_FILE" || true
 
 # Set correct permissions
 chown root:root "$SERVICE_FILE"
