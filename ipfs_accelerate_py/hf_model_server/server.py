@@ -6,13 +6,14 @@ import time
 import uuid
 import logging
 from typing import Optional
-from fastapi import FastAPI, HTTPException, Depends, Header, WebSocket
+from fastapi import FastAPI, HTTPException, Depends, Header, WebSocket, Response
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from .config import ServerConfig
 from .registry import SkillRegistry
 from .hardware import HardwareDetector, HardwareSelector
+from .monitoring.metrics import PrometheusMetrics
 from .api.schemas import (
     CompletionRequest, CompletionResponse, CompletionChoice, CompletionUsage,
     ChatCompletionRequest, ChatCompletionResponse, ChatCompletionChoice,
@@ -56,6 +57,12 @@ class HFModelServer:
         self.skill_registry: Optional[SkillRegistry] = None
         self.hardware_detector: Optional[HardwareDetector] = None
         self.hardware_selector: Optional[HardwareSelector] = None
+        
+        # Metrics
+        self.metrics: Optional[PrometheusMetrics] = None
+        if self.config.enable_metrics:
+            self.metrics = PrometheusMetrics()
+            logger.info("Prometheus metrics enabled")
         
         # WebSocket components
         self.connection_manager = None
@@ -141,6 +148,16 @@ class HFModelServer:
             if self.skill_registry is None:
                 raise HTTPException(status_code=503, detail="Server not ready")
             return {"status": "ready"}
+        
+        # Metrics endpoint
+        if self.metrics:
+            @self.app.get("/metrics")
+            async def get_metrics():
+                """Prometheus metrics endpoint"""
+                return Response(
+                    content=self.metrics.generate_metrics(),
+                    media_type=self.metrics.get_content_type()
+                )
         
         # Server status
         @self.app.get("/status", response_model=ServerStatus)

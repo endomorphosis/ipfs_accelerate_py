@@ -210,31 +210,43 @@ pytest test/test_hf_model_server.py
 
 ## Roadmap
 
-### Phase 1: Core Infrastructure ✅
+### Phase 1: Core Infrastructure ✅ COMPLETE
 - [x] Server configuration
 - [x] Skill discovery and registry
 - [x] Hardware detection
 - [x] Basic FastAPI server
 - [x] OpenAI-compatible schemas
+- [x] **IPFS Backend Router Integration** ✨
+  - [x] ipfs_kit_py backend (preferred)
+  - [x] HuggingFace cache fallback
+  - [x] Kubo CLI fallback
 
-### Phase 2: Model Loading (In Progress)
-- [ ] Model loader with caching
-- [ ] Multi-model management
-- [ ] Memory management
+### Phase 2: Model Loading ✅ COMPLETE
+- [x] Model loader with caching
+- [x] Multi-model management
+- [x] Memory management and tracking
+- [x] Model preloading and warmup
+- [x] IPFS storage integration
 
-### Phase 3: Performance Features
-- [ ] Request batching
-- [ ] Response caching
-- [ ] Circuit breaker
-- [ ] Load balancing
+### Phase 3: Performance Features ✅ COMPLETE
+- [x] Request batching
+- [x] Response caching
+- [x] Circuit breaker
+- [x] Load balancing (via hardware selector)
 
-### Phase 4: Monitoring & Reliability
-- [ ] Health checks (complete)
-- [ ] Prometheus metrics
-- [ ] Request logging
-- [ ] Error handling
+### Phase 4: Monitoring & Reliability ✅ COMPLETE
+- [x] Health checks
+- [x] Prometheus metrics
+  - [x] Request metrics
+  - [x] Model metrics
+  - [x] Cache metrics
+  - [x] IPFS metrics
+  - [x] Memory metrics
+- [x] Metrics endpoint `/metrics`
+- [x] Request logging
+- [x] Error handling
 
-### Phase 5: Production Features
+### Phase 5: Production Features (TODO)
 - [ ] Authentication
 - [ ] Rate limiting
 - [ ] Request queuing
