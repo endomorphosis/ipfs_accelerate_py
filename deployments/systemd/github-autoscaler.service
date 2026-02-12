@@ -8,7 +8,7 @@ Wants=network-online.target
 Type=simple
 User=%i
 WorkingDirectory=/home/%i/ipfs_accelerate_py
-Environment=PATH=/home/%i/.local/bin:/home/%i/ipfs_accelerate_py/venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PATH=/home/%i/.local/bin:/home/%i/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 Environment=HOME=/home/%i
 
@@ -21,7 +21,7 @@ Environment=P2P_LISTEN_PORT=9000
 # Run: gh auth login
 
 # Start the autoscaler with appropriate settings
-ExecStart=/home/%i/ipfs_accelerate_py/.venv/bin/python3 /home/%i/ipfs_accelerate_py/tools/github_autoscaler.py --interval 60
+ExecStart=/home/%i/ipfs_accelerate_py/.venv/bin/python3 /home/%i/ipfs_accelerate_py/scripts/utils/github_autoscaler.py --interval 60
 
 # Restart on failure
 Restart=on-failure
@@ -29,7 +29,7 @@ RestartSec=30
 
 # Resource limits
 # Limit memory to 512MB
-MemoryLimit=512M
+MemoryMax=512M
 
 # Limit CPU to 50% of one core
 CPUQuota=50%

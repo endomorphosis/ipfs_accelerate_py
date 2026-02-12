@@ -6,23 +6,23 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=devel
-Group=devel
-WorkingDirectory=/home/devel/ipfs_accelerate_py
+User=barberb
+Group=barberb
+WorkingDirectory=%h/ipfs_accelerate_py
 
 # Environment variables
-Environment="PATH=/home/devel/ipfs_accelerate_py/ipfs_env/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
-Environment="PYTHONPATH=/home/devel/ipfs_accelerate_py"
-Environment="VIRTUAL_ENV=/home/devel/ipfs_accelerate_py/ipfs_env"
+Environment="PYTHONPATH=%h/ipfs_accelerate_py"
+Environment="VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv"
 Environment="MCP_HOST=0.0.0.0"
 Environment="MCP_PORT=9000"
 
 # Update before starting
-ExecStartPre=/home/barberb/ipfs_accelerate_py/scripts/auto-update.sh
+ExecStartPre=/bin/bash %h/ipfs_accelerate_py/scripts/auto-update.sh
 
 # Start the MCP server using wrapper script
-ExecStart=/home/devel/ipfs_accelerate_py/scripts/start_mcp_server.sh
+ExecStart=/bin/bash %h/ipfs_accelerate_py/scripts/start_mcp_server.sh
 
 # Restart configuration
 Restart=always

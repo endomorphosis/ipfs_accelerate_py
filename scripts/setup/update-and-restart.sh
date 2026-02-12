@@ -5,7 +5,9 @@
 set -e
 
 LOG_FILE="/tmp/ipfs-accelerate-update.log"
-WORK_DIR="/home/barberb/ipfs_accelerate_py"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_WORK_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+WORK_DIR="${IPFS_ACCELERATE_REPO_DIR:-${DEFAULT_WORK_DIR}}"
 
 echo "=== IPFS Accelerate Auto-Update ===" | tee -a "$LOG_FILE"
 echo "$(date): Starting update process" | tee -a "$LOG_FILE"
@@ -36,7 +38,11 @@ git pull origin main | tee -a "$LOG_FILE"
 
 # Install/update dependencies
 echo "$(date): Checking and updating dependencies" | tee -a "$LOG_FILE"
-source "$WORK_DIR/.venv/bin/activate"
+VENV_DIR="${VIRTUAL_ENV:-${WORK_DIR}/.venv}"
+if [ -f "${VENV_DIR}/bin/activate" ]; then
+    # shellcheck disable=SC1091
+    source "${VENV_DIR}/bin/activate"
+fi
 
 # Install requirements.txt if it exists
 if [ -f "$WORK_DIR/requirements.txt" ]; then
@@ -53,17 +59,27 @@ fi
 echo "$(date): Dependencies update complete" | tee -a "$LOG_FILE"
 
 # Restart the systemd service
-echo "$(date): Restarting ipfs-accelerate-mcp.service" | tee -a "$LOG_FILE"
-systemctl --user restart ipfs-accelerate-mcp.service
+echo "$(date): Restarting services (best-effort)" | tee -a "$LOG_FILE"
 
-# Wait a few seconds and check status
-sleep 5
-if systemctl --user is-active --quiet ipfs-accelerate-mcp.service; then
-    echo "$(date): Service restarted successfully" | tee -a "$LOG_FILE"
-else
-    echo "$(date): ERROR - Service failed to restart!" | tee -a "$LOG_FILE"
-    systemctl --user status ipfs-accelerate-mcp.service --no-pager | tee -a "$LOG_FILE"
-    exit 1
+# Prefer system services when available; fall back to user services.
+restart_ok=0
+
+for unit in ipfs-accelerate.service ipfs-accelerate-mcp.service; do
+    if systemctl restart "${unit}" >/dev/null 2>&1; then
+        echo "$(date): Restarted system unit ${unit}" | tee -a "$LOG_FILE"
+        restart_ok=1
+        continue
+    fi
+
+    if systemctl --user restart "${unit}" >/dev/null 2>&1; then
+        echo "$(date): Restarted user unit ${unit}" | tee -a "$LOG_FILE"
+        restart_ok=1
+        continue
+    fi
+done
+
+if [ "${restart_ok}" -ne 1 ]; then
+    echo "$(date): NOTE - Could not restart services automatically (insufficient permissions or unit not installed)." | tee -a "$LOG_FILE"
 fi
 
 echo "$(date): Update complete" | tee -a "$LOG_FILE"

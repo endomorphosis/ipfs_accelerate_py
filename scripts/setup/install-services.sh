@@ -4,6 +4,8 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+SYSTEMD_DIR="${REPO_DIR}/deployments/systemd"
 USER=$(whoami)
 
 echo "🚀 Installing IPFS Accelerate Services"
@@ -20,14 +22,14 @@ fi
 echo "📋 Pre-installation checks..."
 
 # Check if virtual environment exists
-if [ ! -d "$SCRIPT_DIR/.venv" ]; then
-    echo "❌ Virtual environment not found at $SCRIPT_DIR/.venv"
-    echo "   Please run: python -m venv .venv && source .venv/bin/activate && pip install -e .[minimal,mcp]"
+if [ ! -d "$REPO_DIR/.venv" ]; then
+    echo "❌ Virtual environment not found at $REPO_DIR/.venv"
+    echo "   Please run: cd $REPO_DIR && python -m venv .venv && source .venv/bin/activate && pip install -e .[minimal,mcp]"
     exit 1
 fi
 
 # Check if ipfs-accelerate CLI is available
-if [ ! -f "$SCRIPT_DIR/.venv/bin/ipfs-accelerate" ]; then
+if [ ! -f "$REPO_DIR/.venv/bin/ipfs-accelerate" ]; then
     echo "❌ ipfs-accelerate CLI not found in virtual environment"
     echo "   Please reinstall the package: pip install -e .[minimal,mcp]"
     exit 1
@@ -51,14 +53,14 @@ echo ""
 
 # Install MCP Server service
 echo "📦 Installing IPFS Accelerate MCP Server service..."
-sudo cp "$SCRIPT_DIR/ipfs-accelerate-mcp.service" /etc/systemd/system/
+sudo cp "$SYSTEMD_DIR/ipfs-accelerate.service" /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable ipfs-accelerate-mcp.service
+sudo systemctl enable ipfs-accelerate.service
 echo "✅ MCP Server service installed"
 
 # Install GitHub Autoscaler service
 echo "📦 Installing GitHub Actions Autoscaler service..."
-sudo cp "$SCRIPT_DIR/github-autoscaler.service" /etc/systemd/system/
+sudo cp "$SYSTEMD_DIR/github-autoscaler.service" /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable github-autoscaler.service
 echo "✅ Autoscaler service installed"
@@ -68,10 +70,10 @@ echo "🎉 Installation complete!"
 echo ""
 echo "📝 Service Management Commands:"
 echo "   MCP Server:"
-echo "     sudo systemctl start ipfs-accelerate-mcp"
-echo "     sudo systemctl stop ipfs-accelerate-mcp"
-echo "     sudo systemctl status ipfs-accelerate-mcp"
-echo "     sudo journalctl -u ipfs-accelerate-mcp -f"
+echo "     sudo systemctl start ipfs-accelerate"
+echo "     sudo systemctl stop ipfs-accelerate"
+echo "     sudo systemctl status ipfs-accelerate"
+echo "     sudo journalctl -u ipfs-accelerate -f"
 echo ""
 echo "   GitHub Autoscaler:"
 echo "     sudo systemctl start github-autoscaler"
@@ -80,7 +82,7 @@ echo "     sudo systemctl status github-autoscaler"
 echo "     sudo journalctl -u github-autoscaler -f"
 echo ""
 echo "🚀 To start both services now:"
-echo "   sudo systemctl start ipfs-accelerate-mcp"
+echo "   sudo systemctl start ipfs-accelerate"
 echo "   sudo systemctl start github-autoscaler"
 echo ""
 echo "🌐 MCP Dashboard will be available at: http://localhost:9000/dashboard"

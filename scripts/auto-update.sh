@@ -5,13 +5,16 @@
 set -e
 
 # Configuration
-REPO_DIR="/home/barberb/ipfs_accelerate_py"
-VENV_DIR="${REPO_DIR}/.venv"
-LOG_FILE="${REPO_DIR}/logs/auto-update.log"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DEFAULT_REPO_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+REPO_DIR="${IPFS_ACCELERATE_REPO_DIR:-${DEFAULT_REPO_DIR}}"
+VENV_DIR="${VIRTUAL_ENV:-${REPO_DIR}/.venv}"
+LOG_DIR="${IPFS_ACCELERATE_LOG_DIR:-${REPO_DIR}/logs}"
+LOG_FILE="${LOG_DIR}/auto-update.log"
 TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 
 # Create logs directory if it doesn't exist
-mkdir -p "${REPO_DIR}/logs"
+mkdir -p "${LOG_DIR}"
 
 # Logging function
 log() {

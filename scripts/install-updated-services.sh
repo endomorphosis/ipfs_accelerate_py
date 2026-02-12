@@ -18,9 +18,9 @@ fi
 
 # Copy service files
 echo "Copying service files to /etc/systemd/system/..."
-cp "${REPO_DIR}/ipfs-accelerate.service" /etc/systemd/system/
-cp "${REPO_DIR}/ipfs-accelerate-mcp.service" /etc/systemd/system/
-cp "${REPO_DIR}/containerized-runner-launcher.service" /etc/systemd/system/
+cp "${REPO_DIR}/deployments/systemd/ipfs-accelerate.service" /etc/systemd/system/
+cp "${REPO_DIR}/deployments/systemd/ipfs-accelerate-mcp.service" /etc/systemd/system/
+cp "${REPO_DIR}/deployments/systemd/containerized-runner-launcher.service" /etc/systemd/system/
 
 # Reload systemd daemon
 echo "Reloading systemd daemon..."

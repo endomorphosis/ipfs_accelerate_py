@@ -8,9 +8,9 @@ Wants=network-online.target
 Type=simple
 User=barberb
 Group=barberb
-WorkingDirectory=/home/barberb/ipfs_accelerate_py
-Environment=VIRTUAL_ENV=/home/barberb/ipfs_accelerate_py/.venv
-Environment=PATH=/home/barberb/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h/ipfs_accelerate_py
+Environment=VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv
+Environment=PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 
 # Keep caches/state out of $HOME (ProtectHome=read-only)
@@ -20,12 +20,16 @@ LogsDirectory=ipfs-accelerate
 RuntimeDirectory=ipfs-accelerate
 Environment=PIP_CACHE_DIR=/var/cache/ipfs-accelerate/pip
 Environment=IPFS_ACCELERATE_STATE_DIR=/var/lib/ipfs-accelerate
+Environment=HOME=/var/lib/ipfs-accelerate
+Environment=XDG_CACHE_HOME=/var/cache/ipfs-accelerate
+Environment=XDG_STATE_HOME=/var/lib/ipfs-accelerate
+Environment=XDG_CONFIG_HOME=/var/lib/ipfs-accelerate/config
 
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0
 
-ExecStartPre=/home/barberb/ipfs_accelerate_py/scripts/auto-update.sh
-ExecStart=/home/barberb/ipfs_accelerate_py/.venv/bin/ipfs-accelerate mcp start --host 0.0.0.0 --port 9000 --keep-running --autoscaler-owner endomorphosis
+ExecStartPre=/bin/bash %h/ipfs_accelerate_py/scripts/auto-update.sh
+ExecStart=%h/ipfs_accelerate_py/.venv/bin/ipfs-accelerate mcp start --host 0.0.0.0 --port 9000 --keep-running --autoscaler-owner endomorphosis
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
@@ -37,7 +41,7 @@ SyslogIdentifier=ipfs-accelerate
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/home/barberb/ipfs_accelerate_py /var/cache/ipfs-accelerate /var/lib/ipfs-accelerate /var/log/ipfs-accelerate /run/ipfs-accelerate
+ReadWritePaths=%h/ipfs_accelerate_py /var/cache/ipfs-accelerate /var/lib/ipfs-accelerate /var/log/ipfs-accelerate /run/ipfs-accelerate
 ProtectHome=read-only
 
 [Install]

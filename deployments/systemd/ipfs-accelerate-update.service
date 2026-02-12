@@ -4,8 +4,10 @@ Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/barberb/ipfs_accelerate_py
-ExecStart=/home/barberb/ipfs_accelerate_py/update-and-restart.sh
+User=barberb
+Group=barberb
+WorkingDirectory=%h/ipfs_accelerate_py
+ExecStart=/bin/bash %h/ipfs_accelerate_py/scripts/setup/update-and-restart.sh
 StandardOutput=journal
 StandardError=journal
 SyslogIdentifier=ipfs-accelerate-update
