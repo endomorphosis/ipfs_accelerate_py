@@ -1106,6 +1106,19 @@ class MCPServerWrapper:
 
 
 _MCP_SERVER_INSTANCE: Optional[MCPServerWrapper] = None
+_MCP_LIKE_INSTANCE: Optional[Any] = None
+
+
+def set_mcp_like_instance(mcp_like: Any) -> None:
+    """Set a global MCP-like instance for in-process tool invocation.
+
+    This is used in deployments that do not create an `MCPServerWrapper`
+    (e.g. the Flask dashboard), but still need a tool registry for libp2p
+    `op=call_tool`.
+    """
+
+    global _MCP_LIKE_INSTANCE
+    _MCP_LIKE_INSTANCE = mcp_like
 
 
 def create_mcp_server(
@@ -1129,12 +1142,18 @@ def create_mcp_server(
         debug=debug,
     )
     _MCP_SERVER_INSTANCE = server
+    try:
+        # Also expose the underlying MCP registry for callers that only
+        # need a tool registry (e.g. libp2p tool bridge).
+        set_mcp_like_instance(getattr(server, "mcp", None) or server)
+    except Exception:
+        pass
     return server
 
 
-def get_mcp_server_instance() -> Optional[MCPServerWrapper]:
-    """Return the last created MCP server instance, if any."""
-    return _MCP_SERVER_INSTANCE
+def get_mcp_server_instance() -> Optional[Any]:
+    """Return the last created MCP server instance or MCP-like registry, if any."""
+    return _MCP_SERVER_INSTANCE or _MCP_LIKE_INSTANCE
 
 if __name__ == "__main__":
     main()

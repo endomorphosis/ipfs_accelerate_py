@@ -437,11 +437,31 @@ class IPFSAccelerateCLI:
 
         # Create a local accelerate instance for tool invocation.
         # This is intentionally best-effort and isolated from the dashboard.
+        # Also seed a global MCP-like registry for deployments that don't use
+        # the FastAPI MCP wrapper (e.g. Flask dashboard) so the libp2p tool
+        # bridge can resolve tools.
+        try:
+            from ipfs_accelerate_py.mcp.server import StandaloneMCP, set_mcp_like_instance
+            from ipfs_accelerate_py.mcp.tools import register_all_tools
+
+            mcp_like = StandaloneMCP(name="ipfs-accelerate")
+            register_all_tools(mcp_like)
+            set_mcp_like_instance(mcp_like)
+        except Exception:
+            pass
+
         accelerate_instance = None
         try:
             from ipfs_accelerate_py import ipfs_accelerate_py
 
             accelerate_instance = ipfs_accelerate_py()
+            try:
+                if isinstance(getattr(accelerate_instance, "resources", None), dict):
+                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+
+                    accelerate_instance.resources.setdefault("mcp_server", get_mcp_server_instance())
+            except Exception:
+                pass
         except Exception as exc:
             logger.warning(f"Could not initialize accelerate core for p2p tool bridge: {exc}")
 
