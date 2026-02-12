@@ -1177,15 +1177,62 @@ async def discover_status(
                             if not callable(find_providers):
                                 await _record(method="dht", ok=False, error="find_providers_unavailable")
                             else:
-                                try:
-                                    providers = await find_providers(ns_key, 20)
-                                except Exception:
-                                    providers = await find_providers(ns, 20)
-                                if not providers:
+                                get_value = getattr(dht, "get_value", None)
+
+                                # Retry until deadline: DHT routing tables can
+                                # take a couple seconds to populate in tiny
+                                # local test networks.
+                                while time.time() <= deadline:
+                                    providers = None
+                                    try:
+                                        providers = await find_providers(ns_key, 20)
+                                    except Exception:
+                                        try:
+                                            providers = await find_providers(ns, 20)
+                                        except Exception:
+                                            providers = None
+
+                                    if providers:
+                                        for peer_info in list(providers or []):
+                                            if time.time() > deadline:
+                                                await _record(method="dht", ok=False, error="timeout")
+                                                break
+                                            resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                                            addrs = _best_effort_peerinfo_multiaddrs(peer_info)
+                                            ma = addrs[0] if addrs else ""
+                                            pid_text = ""
+                                            try:
+                                                pid = getattr(peer_info, "peer_id", None)
+                                                pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                                            except Exception:
+                                                pid_text = ""
+                                            if isinstance(resp, dict) and resp.get("ok"):
+                                                await _record(
+                                                    method="dht",
+                                                    ok=True,
+                                                    peer_id=str(resp.get("peer_id") or pid_text),
+                                                    multiaddr=ma,
+                                                    response=resp,
+                                                )
+                                                tg.cancel_scope.cancel()
+                                                return {
+                                                    "ok": True,
+                                                    "result": resp,
+                                                    "nat": _nat_from_resp(resp),
+                                                    "attempts": attempts,
+                                                }
+                                            await _record(
+                                                method="dht",
+                                                ok=False,
+                                                peer_id=str((resp or {}).get("peer_id") or pid_text),
+                                                multiaddr=ma,
+                                                error=str((resp or {}).get("error") or "request_failed"),
+                                                response=resp if isinstance(resp, dict) else None,
+                                            )
+
                                     # Provider records can be flaky in tiny test
                                     # networks. Fall back to a deterministic DHT
                                     # key that stores {peer_id, multiaddr}.
-                                    get_value = getattr(dht, "get_value", None)
                                     if callable(get_value):
                                         raw = None
                                         try:
@@ -1232,38 +1279,9 @@ async def discover_status(
                                                             "attempts": attempts,
                                                         }
 
-                                    await _record(method="dht", ok=False, error="no_providers")
-                                for peer_info in list(providers or []):
-                                    if time.time() > deadline:
-                                        await _record(method="dht", ok=False, error="timeout")
-                                        break
-                                    resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
-                                    addrs = _best_effort_peerinfo_multiaddrs(peer_info)
-                                    ma = addrs[0] if addrs else ""
-                                    pid_text = ""
-                                    try:
-                                        pid = getattr(peer_info, "peer_id", None)
-                                        pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
-                                    except Exception:
-                                        pid_text = ""
-                                    if isinstance(resp, dict) and resp.get("ok"):
-                                        await _record(
-                                            method="dht",
-                                            ok=True,
-                                            peer_id=str(resp.get("peer_id") or pid_text),
-                                            multiaddr=ma,
-                                            response=resp,
-                                        )
-                                        tg.cancel_scope.cancel()
-                                        return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
-                                    await _record(
-                                        method="dht",
-                                        ok=False,
-                                        peer_id=str((resp or {}).get("peer_id") or pid_text),
-                                        multiaddr=ma,
-                                        error=str((resp or {}).get("error") or "request_failed"),
-                                        response=resp if isinstance(resp, dict) else None,
-                                    )
+                                    await anyio.sleep(0.2)
+
+                                await _record(method="dht", ok=False, error="no_providers")
 
                         tg.cancel_scope.cancel()
                 except Exception:
