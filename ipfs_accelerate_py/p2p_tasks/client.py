@@ -193,6 +193,8 @@ def _default_announce_files() -> list[str]:
     return [
         os.path.join(cache_root, "ipfs_accelerate_py", "task_p2p_announce.json"),
         os.path.join(cache_root, "ipfs_datasets_py", "task_p2p_announce.json"),
+        # Common systemd deployment location (see deployments/systemd/*.service)
+        "/var/cache/ipfs-accelerate/task_p2p_announce.json",
     ]
 
 

@@ -28,6 +28,7 @@ systemctl status ipfs-accelerate-dashboard.service
   - MCP API on port 9000, binds `0.0.0.0`.
   - Performance Dashboard on port 8080, binds `0.0.0.0`.
   - P2P cache sharing (libp2p) on port 9100.
+  - TaskQueue P2P RPC (MCP-over-P2P) on port 9100.
 - Adjust environment or ports by editing the unit files.
 
 ### Multi-node P2P requirements
@@ -62,4 +63,6 @@ sudo chmod 600 /etc/ipfs-accelerate/secrets.env
 sudo ufw allow 9000/tcp
 sudo ufw allow 8080/tcp
 sudo ufw allow 9100/tcp
+# mDNS peer discovery (LAN)
+sudo ufw allow 5353/udp
 ```

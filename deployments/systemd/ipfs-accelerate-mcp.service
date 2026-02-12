@@ -29,7 +29,19 @@ Environment="CACHE_ENABLE_P2P=true"
 Environment="CACHE_LISTEN_PORT=9100"
 Environment="IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py"
 
+# TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
+Environment="IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9100"
+Environment="IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT=9100"
+# Auto-detect a non-loopback IP for the announce multiaddr
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP=auto"
+# Ensure announce file is accessible (used for local self-dial avoidance)
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=%h/ipfs_accelerate_py/state/task_p2p_announce.json"
+
 # Update before starting
+ExecStartPre=/bin/mkdir -p %h/ipfs_accelerate_py/state
 ExecStartPre=/bin/bash %h/ipfs_accelerate_py/scripts/auto-update.sh
 
 # Start the MCP server using wrapper script
