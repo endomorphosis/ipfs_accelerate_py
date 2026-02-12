@@ -313,6 +313,13 @@ async def _dial_via_announce_file(
 async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Dict[str, Any]:
     import anyio
 
+    if not _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_MDNS",
+        compat="IPFS_DATASETS_PY_TASK_P2P_MDNS",
+        default=True,
+    ):
+        return {"ok": False, "error": "mdns_disabled"}
+
     try:
         from libp2p.discovery.mdns.mdns import MDNSDiscovery
         from libp2p.abc import PeerInfo
@@ -326,6 +333,18 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
 
     mdns = MDNSDiscovery(host.get_network(), port=_mdns_port())
 
+    # Avoid self-dialing (can happen if the local host is advertising via mDNS).
+    self_pid_text = ""
+    try:
+        self_pid = getattr(host, "get_id", None)
+        if callable(self_pid):
+            pid = self_pid()
+        else:
+            pid = getattr(host, "peer_id", None)
+        self_pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+    except Exception:
+        self_pid_text = ""
+
     try:
         deadline = anyio.current_time() + max(0.1, discover_timeout_s)
         attempted: set[str] = set()
@@ -336,6 +355,9 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
                 pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid)
 
                 if pid_text in attempted:
+                    continue
+                if self_pid_text and pid_text == self_pid_text:
+                    attempted.add(pid_text)
                     continue
                 if require_peer_id and pid_text != require_peer_id:
                     continue

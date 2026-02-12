@@ -231,6 +231,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             peer_id = str(getattr(args, "peer_id", "") or "").strip()
 
             announce_file = str(getattr(args, "announce_file", "") or "").strip()
+            if announce_file and announce_file.lower() in {"0", "false", "no", "off"}:
+                announce_file = ""
             if announce_file and not multiaddr:
                 info = _load_announce(announce_file)
                 multiaddr = str(info.get("multiaddr") or "").strip()
@@ -241,7 +243,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 env_announce = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
                     "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
                 )
-                if env_announce:
+                if env_announce and str(env_announce).strip().lower() not in {"0", "false", "no", "off"}:
                     info = _load_announce(env_announce)
                     multiaddr = str(info.get("multiaddr") or "").strip()
                     if not peer_id:

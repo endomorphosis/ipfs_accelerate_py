@@ -1315,16 +1315,39 @@ async def serve_task_queue(
                         provide = getattr(dht, "provide", None)
                         if callable(provide):
                             try:
-                                try:
-                                    await provide(_dht_key_for_namespace(rendezvous_ns))
-                                except Exception:
-                                    # Best-effort compatibility: older libp2p may accept str keys.
-                                    await provide(rendezvous_ns)
+                                async def _provide_once() -> None:
+                                    try:
+                                        await provide(_dht_key_for_namespace(rendezvous_ns))
+                                    except Exception:
+                                        # Best-effort compatibility: older libp2p may accept str keys.
+                                        await provide(rendezvous_ns)
+
+                                await _provide_once()
                                 print(
                                     f"ipfs_accelerate_py task queue p2p service: DHT providing namespace {rendezvous_ns}",
                                     file=sys.stderr,
                                     flush=True,
                                 )
+
+                                # Refresh provider record periodically (helps public networks).
+                                try:
+                                    raw_interval = os.environ.get(
+                                        "IPFS_ACCELERATE_PY_TASK_P2P_DHT_PROVIDE_INTERVAL_S"
+                                    ) or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DHT_PROVIDE_INTERVAL_S")
+                                    interval_s = float(str(raw_interval).strip()) if raw_interval is not None else 1800.0
+                                except Exception:
+                                    interval_s = 1800.0
+                                if interval_s > 0:
+                                    async def _provide_loop() -> None:
+                                        while True:
+                                            await anyio.sleep(float(interval_s))
+                                            try:
+                                                await _provide_once()
+                                            except Exception:
+                                                # Keep running; network conditions may improve.
+                                                pass
+
+                                    tg.start_soon(_provide_loop)
                             except Exception as exc:
                                 print(f"ipfs_accelerate_py task queue p2p service: DHT provide failed: {exc}", file=sys.stderr, flush=True)
                 except Exception:
