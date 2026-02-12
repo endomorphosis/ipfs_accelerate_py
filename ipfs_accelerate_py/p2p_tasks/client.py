@@ -676,6 +676,25 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                 except Exception:
                     pass
 
+                # Some KadDHT implementations require an explicit bootstrap
+                # step to populate the routing table before queries.
+                try:
+                    start = getattr(dht, "start", None)
+                    if callable(start):
+                        maybe = start()
+                        if hasattr(maybe, "__await__"):
+                            await maybe
+                except Exception:
+                    pass
+                try:
+                    bootstrap = getattr(dht, "bootstrap", None)
+                    if callable(bootstrap):
+                        maybe = bootstrap()
+                        if hasattr(maybe, "__await__"):
+                            await maybe
+                except Exception:
+                    pass
+
                 if require_peer_id:
                     find_peer = getattr(dht, "find_peer", None)
                     if not callable(find_peer):
@@ -1064,6 +1083,25 @@ async def discover_status(
                         tg.start_soon(_run_dht_service)
                         try:
                             await _best_effort_connect_multiaddrs(host=host, addrs=_parse_bootstrap_peers())
+                        except Exception:
+                            pass
+
+                        # Some KadDHT implementations require explicit
+                        # start/bootstrap to populate the routing table.
+                        try:
+                            start = getattr(dht, "start", None)
+                            if callable(start):
+                                maybe = start()
+                                if hasattr(maybe, "__await__"):
+                                    await maybe
+                        except Exception:
+                            pass
+                        try:
+                            bootstrap = getattr(dht, "bootstrap", None)
+                            if callable(bootstrap):
+                                maybe = bootstrap()
+                                if hasattr(maybe, "__await__"):
+                                    await maybe
                         except Exception:
                             pass
 
