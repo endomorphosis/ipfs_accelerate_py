@@ -308,6 +308,18 @@ def _mdns_port() -> int:
         return 9710
 
 
+def _client_listen_host() -> str:
+    # Reuse the service listen host env var for consistency in local/LAN setups
+    # and tests. Default remains 0.0.0.0.
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_HOST")
+        or "0.0.0.0"
+    )
+    text = str(raw).strip()
+    return text or "0.0.0.0"
+
+
 def _dht_key_for_namespace(ns: str) -> bytes:
     # Some py-libp2p KadDHT builds expect provide/find_providers keys to be
     # bytes-like (and will call `.hex()` on it). Passing a str can crash or
@@ -777,7 +789,7 @@ async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> 
 
     resp: Dict[str, Any]
     async with background_trio_service(host.get_network()):
-        await host.get_network().listen(Multiaddr("/ip4/0.0.0.0/tcp/0"))
+        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
         with anyio.fail_after(20.0):
             if (remote.multiaddr or "").strip():
@@ -872,7 +884,7 @@ async def discover_status(
     host = await host_obj if inspect.isawaitable(host_obj) else host_obj
 
     async with background_trio_service(host.get_network()):
-        await host.get_network().listen(Multiaddr("/ip4/0.0.0.0/tcp/0"))
+        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
         deadline = time.time() + max(0.1, float(timeout_s))
 

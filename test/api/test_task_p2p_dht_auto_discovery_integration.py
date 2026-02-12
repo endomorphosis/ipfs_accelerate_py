@@ -205,6 +205,7 @@ def test_task_p2p_dht_auto_discovery_allows_tools_cache_and_tasks(tmp_path, monk
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS", bootstrap_ma)
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_DIAL", "0")
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE", "0")
+		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST", "127.0.0.1")
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_DHT", "1")
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS", "0")
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_MDNS", "0")
