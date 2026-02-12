@@ -1182,6 +1182,56 @@ async def discover_status(
                                 except Exception:
                                     providers = await find_providers(ns, 20)
                                 if not providers:
+                                    # Provider records can be flaky in tiny test
+                                    # networks. Fall back to a deterministic DHT
+                                    # key that stores {peer_id, multiaddr}.
+                                    get_value = getattr(dht, "get_value", None)
+                                    if callable(get_value):
+                                        raw = None
+                                        try:
+                                            raw = await get_value(_dht_value_record_key(ns_key))
+                                        except Exception:
+                                            raw = None
+
+                                        value_text = ""
+                                        try:
+                                            if isinstance(raw, (bytes, bytearray)):
+                                                value_text = bytes(raw).decode("utf-8", errors="ignore")
+                                            elif isinstance(raw, str):
+                                                value_text = raw
+                                        except Exception:
+                                            value_text = ""
+
+                                        if value_text:
+                                            data = None
+                                            try:
+                                                data = json.loads(value_text)
+                                            except Exception:
+                                                data = None
+                                            if isinstance(data, dict):
+                                                ma = str(data.get("multiaddr") or "").strip()
+                                                if ma:
+                                                    resp = await _try_peer_multiaddr(
+                                                        host=host,
+                                                        peer_multiaddr=ma,
+                                                        message=message,
+                                                    )
+                                                    if isinstance(resp, dict) and resp.get("ok"):
+                                                        await _record(
+                                                            method="dht",
+                                                            ok=True,
+                                                            peer_id=str(resp.get("peer_id") or ""),
+                                                            multiaddr=ma,
+                                                            response=resp,
+                                                        )
+                                                        tg.cancel_scope.cancel()
+                                                        return {
+                                                            "ok": True,
+                                                            "result": resp,
+                                                            "nat": _nat_from_resp(resp),
+                                                            "attempts": attempts,
+                                                        }
+
                                     await _record(method="dht", ok=False, error="no_providers")
                                 for peer_info in list(providers or []):
                                     if time.time() > deadline:
