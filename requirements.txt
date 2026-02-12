@@ -5,6 +5,9 @@ duckdb>=0.7.0
 ipfshttpclient>=0.8.0a2
 websockets>=10.1
 
+# Arrow (required by ipfs_kit_py cache/zero-copy features)
+pyarrow>=14.0.0
+
 # Always-installed ML runtime
 torch>=2.1
 
