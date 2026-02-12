@@ -988,11 +988,22 @@ async def serve_task_queue(
     dcutr: object | None = None
 
     async def _handle(stream) -> None:
+        """Handle a single request stream.
+
+        Important: exceptions must not escape this handler, otherwise libp2p's
+        swarm service can fail and stop listening.
+        """
         try:
+            from libp2p.network.stream.exceptions import StreamEOF
+            from libp2p.stream_muxer.exceptions import MuxedStreamEOF
+
             raw = bytearray()
             max_bytes = 1024 * 1024
             while len(raw) < max_bytes:
-                chunk = await stream.read(1024)
+                try:
+                    chunk = await stream.read(1024)
+                except (StreamEOF, MuxedStreamEOF):
+                    return
                 if not chunk:
                     break
                 raw.extend(chunk)
@@ -1003,15 +1014,30 @@ async def serve_task_queue(
             try:
                 msg = json.loads(bytes(raw).rstrip(b"\n").decode("utf-8"))
             except Exception:
-                await stream.write(json.dumps({"ok": False, "error": "invalid_json", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                try:
+                    await stream.write(
+                        json.dumps({"ok": False, "error": "invalid_json", "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    )
+                except Exception:
+                    pass
                 return
 
             if not isinstance(msg, dict):
-                await stream.write(json.dumps({"ok": False, "error": "invalid_message", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                try:
+                    await stream.write(
+                        json.dumps({"ok": False, "error": "invalid_message", "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    )
+                except Exception:
+                    pass
                 return
 
             if not auth_ok(msg):
-                await stream.write(json.dumps({"ok": False, "error": "unauthorized", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                try:
+                    await stream.write(
+                        json.dumps({"ok": False, "error": "unauthorized", "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    )
+                except Exception:
+                    pass
                 return
 
             op = (msg.get("op") or "").strip().lower()
@@ -1324,7 +1350,23 @@ async def serve_task_queue(
                 await stream.write(json.dumps({"ok": True, "task": task, "peer_id": peer_id}).encode("utf-8") + b"\n")
                 return
 
-            await stream.write(json.dumps({"ok": False, "error": "unknown_op", "peer_id": peer_id}).encode("utf-8") + b"\n")
+            try:
+                await stream.write(json.dumps({"ok": False, "error": "unknown_op", "peer_id": peer_id}).encode("utf-8") + b"\n")
+            except Exception:
+                pass
+        except Exception as exc:
+            # Best-effort: do not let handler exceptions take down the listener.
+            try:
+                await stream.write(
+                    json.dumps({"ok": False, "error": "internal_error", "detail": str(exc), "peer_id": peer_id}).encode("utf-8")
+                    + b"\n"
+                )
+            except Exception:
+                pass
+            try:
+                print(f"ipfs_accelerate_py task queue p2p service: stream handler error: {exc}", file=sys.stderr, flush=True)
+            except Exception:
+                pass
         finally:
             try:
                 await stream.close()
