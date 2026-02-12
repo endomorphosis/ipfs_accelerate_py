@@ -1,6 +1,6 @@
 """IPFS backend router for ipfs_accelerate_py.
 
-This module provides a stable entrypoint for basic IPFS operations with a
+This module provides a stable entry point for basic IPFS operations with a
 pluggable backend strategy:
 - Preferred: ipfs_kit_py backend when explicitly enabled and available
 - Fallback 1: HuggingFace model cache for model storage

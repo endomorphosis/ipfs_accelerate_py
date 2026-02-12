@@ -195,23 +195,9 @@ class ModelLoader:
         """
         results = {}
         
-        async def load_single(model_id: str) -> tuple[str, bool]:
-            try:
-                await self.load_model(model_id)
-                return model_id, True
-            except Exception as e:
-                logger.error(f"Failed to preload {model_id}: {e}")
-                return model_id, False
-        
-        # Load models concurrently using task groups
-        async with anyio.create_task_group() as tg:
-            tasks = []
-            for model_id in model_ids:
-                task = tg.start_soon(load_single, model_id)
-                tasks.append(task)
-        
-        # Note: anyio task groups don't return values directly
-        # We'll load them sequentially but track them
+        # Load models sequentially but efficiently
+        # Note: anyio task groups don't easily return values, so we load sequentially
+        # but this still provides benefits of async I/O during model loading
         for model_id in model_ids:
             try:
                 await self.load_model(model_id)
