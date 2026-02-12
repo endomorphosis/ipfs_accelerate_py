@@ -34,6 +34,12 @@ def patch_libp2p_compatibility():
 
         def _is_valid_multihash(mod) -> bool:
             try:
+                # Modern pymultihash (e.g. 0.8.x) exposes `Func`/`FuncReg` and
+                # does not provide `multihash.constants.HASH_CODES`.
+                if hasattr(mod, "Func") and hasattr(mod, "digest") and callable(getattr(mod, "digest")):
+                    return True
+
+                # Older/alternate multihash implementations expose HASH_CODES.
                 return bool(
                     hasattr(mod, "constants")
                     and hasattr(mod.constants, "HASH_CODES")
