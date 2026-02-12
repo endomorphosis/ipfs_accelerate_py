@@ -26,6 +26,8 @@ import os
 import sys
 from pathlib import Path
 
+SKIP_CORE = os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") == "1"
+
 def _add_external_package(package_name: str) -> None:
     """Ensure external bundled packages are importable without pip install."""
     repo_root = Path(__file__).resolve().parents[1]
@@ -34,7 +36,7 @@ def _add_external_package(package_name: str) -> None:
         sys.path.insert(0, str(candidate))
 
 # Optionally skip importing the heavy core (avoids ipfs_kit_py import at import-time)
-if os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") != "1":
+if not SKIP_CORE:
     try:
         _add_external_package("ipfs_kit_py")
         _add_external_package("ipfs_model_manager_py")
@@ -45,22 +47,25 @@ if os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") != "1":
 else:
     original_ipfs_accelerate_py = None
 
-try:
-    from .ipfs_multiformats import ipfs_multiformats_py
-except Exception:
+if not SKIP_CORE:
+    try:
+        from .ipfs_multiformats import ipfs_multiformats_py
+    except Exception:
+        ipfs_multiformats_py = None
+
+    try:
+        from .worker import worker
+    except Exception:
+        worker = None
+
+    try:
+        from .config import config
+    except Exception:
+        config = None
+else:
     ipfs_multiformats_py = None
-
-try:
-    from .worker import worker
-except Exception:
     worker = None
-
-try:
-    from .config import config
-except Exception:
     config = None
-
-SKIP_CORE = os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") == "1"
 
 # Import WebNN/WebGPU integration (skip when core is disabled)
 if not SKIP_CORE:
