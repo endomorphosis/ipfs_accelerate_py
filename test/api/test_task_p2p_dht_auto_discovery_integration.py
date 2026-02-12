@@ -256,7 +256,7 @@ def test_task_p2p_dht_auto_discovery_allows_tools_cache_and_tasks(tmp_path, monk
 		task_id = submit_task_sync(remote=remote, task_type="text-generation", model_name="demo", payload={"p": 1})
 		assert isinstance(task_id, str) and task_id
 
-		listed = list_tasks_sync(remote=remote, status="queued", limit=50, timeout_s=10.0)
+		listed = list_tasks_sync(remote=remote, status="queued", limit=50)
 		assert listed.get("ok") is True
 		tasks = listed.get("tasks")
 		assert isinstance(tasks, list)
