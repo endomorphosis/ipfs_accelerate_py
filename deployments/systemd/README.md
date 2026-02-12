@@ -39,6 +39,13 @@ systemctl status ipfs-accelerate-dashboard.service
   - TaskQueue P2P RPC (MCP-over-P2P) on port 9100.
 - Adjust environment or ports by editing the unit files.
 
+### Public libp2p bootstraps (/dnsaddr)
+
+If you rely on the default libp2p bootstrap peers (`/dnsaddr/bootstrap.libp2p.io/...`), enable dnsaddr TXT expansion so the node dials concrete `/ip4|/ip6/.../tcp/.../p2p/...` multiaddrs:
+
+- `IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE=1`
+- (optional) `IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1`
+
 ### Multi-node P2P requirements
 
 For peer discovery and cache sharing across machines, ensure every node has:
