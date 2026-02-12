@@ -18,6 +18,7 @@ import os
 import re
 import threading
 import time
+import sys
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -84,15 +85,17 @@ class IPFSMutableCacheIndex:
 		self._sub_proc = None
 
 		# Lazy import to keep import-time side effects low.
-		try:
-			# Use local ipfs_backend_router (preferred)
-			from .. import ipfs_backend_router as ipfs_router
-		except Exception:
+		ipfs_router = sys.modules.get("ipfs_datasets_py.ipfs_backend_router")
+		if ipfs_router is None:
 			try:
-				# Fallback to ipfs_datasets_py for backward compatibility
-				from ipfs_datasets_py import ipfs_backend_router as ipfs_router
+				# Use local ipfs_backend_router (preferred)
+				from .. import ipfs_backend_router as ipfs_router
 			except Exception:
-				ipfs_router = None
+				try:
+					# Fallback to ipfs_datasets_py for backward compatibility
+					from ipfs_datasets_py import ipfs_backend_router as ipfs_router
+				except Exception:
+					ipfs_router = None
 
 		self._ipfs = ipfs_router
 
