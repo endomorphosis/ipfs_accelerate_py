@@ -61,8 +61,8 @@ ExecStartPre=/bin/mkdir -p %h/ipfs_accelerate_py/state
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0
 
-# Start the MCP server using wrapper script
-ExecStart=/bin/bash %h/ipfs_accelerate_py/scripts/start_mcp_server.sh
+# Start a second MCP instance (distinct ports) with TaskQueue P2P enabled
+ExecStart=%h/ipfs_accelerate_py/.venv/bin/python3 -m ipfs_accelerate_py.mcp.cli --host 0.0.0.0 --port 9001 --log-level INFO --p2p-service --p2p-listen-port 9101 --p2p-enable-tools --p2p-task-worker
 
 # Restart configuration
 Restart=always
