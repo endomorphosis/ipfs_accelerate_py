@@ -70,7 +70,7 @@ def main(argv: list[str] | None = None) -> int:
     if importlib.util.find_spec("libp2p") is None:
         print(
             "error: optional dependency 'libp2p' is not installed in this environment\n"
-            "Install with: pip install -e .[libp2p]",
+            "Install with: pip install -e '.[libp2p]'",
             file=sys.stderr,
         )
         return 2

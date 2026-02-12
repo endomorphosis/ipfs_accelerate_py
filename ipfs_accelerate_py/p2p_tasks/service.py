@@ -12,7 +12,7 @@ Environment:
 - IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default: ipfs-accelerate-task-queue) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
 - IPFS_DATASETS_PY_TASK_P2P_AUTONAT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT
 - IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (compat) / IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS
-- IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP (compat) / IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP (for announce string)
+- IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP (compat) / IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP (for announce string; supports 'auto')
 - IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE (compat) / IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE
     - unset: write announce JSON to a default XDG cache path
     - set to a path: write announce JSON to that path
@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import socket
 import sys
 import threading
 import time
@@ -176,6 +177,36 @@ def _announce_file_path() -> str:
     if text:
         return text
     return _default_announce_file()
+
+
+def _detect_outbound_ipv4() -> str:
+    """Best-effort non-loopback IPv4 for dialing this host."""
+
+    # Prefer the default route's source IP (UDP connect trick; no packets sent).
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            sock.connect(("8.8.8.8", 80))
+            ip = str(sock.getsockname()[0] or "").strip()
+        finally:
+            try:
+                sock.close()
+            except Exception:
+                pass
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+
+    # Fall back to hostname resolution.
+    try:
+        ip = str(socket.gethostbyname(socket.gethostname()) or "").strip()
+        if ip and not ip.startswith("127."):
+            return ip
+    except Exception:
+        pass
+
+    return "127.0.0.1"
 
 
 def _dht_key_for_namespace(ns: str) -> bytes:
@@ -1046,10 +1077,12 @@ async def serve_task_queue(
         except Exception as exc:
             print(f"ipfs_accelerate_py task queue p2p service: rendezvous start failed: {exc}", file=sys.stderr, flush=True)
 
-        public_ip = (
-            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP")
-            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP", "127.0.0.1")
-        ).strip() or "127.0.0.1"
+        raw_public_ip = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP") or os.environ.get(
+            "IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP"
+        )
+        public_ip = str(raw_public_ip or "").strip()
+        if not public_ip or public_ip.lower() == "auto":
+            public_ip = _detect_outbound_ipv4()
         announced = f"/ip4/{public_ip}/tcp/{cfg.listen_port}/p2p/{peer_id}"
         print("ipfs_accelerate_py task queue p2p service started", flush=True)
         print(f"peer_id={peer_id}", flush=True)

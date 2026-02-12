@@ -39,8 +39,11 @@ Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
 # TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
 Environment=IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9100
 Environment=IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT=9100
+# Auto-detect a non-loopback IP for the announce multiaddr
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP=auto
 # Make announce file visible outside the PrivateTmp sandbox
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=/var/cache/ipfs-accelerate/task_p2p_announce.json
 
