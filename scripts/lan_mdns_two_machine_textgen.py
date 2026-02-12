@@ -55,8 +55,20 @@ def _wait_for_file(path: str, timeout_s: float = 30.0) -> None:
     raise TimeoutError(f"timed out waiting for file: {path}")
 
 
+def _tcp_port_from_multiaddr_text(multiaddr: str) -> int:
+    text = str(multiaddr or "")
+    if "/tcp/" not in text:
+        return 0
+    try:
+        tail = text.split("/tcp/", 1)[1]
+        port_text = tail.split("/", 1)[0]
+        return int(port_text)
+    except Exception:
+        return 0
+
+
 def _run_worker_process(
-    *, queue_path: str, listen_port: int, announce_file: str, worker_id: str, public_ip: str
+    *, queue_path: str, listen_host: str, listen_port: int, announce_file: str, worker_id: str, public_ip: str
 ) -> None:
     # Keep this process minimal and LAN-reachable.
     os.environ["IPFS_KIT_DISABLE"] = "1"
@@ -65,7 +77,7 @@ def _run_worker_process(
     os.environ["IPFS_ACCEL_SKIP_CORE"] = "1"
 
     # Networking: listen on LAN, announce detected LAN IP.
-    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = "0.0.0.0"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = str(listen_host or "0.0.0.0")
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT"] = str(int(listen_port))
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = str(public_ip or "auto")
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = str(announce_file)
@@ -89,6 +101,11 @@ def _run_worker_process(
 
 def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Start a LAN peer and run mDNS-discovered textgen load")
+    parser.add_argument(
+        "--listen-host",
+        default="0.0.0.0",
+        help="IP/interface to bind the local TaskQueue peer (default: 0.0.0.0).",
+    )
     parser.add_argument("--listen-port", type=int, default=9710, help="TCP listen port for the local TaskQueue peer")
     parser.add_argument(
         "--public-ip",
@@ -113,6 +130,13 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
+    # Keep the parent process minimal too (prevents noisy optional subsystem
+    # initialization when importing ipfs_accelerate_py modules).
+    os.environ.setdefault("IPFS_KIT_DISABLE", "1")
+    os.environ.setdefault("STORAGE_FORCE_LOCAL", "1")
+    os.environ.setdefault("TRANSFORMERS_PATCH_DISABLE", "1")
+    os.environ.setdefault("IPFS_ACCEL_SKIP_CORE", "1")
+
     state_dir = Path(str(args.state_dir))
     state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -126,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
         target=_run_worker_process,
         kwargs={
             "queue_path": queue_path,
+            "listen_host": str(args.listen_host),
             "listen_port": int(args.listen_port),
             "announce_file": announce_file,
             "worker_id": worker_id,
@@ -145,6 +170,8 @@ def main(argv: list[str] | None = None) -> int:
 
         # Client env: keep discovery focused on mDNS.
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = announce_file
+        # Align mDNS port with the service listen port.
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT"] = str(int(args.listen_port))
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
@@ -154,10 +181,17 @@ def main(argv: list[str] | None = None) -> int:
 
         # Discover one remote peer (exclude self). If the LAN has more peers,
         # this will pick one.
-        peers = discover_peers_via_mdns_sync(timeout_s=float(args.mdns_timeout_s), limit=4, exclude_self=True)
+        peers = discover_peers_via_mdns_sync(timeout_s=float(args.mdns_timeout_s), limit=10, exclude_self=True)
+        # Prefer peers that are running on the expected listen port (the common
+        # two-machine setup runs the same port on both boxes).
+        expected_port = int(args.listen_port)
+        peers = [p for p in peers if _tcp_port_from_multiaddr_text(str(p.multiaddr)) == expected_port] or peers
         if not peers:
             raise RuntimeError("no peers discovered via mDNS (excluding self)")
         other = peers[0]
+
+        if str(other.peer_id).strip() == self_peer_id:
+            raise RuntimeError("mDNS selected self; no distinct remote peer discovered")
 
         # Run load across BOTH peers using explicit multiaddrs for stability.
         script = Path(__file__).resolve().parents[1] / "scripts" / "queue_textgen_load.py"
