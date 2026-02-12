@@ -227,7 +227,19 @@ def test_task_p2p_dht_auto_discovery_allows_tools_cache_and_tasks(tmp_path, monk
 		assert isinstance(result, dict)
 		assert result.get("ok") is True
 
-		# Cache roundtrip without a peer multiaddr.
+		# From here on, use the discovered multiaddr for stable RPCs.
+		discovered_ma = ""
+		for att in list(last.get("attempts") or []):
+			if not isinstance(att, dict):
+				continue
+			if att.get("ok") is True and str(att.get("multiaddr") or "").strip():
+				discovered_ma = str(att.get("multiaddr") or "").strip()
+				break
+		assert "/p2p/" in discovered_ma
+		remote = RemoteQueue(peer_id=str(result.get("peer_id") or "").strip(), multiaddr=discovered_ma)
+		assert remote.peer_id
+
+		# Cache roundtrip after discovery (no preconfigured peer multiaddr).
 		set_resp = cache_set_sync(remote=remote, key="k", value={"v": 1}, ttl_s=30.0, timeout_s=10.0)
 		assert set_resp.get("ok") is True
 
@@ -236,13 +248,13 @@ def test_task_p2p_dht_auto_discovery_allows_tools_cache_and_tasks(tmp_path, monk
 		assert hit.get("hit") is True
 		assert hit.get("value") == {"v": 1}
 
-		# Tool call without a peer multiaddr.
+		# Tool call after discovery (no preconfigured peer multiaddr).
 		tool_resp = call_tool_sync(remote=remote, tool_name="unit_test.echo", args={"x": 1}, timeout_s=10.0)
 		assert tool_resp.get("ok") is True
 		assert tool_resp.get("tool") == "unit_test.echo"
 		assert tool_resp.get("args") == {"x": 1}
 
-		# Task submit/list without a peer multiaddr.
+		# Task submit/list after discovery (no preconfigured peer multiaddr).
 		task_id = submit_task_sync(remote=remote, task_type="text-generation", model_name="demo", payload={"p": 1})
 		assert isinstance(task_id, str) and task_id
 
