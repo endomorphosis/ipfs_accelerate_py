@@ -66,6 +66,30 @@ class PrometheusMetrics:
             "Hardware utilization percentage",
             ["hardware", "device"]
         )
+        
+        # IPFS metrics
+        self.ipfs_operations_total = Counter(
+            "hf_server_ipfs_operations_total",
+            "Total IPFS operations",
+            ["operation", "backend", "status"]
+        )
+        
+        self.ipfs_operation_duration = Histogram(
+            "hf_server_ipfs_operation_duration_seconds",
+            "IPFS operation duration in seconds",
+            ["operation", "backend"]
+        )
+        
+        # Memory metrics
+        self.memory_used_mb = Gauge(
+            "hf_server_memory_used_mb",
+            "Memory used by loaded models in MB"
+        )
+        
+        self.memory_limit_mb = Gauge(
+            "hf_server_memory_limit_mb",
+            "Memory limit for model cache in MB"
+        )
     
     def record_request(self, model: str, endpoint: str, duration: float, status: str):
         """Record a request."""
@@ -95,6 +119,16 @@ class PrometheusMetrics:
     def update_hardware_utilization(self, hardware: str, device: str, utilization: float):
         """Update hardware utilization."""
         self.hardware_utilization.labels(hardware=hardware, device=device).set(utilization)
+    
+    def record_ipfs_operation(self, operation: str, backend: str, duration: float, status: str):
+        """Record IPFS operation."""
+        self.ipfs_operations_total.labels(operation=operation, backend=backend, status=status).inc()
+        self.ipfs_operation_duration.labels(operation=operation, backend=backend).observe(duration)
+    
+    def update_memory_metrics(self, used_mb: float, limit_mb: float):
+        """Update memory metrics."""
+        self.memory_used_mb.set(used_mb)
+        self.memory_limit_mb.set(limit_mb)
     
     def generate_metrics(self) -> bytes:
         """Generate Prometheus metrics output."""

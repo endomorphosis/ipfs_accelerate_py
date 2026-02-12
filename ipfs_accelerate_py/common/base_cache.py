@@ -475,11 +475,18 @@ class BaseAPICache(ABC):
         Returns the module-like router (with block_put/block_get) or None.
         """
         try:
-            from ipfs_datasets_py import ipfs_backend_router as ipfs_router  # type: ignore
+            # Use local ipfs_backend_router (preferred)
+            from .. import ipfs_backend_router as ipfs_router
 
             return ipfs_router
         except Exception:
-            return None
+            try:
+                # Fallback to ipfs_datasets_py for backward compatibility
+                from ipfs_datasets_py import ipfs_backend_router as ipfs_router  # type: ignore
+
+                return ipfs_router
+            except Exception:
+                return None
 
     def _ipfs_put_payload(self, payload: Dict[str, Any]) -> Optional[str]:
         """Store payload bytes in IPFS and return its CID (or None)."""

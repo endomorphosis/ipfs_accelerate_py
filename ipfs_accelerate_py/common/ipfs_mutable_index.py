@@ -84,7 +84,15 @@ class IPFSMutableCacheIndex:
 		self._sub_proc = None
 
 		# Lazy import to keep import-time side effects low.
-		from ipfs_datasets_py import ipfs_backend_router as ipfs_router
+		try:
+			# Use local ipfs_backend_router (preferred)
+			from .. import ipfs_backend_router as ipfs_router
+		except Exception:
+			try:
+				# Fallback to ipfs_datasets_py for backward compatibility
+				from ipfs_datasets_py import ipfs_backend_router as ipfs_router
+			except Exception:
+				ipfs_router = None
 
 		self._ipfs = ipfs_router
 

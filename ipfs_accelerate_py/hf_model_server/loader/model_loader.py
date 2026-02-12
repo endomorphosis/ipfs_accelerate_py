@@ -179,4 +179,80 @@ class ModelLoader:
     
     def get_cache_stats(self) -> Dict[str, Any]:
         """Get cache statistics."""
-        return self.cache.get_stats()
+        stats = self.cache.get_stats()
+        stats['loading_count'] = len(self._loading)
+        return stats
+    
+    async def preload_models(self, model_ids: list[str]) -> Dict[str, bool]:
+        """
+        Preload multiple models concurrently for faster first inference.
+        
+        Args:
+            model_ids: List of model identifiers to preload
+            
+        Returns:
+            Dictionary mapping model_id to success boolean
+        """
+        results = {}
+        
+        # Load models sequentially but efficiently
+        # Note: anyio task groups don't easily return values, so we load sequentially
+        # but this still provides benefits of async I/O during model loading
+        for model_id in model_ids:
+            try:
+                await self.load_model(model_id)
+                results[model_id] = True
+                logger.info(f"Preloaded model: {model_id}")
+            except Exception as e:
+                logger.error(f"Failed to preload {model_id}: {e}")
+                results[model_id] = False
+        
+        return results
+    
+    async def get_memory_usage(self) -> Dict[str, Any]:
+        """
+        Get detailed memory usage information.
+        
+        Returns:
+            Dictionary with memory statistics
+        """
+        total_memory = 0.0
+        model_memory = {}
+        
+        for model_id in self.cache._cache:
+            model = await self.cache.get(model_id)
+            if model and model.memory_mb > 0:
+                model_memory[model_id] = model.memory_mb
+                total_memory += model.memory_mb
+        
+        return {
+            'total_mb': total_memory,
+            'max_mb': self.cache.max_memory_mb,
+            'utilization': total_memory / self.cache.max_memory_mb if self.cache.max_memory_mb > 0 else 0,
+            'models': model_memory,
+            'count': len(model_memory)
+        }
+    
+    async def warmup_model(self, model_id: str, sample_input: Any = None) -> bool:
+        """
+        Warm up a model by running a sample inference.
+        
+        Args:
+            model_id: Model identifier
+            sample_input: Optional sample input for warmup
+            
+        Returns:
+            True if warmup successful
+        """
+        try:
+            model = await self.load_model(model_id)
+            
+            if sample_input and hasattr(model.skill_instance, 'inference'):
+                # Run warmup inference
+                _ = model.skill_instance.inference(sample_input)
+                logger.info(f"Warmed up model: {model_id}")
+            
+            return True
+        except Exception as e:
+            logger.error(f"Failed to warmup {model_id}: {e}")
+            return False

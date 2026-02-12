@@ -310,6 +310,41 @@ IPFS integration provides **enterprise-grade distributed computing**:
 - 🔄 **Load Balancing** - Automatic distribution across available peers
 - 🛡️ **Fault Tolerance** - Robust error handling and fallback mechanisms
 
+### IPFS Backend Router (New! ⭐)
+
+The IPFS Backend Router provides a flexible, pluggable backend system with automatic fallback:
+
+**Backend Preference Order:**
+1. **ipfs_kit_py** - Full distributed storage (preferred)
+2. **HuggingFace Cache** - Local storage with IPFS addressing
+3. **Kubo CLI** - Standard IPFS daemon
+
+```python
+from ipfs_accelerate_py import ipfs_backend_router
+
+# Store model weights to IPFS
+cid = ipfs_backend_router.add_path("/path/to/model", pin=True)
+print(f"Model CID: {cid}")
+
+# Retrieve from anywhere
+ipfs_backend_router.get_to_path(cid, output_path="/cache/model")
+```
+
+**Configuration:**
+
+```bash
+# Prefer ipfs_kit_py (default)
+export ENABLE_IPFS_KIT=true
+
+# Use HF cache only (good for CI/CD)
+export IPFS_BACKEND=hf_cache
+
+# Force Kubo CLI
+export IPFS_BACKEND=kubo
+```
+
+📚 **Full documentation**: [IPFS Backend Router Guide](docs/IPFS_BACKEND_ROUTER.md)
+
 ### Distributed Inference
 
 ```python
