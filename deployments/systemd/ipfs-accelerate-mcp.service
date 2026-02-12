@@ -17,7 +17,8 @@ Environment="PYTHONPATH=%h/ipfs_accelerate_py"
 Environment="VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv"
 Environment="IPFS_ACCELERATE_REPO_DIR=%h/ipfs_accelerate_py"
 Environment="MCP_HOST=0.0.0.0"
-Environment="MCP_PORT=9000"
+# Use a distinct MCP port so this unit can run alongside ipfs-accelerate.service
+Environment="MCP_PORT=9001"
 
 # Optional secrets/env overrides (recommended):
 #   GH_TOKEN=... (preferred for gh)
@@ -34,16 +35,20 @@ Environment="IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py"
 # TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
 Environment="IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1"
 Environment="IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation"
+Environment="IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1"
-Environment="IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9100"
-Environment="IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT=9100"
+# Use a distinct P2P port so this unit can run alongside ipfs-accelerate.service
+Environment="IPFS_ACCELERATE_PY_MCP_P2P_PORT=9101"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9101"
+Environment="IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT=9101"
 # Persist the local queue DB somewhere stable
-Environment="IPFS_ACCELERATE_PY_TASK_QUEUE_PATH=%h/ipfs_accelerate_py/state/task_queue.duckdb"
+Environment="IPFS_ACCELERATE_PY_TASK_QUEUE_PATH=%h/ipfs_accelerate_py/state/task_queue_mcp.duckdb"
 # Auto-detect a non-loopback IP for the announce multiaddr
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP=auto"
 # Ensure announce file is accessible (used for local self-dial avoidance)
-Environment="IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=%h/ipfs_accelerate_py/state/task_p2p_announce.json"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=%h/ipfs_accelerate_py/state/task_p2p_announce_mcp.json"
 
 # Enable /dnsaddr/... -> concrete multiaddr expansion for public bootstraps
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE=1"

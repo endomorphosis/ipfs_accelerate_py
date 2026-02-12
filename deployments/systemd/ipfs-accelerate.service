@@ -8,11 +8,11 @@ Wants=network-online.target
 Type=simple
 User=devel
 Group=devel
-WorkingDirectory=/home/devel/ipfs_accelerate_py
-Environment=VIRTUAL_ENV=/home/devel/ipfs_accelerate_py/.venv
-Environment=PATH=/home/devel/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
+WorkingDirectory=%h/ipfs_accelerate_py
+Environment=VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv
+Environment=PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
-Environment=PYTHONPATH=/home/devel/ipfs_accelerate_py
+Environment=PYTHONPATH=%h/ipfs_accelerate_py
 
 # Optional secrets/env overrides (recommended):
 #   GH_TOKEN=... (preferred for gh)
@@ -40,6 +40,8 @@ Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
 # TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
 Environment=IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1
 Environment=IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation
+Environment=IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9100
@@ -58,7 +60,7 @@ Environment=IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0
 
-ExecStart=/home/devel/ipfs_accelerate_py/.venv/bin/python3 -m ipfs_accelerate_py.mcp.cli --host 0.0.0.0 --port 9000 --log-level INFO --p2p-service --p2p-listen-port 9100 --p2p-enable-tools --p2p-task-worker
+ExecStart=%h/ipfs_accelerate_py/.venv/bin/python3 -m ipfs_accelerate_py.mcp.cli --host 0.0.0.0 --port 9000 --log-level INFO --p2p-service --p2p-listen-port 9100 --p2p-enable-tools --p2p-task-worker
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
@@ -70,7 +72,7 @@ SyslogIdentifier=ipfs-accelerate
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=/home/devel/ipfs_accelerate_py /var/cache/ipfs-accelerate /var/lib/ipfs-accelerate /var/log/ipfs-accelerate /run/ipfs-accelerate
+ReadWritePaths=%h/ipfs_accelerate_py /var/cache/ipfs-accelerate /var/lib/ipfs-accelerate /var/log/ipfs-accelerate /run/ipfs-accelerate
 ProtectHome=read-only
 
 [Install]
