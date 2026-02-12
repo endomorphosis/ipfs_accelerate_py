@@ -78,6 +78,12 @@ def _announce_file_path() -> str:
     return _default_announce_file()
 
 
+def _dht_key_for_namespace(ns: str) -> bytes:
+    # Some py-libp2p KadDHT builds expect the provide/find_providers key to be
+    # bytes-like (and will call `.hex()` on it). Passing a str can crash.
+    return str(ns or "").encode("utf-8")
+
+
 async def _maybe_start_autonat(*, host) -> object | None:
     if not _env_bool(
         primary="IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT",
@@ -972,7 +978,11 @@ async def serve_task_queue(
                         provide = getattr(dht, "provide", None)
                         if callable(provide):
                             try:
-                                await provide(rendezvous_ns)
+                                try:
+                                    await provide(_dht_key_for_namespace(rendezvous_ns))
+                                except Exception:
+                                    # Best-effort compatibility: older libp2p may accept str keys.
+                                    await provide(rendezvous_ns)
                                 print(
                                     f"ipfs_accelerate_py task queue p2p service: DHT providing namespace {rendezvous_ns}",
                                     file=sys.stderr,

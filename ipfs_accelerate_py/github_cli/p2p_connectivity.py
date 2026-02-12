@@ -521,7 +521,11 @@ class UniversalConnectivity:
         if not callable(provide):
             return False
         try:
-            ok = await provide(key)
+            # Some py-libp2p KadDHT builds expect bytes-like keys (and call `.hex()`).
+            try:
+                ok = await provide(key.encode("utf-8"))
+            except Exception:
+                ok = await provide(key)
             return bool(ok)
         except Exception as e:
             logger.debug(f"DHT provide failed: {e}")
@@ -538,7 +542,10 @@ class UniversalConnectivity:
         if not callable(find_providers):
             return []
         try:
-            peers = await find_providers(key, int(count))
+            try:
+                peers = await find_providers(key.encode("utf-8"), int(count))
+            except Exception:
+                peers = await find_providers(key, int(count))
         except Exception as e:
             logger.debug(f"DHT find_providers failed: {e}")
             return []

@@ -3,6 +3,9 @@ import os
 import socket
 import tempfile
 import time
+import importlib.util
+
+import pytest
 
 
 def _pick_free_port() -> int:
@@ -13,6 +16,9 @@ def _pick_free_port() -> int:
 
 def test_p2p_call_tool_dispatches_to_mcp_registry() -> None:
     """E2E (single-process): libp2p TaskQueue service op=call_tool -> MCP tool registry."""
+
+    if importlib.util.find_spec("libp2p") is None:
+        pytest.skip("optional dependency 'libp2p' is not installed")
 
     os.environ.setdefault("IPFS_ACCEL_SKIP_CORE", "1")
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS"] = "1"
