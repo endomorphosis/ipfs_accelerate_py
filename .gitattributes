@@ -1,0 +1,5 @@
+# Enforce LF line endings for executable scripts and systemd unit templates.
+# This prevents shebang failures like /usr/bin/env: 'bash\r': No such file.
+
+*.sh text eol=lf
+*.service text eol=lf
