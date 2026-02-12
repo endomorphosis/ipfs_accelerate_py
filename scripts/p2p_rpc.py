@@ -32,7 +32,7 @@ import importlib.util
 import json
 import os
 import sys
-from typing import Any, Dict, Optional, TYPE_CHECKING
+from typing import Any, Dict, Optional, TYPE_CHECKING, TextIO
 
 if TYPE_CHECKING:
     from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
@@ -102,11 +102,17 @@ def _remote_from_args(args: argparse.Namespace) -> RemoteQueue:
     return RemoteQueue(peer_id=peer_id, multiaddr=multiaddr)
 
 
-def _print_result(result: Any, *, pretty: bool) -> None:
+def _print_result(result: Any, *, pretty: bool, stream: TextIO) -> None:
     if pretty:
-        print(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
+        stream.write(json.dumps(result, indent=2, sort_keys=True, ensure_ascii=False))
+        stream.write("\n")
     else:
-        print(json.dumps(result, ensure_ascii=False))
+        stream.write(json.dumps(result, ensure_ascii=False))
+        stream.write("\n")
+    try:
+        stream.flush()
+    except Exception:
+        pass
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -212,6 +218,11 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     args = parser.parse_args(argv)
 
+    # Preserve a dedicated JSON stdout stream, then redirect any incidental
+    # print() output (including from dependencies) to stderr.
+    json_stdout = sys.stdout
+    sys.stdout = sys.stderr
+
     if importlib.util.find_spec("libp2p") is None:
         print(
             "error: optional dependency 'libp2p' is not installed in this environment\n"
@@ -276,12 +287,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         if args.cmd == "discover":
             result = discover_status_sync(remote=remote, timeout_s=float(args.timeout), detail=bool(args.detail))
-            _print_result(result, pretty=bool(args.pretty))
+            _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         if args.cmd == "status":
             result = request_status_sync(remote=remote, timeout_s=float(args.timeout), detail=bool(args.detail))
-            _print_result(result, pretty=bool(args.pretty))
+            _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         if args.cmd == "call-tool":
@@ -292,17 +303,17 @@ def main(argv: Optional[list[str]] = None) -> int:
                 args=tool_args,
                 timeout_s=float(args.timeout),
             )
-            _print_result(result, pretty=bool(args.pretty))
+            _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         if args.cmd == "cache-get":
             result = cache_get_sync(remote=remote, key=str(args.key), timeout_s=float(args.timeout))
-            _print_result(result, pretty=bool(args.pretty))
+            _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         if args.cmd == "cache-has":
             result = cache_has_sync(remote=remote, key=str(args.key), timeout_s=float(args.timeout))
-            _print_result(result, pretty=bool(args.pretty))
+            _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         if args.cmd == "cache-set":
@@ -314,12 +325,12 @@ def main(argv: Optional[list[str]] = None) -> int:
                 ttl_s=args.ttl,
                 timeout_s=float(args.timeout),
             )
-            _print_result(result, pretty=bool(args.pretty))
+            _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         if args.cmd == "cache-delete":
             result = cache_delete_sync(remote=remote, key=str(args.key), timeout_s=float(args.timeout))
-            _print_result(result, pretty=bool(args.pretty))
+            _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         if args.cmd == "task-submit":
@@ -330,7 +341,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 model_name=str(args.model_name),
                 payload=payload,
             )
-            _print_result({"ok": True, "task_id": str(task_id)}, pretty=bool(args.pretty))
+            _print_result({"ok": True, "task_id": str(task_id)}, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         if args.cmd == "task-list":
@@ -341,7 +352,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 limit=int(args.limit),
                 task_types=task_types or None,
             )
-            _print_result(result, pretty=bool(args.pretty))
+            _print_result(result, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         # For get/wait/claim/complete, use anyio because the client exposes async versions.
@@ -379,7 +390,7 @@ def main(argv: Optional[list[str]] = None) -> int:
                 return {"ok": False, "error": "unknown_cmd"}
 
             async_result = anyio.run(_run_async, backend="trio")
-            _print_result({"ok": True, "result": async_result}, pretty=bool(args.pretty))
+            _print_result({"ok": True, "result": async_result}, pretty=bool(args.pretty), stream=json_stdout)
             return 0
 
         raise SystemExit(f"unknown command: {args.cmd}")

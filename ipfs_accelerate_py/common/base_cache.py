@@ -469,28 +469,46 @@ class BaseAPICache(ABC):
         return self._compute_cid(query_json)
 
     @staticmethod
-    def _ipfs_router():
+    def _ipfs_router(*, require: tuple[str, ...] = ()):
         """Best-effort import of the IPFS backend router.
 
-        Returns the module-like router (with block_put/block_get) or None.
+        Preference order:
+          1) local `ipfs_accelerate_py.ipfs_backend_router`
+          2) fallback `ipfs_datasets_py.ipfs_backend_router`
+
+        If `require` is provided, the router must expose all named attributes
+        (e.g. `block_put`, `block_get`). This allows tests to stub the fallback
+        router while the local router is absent or incomplete.
         """
+
+        def _has_required(obj: object | None) -> bool:
+            if obj is None:
+                return False
+            return all(hasattr(obj, name) for name in require)
+
+        # Try local first.
         try:
-            # Use local ipfs_backend_router (preferred)
-            from .. import ipfs_backend_router as ipfs_router
+            from .. import ipfs_backend_router as local_router
 
-            return ipfs_router
+            if _has_required(local_router):
+                return local_router
         except Exception:
-            try:
-                # Fallback to ipfs_datasets_py for backward compatibility
-                from ipfs_datasets_py import ipfs_backend_router as ipfs_router  # type: ignore
+            pass
 
-                return ipfs_router
-            except Exception:
-                return None
+        # Fallback for backward compatibility and unit-test stubs.
+        try:
+            from ipfs_datasets_py import ipfs_backend_router as datasets_router  # type: ignore
+
+            if _has_required(datasets_router):
+                return datasets_router
+        except Exception:
+            pass
+
+        return None
 
     def _ipfs_put_payload(self, payload: Dict[str, Any]) -> Optional[str]:
         """Store payload bytes in IPFS and return its CID (or None)."""
-        router = self._ipfs_router()
+        router = self._ipfs_router(require=("block_put",))
         if router is None:
             return None
 
@@ -511,7 +529,7 @@ class BaseAPICache(ABC):
 
     def _ipfs_get_payload(self, cid: str) -> Optional[Dict[str, Any]]:
         """Fetch payload bytes from IPFS by CID and decode JSON."""
-        router = self._ipfs_router()
+        router = self._ipfs_router(require=("block_get",))
         if router is None:
             return None
 
