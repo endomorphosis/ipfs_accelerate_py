@@ -6,11 +6,13 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=%i
-WorkingDirectory=/home/%i/ipfs_accelerate_py
-Environment=PATH=/home/%i/.local/bin:/home/%i/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
+User=devel
+Group=devel
+WorkingDirectory=/home/devel/ipfs_accelerate_py
+Environment=PATH=/home/devel/.local/bin:/home/devel/.venvs/ipfs-accelerate/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
-Environment=HOME=/home/%i
+Environment=PYTHONPATH=/home/devel/ipfs_accelerate_py
+Environment=HOME=/home/devel
 
 # Optional secrets/env overrides (recommended):
 #   GH_TOKEN=... (preferred for gh)
@@ -32,7 +34,7 @@ Environment=IPFS_ACCELERATE_GITHUB_REPO=owner/repo
 # Run: gh auth login
 
 # Start the autoscaler with appropriate settings
-ExecStart=/home/%i/ipfs_accelerate_py/.venv/bin/python3 /home/%i/ipfs_accelerate_py/scripts/utils/github_autoscaler.py --interval 60
+ExecStart=/home/devel/.venvs/ipfs-accelerate/bin/python3 /home/devel/ipfs_accelerate_py/scripts/utils/github_autoscaler.py --interval 60
 
 # Restart on failure
 Restart=on-failure

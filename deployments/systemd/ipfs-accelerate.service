@@ -6,11 +6,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=barberb
-Group=barberb
-WorkingDirectory=%h/ipfs_accelerate_py
-Environment=VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv
-Environment=PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
+User=devel
+Group=devel
+WorkingDirectory=/home/devel/ipfs_accelerate_py
+Environment=VIRTUAL_ENV=/home/devel/ipfs_accelerate_py/.venv
+Environment=PATH=/home/devel/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 
 # Optional secrets/env overrides (recommended):
@@ -39,8 +39,7 @@ Environment=IPFS_ACCELERATE_GITHUB_REPO=owner/repo
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0
 
-ExecStartPre=/bin/bash %h/ipfs_accelerate_py/scripts/auto-update.sh
-ExecStart=%h/ipfs_accelerate_py/.venv/bin/ipfs-accelerate mcp start --host 0.0.0.0 --port 9000 --keep-running --autoscaler-owner endomorphosis
+ExecStart=/home/devel/ipfs_accelerate_py/.venv/bin/ipfs-accelerate mcp start --host 0.0.0.0 --port 9000 --keep-running --autoscaler-owner endomorphosis
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
@@ -52,7 +51,7 @@ SyslogIdentifier=ipfs-accelerate
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
-ReadWritePaths=%h/ipfs_accelerate_py /var/cache/ipfs-accelerate /var/lib/ipfs-accelerate /var/log/ipfs-accelerate /run/ipfs-accelerate
+ReadWritePaths=/home/devel/ipfs_accelerate_py /var/cache/ipfs-accelerate /var/lib/ipfs-accelerate /var/log/ipfs-accelerate /run/ipfs-accelerate
 ProtectHome=read-only
 
 [Install]
