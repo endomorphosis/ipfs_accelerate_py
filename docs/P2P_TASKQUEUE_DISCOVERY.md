@@ -36,6 +36,31 @@ For internet use, you generally want a **stable, reachable “coordination” no
 
 If your *service* is behind NAT and you need the public box to dial **inbound to it**, you will likely need a VPN/overlay network or port forwarding.
 
+## Targeting a specific peer without exchanging peer-id/multiaddr
+
+If you want “no manual multiaddr exchange” and also don’t want to pass a peer ID hint,
+use a **dedicated shared namespace** via:
+
+- `IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS`
+
+This namespace is used by:
+- Rendezvous advertising/lookup
+- DHT provider discovery
+- The deterministic DHT value record (`/ipfs-accelerate/task-queue/ns/<namespace>`)
+
+Practical pattern:
+- Pick a namespace that represents the remote role, e.g. `ipfs-accelerate-gpt2`.
+- Configure only the intended remote box to advertise that namespace.
+- Run the client with the same namespace; plain `discover` will converge on that box.
+
+Example (client side):
+
+```bash
+export IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS=ipfs-accelerate-gpt2
+./scripts/p2p_rpc.py discover --pretty
+./scripts/p2p_rpc.py task-submit --task-type text-generation --model-name gpt2 --payload '{"prompt":"hi"}'
+```
+
 ## Useful environment variables
 
 - `IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS`

@@ -95,6 +95,61 @@ If you have exactly two boxes and want them to find each other immediately (with
 
 This only affects TaskQueue service discovery/dialing (used by MCP-over-P2P tool calls and cache RPC).
 
+### Target a specific box without sharing peer IDs/multiaddrs
+
+If you don’t want to exchange per-machine identifiers (peer IDs, multiaddrs), the simplest way to
+*target one specific remote box* is to use a **dedicated shared discovery namespace**.
+
+How it works:
+- The TaskQueue service advertises under `IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS`.
+- Discovery uses that same namespace for rendezvous and for the DHT provider/value record.
+- If only the intended remote box is advertising that namespace, `discover` (and any command that
+  triggers discovery) will converge on that box without you needing to pass `--peer-id` or `--multiaddr`.
+
+Example: make the “other box” the GPT-2 worker.
+
+On the **GPT-2 box** (service + worker):
+
+1) Set a shared namespace in `/etc/ipfs-accelerate/secrets.env`:
+
+```bash
+IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS=ipfs-accelerate-gpt2
+```
+
+2) Ensure dependencies exist for GPT-2 generation (at minimum `transformers` + a backend like `torch`).
+   The first request will download the model into the service’s HOME/state directories.
+
+3) Reinstall + restart:
+
+```bash
+sudo deployments/systemd/install.sh --unit ipfs-accelerate.service --purge-dropins
+```
+
+On the **client box** (submit tasks to that namespace):
+
+```bash
+. ./.venv/bin/activate
+
+# Use the same namespace (no peer-id/multiaddr required)
+export IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS=ipfs-accelerate-gpt2
+
+python scripts/p2p_rpc.py discover --timeout 15 --detail --pretty
+
+# Submit GPT-2 text generation
+python scripts/p2p_rpc.py task-submit \
+  --task-type text-generation \
+  --model-name gpt2 \
+  --payload '{"prompt":"Hello from the other box","max_new_tokens":40,"temperature":0.7}'
+
+python scripts/p2p_rpc.py task-wait --task-id <TASK_ID> --timeout 120 --pretty
+```
+
+Notes:
+- This still requires at least one shared discovery fabric (DHT, rendezvous, mDNS) and basic
+  connectivity; “discovery” can’t punch through arbitrary NAT/firewall setups by itself.
+- If multiple boxes advertise the same namespace, discovery may pick any of them. Use a unique
+  namespace per “target role” (e.g., `ipfs-accelerate-gpt2`, `ipfs-accelerate-tools`).
+
 ## Validate P2P Transport (cache/tools/tasks)
 
 Each MCP unit runs a TaskQueue libp2p service (RPC over `/ipfs-datasets/task-queue/1.0.0`).
