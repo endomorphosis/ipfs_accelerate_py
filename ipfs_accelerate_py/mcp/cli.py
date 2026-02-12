@@ -17,6 +17,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("ipfs_accelerate_mcp_cli")
 
+
+def _default_p2p_queue_path() -> str:
+    env_path = os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_PATH") or os.environ.get("IPFS_DATASETS_PY_TASK_QUEUE_PATH")
+    if env_path and str(env_path).strip():
+        return str(env_path).strip()
+
+    cache_root = os.environ.get("XDG_CACHE_HOME")
+    if cache_root and str(cache_root).strip():
+        return os.path.join(str(cache_root).strip(), "ipfs_datasets_py", "task_queue.duckdb")
+
+    return "~/.cache/ipfs_datasets_py/task_queue.duckdb"
+
 def main():
     """Main entry point for the MCP server CLI."""
     parser = argparse.ArgumentParser(
@@ -64,10 +76,7 @@ def main():
     )
     parser.add_argument(
         "--p2p-queue",
-        default=os.environ.get(
-            "IPFS_ACCELERATE_PY_TASK_QUEUE_PATH",
-            os.environ.get("IPFS_DATASETS_PY_TASK_QUEUE_PATH", "~/.cache/ipfs_datasets_py/task_queue.duckdb"),
-        ),
+        default=_default_p2p_queue_path(),
         help="DuckDB task queue path for P2P tasks (default: ~/.cache/ipfs_datasets_py/task_queue.duckdb)",
     )
     parser.add_argument(

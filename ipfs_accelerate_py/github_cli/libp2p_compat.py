@@ -98,6 +98,16 @@ def patch_libp2p_compatibility():
                     return bytes(self)
 
             def digest(data, hash_func_name):
+                # Some libp2p builds pass an Enum (e.g. multihash.Func.sha2_256)
+                # where multiformats expects an int code or a string name.
+                try:
+                    import enum
+
+                    if isinstance(hash_func_name, enum.Enum):
+                        hash_func_name = hash_func_name.value
+                except Exception:
+                    pass
+
                 out = orig_digest(data, hash_func_name)
                 if hasattr(out, "encode") and callable(getattr(out, "encode")):
                     return out

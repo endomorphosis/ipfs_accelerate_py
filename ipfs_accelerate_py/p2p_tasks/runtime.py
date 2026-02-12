@@ -8,6 +8,8 @@ can start the service and later stop it.
 from __future__ import annotations
 
 import threading
+import traceback
+import sys
 from dataclasses import dataclass
 from typing import Optional
 
@@ -73,6 +75,15 @@ class TaskQueueP2PServiceRuntime:
                     trio.run(_main)
                 except BaseException as exc:
                     self._last_error = exc
+                    try:
+                        print(
+                            f"ipfs_accelerate_py task queue p2p service: crashed: {exc}",
+                            file=sys.stderr,
+                            flush=True,
+                        )
+                        traceback.print_exc(file=sys.stderr)
+                    except Exception:
+                        pass
                     # If the service died before marking started, unblock waiters.
                     self._started.set()
 

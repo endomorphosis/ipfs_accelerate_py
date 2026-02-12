@@ -146,6 +146,11 @@ def default_cache_dir() -> Path:
     )
     if raw and str(raw).strip():
         return Path(str(raw)).expanduser()
+
+    xdg_cache = os.environ.get("XDG_CACHE_HOME")
+    if xdg_cache and str(xdg_cache).strip():
+        return Path(str(xdg_cache).strip()).expanduser() / "ipfs_accelerate" / "p2p_cache"
+
     return Path.home() / ".cache" / "ipfs_accelerate" / "p2p_cache"
 
 
