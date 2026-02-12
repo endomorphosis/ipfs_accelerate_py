@@ -12,9 +12,20 @@ Environment=PATH=/home/%i/.local/bin:/home/%i/ipfs_accelerate_py/.venv/bin:/usr/
 Environment=PYTHONUNBUFFERED=1
 Environment=HOME=/home/%i
 
+# Optional secrets/env overrides (recommended):
+#   GH_TOKEN=... (preferred for gh)
+#   GITHUB_TOKEN=... (optional)
+#   IPFS_ACCELERATE_GITHUB_REPO=owner/repo
+EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
+
 # P2P Cache Configuration
 Environment=CACHE_ENABLE_P2P=true
-Environment=P2P_LISTEN_PORT=9000
+Environment=CACHE_LISTEN_PORT=9100
+# Backward-compatible alias (some scripts still read this)
+Environment=P2P_LISTEN_PORT=9100
+
+# Ensure all nodes rendezvous in the same repo for peer discovery
+Environment=IPFS_ACCELERATE_GITHUB_REPO=owner/repo
 
 # GitHub CLI authentication
 # Ensure gh CLI is authenticated before starting the service

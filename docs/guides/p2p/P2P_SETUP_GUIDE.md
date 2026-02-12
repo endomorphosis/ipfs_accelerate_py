@@ -75,10 +75,10 @@ The requirements.txt includes:
 python3 -c "from libp2p import new_host; print('✅ libp2p installed successfully')"
 ```
 
-### 2. Check pymultihash Installation
+### 2. Check multihash Installation
 
 ```bash
-python3 -c "import pymultihash; print('✅ pymultihash installed successfully')"
+python3 -c "import multihash; print('✅ multihash installed successfully (from pymultihash)')"
 ```
 
 ### 3. Test P2P System via Python
@@ -163,9 +163,9 @@ cache = GitHubAPICache(
 pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" pymultihash>=0.8.2
 ```
 
-### ImportError: No module named 'pymultihash'
+### ImportError: No module named 'multihash'
 
-**Cause**: pymultihash package not installed
+**Cause**: `pymultihash` package not installed (it provides the `multihash` import)
 
 **Solution**:
 ```bash
@@ -200,7 +200,7 @@ sudo apt-get install -y python3-dev libgmp-dev build-essential
 python3 -c "from ipfs_accelerate_py.github_cli.cache import get_global_cache; cache = get_global_cache(); print(cache._p2p_listen_addr)"
 
 # On peer 2, try to connect using the multiaddr from peer 1
-export CACHE_BOOTSTRAP_PEERS="/ip4/<peer1-ip>/tcp/9000/p2p/<peer1-id>"
+export CACHE_BOOTSTRAP_PEERS="/ip4/<peer1-ip>/tcp/9100/p2p/<peer1-id>"
 ```
 
 ### Check Logs for P2P Issues
@@ -253,7 +253,7 @@ Response:
     {
       "peer_id": "QmPeerID1",
       "runner_name": "runner-1",
-      "listen_port": 9000,
+      "listen_port": 9100,
       "last_seen": "2025-12-13T03:00:00Z"
     }
   ]
