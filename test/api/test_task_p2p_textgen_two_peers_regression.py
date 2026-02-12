@@ -1,11 +1,11 @@
 import json
 import os
 import socket
-import subprocess
 import sys
 import time
 import multiprocessing as mp
 from pathlib import Path
+import runpy
 
 import pytest
 
@@ -92,7 +92,6 @@ def _run_textgen_worker_with_service(*, queue_path: str, listen_port: int, annou
 @pytest.mark.skipif(not _have_textgen_deps(), reason="transformers/torch not installed")
 @pytest.mark.integration
 @pytest.mark.slow
-@pytest.mark.model_test
 @pytest.mark.text
 def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
     """Regression: 2 peers, 50 GPT-2 generations, collect outputs.
@@ -148,51 +147,44 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
         script = Path(__file__).resolve().parents[2] / "scripts" / "queue_textgen_load.py"
         assert script.exists(), f"missing load driver: {script}"
 
-        env = dict(os.environ)
-        env["IPFS_KIT_DISABLE"] = "1"
-        env["STORAGE_FORCE_LOCAL"] = "1"
-        env["TRANSFORMERS_PATCH_DISABLE"] = "1"
-        env["IPFS_ACCEL_SKIP_CORE"] = "1"
+        os.environ["IPFS_KIT_DISABLE"] = "1"
+        os.environ["STORAGE_FORCE_LOCAL"] = "1"
+        os.environ["TRANSFORMERS_PATCH_DISABLE"] = "1"
+        os.environ["IPFS_ACCEL_SKIP_CORE"] = "1"
 
-        cmd = [
-            sys.executable,
-            str(script),
-            "--announce-file",
-            announce_a,
-            "--announce-file",
-            announce_b,
-            "--count",
-            "50",
-            "--concurrency",
-            "10",
-            "--wait",
-            "--timeout-s",
-            "300",
-            "--collect-results",
-            "--suffix-index",
-            "--max-new-tokens",
-            "16",
-            "--temperature",
-            "0.2",
-            "--prompt",
-            "The quick brown fox",
-            "--submit-retries",
-            "2",
-            "--submit-retry-sleep-s",
-            "0.25",
-            "--output",
-            report_path,
-        ]
-
-        run = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=900, check=False)
-        if run.returncode != 0:
-            # Include stderr; script intentionally pushes logs to stderr.
-            raise AssertionError(
-                "load driver failed\n"
-                f"returncode={run.returncode}\n"
-                f"stdout=\n{run.stdout}\n"
-                f"stderr=\n{run.stderr}\n"
-            )
+        # Run the load driver in-process to avoid import shadowing issues
+        # (the repo contains similarly-named modules under test/).
+        mod = runpy.run_path(str(script))
+        rc = int(mod["main"](
+            [
+                "--announce-file",
+                announce_a,
+                "--announce-file",
+                announce_b,
+                "--count",
+                "50",
+                "--concurrency",
+                "10",
+                "--wait",
+                "--timeout-s",
+                "300",
+                "--collect-results",
+                "--suffix-index",
+                "--max-new-tokens",
+                "16",
+                "--temperature",
+                "0.2",
+                "--prompt",
+                "The quick brown fox",
+                "--submit-retries",
+                "2",
+                "--submit-retry-sleep-s",
+                "0.25",
+                "--output",
+                report_path,
+            ]
+        ))
+        assert rc == 0
 
         assert os.path.exists(report_path) and os.path.getsize(report_path) > 0
         with open(report_path, "r", encoding="utf-8") as handle:
