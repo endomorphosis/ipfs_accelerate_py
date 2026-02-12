@@ -27,27 +27,23 @@ import time
 
 
 def main() -> int:
-    # Avoid importing the heavy core (and optional ipfs_kit integration) when
-    # running this lightweight p2p_tasks validation script.
-    os.environ.setdefault("IPFS_ACCEL_SKIP_CORE", "1")
-
     try:
-        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_capabilities_sync
+        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, request_status_sync
     except Exception as exc:
         print(f"ERROR: failed to import p2p_tasks client: {exc}")
         return 2
 
     started = time.time()
     try:
-        caps = get_capabilities_sync(remote=RemoteQueue(), detail=False)
+        resp = request_status_sync(remote=RemoteQueue(), detail=False)
     except Exception as exc:
         print(f"ERROR: status request failed: {exc}")
         return 1
 
     elapsed_ms = int((time.time() - started) * 1000)
     print(f"Elapsed: {elapsed_ms}ms")
-    print(json.dumps({"ok": True, "capabilities": caps}, indent=2, sort_keys=True))
-    return 0
+    print(json.dumps(resp, indent=2, sort_keys=True))
+    return 0 if bool(resp.get("ok")) else 1
 
 
 if __name__ == "__main__":

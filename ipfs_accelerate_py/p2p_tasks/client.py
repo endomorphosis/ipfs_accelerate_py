@@ -859,14 +859,32 @@ async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.
 
 
 async def get_capabilities(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
-    resp = await _dial_and_request(
-        remote=remote,
-        message={"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)},
-    )
+    resp = await request_status(remote=remote, timeout_s=timeout_s, detail=detail)
     if not resp.get("ok"):
         raise RuntimeError(f"status failed: {resp}")
     caps = resp.get("capabilities")
     return caps if isinstance(caps, dict) else {}
+
+
+async def request_status(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)},
+    )
+    return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+
+
+def request_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+    import trio
+
+    result: Dict[str, Any] = {}
+
+    async def _main() -> None:
+        nonlocal result
+        result = await request_status(remote=remote, timeout_s=timeout_s, detail=detail)
+
+    trio.run(_main)
+    return result
 
 
 def get_capabilities_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:

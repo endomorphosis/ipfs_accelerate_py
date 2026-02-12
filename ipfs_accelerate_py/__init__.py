@@ -212,54 +212,77 @@ except ImportError:
     calculate_hamming_distance = None
 
 # Add IPFS Kit integration
-try:
-    from .ipfs_kit_integration import (
-        IPFSKitStorage,
-        get_storage,
-        reset_storage,
-        StorageBackendConfig
-    )
-    export["IPFSKitStorage"] = IPFSKitStorage
-    export["get_storage"] = get_storage
-    export["reset_storage"] = reset_storage
-    export["StorageBackendConfig"] = StorageBackendConfig
-except ImportError:
+if not SKIP_CORE:
+    try:
+        from .ipfs_kit_integration import (
+            IPFSKitStorage,
+            get_storage,
+            reset_storage,
+            StorageBackendConfig,
+        )
+
+        export["IPFSKitStorage"] = IPFSKitStorage
+        export["get_storage"] = get_storage
+        export["reset_storage"] = reset_storage
+        export["StorageBackendConfig"] = StorageBackendConfig
+    except ImportError:
+        IPFSKitStorage = None
+        get_storage = None
+        reset_storage = None
+        StorageBackendConfig = None
+else:
     IPFSKitStorage = None
     get_storage = None
     reset_storage = None
     StorageBackendConfig = None
 
 # Add auto-patching for transformers (applies automatically on import if enabled)
-try:
-    from . import auto_patch_transformers
-    export["auto_patch_transformers"] = auto_patch_transformers
-except ImportError:
+if not SKIP_CORE:
+    try:
+        from . import auto_patch_transformers
+
+        export["auto_patch_transformers"] = auto_patch_transformers
+    except ImportError:
+        auto_patch_transformers = None
+else:
     auto_patch_transformers = None
 
 # Add LLM router functionality
-try:
-    from .llm_router import (
-        generate_text,
-        get_llm_provider,
-        register_llm_provider,
-        clear_llm_router_caches,
-        LLMProvider
-    )
-    from .router_deps import (
-        RouterDeps,
-        get_default_router_deps,
-        set_default_router_deps
-    )
-    export["generate_text"] = generate_text
-    export["get_llm_provider"] = get_llm_provider
-    export["register_llm_provider"] = register_llm_provider
-    export["clear_llm_router_caches"] = clear_llm_router_caches
-    export["LLMProvider"] = LLMProvider
-    export["RouterDeps"] = RouterDeps
-    export["get_default_router_deps"] = get_default_router_deps
-    export["set_default_router_deps"] = set_default_router_deps
-    llm_router_available = True
-except ImportError:
+if not SKIP_CORE:
+    try:
+        from .llm_router import (
+            generate_text,
+            get_llm_provider,
+            register_llm_provider,
+            clear_llm_router_caches,
+            LLMProvider,
+        )
+        from .router_deps import (
+            RouterDeps,
+            get_default_router_deps,
+            set_default_router_deps,
+        )
+
+        export["generate_text"] = generate_text
+        export["get_llm_provider"] = get_llm_provider
+        export["register_llm_provider"] = register_llm_provider
+        export["clear_llm_router_caches"] = clear_llm_router_caches
+        export["LLMProvider"] = LLMProvider
+        export["RouterDeps"] = RouterDeps
+        export["get_default_router_deps"] = get_default_router_deps
+        export["set_default_router_deps"] = set_default_router_deps
+        llm_router_available = True
+    except ImportError:
+        generate_text = None
+        get_llm_provider = None
+        register_llm_provider = None
+        clear_llm_router_caches = None
+        LLMProvider = None
+        RouterDeps = None
+        get_default_router_deps = None
+        set_default_router_deps = None
+        llm_router_available = False
+else:
     generate_text = None
     get_llm_provider = None
     register_llm_provider = None
@@ -271,23 +294,33 @@ except ImportError:
     llm_router_available = False
 
 # Add Embeddings router functionality
-try:
-    from .embeddings_router import (
-        embed_texts,
-        embed_text,
-        get_embeddings_provider,
-        register_embeddings_provider,
-        clear_embeddings_router_caches,
-        EmbeddingsProvider
-    )
-    export["embed_texts"] = embed_texts
-    export["embed_text"] = embed_text
-    export["get_embeddings_provider"] = get_embeddings_provider
-    export["register_embeddings_provider"] = register_embeddings_provider
-    export["clear_embeddings_router_caches"] = clear_embeddings_router_caches
-    export["EmbeddingsProvider"] = EmbeddingsProvider
-    embeddings_router_available = True
-except ImportError:
+if not SKIP_CORE:
+    try:
+        from .embeddings_router import (
+            embed_texts,
+            embed_text,
+            get_embeddings_provider,
+            register_embeddings_provider,
+            clear_embeddings_router_caches,
+            EmbeddingsProvider,
+        )
+
+        export["embed_texts"] = embed_texts
+        export["embed_text"] = embed_text
+        export["get_embeddings_provider"] = get_embeddings_provider
+        export["register_embeddings_provider"] = register_embeddings_provider
+        export["clear_embeddings_router_caches"] = clear_embeddings_router_caches
+        export["EmbeddingsProvider"] = EmbeddingsProvider
+        embeddings_router_available = True
+    except ImportError:
+        embed_texts = None
+        embed_text = None
+        get_embeddings_provider = None
+        register_embeddings_provider = None
+        clear_embeddings_router_caches = None
+        EmbeddingsProvider = None
+        embeddings_router_available = False
+else:
     embed_texts = None
     embed_text = None
     get_embeddings_provider = None
