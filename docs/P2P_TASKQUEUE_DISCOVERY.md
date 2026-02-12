@@ -110,3 +110,24 @@ Example (truncated):
   - `./scripts/p2p_rpc.py call-tool --tool get_server_status --pretty`
   - `./scripts/p2p_rpc.py cache-set --key demo --value '"hello"' --pretty`
   - `./scripts/p2p_rpc.py cache-get --key demo --pretty`
+
+## Text-generation smoke test (task submit + wait)
+
+To validate the **task execution** path end-to-end (submit → worker executes → wait returns result),
+use `text-generation`.
+
+If you want to avoid downloading full GPT-2 weights during a quick smoke test, use a tiny GPT-2
+compatible model (still downloads, but much smaller):
+
+```bash
+./scripts/p2p_rpc.py task-submit \
+  --task-type text-generation \
+  --model-name sshleifer/tiny-gpt2 \
+  --payload '{"prompt":"hello","max_new_tokens":24,"temperature":0.7}'
+
+./scripts/p2p_rpc.py task-wait --task-id <TASK_ID> --timeout 120 --pretty
+```
+
+Notes:
+- The first run may take longer while the remote worker downloads model files.
+- To run *zero-download*, pre-warm the model on the worker box (or use a provider/backend that is already configured).

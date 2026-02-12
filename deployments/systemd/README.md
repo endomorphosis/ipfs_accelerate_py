@@ -177,6 +177,15 @@ python scripts/p2p_rpc.py --announce-file /var/cache/ipfs-accelerate/task_p2p_an
 # Task submit + wait (executes on the remote peer's worker)
 python scripts/p2p_rpc.py --announce-file /var/cache/ipfs-accelerate/task_p2p_announce.json task-submit \
   --task-type tool.call --model-name demo --payload '{"tool":"get_server_status","args":{}}'
+
+# Text-generation (smoke test)
+# Use a tiny GPT-2 compatible model for quick validation (avoids full GPT-2 download):
+python scripts/p2p_rpc.py --announce-file /var/cache/ipfs-accelerate/task_p2p_announce.json task-submit \
+  --task-type text-generation --model-name sshleifer/tiny-gpt2 \
+  --payload '{"prompt":"hello","max_new_tokens":24,"temperature":0.7}'
+
+python scripts/p2p_rpc.py --announce-file /var/cache/ipfs-accelerate/task_p2p_announce.json task-wait \
+  --task-id <TASK_ID> --timeout 120 --pretty
 ```
 
 Tip: for “no pre-shared multiaddr” runs, try `discover` with a peer-id hint:
