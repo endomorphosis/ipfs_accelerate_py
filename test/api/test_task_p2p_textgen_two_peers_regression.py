@@ -61,7 +61,7 @@ def _run_textgen_worker_with_service(
     # Deterministic local-only behavior.
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = str(listen_host)
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT"] = str(int(listen_port))
-    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = str(listen_host)
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = "auto" if str(listen_host).strip() == "0.0.0.0" else str(listen_host)
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = announce_file
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
