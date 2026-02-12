@@ -33,6 +33,8 @@ import os
 import sys
 from typing import Any, Dict, Optional
 
+from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+
 
 def _load_announce(path: str) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as handle:
@@ -63,7 +65,7 @@ def _parse_json_any(text: str, *, flag: str) -> Any:
         raise SystemExit(f"{flag} must be valid JSON: {exc}")
 
 
-def _remote_from_args(args: argparse.Namespace) -> "RemoteQueue":
+def _remote_from_args(args: argparse.Namespace) -> RemoteQueue:
     multiaddr = str(getattr(args, "multiaddr", "") or "").strip()
     peer_id = str(getattr(args, "peer_id", "") or "").strip()
 
@@ -90,11 +92,7 @@ def _remote_from_args(args: argparse.Namespace) -> "RemoteQueue":
         #   announce-file -> explicitly configured bootstrap peers -> rendezvous -> DHT -> mDNS
         # This enables cross-box operation without pre-sharing multiaddrs, as long as
         # both peers can participate in at least one shared discovery mechanism.
-        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
-
         return RemoteQueue(peer_id=peer_id, multiaddr="")
-
-    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
 
     return RemoteQueue(peer_id=peer_id, multiaddr=multiaddr)
 
@@ -109,8 +107,16 @@ def _print_result(result: Any, *, pretty: bool) -> None:
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="TaskQueue P2P RPC client (tools + cache + tasks)")
     parser.add_argument("--multiaddr", default="", help="Remote multiaddr (/ip4/.../tcp/.../p2p/...) (optional)")
-    parser.add_argument("--announce-file", default="", help="Path to a JSON announce file containing {peer_id, multiaddr} (optional)")
-    parser.add_argument("--peer-id", default="", help="Optional peer id hint (used to target a specific peer during discovery)")
+    parser.add_argument(
+        "--announce-file",
+        default="",
+        help="Path to a JSON announce file containing {peer_id, multiaddr} (optional)",
+    )
+    parser.add_argument(
+        "--peer-id",
+        default="",
+        help="Optional peer id hint (used to target a specific peer during discovery)",
+    )
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output")
 
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -118,6 +124,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     p_status = sub.add_parser("status", help="Query remote status")
     p_status.add_argument("--timeout", type=float, default=10.0)
     p_status.add_argument("--detail", action="store_true")
+
+    p_disc = sub.add_parser(
+        "discover",
+        help="Discover a peer (no pre-shared multiaddr) and show which mechanism succeeded",
+    )
+    p_disc.add_argument("--timeout", type=float, default=10.0)
+    p_disc.add_argument("--detail", action="store_true")
 
     p_call = sub.add_parser("call-tool", help="Call an MCP tool via P2P")
     p_call.add_argument("--tool", required=True)
@@ -188,10 +201,16 @@ def main(argv: Optional[list[str]] = None) -> int:
             cache_has_sync,
             cache_set_sync,
             call_tool_sync,
+            discover_status_sync,
             list_tasks_sync,
             request_status_sync,
             submit_task_sync,
         )
+
+        if args.cmd == "discover":
+            result = discover_status_sync(remote=remote, timeout_s=float(args.timeout), detail=bool(args.detail))
+            _print_result(result, pretty=bool(args.pretty))
+            return 0
 
         if args.cmd == "status":
             result = request_status_sync(remote=remote, timeout_s=float(args.timeout), detail=bool(args.detail))
@@ -200,7 +219,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         if args.cmd == "call-tool":
             tool_args = _parse_json_obj(str(args.args or ""), flag="--args")
-            result = call_tool_sync(remote=remote, tool_name=str(args.tool), args=tool_args, timeout_s=float(args.timeout))
+            result = call_tool_sync(
+                remote=remote,
+                tool_name=str(args.tool),
+                args=tool_args,
+                timeout_s=float(args.timeout),
+            )
             _print_result(result, pretty=bool(args.pretty))
             return 0
 
@@ -244,7 +268,12 @@ def main(argv: Optional[list[str]] = None) -> int:
 
         if args.cmd == "task-list":
             task_types = [t.strip() for t in str(args.task_types or "").split(",") if t.strip()]
-            result = list_tasks_sync(remote=remote, status=args.status, limit=int(args.limit), task_types=task_types or None)
+            result = list_tasks_sync(
+                remote=remote,
+                status=args.status,
+                limit=int(args.limit),
+                task_types=task_types or None,
+            )
             _print_result(result, pretty=bool(args.pretty))
             return 0
 
@@ -258,10 +287,18 @@ def main(argv: Optional[list[str]] = None) -> int:
                 if args.cmd == "task-get":
                     return await p2p_client.get_task(remote=remote, task_id=str(args.task_id))
                 if args.cmd == "task-wait":
-                    return await p2p_client.wait_task(remote=remote, task_id=str(args.task_id), timeout_s=float(args.timeout))
+                    return await p2p_client.wait_task(
+                        remote=remote,
+                        task_id=str(args.task_id),
+                        timeout_s=float(args.timeout),
+                    )
                 if args.cmd == "task-claim":
                     supported = [t.strip() for t in str(args.supported_task_types or "").split(",") if t.strip()]
-                    return await p2p_client.claim_next(remote=remote, worker_id=str(args.worker_id), supported_task_types=supported or None)
+                    return await p2p_client.claim_next(
+                        remote=remote,
+                        worker_id=str(args.worker_id),
+                        supported_task_types=supported or None,
+                    )
                 if args.cmd == "task-complete":
                     result_obj = _parse_json_obj(str(args.result or ""), flag="--result")
                     err = str(args.error or "")

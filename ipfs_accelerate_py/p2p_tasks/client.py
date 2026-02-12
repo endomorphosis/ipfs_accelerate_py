@@ -8,10 +8,12 @@ Supports:
 Environment:
 - IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (comma-separated multiaddrs)
 - IPFS_DATASETS_PY_TASK_P2P_DISCOVERY_TIMEOUT_S (compat, default: 5) / IPFS_ACCELERATE_PY_TASK_P2P_DISCOVERY_TIMEOUT_S
-- IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT (compat, default: 9710) / IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT (used for mDNS)
+- IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT (compat, default: 9710)
+    / IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT (used for mDNS)
 - IPFS_DATASETS_PY_TASK_P2P_DHT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_DHT
 - IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS
-- IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default: ipfs-accelerate-task-queue) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
+- IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default: ipfs-accelerate-task-queue)
+    / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
 - IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE (compat) / IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE
     - unset: read default XDG cache announce file(s)
     - set to a path: read announce JSON from that path
@@ -63,6 +65,51 @@ def _have_libp2p() -> bool:
 class RemoteQueue:
     peer_id: str = ""
     multiaddr: str = ""
+
+
+def _multiaddr_peer_id(multiaddr: str) -> str:
+    try:
+        return str(multiaddr).rsplit("/p2p/", 1)[-1].strip()
+    except Exception:
+        return ""
+
+
+def _best_effort_peerinfo_multiaddrs(peer_info: Any) -> list[str]:
+    try:
+        pid = getattr(peer_info, "peer_id", None)
+        pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+    except Exception:
+        pid_text = ""
+
+    addrs: list[str] = []
+    try:
+        for a in list(getattr(peer_info, "addrs", None) or []):
+            try:
+                a_text = str(a)
+                if pid_text and "/p2p/" not in a_text:
+                    a_text = f"{a_text}/p2p/{pid_text}"
+                addrs.append(a_text)
+            except Exception:
+                continue
+    except Exception:
+        pass
+    return addrs
+
+
+async def _try_peer_info(*, host, peer_info: Any, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    try:
+        await host.connect(peer_info)
+        stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
+        try:
+            resp = await _request_over_stream(stream=stream, message=message)
+            return resp if isinstance(resp, dict) else None
+        finally:
+            try:
+                await stream.close()
+            except Exception:
+                pass
+    except Exception:
+        return None
 
 
 def _parse_bootstrap_peers() -> list[str]:
@@ -229,7 +276,12 @@ async def _dial_via_bootstrap(*, host, message: Dict[str, Any]) -> Optional[Dict
     return None
 
 
-async def _dial_via_announce_file(*, host, message: Dict[str, Any], require_peer_id: str = "") -> Optional[Dict[str, Any]]:
+async def _dial_via_announce_file(
+    *,
+    host,
+    message: Dict[str, Any],
+    require_peer_id: str = "",
+) -> Optional[Dict[str, Any]]:
     ma = _read_announce_multiaddr()
     if not ma:
         return None
@@ -498,7 +550,11 @@ async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> 
 
         with anyio.fail_after(20.0):
             if (remote.multiaddr or "").strip():
-                resp = await _try_peer_multiaddr(host=host, peer_multiaddr=remote.multiaddr, message=message)  # type: ignore[assignment]
+                resp = await _try_peer_multiaddr(
+                    host=host,
+                    peer_multiaddr=remote.multiaddr,
+                    message=message,
+                )  # type: ignore[assignment]
             else:
                 require_peer_id = (remote.peer_id or "").strip()
 
@@ -529,6 +585,394 @@ async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> 
         pass
 
     return resp
+
+
+async def discover_status(
+    *,
+    remote: RemoteQueue,
+    timeout_s: float = 10.0,
+    detail: bool = False,
+) -> Dict[str, Any]:
+    """Attempt to discover and contact a TaskQueue peer, returning a trace.
+
+    This is intended for debugging / operator UX.
+
+    Returns:
+        {
+          "ok": bool,
+          "result": {..status response..} | None,
+          "attempts": [
+             {"method": "announce-file", "multiaddr": "...", "peer_id": "...", "ok": bool, "error": "..."},
+             ...
+          ]
+        }
+    """
+
+    if not _have_libp2p():
+        raise RuntimeError("libp2p is not installed")
+
+    import anyio
+    import inspect
+    import time
+
+    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
+    from libp2p import new_host
+    from libp2p.tools.async_service import background_trio_service
+    from multiaddr import Multiaddr
+
+    if not ensure_libp2p_compatible():
+        raise RuntimeError(
+            "libp2p is installed but dependency compatibility patches could not be applied. "
+            "This environment likely has an incompatible `multihash` module."
+        )
+
+    message: Dict[str, Any] = {"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)}
+    require_peer_id = (remote.peer_id or "").strip()
+    attempts: list[Dict[str, Any]] = []
+
+    host_obj = new_host()
+    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+
+    async with background_trio_service(host.get_network()):
+        await host.get_network().listen(Multiaddr("/ip4/0.0.0.0/tcp/0"))
+
+        deadline = time.time() + max(0.1, float(timeout_s))
+
+        async def _record(
+            *,
+            method: str,
+            ok: bool,
+            peer_id: str = "",
+            multiaddr: str = "",
+            error: str = "",
+            response: Dict[str, Any] | None = None,
+        ) -> None:
+            attempts.append(
+                {
+                    "method": str(method),
+                    "ok": bool(ok),
+                    "peer_id": str(peer_id or "").strip(),
+                    "multiaddr": str(multiaddr or "").strip(),
+                    "error": str(error or "").strip(),
+                    "response": response if isinstance(response, dict) else None,
+                }
+            )
+
+        async def _try_multiaddr(method: str, ma: str) -> Optional[Dict[str, Any]]:
+            ma = str(ma or "").strip()
+            if not ma:
+                await _record(method=method, ok=False, error="missing_multiaddr")
+                return None
+            pid = _multiaddr_peer_id(ma)
+            if require_peer_id and pid and pid != require_peer_id:
+                await _record(method=method, ok=False, peer_id=pid, multiaddr=ma, error="peer_id_mismatch")
+                return None
+            try:
+                resp = await _try_peer_multiaddr(host=host, peer_multiaddr=ma, message=message)
+                if isinstance(resp, dict) and resp.get("ok"):
+                    await _record(
+                        method=method,
+                        ok=True,
+                        peer_id=str(resp.get("peer_id") or pid),
+                        multiaddr=ma,
+                        response=resp,
+                    )
+                    return resp
+                await _record(
+                    method=method,
+                    ok=False,
+                    peer_id=str((resp or {}).get("peer_id") or pid),
+                    multiaddr=ma,
+                    error=str((resp or {}).get("error") or "request_failed"),
+                    response=resp if isinstance(resp, dict) else None,
+                )
+                return None
+            except Exception as exc:
+                await _record(method=method, ok=False, peer_id=pid, multiaddr=ma, error=str(exc))
+                return None
+
+        # 1) Explicit multiaddr
+        if (remote.multiaddr or "").strip():
+            resp = await _try_multiaddr("explicit", str(remote.multiaddr))
+            return {"ok": bool(resp and resp.get("ok")), "result": resp, "attempts": attempts}
+
+        # 2) Announce file hint (local)
+        ann_ma = _read_announce_multiaddr()
+        if ann_ma:
+            resp = await _try_multiaddr("announce-file", ann_ma)
+            if resp is not None:
+                return {"ok": True, "result": resp, "attempts": attempts}
+        else:
+            await _record(method="announce-file", ok=False, error="no_announce_multiaddr")
+
+        # 3) Direct dialing of explicitly configured bootstrap peers
+        if _bootstrap_peers_explicitly_configured():
+            for ma in _parse_bootstrap_peers():
+                if time.time() > deadline:
+                    await _record(method="bootstrap", ok=False, error="timeout")
+                    break
+                resp = await _try_multiaddr("bootstrap", ma)
+                if resp is not None:
+                    return {"ok": True, "result": resp, "attempts": attempts}
+        else:
+            await _record(method="bootstrap", ok=False, error="not_explicitly_configured")
+
+        # 4) Rendezvous discovery
+        if time.time() <= deadline and _env_bool(
+            primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS",
+            compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS",
+            default=True,
+        ):
+            ns = _env_str(
+                primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS",
+                compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
+                default="ipfs-accelerate-task-queue",
+            )
+            candidates = [
+                ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
+                ("libp2p.discovery.rendezvous", "RendezvousClient"),
+                ("libp2p.rendezvous", "RendezvousClient"),
+            ]
+            rendezvous_attempted = False
+            for module_name, symbol in candidates:
+                try:
+                    mod = __import__(module_name, fromlist=[symbol])
+                    cls = getattr(mod, symbol)
+                    cli = cls(host)
+                    discover = getattr(cli, "discover", None)
+                    if not callable(discover):
+                        continue
+                    rendezvous_attempted = True
+
+                    cookie: bytes = b""
+                    try:
+                        peers, cookie = await discover(ns, limit=100, cookie=cookie)
+                    except TypeError:
+                        found = discover(ns)
+                        peers = list(found or [])
+
+                    for peer_info in list(peers or []):
+                        if time.time() > deadline:
+                            await _record(method="rendezvous", ok=False, error="timeout")
+                            break
+
+                        pid_text = ""
+                        try:
+                            pid = getattr(peer_info, "peer_id", None)
+                            pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                        except Exception:
+                            pid_text = ""
+                        if require_peer_id and pid_text and pid_text != require_peer_id:
+                            await _record(method="rendezvous", ok=False, peer_id=pid_text, error="peer_id_mismatch")
+                            continue
+
+                        resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                        ma = ""
+                        addrs = _best_effort_peerinfo_multiaddrs(peer_info)
+                        if addrs:
+                            ma = addrs[0]
+                        if isinstance(resp, dict) and resp.get("ok"):
+                            await _record(
+                                method="rendezvous",
+                                ok=True,
+                                peer_id=str(resp.get("peer_id") or pid_text),
+                                multiaddr=ma,
+                                response=resp,
+                            )
+                            return {"ok": True, "result": resp, "attempts": attempts}
+                        await _record(
+                            method="rendezvous",
+                            ok=False,
+                            peer_id=str((resp or {}).get("peer_id") or pid_text),
+                            multiaddr=ma,
+                            error=str((resp or {}).get("error") or "request_failed"),
+                            response=resp if isinstance(resp, dict) else None,
+                        )
+                except Exception:
+                    continue
+
+            if not rendezvous_attempted:
+                await _record(method="rendezvous", ok=False, error="unavailable")
+        else:
+            await _record(method="rendezvous", ok=False, error="disabled_or_timeout")
+
+        # 5) DHT provider discovery
+        if time.time() <= deadline and _env_bool(
+            primary="IPFS_ACCELERATE_PY_TASK_P2P_DHT",
+            compat="IPFS_DATASETS_PY_TASK_P2P_DHT",
+            default=True,
+        ):
+            ns = _env_str(
+                primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS",
+                compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
+                default="ipfs-accelerate-task-queue",
+            )
+            candidates = [
+                ("libp2p.kad_dht.kad_dht", "KadDHT"),
+                ("libp2p.kad_dht", "KadDHT"),
+            ]
+
+            dht_attempted = False
+            for module_name, symbol in candidates:
+                try:
+                    mod = __import__(module_name, fromlist=[symbol])
+                    cls = getattr(mod, symbol)
+                    dht_attempted = True
+
+                    try:
+                        from libp2p.kad_dht.kad_dht import DHTMode  # type: ignore
+
+                        dht = cls(host, DHTMode.CLIENT)
+                    except Exception:
+                        dht = cls(host)
+
+                    import trio
+                    from libp2p.tools.async_service.trio_service import background_trio_service as bg_trio
+
+                    async def _run_dht_service() -> None:
+                        async with bg_trio(dht):
+                            await trio.sleep_forever()
+
+                    async with anyio.create_task_group() as tg:
+                        tg.start_soon(_run_dht_service)
+                        try:
+                            await _best_effort_connect_multiaddrs(host=host, addrs=_parse_bootstrap_peers())
+                        except Exception:
+                            pass
+
+                        if require_peer_id:
+                            find_peer = getattr(dht, "find_peer", None)
+                            if not callable(find_peer):
+                                await _record(method="dht", ok=False, error="find_peer_unavailable")
+                            else:
+                                peer_info = await find_peer(require_peer_id)
+                                if not peer_info:
+                                    await _record(
+                                        method="dht",
+                                        ok=False,
+                                        peer_id=require_peer_id,
+                                        error="peer_not_found",
+                                    )
+                                else:
+                                    resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                                    addrs = _best_effort_peerinfo_multiaddrs(peer_info)
+                                    ma = addrs[0] if addrs else ""
+                                    if isinstance(resp, dict) and resp.get("ok"):
+                                        await _record(
+                                            method="dht",
+                                            ok=True,
+                                            peer_id=str(resp.get("peer_id") or require_peer_id),
+                                            multiaddr=ma,
+                                            response=resp,
+                                        )
+                                        tg.cancel_scope.cancel()
+                                        return {"ok": True, "result": resp, "attempts": attempts}
+                                    await _record(
+                                        method="dht",
+                                        ok=False,
+                                        peer_id=str((resp or {}).get("peer_id") or require_peer_id),
+                                        multiaddr=ma,
+                                        error=str((resp or {}).get("error") or "request_failed"),
+                                        response=resp if isinstance(resp, dict) else None,
+                                    )
+                        else:
+                            find_providers = getattr(dht, "find_providers", None)
+                            if not callable(find_providers):
+                                await _record(method="dht", ok=False, error="find_providers_unavailable")
+                            else:
+                                providers = await find_providers(ns, 20)
+                                if not providers:
+                                    await _record(method="dht", ok=False, error="no_providers")
+                                for peer_info in list(providers or []):
+                                    if time.time() > deadline:
+                                        await _record(method="dht", ok=False, error="timeout")
+                                        break
+                                    resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                                    addrs = _best_effort_peerinfo_multiaddrs(peer_info)
+                                    ma = addrs[0] if addrs else ""
+                                    pid_text = ""
+                                    try:
+                                        pid = getattr(peer_info, "peer_id", None)
+                                        pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                                    except Exception:
+                                        pid_text = ""
+                                    if isinstance(resp, dict) and resp.get("ok"):
+                                        await _record(
+                                            method="dht",
+                                            ok=True,
+                                            peer_id=str(resp.get("peer_id") or pid_text),
+                                            multiaddr=ma,
+                                            response=resp,
+                                        )
+                                        tg.cancel_scope.cancel()
+                                        return {"ok": True, "result": resp, "attempts": attempts}
+                                    await _record(
+                                        method="dht",
+                                        ok=False,
+                                        peer_id=str((resp or {}).get("peer_id") or pid_text),
+                                        multiaddr=ma,
+                                        error=str((resp or {}).get("error") or "request_failed"),
+                                        response=resp if isinstance(resp, dict) else None,
+                                    )
+
+                        tg.cancel_scope.cancel()
+                except Exception:
+                    continue
+
+            if not dht_attempted:
+                await _record(method="dht", ok=False, error="unavailable")
+        else:
+            await _record(method="dht", ok=False, error="disabled_or_timeout")
+
+        # 6) LAN mDNS
+        if time.time() <= deadline:
+            try:
+                mdns_resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
+                if isinstance(mdns_resp, dict) and mdns_resp.get("ok"):
+                    await _record(
+                        method="mdns",
+                        ok=True,
+                        peer_id=str(mdns_resp.get("peer_id") or ""),
+                        response=mdns_resp,
+                    )
+                    return {"ok": True, "result": mdns_resp, "attempts": attempts}
+                await _record(
+                    method="mdns",
+                    ok=False,
+                    peer_id=str((mdns_resp or {}).get("peer_id") or ""),
+                    error=str((mdns_resp or {}).get("error") or "request_failed"),
+                    response=mdns_resp if isinstance(mdns_resp, dict) else None,
+                )
+            except Exception as exc:
+                await _record(method="mdns", ok=False, error=str(exc))
+        else:
+            await _record(method="mdns", ok=False, error="timeout")
+
+    try:
+        await host.close()
+    except Exception:
+        pass
+
+    ok = any(a.get("ok") for a in attempts)
+    result = None
+    for a in attempts:
+        if a.get("ok") and isinstance(a.get("response"), dict):
+            result = a.get("response")
+            break
+    return {"ok": bool(ok), "result": result, "attempts": attempts}
+
+
+def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+    import trio
+
+    result: Dict[str, Any] = {}
+
+    async def _main() -> None:
+        nonlocal result
+        result = await discover_status(remote=remote, timeout_s=timeout_s, detail=detail)
+
+    trio.run(_main)
+    return result
 
 
 async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> str:
@@ -724,7 +1168,13 @@ def submit_task_sync(*, remote: RemoteQueue, task_type: str, model_name: str, pa
     return anyio.run(_do, backend="trio")
 
 
-async def submit_task_with_info(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> Dict[str, str]:
+async def submit_task_with_info(
+    *,
+    remote: RemoteQueue,
+    task_type: str,
+    model_name: str,
+    payload: Dict[str, Any],
+) -> Dict[str, str]:
     resp = await _dial_and_request(
         remote=remote,
         message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
@@ -734,7 +1184,13 @@ async def submit_task_with_info(*, remote: RemoteQueue, task_type: str, model_na
     return {"task_id": str(resp.get("task_id")), "peer_id": str(resp.get("peer_id") or "").strip()}
 
 
-def submit_task_with_info_sync(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> Dict[str, str]:
+def submit_task_with_info_sync(
+    *,
+    remote: RemoteQueue,
+    task_type: str,
+    model_name: str,
+    payload: Dict[str, Any],
+) -> Dict[str, str]:
     import anyio
 
     async def _do() -> Dict[str, str]:
@@ -778,7 +1234,13 @@ def claim_next_sync(
     import anyio
 
     async def _do() -> Optional[Dict[str, Any]]:
-        return await claim_next(remote=remote, worker_id=worker_id, supported_task_types=supported_task_types, peer_id=peer_id, clock=clock)
+        return await claim_next(
+            remote=remote,
+            worker_id=worker_id,
+            supported_task_types=supported_task_types,
+            peer_id=peer_id,
+            clock=clock,
+        )
 
     return anyio.run(_do, backend="trio")
 
@@ -881,7 +1343,10 @@ async def get_task(*, remote: RemoteQueue, task_id: str) -> Optional[Dict[str, A
 
 
 async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.0) -> Optional[Dict[str, Any]]:
-    resp = await _dial_and_request(remote=remote, message={"op": "wait", "task_id": task_id, "timeout_s": float(timeout_s)})
+    resp = await _dial_and_request(
+        remote=remote,
+        message={"op": "wait", "task_id": task_id, "timeout_s": float(timeout_s)},
+    )
     if not resp.get("ok"):
         raise RuntimeError(f"wait failed: {resp}")
     task = resp.get("task")
@@ -935,17 +1400,34 @@ def get_capabilities_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detai
     return result
 
 
-async def call_tool(*, remote: RemoteQueue, tool_name: str, args: Dict[str, Any] | None = None, timeout_s: float = 30.0) -> Dict[str, Any]:
+async def call_tool(
+    *,
+    remote: RemoteQueue,
+    tool_name: str,
+    args: Dict[str, Any] | None = None,
+    timeout_s: float = 30.0,
+) -> Dict[str, Any]:
     resp = await _dial_and_request(
         remote=remote,
-        message={"op": "call_tool", "tool_name": str(tool_name), "args": (args if isinstance(args, dict) else {}), "timeout_s": float(timeout_s)},
+        message={
+            "op": "call_tool",
+            "tool_name": str(tool_name),
+            "args": (args if isinstance(args, dict) else {}),
+            "timeout_s": float(timeout_s),
+        },
     )
     if not isinstance(resp, dict):
         return {"ok": False, "tool": str(tool_name), "error": "invalid_response"}
     return resp
 
 
-def call_tool_sync(*, remote: RemoteQueue, tool_name: str, args: Dict[str, Any] | None = None, timeout_s: float = 30.0) -> Dict[str, Any]:
+def call_tool_sync(
+    *,
+    remote: RemoteQueue,
+    tool_name: str,
+    args: Dict[str, Any] | None = None,
+    timeout_s: float = 30.0,
+) -> Dict[str, Any]:
     import trio
 
     result: Dict[str, Any] = {}
@@ -1004,8 +1486,20 @@ def cache_has_sync(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) ->
     return result
 
 
-async def cache_set(*, remote: RemoteQueue, key: str, value: Any, ttl_s: float | None = None, timeout_s: float = 10.0) -> Dict[str, Any]:
-    message: Dict[str, Any] = {"op": "cache.set", "key": str(key), "value": value, "timeout_s": float(timeout_s)}
+async def cache_set(
+    *,
+    remote: RemoteQueue,
+    key: str,
+    value: Any,
+    ttl_s: float | None = None,
+    timeout_s: float = 10.0,
+) -> Dict[str, Any]:
+    message: Dict[str, Any] = {
+        "op": "cache.set",
+        "key": str(key),
+        "value": value,
+        "timeout_s": float(timeout_s),
+    }
     if ttl_s is not None:
         try:
             message["ttl_s"] = float(ttl_s)
@@ -1018,14 +1512,27 @@ async def cache_set(*, remote: RemoteQueue, key: str, value: Any, ttl_s: float |
     return resp
 
 
-def cache_set_sync(*, remote: RemoteQueue, key: str, value: Any, ttl_s: float | None = None, timeout_s: float = 10.0) -> Dict[str, Any]:
+def cache_set_sync(
+    *,
+    remote: RemoteQueue,
+    key: str,
+    value: Any,
+    ttl_s: float | None = None,
+    timeout_s: float = 10.0,
+) -> Dict[str, Any]:
     import trio
 
     result: Dict[str, Any] = {}
 
     async def _main() -> None:
         nonlocal result
-        result = await cache_set(remote=remote, key=str(key), value=value, ttl_s=ttl_s, timeout_s=float(timeout_s))
+        result = await cache_set(
+            remote=remote,
+            key=str(key),
+            value=value,
+            ttl_s=ttl_s,
+            timeout_s=float(timeout_s),
+        )
 
     trio.run(_main)
     return result
