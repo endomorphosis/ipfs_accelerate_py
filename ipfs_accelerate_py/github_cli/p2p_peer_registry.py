@@ -99,11 +99,18 @@ class P2PPeerRegistry:
 
     def _run_gh(self, args: List[str], timeout: int = 30) -> subprocess.CompletedProcess:
         """Run a `gh` command and return the CompletedProcess."""
+        env = dict(os.environ)
+        # gh prefers GH_TOKEN; allow operators to provide only GITHUB_TOKEN.
+        if not (env.get("GH_TOKEN") or "").strip() and (env.get("GITHUB_TOKEN") or "").strip():
+            env["GH_TOKEN"] = env["GITHUB_TOKEN"].strip()
+        # Avoid paging in non-interactive contexts.
+        env.setdefault("GH_PAGER", "cat")
         return subprocess.run(
             ["gh", *args],
             capture_output=True,
             text=True,
             timeout=timeout,
+            env=env,
         )
 
     def _gh_api(self, method: str, endpoint: str, payload: Optional[Dict] = None, timeout: int = 30) -> subprocess.CompletedProcess:

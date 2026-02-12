@@ -34,7 +34,7 @@ Environment=XDG_CONFIG_HOME=/var/lib/ipfs-accelerate/config
 # P2P Cache Configuration (libp2p)
 Environment=CACHE_ENABLE_P2P=true
 Environment=CACHE_LISTEN_PORT=9100
-Environment=IPFS_ACCELERATE_GITHUB_REPO=owner/repo
+Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
 
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0

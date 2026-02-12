@@ -27,7 +27,7 @@ Environment=CACHE_LISTEN_PORT=9100
 Environment=P2P_LISTEN_PORT=9100
 
 # Ensure all nodes rendezvous in the same repo for peer discovery
-Environment=IPFS_ACCELERATE_GITHUB_REPO=owner/repo
+Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
 
 # GitHub CLI authentication
 # Ensure gh CLI is authenticated before starting the service
