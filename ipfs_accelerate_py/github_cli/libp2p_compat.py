@@ -97,6 +97,56 @@ def patch_libp2p_compatibility():
                 def encode(self) -> bytes:  # type: ignore[override]
                     return bytes(self)
 
+                @property
+                def digest(self) -> bytes:  # type: ignore[override]
+                    """Return the raw digest bytes for multihash-encoded values.
+
+                    Some libp2p components (e.g. kad-dht distance metrics) expect
+                    `multihash.digest(...).digest` to be the *raw* hash digest.
+                    When using `multiformats.multihash`, `digest()` can return a
+                    multihash-encoded bytestring: `<code><len><digest...>`.
+
+                    This property best-effort parses the multihash prefix and
+                    returns the trailing digest bytes. If parsing fails, it
+                    falls back to returning the underlying bytes.
+                    """
+
+                    data = bytes(self)
+
+                    def _read_uvarint(buf: bytes, start: int) -> tuple[int, int] | None:
+                        value = 0
+                        shift = 0
+                        idx = start
+                        while idx < len(buf):
+                            b = buf[idx]
+                            value |= (b & 0x7F) << shift
+                            idx += 1
+                            if (b & 0x80) == 0:
+                                return value, idx
+                            shift += 7
+                            if shift > 63:
+                                return None
+                        return None
+
+                    try:
+                        # multihash format: varint(code) + varint(length) + digest bytes
+                        code_res = _read_uvarint(data, 0)
+                        if code_res is None:
+                            return data
+                        _, idx = code_res
+                        len_res = _read_uvarint(data, idx)
+                        if len_res is None:
+                            return data
+                        digest_len, idx2 = len_res
+                        if digest_len < 0:
+                            return data
+                        end = idx2 + digest_len
+                        if end > len(data):
+                            return data
+                        return data[idx2:end]
+                    except Exception:
+                        return data
+
             def digest(data, hash_func_name):
                 # Some libp2p builds pass an Enum (e.g. multihash.Func.sha2_256)
                 # where multiformats expects an int code or a string name.
