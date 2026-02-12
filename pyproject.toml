@@ -43,6 +43,23 @@ package-dir = {"" = "."}
 dependencies = {file = ["requirements.txt"]}
 
 [project.optional-dependencies]
+dev = [
+  # test runner + core test deps
+  "pytest>=8.0.0",
+  "pytest-timeout>=2.4.0",
+  "pytest-cov>=4.0.0",
+  "pytest-env>=1.1.3",
+  "anyio>=4.0.0",
+  "httpx>=0.28.1",
+  # MCP/FastAPI integration tests
+  "fastapi>=0.110.0",
+  "uvicorn>=0.27.0",
+  # local dev tooling (matches VS Code tasks)
+  "black>=24.0.0",
+  "flake8>=7.0.0",
+  "mypy>=1.8.0",
+]
+
 minimal = [
   "aiohttp>=3.8.1",
   "duckdb>=0.7.0",
