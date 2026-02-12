@@ -15,7 +15,12 @@ A production-ready model server for HuggingFace models with:
 __version__ = "0.1.0"
 __author__ = "IPFS Accelerate Team"
 
-from .server import HFModelServer
 from .config import ServerConfig
 
-__all__ = ["HFModelServer", "ServerConfig"]
+# Lazy import server to avoid dependency issues
+def create_server(config=None):
+    """Create and return HFModelServer instance."""
+    from .server import HFModelServer
+    return HFModelServer(config)
+
+__all__ = ["create_server", "ServerConfig"]
