@@ -490,10 +490,25 @@ class UniversalConnectivity:
         """Run the DHT service loop (must be kept alive in background)."""
         if not self._dht:
             return
-        run = getattr(self._dht, "run", None)
-        if not callable(run):
-            return
-        await run()
+        # NOTE: In the libp2p build used by this repo, `KadDHT` inherits the
+        # async Service base but does not initialize its manager until it is
+        # run under `background_trio_service`. Calling `KadDHT.run()` directly
+        # can crash with missing `_manager`.
+        try:
+            import trio
+            from libp2p.tools.async_service.trio_service import background_trio_service
+
+            async with background_trio_service(self._dht):
+                await trio.sleep_forever()
+        except trio.Cancelled:
+            raise
+        except Exception as e:
+            logger.warning(f"DHT background service failed: {e}")
+            try:
+                self.implemented["dht"] = False
+                self._dht = None
+            except Exception:
+                pass
 
     async def dht_provide(self, namespace: Optional[str] = None) -> bool:
         """Advertise this host as a provider for the given namespace."""

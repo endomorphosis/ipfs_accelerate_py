@@ -125,7 +125,13 @@ async def _maybe_start_dht(*, host, bootstrap_peers: list[str]) -> object | None
         try:
             mod = __import__(module_name, fromlist=[symbol])
             cls = getattr(mod, symbol)
-            dht = cls(host)
+            # KadDHT requires a DHTMode in this libp2p build.
+            try:
+                from libp2p.kad_dht.kad_dht import DHTMode  # type: ignore
+
+                dht = cls(host, DHTMode.SERVER)
+            except Exception:
+                dht = cls(host)
 
             # Newer py-libp2p uses a background `run()` coroutine (started by the caller).
             # Older versions may expose `start()` / `bootstrap()`.
@@ -934,9 +940,15 @@ async def serve_task_queue(
             async with anyio.create_task_group() as tg:
                 # Start DHT background loop when present.
                 try:
-                    run = getattr(dht, "run", None)
-                    if callable(run):
-                        tg.start_soon(run)
+                    if dht is not None:
+                        import trio
+                        from libp2p.tools.async_service.trio_service import background_trio_service
+
+                        async def _run_dht_service() -> None:
+                            async with background_trio_service(dht):
+                                await trio.sleep_forever()
+
+                        tg.start_soon(_run_dht_service)
                         provide = getattr(dht, "provide", None)
                         if callable(provide):
                             try:

@@ -343,15 +343,25 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
         try:
             mod = __import__(module_name, fromlist=[symbol])
             cls = getattr(mod, symbol)
-            dht = cls(host)
+            # KadDHT requires a DHTMode in this libp2p build.
+            try:
+                from libp2p.kad_dht.kad_dht import DHTMode  # type: ignore
+
+                dht = cls(host, DHTMode.CLIENT)
+            except Exception:
+                dht = cls(host)
 
             # Keep the DHT background loop alive while we query it.
             import anyio
+            import trio
+            from libp2p.tools.async_service.trio_service import background_trio_service
+
+            async def _run_dht_service() -> None:
+                async with background_trio_service(dht):
+                    await trio.sleep_forever()
 
             async with anyio.create_task_group() as tg:
-                run = getattr(dht, "run", None)
-                if callable(run):
-                    tg.start_soon(run)
+                tg.start_soon(_run_dht_service)
 
                 if require_peer_id:
                     find_peer = getattr(dht, "find_peer", None)
