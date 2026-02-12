@@ -51,6 +51,10 @@ Environment=IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP=auto
 # Make announce file visible outside the PrivateTmp sandbox
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=/var/cache/ipfs-accelerate/task_p2p_announce.json
 
+# Enable /dnsaddr/... -> concrete multiaddr expansion for public bootstraps
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE=1
+Environment=IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1
+
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0
 
