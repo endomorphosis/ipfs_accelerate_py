@@ -129,7 +129,9 @@ def initialize_mcp_server(app: Any, accelerate_instance: Any, mount_path: str = 
     """Initialize and mount the MCP server into a FastAPI app."""
     from ipfs_accelerate_py.mcp.server import create_mcp_server
 
-    mcp_server = create_mcp_server(accelerate_instance=accelerate_instance)
+    # When mounting as a sub-application, the MCP server must NOT internally
+    # prefix routes with the mount path, otherwise routes become /mcp/mcp/....
+    mcp_server = create_mcp_server(accelerate_instance=accelerate_instance, mount_path="")
     app.mount(mount_path, mcp_server.app, name="mcp_server")
     return mcp_server
 

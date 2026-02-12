@@ -367,63 +367,117 @@ class StandaloneMCP:
             )
             
             router = APIRouter()
+
+            def _server_info() -> Dict[str, Any]:
+                return {
+                    "name": self.name,
+                    "description": description,
+                    "version": version,
+                }
+
+            def _health_info() -> Dict[str, Any]:
+                return {
+                    "status": "ok",
+                    "tools_count": len(self.tools or {}),
+                    "resources_count": len(self.resources or {}),
+                    "prompts_count": len(self.prompts or {}),
+                }
+
+            @router.get("/", summary="Server info")
+            async def server_info_endpoint():
+                return _server_info()
+
+            @router.get("/health", summary="Health check")
+            async def health_endpoint():
+                return _health_info()
+
+            @router.get("/tools", summary="List tools")
+            async def list_tools_endpoint():
+                return sorted(list((self.tools or {}).keys()))
+
+            @router.get("/resources", summary="List resources")
+            async def list_resources_endpoint():
+                return sorted(list((self.resources or {}).keys()))
             
             # Create a single endpoint for all tools that dynamically dispatches based on the tool name
             from fastapi import HTTPException, Path, Body
             
-            @router.post("/tool/{tool_name}", summary="Generic tool endpoint")
-            async def generic_tool_endpoint(tool_name: str = Path(..., description="The name of the tool to execute"), 
-                                           data: dict = Body({}, description="Tool input data")):
-                if tool_name not in self.tools:
+            async def _execute_tool(tool_name: str, data: dict):
+                if tool_name not in (self.tools or {}):
                     raise HTTPException(status_code=404, detail=f"Tool '{tool_name}' not found")
-                
+
                 try:
-                    # Get the tool function
                     tool = self.tools[tool_name]
                     tool_function = tool["function"]
-                    
-                    # Execute the tool function
-                    result = tool_function(**data)
+                    result = tool_function(**(data or {}))
                     return result
+                except HTTPException:
+                    raise
                 except Exception as e:
                     logger.error(f"Error executing tool {tool_name}: {e}")
-                    
-                    # Capture error with auto-healing system if available
+
                     try:
-                        self._report_tool_error(tool_name, e, data)
+                        self._report_tool_error(tool_name, e, data or {})
                     except Exception as report_error:
                         logger.debug(f"Failed to report error to auto-healing system: {report_error}")
-                    
+
                     raise HTTPException(status_code=500, detail=str(e))
+
+            # Back-compat endpoint (singular)
+            @router.post("/tool/{tool_name}", summary="Generic tool endpoint")
+            async def generic_tool_endpoint(
+                tool_name: str = Path(..., description="The name of the tool to execute"),
+                data: dict = Body({}, description="Tool input data"),
+            ):
+                return await _execute_tool(tool_name, data)
+
+            # Preferred endpoint (plural)
+            @router.post("/tools/{tool_name}", summary="Tool endpoint")
+            async def tool_endpoint(
+                tool_name: str = Path(..., description="The name of the tool to execute"),
+                data: dict = Body({}, description="Tool input data"),
+            ):
+                return await _execute_tool(tool_name, data)
             
             # Log all registered tools
             for name, tool in self.tools.items():
                 logger.debug(f"Registered tool: {name} (accessible at POST /tool/{name})")
             
             # Create a single endpoint for all resources that dynamically dispatches based on the resource URI
-            @router.get("/resource/{resource_uri:path}", summary="Generic resource endpoint")
-            async def generic_resource_endpoint(resource_uri: str = Path(..., description="The URI of the resource to access")):
-                if resource_uri not in self.resources:
+            async def _get_resource(resource_uri: str):
+                if resource_uri not in (self.resources or {}):
                     raise HTTPException(status_code=404, detail=f"Resource '{resource_uri}' not found")
-                
+
                 try:
-                    # Get the resource function
                     resource = self.resources[resource_uri]
                     resource_function = resource["function"]
-                    
-                    # Execute the resource function
                     result = resource_function()
                     return result
+                except HTTPException:
+                    raise
                 except Exception as e:
                     logger.error(f"Error accessing resource {resource_uri}: {e}")
-                    
-                    # Capture error with auto-healing system if available
+
                     try:
                         self._report_resource_error(resource_uri, e)
                     except Exception as report_error:
                         logger.debug(f"Failed to report error to auto-healing system: {report_error}")
-                    
+
                     raise HTTPException(status_code=500, detail=str(e))
+
+            # Back-compat endpoint (singular)
+            @router.get("/resource/{resource_uri:path}", summary="Generic resource endpoint")
+            async def generic_resource_endpoint(
+                resource_uri: str = Path(..., description="The URI of the resource to access"),
+            ):
+                return await _get_resource(resource_uri)
+
+            # Preferred endpoint (plural)
+            @router.get("/resources/{resource_uri:path}", summary="Resource endpoint")
+            async def resource_endpoint(
+                resource_uri: str = Path(..., description="The URI of the resource to access"),
+            ):
+                return await _get_resource(resource_uri)
             
             # Log all registered resources
             for uri, resource in self.resources.items():
@@ -485,8 +539,14 @@ class StandaloneMCP:
                     logger.error(f"Failed to report client error: {e}")
                     return {"status": "error", "message": "Internal server error"}
             
-            # Mount the router
+            # Mount the router (mount_path may be "" when used as a sub-app)
             app.include_router(router, prefix=mount_path)
+
+            # Also register a no-trailing-slash route for direct serving at mount_path
+            # (e.g. GET /mcp) to avoid redirects.
+            normalized = (mount_path or "").rstrip("/")
+            if normalized and normalized != "/":
+                app.add_api_route(normalized, lambda: _server_info(), methods=["GET"], include_in_schema=False)
             
             # Debug: Print all registered routes
             logger.debug(f"FastAPI app created for standalone MCP with routes:")

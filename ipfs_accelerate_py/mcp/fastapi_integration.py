@@ -28,7 +28,9 @@ def integrate_mcp_with_fastapi(app: FastAPI, model_server) -> None:
     
     # Create the MCP server
     logger.info("Creating MCP server for FastAPI integration")
-    mcp_server = create_mcp_server(accelerate_instance=accelerate_instance)
+    # When mounting as a sub-application, avoid internally prefixing routes with
+    # the mount path (prevents /mcp/mcp/... route duplication).
+    mcp_server = create_mcp_server(accelerate_instance=accelerate_instance, mount_path="")
     
     # Mount the MCP application to the FastAPI app
     app.mount("/mcp", mcp_server.app, name="mcp_server")
