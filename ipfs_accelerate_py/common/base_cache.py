@@ -16,6 +16,7 @@ Features:
 """
 
 import json
+import sys
 import logging
 import os
 import time
@@ -485,6 +486,12 @@ class BaseAPICache(ABC):
             if obj is None:
                 return False
             return all(hasattr(obj, name) for name in require)
+
+        # If a test (or embedding application) injected a lightweight stub router
+        # into sys.modules, prefer it to avoid pulling in real IPFS backends.
+        injected = sys.modules.get("ipfs_datasets_py.ipfs_backend_router")
+        if _has_required(injected):
+            return injected
 
         # Try local first.
         try:
