@@ -12,13 +12,13 @@ Environment:
 - IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default:
     ipfs-accelerate-task-queue) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
 - IPFS_DATASETS_PY_TASK_P2P_AUTONAT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT
-- IPFS_DATASETS_PY_TASK_P2P_RELAY (compat, default: 0)
+- IPFS_DATASETS_PY_TASK_P2P_RELAY (compat, default: 1)
     / IPFS_ACCELERATE_PY_TASK_P2P_RELAY
         - Enables Circuit Relay v2 protocol handlers
             (/libp2p/circuit/relay/2.0.0)
 - IPFS_DATASETS_PY_TASK_P2P_RELAY_HOP (compat, default: 0) / IPFS_ACCELERATE_PY_TASK_P2P_RELAY_HOP
     - When enabled alongside *_P2P_RELAY, allow this node to act as a relay (HOP)
-- IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH (compat, default: 0) / IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH
+- IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH
         - Enables DCUtR hole punching protocol handler
             (/libp2p/dcutr)
 - IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (compat) / IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS
@@ -312,7 +312,7 @@ async def _maybe_make_relay_v2(*, host) -> object | None:
     if not _env_bool(
         primary="IPFS_ACCELERATE_PY_TASK_P2P_RELAY",
         compat="IPFS_DATASETS_PY_TASK_P2P_RELAY",
-        default=False,
+        default=True,
     ):
         return None
 
@@ -342,7 +342,7 @@ async def _maybe_make_dcutr(*, host) -> object | None:
     if not _env_bool(
         primary="IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH",
         compat="IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH",
-        default=False,
+        default=True,
     ):
         return None
 

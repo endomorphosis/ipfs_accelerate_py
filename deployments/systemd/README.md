@@ -16,6 +16,12 @@ Install both MCP instances (so two can run on one machine):
 sudo deployments/systemd/install.sh --both
 ```
 
+Install a dedicated libp2p relay (Circuit Relay v2 HOP) on a VPS:
+
+```bash
+sudo deployments/systemd/install.sh --unit ipfs-accelerate-relay.service
+```
+
 Manual install:
 
 ```bash
@@ -102,9 +108,19 @@ sudo ufw allow 9001/tcp
 sudo ufw allow 8080/tcp
 sudo ufw allow 9100/tcp
 sudo ufw allow 9101/tcp
+# Relay VPS unit default port
+sudo ufw allow 9102/tcp
 # mDNS peer discovery (LAN)
 sudo ufw allow 5353/udp
 ```
+
+## VPS Relay Notes
+
+- The relay unit is [deployments/systemd/ipfs-accelerate-relay.service](deployments/systemd/ipfs-accelerate-relay.service).
+- It runs the libp2p TaskQueue service primarily as a libp2p host with Circuit Relay v2 enabled in **HOP** mode.
+- Remote tools/cache RPC are disabled by default on the relay (`IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=0`, `IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=0`).
+- Ensure TCP `9102` is reachable from the internet (security group / firewall).
+- If the VPS has an unusual networking setup, set `IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP` in `/etc/ipfs-accelerate/secrets.env` to the relay's public IP.
 
 ## Troubleshooting
 
