@@ -785,14 +785,19 @@ async def serve_task_queue(
                     await stream.write(json.dumps({"ok": False, "error": "missing_worker_id", "peer_id": peer_id}).encode("utf-8") + b"\n")
                     return
 
-                peer_ident = (remote_peer_id or str(msg.get("peer") or msg.get("peer_id") or worker_id)).strip()
+                claimed_peer_id = str(msg.get("peer") or msg.get("peer_id") or "").strip()
+                # For deterministic scheduling, use the caller-provided peer id
+                # when present (supports multiple logical peers behind one
+                # transport in tests). Still record the transport peer id.
+                peer_ident = (claimed_peer_id or remote_peer_id or worker_id).strip()
                 clock_dict = msg.get("clock") if isinstance(msg.get("clock"), dict) else None
                 _update_peer_state(
                     peer_ident,
                     clock_dict,
                     extra={
                         "worker_id": worker_id,
-                        "peer_hint": str(msg.get("peer") or msg.get("peer_id") or "").strip(),
+                        "peer_hint": claimed_peer_id,
+                        "transport_peer_id": str(remote_peer_id or "").strip(),
                     },
                 )
 
@@ -866,7 +871,8 @@ async def serve_task_queue(
                 return
 
             if op in {"peer.heartbeat", "heartbeat", "peer"}:
-                pid = (remote_peer_id or str(msg.get("peer") or msg.get("peer_id") or "")).strip()
+                claimed_peer_id = str(msg.get("peer") or msg.get("peer_id") or "").strip()
+                pid = (claimed_peer_id or remote_peer_id or "").strip()
                 if not pid:
                     await stream.write(json.dumps({"ok": False, "error": "missing_peer_id", "peer_id": peer_id}).encode("utf-8") + b"\n")
                     return
@@ -874,7 +880,10 @@ async def serve_task_queue(
                 _update_peer_state(
                     pid,
                     clock_dict,
-                    extra={"peer_hint": str(msg.get("peer") or msg.get("peer_id") or "").strip()},
+                    extra={
+                        "peer_hint": claimed_peer_id,
+                        "transport_peer_id": str(remote_peer_id or "").strip(),
+                    },
                 )
                 await stream.write(
                     json.dumps(
