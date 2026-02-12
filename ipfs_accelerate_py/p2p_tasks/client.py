@@ -787,7 +787,12 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
     return None
 
 
-async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> Dict[str, Any]:
+async def _dial_and_request(
+    *,
+    remote: RemoteQueue,
+    message: Dict[str, Any],
+    dial_timeout_s: float = 20.0,
+) -> Dict[str, Any]:
     if not _have_libp2p():
         raise RuntimeError("libp2p is not installed")
 
@@ -811,7 +816,7 @@ async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> 
     async with background_trio_service(host.get_network()):
         await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
-        with anyio.fail_after(20.0):
+        with anyio.fail_after(float(dial_timeout_s)):
             if (remote.multiaddr or "").strip():
                 resp = await _try_peer_multiaddr(
                     host=host,
@@ -1711,10 +1716,26 @@ async def get_task(*, remote: RemoteQueue, task_id: str) -> Optional[Dict[str, A
 
 
 async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.0) -> Optional[Dict[str, Any]]:
-    resp = await _dial_and_request(
-        remote=remote,
-        message={"op": "wait", "task_id": task_id, "timeout_s": float(timeout_s)},
-    )
+    import anyio
+
+    # `wait` is a long-poll RPC: the peer may keep the stream open until the
+    # task completes or until its own timeout fires.
+    dial_timeout_s = max(20.0, float(timeout_s) + 15.0)
+
+    try:
+        resp = await _dial_and_request(
+            remote=remote,
+            message={"op": "wait", "task_id": task_id, "timeout_s": float(timeout_s)},
+            dial_timeout_s=dial_timeout_s,
+        )
+    except TimeoutError:
+        return None
+    except BaseExceptionGroup as eg:
+        # trio/anyio may wrap cancellations/timeouts in an ExceptionGroup.
+        if any(isinstance(e, TimeoutError) for e in eg.exceptions):
+            return None
+        raise
+
     if not resp.get("ok"):
         raise RuntimeError(f"wait failed: {resp}")
     task = resp.get("task")

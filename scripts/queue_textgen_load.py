@@ -24,6 +24,7 @@ import json
 import os
 import sys
 import time
+import traceback
 from typing import Any, Dict, List, Optional, Tuple
 
 
@@ -79,6 +80,54 @@ def _extract_text(value: Any) -> str:
     return str(value)
 
 
+def _exc_to_dict(exc: BaseException, *, max_depth: int = 3, max_children: int = 6) -> Dict[str, Any]:
+    def _one(e: BaseException, depth: int) -> Dict[str, Any]:
+        d: Dict[str, Any] = {
+            "type": type(e).__name__,
+            "message": str(e),
+        }
+
+        # Keep this short; we mainly want the leaf error plus a hint
+        # whether it was a group.
+        try:
+            d["repr"] = repr(e)
+        except Exception:
+            pass
+
+        if depth <= 0:
+            return d
+
+        if isinstance(e, BaseExceptionGroup):
+            children: list[Dict[str, Any]] = []
+            for child in list(getattr(e, "exceptions", []) or [])[:max_children]:
+                if isinstance(child, BaseException):
+                    children.append(_one(child, depth - 1))
+            d["children"] = children
+
+        cause = getattr(e, "__cause__", None)
+        if isinstance(cause, BaseException):
+            d["cause"] = _one(cause, depth - 1)
+
+        ctx = getattr(e, "__context__", None)
+        if isinstance(ctx, BaseException) and ctx is not cause:
+            d["context"] = _one(ctx, depth - 1)
+
+        return d
+
+    try:
+        return _one(exc, max_depth)
+    except Exception:
+        return {"type": type(exc).__name__, "message": str(exc)}
+
+
+def _exc_one_line(exc: BaseException) -> str:
+    # Prefer a stable, compact message.
+    try:
+        return f"{type(exc).__name__}: {exc}"
+    except Exception:
+        return type(exc).__name__
+
+
 async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
     if args.count <= 0:
         raise SystemExit("--count must be > 0")
@@ -112,27 +161,59 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
             payload_base["endpoint_type"] = str(args.endpoint_type)
 
         submitted: list[Dict[str, Any]] = []
+        submit_failures: list[Dict[str, Any]] = []
         submit_lock = anyio.Lock()
         start = time.time()
 
         sem = anyio.Semaphore(concurrency)
 
         async def _submit_one(i: int) -> None:
-            remote = remotes[i % len(remotes)]
+            target_index = i % len(remotes)
+            remote = remotes[target_index]
             payload = dict(payload_base)
             if args.suffix_index:
                 payload["prompt"] = f"{prompt} [{i}]"
             async with sem:
-                tid = await submit_task(remote=remote, task_type=task_type, model_name=model_name, payload=payload)
+                tid: Optional[str] = None
+                submit_error: Optional[BaseException] = None
+
+                retries = max(0, int(getattr(args, "submit_retries", 0) or 0))
+                retry_sleep_s = float(getattr(args, "submit_retry_sleep_s", 0.35) or 0.35)
+
+                for attempt in range(retries + 1):
+                    try:
+                        tid = await submit_task(
+                            remote=remote,
+                            task_type=task_type,
+                            model_name=model_name,
+                            payload=payload,
+                        )
+                        submit_error = None
+                        break
+                    except BaseException as e:
+                        if isinstance(e, (KeyboardInterrupt, SystemExit)):
+                            raise
+                        submit_error = e
+                        if attempt < retries:
+                            await anyio.sleep(max(0.0, retry_sleep_s * (1.5**attempt)))
+
             async with submit_lock:
-                submitted.append(
-                    {
-                        "task_id": str(tid),
-                        "peer_id": str(getattr(remote, "peer_id", "") or ""),
-                        "multiaddr": str(getattr(remote, "multiaddr", "") or ""),
-                        "i": int(i),
-                    }
-                )
+                base_item = {
+                    "task_id": str(tid or ""),
+                    "peer_id": str(getattr(remote, "peer_id", "") or ""),
+                    "multiaddr": str(getattr(remote, "multiaddr", "") or ""),
+                    "i": int(i),
+                    "target_index": int(target_index),
+                }
+                if tid:
+                    base_item["submit_ok"] = True
+                    submitted.append(base_item)
+                else:
+                    base_item["submit_ok"] = False
+                    if submit_error is not None:
+                        base_item["submit_error"] = _exc_to_dict(submit_error)
+                        base_item["submit_error_one_line"] = _exc_one_line(submit_error)
+                    submit_failures.append(base_item)
 
         async with anyio.create_task_group() as tg:
             for i in range(int(args.count)):
@@ -148,6 +229,9 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
             "concurrency": int(concurrency),
             "targets": [{"peer_id": pid, "multiaddr": ma} for (pid, ma) in targets],
             "submitted": submitted,
+            "submit_failed": submit_failures,
+            "submit_ok_count": int(len(submitted)),
+            "submit_failed_count": int(len(submit_failures)),
             "submit_elapsed_s": submit_elapsed_s,
             "wait": bool(args.wait),
         }
@@ -168,11 +252,19 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
             nonlocal completed, failed, timed_out
             peer_id = str(item.get("peer_id") or "")
             task_id = str(item.get("task_id") or "")
-            i = int(item.get("i") or 0)
-            remote = remotes[i % len(remotes)]
+            target_index = int(item.get("target_index") or 0)
+            if target_index < 0 or target_index >= len(remotes):
+                target_index = 0
+            remote = remotes[target_index]
             t0 = time.time()
             async with wait_sem:
-                task = await wait_task(remote=remote, task_id=task_id, timeout_s=float(args.timeout_s))
+                try:
+                    task = await wait_task(remote=remote, task_id=task_id, timeout_s=float(args.timeout_s))
+                except Exception as e:
+                    task = {
+                        "status": "failed",
+                        "error": f"wait_exception: {type(e).__name__}: {e}",
+                    }
             dt = float(time.time() - t0)
             async with results_lock:
                 if task is None:
@@ -276,6 +368,18 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     parser.add_argument("--count", type=int, required=True, help="Total number of tasks to submit")
     parser.add_argument("--concurrency", type=int, default=10, help="Submit/wait concurrency")
+    parser.add_argument(
+        "--submit-retries",
+        type=int,
+        default=0,
+        help="Retries per submit on transient libp2p failures (default: 0).",
+    )
+    parser.add_argument(
+        "--submit-retry-sleep-s",
+        type=float,
+        default=0.35,
+        help="Base sleep between submit retries (default: 0.35s).",
+    )
     parser.add_argument("--wait", action="store_true", help="Wait for completion")
     parser.add_argument("--timeout-s", type=float, default=120.0, help="Per-task wait timeout")
     parser.add_argument(
