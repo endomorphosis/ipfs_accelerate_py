@@ -1,4 +1,4 @@
-s"""
+"""
 IPFS Accelerate Python package.
 
 This package provides a framework for hardware-accelerated machine learning inference
