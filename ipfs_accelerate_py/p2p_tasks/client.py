@@ -196,6 +196,48 @@ def _default_announce_files() -> list[str]:
     ]
 
 
+def _repo_local_announce_files() -> list[str]:
+    # Best-effort: when running from a repo checkout (common for LAN ops),
+    # systemd-friendly deployments write announce state under ./state.
+    try:
+        return [os.path.join(os.getcwd(), "state", "task_p2p_announce.json")]
+    except Exception:
+        return []
+
+
+def _read_announce_peer_id_hint() -> str:
+    # Used to avoid "discovering" and dialing the local node's own TaskQueue
+    # service when using mDNS/DHT/rendezvous for LAN/public discovery.
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE")
+    )
+    if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
+        raw = None
+
+    candidates: list[str] = []
+    if raw is not None and str(raw).strip():
+        candidates.append(str(raw).strip())
+    candidates.extend(_repo_local_announce_files())
+    candidates.extend(_default_announce_files())
+
+    for path in candidates:
+        try:
+            if not path or not os.path.exists(path):
+                continue
+            text = open(path, "r", encoding="utf-8").read().strip()
+            if not text:
+                continue
+            info = json.loads(text)
+            if isinstance(info, dict):
+                pid = str(info.get("peer_id") or "").strip()
+                if pid:
+                    return pid
+        except Exception:
+            continue
+    return ""
+
+
 def _read_announce_multiaddr() -> str:
     raw = (
         os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
@@ -333,17 +375,9 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
 
     mdns = MDNSDiscovery(host.get_network(), port=_mdns_port())
 
-    # Avoid self-dialing (can happen if the local host is advertising via mDNS).
-    self_pid_text = ""
-    try:
-        self_pid = getattr(host, "get_id", None)
-        if callable(self_pid):
-            pid = self_pid()
-        else:
-            pid = getattr(host, "peer_id", None)
-        self_pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
-    except Exception:
-        self_pid_text = ""
+    # Avoid dialing the local node's own TaskQueue service if it is advertising
+    # on the LAN (common when both client+server run on the same box).
+    exclude_peer_id = _read_announce_peer_id_hint()
 
     try:
         deadline = anyio.current_time() + max(0.1, discover_timeout_s)
@@ -356,7 +390,7 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
 
                 if pid_text in attempted:
                     continue
-                if self_pid_text and pid_text == self_pid_text:
+                if exclude_peer_id and pid_text == exclude_peer_id:
                     attempted.add(pid_text)
                     continue
                 if require_peer_id and pid_text != require_peer_id:
@@ -410,6 +444,8 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
         default="ipfs-accelerate-task-queue",
     )
 
+    exclude_peer_id = "" if require_peer_id else _read_announce_peer_id_hint()
+
     candidates = [
         ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
         ("libp2p.discovery.rendezvous", "RendezvousClient"),
@@ -438,6 +474,8 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
                     pid = getattr(peer_info, "peer_id", None)
                     pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
                     if require_peer_id and pid_text != require_peer_id:
+                        continue
+                    if exclude_peer_id and pid_text and pid_text == exclude_peer_id:
                         continue
                     await host.connect(peer_info)
                     stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
@@ -470,6 +508,8 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
         default="ipfs-accelerate-task-queue",
     )
     ns_key = _dht_key_for_namespace(ns)
+
+    exclude_peer_id = "" if require_peer_id else _read_announce_peer_id_hint()
 
     candidates = [
         ("libp2p.kad_dht.kad_dht", "KadDHT"),
@@ -538,6 +578,13 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                         providers = await find_providers(ns, 20)
                     for peer_info in list(providers or []):
                         try:
+                            try:
+                                pid = getattr(peer_info, "peer_id", None)
+                                pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                            except Exception:
+                                pid_text = ""
+                            if exclude_peer_id and pid_text and pid_text == exclude_peer_id:
+                                continue
                             await host.connect(peer_info)
                             stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
                             try:
