@@ -23,6 +23,7 @@ Environment:
 from __future__ import annotations
 
 import json
+import functools
 import os
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
@@ -130,10 +131,120 @@ def _parse_bootstrap_peers() -> list[str]:
     ]
     text = str(raw).strip() if raw is not None else ""
     if not text:
-        return list(default)
+        return _expand_dnsaddr_peers(list(default))
 
     parts = [p.strip() for p in text.split(",")]
-    return [p for p in parts if p]
+    return _expand_dnsaddr_peers([p for p in parts if p])
+
+
+def _dnsaddr_resolution_enabled() -> bool:
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE")
+    )
+    if raw is None:
+        return True
+    return str(raw).strip().lower() not in {"0", "false", "no", "off"}
+
+
+@functools.lru_cache(maxsize=32)
+def _resolve_dnsaddr_txt(hostname: str) -> list[str]:
+    if not hostname or not _dnsaddr_resolution_enabled():
+        return []
+
+    try:
+        import dns.resolver  # type: ignore
+    except Exception:
+        return []
+
+    qname = f"_dnsaddr.{hostname.strip().strip('.')}"
+    try:
+        resolver = dns.resolver.Resolver()
+        resolver.lifetime = 2.5
+        answers = resolver.resolve(qname, "TXT")
+    except Exception:
+        return []
+
+    out: list[str] = []
+    for rdata in answers:
+        try:
+            txt = "".join(str(rdata).strip().strip('"').split('" "'))
+        except Exception:
+            continue
+        txt = (txt or "").strip()
+        if not txt.startswith("dnsaddr="):
+            continue
+        ma = txt[len("dnsaddr=") :].strip()
+        if ma:
+            out.append(ma)
+    return out
+
+
+def _expand_dnsaddr_peers(peers: list[str]) -> list[str]:
+    if not peers or not _dnsaddr_resolution_enabled():
+        return list(peers or [])
+
+    def _expand_one(text: str, *, depth: int, seen_dns: set[str]) -> list[str]:
+        text = str(text or "").strip()
+        if not text:
+            return []
+        if depth <= 0 or not text.startswith("/dnsaddr/"):
+            return [text]
+
+        if text in seen_dns:
+            return [text]
+        seen_dns.add(text)
+
+        remainder = text[len("/dnsaddr/") :]
+        host = remainder
+        peer_id = ""
+        if "/p2p/" in remainder:
+            host, peer_id = remainder.split("/p2p/", 1)
+            peer_id = peer_id.strip().strip("/")
+        host = (host or "").strip().strip("/")
+
+        candidates = _resolve_dnsaddr_txt(host)
+        if peer_id:
+            candidates = [ma for ma in candidates if f"/p2p/{peer_id}" in str(ma)]
+
+        def _candidate_score(addr: str) -> tuple[int, int, int, int]:
+            a = str(addr or "")
+            has_tcp = 0 if "/tcp/" in a else 1
+            is_ws = 1 if ("/ws" in a or "/wss" in a) else 0
+            port_pref = 0 if "/tcp/4001" in a else 1
+            if a.startswith("/ip4/"):
+                net = 0
+            elif a.startswith("/ip6/"):
+                net = 1
+            elif a.startswith("/dns4/"):
+                net = 2
+            elif a.startswith("/dns6/"):
+                net = 3
+            else:
+                net = 4
+            return (has_tcp, is_ws, port_pref, net)
+
+        candidates = sorted([str(ma) for ma in candidates if str(ma).strip()], key=_candidate_score)
+
+        out: list[str] = []
+        if not candidates:
+            return [text]
+        for ma in candidates:
+            out.extend(_expand_one(str(ma), depth=depth - 1, seen_dns=seen_dns))
+        return out
+
+    expanded: list[str] = []
+    for peer_addr in peers:
+        expanded.extend(_expand_one(str(peer_addr), depth=3, seen_dns=set()))
+
+    seen: set[str] = set()
+    out: list[str] = []
+    for ma in expanded:
+        if not ma or ma in seen:
+            continue
+        seen.add(ma)
+        out.append(ma)
+    return out
 
 
 def _bootstrap_peers_explicitly_configured() -> bool:
