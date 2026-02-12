@@ -89,6 +89,21 @@ def _parse_bootstrap_peers() -> list[str]:
     return [p for p in parts if p]
 
 
+def _bootstrap_peers_explicitly_configured() -> bool:
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS")
+    )
+    if raw is None:
+        return False
+    text = str(raw).strip().lower()
+    if not text:
+        return False
+    if text in {"0", "false", "no", "off"}:
+        return False
+    return True
+
+
 async def _best_effort_connect_multiaddrs(*, host, addrs: list[str]) -> None:
     if not addrs:
         return
@@ -196,6 +211,11 @@ async def _try_peer_multiaddr(*, host, peer_multiaddr: str, message: Dict[str, A
 
 
 async def _dial_via_bootstrap(*, host, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    # Only attempt direct dialing of "bootstrap" peers when the user explicitly
+    # configured them as TaskQueue endpoints. The default public libp2p bootstrap
+    # set is meant for DHT routing, not for speaking our application protocol.
+    if not _bootstrap_peers_explicitly_configured():
+        return None
     for addr in _parse_bootstrap_peers():
         try:
             resp = await _try_peer_multiaddr(host=host, peer_multiaddr=addr, message=message)

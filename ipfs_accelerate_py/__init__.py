@@ -11,22 +11,25 @@ with IPFS network-based distribution and acceleration. Key features include:
 - Cross-platform support
 """
 
+import os
+import sys
+from pathlib import Path
+
+SKIP_CORE = os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") == "1"
+
 # Import original components
 try:
     from .container_backends import backends
 except Exception:
     backends = None
 
-try:
-    from .install_depends import install_depends
-except Exception:
+if not SKIP_CORE:
+    try:
+        from .install_depends import install_depends
+    except Exception:
+        install_depends = None
+else:
     install_depends = None
-
-import os
-import sys
-from pathlib import Path
-
-SKIP_CORE = os.environ.get("IPFS_ACCEL_SKIP_CORE", "0") == "1"
 
 def _add_external_package(package_name: str) -> None:
     """Ensure external bundled packages are importable without pip install."""
@@ -176,39 +179,53 @@ export = {
     "model_manager_available": model_manager_available
 }
 
-# Add CLI entry point for package access
-try:
-    from .cli_entry import main as cli_main
-    export["cli_main"] = cli_main
-except ImportError:
-    cli_main = None
+if not SKIP_CORE:
+    # Add CLI entry point for package access
+    try:
+        from .cli_entry import main as cli_main
 
-# Add system logs access
-try:
-    from .logs import get_system_logs, SystemLogs
-    export["get_system_logs"] = get_system_logs
-    export["SystemLogs"] = SystemLogs
-except ImportError:
+        export["cli_main"] = cli_main
+    except ImportError:
+        cli_main = None
+
+    # Add system logs access
+    try:
+        from .logs import get_system_logs, SystemLogs
+
+        export["get_system_logs"] = get_system_logs
+        export["SystemLogs"] = SystemLogs
+    except ImportError:
+        get_system_logs = None
+        SystemLogs = None
+
+    # Add P2P workflow scheduler access
+    try:
+        from .p2p_workflow_scheduler import (
+            P2PWorkflowScheduler,
+            P2PTask,
+            WorkflowTag,
+            MerkleClock,
+            FibonacciHeap,
+            calculate_hamming_distance,
+        )
+
+        export["P2PWorkflowScheduler"] = P2PWorkflowScheduler
+        export["P2PTask"] = P2PTask
+        export["WorkflowTag"] = WorkflowTag
+        export["MerkleClock"] = MerkleClock
+        export["FibonacciHeap"] = FibonacciHeap
+        export["calculate_hamming_distance"] = calculate_hamming_distance
+    except ImportError:
+        P2PWorkflowScheduler = None
+        P2PTask = None
+        WorkflowTag = None
+        MerkleClock = None
+        FibonacciHeap = None
+        calculate_hamming_distance = None
+else:
+    cli_main = None
     get_system_logs = None
     SystemLogs = None
-
-# Add P2P workflow scheduler access
-try:
-    from .p2p_workflow_scheduler import (
-        P2PWorkflowScheduler,
-        P2PTask,
-        WorkflowTag,
-        MerkleClock,
-        FibonacciHeap,
-        calculate_hamming_distance
-    )
-    export["P2PWorkflowScheduler"] = P2PWorkflowScheduler
-    export["P2PTask"] = P2PTask
-    export["WorkflowTag"] = WorkflowTag
-    export["MerkleClock"] = MerkleClock
-    export["FibonacciHeap"] = FibonacciHeap
-    export["calculate_hamming_distance"] = calculate_hamming_distance
-except ImportError:
     P2PWorkflowScheduler = None
     P2PTask = None
     WorkflowTag = None
