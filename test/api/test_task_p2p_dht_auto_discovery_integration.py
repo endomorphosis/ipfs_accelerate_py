@@ -202,6 +202,7 @@ def test_task_p2p_dht_auto_discovery_allows_tools_cache_and_tasks(tmp_path, monk
 		# Client discovery config: use the bootstrap peer, but no announce-file
 		# and no peer multiaddr.
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS", bootstrap_ma)
+		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_DIAL", "0")
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE", "0")
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_DHT", "1")
 		monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS", "0")

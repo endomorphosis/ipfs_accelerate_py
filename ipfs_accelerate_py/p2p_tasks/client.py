@@ -7,6 +7,9 @@ Supports:
 
 Environment:
 - IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (comma-separated multiaddrs)
+- IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_DIAL (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_DIAL
+    - when enabled, the client will try to speak the TaskQueue protocol to configured bootstrap peers
+    - when disabled, bootstrap peers are used only for DHT routing-table seeding
 - IPFS_DATASETS_PY_TASK_P2P_DISCOVERY_TIMEOUT_S (compat, default: 5) / IPFS_ACCELERATE_PY_TASK_P2P_DISCOVERY_TIMEOUT_S
 - IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT (compat, default: 9710)
     / IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT (used for mDNS)
@@ -262,6 +265,19 @@ def _bootstrap_peers_explicitly_configured() -> bool:
     return True
 
 
+def _bootstrap_dial_enabled() -> bool:
+    # By default, preserve existing behavior: if bootstrap peers are explicitly
+    # configured, attempt to dial them as TaskQueue endpoints.
+    #
+    # Operators/tests that use bootstrap peers *only* for DHT routing-table
+    # seeding should set this to 0 to avoid slow protocol negotiation timeouts.
+    return _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_DIAL",
+        compat="IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_DIAL",
+        default=True,
+    )
+
+
 async def _best_effort_connect_multiaddrs(*, host, addrs: list[str]) -> None:
     if not addrs:
         return
@@ -427,6 +443,8 @@ async def _dial_via_bootstrap(*, host, message: Dict[str, Any]) -> Optional[Dict
     # configured them as TaskQueue endpoints. The default public libp2p bootstrap
     # set is meant for DHT routing, not for speaking our application protocol.
     if not _bootstrap_peers_explicitly_configured():
+        return None
+    if not _bootstrap_dial_enabled():
         return None
     for addr in _parse_bootstrap_peers():
         try:
@@ -912,7 +930,7 @@ async def discover_status(
             await _record(method="announce-file", ok=False, error="no_announce_multiaddr")
 
         # 3) Direct dialing of explicitly configured bootstrap peers
-        if _bootstrap_peers_explicitly_configured():
+        if _bootstrap_peers_explicitly_configured() and _bootstrap_dial_enabled():
             for ma in _parse_bootstrap_peers():
                 if time.time() > deadline:
                     await _record(method="bootstrap", ok=False, error="timeout")
@@ -920,6 +938,8 @@ async def discover_status(
                 resp = await _try_multiaddr("bootstrap", ma)
                 if resp is not None:
                     return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
+        elif _bootstrap_peers_explicitly_configured() and not _bootstrap_dial_enabled():
+            await _record(method="bootstrap", ok=False, error="disabled")
         else:
             await _record(method="bootstrap", ok=False, error="not_explicitly_configured")
 
