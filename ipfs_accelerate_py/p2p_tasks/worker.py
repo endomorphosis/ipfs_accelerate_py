@@ -1143,85 +1143,85 @@ def run_worker(
                 time.sleep(max(0.05, float(poll_interval_s)))
                 continue
 
-        # Generic heartbeat/progress so peers can observe long-running tasks via
-        # RPC get/wait polling even for non-docker handlers.
-        stop_hb = threading.Event()
+            # Generic heartbeat/progress so peers can observe long-running tasks via
+            # RPC get/wait polling even for non-docker handlers.
+            stop_hb = threading.Event()
 
-        def _task_hb() -> None:
-            while not stop_hb.is_set():
-                try:
-                    queue.update(
-                        task_id=task.task_id,
-                        status="running",
-                        result_patch={
-                            "progress": {
-                                "heartbeat_ts": time.time(),
-                                "worker_id": str(worker_id),
-                                "task_type": str(task.task_type),
-                            }
-                        },
-                    )
-                except Exception:
-                    pass
-                stop_hb.wait(0.5)
+            def _task_hb() -> None:
+                while not stop_hb.is_set():
+                    try:
+                        queue.update(
+                            task_id=task.task_id,
+                            status="running",
+                            result_patch={
+                                "progress": {
+                                    "heartbeat_ts": time.time(),
+                                    "worker_id": str(worker_id),
+                                    "task_type": str(task.task_type),
+                                }
+                            },
+                        )
+                    except Exception:
+                        pass
+                    stop_hb.wait(0.5)
 
-        # Also mark initial start.
-        try:
-            queue.update(
-                task_id=task.task_id,
-                status="running",
-                result_patch={
-                    "progress": {
-                        "phase": "starting",
-                        "ts": time.time(),
-                        "worker_id": str(worker_id),
-                        "task_type": str(task.task_type),
-                    }
-                },
-            )
-        except Exception:
-            pass
-
-        hb_thread = threading.Thread(target=_task_hb, name=f"task_hb[{task.task_id}]", daemon=True)
-        hb_thread.start()
-
-        result: Dict[str, Any] | None = None
-        error: str | None = None
-        status: str = "failed"
-        try:
-            ttype = str(task.task_type or "").strip().lower()
-            handler = handlers.get(ttype)
-            if handler is None:
-                status = "failed"
-                error = f"Unsupported task_type: {task.task_type}"
-            else:
-                result = handler(
-                    {
-                        "task_id": task.task_id,
-                        "task_type": task.task_type,
-                        "model_name": task.model_name,
-                        "payload": task.payload,
-                    }
-                )
-                status = "completed"
-        except Exception as exc:
-            status = "failed"
-            error = str(exc)
-        finally:
-            # Stop heartbeat before completing to avoid DuckDB write conflicts.
-            stop_hb.set()
+            # Also mark initial start.
             try:
-                hb_thread.join(timeout=0.5)
+                queue.update(
+                    task_id=task.task_id,
+                    status="running",
+                    result_patch={
+                        "progress": {
+                            "phase": "starting",
+                            "ts": time.time(),
+                            "worker_id": str(worker_id),
+                            "task_type": str(task.task_type),
+                        }
+                    },
+                )
             except Exception:
                 pass
 
-        if status == "completed":
-            queue.complete(task_id=task.task_id, status="completed", result=result or {})
-        else:
-            queue.complete(task_id=task.task_id, status="failed", error=error or "unknown error")
+            hb_thread = threading.Thread(target=_task_hb, name=f"task_hb[{task.task_id}]", daemon=True)
+            hb_thread.start()
 
-        if once:
-            return 0
+            result: Dict[str, Any] | None = None
+            error: str | None = None
+            status: str = "failed"
+            try:
+                ttype = str(task.task_type or "").strip().lower()
+                handler = handlers.get(ttype)
+                if handler is None:
+                    status = "failed"
+                    error = f"Unsupported task_type: {task.task_type}"
+                else:
+                    result = handler(
+                        {
+                            "task_id": task.task_id,
+                            "task_type": task.task_type,
+                            "model_name": task.model_name,
+                            "payload": task.payload,
+                        }
+                    )
+                    status = "completed"
+            except Exception as exc:
+                status = "failed"
+                error = str(exc)
+            finally:
+                # Stop heartbeat before completing to avoid DuckDB write conflicts.
+                stop_hb.set()
+                try:
+                    hb_thread.join(timeout=0.5)
+                except Exception:
+                    pass
+
+            if status == "completed":
+                queue.complete(task_id=task.task_id, status="completed", result=result or {})
+            else:
+                queue.complete(task_id=task.task_id, status="failed", error=error or "unknown error")
+
+            if once:
+                return 0
     finally:
         if mesh_enabled:
             mesh_stop.set()
