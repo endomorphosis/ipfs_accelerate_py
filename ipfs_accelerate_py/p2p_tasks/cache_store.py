@@ -14,6 +14,18 @@ def _truthy(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _repo_root() -> Path:
+    """Best-effort repo root for writable state paths.
+
+    This module lives at `<repo>/ipfs_accelerate_py/p2p_tasks/cache_store.py`.
+    """
+
+    try:
+        return Path(__file__).resolve().parents[2]
+    except Exception:
+        return Path(os.getcwd()).resolve()
+
+
 def _key_digest(key: str) -> str:
     return hashlib.sha256(str(key).encode("utf-8")).hexdigest()
 
@@ -146,6 +158,12 @@ def default_cache_dir() -> Path:
     )
     if raw and str(raw).strip():
         return Path(str(raw)).expanduser()
+
+    # When running under `ipfs-accelerate mcp start` with the unified TaskQueue
+    # p2p transport enabled, the systemd unit may use ProtectHome=read-only.
+    # Prefer a repo-local writable directory under `state/`.
+    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE")):
+        return _repo_root() / "state" / "cache" / "p2p_cache"
 
     xdg_cache = os.environ.get("XDG_CACHE_HOME")
     if xdg_cache and str(xdg_cache).strip():

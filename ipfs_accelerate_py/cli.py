@@ -367,6 +367,13 @@ class IPFSAccelerateCLI:
         except Exception:
             return "state/task_queue.duckdb"
 
+    def _repo_state_p2p_cache_dir(self) -> str:
+        try:
+            repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+            return os.path.join(repo_root, "state", "cache", "p2p_cache")
+        except Exception:
+            return os.path.join("state", "cache", "p2p_cache")
+
     def _maybe_start_taskqueue_p2p_from_env(self) -> None:
         """Start TaskQueue libp2p service when enabled via env.
 
@@ -403,6 +410,10 @@ class IPFSAccelerateCLI:
 
         os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(listen_port))
         os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(listen_port))
+
+        # Ensure p2p cache writes go to a writable location under systemd.
+        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_DIR", self._repo_state_p2p_cache_dir())
+        os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_CACHE_DIR", self._repo_state_p2p_cache_dir())
 
         # When hosting the TaskQueue p2p service, prefer using it for cache
         # sharing rather than starting a second libp2p host.
