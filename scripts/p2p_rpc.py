@@ -27,13 +27,15 @@ Note: requires optional dependency `libp2p` (install with: `pip install -e '.[li
 from __future__ import annotations
 
 import argparse
+import contextlib
 import importlib.util
 import json
 import os
 import sys
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, TYPE_CHECKING
 
-from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+if TYPE_CHECKING:
+    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
 
 
 def _load_announce(path: str) -> Dict[str, Any]:
@@ -63,38 +65,6 @@ def _parse_json_any(text: str, *, flag: str) -> Any:
         return json.loads(text)
     except json.JSONDecodeError as exc:
         raise SystemExit(f"{flag} must be valid JSON: {exc}")
-
-
-def _remote_from_args(args: argparse.Namespace) -> RemoteQueue:
-    multiaddr = str(getattr(args, "multiaddr", "") or "").strip()
-    peer_id = str(getattr(args, "peer_id", "") or "").strip()
-
-    announce_file = str(getattr(args, "announce_file", "") or "").strip()
-    if announce_file and not multiaddr:
-        info = _load_announce(announce_file)
-        multiaddr = str(info.get("multiaddr") or "").strip()
-        if not peer_id:
-            peer_id = str(info.get("peer_id") or "").strip()
-
-    if not multiaddr:
-        env_announce = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
-            "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
-        )
-        if env_announce:
-            info = _load_announce(env_announce)
-            multiaddr = str(info.get("multiaddr") or "").strip()
-            if not peer_id:
-                peer_id = str(info.get("peer_id") or "").strip()
-
-    if not multiaddr:
-        # Allow zero-config discovery.
-        # When multiaddr is empty, the TaskQueue client will try (in order):
-        #   announce-file -> explicitly configured bootstrap peers -> rendezvous -> DHT -> mDNS
-        # This enables cross-box operation without pre-sharing multiaddrs, as long as
-        # both peers can participate in at least one shared discovery mechanism.
-        return RemoteQueue(peer_id=peer_id, multiaddr="")
-
-    return RemoteQueue(peer_id=peer_id, multiaddr=multiaddr)
 
 
 def _print_result(result: Any, *, pretty: bool) -> None:
@@ -216,19 +186,56 @@ def main(argv: Optional[list[str]] = None) -> int:
         return 2
 
     try:
+        # Redirect noisy import-time stdout from optional subsystems to stderr so
+        # stdout remains JSON-only and pipe-friendly.
+        with contextlib.redirect_stdout(sys.stderr):
+            from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+
+        def _remote_from_args(args: argparse.Namespace) -> RemoteQueue:
+            multiaddr = str(getattr(args, "multiaddr", "") or "").strip()
+            peer_id = str(getattr(args, "peer_id", "") or "").strip()
+
+            announce_file = str(getattr(args, "announce_file", "") or "").strip()
+            if announce_file and not multiaddr:
+                info = _load_announce(announce_file)
+                multiaddr = str(info.get("multiaddr") or "").strip()
+                if not peer_id:
+                    peer_id = str(info.get("peer_id") or "").strip()
+
+            if not multiaddr:
+                env_announce = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or os.environ.get(
+                    "IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE"
+                )
+                if env_announce:
+                    info = _load_announce(env_announce)
+                    multiaddr = str(info.get("multiaddr") or "").strip()
+                    if not peer_id:
+                        peer_id = str(info.get("peer_id") or "").strip()
+
+            if not multiaddr:
+                # Allow zero-config discovery.
+                # When multiaddr is empty, the TaskQueue client will try (in order):
+                #   announce-file -> explicitly configured bootstrap peers -> rendezvous -> DHT -> mDNS
+                # This enables cross-box operation without pre-sharing multiaddrs, as long as
+                # both peers can participate in at least one shared discovery mechanism.
+                return RemoteQueue(peer_id=peer_id, multiaddr="")
+
+            return RemoteQueue(peer_id=peer_id, multiaddr=multiaddr)
+
         remote = _remote_from_args(args)
 
-        from ipfs_accelerate_py.p2p_tasks.client import (
-            cache_delete_sync,
-            cache_get_sync,
-            cache_has_sync,
-            cache_set_sync,
-            call_tool_sync,
-            discover_status_sync,
-            list_tasks_sync,
-            request_status_sync,
-            submit_task_sync,
-        )
+        with contextlib.redirect_stdout(sys.stderr):
+            from ipfs_accelerate_py.p2p_tasks.client import (
+                cache_delete_sync,
+                cache_get_sync,
+                cache_has_sync,
+                cache_set_sync,
+                call_tool_sync,
+                discover_status_sync,
+                list_tasks_sync,
+                request_status_sync,
+                submit_task_sync,
+            )
 
         if args.cmd == "discover":
             result = discover_status_sync(remote=remote, timeout_s=float(args.timeout), detail=bool(args.detail))
