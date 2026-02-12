@@ -67,7 +67,8 @@ test_screenshots/*.jpeg
 test_outputs
 transformers_docs_build
 test/doc-builder
-
+state/cache/
+state/cache/*
 # Refactored screenshot/test output directories in data folder
 data/test_screenshots/
 data/screenshots/
