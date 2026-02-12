@@ -478,9 +478,16 @@ async def _dial_and_request(*, remote: RemoteQueue, message: Dict[str, Any]) -> 
 
     import anyio
     import inspect
+    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
     from libp2p import new_host
     from multiaddr import Multiaddr
     from libp2p.tools.async_service import background_trio_service
+
+    if not ensure_libp2p_compatible():
+        raise RuntimeError(
+            "libp2p is installed but dependency compatibility patches could not be applied. "
+            "This environment likely has an incompatible `multihash` module."
+        )
 
     host_obj = new_host()
     host = await host_obj if inspect.isawaitable(host_obj) else host_obj

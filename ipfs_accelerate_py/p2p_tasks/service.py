@@ -545,6 +545,14 @@ async def serve_task_queue(
                 continue
         return None
 
+    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
+
+    if not ensure_libp2p_compatible():
+        raise RuntimeError(
+            "libp2p is installed but dependency compatibility patches could not be applied. "
+            "This environment likely has an incompatible `multihash` module."
+        )
+
     print("ipfs_accelerate_py task queue p2p service: creating host...", file=sys.stderr, flush=True)
     host_obj = new_host()
     host = await host_obj if inspect.isawaitable(host_obj) else host_obj
