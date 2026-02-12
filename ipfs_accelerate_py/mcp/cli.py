@@ -35,6 +35,13 @@ def main():
         default=9000, 
         help="Port to listen on (default: 9000)"
     )
+
+    parser.add_argument(
+        "--mcp-p2p-port",
+        type=int,
+        default=int(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT", "9100")),
+        help="libp2p port for MCP-adjacent P2P services (default: 9100)",
+    )
     parser.add_argument(
         "--log-level", 
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
@@ -92,6 +99,14 @@ def main():
     # Parse arguments
     args = parser.parse_args()
 
+    # When running under MCP/systemd, standardize on a single "MCP p2p port"
+    # unless the caller explicitly set a TaskQueue listen port.
+    if args.p2p_listen_port is None and getattr(args, "mcp_p2p_port", None):
+        # Only apply this when we will actually start the p2p TaskQueue service.
+        # (Otherwise leave defaults untouched for pure-HTTP usage.)
+        if args.p2p_service or str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") or "").strip().lower() in {"1", "true", "yes", "on"}:
+            args.p2p_listen_port = int(args.mcp_p2p_port)
+
     # Allow systemd to toggle p2p features via env without changing unit args.
     if not args.p2p_service:
         env_p2p_service = os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE")
@@ -108,6 +123,18 @@ def main():
 
     if args.p2p_enable_tools:
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS"] = "1"
+
+    # Cache integration: when hosting the TaskQueue p2p service, prefer to share
+    # GitHub cache entries via the TaskQueue cache.get/set RPC (single libp2p
+    # port) rather than starting a second libp2p host in the GitHub cache.
+    if args.p2p_service:
+        # Enable discovery-based task-p2p cache usage for the GitHub API cache.
+        os.environ.setdefault("IPFS_ACCELERATE_PY_GITHUB_CACHE_TASK_P2P_DISCOVERY", "1")
+
+        # Avoid port conflicts when the GitHub cache would otherwise try to
+        # listen on the same port.
+        if "CACHE_ENABLE_P2P" not in os.environ:
+            os.environ["CACHE_ENABLE_P2P"] = "false"
     
     # Set log level
     logging.getLogger().setLevel(getattr(logging, args.log_level))

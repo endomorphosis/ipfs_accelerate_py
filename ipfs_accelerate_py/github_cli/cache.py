@@ -968,8 +968,22 @@ class GitHubAPICache:
             or ""
         ).strip()
 
+        # Optional: allow the GitHub API cache to reuse the TaskQueue libp2p cache
+        # without pinning to a specific peer. In this mode, the p2p_tasks client
+        # uses its discovery cascade (announce/rendezvous/DHT/mDNS) to find a
+        # TaskQueue service.
+        discover_raw = (
+            os.environ.get("IPFS_ACCELERATE_PY_GITHUB_CACHE_TASK_P2P_DISCOVERY")
+            or os.environ.get("IPFS_DATASETS_PY_GITHUB_CACHE_TASK_P2P_DISCOVERY")
+            or ""
+        )
+        discover_enabled = str(discover_raw).strip().lower() in {"1", "true", "yes", "on"}
+
         if not remote_multiaddr and not remote_peer_id:
-            return None
+            if not discover_enabled:
+                return None
+            remote_peer_id = ""
+            remote_multiaddr = ""
 
         from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
 
@@ -1133,9 +1147,39 @@ class GitHubAPICache:
                 "max_cache_size": self.max_cache_size,
                 "api_calls_saved": api_calls_saved,
                 "p2p_enabled": self.enable_p2p,
+                "task_p2p_cache_enabled": bool(getattr(self, "enable_task_p2p_cache", False)),
                 "content_addressing_available": HAVE_MULTIFORMATS,
                 "cache_dir": str(self.cache_dir) if self.enable_persistence else "",
             }
+
+            # Report task-p2p remote mode (explicit/discovery/disabled) for operator visibility.
+            try:
+                if not bool(getattr(self, "enable_task_p2p_cache", False)):
+                    stats["task_p2p_cache_mode"] = "disabled"
+                else:
+                    has_explicit = bool(
+                        (
+                            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_MULTIADDR")
+                            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_MULTIADDR")
+                            or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_PEER_ID")
+                            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_PEER_ID")
+                        )
+                        or ""
+                    )
+                    discover_raw = (
+                        os.environ.get("IPFS_ACCELERATE_PY_GITHUB_CACHE_TASK_P2P_DISCOVERY")
+                        or os.environ.get("IPFS_DATASETS_PY_GITHUB_CACHE_TASK_P2P_DISCOVERY")
+                        or ""
+                    )
+                    discover_enabled = str(discover_raw).strip().lower() in {"1", "true", "yes", "on"}
+                    if has_explicit:
+                        stats["task_p2p_cache_mode"] = "explicit"
+                    elif discover_enabled:
+                        stats["task_p2p_cache_mode"] = "discovery"
+                    else:
+                        stats["task_p2p_cache_mode"] = "unconfigured"
+            except Exception:
+                pass
 
             # Best-effort disk stats for dashboard/debugging.
             if self.enable_persistence:
