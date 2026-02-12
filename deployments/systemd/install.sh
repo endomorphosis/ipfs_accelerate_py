@@ -72,7 +72,7 @@ patch_unit_user_group() {
 
   local tmp
   tmp="$(mktemp)"
-  trap 'rm -f "${tmp}"' RETURN
+  trap '[[ -n "${tmp:-}" ]] && rm -f "${tmp}"' RETURN
 
   local home
   home="$(infer_home "${user}")"
