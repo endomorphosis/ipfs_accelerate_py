@@ -87,6 +87,14 @@ def register_all_tools(mcp: Any) -> None:
                 logger.debug("Registered GitHub CLI tools")
             except Exception as e:
                 logger.warning(f"GitHub CLI tools not registered: {e}")
+
+            # Register p2p TaskQueue tools
+            try:
+                from .p2p_taskqueue import register_tools as register_p2p_taskqueue_tools
+                register_p2p_taskqueue_tools(mcp)
+                logger.debug("Registered p2p TaskQueue tools")
+            except Exception as e:
+                logger.warning(f"p2p TaskQueue tools not registered: {e}")
             
             # Register Docker tools
             try:
