@@ -5,14 +5,11 @@ This module provides Python wrappers for GitHub Copilot CLI commands,
 enabling AI-assisted development features with caching and retry logic.
 """
 
-import json
 import logging
-import os
 import subprocess
 import time
 import random
 from typing import Any, Dict, List, Optional
-from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
