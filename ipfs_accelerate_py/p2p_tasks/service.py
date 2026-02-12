@@ -221,10 +221,18 @@ def _detect_outbound_ipv4() -> str:
     return "127.0.0.1"
 
 
-def _dht_key_for_namespace(ns: str) -> bytes:
-    # Some py-libp2p KadDHT builds expect the provide/find_providers key to be
-    # bytes-like (and will call `.hex()` on it). Passing a str can crash.
-    return str(ns or "").encode("utf-8")
+def _dht_key_for_namespace(ns: str) -> str:
+    # Newer py-libp2p KadDHT expects a string key for provide/find_providers and
+    # put_value/get_value. Older builds may accept bytes; callers should
+    # best-effort fall back when needed.
+    return str(ns or "").strip()
+
+
+def _dht_value_record_key(ns: str) -> str:
+    # Deterministic DHT key for "namespace -> service multiaddr" record.
+    # This supplements provider records (which can be flaky in tiny test nets).
+    key = _dht_key_for_namespace(ns)
+    return f"/ipfs-accelerate/task-queue/ns/{key}" if key else "/ipfs-accelerate/task-queue/ns"
 
 
 async def _maybe_start_autonat(*, host) -> object | None:
@@ -1441,37 +1449,66 @@ async def serve_task_queue(
 
                         tg.start_soon(_run_dht_service)
                         provide = getattr(dht, "provide", None)
-                        if callable(provide):
+                        put_value = getattr(dht, "put_value", None)
+                        if callable(provide) or callable(put_value):
                             try:
-                                async def _provide_once() -> bool:
-                                    try:
-                                        await provide(_dht_key_for_namespace(rendezvous_ns))
-                                        return True
-                                    except Exception:
+                                ns_key = _dht_key_for_namespace(rendezvous_ns)
+                                record_key = _dht_value_record_key(rendezvous_ns)
+
+                                def _record_value_bytes() -> bytes:
+                                    payload = {
+                                        "peer_id": str(peer_id or ""),
+                                        "multiaddr": str(announced or ""),
+                                        "ts": float(time.time()),
+                                    }
+                                    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+                                async def _publish_once() -> bool:
+                                    ok_local = False
+
+                                    if callable(provide):
+                                        # Prefer string keys; fall back to bytes for older builds.
                                         try:
-                                            # Best-effort compatibility: older libp2p may accept str keys.
-                                            await provide(rendezvous_ns)
-                                            return True
+                                            await provide(ns_key)
+                                            ok_local = True
                                         except Exception:
-                                            return False
+                                            try:
+                                                await provide(ns_key.encode("utf-8"))
+                                                ok_local = True
+                                            except Exception:
+                                                pass
+
+                                    if callable(put_value):
+                                        try:
+                                            await put_value(record_key, _record_value_bytes())
+                                            ok_local = True
+                                        except Exception:
+                                            # Some builds may accept bytes-like keys.
+                                            try:
+                                                await put_value(record_key.encode("utf-8"), _record_value_bytes())
+                                                ok_local = True
+                                            except Exception:
+                                                pass
+
+                                    return bool(ok_local)
 
                                 # Give the DHT service a chance to start and
                                 # populate routing state before advertising.
                                 ok = False
-                                for _ in range(10):
-                                    ok = await _provide_once()
+                                for _ in range(20):
+                                    ok = await _publish_once()
                                     if ok:
                                         break
                                     await anyio.sleep(0.2)
 
                                 if ok:
                                     print(
-                                        f"ipfs_accelerate_py task queue p2p service: DHT providing namespace {rendezvous_ns}",
+                                        f"ipfs_accelerate_py task queue p2p service: DHT published namespace {rendezvous_ns}",
                                         file=sys.stderr,
                                         flush=True,
                                     )
 
-                                # Refresh provider record periodically (helps public networks).
+                                # Refresh periodically (helps public networks).
                                 try:
                                     raw_interval = os.environ.get(
                                         "IPFS_ACCELERATE_PY_TASK_P2P_DHT_PROVIDE_INTERVAL_S"
@@ -1480,18 +1517,22 @@ async def serve_task_queue(
                                 except Exception:
                                     interval_s = 1800.0
                                 if interval_s > 0:
-                                    async def _provide_loop() -> None:
+
+                                    async def _publish_loop() -> None:
                                         while True:
                                             await anyio.sleep(float(interval_s))
                                             try:
-                                                await _provide_once()
+                                                await _publish_once()
                                             except Exception:
-                                                # Keep running; network conditions may improve.
                                                 pass
 
-                                    tg.start_soon(_provide_loop)
+                                    tg.start_soon(_publish_loop)
                             except Exception as exc:
-                                print(f"ipfs_accelerate_py task queue p2p service: DHT provide failed: {exc}", file=sys.stderr, flush=True)
+                                print(
+                                    f"ipfs_accelerate_py task queue p2p service: DHT publish failed: {exc}",
+                                    file=sys.stderr,
+                                    flush=True,
+                                )
                 except Exception:
                     pass
 

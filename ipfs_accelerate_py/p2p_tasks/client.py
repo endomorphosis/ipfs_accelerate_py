@@ -78,6 +78,11 @@ def _multiaddr_peer_id(multiaddr: str) -> str:
         return ""
 
 
+def _dht_value_record_key(ns: str) -> str:
+    key = str(ns or "").strip()
+    return f"/ipfs-accelerate/task-queue/ns/{key}" if key else "/ipfs-accelerate/task-queue/ns"
+
+
 def _best_effort_peerinfo_multiaddrs(peer_info: Any) -> list[str]:
     try:
         pid = getattr(peer_info, "peer_id", None)
@@ -650,7 +655,8 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
         compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
         default="ipfs-accelerate-task-queue",
     )
-    ns_key = _dht_key_for_namespace(ns)
+    ns_key = str(ns or "").strip()
+    ns_key_bytes = (ns_key.encode("utf-8") if ns_key else b"")
 
     exclude_peer_id = "" if require_peer_id else _read_announce_peer_id_hint()
 
@@ -679,14 +685,47 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                 async with background_trio_service(dht):
                     await trio.sleep_forever()
 
-            async with anyio.create_task_group() as tg:
-                tg.start_soon(_run_dht_service)
+                        providers = await find_providers(ns_key, 20)
+                    except Exception:
+                        # Best-effort compatibility: try bytes keys.
+                        try:
+                            providers = await find_providers(ns_key_bytes, 20)
+                        except Exception:
+                            tg.cancel_scope.cancel()
+                            continue
 
-                # Seed routing table: connect to bootstrap peers.
-                try:
-                    await _best_effort_connect_multiaddrs(host=host, addrs=_parse_bootstrap_peers())
-                except Exception:
-                    pass
+                    # Fallback: small / local DHT networks can be flaky for
+                    # provider records. Prefer a deterministic namespace ->
+                    # multiaddr record when available.
+                    if not providers:
+                        get_value = getattr(dht, "get_value", None)
+                        if callable(get_value):
+                            try:
+                                raw = await get_value(_dht_value_record_key(ns_key))
+                            except Exception:
+                                raw = None
+
+                            value_text = ""
+                            try:
+                                if isinstance(raw, (bytes, bytearray)):
+                                    value_text = bytes(raw).decode("utf-8", errors="ignore")
+                                elif isinstance(raw, str):
+                                    value_text = raw
+                            except Exception:
+                                value_text = ""
+
+                            if value_text:
+                                try:
+                                    data = json.loads(value_text)
+                                except Exception:
+                                    data = None
+                                if isinstance(data, dict):
+                                    ma = str(data.get("multiaddr") or "").strip()
+                                    if ma:
+                                        resp = await _dial_multiaddr(host=host, multiaddr=ma, message=message)
+                                        if isinstance(resp, dict):
+                                            return resp
+
 
                 # Some KadDHT implementations require an explicit bootstrap
                 # step to populate the routing table before queries.
