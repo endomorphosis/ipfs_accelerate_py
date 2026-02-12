@@ -95,6 +95,40 @@ def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
             raise SystemExit("--peer-id hint does not match --multiaddr /p2p/<peerid>")
         targets.append(((pid_from_ma or pid_hint), ma_text))
 
+    # Optional: mDNS discovery for zero-config clients.
+    mdns_enabled = bool(getattr(args, "mdns", False))
+    if mdns_enabled and not targets:
+        try:
+            from ipfs_accelerate_py.p2p_tasks.client import discover_peers_via_mdns_sync, request_status_sync
+        except Exception as exc:
+            raise SystemExit(f"mDNS discovery requested but unavailable: {exc}")
+
+        mdns_timeout_s = float(getattr(args, "mdns_timeout_s", 5.0) or 5.0)
+        mdns_limit = int(getattr(args, "mdns_limit", 25) or 25)
+        expected_session = str(getattr(args, "session", "") or "").strip()
+        if not expected_session:
+            expected_session = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
+
+        peers = discover_peers_via_mdns_sync(timeout_s=mdns_timeout_s, limit=mdns_limit, exclude_self=False)
+        for rq in list(peers or []):
+            try:
+                pid = str(getattr(rq, "peer_id", "") or "").strip()
+                ma = str(getattr(rq, "multiaddr", "") or "").strip()
+            except Exception:
+                continue
+            if not pid or not ma:
+                continue
+            if expected_session:
+                try:
+                    resp = request_status_sync(remote=rq, timeout_s=3.0, detail=False)
+                    if not (isinstance(resp, dict) and resp.get("ok")):
+                        continue
+                    if str(resp.get("session") or "").strip() != expected_session:
+                        continue
+                except Exception:
+                    continue
+            targets.append((pid, ma))
+
     if not targets:
         # Allow peer-id-only discovery (e.g., via mDNS/DHT/rendezvous) when
         # caller sets shared discovery env.
@@ -103,7 +137,10 @@ def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
             peer_ids = [peer_ids]
         peer_ids = [str(x).strip() for x in (peer_ids or []) if str(x).strip()]
         if not peer_ids:
-            raise SystemExit("provide at least one --announce-file or --multiaddr (or set --peer-id for discovery)")
+            raise SystemExit(
+                "provide at least one --announce-file or --multiaddr "
+                "(or set --peer-id for discovery, or pass --mdns)"
+            )
         for pid in peer_ids:
             targets.append((pid, ""))
     return targets
@@ -400,6 +437,29 @@ def main(argv: Optional[list[str]] = None) -> int:
         action="append",
         default=[],
         help="Peer-id hint/target. Repeatable. If provided without --announce-file/--multiaddr, peers are dialed via discovery (e.g., mDNS).",
+    )
+
+    parser.add_argument(
+        "--mdns",
+        action="store_true",
+        help="Discover LAN peers via mDNS (zero-config) and round-robin across them.",
+    )
+    parser.add_argument(
+        "--mdns-timeout-s",
+        type=float,
+        default=5.0,
+        help="How long to wait for mDNS discovery (default: 5s)",
+    )
+    parser.add_argument(
+        "--mdns-limit",
+        type=int,
+        default=25,
+        help="Max peers to accept from mDNS discovery (default: 25)",
+    )
+    parser.add_argument(
+        "--session",
+        default="",
+        help="Optional session tag to filter mDNS-discovered peers (must match daemon session).",
     )
 
     parser.add_argument("--task-type", default="text-generation")

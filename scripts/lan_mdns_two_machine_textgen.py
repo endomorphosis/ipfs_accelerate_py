@@ -71,6 +71,7 @@ def _discover_other_peer_multiaddr(
     *,
     self_peer_id: str,
     expected_tcp_port: int,
+    expected_session: str,
     timeout_s: float,
     poll_s: float = 0.25,
 ) -> Tuple[str, str]:
@@ -111,7 +112,12 @@ def _discover_other_peer_multiaddr(
                 continue
             try:
                 resp = request_status_sync(remote=RemoteQueue(peer_id=pid, multiaddr=ma), timeout_s=5.0, detail=False)
-                if isinstance(resp, dict) and resp.get("ok"):
+                if not (isinstance(resp, dict) and resp.get("ok")):
+                    continue
+                if expected_session:
+                    remote_session = str(resp.get("session") or "").strip()
+                    if remote_session != expected_session:
+                        continue
                     return pid, ma
             except Exception:
                 continue
@@ -175,6 +181,11 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--state-dir", default="state/lan_mdns_two_machine", help="Directory for queue/announce/report files")
     parser.add_argument("--worker-id", default="", help="Worker id (default: hostname)")
+    parser.add_argument(
+        "--session",
+        default="lan-mdns-two-machine",
+        help="Session tag used to filter mDNS-discovered peers (default: lan-mdns-two-machine).",
+    )
 
     parser.add_argument("--count", type=int, default=25, help="Tasks to submit from THIS machine")
     parser.add_argument("--concurrency", type=int, default=10, help="Submit/wait concurrency")
@@ -205,6 +216,12 @@ def main(argv: list[str] | None = None) -> int:
     queue_path = str(state_dir / "queue.duckdb")
     announce_file = str(state_dir / "announce.json")
     report_path = str(state_dir / f"load_report_{worker_id}.json")
+
+    # Session tag: used to ensure mDNS discovery finds the *other* peer running
+    # this script, not any random libp2p node on the LAN.
+    session = str(args.session or "").strip()
+    if session:
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = session
 
     ctx = get_context("spawn")
     proc = ctx.Process(
@@ -237,14 +254,15 @@ def main(argv: list[str] | None = None) -> int:
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "1"
-
-        from ipfs_accelerate_py.p2p_tasks.client import discover_peers_via_mdns_sync
+        if session:
+            os.environ["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = session
 
         # Discover the other peer via mDNS and verify it answers a `status` RPC.
         expected_port = int(args.listen_port)
         other_peer_id, other_multiaddr = _discover_other_peer_multiaddr(
             self_peer_id=self_peer_id,
             expected_tcp_port=expected_port,
+            expected_session=session,
             timeout_s=float(args.mdns_timeout_s),
         )
 
@@ -289,6 +307,26 @@ def main(argv: list[str] | None = None) -> int:
             )
         )
         return rc
+    except Exception as exc:
+        # Always write a report file so operators can find outputs even when
+        # discovery fails.
+        tmp = f"{report_path}.tmp"
+        payload = {
+            "ok": False,
+            "error": str(exc),
+            "worker_id": worker_id,
+            "state_dir": str(state_dir),
+            "listen_host": str(args.listen_host),
+            "listen_port": int(args.listen_port),
+            "public_ip": str(args.public_ip),
+            "session": session,
+        }
+        try:
+            Path(tmp).write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+            os.replace(tmp, report_path)
+        except Exception:
+            pass
+        raise
     finally:
         try:
             proc.terminate()

@@ -1213,8 +1213,9 @@ async def serve_task_queue(
                 nat = {
                     "autonat": _autonat_status_dict(autonat),
                 }
+                session = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
                 await stream.write(
-                    json.dumps({"ok": True, "capabilities": caps, "peer_id": peer_id, "nat": nat}).encode("utf-8")
+                    json.dumps({"ok": True, "capabilities": caps, "peer_id": peer_id, "nat": nat, "session": session}).encode("utf-8")
                     + b"\n"
                 )
                 return

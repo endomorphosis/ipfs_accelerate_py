@@ -1,0 +1,31 @@
+[Unit]
+Description=ipfs_accelerate_py Task Worker (P2P + mDNS mesh)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Adjust to your checkout or installed location.
+WorkingDirectory=/opt/ipfs_accelerate_py
+
+# Load per-host settings (listen port, session tag, caches, etc.)
+EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
+
+# Run the worker loop and start the libp2p TaskQueue service in-process.
+# Mesh mode lets this worker also claim tasks from discovered peers so a client
+# can submit to either daemon and both machines will contribute.
+ExecStart=/opt/ipfs_accelerate_py/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker \
+  --queue ${IPFS_ACCELERATE_PY_TASK_QUEUE_PATH} \
+  --worker-id ${IPFS_ACCELERATE_PY_TASK_WORKER_ID} \
+  --p2p-service \
+  --p2p-listen-port ${IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT} \
+  --mesh
+
+Restart=always
+RestartSec=2
+
+# You almost certainly want a higher limit for model downloads.
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

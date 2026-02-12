@@ -12,6 +12,7 @@ Task handlers are intentionally minimal and gated:
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import subprocess
 import threading
@@ -473,6 +474,152 @@ def _supported_task_types_from_env(default: list[str]) -> list[str]:
     return base
 
 
+def _worker_mesh_enabled() -> bool:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH") or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_MESH")
+    if raw is None:
+        return False
+    return str(raw).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _worker_mesh_refresh_s() -> float:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_REFRESH_S")
+    try:
+        return max(0.5, float(raw)) if raw is not None else 5.0
+    except Exception:
+        return 5.0
+
+
+def _worker_mesh_claim_interval_s() -> float:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_INTERVAL_S")
+    try:
+        return max(0.1, float(raw)) if raw is not None else 0.5
+    except Exception:
+        return 0.5
+
+
+def _worker_mesh_max_peers() -> int:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_MAX_PEERS")
+    try:
+        return max(1, min(100, int(raw))) if raw is not None else 10
+    except Exception:
+        return 10
+
+
+def _expected_session_tag() -> str:
+    return str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
+
+
+def _read_local_announce_peer_id() -> str:
+    """Best-effort local peer id from announce JSON.
+
+    Used only for mesh bookkeeping/logging; worker mesh scheduling uses a stable
+    `peer_id` hint derived from worker_id.
+    """
+
+    path = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or "").strip()
+    if not path or path.lower() in {"0", "false", "no", "off"}:
+        return ""
+    try:
+        if not os.path.exists(path):
+            return ""
+        data = json.loads(open(path, "r", encoding="utf-8").read() or "{}")
+        if isinstance(data, dict):
+            return str(data.get("peer_id") or "").strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _mesh_safe_task_types(supported: list[str]) -> list[str]:
+    """Restrict mesh claiming to task types that don't require local-queue streaming.
+
+    This keeps the mesh path focused on LLM inference (and optionally tool calls)
+    without trying to proxy docker/shell progress updates.
+    """
+
+    allow = {"text-generation", "text_generation", "generation", "tool.call", "tool"}
+    out: list[str] = []
+    for t in list(supported or []):
+        tt = str(t or "").strip()
+        if tt and tt in allow:
+            out.append(tt)
+    # Always ensure text-generation is present.
+    if "text-generation" not in out:
+        out.append("text-generation")
+    return out
+
+
+def _start_mesh_discovery_thread(
+    *,
+    stop: threading.Event,
+    worker_id: str,
+    peers_out: dict[str, object],
+    peers_lock: threading.RLock,
+    max_peers: int,
+    refresh_s: float,
+) -> threading.Thread:
+    """Background mDNS discovery thread.
+
+    Writes a list[RemoteQueue] into peers_out["peers"].
+    """
+
+    expected_session = _expected_session_tag()
+
+    def _loop() -> None:
+        # Import lazily: libp2p is optional in some environments.
+        try:
+            from ipfs_accelerate_py.p2p_tasks.client import (
+                RemoteQueue,
+                discover_peers_via_mdns_sync,
+                request_status_sync,
+            )
+        except Exception:
+            return
+
+        # If our own peer id is known, help avoid selecting ourselves in
+        # environments where exclude_self can't resolve it.
+        local_peer_id = _read_local_announce_peer_id()
+
+        while not stop.is_set():
+            try:
+                discovered = discover_peers_via_mdns_sync(timeout_s=1.0, limit=int(max_peers), exclude_self=True)
+            except Exception:
+                discovered = []
+
+            keep: list[RemoteQueue] = []
+            for rq in list(discovered or []):
+                try:
+                    pid = str(getattr(rq, "peer_id", "") or "").strip()
+                    ma = str(getattr(rq, "multiaddr", "") or "").strip()
+                except Exception:
+                    continue
+                if not pid or not ma:
+                    continue
+                if local_peer_id and pid == local_peer_id:
+                    continue
+
+                if expected_session:
+                    try:
+                        resp = request_status_sync(remote=rq, timeout_s=3.0, detail=False)
+                        if not (isinstance(resp, dict) and resp.get("ok")):
+                            continue
+                        if str(resp.get("session") or "").strip() != expected_session:
+                            continue
+                    except Exception:
+                        continue
+
+                keep.append(rq)
+
+            with peers_lock:
+                peers_out["peers"] = keep
+
+            stop.wait(float(refresh_s))
+
+    t = threading.Thread(target=_loop, name=f"task_worker_mesh_mdns[{worker_id}]", daemon=True)
+    t.start()
+    return t
+
+
 def run_worker(
     *,
     queue_path: str,
@@ -483,6 +630,10 @@ def run_worker(
     p2p_listen_port: Optional[int] = None,
     accelerate_instance: object | None = None,
     supported_task_types: Optional[list[str]] = None,
+    mesh: Optional[bool] = None,
+    mesh_refresh_s: Optional[float] = None,
+    mesh_claim_interval_s: Optional[float] = None,
+    mesh_max_peers: Optional[int] = None,
 ) -> int:
     if p2p_service:
         # Run the libp2p service in a background thread so the worker loop can
@@ -859,13 +1010,138 @@ def run_worker(
     if supported is None:
         supported = _supported_task_types_from_env(["text-generation"])
 
-    while True:
-        task = queue.claim_next(worker_id=worker_id, supported_task_types=supported)
-        if task is None:
-            if once:
-                return 0
-            time.sleep(max(0.05, float(poll_interval_s)))
-            continue
+    mesh_enabled = bool(_worker_mesh_enabled()) if mesh is None else bool(mesh)
+    mesh_refresh = float(_worker_mesh_refresh_s()) if mesh_refresh_s is None else float(mesh_refresh_s)
+    mesh_claim_interval = float(_worker_mesh_claim_interval_s()) if mesh_claim_interval_s is None else float(mesh_claim_interval_s)
+    mesh_peers_limit = int(_worker_mesh_max_peers()) if mesh_max_peers is None else int(mesh_max_peers)
+
+    # Mesh discovery state.
+    mesh_stop = threading.Event()
+    mesh_peers_lock = threading.RLock()
+    mesh_peers_state: dict[str, object] = {"peers": []}
+    mesh_rr = 0
+    last_mesh_claim = 0.0
+
+    mesh_thread: threading.Thread | None = None
+    if mesh_enabled:
+        mesh_thread = _start_mesh_discovery_thread(
+            stop=mesh_stop,
+            worker_id=str(worker_id),
+            peers_out=mesh_peers_state,
+            peers_lock=mesh_peers_lock,
+            max_peers=int(mesh_peers_limit),
+            refresh_s=float(mesh_refresh),
+        )
+
+    def _snapshot_mesh_peers() -> list[object]:
+        with mesh_peers_lock:
+            peers = mesh_peers_state.get("peers")
+            return list(peers) if isinstance(peers, list) else []
+
+    def _maybe_claim_from_mesh() -> Optional[tuple[object, Dict[str, Any]]]:
+        nonlocal mesh_rr, last_mesh_claim
+        if not mesh_enabled:
+            return None
+        now = time.time()
+        if (now - last_mesh_claim) < float(mesh_claim_interval):
+            return None
+
+        peers = _snapshot_mesh_peers()
+        if not peers:
+            last_mesh_claim = now
+            return None
+
+        # Avoid tight loops when there are peers but all are empty/unreachable.
+        last_mesh_claim = now
+
+        # Lazy import to avoid requiring libp2p in non-mesh deployments.
+        try:
+            from ipfs_accelerate_py.p2p_tasks.client import claim_next_sync
+        except Exception:
+            return None
+
+        # Restrict mesh to safe task types.
+        mesh_supported = _mesh_safe_task_types(list(supported or []))
+        if not mesh_supported:
+            mesh_supported = ["text-generation"]
+
+        # Try one peer per poll in round-robin order.
+        idx = int(mesh_rr) % max(1, len(peers))
+        mesh_rr = (idx + 1) % max(1, len(peers))
+        remote = peers[idx]
+
+        try:
+            task = claim_next_sync(
+                remote=remote,  # RemoteQueue
+                worker_id=str(worker_id),
+                supported_task_types=list(mesh_supported),
+                peer_id=str(worker_id),
+                clock=None,
+            )
+            if task is None:
+                return None
+            if isinstance(task, dict):
+                return (remote, task)
+            return None
+        except Exception:
+            return None
+
+    def _complete_mesh_task(*, remote: object, task_id: str, ok: bool, result: Dict[str, Any] | None, error: str | None) -> None:
+        try:
+            from ipfs_accelerate_py.p2p_tasks.client import complete_task_sync
+
+            complete_task_sync(
+                remote=remote,  # RemoteQueue
+                task_id=str(task_id),
+                status="completed" if ok else "failed",
+                result=(result if ok else None),
+                error=(None if ok else str(error or "unknown error")),
+            )
+        except Exception:
+            return
+
+    try:
+        while True:
+            task = queue.claim_next(worker_id=worker_id, supported_task_types=supported)
+            if task is None:
+                # No local work; optionally help the mesh by claiming from peers.
+                mesh_claim = _maybe_claim_from_mesh()
+                if mesh_claim is not None:
+                    remote, remote_task = mesh_claim
+                    task_id = str(remote_task.get("task_id") or "").strip()
+                    if not task_id:
+                        # Nothing we can do.
+                        continue
+
+                    result: Dict[str, Any] | None = None
+                    error: str | None = None
+                    ok = False
+                    try:
+                        ttype = str(remote_task.get("task_type") or "").strip().lower()
+                        handler = handlers.get(ttype)
+                        if handler is None:
+                            raise RuntimeError(f"Unsupported task_type: {remote_task.get('task_type')}")
+                        result = handler(
+                            {
+                                "task_id": task_id,
+                                "task_type": remote_task.get("task_type"),
+                                "model_name": remote_task.get("model_name"),
+                                "payload": remote_task.get("payload"),
+                            }
+                        )
+                        ok = True
+                    except Exception as exc:
+                        ok = False
+                        error = str(exc)
+                    _complete_mesh_task(remote=remote, task_id=task_id, ok=ok, result=result, error=error)
+                    if once:
+                        return 0
+                    continue
+
+                if once:
+                    return 0
+                time.sleep(max(0.05, float(poll_interval_s)))
+                continue
 
         # Generic heartbeat/progress so peers can observe long-running tasks via
         # RPC get/wait polling even for non-docker handlers.
@@ -946,6 +1222,14 @@ def run_worker(
 
         if once:
             return 0
+    finally:
+        if mesh_enabled:
+            mesh_stop.set()
+            if mesh_thread is not None:
+                try:
+                    mesh_thread.join(timeout=0.5)
+                except Exception:
+                    pass
 
 
 def main(argv: Optional[list[str]] = None) -> int:
@@ -961,6 +1245,29 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=None,
         help="TCP port for libp2p service (default: env or 9710)",
     )
+    parser.add_argument(
+        "--mesh",
+        action="store_true",
+        help="Enable mDNS mesh mode: discover peers and claim tasks from them (opt-in).",
+    )
+    parser.add_argument(
+        "--mesh-refresh-s",
+        type=float,
+        default=None,
+        help="How often to refresh mDNS peer list (default: env or 5s)",
+    )
+    parser.add_argument(
+        "--mesh-claim-interval-s",
+        type=float,
+        default=None,
+        help="Minimum seconds between mesh claim attempts when idle (default: env or 0.5s)",
+    )
+    parser.add_argument(
+        "--mesh-max-peers",
+        type=int,
+        default=None,
+        help="Max peers to keep from mDNS discovery (default: env or 10)",
+    )
 
     args = parser.parse_args(argv)
     return run_worker(
@@ -970,6 +1277,10 @@ def main(argv: Optional[list[str]] = None) -> int:
         once=bool(args.once),
         p2p_service=bool(args.p2p_service),
         p2p_listen_port=args.p2p_listen_port,
+        mesh=bool(args.mesh) if bool(args.mesh) else None,
+        mesh_refresh_s=args.mesh_refresh_s,
+        mesh_claim_interval_s=args.mesh_claim_interval_s,
+        mesh_max_peers=args.mesh_max_peers,
     )
 
 
