@@ -129,6 +129,7 @@ def _run_taskqueue_service_with_dht(
 ) -> None:
 	# Force local-only network identity and deterministic discovery.
 	os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = "127.0.0.1"
+	os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = "127.0.0.1"
 	os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = str(bootstrap_peer)
 	os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "1"
 	os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"

@@ -475,14 +475,20 @@ def _have_libp2p() -> bool:
 
 @dataclass
 class ServiceConfig:
+    listen_host: str = "0.0.0.0"
     listen_port: int = 9710
 
 
 def _load_config() -> ServiceConfig:
+    host = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_HOST")
+        or "0.0.0.0"
+    )
     port = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT") or os.environ.get(
         "IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", "9710"
     )
-    return ServiceConfig(listen_port=int(port))
+    return ServiceConfig(listen_host=str(host).strip() or "0.0.0.0", listen_port=int(port))
 
 
 def _parse_bootstrap_peers() -> list[str]:
@@ -1319,7 +1325,7 @@ async def serve_task_queue(
 
     host.set_stream_handler(PROTOCOL_V1, _handle)
 
-    listen_addr = Multiaddr(f"/ip4/0.0.0.0/tcp/{cfg.listen_port}")
+    listen_addr = Multiaddr(f"/ip4/{cfg.listen_host}/tcp/{cfg.listen_port}")
     print(f"ipfs_accelerate_py task queue p2p service: listening on {listen_addr}", file=sys.stderr, flush=True)
 
     mdns_enabled = (
