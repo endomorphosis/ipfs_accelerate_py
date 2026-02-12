@@ -48,6 +48,17 @@ infer_user() {
   echo "${USER:-root}"
 }
 
+infer_home() {
+  local user="$1"
+  local home=""
+
+  home="$(getent passwd "${user}" 2>/dev/null | cut -d: -f6 || true)"
+  if [[ -z "${home}" ]]; then
+    home="/home/${user}"
+  fi
+  echo "${home}"
+}
+
 patch_unit_user_group() {
   local src="$1"
   local dst="$2"
@@ -63,9 +74,13 @@ patch_unit_user_group() {
   tmp="$(mktemp)"
   trap 'rm -f "${tmp}"' RETURN
 
+  local home
+  home="$(infer_home "${user}")"
+
   sed \
     -e "s/^User=.*/User=${user}/" \
     -e "s/^Group=.*/Group=${user}/" \
+    -e "s#%h#${home}#g" \
     "${src}" >"${tmp}"
 
   install -m 0644 "${tmp}" "${dst}"

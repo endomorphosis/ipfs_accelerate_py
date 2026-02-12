@@ -11,11 +11,11 @@ Group=barberb
 WorkingDirectory=/
 
 # Environment variables
-Environment="PATH=/home/%u/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
-Environment="PYTHONPATH=/home/%u/ipfs_accelerate_py"
-Environment="VIRTUAL_ENV=/home/%u/ipfs_accelerate_py/.venv"
-Environment="IPFS_ACCELERATE_REPO_DIR=/home/%u/ipfs_accelerate_py"
+Environment="PYTHONPATH=%h/ipfs_accelerate_py"
+Environment="VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv"
+Environment="IPFS_ACCELERATE_REPO_DIR=%h/ipfs_accelerate_py"
 Environment="MCP_HOST=0.0.0.0"
 Environment="MCP_PORT=9000"
 
@@ -39,22 +39,22 @@ Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9100"
 Environment="IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT=9100"
 # Persist the local queue DB somewhere stable
-Environment="IPFS_ACCELERATE_PY_TASK_QUEUE_PATH=/home/%u/ipfs_accelerate_py/state/task_queue.duckdb"
+Environment="IPFS_ACCELERATE_PY_TASK_QUEUE_PATH=%h/ipfs_accelerate_py/state/task_queue.duckdb"
 # Auto-detect a non-loopback IP for the announce multiaddr
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP=auto"
 # Ensure announce file is accessible (used for local self-dial avoidance)
-Environment="IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=/home/%u/ipfs_accelerate_py/state/task_p2p_announce.json"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=%h/ipfs_accelerate_py/state/task_p2p_announce.json"
 
 # Enable /dnsaddr/... -> concrete multiaddr expansion for public bootstraps
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE=1"
 Environment="IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1"
 
 # Update before starting
-ExecStartPre=/bin/mkdir -p /home/%u/ipfs_accelerate_py/state
-ExecStartPre=/bin/bash /home/%u/ipfs_accelerate_py/scripts/auto-update.sh
+ExecStartPre=/bin/mkdir -p %h/ipfs_accelerate_py/state
+ExecStartPre=/bin/bash %h/ipfs_accelerate_py/scripts/auto-update.sh
 
 # Start the MCP server using wrapper script
-ExecStart=/bin/bash /home/%u/ipfs_accelerate_py/scripts/start_mcp_server.sh
+ExecStart=/bin/bash %h/ipfs_accelerate_py/scripts/start_mcp_server.sh
 
 # Restart configuration
 Restart=always
