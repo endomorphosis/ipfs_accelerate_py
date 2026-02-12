@@ -301,16 +301,21 @@ async def _best_effort_connect_multiaddrs(*, host, addrs: list[str]) -> None:
 
 
 def _mdns_port() -> int:
+    # mDNS uses a shared UDP port for discovery. This is intentionally *not*
+    # the TaskQueue TCP listen port, so multiple peers can run on one host
+    # (or multiple hosts) with distinct TCP ports and still discover each other.
     raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS_PORT")
+        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
         or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
         or os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
-        or "9710"
+        or "5353"
     )
     try:
         return int(str(raw).strip())
     except Exception:
-        return 9710
+        return 5353
 
 
 def _client_listen_host() -> str:
@@ -527,6 +532,10 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
     )
 
     mdns = MDNSDiscovery(host.get_network(), port=_mdns_port())
+    try:
+        mdns.start()
+    except Exception as exc:
+        return {"ok": False, "error": f"mdns_start_failed: {exc}"}
 
     # Avoid dialing the local node's own TaskQueue service if it is advertising
     # on the LAN (common when both client+server run on the same box).

@@ -74,14 +74,26 @@ def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
         targets.append((pid, ma))
 
     for multiaddr in args.multiaddr or []:
-        targets.append((str(args.peer_id or "").strip(), str(multiaddr).strip()))
+        peer_ids = getattr(args, "peer_id", [])
+        if isinstance(peer_ids, str):
+            peer_ids = [peer_ids]
+        peer_ids = [str(x).strip() for x in (peer_ids or []) if str(x).strip()]
+        if len(peer_ids) > 1:
+            raise SystemExit("--multiaddr supports at most one --peer-id hint")
+        pid_hint = str(peer_ids[0]).strip() if peer_ids else ""
+        targets.append((pid_hint, str(multiaddr).strip()))
 
     if not targets:
-        # Allow peer-id-only discovery when caller sets shared discovery env.
-        pid = str(args.peer_id or "").strip()
-        if not pid:
+        # Allow peer-id-only discovery (e.g., via mDNS/DHT/rendezvous) when
+        # caller sets shared discovery env.
+        peer_ids = getattr(args, "peer_id", [])
+        if isinstance(peer_ids, str):
+            peer_ids = [peer_ids]
+        peer_ids = [str(x).strip() for x in (peer_ids or []) if str(x).strip()]
+        if not peer_ids:
             raise SystemExit("provide at least one --announce-file or --multiaddr (or set --peer-id for discovery)")
-        targets.append((pid, ""))
+        for pid in peer_ids:
+            targets.append((pid, ""))
     return targets
 
 
@@ -373,8 +385,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument(
         "--peer-id",
-        default="",
-        help="Peer-id hint (used when using discovery or when --multiaddr lacks /p2p/)",
+        action="append",
+        default=[],
+        help="Peer-id hint/target. Repeatable. If provided without --announce-file/--multiaddr, peers are dialed via discovery (e.g., mDNS).",
     )
 
     parser.add_argument("--task-type", default="text-generation")

@@ -1411,7 +1411,19 @@ async def serve_task_queue(
             try:
                 from libp2p.discovery.mdns.mdns import MDNSDiscovery
 
-                mdns = MDNSDiscovery(host.get_network(), port=int(cfg.listen_port))
+                # mDNS uses a shared UDP port for discovery (not the TaskQueue
+                # TCP listen port). Allow overriding for test isolation.
+                raw_mdns_port = (
+                    os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT")
+                    or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS_PORT")
+                    or "5353"
+                )
+                try:
+                    mdns_port = int(str(raw_mdns_port).strip())
+                except Exception:
+                    mdns_port = 5353
+
+                mdns = MDNSDiscovery(host.get_network(), port=mdns_port)
                 mdns.start()
                 print("ipfs_accelerate_py task queue p2p service: mDNS enabled", file=sys.stderr, flush=True)
             except Exception as exc:

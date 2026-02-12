@@ -50,14 +50,23 @@ def _wait_for_announce(path: str, timeout_s: float = 25.0) -> dict:
     raise TimeoutError(f"announce file not written: {path}")
 
 
-def _run_textgen_worker_with_service(*, queue_path: str, listen_port: int, announce_file: str, worker_id: str) -> None:
+def _run_textgen_worker_with_service(
+    *,
+    queue_path: str,
+    listen_port: int,
+    announce_file: str,
+    worker_id: str,
+    mdns_port: int,
+) -> None:
     # Deterministic local-only behavior.
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = "127.0.0.1"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = "127.0.0.1"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = announce_file
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
-    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "0"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "1"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = str(int(mdns_port))
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RELAY"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH"] = "0"
@@ -105,6 +114,10 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
     port_b = _free_port()
     assert port_a != port_b
 
+    # Use an isolated shared mDNS UDP port so both peers can discover each other
+    # while still listening on distinct TCP ports.
+    mdns_port = _free_port()
+
     state_dir = tmp_path / "p2p_textgen_regression"
     state_dir.mkdir(parents=True, exist_ok=True)
 
@@ -121,6 +134,7 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
             "listen_port": port_a,
             "announce_file": announce_a,
             "worker_id": "peer1",
+            "mdns_port": mdns_port,
         },
         daemon=True,
     )
@@ -131,6 +145,7 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
             "listen_port": port_b,
             "announce_file": announce_b,
             "worker_id": "peer2",
+            "mdns_port": mdns_port,
         },
         daemon=True,
     )
@@ -142,6 +157,10 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
         ann_a = _wait_for_announce(announce_a)
         ann_b = _wait_for_announce(announce_b)
 
+        peer_a = str(ann_a.get("peer_id") or "").strip()
+        peer_b = str(ann_b.get("peer_id") or "").strip()
+        assert peer_a and peer_b
+
         report_path = str(state_dir / "load_report.json")
 
         script = Path(__file__).resolve().parents[2] / "scripts" / "queue_textgen_load.py"
@@ -152,15 +171,25 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
         os.environ["TRANSFORMERS_PATCH_DISABLE"] = "1"
         os.environ["IPFS_ACCEL_SKIP_CORE"] = "1"
 
+        # Force the client to dial via mDNS discovery (no announce-file dialing).
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = "0"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = "127.0.0.1"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "1"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = str(int(mdns_port))
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_DISCOVERY_TIMEOUT_S"] = "15"
+
         # Run the load driver in-process to avoid import shadowing issues
         # (the repo contains similarly-named modules under test/).
         mod = runpy.run_path(str(script))
         rc = int(mod["main"](
             [
-                "--announce-file",
-                announce_a,
-                "--announce-file",
-                announce_b,
+                "--peer-id",
+                peer_a,
+                "--peer-id",
+                peer_b,
                 "--count",
                 "50",
                 "--concurrency",
@@ -214,11 +243,8 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
             peer_id = str(item.get("peer_id") or "")
             peer_counts[peer_id] = peer_counts.get(peer_id, 0) + 1
 
-        expected_peer_a = str(ann_a.get("peer_id") or "")
-        expected_peer_b = str(ann_b.get("peer_id") or "")
-        assert expected_peer_a and expected_peer_b
-        assert peer_counts.get(expected_peer_a, 0) == 25
-        assert peer_counts.get(expected_peer_b, 0) == 25
+        assert peer_counts.get(peer_a, 0) == 25
+        assert peer_counts.get(peer_b, 0) == 25
     finally:
         for p in (proc_a, proc_b):
             try:
