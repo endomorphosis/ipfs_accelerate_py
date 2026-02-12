@@ -17,6 +17,70 @@ from typing import Any, Dict, List, Optional, Union
 logger = logging.getLogger(__name__)
 
 
+_DEFAULT_DOCKER_KIT: Optional["DockerKit"] = None
+
+
+def _get_default_docker_kit() -> "DockerKit":
+    global _DEFAULT_DOCKER_KIT
+    if _DEFAULT_DOCKER_KIT is None:
+        _DEFAULT_DOCKER_KIT = DockerKit()
+    return _DEFAULT_DOCKER_KIT
+
+
+def run_container(
+    image: str,
+    command: Optional[Union[str, List[str]]] = None,
+    detach: bool = False,
+    remove: bool = True,
+    name: Optional[str] = None,
+    env: Optional[Dict[str, str]] = None,
+    environment: Optional[Dict[str, str]] = None,
+    volumes: Optional[Dict[str, str]] = None,
+    ports: Optional[Dict[str, str]] = None,
+    network: str = "none",
+    memory: Optional[str] = None,
+    cpus: Optional[float] = None,
+    timeout: Optional[int] = None,
+) -> "DockerResult":
+    """Module-level wrapper for `DockerKit.run_container` (used by tool registry)."""
+
+    if environment is None and env is not None:
+        environment = env
+
+    return _get_default_docker_kit().run_container(
+        image=image,
+        command=command,
+        detach=detach,
+        remove=remove,
+        name=name,
+        environment=environment,
+        volumes=volumes,
+        ports=ports,
+        network=network,
+        memory=memory,
+        cpus=cpus,
+        timeout=timeout,
+    )
+
+
+def list_containers(all: bool = False) -> "DockerResult":
+    """Module-level wrapper for `DockerKit.list_containers` (used by tool registry)."""
+
+    return _get_default_docker_kit().list_containers(all_containers=all)
+
+
+def stop_container(container_id: str) -> "DockerResult":
+    """Module-level wrapper for `DockerKit.stop_container` (used by tool registry)."""
+
+    return _get_default_docker_kit().stop_container(container=container_id)
+
+
+def pull_image(image: str) -> "DockerResult":
+    """Module-level wrapper for `DockerKit.pull_image` (used by tool registry)."""
+
+    return _get_default_docker_kit().pull_image(image=image)
+
+
 @dataclass
 class DockerResult:
     """Result from a Docker operation."""

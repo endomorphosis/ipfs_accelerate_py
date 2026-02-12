@@ -340,23 +340,33 @@ def get_peer_status() -> Dict[str, Any]:
         
         # Try to get peer registry info if available
         try:
-            repo = os.environ.get('GITHUB_REPOSITORY', '')
+            repo = os.environ.get('IPFS_ACCELERATE_GITHUB_REPO') or os.environ.get('GITHUB_REPOSITORY', '')
             if repo and peer_info['enabled']:
                 from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
                 registry = P2PPeerRegistry(repo=repo)
                 
-                # Get registered peers
-                peers = registry.list_peers()
-                peer_info['peers'] = [
-                    {
-                        'peer_id': p.get('peer_id', 'unknown'),
-                        'runner_name': p.get('metadata', {}).get('runner_name', 'unknown'),
-                        'listen_port': p.get('listen_port', 0),
-                        'last_seen': p.get('last_seen', '')
-                    }
-                    for p in peers
-                ]
-                peer_info['registered_peer_count'] = len(peers)
+                # Get registered peers (back-compat with older registry APIs)
+                peers = []
+                list_peers = getattr(registry, 'list_peers', None)
+                if callable(list_peers):
+                    peers = list_peers(max_peers=50)
+                else:
+                    discover_peers = getattr(registry, 'discover_peers', None)
+                    if callable(discover_peers):
+                        peers = discover_peers(max_peers=50)
+
+                if isinstance(peers, list):
+                    peer_info['peers'] = [
+                        {
+                            'peer_id': p.get('peer_id', 'unknown'),
+                            'runner_name': p.get('runner_name') or p.get('metadata', {}).get('runner_name', 'unknown'),
+                            'listen_port': p.get('listen_port', 0),
+                            'last_seen': p.get('last_seen', '')
+                        }
+                        for p in peers
+                        if isinstance(p, dict)
+                    ]
+                    peer_info['registered_peer_count'] = len(peer_info['peers'])
                 peer_info['status'] = 'Active' if enabled else peer_info['status']
         except Exception as e:
             logger.debug(f"Could not get detailed peer info: {e}")

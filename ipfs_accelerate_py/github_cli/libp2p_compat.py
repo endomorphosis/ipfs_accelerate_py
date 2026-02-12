@@ -10,6 +10,8 @@ patches the multihash module to provide the missing Func class.
 """
 
 import logging
+import sys
+import importlib
 
 logger = logging.getLogger(__name__)
 
@@ -26,27 +28,56 @@ def patch_libp2p_compatibility():
         bool: True if compatibility is ensured, False otherwise
     """
     try:
-        # First try to import pymultihash (the expected package for libp2p)
+        # Note: the `pymultihash` PyPI distribution provides the `multihash` import.
+        # Some environments may also inject a different `multihash` module into
+        # sys.modules (e.g., via multiformats), so we validate what we imported.
+
+        def _is_valid_multihash(mod) -> bool:
+            try:
+                return bool(
+                    hasattr(mod, "constants")
+                    and hasattr(mod.constants, "HASH_CODES")
+                    and isinstance(getattr(mod.constants, "HASH_CODES"), dict)
+                )
+            except Exception:
+                return False
+
         try:
-            import pymultihash
-            logger.debug("✓ pymultihash package available (native libp2p support)")
-            return True
+            import multihash  # type: ignore
         except ImportError:
-            logger.debug("pymultihash not installed, trying compatibility layer")
-        
-        # Fall back to multiformats-based compatibility
-        try:
-            import multihash
-        except ImportError:
-            logger.error("Neither pymultihash nor multihash available")
+            logger.error("multihash module not available")
             logger.error("Install with: pip install pymultihash>=0.8.2")
             return False
+
+        if not _is_valid_multihash(multihash):
+            # Best-effort: if something shadowed `multihash`, drop it and retry.
+            try:
+                sys.modules.pop("multihash.constants", None)
+                sys.modules.pop("multihash", None)
+                importlib.invalidate_caches()
+                import multihash  # type: ignore
+            except Exception:
+                pass
+
+        if not _is_valid_multihash(multihash):
+            logger.warning("multihash.constants.HASH_CODES not found, cannot patch")
+            return False
         
+        def _ensure_multiformats_func(func_cls) -> None:
+            try:
+                from multiformats import multihash as mf_multihash  # type: ignore
+
+                if not hasattr(mf_multihash, "Func"):
+                    mf_multihash.Func = func_cls
+            except Exception:
+                pass
+
         # Check if Func already exists
         if hasattr(multihash, 'Func'):
             logger.debug("multihash.Func already exists, skipping patch")
+            _ensure_multiformats_func(getattr(multihash, 'Func'))
             return True
-        
+
         # Get hash codes from multihash.constants
         if not hasattr(multihash, 'constants') or not hasattr(multihash.constants, 'HASH_CODES'):
             logger.warning("multihash.constants.HASH_CODES not found, cannot patch")
@@ -75,6 +106,7 @@ def patch_libp2p_compatibility():
         
         # Patch the multihash module
         multihash.Func = Func
+        _ensure_multiformats_func(Func)
         
         # Add digest function if it doesn't exist
         if not hasattr(multihash, 'digest'):

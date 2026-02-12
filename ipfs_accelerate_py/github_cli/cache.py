@@ -305,7 +305,7 @@ class GitHubAPICache:
         self._p2p_broadcast_send = None
         
         # Peer discovery - use simplified bootstrap helper
-        self.github_repo = github_repo or os.environ.get("GITHUB_REPOSITORY")
+        self.github_repo = github_repo or os.environ.get("IPFS_ACCELERATE_GITHUB_REPO") or os.environ.get("GITHUB_REPOSITORY")
         self.enable_peer_discovery = enable_peer_discovery
         self._peer_registry = None
         self._bootstrap_helper = None

@@ -15,6 +15,16 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+_DEFAULT_HARDWARE_KIT: Optional["HardwareKit"] = None
+
+
+def _get_default_hardware_kit() -> "HardwareKit":
+    global _DEFAULT_HARDWARE_KIT
+    if _DEFAULT_HARDWARE_KIT is None:
+        _DEFAULT_HARDWARE_KIT = HardwareKit()
+    return _DEFAULT_HARDWARE_KIT
+
+
 @dataclass
 class HardwareInfo:
     """Hardware information."""
@@ -456,8 +466,65 @@ def get_hardware_kit() -> HardwareKit:
     return HardwareKit()
 
 
+def get_info() -> Dict[str, Any]:
+    """Module-level wrapper for unified tool registry."""
+
+    info = _get_default_hardware_kit().get_hardware_info(include_detailed=False)
+    return {
+        "cpu": info.cpu,
+        "gpu": info.gpu,
+        "memory": info.memory,
+        "accelerators": info.accelerators,
+        "platform_info": info.platform_info,
+    }
+
+
+def test() -> Dict[str, Any]:
+    """Module-level wrapper for unified tool registry."""
+
+    return _get_default_hardware_kit().test_hardware(accelerator="all", test_level="basic")
+
+
+def recommend(task_type: str) -> Dict[str, Any]:
+    """Module-level wrapper for unified tool registry.
+
+    The registry schema currently provides `task_type` (inference/training/etc).
+    We translate that into a basic accelerator recommendation using detected
+    hardware.
+    """
+
+    task = (task_type or "").strip().lower() or "inference"
+    hw = _get_default_hardware_kit().get_hardware_info(include_detailed=False)
+    has_cuda = bool(hw.accelerators.get("cuda", {}).get("available"))
+
+    recs: List[Dict[str, Any]] = []
+    if has_cuda and task in {"training", "fine-tuning", "finetuning", "inference"}:
+        recs.append(
+            {
+                "accelerator": "cuda",
+                "reason": "CUDA GPU available",
+                "priority": 1,
+                "available": True,
+            }
+        )
+
+    recs.append(
+        {
+            "accelerator": "cpu",
+            "reason": "Fallback option, available on all systems",
+            "priority": 10,
+            "available": True,
+        }
+    )
+
+    return {"task_type": task_type, "recommendations": recs, "hardware": {"accelerators": hw.accelerators}}
+
+
 __all__ = [
     'HardwareKit',
     'HardwareInfo',
     'get_hardware_kit',
+    'get_info',
+    'test',
+    'recommend',
 ]
