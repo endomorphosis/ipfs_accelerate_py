@@ -601,6 +601,7 @@ async def discover_status(
         {
           "ok": bool,
           "result": {..status response..} | None,
+                    "nat": {..} | None,
           "attempts": [
              {"method": "announce-file", "multiaddr": "...", "peer_id": "...", "ok": bool, "error": "..."},
              ...
@@ -629,6 +630,12 @@ async def discover_status(
     message: Dict[str, Any] = {"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)}
     require_peer_id = (remote.peer_id or "").strip()
     attempts: list[Dict[str, Any]] = []
+
+    def _nat_from_resp(resp: Dict[str, Any] | None) -> Dict[str, Any] | None:
+        if not isinstance(resp, dict):
+            return None
+        nat = resp.get("nat")
+        return nat if isinstance(nat, dict) else None
 
     host_obj = new_host()
     host = await host_obj if inspect.isawaitable(host_obj) else host_obj
@@ -694,14 +701,19 @@ async def discover_status(
         # 1) Explicit multiaddr
         if (remote.multiaddr or "").strip():
             resp = await _try_multiaddr("explicit", str(remote.multiaddr))
-            return {"ok": bool(resp and resp.get("ok")), "result": resp, "attempts": attempts}
+            return {
+                "ok": bool(resp and resp.get("ok")),
+                "result": resp,
+                "nat": _nat_from_resp(resp),
+                "attempts": attempts,
+            }
 
         # 2) Announce file hint (local)
         ann_ma = _read_announce_multiaddr()
         if ann_ma:
             resp = await _try_multiaddr("announce-file", ann_ma)
             if resp is not None:
-                return {"ok": True, "result": resp, "attempts": attempts}
+                return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
         else:
             await _record(method="announce-file", ok=False, error="no_announce_multiaddr")
 
@@ -713,7 +725,7 @@ async def discover_status(
                     break
                 resp = await _try_multiaddr("bootstrap", ma)
                 if resp is not None:
-                    return {"ok": True, "result": resp, "attempts": attempts}
+                    return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
         else:
             await _record(method="bootstrap", ok=False, error="not_explicitly_configured")
 
@@ -779,7 +791,7 @@ async def discover_status(
                                 multiaddr=ma,
                                 response=resp,
                             )
-                            return {"ok": True, "result": resp, "attempts": attempts}
+                            return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
                         await _record(
                             method="rendezvous",
                             ok=False,
@@ -866,7 +878,7 @@ async def discover_status(
                                             response=resp,
                                         )
                                         tg.cancel_scope.cancel()
-                                        return {"ok": True, "result": resp, "attempts": attempts}
+                                        return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
                                     await _record(
                                         method="dht",
                                         ok=False,
@@ -905,7 +917,7 @@ async def discover_status(
                                             response=resp,
                                         )
                                         tg.cancel_scope.cancel()
-                                        return {"ok": True, "result": resp, "attempts": attempts}
+                                        return {"ok": True, "result": resp, "nat": _nat_from_resp(resp), "attempts": attempts}
                                     await _record(
                                         method="dht",
                                         ok=False,
@@ -935,7 +947,7 @@ async def discover_status(
                         peer_id=str(mdns_resp.get("peer_id") or ""),
                         response=mdns_resp,
                     )
-                    return {"ok": True, "result": mdns_resp, "attempts": attempts}
+                    return {"ok": True, "result": mdns_resp, "nat": _nat_from_resp(mdns_resp), "attempts": attempts}
                 await _record(
                     method="mdns",
                     ok=False,
@@ -959,7 +971,7 @@ async def discover_status(
         if a.get("ok") and isinstance(a.get("response"), dict):
             result = a.get("response")
             break
-    return {"ok": bool(ok), "result": result, "attempts": attempts}
+    return {"ok": bool(ok), "result": result, "nat": _nat_from_resp(result), "attempts": attempts}
 
 
 def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:

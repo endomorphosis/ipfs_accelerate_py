@@ -11,6 +11,12 @@ Environment:
 - IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS
 - IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS (compat, default: ipfs-accelerate-task-queue) / IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS
 - IPFS_DATASETS_PY_TASK_P2P_AUTONAT (compat, default: 1) / IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT
+- IPFS_DATASETS_PY_TASK_P2P_RELAY (compat, default: 0) / IPFS_ACCELERATE_PY_TASK_P2P_RELAY
+    - Enables Circuit Relay v2 protocol handlers (/libp2p/circuit/relay/2.0.0)
+- IPFS_DATASETS_PY_TASK_P2P_RELAY_HOP (compat, default: 0) / IPFS_ACCELERATE_PY_TASK_P2P_RELAY_HOP
+    - When enabled alongside *_P2P_RELAY, allow this node to act as a relay (HOP)
+- IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH (compat, default: 0) / IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH
+    - Enables DCUtR hole punching protocol handler (/libp2p/dcutr)
 - IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS (compat) / IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS
 - IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP (compat) / IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP (for announce string; supports 'auto')
 - IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE (compat) / IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE
@@ -225,25 +231,123 @@ async def _maybe_start_autonat(*, host) -> object | None:
 
     # Best-effort: py-libp2p support varies by version.
     candidates = [
+        # Older / alternate layouts.
         ("libp2p.nat.autonat", "AutoNAT"),
         ("libp2p.autonat", "AutoNAT"),
+        # Current py-libp2p build in this environment.
+        ("libp2p.host.autonat.autonat", "AutoNATService"),
     ]
     for module_name, symbol in candidates:
         try:
             mod = __import__(module_name, fromlist=[symbol])
             cls = getattr(mod, symbol)
             svc = cls(host)
-            start = getattr(svc, "start", None)
-            if callable(start):
-                maybe = start()
-                if hasattr(maybe, "__await__"):
-                    await maybe
-            print(f"ipfs_accelerate_py task queue p2p service: AutoNAT enabled ({module_name}.{symbol})", file=sys.stderr, flush=True)
+            # Some implementations are plain stream handlers rather than
+            # AsyncService instances.
+            if module_name == "libp2p.host.autonat.autonat":
+                proto = getattr(mod, "AUTONAT_PROTOCOL_ID", None)
+                handler = getattr(svc, "handle_stream", None)
+                if proto is not None and callable(handler):
+                    host.set_stream_handler(proto, handler)
+            else:
+                start = getattr(svc, "start", None)
+                if callable(start):
+                    maybe = start()
+                    if hasattr(maybe, "__await__"):
+                        await maybe
+
+            print(
+                f"ipfs_accelerate_py task queue p2p service: AutoNAT enabled ({module_name}.{symbol})",
+                file=sys.stderr,
+                flush=True,
+            )
             return svc
         except Exception:
             continue
     print("ipfs_accelerate_py task queue p2p service: AutoNAT unavailable in installed libp2p; skipping", file=sys.stderr, flush=True)
     return None
+
+
+def _autonat_status_dict(autonat: object | None) -> Dict[str, Any]:
+    """Best-effort, JSON-friendly NAT status from whichever AutoNAT is available."""
+
+    if autonat is None:
+        return {"supported": False, "status": "unavailable", "code": None}
+
+    code: int | None = None
+    try:
+        getter = getattr(autonat, "get_status", None)
+        if callable(getter):
+            code = int(getter())
+        else:
+            raw = getattr(autonat, "status", None)
+            if raw is not None:
+                code = int(raw)
+    except Exception:
+        code = None
+
+    mapping = {0: "unknown", 1: "public", 2: "private"}
+    return {"supported": True, "status": mapping.get(code, "unknown"), "code": code}
+
+
+async def _maybe_make_relay_v2(*, host) -> object | None:
+    if not _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RELAY",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RELAY",
+        default=False,
+    ):
+        return None
+
+    allow_hop = _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RELAY_HOP",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RELAY_HOP",
+        default=False,
+    )
+
+    try:
+        from libp2p.relay.circuit_v2.protocol import CircuitV2Protocol
+
+        svc = CircuitV2Protocol(host, allow_hop=bool(allow_hop))
+        print(
+            f"ipfs_accelerate_py task queue p2p service: Circuit Relay v2 enabled (allow_hop={bool(allow_hop)})",
+            file=sys.stderr,
+            flush=True,
+        )
+        return svc
+    except Exception as exc:
+        print(
+            f"ipfs_accelerate_py task queue p2p service: Circuit Relay v2 unavailable; skipping: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
+
+
+async def _maybe_make_dcutr(*, host) -> object | None:
+    if not _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH",
+        compat="IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH",
+        default=False,
+    ):
+        return None
+
+    try:
+        from libp2p.relay.circuit_v2.dcutr import DCUtRProtocol
+
+        svc = DCUtRProtocol(host)
+        print(
+            "ipfs_accelerate_py task queue p2p service: DCUtR (hole punching) enabled",
+            file=sys.stderr,
+            flush=True,
+        )
+        return svc
+    except Exception as exc:
+        print(
+            f"ipfs_accelerate_py task queue p2p service: DCUtR unavailable; skipping: {exc}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return None
 
 
 async def _maybe_start_dht(*, host, bootstrap_peers: list[str]) -> object | None:
@@ -736,6 +840,14 @@ async def serve_task_queue(
     _service_mark_running(peer_id=peer_id, listen_port=cfg.listen_port)
     print("ipfs_accelerate_py task queue p2p service: host created", file=sys.stderr, flush=True)
 
+    # Initialized early so the stream handler can safely reference these even
+    # if requests arrive before auxiliary services finish starting.
+    autonat: object | None = None
+    dht: object | None = None
+    rendezvous: object | None = None
+    relay_v2: object | None = None
+    dcutr: object | None = None
+
     async def _handle(stream) -> None:
         try:
             raw = bytearray()
@@ -933,8 +1045,12 @@ async def serve_task_queue(
             if op in {"status", "capabilities", "describe"}:
                 detail = bool(msg.get("detail"))
                 caps = _accelerate_capabilities(accelerate_instance, detail=detail)
+                nat = {
+                    "autonat": _autonat_status_dict(autonat),
+                }
                 await stream.write(
-                    json.dumps({"ok": True, "capabilities": caps, "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    json.dumps({"ok": True, "capabilities": caps, "peer_id": peer_id, "nat": nat}).encode("utf-8")
+                    + b"\n"
                 )
                 return
 
@@ -1120,9 +1236,6 @@ async def serve_task_queue(
             except Exception as exc:
                 print(f"ipfs_accelerate_py task queue p2p service: failed to start mDNS: {exc}", file=sys.stderr, flush=True)
 
-        autonat = None
-        dht = None
-        rendezvous = None
         try:
             autonat = await _maybe_start_autonat(host=host)
         except Exception as exc:
@@ -1135,6 +1248,14 @@ async def serve_task_queue(
             rendezvous = await _maybe_start_rendezvous(host=host, namespace=rendezvous_ns)
         except Exception as exc:
             print(f"ipfs_accelerate_py task queue p2p service: rendezvous start failed: {exc}", file=sys.stderr, flush=True)
+        try:
+            relay_v2 = await _maybe_make_relay_v2(host=host)
+        except Exception as exc:
+            print(f"ipfs_accelerate_py task queue p2p service: relay start failed: {exc}", file=sys.stderr, flush=True)
+        try:
+            dcutr = await _maybe_make_dcutr(host=host)
+        except Exception as exc:
+            print(f"ipfs_accelerate_py task queue p2p service: holepunch start failed: {exc}", file=sys.stderr, flush=True)
 
         raw_public_ip = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP") or os.environ.get(
             "IPFS_DATASETS_PY_TASK_P2P_PUBLIC_IP"
@@ -1161,6 +1282,22 @@ async def serve_task_queue(
         # service is alive.
         try:
             async with anyio.create_task_group() as tg:
+                # Start relay / holepunch protocol services when present.
+                try:
+                    import trio
+                    from libp2p.tools.async_service.trio_service import background_trio_service
+
+                    async def _run_trio_service(svc: object) -> None:
+                        async with background_trio_service(svc):
+                            await trio.sleep_forever()
+
+                    if relay_v2 is not None:
+                        tg.start_soon(_run_trio_service, relay_v2)
+                    if dcutr is not None:
+                        tg.start_soon(_run_trio_service, dcutr)
+                except Exception:
+                    pass
+
                 # Start DHT background loop when present.
                 try:
                     if dht is not None:
@@ -1202,7 +1339,7 @@ async def serve_task_queue(
             except Exception:
                 pass
 
-            for svc in (rendezvous, dht, autonat):
+            for svc in (rendezvous, dht, autonat, relay_v2, dcutr):
                 try:
                     stop = getattr(svc, "stop", None)
                     if callable(stop):

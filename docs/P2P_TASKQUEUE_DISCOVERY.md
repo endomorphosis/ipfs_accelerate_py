@@ -8,7 +8,7 @@ This project’s TaskQueue transport supports discovery so a client can connect 
 - Discovery does **not** guarantee connectivity through NAT/firewalls. If both peers are behind NAT with no inbound connectivity, you’ll typically need one of:
   - Port forwarding / open inbound TCP to the service
   - A VPN/overlay network (WireGuard, Tailscale, Zerotier)
-  - An application-level relay (not currently implemented here)
+  - A relay + hole punching setup (optional; see env flags below)
 
 ## Discovery mechanisms (order)
 
@@ -45,6 +45,17 @@ If your *service* is behind NAT and you need the public box to dial **inbound to
 - `IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS=...`
 - `IPFS_ACCELERATE_PY_TASK_P2P_DHT=1|0`
 - `IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=/path/to/task_p2p_announce.json` (or `0` to disable)
+
+### Optional NAT traversal (best-effort)
+
+These are disabled by default.
+
+- `IPFS_ACCELERATE_PY_TASK_P2P_RELAY=1|0`
+  - Enables Circuit Relay v2 protocol handlers.
+- `IPFS_ACCELERATE_PY_TASK_P2P_RELAY_HOP=1|0`
+  - When enabled alongside `*_P2P_RELAY=1`, allows this node to act as a relay (requires it to be reachable by others).
+- `IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH=1|0`
+  - Enables DCUtR hole punching support.
 
 ## CLI quickstart
 
