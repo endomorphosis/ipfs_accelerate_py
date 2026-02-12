@@ -656,7 +656,7 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
         default="ipfs-accelerate-task-queue",
     )
     ns_key = str(ns or "").strip()
-    ns_key_bytes = (ns_key.encode("utf-8") if ns_key else b"")
+    ns_key_bytes = _dht_key_for_namespace(ns_key)
 
     exclude_peer_id = "" if require_peer_id else _read_announce_peer_id_hint()
 
@@ -668,7 +668,8 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
         try:
             mod = __import__(module_name, fromlist=[symbol])
             cls = getattr(mod, symbol)
-            # KadDHT requires a DHTMode in this libp2p build.
+
+            # KadDHT requires a DHTMode in some builds.
             try:
                 from libp2p.kad_dht.kad_dht import DHTMode  # type: ignore
 
@@ -676,131 +677,104 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
             except Exception:
                 dht = cls(host)
 
-            # Keep the DHT background loop alive while we query it.
             import anyio
-            import trio
             from libp2p.tools.async_service.trio_service import background_trio_service
 
-            async def _run_dht_service() -> None:
-                async with background_trio_service(dht):
-                    await trio.sleep_forever()
+            async with background_trio_service(dht):
+                # Seed routing table: connect to bootstrap peers.
+                try:
+                    await _best_effort_connect_multiaddrs(host=host, addrs=_parse_bootstrap_peers())
+                except Exception:
+                    pass
 
-                        providers = await find_providers(ns_key, 20)
-                    except Exception:
-                        # Best-effort compatibility: try bytes keys.
-                        try:
-                            providers = await find_providers(ns_key_bytes, 20)
-                        except Exception:
-                            tg.cancel_scope.cancel()
+                # Some KadDHT implementations require explicit start/bootstrap.
+                for method_name in ("start", "bootstrap"):
+                    try:
+                        fn = getattr(dht, method_name, None)
+                        if not callable(fn):
                             continue
-
-                    # Fallback: small / local DHT networks can be flaky for
-                    # provider records. Prefer a deterministic namespace ->
-                    # multiaddr record when available.
-                    if not providers:
-                        get_value = getattr(dht, "get_value", None)
-                        if callable(get_value):
-                            try:
-                                raw = await get_value(_dht_value_record_key(ns_key))
-                            except Exception:
-                                raw = None
-
-                            value_text = ""
-                            try:
-                                if isinstance(raw, (bytes, bytearray)):
-                                    value_text = bytes(raw).decode("utf-8", errors="ignore")
-                                elif isinstance(raw, str):
-                                    value_text = raw
-                            except Exception:
-                                value_text = ""
-
-                            if value_text:
-                                try:
-                                    data = json.loads(value_text)
-                                except Exception:
-                                    data = None
-                                if isinstance(data, dict):
-                                    ma = str(data.get("multiaddr") or "").strip()
-                                    if ma:
-                                        resp = await _dial_multiaddr(host=host, multiaddr=ma, message=message)
-                                        if isinstance(resp, dict):
-                                            return resp
-
-
-                # Some KadDHT implementations require an explicit bootstrap
-                # step to populate the routing table before queries.
-                try:
-                    start = getattr(dht, "start", None)
-                    if callable(start):
-                        maybe = start()
+                        maybe = fn()
                         if hasattr(maybe, "__await__"):
                             await maybe
-                except Exception:
-                    pass
-                try:
-                    bootstrap = getattr(dht, "bootstrap", None)
-                    if callable(bootstrap):
-                        maybe = bootstrap()
-                        if hasattr(maybe, "__await__"):
-                            await maybe
-                except Exception:
-                    pass
+                    except Exception:
+                        continue
 
                 if require_peer_id:
                     find_peer = getattr(dht, "find_peer", None)
                     if not callable(find_peer):
-                        tg.cancel_scope.cancel()
-                        continue
-                    peer_info = await find_peer(require_peer_id)
-                    if not peer_info:
-                        tg.cancel_scope.cancel()
-                        continue
-                    await host.connect(peer_info)
-                    stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
-                    try:
-                        resp = await _request_over_stream(stream=stream, message=message)
-                        return resp if isinstance(resp, dict) else None
-                    finally:
-                        try:
-                            await stream.close()
-                        except Exception:
-                            pass
-                else:
-                    # Namespace-based provider discovery: ask DHT for providers
-                    # and try them in sequence.
-                    find_providers = getattr(dht, "find_providers", None)
-                    if not callable(find_providers):
-                        tg.cancel_scope.cancel()
                         continue
                     try:
-                        providers = await find_providers(ns_key, 20)
+                        peer_info = await find_peer(require_peer_id)
                     except Exception:
-                        # Best-effort compatibility: older libp2p may accept str keys.
-                        providers = await find_providers(ns, 20)
-                    for peer_info in list(providers or []):
+                        peer_info = None
+                    if not peer_info:
+                        continue
+                    try:
+                        resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                        if isinstance(resp, dict):
+                            return resp
+                    except Exception:
+                        continue
+                    continue
+
+                # Namespace-based provider discovery: ask DHT for providers and try them.
+                providers: list[Any] = []
+                find_providers = getattr(dht, "find_providers", None)
+                if callable(find_providers):
+                    for key_candidate in (ns_key_bytes, ns_key, ns):
                         try:
-                            try:
-                                pid = getattr(peer_info, "peer_id", None)
-                                pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
-                            except Exception:
-                                pid_text = ""
-                            if exclude_peer_id and pid_text and pid_text == exclude_peer_id:
-                                continue
-                            await host.connect(peer_info)
-                            stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
-                            try:
-                                resp = await _request_over_stream(stream=stream, message=message)
-                                if isinstance(resp, dict):
-                                    return resp
-                            finally:
-                                try:
-                                    await stream.close()
-                                except Exception:
-                                    pass
+                            providers = list(await find_providers(key_candidate, 20) or [])
+                            break
                         except Exception:
                             continue
 
-                tg.cancel_scope.cancel()
+                for peer_info in list(providers or []):
+                    try:
+                        pid_text = ""
+                        try:
+                            pid = getattr(peer_info, "peer_id", None)
+                            pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                        except Exception:
+                            pid_text = ""
+                        if exclude_peer_id and pid_text and pid_text == exclude_peer_id:
+                            continue
+                        resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
+                        if isinstance(resp, dict):
+                            return resp
+                    except Exception:
+                        continue
+
+                # Fallback: deterministic namespace -> multiaddr value record.
+                get_value = getattr(dht, "get_value", None)
+                if callable(get_value):
+                    try:
+                        raw = await get_value(_dht_value_record_key(ns_key))
+                    except Exception:
+                        raw = None
+
+                    value_text = ""
+                    try:
+                        if isinstance(raw, (bytes, bytearray)):
+                            value_text = bytes(raw).decode("utf-8", errors="ignore")
+                        elif isinstance(raw, str):
+                            value_text = raw
+                    except Exception:
+                        value_text = ""
+
+                    if value_text:
+                        try:
+                            data = json.loads(value_text)
+                        except Exception:
+                            data = None
+                        if isinstance(data, dict):
+                            ma = str(data.get("multiaddr") or "").strip()
+                            if ma:
+                                try:
+                                    resp = await _try_peer_multiaddr(host=host, peer_multiaddr=ma, message=message)
+                                    if isinstance(resp, dict):
+                                        return resp
+                                except Exception:
+                                    pass
         except Exception:
             continue
     return None
