@@ -124,6 +124,10 @@ def main():
     if args.p2p_enable_tools:
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS"] = "1"
 
+    if args.p2p_service and args.p2p_listen_port:
+        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port)))
+        os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port)))
+
     # Cache integration: when hosting the TaskQueue p2p service, prefer to share
     # GitHub cache entries via the TaskQueue cache.get/set RPC (single libp2p
     # port) rather than starting a second libp2p host in the GitHub cache.
