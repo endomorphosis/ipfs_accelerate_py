@@ -5,7 +5,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=barberb
+User=devel
 WorkingDirectory=%h/ipfs_accelerate_py
 Environment=PORT=8080
 ExecStart=/bin/bash -lc '/bin/bash %h/ipfs_accelerate_py/tools/run_dashboard.sh'
