@@ -70,6 +70,16 @@ else:
 logger = logging.getLogger(__name__)
 
 
+# Global REST API rate-limit backoff shared across all GitHubCLI instances
+# in the current process. The service creates multiple wrappers (autoscaler,
+# discovery, scheduler), and without a shared cooldown each instance will
+# independently hammer the GitHub API when rate-limited.
+_GLOBAL_REST_RATE_LIMIT_UNTIL: float = 0.0
+_GLOBAL_REST_RATE_LIMIT_BACKOFF: float = 60.0
+_GLOBAL_REST_RATE_LIMIT_LAST_LOG: float = 0.0
+_GLOBAL_REST_RATE_LIMIT_LOCK = Lock()
+
+
 class GitHubCLI:
     """Python wrapper for GitHub CLI (gh) commands with optional caching."""
     
@@ -139,15 +149,6 @@ class GitHubCLI:
             self.cache = None
         
         self._verify_installation()
-
-        # Global REST API rate-limit backoff.
-        # When `gh api ...` hits a rate limit, continuing to call it every loop
-        # just burns CPU/logs. We apply a cooldown so callers can fall back to
-        # stale cache while GitHub resets the limit.
-        self._rest_rate_limit_until: float = 0.0
-        self._rest_rate_limit_backoff: float = 60.0
-        self._rest_rate_limit_lock = Lock()
-        self._last_rest_rate_limit_log: float = 0.0
         
         # Check token status on initialization
         if self.auto_refresh_token:
@@ -159,24 +160,28 @@ class GitHubCLI:
         return any(keyword in stderr_lower for keyword in ["rate limit", "api rate limit", "too many requests"])
 
     def _rest_cooldown_active(self) -> bool:
-        return time.time() < self._rest_rate_limit_until
+        return time.time() < _GLOBAL_REST_RATE_LIMIT_UNTIL
 
     def _note_rest_rate_limit(self, stderr: str) -> None:
+        global _GLOBAL_REST_RATE_LIMIT_UNTIL
+        global _GLOBAL_REST_RATE_LIMIT_BACKOFF
+        global _GLOBAL_REST_RATE_LIMIT_LAST_LOG
+
         now = time.time()
-        with self._rest_rate_limit_lock:
+        with _GLOBAL_REST_RATE_LIMIT_LOCK:
             # Escalate the backoff if we're still in a cooldown window.
-            if now < self._rest_rate_limit_until:
-                self._rest_rate_limit_backoff = min(self._rest_rate_limit_backoff * 2.0, 3600.0)
+            if now < _GLOBAL_REST_RATE_LIMIT_UNTIL:
+                _GLOBAL_REST_RATE_LIMIT_BACKOFF = min(_GLOBAL_REST_RATE_LIMIT_BACKOFF * 2.0, 3600.0)
             else:
-                self._rest_rate_limit_backoff = max(self._rest_rate_limit_backoff, 60.0)
-            self._rest_rate_limit_until = now + self._rest_rate_limit_backoff
+                _GLOBAL_REST_RATE_LIMIT_BACKOFF = max(_GLOBAL_REST_RATE_LIMIT_BACKOFF, 60.0)
+            _GLOBAL_REST_RATE_LIMIT_UNTIL = now + _GLOBAL_REST_RATE_LIMIT_BACKOFF
 
             # Avoid log spam if multiple calls hit the same limit.
-            if now - self._last_rest_rate_limit_log >= 60:
+            if now - _GLOBAL_REST_RATE_LIMIT_LAST_LOG >= 60:
                 logger.warning(
-                    f"REST API rate limit hit; backing off for {int(self._rest_rate_limit_backoff)}s (stale cache will be used when available)"
+                    f"REST API rate limit hit; backing off for {int(_GLOBAL_REST_RATE_LIMIT_BACKOFF)}s (stale cache will be used when available)"
                 )
-                self._last_rest_rate_limit_log = now
+                _GLOBAL_REST_RATE_LIMIT_LAST_LOG = now
             else:
                 logger.debug(f"REST API rate limit hit (suppressed): {stderr}")
     
@@ -1219,14 +1224,23 @@ class RunnerManager:
                 runners_provisioned += runners_to_provision
                 logger.info(f"Generated token for {repo}: provisioning {runners_to_provision} runner(s) (min {min_runners_per_repo} + {queued_count} queued) for {len(workflows)} workflow(s) ({running_count} running, {queued_count} queued, {failed_count} failed)")
             else:
+                rate_limited = False
+                try:
+                    rate_limited = bool(getattr(self.gh, "_rest_cooldown_active") and self.gh._rest_cooldown_active())
+                except Exception:
+                    rate_limited = False
+
                 provisioning_status[repo] = {
-                    "error": "Failed to generate registration token",
+                    "error": "Rate limited while generating registration token" if rate_limited else "Failed to generate registration token",
                     "running_workflows": running_count,
                     "failed_workflows": failed_count,
                     "queued_workflows": queued_count,
                     "total_workflows": len(workflows),
-                    "status": "failed"
+                    "status": "rate_limited" if rate_limited else "failed"
                 }
-                logger.error(f"Failed to generate token for {repo}")
+                if rate_limited:
+                    logger.info(f"Skipping token generation for {repo} (GitHub rate limit cooldown active)")
+                else:
+                    logger.error(f"Failed to generate token for {repo}")
         
         return provisioning_status

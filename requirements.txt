@@ -31,3 +31,4 @@ PyGithub>=2.3.0
 tqdm>=4.64.0
 numpy>=1.23.0
 multiformats>=0.3.0
+pymultihash>=0.8.2

@@ -44,6 +44,8 @@ if HAVE_STORAGE_WRAPPER:
 else:
     _storage = None
 
+storage_wrapper = get_storage_wrapper if HAVE_STORAGE_WRAPPER else None
+
 logger = logging.getLogger(__name__)
 
 
@@ -73,13 +75,12 @@ class P2PPeerRegistry:
             peer_ttl_minutes: How long peer entries are valid
         """
         # Initialize storage wrapper
-        if storage_wrapper:
+        self.storage = None
+        if storage_wrapper is not None:
             try:
-                self.storage = storage_wrapper()
-            except:
+                self.storage = storage_wrapper(auto_detect_ci=True)
+            except Exception:
                 self.storage = None
-        else:
-            self.storage = None
         
         self.repo = repo
         self.repo_owner, self.repo_name = (repo.split("/", 1) + [""])[0:2]
@@ -126,8 +127,8 @@ class P2PPeerRegistry:
             # Store in distributed storage for debugging/caching
             if self.storage and tmp_path:
                 try:
-                    self.storage.store_file(tmp_path, json_data, pin=False)
-                except:
+                    self.storage.write_file(json_data, filename=os.path.basename(tmp_path), pin=False)
+                except Exception:
                     pass  # Silently fail
                 
             args.extend(["--input", tmp_path])
@@ -415,6 +416,10 @@ class P2PPeerRegistry:
         except Exception as e:
             logger.error(f"Error discovering peers: {e}")
             return []
+
+    def list_peers(self, max_peers: int = 50) -> List[Dict]:
+        """Compatibility wrapper used by dashboard/tools."""
+        return self.discover_peers(max_peers=max_peers)
     
     def get_bootstrap_addrs(self, max_peers: int = 5) -> List[str]:
         """
