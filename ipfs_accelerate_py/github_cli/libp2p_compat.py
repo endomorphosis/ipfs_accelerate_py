@@ -178,6 +178,32 @@ def patch_libp2p_compatibility():
                 _ensure_digest_encodeable(mf_multihash)
             except Exception:
                 pass
+
+            # Patch known libp2p KadDHT ProviderStore bug where `_send_add_provider`
+            # unconditionally closes `stream` in a `finally` block, causing:
+            #   UnboundLocalError: cannot access local variable 'stream'...
+            # when opening the stream fails.
+            try:
+                from libp2p.kad_dht.provider_store import ProviderStore  # type: ignore
+
+                orig_send = getattr(ProviderStore, "_send_add_provider", None)
+                if callable(orig_send) and not getattr(orig_send, "_ipfs_accelerate_patched", False):
+
+                    async def _send_add_provider_safe(self, peer_id, key):  # type: ignore[no-redef]
+                        try:
+                            return await orig_send(self, peer_id, key)
+                        except UnboundLocalError as exc:
+                            # Treat as a failed send; the root cause is already
+                            # logged (unable to connect / open stream).
+                            if "stream" in str(exc):
+                                return False
+                            raise
+
+                    setattr(_send_add_provider_safe, "_ipfs_accelerate_patched", True)
+                    ProviderStore._send_add_provider = _send_add_provider_safe  # type: ignore[assignment]
+                    logger.debug("✓ Patched libp2p ProviderStore._send_add_provider stream-close bug")
+            except Exception:
+                pass
             return True
 
         # Get hash codes from multihash.constants
