@@ -868,10 +868,10 @@ class GitHubAPICache:
     def _get_github_auth_secret(self) -> str:
         """Return GitHub auth token to use as shared secret.
 
-        Uses `GITHUB_TOKEN` if available, otherwise tries `gh auth token`.
+        Uses `GH_TOKEN`/`GITHUB_TOKEN` if available, otherwise tries `gh auth token`.
         """
 
-        github_token = (os.environ.get("GITHUB_TOKEN") or "").strip()
+        github_token = (os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or "").strip()
         if github_token:
             return github_token
 
@@ -892,7 +892,7 @@ class GitHubAPICache:
         except Exception:
             pass
 
-        raise RuntimeError("GitHub auth token unavailable (set GITHUB_TOKEN or run 'gh auth login')")
+        raise RuntimeError("GitHub auth token unavailable (set GH_TOKEN/GITHUB_TOKEN or run 'gh auth login')")
 
     def _init_task_p2p_encryption(self) -> None:
         """Initialize task-p2p encryption cipher derived from GitHub auth token."""
@@ -1463,7 +1463,7 @@ class GitHubAPICache:
 
         # Fallback to GitHub token (legacy/default behavior)
         if not shared_secret:
-            github_token = os.environ.get("GITHUB_TOKEN")
+            github_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
             if not github_token:
                 # Try to get token from gh CLI
                 try:
@@ -1481,11 +1481,11 @@ class GitHubAPICache:
 
             if not github_token:
                 raise RuntimeError(
-                    "Shared secret not available (set CACHE_P2P_SHARED_SECRET, or set GITHUB_TOKEN / run 'gh auth login')"
+                    "Shared secret not available (set CACHE_P2P_SHARED_SECRET, or set GH_TOKEN/GITHUB_TOKEN / run 'gh auth login')"
                 )
 
             shared_secret = github_token
-            secret_source = "GITHUB_TOKEN/gh"
+            secret_source = "GH_TOKEN/GITHUB_TOKEN/gh"
         
         # Derive encryption key from GitHub token using PBKDF2
         # This ensures all runners with same token get same encryption key

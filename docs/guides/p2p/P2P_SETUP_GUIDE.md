@@ -121,11 +121,20 @@ Configure P2P behavior using environment variables:
 # Enable P2P (default: true)
 export CACHE_ENABLE_P2P=true
 
-# Set listen port (default: 9000)
-export CACHE_LISTEN_PORT=9000
+# Set listen port (default: 9100)
+export CACHE_LISTEN_PORT=9100
+
+# Ensure all nodes rendezvous in the same repo (format: owner/repo)
+export IPFS_ACCELERATE_GITHUB_REPO=owner/repo
+
+# Provide GitHub auth for `gh` so the Issue-backed peer registry works
+# (preferred) for GitHub CLI:
+export GH_TOKEN=...
+# (optional) some codepaths still read GITHUB_TOKEN:
+export GITHUB_TOKEN=...
 
 # Set bootstrap peers (optional)
-export CACHE_BOOTSTRAP_PEERS="/ip4/192.168.1.100/tcp/9000/p2p/QmPeerID1,/ip4/192.168.1.101/tcp/9000/p2p/QmPeerID2"
+export CACHE_BOOTSTRAP_PEERS="/ip4/192.168.1.100/tcp/9100/p2p/QmPeerID1,/ip4/192.168.1.101/tcp/9100/p2p/QmPeerID2"
 ```
 
 ### Programmatic Configuration
@@ -136,9 +145,9 @@ from ipfs_accelerate_py.github_cli.cache import GitHubAPICache
 # Create cache with P2P enabled
 cache = GitHubAPICache(
     enable_p2p=True,
-    p2p_listen_port=9000,
+  p2p_listen_port=9100,
     bootstrap_peers=[
-        "/ip4/192.168.1.100/tcp/9000/p2p/QmPeerID1"
+    "/ip4/192.168.1.100/tcp/9100/p2p/QmPeerID1"
     ]
 )
 ```
@@ -175,9 +184,15 @@ sudo apt-get install -y python3-dev libgmp-dev build-essential
 ### P2P Enabled but No Peers Connect
 
 **Possible causes**:
-1. **Firewall blocking**: Ensure port 9000 (or configured port) is open
+1. **Firewall blocking**: Ensure port 9100 (or configured port) is open
 2. **No bootstrap peers**: Set `CACHE_BOOTSTRAP_PEERS` environment variable
 3. **Network isolation**: Peers must be able to reach each other's IP addresses
+
+**Multi-node checklist (must match on every node)**:
+1. `CACHE_ENABLE_P2P=true`
+2. `IPFS_ACCELERATE_GITHUB_REPO=owner/repo`
+3. GitHub auth available to `gh` (set `GH_TOKEN` or run `gh auth login`)
+4. TCP reachability to the listen port (default `9100`) between nodes
 
 **Check connectivity**:
 ```bash

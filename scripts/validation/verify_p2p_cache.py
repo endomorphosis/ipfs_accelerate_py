@@ -69,7 +69,7 @@ def test_cache_module():
 def test_github_token():
     """Test GitHub token availability"""
     import os
-    if os.environ.get('GITHUB_TOKEN'):
+    if os.environ.get('GH_TOKEN') or os.environ.get('GITHUB_TOKEN'):
         return True
     try:
         result = subprocess.run(
@@ -191,7 +191,7 @@ def main():
     
     # Usage hints
     if not has_token:
-        print(f"{YELLOW}Hint:{RESET} Set GITHUB_TOKEN or run 'gh auth login' for encryption")
+        print(f"{YELLOW}Hint:{RESET} Set GH_TOKEN/GITHUB_TOKEN or run 'gh auth login' for encryption")
     
     print(f"\n{BLUE}Quick Commands:{RESET}")
     print(f"  • Run full tests: python test_p2p_cache_encryption.py")

@@ -18,7 +18,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 # Enable P2P
 os.environ['CACHE_ENABLE_P2P'] = 'true'
 # Use the cache module's expected env var
-os.environ['CACHE_LISTEN_PORT'] = os.environ.get('CACHE_LISTEN_PORT', '9000')
+os.environ['CACHE_LISTEN_PORT'] = os.environ.get('CACHE_LISTEN_PORT', '9100')
 # Backward-compatible alias (some scripts still reference this)
 os.environ['P2P_LISTEN_PORT'] = os.environ.get('P2P_LISTEN_PORT', os.environ['CACHE_LISTEN_PORT'])
 
@@ -83,7 +83,7 @@ def print_stats(cache):
         print(f"  Authorization:     GitHub token as shared secret")
     else:
         print(f"  Encryption:        ⚠️  NOT ENABLED")
-        print(f"  Reason:            GITHUB_TOKEN not available")
+        print(f"  Reason:            GH_TOKEN/GITHUB_TOKEN not available")
         print(f"  Impact:            P2P messages sent unencrypted")
     print()
     

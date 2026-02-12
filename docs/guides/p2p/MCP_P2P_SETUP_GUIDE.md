@@ -10,6 +10,12 @@ Configure the MCP server's libp2p multiaddr as a GitHub Secret so workflows can 
 
 ## Setup Steps
 
+Before starting, ensure every node uses the same rendezvous repo:
+
+```bash
+export IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
+```
+
 ### 1. Get Your MCP Server's P2P Address
 
 On the machine running your MCP server, get the peer ID and multiaddr:
@@ -210,6 +216,10 @@ All P2P cache messages are encrypted using:
 - Algorithm: AES-256
 - Key derivation: PBKDF2 from GitHub token
 - Only runners with the same GitHub token can decrypt messages
+
+Notes:
+- Prefer setting `GH_TOKEN` for GitHub CLI auth.
+- Some components also accept `GITHUB_TOKEN`.
 
 ### Network Security
 
