@@ -22,9 +22,21 @@ except ImportError:
     RemoteQueue = None
 
 try:
-    from .workflow import P2PWorkflowScheduler
+    from .workflow import (
+        P2PWorkflowScheduler,
+        P2PTask,
+        WorkflowTag,
+        MerkleClock,
+        get_scheduler,
+        HAVE_P2P_SCHEDULER,
+    )
 except ImportError:
     P2PWorkflowScheduler = None
+    P2PTask = None
+    WorkflowTag = None
+    MerkleClock = None
+    get_scheduler = None
+    HAVE_P2P_SCHEDULER = False
 
 try:
     from .peer_registry import P2PPeerRegistry
@@ -40,6 +52,11 @@ __all__ = [
     "P2PTaskQueue",
     "RemoteQueue",
     "P2PWorkflowScheduler",
+    "P2PTask",
+    "WorkflowTag",
+    "MerkleClock",
+    "get_scheduler",
+    "HAVE_P2P_SCHEDULER",
     "P2PPeerRegistry",
     "SimplePeerBootstrap",
 ]
