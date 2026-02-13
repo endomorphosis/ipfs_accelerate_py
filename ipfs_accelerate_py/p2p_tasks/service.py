@@ -37,6 +37,7 @@ Protocol:
 from __future__ import annotations
 
 import functools
+import ipaddress
 import json
 import os
 import socket
@@ -46,7 +47,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from .protocol import PROTOCOL_V1, auth_ok
+from .protocol import PROTOCOL_V1, auth_ok, get_shared_token
 from .task_queue import TaskQueue
 from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
 
@@ -836,6 +837,129 @@ async def serve_task_queue(
     queue = TaskQueue(queue_path)
     cache_store = DiskTTLCache(default_cache_dir())
 
+    cache_replicate_enabled = _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_CACHE_REPLICATE",
+        compat="IPFS_DATASETS_PY_TASK_P2P_CACHE_REPLICATE",
+        default=False,
+    )
+    try:
+        cache_replicate_max_peers = int(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_REPLICATE_MAX_PEERS")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_CACHE_REPLICATE_MAX_PEERS")
+            or 6
+        )
+    except Exception:
+        cache_replicate_max_peers = 6
+    try:
+        cache_replicate_timeout_s = float(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_REPLICATE_TIMEOUT_S")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_CACHE_REPLICATE_TIMEOUT_S")
+            or 1.0
+        )
+    except Exception:
+        cache_replicate_timeout_s = 1.0
+
+    def _multiaddr_has_private_ipv4(addr: object) -> bool:
+        try:
+            text = str(addr or "")
+        except Exception:
+            return False
+        if "/ip4/" not in text:
+            return False
+        try:
+            ip_text = text.split("/ip4/", 1)[1].split("/", 1)[0].strip()
+            if not ip_text:
+                return False
+            ip = ipaddress.ip_address(ip_text)
+            return bool(getattr(ip, "is_private", False))
+        except Exception:
+            return False
+
+    def _candidate_cache_replication_peers() -> list[object]:
+        if not cache_replicate_enabled:
+            return []
+        try:
+            ps = host.get_peerstore()
+        except Exception:
+            return []
+        try:
+            peer_ids = list(ps.peer_ids())  # type: ignore[attr-defined]
+        except Exception:
+            return []
+
+        me = None
+        try:
+            me = host.get_id()
+        except Exception:
+            me = None
+
+        out: list[object] = []
+        for pid in peer_ids:
+            try:
+                if me is not None and pid == me:
+                    continue
+            except Exception:
+                pass
+            try:
+                addrs = list(ps.addrs(pid))  # type: ignore[attr-defined]
+            except Exception:
+                addrs = []
+            if not addrs:
+                continue
+            if not any(_multiaddr_has_private_ipv4(a) for a in addrs):
+                continue
+            out.append(pid)
+
+        # Best-effort stability: deterministic order for tests/logging.
+        def _pid_key(p: object) -> str:
+            try:
+                pretty = getattr(p, "pretty", None)
+                if callable(pretty):
+                    return str(pretty() or "")
+            except Exception:
+                pass
+            return str(p or "")
+
+        out.sort(key=_pid_key)
+        return out[: max(0, int(cache_replicate_max_peers))]
+
+    async def _replicate_cache_message(message: dict) -> None:
+        if not cache_replicate_enabled:
+            return
+        # Never re-replicate a forwarded message.
+        if message.get("replicate") is False:
+            return
+        # Forwarded messages must not replicate further.
+        fwd = dict(message)
+        fwd["replicate"] = False
+        token = get_shared_token()
+        if token:
+            fwd["token"] = token
+        payload = (json.dumps(fwd, ensure_ascii=False) + "\n").encode("utf-8")
+
+        peers = _candidate_cache_replication_peers()
+        if not peers:
+            return
+
+        for pid in peers:
+            try:
+                with anyio.fail_after(float(cache_replicate_timeout_s)):
+                    stream2 = await host.new_stream(pid, [PROTOCOL_V1])
+                    try:
+                        await stream2.write(payload)
+                        # Drain one line best-effort so the remote handler can finish.
+                        try:
+                            await stream2.read(4096)
+                        except Exception:
+                            pass
+                    finally:
+                        try:
+                            await stream2.close()
+                        except Exception:
+                            pass
+            except Exception:
+                continue
+
     # Deterministic scheduling state (best-effort, in-memory). This enables a
     # swarm to claim from a *global* queue deterministically when all peers talk
     # to the same TaskQueue service.
@@ -1315,6 +1439,21 @@ async def serve_task_queue(
                     ttl_value = None
 
                 cache_store.set(key, value, ttl_s=ttl_value)
+                # Best-effort write-through cache replication across LAN peers.
+                # Opt-in via IPFS_ACCELERATE_PY_TASK_P2P_CACHE_REPLICATE=1.
+                if cache_replicate_enabled and msg.get("replicate") is not False:
+                    try:
+                        await _replicate_cache_message(
+                            {
+                                "op": "cache.set",
+                                "key": key,
+                                "value": value,
+                                "ttl_s": ttl_value,
+                                "origin_peer_id": peer_id,
+                            }
+                        )
+                    except Exception:
+                        pass
                 await stream.write(json.dumps({"ok": True, "key": key, "peer_id": peer_id}).encode("utf-8") + b"\n")
                 return
 
@@ -1329,6 +1468,17 @@ async def serve_task_queue(
                     return
 
                 deleted = bool(cache_store.delete(key))
+                if cache_replicate_enabled and msg.get("replicate") is not False:
+                    try:
+                        await _replicate_cache_message(
+                            {
+                                "op": "cache.delete",
+                                "key": key,
+                                "origin_peer_id": peer_id,
+                            }
+                        )
+                    except Exception:
+                        pass
                 await stream.write(json.dumps({"ok": True, "key": key, "deleted": deleted, "peer_id": peer_id}).encode("utf-8") + b"\n")
                 return
 
