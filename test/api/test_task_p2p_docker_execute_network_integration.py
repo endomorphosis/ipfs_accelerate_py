@@ -3,6 +3,7 @@ import logging
 import os
 import re
 import time
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -192,6 +193,8 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 				"peer_id": remote.peer_id,
 				"multiaddr": remote.multiaddr,
 				"error": str(exc),
+				"error_type": type(exc).__name__,
+				"error_detail": traceback.format_exc()[-16000:],
 			}
 
 	async def _run_all() -> None:
@@ -243,6 +246,8 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 					"submitted_multiaddr": r.get("multiaddr"),
 					"status": "submit_or_wait_error",
 					"error": r.get("error"),
+					"error_type": r.get("error_type"),
+					"error_detail": r.get("error_detail"),
 					"classification": _classify_incompatibility(str(r.get("error") or "")),
 					"gpu_uuids": [],
 					"stdout_tail": "",

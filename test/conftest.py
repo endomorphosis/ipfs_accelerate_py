@@ -185,6 +185,15 @@ def pytest_runtest_setup(item):
     
     # Skip CUDA tests if marker present but CUDA not available
     if 'cuda' in item.keywords:
+        force_cuda = str(os.environ.get('IPFS_ACCELERATE_PY_TEST_FORCE_CUDA') or '').strip().lower() in {
+            '1',
+            'true',
+            'yes',
+            'y',
+            'on',
+        }
+        if force_cuda:
+            return
         try:
             from test.common.hardware_detection import detect_hardware
             hardware_info = detect_hardware()
