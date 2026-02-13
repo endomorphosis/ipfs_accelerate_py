@@ -56,6 +56,9 @@ echo "📦 Installing IPFS Accelerate MCP Server service..."
 sudo cp "$SYSTEMD_DIR/ipfs-accelerate.service" /etc/systemd/system/
 sudo sed -i "s/^User=.*/User=${USER}/" /etc/systemd/system/ipfs-accelerate.service || true
 sudo sed -i "s/^Group=.*/Group=${USER}/" /etc/systemd/system/ipfs-accelerate.service || true
+sudo sed -i "s#%h/ipfs_accelerate_py#${REPO_DIR}#g" /etc/systemd/system/ipfs-accelerate.service || true
+sudo sed -i "s#/root/ipfs_accelerate_py#${REPO_DIR}#g" /etc/systemd/system/ipfs-accelerate.service || true
+sudo sed -i "s#/home/devel/ipfs_accelerate_py#${REPO_DIR}#g" /etc/systemd/system/ipfs-accelerate.service || true
 sudo systemctl daemon-reload
 sudo systemctl enable ipfs-accelerate.service
 echo "✅ MCP Server service installed"
@@ -63,6 +66,11 @@ echo "✅ MCP Server service installed"
 # Install GitHub Autoscaler service
 echo "📦 Installing GitHub Actions Autoscaler service..."
 sudo cp "$SYSTEMD_DIR/github-autoscaler.service" /etc/systemd/system/
+sudo sed -i "s/^User=.*/User=${USER}/" /etc/systemd/system/github-autoscaler.service || true
+sudo sed -i "s/^Group=.*/Group=${USER}/" /etc/systemd/system/github-autoscaler.service || true
+sudo sed -i "s#%h/ipfs_accelerate_py#${REPO_DIR}#g" /etc/systemd/system/github-autoscaler.service || true
+sudo sed -i "s#/root/ipfs_accelerate_py#${REPO_DIR}#g" /etc/systemd/system/github-autoscaler.service || true
+sudo sed -i "s#/home/devel/ipfs_accelerate_py#${REPO_DIR}#g" /etc/systemd/system/github-autoscaler.service || true
 sudo systemctl daemon-reload
 sudo systemctl enable github-autoscaler.service
 echo "✅ Autoscaler service installed"

@@ -12,6 +12,7 @@ set -euo pipefail
 #   sudo deployments/systemd/install.sh --unit ipfs-accelerate.service --no-start
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
 # Units explicitly requested via CLI flags. If none are provided, we default to
 # installing the primary instance.
@@ -69,16 +70,16 @@ ensure_python_deps() {
 
   # MCP++ unit runs via Hypercorn w/ Trio workers.
   if [[ "${unit}" == "ipfs-accelerate-mcp.service" ]]; then
-    local py="${home}/ipfs_accelerate_py/.venv/bin/python3"
-    local pip="${home}/ipfs_accelerate_py/.venv/bin/pip"
+    local py="${PROJECT_DIR}/.venv/bin/python3"
+    local pip="${PROJECT_DIR}/.venv/bin/pip"
 
     if [[ ! -x "${py}" || ! -x "${pip}" ]]; then
-      echo "WARNING: venv not found at ${home}/ipfs_accelerate_py/.venv; cannot ensure hypercorn[trio]" >&2
+      echo "WARNING: venv not found at ${PROJECT_DIR}/.venv; cannot ensure hypercorn[trio]" >&2
       return 0
     fi
 
     if ! run_as_user "${user}" "${py}" -c 'import hypercorn' >/dev/null 2>&1; then
-      echo "Installing hypercorn[trio] into ${home}/ipfs_accelerate_py/.venv (required for ipfs-accelerate-mcp.service)" >&2
+      echo "Installing hypercorn[trio] into ${PROJECT_DIR}/.venv (required for ipfs-accelerate-mcp.service)" >&2
       run_as_user "${user}" "${pip}" install -U 'hypercorn[trio]'
     fi
   fi
@@ -143,6 +144,9 @@ patch_unit_user_group() {
   sed \
     -e "s/^User=.*/User=${user}/" \
     -e "s/^Group=.*/Group=${user}/" \
+    -e "s#%h/ipfs_accelerate_py#${PROJECT_DIR}#g" \
+    -e "s#/root/ipfs_accelerate_py#${PROJECT_DIR}#g" \
+    -e "s#/home/devel/ipfs_accelerate_py#${PROJECT_DIR}#g" \
     -e "s#%h#${home}#g" \
     "${src}" >"${tmp}"
 

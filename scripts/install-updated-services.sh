@@ -16,15 +16,24 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Copy service files
-echo "Copying service files to /etc/systemd/system/..."
-cp "${REPO_DIR}/deployments/systemd/ipfs-accelerate.service" /etc/systemd/system/
-cp "${REPO_DIR}/deployments/systemd/ipfs-accelerate-mcp.service" /etc/systemd/system/
-cp "${REPO_DIR}/deployments/systemd/containerized-runner-launcher.service" /etc/systemd/system/
+INSTALL_USER="${SUDO_USER:-}"
+if [[ -z "${INSTALL_USER}" || "${INSTALL_USER}" == "root" ]]; then
+    INSTALL_USER="$(logname 2>/dev/null || true)"
+fi
+if [[ -z "${INSTALL_USER}" || "${INSTALL_USER}" == "root" ]]; then
+    echo "ERROR: Could not infer the target non-root user. Re-run as: sudo -u <user> sudo $0" >&2
+    exit 2
+fi
 
-# Reload systemd daemon
-echo "Reloading systemd daemon..."
-systemctl daemon-reload
+echo "Installing service files to /etc/systemd/system/ for user: ${INSTALL_USER}"
+
+"${REPO_DIR}/deployments/systemd/install.sh" \
+    --unit ipfs-accelerate.service \
+    --unit ipfs-accelerate-mcp.service \
+    --unit containerized-runner-launcher.service \
+    --user "${INSTALL_USER}" \
+    --skip-python-deps \
+    --no-start
 
 echo ""
 echo "Service files installed successfully!"

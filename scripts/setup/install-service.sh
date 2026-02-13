@@ -55,6 +55,12 @@ cp "$UNIT_SOURCE_FILE" "$SERVICE_FILE"
 sed -i "s/^User=.*/User=${USER}/" "$SERVICE_FILE" || true
 sed -i "s/^Group=.*/Group=${USER}/" "$SERVICE_FILE" || true
 
+# Ensure unit paths point at the actual checkout location (and not /root)
+# This avoids systemd mount namespace failures when the repo isn't in /root.
+sed -i "s#%h/ipfs_accelerate_py#${PROJECT_DIR}#g" "$SERVICE_FILE" || true
+sed -i "s#/root/ipfs_accelerate_py#${PROJECT_DIR}#g" "$SERVICE_FILE" || true
+sed -i "s#/home/devel/ipfs_accelerate_py#${PROJECT_DIR}#g" "$SERVICE_FILE" || true
+
 # Set correct permissions
 chown root:root "$SERVICE_FILE"
 chmod 644 "$SERVICE_FILE"
