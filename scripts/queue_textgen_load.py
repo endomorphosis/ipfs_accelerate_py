@@ -23,6 +23,7 @@ import contextlib
 import json
 import os
 import sys
+import socket
 import time
 import traceback
 from typing import Any, Dict, List, Optional, Tuple
@@ -70,7 +71,38 @@ def _write_json_file(path: str, obj: Any) -> None:
     os.replace(tmp_path, path)
 
 
-def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
+def _parse_ip_tcp_from_multiaddr(multiaddr: str) -> Tuple[str, int]:
+    """Best-effort parse of /ip4/<ip>/tcp/<port>/... multiaddrs."""
+
+    host = ""
+    port = 0
+    parts = [p for p in str(multiaddr or "").split("/") if p]
+    try:
+        for i, p in enumerate(parts):
+            if p in {"ip4", "dns4", "dns", "ip6", "dns6"} and i + 1 < len(parts):
+                host = str(parts[i + 1])
+            if p == "tcp" and i + 1 < len(parts):
+                port = int(parts[i + 1])
+    except Exception:
+        return ("", 0)
+    return (host, int(port) if isinstance(port, int) else 0)
+
+
+def _tcp_probe(host: str, port: int, *, timeout_s: float = 0.4) -> bool:
+    if not host or not port:
+        return False
+    try:
+        sock = socket.create_connection((host, int(port)), timeout=float(timeout_s))
+        try:
+            sock.close()
+        except Exception:
+            pass
+        return True
+    except Exception:
+        return False
+
+
+async def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
     targets: list[Tuple[str, str]] = []
     for ap in args.announce_file or []:
         info = _load_announce(str(ap))
@@ -99,7 +131,7 @@ def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
     mdns_enabled = bool(getattr(args, "mdns", False))
     if mdns_enabled and not targets:
         try:
-            from ipfs_accelerate_py.p2p_tasks.client import discover_peers_via_mdns_sync, request_status_sync
+            from ipfs_accelerate_py.p2p_tasks.client import discover_peers_via_mdns, request_status
         except Exception as exc:
             raise SystemExit(f"mDNS discovery requested but unavailable: {exc}")
 
@@ -109,7 +141,7 @@ def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
         if not expected_session:
             expected_session = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
 
-        peers = discover_peers_via_mdns_sync(timeout_s=mdns_timeout_s, limit=mdns_limit, exclude_self=False)
+        peers = await discover_peers_via_mdns(timeout_s=mdns_timeout_s, limit=mdns_limit, exclude_self=False)
         for rq in list(peers or []):
             try:
                 pid = str(getattr(rq, "peer_id", "") or "").strip()
@@ -118,14 +150,25 @@ def _build_remote_targets(args: argparse.Namespace) -> List[Tuple[str, str]]:
                 continue
             if not pid or not ma:
                 continue
+
+            # Quick TCP reachability check to avoid hanging on libp2p handshake
+            # timeouts during discovery.
+            host, port = _parse_ip_tcp_from_multiaddr(ma)
+            if not _tcp_probe(host, port, timeout_s=0.4):
+                continue
+
+            # Optional: session-gated verification via TaskQueue status.
             if expected_session:
                 try:
-                    resp = request_status_sync(remote=rq, timeout_s=3.0, detail=False)
-                    if not (isinstance(resp, dict) and resp.get("ok")):
-                        continue
-                    if str(resp.get("session") or "").strip() != expected_session:
-                        continue
+                    import anyio
+
+                    with anyio.fail_after(3.0):
+                        resp = await request_status(remote=rq, timeout_s=3.0, detail=False)
                 except Exception:
+                    continue
+                if not (isinstance(resp, dict) and resp.get("ok")):
+                    continue
+                if str(resp.get("session") or "").strip() != expected_session:
                     continue
             targets.append((pid, ma))
 
@@ -224,7 +267,7 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
         with contextlib.redirect_stdout(sys.stderr):
             from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, submit_task, wait_task
 
-        targets = _build_remote_targets(args)
+        targets = await _build_remote_targets(args)
         remotes = [RemoteQueue(peer_id=pid, multiaddr=ma) for (pid, ma) in targets]
 
         prompt = str(args.prompt or "Hello")
