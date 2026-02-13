@@ -1,6 +1,10 @@
 # MCP++ Module
 
+Module name: `ipfs_accelerate_py.mcplusplus_module`
+
 This module implements the **MCP++ blueprint** - a Trio-native implementation of the Model Context Protocol (MCP) with peer-to-peer (P2P) capabilities.
+
+**Note**: The module is named `mcplusplus_module` instead of `mcp++` because Python identifiers cannot contain `+` characters.
 
 ## Overview
 
@@ -15,7 +19,7 @@ The `mcp++` module provides:
 ## Architecture
 
 ```
-ipfs_accelerate_py/mcp++/
+ipfs_accelerate_py/mcplusplus_module/
 ├── __init__.py              # Module initialization and exports
 ├── README.md                # This file
 ├── trio/                    # Trio-native MCP server/client
@@ -68,7 +72,7 @@ The original implementations remain available for backward compatibility.
 
 ```python
 import trio
-from ipfs_accelerate_py.mcplusplus.trio import TrioMCPServer
+from ipfs_accelerate_py.mcplusplus_module.trio import TrioMCPServer
 
 async def main():
     server = TrioMCPServer(
@@ -77,7 +81,7 @@ async def main():
     )
     
     # Register P2P tools
-    from ipfs_accelerate_py.mcplusplus.tools import register_p2p_tools
+    from ipfs_accelerate_py.mcplusplus_module.tools import register_p2p_tools
     register_p2p_tools(server)
     
     # Run the server
@@ -91,7 +95,7 @@ if __name__ == "__main__":
 ### Using P2P TaskQueue
 
 ```python
-from ipfs_accelerate_py.mcplusplus.p2p import P2PTaskQueue
+from ipfs_accelerate_py.mcplusplus_module.p2p import P2PTaskQueue
 
 async def submit_task():
     queue = P2PTaskQueue(
@@ -114,13 +118,13 @@ The module includes comprehensive tests from the Mcp-Plus-Plus submodule:
 
 ```bash
 # Run Trio-specific tests
-pytest ipfs_accelerate_py/mcp++/tests/test_trio_server.py
+pytest ipfs_accelerate_py/mcplusplus_module/tests/test_trio_bridge.py
 
 # Run P2P integration tests
-pytest ipfs_accelerate_py/mcp++/tests/test_p2p_taskqueue.py
+pytest ipfs_accelerate_py/mcplusplus_module/tests/test_p2p_taskqueue.py
 
 # Run all mcp++ tests
-pytest ipfs_accelerate_py/mcp++/tests/
+pytest ipfs_accelerate_py/mcplusplus_module/tests/
 ```
 
 ## Roadmap

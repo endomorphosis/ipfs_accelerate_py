@@ -2,6 +2,8 @@
 
 These tools provide a thin MCP surface over the libp2p TaskQueue client,
 refactored to work natively with Trio without bridging overhead.
+
+Module: ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools
 """
 
 from __future__ import annotations

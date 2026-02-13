@@ -1,6 +1,8 @@
 """
 MCP++ (MCP Plus Plus) - Trio-based MCP + P2P implementation
 
+Module name: ipfs_accelerate_py.mcplusplus_module
+
 This module provides a Trio-native implementation of the Model Context Protocol (MCP)
 with P2P (peer-to-peer) capabilities, following the MCP++ blueprint from:
 https://github.com/endomorphosis/Mcp-Plus-Plus
@@ -34,7 +36,7 @@ Usage:
 For running a Trio-backed MCP server with P2P capabilities:
 
     import trio
-    from ipfs_accelerate_py.mcplusplus import TrioMCPServer
+    from ipfs_accelerate_py.mcplusplus_module import TrioMCPServer
     
     async def main():
         server = TrioMCPServer(name="my-p2p-server")

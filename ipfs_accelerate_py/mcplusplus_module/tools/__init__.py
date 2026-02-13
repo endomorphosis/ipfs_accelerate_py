@@ -5,6 +5,8 @@ This module provides MCP tool registrations for P2P taskqueue and workflow opera
 refactored from the original MCP implementation to work natively with Trio.
 """
 
+from typing import Any
+
 from .taskqueue_tools import register_p2p_taskqueue_tools
 
 try:

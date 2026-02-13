@@ -3,12 +3,14 @@ Tests for MCP++ Trio bridge functionality
 
 This module tests the Trio bridge utilities that allow running Trio code
 in different async contexts.
+
+Module: ipfs_accelerate_py.mcplusplus_module.tests.test_trio_bridge
 """
 
 import pytest
 import trio
 
-from ipfs_accelerate_py.mcplusplus.trio import (
+from ipfs_accelerate_py.mcplusplus_module.trio import (
     run_in_trio,
     is_trio_context,
     require_trio,
