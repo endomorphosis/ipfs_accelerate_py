@@ -871,7 +871,7 @@ async def serve_task_queue(
             if not ip_text:
                 return False
             ip = ipaddress.ip_address(ip_text)
-            return bool(getattr(ip, "is_private", False))
+            return bool(getattr(ip, "is_private", False) or getattr(ip, "is_loopback", False))
         except Exception:
             return False
 
