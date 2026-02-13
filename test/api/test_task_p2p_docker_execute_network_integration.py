@@ -115,25 +115,34 @@ def _default_report_path() -> str:
 	return str(state_dir / f"docker_execute_nvidia_smi_network_{ts}.json")
 
 
-def _load_local_announce(*, mode: str) -> dict[str, str]:
-	mode = str(mode or "").strip().lower() or "task"
+
+def _load_local_announce(*, expected_port: int) -> dict[str, str]:
 	repo_root = Path(__file__).resolve().parents[2]
-	if mode == "mcp":
-		path = repo_root / "state" / "task_p2p_announce_mcp.json"
-	else:
-		path = repo_root / "state" / "task_p2p_announce.json"
-	try:
-		if not path.exists():
-			return {}
-		data = json.loads(path.read_text(encoding="utf-8"))
-		if not isinstance(data, dict):
-			return {}
-		peer_id = str(data.get("peer_id") or "").strip()
-		multiaddr = str(data.get("multiaddr") or "").strip()
-		if peer_id and multiaddr:
-			return {"peer_id": peer_id, "multiaddr": multiaddr}
-	except Exception:
-		return {}
+	paths = [
+		repo_root / "state" / "task_p2p_announce.json",
+		repo_root / "state" / "task_p2p_announce_mcp.json",
+	]
+
+	def _port_matches(ma: str) -> bool:
+		try:
+			return f"/tcp/{int(expected_port)}/" in str(ma or "")
+		except Exception:
+			return False
+
+	for path in paths:
+		try:
+			if not path.exists():
+				continue
+			data = json.loads(path.read_text(encoding="utf-8"))
+			if not isinstance(data, dict):
+				continue
+			peer_id = str(data.get("peer_id") or "").strip()
+			multiaddr = str(data.get("multiaddr") or "").strip()
+			if peer_id and multiaddr and _port_matches(multiaddr):
+				return {"peer_id": peer_id, "multiaddr": multiaddr}
+		except Exception:
+			continue
+
 	return {}
 
 
@@ -172,7 +181,25 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		pytest.skip("Set IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST=1 to run")
 
 	p2p_mode = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_P2P_MODE") or "task").strip().lower() or "task"
-	expected_port = 9101 if p2p_mode == "mcp" else 9100
+	# Canonical design: MCP+TaskQueue share the same libp2p port (default 9100).
+	# CI can run a second instance on the same machine via an explicit override.
+	explicit_port = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_P2P_PORT") or "").strip()
+	if explicit_port:
+		try:
+			expected_port = int(explicit_port)
+		except Exception:
+			expected_port = 9100
+	else:
+		port_raw = (
+			os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
+			or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
+			or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
+			or "9100"
+		)
+		try:
+			expected_port = int(str(port_raw).strip())
+		except Exception:
+			expected_port = 9100
 
 	targets = _load_targets_from_env()
 	if len(targets) < 2:
@@ -190,7 +217,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			except Exception:
 				timeout_s, limit = 6.0, 25
 
-			local = _load_local_announce(mode=p2p_mode)
+			local = _load_local_announce(expected_port=int(expected_port))
 
 			# py-libp2p's mDNS discovery in this repo expects the discovery port to
 			# match the peer's libp2p listen port. When targeting MCP P2P (9101), we
