@@ -20,6 +20,7 @@ TARGET_DIR="/etc/systemd/system"
 NO_START="0"
 INSTALL_BOTH="0"
 PURGE_DROPINS="0"
+SKIP_PY_DEPS="0"
 
 print_usage() {
   cat <<'EOF'
@@ -31,10 +32,13 @@ Options:
   --user USER     Set User=/Group= in the unit (default: SUDO_USER, else current user)
   --no-start      Do not enable/restart the service
   --purge-dropins Move aside existing /etc/systemd/system/<unit>.d drop-ins (backs up then removes)
+  --skip-python-deps  Do not attempt to install Python deps into the target venv
   -h, --help      Show help
 
 Notes:
 - Secrets should live in /etc/ipfs-accelerate/secrets.env (not in the unit file).
+- ipfs-accelerate.service runs the "standard" MCP implementation.
+- ipfs-accelerate-mcp.service runs the MCP++ (Trio-oriented) implementation.
 EOF
 }
 
@@ -45,12 +49,65 @@ require_root() {
   fi
 }
 
+run_as_user() {
+  local user="$1"; shift
+  if command -v runuser >/dev/null 2>&1; then
+    runuser -u "${user}" -- "$@"
+    return $?
+  fi
+  su -s /bin/bash -c "$(printf '%q ' "$@")" "${user}"
+}
+
+ensure_python_deps() {
+  local user="$1"
+  local home="$2"
+  local unit="$3"
+
+  if [[ "${SKIP_PY_DEPS}" == "1" ]]; then
+    return 0
+  fi
+
+  # MCP++ unit runs via Hypercorn w/ Trio workers.
+  if [[ "${unit}" == "ipfs-accelerate-mcp.service" ]]; then
+    local py="${home}/ipfs_accelerate_py/.venv/bin/python3"
+    local pip="${home}/ipfs_accelerate_py/.venv/bin/pip"
+
+    if [[ ! -x "${py}" || ! -x "${pip}" ]]; then
+      echo "WARNING: venv not found at ${home}/ipfs_accelerate_py/.venv; cannot ensure hypercorn[trio]" >&2
+      return 0
+    fi
+
+    if ! run_as_user "${user}" "${py}" -c 'import hypercorn' >/dev/null 2>&1; then
+      echo "Installing hypercorn[trio] into ${home}/ipfs_accelerate_py/.venv (required for ipfs-accelerate-mcp.service)" >&2
+      run_as_user "${user}" "${pip}" install -U 'hypercorn[trio]'
+    fi
+  fi
+}
+
 infer_user() {
   if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
     echo "${SUDO_USER}"
     return 0
   fi
-  # Fallback: if run as root without sudo context, use the first non-root login.
+
+  # If run as root without sudo context, try to infer the active login user.
+  # "logname" is usually the most reliable in interactive root shells.
+  if command -v logname >/dev/null 2>&1; then
+    local ln
+    ln="$(logname 2>/dev/null || true)"
+    if [[ -n "${ln}" && "${ln}" != "root" ]]; then
+      echo "${ln}"
+      return 0
+    fi
+  fi
+
+  # If the installer lives under /home/<user>/..., infer <user>.
+  if [[ "${SCRIPT_DIR}" =~ ^/home/([^/]+)/ ]]; then
+    echo "${BASH_REMATCH[1]}"
+    return 0
+  fi
+
+  # Last resort: USER (may be root).
   echo "${USER:-root}"
 }
 
@@ -102,6 +159,16 @@ ensure_secrets_env() {
 # GH_TOKEN=...
 # GITHUB_TOKEN=...
 # IPFS_ACCELERATE_GITHUB_REPO=owner/repo
+
+# MCP++ HTTPS (Hypercorn)
+# Default (auto-generated on first start):
+# MCP_SSL_CERTFILE=%h/ipfs_accelerate_py/state/tls/mcpplusplus.crt
+# MCP_SSL_KEYFILE=%h/ipfs_accelerate_py/state/tls/mcpplusplus.key
+# Optional override for the SAN IP in the generated cert:
+# MCP_LAN_IP_OVERRIDE=192.168.1.10
+# If you later switch to a real domain and certbot:
+# MCP_SSL_CERTFILE=/etc/letsencrypt/live/<your-domain>/fullchain.pem
+# MCP_SSL_KEYFILE=/etc/letsencrypt/live/<your-domain>/privkey.pem
 EOF
     chmod 0600 /etc/ipfs-accelerate/secrets.env
   fi
@@ -143,6 +210,10 @@ main() {
         PURGE_DROPINS="1"
         shift 1
         ;;
+      --skip-python-deps)
+        SKIP_PY_DEPS="1"
+        shift 1
+        ;;
       -h|--help)
         print_usage
         exit 0
@@ -162,6 +233,9 @@ main() {
   if [[ -z "${user}" ]]; then
     user="$(infer_user)"
   fi
+
+  local home
+  home="$(infer_home "${user}")"
 
   ensure_secrets_env
 
@@ -186,6 +260,8 @@ main() {
     fi
 
     patch_unit_user_group "${src_unit}" "${TARGET_DIR}/${unit}" "${user}"
+
+    ensure_python_deps "${user}" "${home}" "${unit}"
   done
 
   systemctl daemon-reload

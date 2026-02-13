@@ -1,5 +1,5 @@
 [Unit]
-Description=IPFS Accelerate (CI secondary) MCP + TaskQueue P2P service
+Description=IPFS Accelerate (secondary) MCP++ (Trio) + TaskQueue P2P service
 Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
 Wants=network-online.target
 After=network-online.target
@@ -20,10 +20,27 @@ Environment="MCP_HOST=0.0.0.0"
 # Use a distinct MCP port so this unit can run alongside ipfs-accelerate.service
 Environment="MCP_PORT=9001"
 
+# Serve MCP++ over HTTPS (TLS) on MCP_PORT.
+# Set the following vars in /etc/ipfs-accelerate/secrets.env (recommended):
+#   MCP_SSL_CERTFILE=/path/to/fullchain.pem
+#   MCP_SSL_KEYFILE=/path/to/privkey.pem
+Environment="MCP_ENABLE_HTTPS=1"
+Environment="MCP_SSL_CERTFILE=%h/ipfs_accelerate_py/state/tls/mcpplusplus.crt"
+Environment="MCP_SSL_KEYFILE=%h/ipfs_accelerate_py/state/tls/mcpplusplus.key"
+# Optional: explicitly set the LAN IP used for the certificate SAN.
+# If unset, the generator auto-detects a non-loopback IPv4.
+# If you want to override auto-detection, set this in /etc/ipfs-accelerate/secrets.env:
+#   MCP_LAN_IP_OVERRIDE=192.168.1.10
+
 # Optional secrets/env overrides (recommended):
 #   GH_TOKEN=... (preferred for gh)
 #   GITHUB_TOKEN=... (optional)
 #   IPFS_ACCELERATE_GITHUB_REPO=owner/repo
+# Auto-generated runtime env (written on first start).
+# Used to persist detected LAN IP without editing /etc/ipfs-accelerate/secrets.env.
+# Loaded first so /etc/ipfs-accelerate/secrets.env can override.
+EnvironmentFile=-%h/ipfs_accelerate_py/state/mcpplusplus.env
+
 EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
 
 # P2P Cache Configuration (GitHub CLI cache)
@@ -33,8 +50,6 @@ Environment="CACHE_ENABLE_P2P=false"
 Environment="IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py"
 
 # TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
-Environment="IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1"
-Environment="IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER=1"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1"
 Environment="IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,docker.execute,docker.execute_docker_container,docker.github"
@@ -42,7 +57,6 @@ Environment="IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,d
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1"
 # Use a distinct P2P port so this unit can run alongside ipfs-accelerate.service
-Environment="IPFS_ACCELERATE_PY_MCP_P2P_PORT=9101"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9101"
 Environment="IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT=9101"
 # Persist the local queue DB somewhere stable
@@ -59,12 +73,50 @@ Environment="IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1"
 # NOTE: Avoid auto-updating on every restart; it can be slow and brittle.
 # Run scripts/auto-update.sh manually when you actually want to update.
 ExecStartPre=/bin/mkdir -p %h/ipfs_accelerate_py/state
+ExecStartPre=/bin/bash -lc '\
+	set -euo pipefail; \
+	if [[ "${MCP_ENABLE_HTTPS:-1}" == "1" || "${MCP_ENABLE_HTTPS:-}" == "true" || "${MCP_ENABLE_HTTPS:-}" == "yes" ]]; then \
+	  %h/ipfs_accelerate_py/.venv/bin/python3 %h/ipfs_accelerate_py/scripts/systemd/generate_self_signed_cert.py \
+	    --certfile "${MCP_SSL_CERTFILE}" \
+	    --keyfile "${MCP_SSL_KEYFILE}" \
+	    --write-env-file "%h/ipfs_accelerate_py/state/mcpplusplus.env" \
+	    --ip "${MCP_LAN_IP_OVERRIDE:-}"; \
+	fi\
+'
 
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0
 
-# Start a second MCP instance (distinct ports) with TaskQueue P2P enabled
-ExecStart=%h/ipfs_accelerate_py/.venv/bin/python3 -m ipfs_accelerate_py.mcp.cli --host 0.0.0.0 --port 9001 --log-level INFO --p2p-service --p2p-listen-port 9101 --p2p-enable-tools --p2p-task-worker
+# Run MCP++ (Trio-oriented) server and a dedicated TaskQueue P2P worker/service.
+# - MCP++ is served via Hypercorn with Trio workers (no asyncio loop).
+# - TaskQueue worker runs in the same unit on the secondary P2P port.
+ExecStart=/bin/bash -lc '\
+	set -euo pipefail; \
+	QUEUE_PATH="%h/ipfs_accelerate_py/state/task_queue_mcp.duckdb"; \
+	WORKER_ID="$${IPFS_ACCELERATE_PY_TASK_WORKER_ID:-mcpplusplus}"; \
+	P2P_PORT="$${IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT:-9101}"; \
+	MCP_PORT="$${MCP_PORT:-9001}"; \
+	TLS_ARGS=""; \
+	if [[ "$${MCP_ENABLE_HTTPS:-1}" == "1" || "$${MCP_ENABLE_HTTPS:-}" == "true" || "$${MCP_ENABLE_HTTPS:-}" == "yes" ]]; then \
+	  if [[ -z "$${MCP_SSL_CERTFILE:-}" || -z "$${MCP_SSL_KEYFILE:-}" ]]; then \
+	    echo "ERROR: MCP_ENABLE_HTTPS=1 but MCP_SSL_CERTFILE/MCP_SSL_KEYFILE are not set" >&2; \
+	    exit 2; \
+	  fi; \
+	  TLS_ARGS="--certfile $${MCP_SSL_CERTFILE} --keyfile $${MCP_SSL_KEYFILE}"; \
+	fi; \
+	%h/ipfs_accelerate_py/.venv/bin/python3 -m ipfs_accelerate_py.p2p_tasks.worker \
+		--queue "$${QUEUE_PATH}" \
+		--worker-id "$${WORKER_ID}" \
+		--p2p-service \
+		--p2p-listen-port "$${P2P_PORT}" \
+		& \
+	exec %h/ipfs_accelerate_py/.venv/bin/python3 -m hypercorn \
+		--worker-class trio \
+		--bind "0.0.0.0:$${MCP_PORT}" \
+		--log-level info \
+		$${TLS_ARGS} \
+		ipfs_accelerate_py.mcplusplus_module.trio.asgi:app\
+'
 
 # Restart configuration
 Restart=always
