@@ -6,11 +6,18 @@ def test_worker_publishes_heartbeat_for_text_generation(monkeypatch, tmp_path):
     from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
     from ipfs_accelerate_py.p2p_tasks.worker import run_worker
 
+    # Ensure other tests don't force the worker into the minimal HF path, which
+    # can be CPU/GIL heavy and make heartbeats appear stalled.
+    monkeypatch.delenv("IPFS_ACCEL_SKIP_CORE", raising=False)
+    monkeypatch.delenv("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_LLM", raising=False)
+
     # Make generation slow enough that we can observe heartbeats.
     import ipfs_accelerate_py.llm_router as llm_router
 
     def slow_generate_text(*args, **kwargs):
-        time.sleep(0.8)
+        # Ensure the task runs long enough to observe multiple heartbeat updates
+        # (heartbeats are emitted every ~0.5s while running).
+        time.sleep(1.6)
         return "ok"
 
     monkeypatch.setattr(llm_router, "generate_text", slow_generate_text)
