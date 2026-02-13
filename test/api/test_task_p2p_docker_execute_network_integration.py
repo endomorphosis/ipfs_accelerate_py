@@ -229,10 +229,10 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		else:
 			pytest.skip("Provide at least 2 targets via IPFS_ACCELERATE_PY_TEST_P2P_TARGETS[_FILE] or enable mDNS autodiscovery")
 
-	if len(targets) < 2:
+	if len(targets) < 1:
 		pretty = ", ".join([str(t.get("multiaddr") or "") for t in (targets or []) if t])
 		pytest.skip(
-			"Need at least 2 targets (post-discovery) to run. "
+			"Need at least 1 target (post-discovery) to run. "
 			f"mode={p2p_mode} expected_port={expected_port} targets_found={len(targets)} "
 			f"targets=[{pretty}]"
 		)

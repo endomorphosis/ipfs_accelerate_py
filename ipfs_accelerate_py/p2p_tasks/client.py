@@ -358,9 +358,9 @@ def _mdns_port() -> int:
     raw = (
         os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT")
         or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS_PORT")
-        or os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
         or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
         or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
+        or os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
         or "9710"
     )
     try:
