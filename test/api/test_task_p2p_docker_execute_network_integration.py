@@ -115,6 +115,28 @@ def _default_report_path() -> str:
 	return str(state_dir / f"docker_execute_nvidia_smi_network_{ts}.json")
 
 
+def _load_local_announce(*, mode: str) -> dict[str, str]:
+	mode = str(mode or "").strip().lower() or "task"
+	repo_root = Path(__file__).resolve().parents[2]
+	if mode == "mcp":
+		path = repo_root / "state" / "task_p2p_announce_mcp.json"
+	else:
+		path = repo_root / "state" / "task_p2p_announce.json"
+	try:
+		if not path.exists():
+			return {}
+		data = json.loads(path.read_text(encoding="utf-8"))
+		if not isinstance(data, dict):
+			return {}
+		peer_id = str(data.get("peer_id") or "").strip()
+		multiaddr = str(data.get("multiaddr") or "").strip()
+		if peer_id and multiaddr:
+			return {"peer_id": peer_id, "multiaddr": multiaddr}
+	except Exception:
+		return {}
+	return {}
+
+
 @pytest.mark.integration
 @pytest.mark.cuda
 @pytest.mark.slow
@@ -128,8 +150,13 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	- IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST=1
 	- IPFS_ACCELERATE_PY_TEST_P2P_TARGETS_FILE=/path/to/targets.json
 	  or IPFS_ACCELERATE_PY_TEST_P2P_TARGETS="/ip4/.../tcp/.../p2p/<pid>,..."
+	- If you do not set targets, the test can auto-discover peers via mDNS.
 
 	Optional tuning:
+	- IPFS_ACCELERATE_PY_TEST_DOCKER_P2P_MODE=task|mcp (default: task)
+	- IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER=1 (default: 1 when no targets provided)
+	- IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER_TIMEOUT_S (default: 6)
+	- IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER_LIMIT (default: 25)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_TASKS (default: 50)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_CONCURRENCY (default: 10)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_TIMEOUT_S (default: 180)
@@ -144,9 +171,71 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	if not _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST")):
 		pytest.skip("Set IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST=1 to run")
 
+	p2p_mode = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_P2P_MODE") or "task").strip().lower() or "task"
+	expected_port = 9101 if p2p_mode == "mcp" else 9100
+
 	targets = _load_targets_from_env()
 	if len(targets) < 2:
-		pytest.skip("Provide at least 2 targets via IPFS_ACCELERATE_PY_TEST_P2P_TARGETS[_FILE]")
+		autodiscover_default = "1" if not targets else "0"
+		autodiscover = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER") or autodiscover_default)
+		if autodiscover:
+			try:
+				from ipfs_accelerate_py.p2p_tasks.client import discover_peers_via_mdns_sync
+			except Exception as exc:
+				pytest.skip(f"mDNS autodiscovery unavailable: {exc}")
+
+			try:
+				timeout_s = float(os.environ.get("IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER_TIMEOUT_S") or "6")
+				limit = int(os.environ.get("IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER_LIMIT") or "25")
+			except Exception:
+				timeout_s, limit = 6.0, 25
+
+			local = _load_local_announce(mode=p2p_mode)
+
+			# py-libp2p's mDNS discovery in this repo expects the discovery port to
+			# match the peer's libp2p listen port. When targeting MCP P2P (9101), we
+			# must use that port for discovery or we will only find TaskQueue peers.
+			prior_mdns_port = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT")
+			os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = str(int(expected_port))
+			try:
+				discovered = discover_peers_via_mdns_sync(timeout_s=float(timeout_s), limit=int(limit), exclude_self=True)
+			finally:
+				if prior_mdns_port is None:
+					os.environ.pop("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT", None)
+				else:
+					os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = prior_mdns_port
+
+			merged: list[dict[str, str]] = []
+			seen: set[str] = set()
+
+			if local.get("peer_id") and local.get("multiaddr"):
+				merged.append({"peer_id": str(local["peer_id"]), "multiaddr": str(local["multiaddr"])})
+				seen.add(str(local["peer_id"]))
+
+			for rq in list(discovered or []):
+				pid = str(getattr(rq, "peer_id", "") or "").strip()
+				ma = str(getattr(rq, "multiaddr", "") or "").strip()
+				if not pid or not ma:
+					continue
+				if pid in seen:
+					continue
+				# Filter to the expected service port for this test mode.
+				if f"/tcp/{int(expected_port)}/" not in ma:
+					continue
+				seen.add(pid)
+				merged.append({"peer_id": pid, "multiaddr": ma})
+
+			targets = merged
+		else:
+			pytest.skip("Provide at least 2 targets via IPFS_ACCELERATE_PY_TEST_P2P_TARGETS[_FILE] or enable mDNS autodiscovery")
+
+	if len(targets) < 2:
+		pretty = ", ".join([str(t.get("multiaddr") or "") for t in (targets or []) if t])
+		pytest.skip(
+			"Need at least 2 targets (post-discovery) to run. "
+			f"mode={p2p_mode} expected_port={expected_port} targets_found={len(targets)} "
+			f"targets=[{pretty}]"
+		)
 
 	try:
 		tasks = int(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_TASKS") or "50")

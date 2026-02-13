@@ -356,9 +356,11 @@ def _mdns_port() -> int:
     # listen port. Tests that run multiple peers on one host can do so by
     # binding to distinct loopback IPs while sharing the same port.
     raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS_PORT")
         or os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
+        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
         or "9710"
     )
     try:
