@@ -7,11 +7,16 @@ designed to work natively with Trio's structured concurrency model.
 
 from .bridge import run_in_trio, is_trio_context, require_trio, TrioContext
 
-# Server and client will be implemented in subsequent files
+# Server and client implementations
 try:
-    from .server import TrioMCPServer
-except ImportError:
+    from .server import TrioMCPServer, ServerConfig, create_app
+except ImportError as e:
+    # Log but don't fail if optional dependencies are missing
+    import logging
+    logging.getLogger(__name__).debug(f"TrioMCPServer not available: {e}")
     TrioMCPServer = None
+    ServerConfig = None
+    create_app = None
 
 try:
     from .client import TrioMCPClient
@@ -19,10 +24,15 @@ except ImportError:
     TrioMCPClient = None
 
 __all__ = [
+    # Bridge utilities
     "run_in_trio",
     "is_trio_context",
     "require_trio",
     "TrioContext",
+    # Server
     "TrioMCPServer",
+    "ServerConfig",
+    "create_app",
+    # Client (future)
     "TrioMCPClient",
 ]

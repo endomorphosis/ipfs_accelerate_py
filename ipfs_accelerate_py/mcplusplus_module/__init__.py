@@ -54,11 +54,13 @@ For more information, see:
 __version__ = "0.1.0"
 __author__ = "endomorphosis"
 
-# Import key components (will be implemented in subsequent modules)
+# Import key components
 try:
-    from .trio import TrioMCPServer, TrioMCPClient
+    from .trio import TrioMCPServer, ServerConfig, create_app, TrioMCPClient
 except ImportError:
     TrioMCPServer = None
+    ServerConfig = None
+    create_app = None
     TrioMCPClient = None
 
 try:
@@ -71,6 +73,8 @@ __all__ = [
     "__version__",
     "__author__",
     "TrioMCPServer",
+    "ServerConfig",
+    "create_app",
     "TrioMCPClient",
     "P2PTaskQueue",
     "P2PWorkflowScheduler",
