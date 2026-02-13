@@ -10,7 +10,40 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+import anyio
+import sniffio
+
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.p2p_taskqueue")
+
+
+async def _run_in_trio(func: Any, /, *args: Any, **kwargs: Any) -> Any:
+    """Run a callable in a Trio context.
+
+    The libp2p stack used by TaskQueue is Trio-based. When these MCP tools run
+    under FastAPI/Uvicorn, the ambient async runtime is typically asyncio.
+    Running Trio-only code under asyncio can fail in surprising ways.
+
+    If we're already in Trio, run inline. Otherwise, execute in a worker thread
+    using `anyio.run(..., backend='trio')`.
+    """
+
+    import inspect
+
+    try:
+        if sniffio.current_async_library() == "trio":
+            result = func(*args, **kwargs)
+            return await result if inspect.isawaitable(result) else result
+    except Exception:
+        pass
+
+    def _runner() -> Any:
+        async def _inner() -> Any:
+            result = func(*args, **kwargs)
+            return await result if inspect.isawaitable(result) else result
+
+        return anyio.run(_inner, backend="trio")
+
+    return await anyio.to_thread.run_sync(_runner)
 
 
 def _remote_queue(*, peer_id: str = "", multiaddr: str = ""):
@@ -39,7 +72,7 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import request_status
 
             remote = _remote_queue(peer_id=peer_id, multiaddr=remote_multiaddr)
-            resp = await request_status(remote=remote, timeout_s=float(timeout_s), detail=bool(detail))
+            resp = await _run_in_trio(request_status, remote=remote, timeout_s=float(timeout_s), detail=bool(detail))
             return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
         except Exception as exc:
             logger.exception("p2p_taskqueue_status failed")
@@ -59,7 +92,8 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import submit_task_with_info
 
             remote = _remote_queue(peer_id=peer_id, multiaddr=remote_multiaddr)
-            info = await submit_task_with_info(
+            info = await _run_in_trio(
+                submit_task_with_info,
                 remote=remote,
                 task_type=str(task_type),
                 model_name=str(model_name),
@@ -97,7 +131,8 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import claim_next
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            task = await claim_next(
+            task = await _run_in_trio(
+                claim_next,
                 remote=remote,
                 worker_id=str(worker_id),
                 supported_task_types=[str(x) for x in (supported_task_types or []) if str(x).strip()],
@@ -126,7 +161,8 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import call_tool
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            resp = await call_tool(
+            resp = await _run_in_trio(
+                call_tool,
                 remote=remote,
                 tool_name=str(tool_name),
                 args=(args if isinstance(args, dict) else {}),
@@ -155,7 +191,8 @@ def register_tools(mcp: Any) -> None:
             parsed_task_types = None
             if task_types is not None:
                 parsed_task_types = [str(x) for x in (task_types or []) if str(x).strip()]
-            resp = await list_tasks(
+            resp = await _run_in_trio(
+                list_tasks,
                 remote=remote,
                 status=parsed_status,
                 limit=int(limit),
@@ -178,7 +215,11 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import get_task
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            task = await get_task(remote=remote, task_id=str(task_id))
+            task = await _run_in_trio(
+                get_task,
+                remote=remote,
+                task_id=str(task_id),
+            )
             return {"ok": True, "task": task}
         except Exception as exc:
             logger.exception("p2p_taskqueue_get_task failed")
@@ -197,7 +238,12 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import wait_task
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            task = await wait_task(remote=remote, task_id=str(task_id), timeout_s=float(timeout_s))
+            task = await _run_in_trio(
+                wait_task,
+                remote=remote,
+                task_id=str(task_id),
+                timeout_s=float(timeout_s),
+            )
             return {"ok": True, "task": task}
         except Exception as exc:
             logger.exception("p2p_taskqueue_wait_task failed")
@@ -218,7 +264,8 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import complete_task
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            resp = await complete_task(
+            resp = await _run_in_trio(
+                complete_task,
                 remote=remote,
                 task_id=str(task_id),
                 status=str(status),
@@ -243,7 +290,8 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import heartbeat
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            resp = await heartbeat(
+            resp = await _run_in_trio(
+                heartbeat,
                 remote=remote,
                 peer_id=str(peer_id),
                 clock=(clock if isinstance(clock, dict) else None),
@@ -266,7 +314,7 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import cache_get
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            resp = await cache_get(remote=remote, key=str(key), timeout_s=float(timeout_s))
+            resp = await _run_in_trio(cache_get, remote=remote, key=str(key), timeout_s=float(timeout_s))
             return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
         except Exception as exc:
             logger.exception("p2p_taskqueue_cache_get failed")
@@ -287,7 +335,14 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import cache_set
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            resp = await cache_set(remote=remote, key=str(key), value=value, ttl_s=ttl_s, timeout_s=float(timeout_s))
+            resp = await _run_in_trio(
+                cache_set,
+                remote=remote,
+                key=str(key),
+                value=value,
+                ttl_s=ttl_s,
+                timeout_s=float(timeout_s),
+            )
             return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
         except Exception as exc:
             logger.exception("p2p_taskqueue_cache_set failed")
@@ -310,7 +365,8 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import submit_docker_hub_task
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            task_id = await submit_docker_hub_task(
+            task_id = await _run_in_trio(
+                submit_docker_hub_task,
                 remote=remote,
                 image=str(image),
                 command=command,
@@ -344,7 +400,8 @@ def register_tools(mcp: Any) -> None:
             from ipfs_accelerate_py.p2p_tasks.client import submit_docker_github_task
 
             remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
-            task_id = await submit_docker_github_task(
+            task_id = await _run_in_trio(
+                submit_docker_github_task,
                 remote=remote,
                 repo_url=str(repo_url),
                 branch=str(branch),
@@ -430,12 +487,18 @@ def register_tools(mcp: Any) -> None:
                     try:
                         if method == "mdns":
                             await _add_found(
-                                await discover_peers_via_mdns(timeout_s=timeout_s, limit=int(limit), exclude_self=True),
+                                await _run_in_trio(
+                                    discover_peers_via_mdns,
+                                    timeout_s=timeout_s,
+                                    limit=int(limit),
+                                    exclude_self=True,
+                                ),
                                 "mdns",
                             )
                         elif method == "rendezvous":
                             await _add_found(
-                                await discover_peers_via_rendezvous(
+                                await _run_in_trio(
+                                    discover_peers_via_rendezvous,
                                     timeout_s=timeout_s,
                                     limit=int(limit),
                                     exclude_self=True,
@@ -444,7 +507,12 @@ def register_tools(mcp: Any) -> None:
                             )
                         elif method == "dht":
                             await _add_found(
-                                await discover_peers_via_dht(timeout_s=timeout_s, limit=int(limit), exclude_self=True),
+                                await _run_in_trio(
+                                    discover_peers_via_dht,
+                                    timeout_s=timeout_s,
+                                    limit=int(limit),
+                                    exclude_self=True,
+                                ),
                                 "dht",
                             )
                     except Exception:
@@ -470,7 +538,8 @@ def register_tools(mcp: Any) -> None:
                     if not pid:
                         continue
                     try:
-                        caps = await get_capabilities(
+                        caps = await _run_in_trio(
+                            get_capabilities,
                             remote=RemoteQueue(peer_id=pid, multiaddr=str(row.get("multiaddr") or "")),
                             timeout_s=float(capabilities_timeout_s),
                             detail=bool(capabilities_detail),
