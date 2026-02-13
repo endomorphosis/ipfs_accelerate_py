@@ -305,10 +305,8 @@ class UniversalConnectivity:
                 # Perform mDNS discovery
                 # In actual implementation, this would use libp2p's mDNS service
                 await anyio.sleep(self.config.mdns_interval)
-                await anyio.sleep(self.config.mdns_interval)
             except Exception as e:
                 logger.error(f"mDNS discovery error: {e}")
-                await anyio.sleep(self.config.mdns_interval)
                 await anyio.sleep(self.config.mdns_interval)
     
     async def configure_dht(self, host) -> None:
@@ -806,7 +804,6 @@ class UniversalConnectivity:
                 try:
                     logger.debug(f"Attempting hole punching to {peer_addr}")
                     # Best-effort: retry direct connection after brief jitter
-                    await anyio.sleep(0.5 + random.random())
                     await anyio.sleep(0.5 + random.random())
                     await host.connect(peer_info)
                     logger.info("✓ Hole punching fallback succeeded")
