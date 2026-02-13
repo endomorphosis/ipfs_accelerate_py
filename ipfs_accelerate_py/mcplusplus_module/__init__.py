@@ -56,12 +56,21 @@ __author__ = "endomorphosis"
 
 # Import key components
 try:
-    from .trio import TrioMCPServer, ServerConfig, create_app, TrioMCPClient
+    from .trio import (
+        TrioMCPServer,
+        ServerConfig,
+        create_app,
+        TrioMCPClient,
+        ClientConfig,
+        call_tool,
+    )
 except ImportError:
     TrioMCPServer = None
     ServerConfig = None
     create_app = None
     TrioMCPClient = None
+    ClientConfig = None
+    call_tool = None
 
 try:
     from .p2p import P2PTaskQueue, P2PWorkflowScheduler
@@ -76,6 +85,8 @@ __all__ = [
     "ServerConfig",
     "create_app",
     "TrioMCPClient",
+    "ClientConfig",
+    "call_tool",
     "P2PTaskQueue",
     "P2PWorkflowScheduler",
 ]

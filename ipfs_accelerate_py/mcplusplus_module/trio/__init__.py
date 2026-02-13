@@ -19,9 +19,13 @@ except ImportError as e:
     create_app = None
 
 try:
-    from .client import TrioMCPClient
-except ImportError:
+    from .client import TrioMCPClient, ClientConfig, call_tool
+except ImportError as e:
+    import logging
+    logging.getLogger(__name__).debug(f"TrioMCPClient not available: {e}")
     TrioMCPClient = None
+    ClientConfig = None
+    call_tool = None
 
 __all__ = [
     # Bridge utilities
@@ -33,6 +37,8 @@ __all__ = [
     "TrioMCPServer",
     "ServerConfig",
     "create_app",
-    # Client (future)
+    # Client
     "TrioMCPClient",
+    "ClientConfig",
+    "call_tool",
 ]
