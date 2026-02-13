@@ -85,6 +85,20 @@ def _classify_incompatibility(text: str) -> str | None:
 	return None
 
 
+def _extract_gpu_uuids(stdout: str) -> set[str]:
+	"""Extract GPU UUIDs from `nvidia-smi` output.
+
+	This provides a practical signal of which physical machine executed a task
+	without relying on worker_id naming conventions.
+	"""
+	text = str(stdout or "")
+	if not text:
+		return set()
+	# Typical line: "GPU 0: ... (UUID: GPU-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx)"
+	uuids = set(re.findall(r"UUID:\s*(GPU-[A-Za-z0-9\-]+)", text))
+	return {u.strip() for u in uuids if str(u).strip()}
+
+
 @pytest.mark.integration
 @pytest.mark.cuda
 @pytest.mark.slow
@@ -105,7 +119,9 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_TIMEOUT_S (default: 180)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_IMAGE (default: nvidia/cuda:12.4.0-base)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_GPUS (default: all)
-	- IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION=1 (asserts >1 worker_id observed)
+	- IPFS_ACCELERATE_PY_TEST_DOCKER_SUBMIT_SINGLE_TARGET=1 (submit all tasks to targets[0])
+	- IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION=1
+	  (asserts >1 executor observed via GPU UUIDs; falls back to worker_id)
 	"""
 
 	if not _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST")):
@@ -125,6 +141,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	image = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_IMAGE") or "nvidia/cuda:12.4.0-base").strip()
 	gpus = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_GPUS") or "all").strip()
 	expect_mesh = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION"))
+	submit_single = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_SUBMIT_SINGLE_TARGET"))
 
 	import anyio
 
@@ -135,7 +152,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	results: list[dict[str, Any]] = [None for _ in range(tasks)]  # type: ignore[list-item]
 
 	async def _run_one(i: int) -> None:
-		remote = remotes[i % len(remotes)]
+		remote = remotes[0] if submit_single else remotes[i % len(remotes)]
 		try:
 			task_id = await submit_docker_hub_task(
 				remote=remote,
@@ -178,6 +195,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	# Analyze + log.
 	failures = 0
 	worker_ids: set[str] = set()
+	gpu_uuids: set[str] = set()
 	failures_by_peer: dict[str, int] = {}
 
 	for r in results:
@@ -205,6 +223,8 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			progress = result.get("progress")
 			if isinstance(progress, dict) and progress.get("worker_id"):
 				worker_ids.add(str(progress.get("worker_id")))
+			stdout = str(result.get("stdout") or "")
+			gpu_uuids |= _extract_gpu_uuids(stdout)
 
 		ok = status == "completed" and isinstance(result, dict) and bool(result.get("success")) and int(result.get("exit_code", -1)) == 0
 		if not ok:
@@ -222,10 +242,11 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 
 			classification = _classify_incompatibility("\n".join([str(error or ""), stderr]))
 			logger.error(
-				"docker.execute failed i=%s peer_id=%s worker_ids=%s status=%s success=%r exit_code=%r class=%s error=%r stderr_tail=%r stdout_tail=%r",
+				"docker.execute failed i=%s peer_id=%s worker_ids=%s gpu_uuids=%s status=%s success=%r exit_code=%r class=%s error=%r stderr_tail=%r stdout_tail=%r",
 				r.get("i"),
 				pid,
 				sorted(worker_ids)[:5],
+				sorted(gpu_uuids)[:5],
 				status,
 				success,
 				exit_code,
@@ -236,15 +257,22 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			)
 
 	logger.info(
-		"docker.execute summary tasks=%s peers=%s failures=%s failures_by_peer=%s worker_ids=%s",
+		"docker.execute summary tasks=%s peers=%s submit_single=%s failures=%s failures_by_peer=%s worker_ids=%s gpu_uuids=%s",
 		tasks,
 		len(remotes),
+		submit_single,
 		failures,
 		failures_by_peer,
 		sorted(worker_ids),
+		sorted(gpu_uuids),
 	)
 
 	if expect_mesh:
-		assert len(worker_ids) >= 2, f"Expected mesh distribution (>=2 worker_ids), saw {sorted(worker_ids)}"
+		# Prefer GPU UUIDs as the executor identity signal. If stdout is missing,
+		# fall back to worker_id diversity.
+		if gpu_uuids:
+			assert len(gpu_uuids) >= 2, f"Expected distribution (>=2 GPU UUIDs), saw {sorted(gpu_uuids)}"
+		else:
+			assert len(worker_ids) >= 2, f"Expected distribution (>=2 worker_ids), saw {sorted(worker_ids)}"
 
 	assert failures == 0, f"docker.execute had {failures} failures (see logs for per-peer diagnostics)"
