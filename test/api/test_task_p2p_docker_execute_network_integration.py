@@ -135,6 +135,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_IMAGE (default: nvidia/cuda:12.4.0-base)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_GPUS (default: all)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_SUBMIT_SINGLE_TARGET=1 (submit all tasks to targets[0])
+	- IPFS_ACCELERATE_PY_TEST_DOCKER_REPORT_PATH=/path/to/report.json
 	- IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION=1
 	  (asserts >1 executor observed via GPU UUIDs; falls back to worker_id)
 	"""
@@ -218,12 +219,36 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	for r in results:
 		if not isinstance(r, dict):
 			failures += 1
+			outputs.append(
+				{
+					"status": "missing_result",
+					"error": "missing result dict",
+					"classification": None,
+					"stdout_tail": "",
+					"stderr_tail": "",
+					"gpu_uuids": [],
+				}
+			)
 			continue
 		pid = str(r.get("peer_id") or "")
 		if r.get("error"):
 			failures += 1
 			failures_by_peer[pid] = failures_by_peer.get(pid, 0) + 1
 			logger.error("docker.execute submit/wait failed peer_id=%s multiaddr=%s error=%s", pid, r.get("multiaddr"), r.get("error"))
+			outputs.append(
+				{
+					"i": r.get("i"),
+					"task_id": r.get("task_id"),
+					"submitted_peer_id": pid,
+					"submitted_multiaddr": r.get("multiaddr"),
+					"status": "submit_or_wait_error",
+					"error": r.get("error"),
+					"classification": _classify_incompatibility(str(r.get("error") or "")),
+					"gpu_uuids": [],
+					"stdout_tail": "",
+					"stderr_tail": "",
+				}
+			)
 			continue
 
 		task = r.get("task")
@@ -231,6 +256,20 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			failures += 1
 			failures_by_peer[pid] = failures_by_peer.get(pid, 0) + 1
 			logger.error("docker.execute invalid task response peer_id=%s multiaddr=%s task=%r", pid, r.get("multiaddr"), task)
+			outputs.append(
+				{
+					"i": r.get("i"),
+					"task_id": r.get("task_id"),
+					"submitted_peer_id": pid,
+					"submitted_multiaddr": r.get("multiaddr"),
+					"status": "invalid_task_response",
+					"error": "invalid task response",
+					"classification": None,
+					"gpu_uuids": [],
+					"stdout_tail": "",
+					"stderr_tail": "",
+				}
+			)
 			continue
 
 		status = str(task.get("status") or "")
@@ -245,6 +284,11 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			stdout = str(result.get("stdout") or "")
 			stderr = str(result.get("stderr") or "")
 			gpu_uuids |= _extract_gpu_uuids(stdout)
+			exit_code = result.get("exit_code")
+			success = result.get("success")
+		else:
+			exit_code = None
+			success = None
 
 		classification = None
 		if status != "completed":
@@ -259,6 +303,8 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 				"status": status,
 				"error": error,
 				"classification": classification,
+				"success": success,
+				"exit_code": exit_code,
 				"gpu_uuids": sorted(_extract_gpu_uuids(stdout)),
 				"stdout_tail": stdout[-2000:],
 				"stderr_tail": stderr[-4000:],
