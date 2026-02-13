@@ -13,7 +13,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-UNITS=("ipfs-accelerate.service")
+# Units explicitly requested via CLI flags. If none are provided, we default to
+# installing the primary instance.
+UNITS=()
 TARGET_DIR="/etc/systemd/system"
 NO_START="0"
 INSTALL_BOTH="0"
@@ -121,7 +123,7 @@ main() {
         shift 2
         ;;
       --both)
-        if [[ "${#UNITS[@]}" -gt 1 || "${UNITS[0]}" != "ipfs-accelerate.service" ]]; then
+        if [[ "${#UNITS[@]}" -gt 0 ]]; then
           echo "ERROR: --both cannot be combined with --unit" >&2
           exit 2
         fi
@@ -153,13 +155,12 @@ main() {
     esac
   done
 
-  if [[ -z "${user}" ]]; then
-    user="$(infer_user)"
+  if [[ "${#UNITS[@]}" -eq 0 ]]; then
+    UNITS=("ipfs-accelerate.service")
   fi
 
-  # Remove the default placeholder unit when explicit units were provided.
-  if [[ "${#UNITS[@]}" -gt 1 && "${UNITS[0]}" == "ipfs-accelerate.service" ]]; then
-    UNITS=("${UNITS[@]:1}")
+  if [[ -z "${user}" ]]; then
+    user="$(infer_user)"
   fi
 
   ensure_secrets_env
