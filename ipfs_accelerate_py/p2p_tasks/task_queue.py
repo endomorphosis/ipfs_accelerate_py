@@ -486,9 +486,8 @@ class TaskQueue:
 
         # Merge any existing progress/logs with the final result so peers can
         # keep observing stdout/stderr after completion.
-        last_exc: Exception | None = None
-        for attempt in range(8):
-            conn = self._connect()
+        with self._conn_lock:
+            conn = self._get_conn()
             try:
                 existing_row = conn.execute(
                     "SELECT result_json FROM tasks WHERE task_id=?",
@@ -521,7 +520,6 @@ class TaskQueue:
                 )
                 return True
             except Exception as exc:
-                last_exc = exc
                 msg = str(exc).lower()
                 if (
                     "write-write conflict" in msg
@@ -530,27 +528,8 @@ class TaskQueue:
                     or "conflict on tuple" in msg
                     or "transactioncontext error" in msg
                 ):
-                    time.sleep(0.02 * (attempt + 1))
-                    continue
+                    return False
                 raise
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-
-        if last_exc is not None:
-            msg = str(last_exc).lower()
-            if (
-                "write-write conflict" in msg
-                or "catalog" in msg
-                and "conflict" in msg
-                or "conflict on tuple" in msg
-                or "transactioncontext error" in msg
-            ):
-                return False
-            raise last_exc
-        return False
 
 
     def update(
@@ -591,9 +570,8 @@ class TaskQueue:
         now = time.time()
         max_keep = max(0, min(int(max_logs or 200), 2000))
 
-        last_exc: Exception | None = None
-        for attempt in range(8):
-            conn = self._connect()
+        with self._conn_lock:
+            conn = self._get_conn()
             try:
                 row = conn.execute(
                     "SELECT status, result_json FROM tasks WHERE task_id=?",
@@ -648,7 +626,6 @@ class TaskQueue:
                 )
                 return True
             except Exception as exc:
-                last_exc = exc
                 msg = str(exc).lower()
                 if (
                     "write-write conflict" in msg
@@ -657,15 +634,5 @@ class TaskQueue:
                     or "conflict on tuple" in msg
                     or "transactioncontext error" in msg
                 ):
-                    time.sleep(0.02 * (attempt + 1))
-                    continue
+                    return False
                 raise
-            finally:
-                try:
-                    conn.close()
-                except Exception:
-                    pass
-
-        if last_exc is not None:
-            raise last_exc
-        return False
