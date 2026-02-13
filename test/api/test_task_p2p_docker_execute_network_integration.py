@@ -253,6 +253,8 @@ def _load_local_announce(*, expected_port: int) -> dict[str, str]:
 	# Repo-local files (common in dev).
 	paths.extend(
 		[
+			repo_root / "state" / "p2p" / "task_p2p_announce.json",
+			repo_root / "state" / "p2p" / "task_p2p_announce_mcp.json",
 			repo_root / "state" / "task_p2p_announce.json",
 			repo_root / "state" / "task_p2p_announce_mcp.json",
 		]
@@ -324,25 +326,27 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		pytest.skip("Set IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST=1 to run")
 
 	p2p_mode = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_P2P_MODE") or "task").strip().lower() or "task"
-	# Canonical design: MCP+TaskQueue share the same libp2p port (default 9100).
-	# CI can run a second instance on the same machine via an explicit override.
+	# mDNS uses a generic `_p2p._udp.local` service type, so we filter by port to
+	# avoid latching onto unrelated libp2p services on the LAN.
 	explicit_port = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_P2P_PORT") or "").strip()
 	if explicit_port:
 		try:
 			expected_port = int(explicit_port)
 		except Exception:
-			expected_port = 9100
+			expected_port = 9710
 	else:
-		port_raw = (
-			os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
-			or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
-			or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
-			or "9100"
-		)
+		if p2p_mode == "mcp":
+			port_raw = os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT") or "9100"
+		else:
+			port_raw = (
+				os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT")
+				or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT")
+				or "9710"
+			)
 		try:
 			expected_port = int(str(port_raw).strip())
 		except Exception:
-			expected_port = 9100
+			expected_port = 9100 if p2p_mode == "mcp" else 9710
 
 	targets = _load_targets_from_env()
 	if len(targets) < 2:
@@ -368,8 +372,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			local_ipv4 = _detect_outbound_ipv4()
 
 			# py-libp2p's mDNS discovery in this repo expects the discovery port to
-			# match the peer's libp2p listen port. When targeting MCP P2P (9101), we
-			# must use that port for discovery or we will only find TaskQueue peers.
+			# match the peer's libp2p listen port.
 			prior_mdns_port = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT")
 			os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = str(int(expected_port))
 			try:
@@ -458,6 +461,14 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		require_docker_worker=bool(require_docker_worker),
 	)
 
+	expect_mesh = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION"))
+	if expect_mesh and len(targets) < 2:
+		pytest.skip(
+			"Need at least 2 reachable TaskQueue peers to assert mesh distribution. "
+			f"mode={p2p_mode} expected_port={expected_port} targets_found={len(targets)}. "
+			"Ensure both machines are running the TaskQueue p2p service on the same port (default 9710)."
+		)
+
 	if len(targets) < 1:
 		pretty = ", ".join([str(t.get("multiaddr") or "") for t in (targets or []) if t])
 		pytest.skip(
@@ -475,7 +486,6 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 
 	image = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_IMAGE") or "nvidia/cuda:12.4.0-base-ubuntu22.04").strip()
 	gpus = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_GPUS") or "all").strip()
-	expect_mesh = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION"))
 	submit_single = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_SUBMIT_SINGLE_TARGET"))
 	report_path = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_REPORT_PATH") or "").strip() or _default_report_path()
 

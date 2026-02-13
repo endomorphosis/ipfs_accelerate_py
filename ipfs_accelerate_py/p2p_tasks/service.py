@@ -1301,16 +1301,6 @@ async def serve_task_queue(
                 # transport in tests). Still record the transport peer id.
                 peer_ident = (claimed_peer_id or remote_peer_id or worker_id).strip()
                 clock_dict = msg.get("clock") if isinstance(msg.get("clock"), dict) else None
-                _update_peer_state(
-                    peer_ident,
-                    clock_dict,
-                    extra={
-                        "worker_id": worker_id,
-                        "peer_hint": claimed_peer_id,
-                        "transport_peer_id": str(remote_peer_id or "").strip(),
-                        "supported_task_types": list(supported_list),
-                    },
-                )
 
                 supported = msg.get("supported_task_types")
                 if supported is None:
@@ -1321,6 +1311,17 @@ async def serve_task_queue(
                     supported_list = [str(t).strip() for t in supported if str(t).strip()]
                 else:
                     supported_list = []
+
+                _update_peer_state(
+                    peer_ident,
+                    clock_dict,
+                    extra={
+                        "worker_id": worker_id,
+                        "peer_hint": claimed_peer_id,
+                        "transport_peer_id": str(remote_peer_id or "").strip(),
+                        "supported_task_types": list(supported_list),
+                    },
+                )
 
                 try:
                     if deterministic_enabled:
@@ -1463,10 +1464,23 @@ async def serve_task_queue(
                         return False
 
                     def _docker_enabled_env() -> bool:
-                        return _truthy_env(
-                            "IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER",
-                            "IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER",
-                        )
+                        # Respect explicit config when set.
+                        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER")
+                        raw2 = os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER")
+                        if raw is not None or raw2 is not None:
+                            return _truthy_env(
+                                "IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER",
+                                "IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER",
+                            )
+
+                        # Otherwise mirror the worker behavior: auto-enable when
+                        # the Docker daemon appears reachable.
+                        try:
+                            from ipfs_accelerate_py.docker_executor import docker_daemon_available
+
+                            return bool(docker_daemon_available())
+                        except Exception:
+                            return False
 
                     def _supported_task_types_env() -> list[str]:
                         raw = (
@@ -1827,7 +1841,19 @@ async def serve_task_queue(
         )
         public_ip = str(raw_public_ip or "").strip()
         if not public_ip or public_ip.lower() == "auto":
-            public_ip = _detect_outbound_ipv4()
+            # If the service is bound to a specific interface/IP, only announce
+            # that address. Announcing an auto-detected LAN IP while bound to a
+            # loopback-only host (common in multi-peer local tests) creates
+            # undialable multiaddrs and causes confusing handshake failures.
+            listen_host = str(cfg.listen_host or "").strip()
+            try:
+                if listen_host and listen_host not in {"0.0.0.0", "::"}:
+                    ipaddress.ip_address(listen_host)
+                    public_ip = listen_host
+                else:
+                    public_ip = _detect_outbound_ipv4()
+            except Exception:
+                public_ip = _detect_outbound_ipv4()
         announced = f"/ip4/{public_ip}/tcp/{cfg.listen_port}/p2p/{peer_id}"
         print("ipfs_accelerate_py task queue p2p service started", flush=True)
         print(f"peer_id={peer_id}", flush=True)

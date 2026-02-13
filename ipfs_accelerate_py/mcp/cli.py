@@ -9,6 +9,7 @@ import argparse
 import logging
 import os
 import sys
+from pathlib import Path
 
 # Configure logging
 logging.basicConfig(
@@ -28,6 +29,20 @@ def _default_p2p_queue_path() -> str:
         return os.path.join(str(cache_root).strip(), "ipfs_datasets_py", "task_queue.duckdb")
 
     return "~/.cache/ipfs_datasets_py/task_queue.duckdb"
+
+
+def _default_task_p2p_announce_file() -> str:
+    """Prefer a repo-local announce file when running under MCP/systemd.
+
+    Systemd units often use ProtectHome=read-only, which makes the default
+    ~/.cache-based announce file unwritable and can leave stale data around.
+    """
+
+    try:
+        repo_root = Path(__file__).resolve().parents[2]
+        return str(repo_root / "state" / "p2p" / "task_p2p_announce.json")
+    except Exception:
+        return str(Path(os.getcwd()) / "state" / "p2p" / "task_p2p_announce.json")
 
 def main():
     """Main entry point for the MCP server CLI."""
@@ -137,6 +152,14 @@ def main():
         os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port)))
         os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port)))
 
+    # Ensure the announce file is writable and consistent across MCP/systemd.
+    # Without this, clients may read stale ~/.cache announce data while the
+    # service can't update it.
+    if args.p2p_service:
+        announce_path = _default_task_p2p_announce_file()
+        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE", announce_path)
+        os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_ANNOUNCE_FILE", announce_path)
+
     # Cache integration: when hosting the TaskQueue p2p service, prefer to share
     # GitHub cache entries via the TaskQueue cache.get/set RPC (single libp2p
     # port) rather than starting a second libp2p host in the GitHub cache.
@@ -146,8 +169,7 @@ def main():
 
         # Avoid port conflicts when the GitHub cache would otherwise try to
         # listen on the same port.
-        if "CACHE_ENABLE_P2P" not in os.environ:
-            os.environ["CACHE_ENABLE_P2P"] = "false"
+        os.environ["CACHE_ENABLE_P2P"] = "false"
     
     # Set log level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
@@ -175,6 +197,12 @@ def main():
 
         if args.p2p_task_worker:
             import threading
+
+            # Mark the local worker as enabled for TaskQueue status reporting.
+            # The TaskQueue service uses env vars to describe in-process worker
+            # configuration in `status(detail=True)`.
+            os.environ.setdefault("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER", "1")
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER", "1")
 
             queue_path = os.path.expanduser(str(args.p2p_queue))
 
