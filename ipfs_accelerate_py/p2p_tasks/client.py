@@ -116,6 +116,12 @@ def _addr_to_peer_multiaddr_text(addr: object, peer_id: str) -> str:
     # Avoid undialable wildcard/unspecified addresses.
     if text.startswith("/ip4/0.0.0.0/") or text.startswith("/ip6/::/"):
         return ""
+    # Avoid loopback / link-local addresses as they are not dialable from
+    # other hosts (common in mDNS TXT records).
+    if text.startswith("/ip4/127.") or text.startswith("/ip6/::1/"):
+        return ""
+    if text.startswith("/ip4/169.254.") or text.startswith("/ip6/fe80:"):
+        return ""
     if "/p2p/" not in text:
         text = f"{text}/p2p/{pid}"
     return text

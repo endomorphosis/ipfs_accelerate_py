@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import re
+import socket
 import time
 import traceback
 from pathlib import Path
@@ -11,6 +12,16 @@ import pytest
 
 
 logger = logging.getLogger(__name__)
+
+
+# This integration test is primarily used for manual validation on real
+# multi-machine LANs. Default to running with the required opt-ins enabled,
+# while still allowing callers/CI to override by explicitly setting env vars.
+os.environ.setdefault("IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST", "1")
+os.environ.setdefault("IPFS_ACCELERATE_PY_TEST_FORCE_CUDA", "1")
+os.environ.setdefault("IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER", "1")
+os.environ.setdefault("IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER_TIMEOUT_S", "20")
+os.environ.setdefault("IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER_LIMIT", "50")
 
 
 def _have_libp2p() -> bool:
@@ -113,6 +124,33 @@ def _default_report_path() -> str:
 	state_dir.mkdir(parents=True, exist_ok=True)
 	ts = time.strftime("%Y%m%d_%H%M%S", time.localtime())
 	return str(state_dir / f"docker_execute_nvidia_smi_network_{ts}.json")
+
+
+def _detect_outbound_ipv4() -> str:
+	"""Best-effort non-loopback IPv4 for deciding whether a target is local."""
+	try:
+		sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		try:
+			sock.connect(("8.8.8.8", 80))
+			ip = str(sock.getsockname()[0] or "").strip()
+		finally:
+			try:
+				sock.close()
+			except Exception:
+				pass
+		if ip and not ip.startswith("127."):
+			return ip
+	except Exception:
+		pass
+
+	try:
+		ip = str(socket.gethostbyname(socket.gethostname()) or "").strip()
+		if ip and not ip.startswith("127."):
+			return ip
+	except Exception:
+		pass
+
+	return "127.0.0.1"
 
 
 def _endpoint_key_from_multiaddr(ma: str) -> str:
@@ -327,6 +365,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 				timeout_s, limit = 6.0, 25
 
 			local = _load_local_announce(expected_port=int(expected_port))
+			local_ipv4 = _detect_outbound_ipv4()
 
 			# py-libp2p's mDNS discovery in this repo expects the discovery port to
 			# match the peer's libp2p listen port. When targeting MCP P2P (9101), we
@@ -341,10 +380,22 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 				else:
 					os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = prior_mdns_port
 
-			# If multicast is blocked or peer advertisements are missing, fall back
-			# to DHT/provider discovery and rendezvous (when available).
+			# If multicast is blocked or peer advertisements are missing (including
+			# cases where mDNS only finds local/self peers), fall back to DHT/provider
+			# discovery and rendezvous (when available).
 			fallback: list[object] = []
-			if len(list(discovered or [])) < 2:
+			mdns_list = list(discovered or [])
+			mdns_only_local = False
+			try:
+				mdns_only_local = bool(mdns_list) and all(
+					f"/ip4/{local_ipv4}/" in str(getattr(rq, "multiaddr", "") or "")
+					or "/ip4/127." in str(getattr(rq, "multiaddr", "") or "")
+					for rq in mdns_list
+				)
+			except Exception:
+				mdns_only_local = False
+
+			if len(mdns_list) < 2 or mdns_only_local:
 				try:
 					fallback.extend(
 						discover_peers_via_dht_sync(
