@@ -194,9 +194,17 @@ class TaskQueue:
         if not task_id:
             return None
 
+        # Use a fresh connection so readers reliably observe updates from other
+        # TaskQueue instances (e.g. worker heartbeats) across threads/processes.
         with self._conn_lock:
-            conn = self._get_conn()
-            row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+            conn = self._connect()
+            try:
+                row = conn.execute("SELECT * FROM tasks WHERE task_id = ?", (task_id,)).fetchone()
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
         if row is None:
             return None
 
