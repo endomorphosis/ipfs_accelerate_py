@@ -2,6 +2,8 @@ import json
 import logging
 import os
 import re
+import time
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -99,6 +101,19 @@ def _extract_gpu_uuids(stdout: str) -> set[str]:
 	return {u.strip() for u in uuids if str(u).strip()}
 
 
+def _default_report_path() -> str:
+	"""Default report path under the repo's state folder.
+
+	This integration test is opt-in; when it runs, leaving a report artifact in
+	`state/` helps operators audit peer compatibility across runs.
+	"""
+	repo_root = Path(__file__).resolve().parents[2]
+	state_dir = repo_root / "state" / "p2p"
+	state_dir.mkdir(parents=True, exist_ok=True)
+	ts = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+	return str(state_dir / f"docker_execute_nvidia_smi_network_{ts}.json")
+
+
 @pytest.mark.integration
 @pytest.mark.cuda
 @pytest.mark.slow
@@ -142,6 +157,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	gpus = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_GPUS") or "all").strip()
 	expect_mesh = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION"))
 	submit_single = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_SUBMIT_SINGLE_TARGET"))
+	report_path = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_REPORT_PATH") or "").strip() or _default_report_path()
 
 	import anyio
 
@@ -197,6 +213,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	worker_ids: set[str] = set()
 	gpu_uuids: set[str] = set()
 	failures_by_peer: dict[str, int] = {}
+	outputs: list[dict[str, Any]] = []
 
 	for r in results:
 		if not isinstance(r, dict):
@@ -219,12 +236,34 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		status = str(task.get("status") or "")
 		result = task.get("result")
 		error = task.get("error")
+		stdout = ""
+		stderr = ""
 		if isinstance(result, dict):
 			progress = result.get("progress")
 			if isinstance(progress, dict) and progress.get("worker_id"):
 				worker_ids.add(str(progress.get("worker_id")))
 			stdout = str(result.get("stdout") or "")
+			stderr = str(result.get("stderr") or "")
 			gpu_uuids |= _extract_gpu_uuids(stdout)
+
+		classification = None
+		if status != "completed":
+			classification = _classify_incompatibility("\n".join([str(error or ""), stderr]))
+
+		outputs.append(
+			{
+				"i": r.get("i"),
+				"task_id": r.get("task_id"),
+				"submitted_peer_id": pid,
+				"submitted_multiaddr": r.get("multiaddr"),
+				"status": status,
+				"error": error,
+				"classification": classification,
+				"gpu_uuids": sorted(_extract_gpu_uuids(stdout)),
+				"stdout_tail": stdout[-2000:],
+				"stderr_tail": stderr[-4000:],
+			}
+		)
 
 		ok = status == "completed" and isinstance(result, dict) and bool(result.get("success")) and int(result.get("exit_code", -1)) == 0
 		if not ok:
@@ -255,6 +294,34 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 				stderr[-4000:],
 				stdout[-2000:],
 			)
+
+	report = {
+		"ok": failures == 0,
+		"task_type": "docker.execute",
+		"workload": {
+			"image": image,
+			"command": ["nvidia-smi"],
+			"gpus": gpus,
+		},
+		"tasks": tasks,
+		"concurrency": concurrency,
+		"timeout_s": timeout_s,
+		"submit_single": submit_single,
+		"targets": targets,
+		"failures": failures,
+		"failures_by_peer": failures_by_peer,
+		"worker_ids": sorted(worker_ids),
+		"gpu_uuids": sorted(gpu_uuids),
+		"outputs": outputs,
+	}
+
+	try:
+		Path(report_path).parent.mkdir(parents=True, exist_ok=True)
+		with open(report_path, "w", encoding="utf-8") as handle:
+			json.dump(report, handle, indent=2, sort_keys=True)
+		logger.info("docker.execute wrote report path=%s", report_path)
+	except Exception as exc:  # noqa: BLE001
+		logger.error("docker.execute failed to write report path=%s error=%s", report_path, exc)
 
 	logger.info(
 		"docker.execute summary tasks=%s peers=%s submit_single=%s failures=%s failures_by_peer=%s worker_ids=%s gpu_uuids=%s",
