@@ -21,10 +21,14 @@ Environment=HOME=/home/devel
 EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
 
 # P2P Cache Configuration
+# IMPORTANT: Do NOT bind this to 9100.
+# Port 9100 is commonly used by the TaskQueue P2P service (MCP-over-P2P), and
+# sharing the port causes libp2p peer-id/pubkey mismatches and breaks TaskQueue
+# status/task dials.
 Environment=CACHE_ENABLE_P2P=true
-Environment=CACHE_LISTEN_PORT=9100
+Environment=CACHE_LISTEN_PORT=9102
 # Backward-compatible alias (some scripts still read this)
-Environment=P2P_LISTEN_PORT=9100
+Environment=P2P_LISTEN_PORT=9102
 
 # Ensure all nodes rendezvous in the same repo for peer discovery
 Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py

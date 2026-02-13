@@ -82,6 +82,31 @@ def _load_targets_from_env() -> list[dict[str, str]]:
 	return []
 
 
+def _validate_targets_unique(*, targets: list[dict[str, str]]) -> None:
+	"""Fail fast on common target misconfiguration.
+
+	If callers pass two multiaddrs with the same `/p2p/<peer_id>`, the test can
+	appear to only hit one peer (all failures attributed to the same peer_id).
+	"""
+	peer_to_endpoints: dict[str, set[str]] = {}
+	for t in list(targets or []):
+		if not isinstance(t, dict):
+			continue
+		pid = str(t.get("peer_id") or "").strip()
+		ma = str(t.get("multiaddr") or "").strip()
+		if not pid or not ma:
+			continue
+		peer_to_endpoints.setdefault(pid, set()).add(_endpoint_key_from_multiaddr(ma))
+
+	dupes = {pid: sorted(eps) for pid, eps in peer_to_endpoints.items() if len(eps) > 1}
+	if dupes:
+		pytest.skip(
+			"Misconfigured targets: duplicate peer_id across multiple endpoints. "
+			"This usually means you copied the wrong `/p2p/<peer_id>` into one of the target multiaddrs. "
+			f"duplicates={dupes}"
+		)
+
+
 def _classify_incompatibility(text: str) -> str | None:
 	msg = (text or "").lower()
 	if not msg:
@@ -352,6 +377,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			expected_port = 9100 if p2p_mode == "mcp" else 9710
 
 	targets = _load_targets_from_env()
+	targets_from_env = list(targets or [])
 	if len(targets) < 2:
 		autodiscover_default = "1" if not targets else "0"
 		autodiscover = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER") or autodiscover_default)
@@ -451,6 +477,10 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		else:
 			pytest.skip("Provide at least 2 targets via IPFS_ACCELERATE_PY_TEST_P2P_TARGETS[_FILE] or enable mDNS autodiscovery")
 
+	# Keep a snapshot of the candidates prior to status filtering so the JSON
+	# report can explain why the effective peer set is smaller.
+	targets_before_status_filter = list(targets or [])
+
 	# Drop stale/unreachable targets (common when services restart and peer IDs rotate).
 	# Keep this quick so it doesn't dominate the runtime.
 	try:
@@ -463,6 +493,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		timeout_s=float(status_timeout_s),
 		require_docker_worker=bool(require_docker_worker),
 	)
+	_validate_targets_unique(targets=targets)
 
 	expect_mesh = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION"))
 	expect_all = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_EXPECT_ALL_PEERS"))
@@ -688,10 +719,18 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			"command": ["nvidia-smi", "-L"],
 			"gpus": gpus,
 		},
+		"p2p": {
+			"mode": p2p_mode,
+			"expected_port": int(expected_port),
+			"status_timeout_s": float(status_timeout_s),
+			"require_docker_worker": bool(require_docker_worker),
+		},
 		"tasks": tasks,
 		"concurrency": concurrency,
 		"timeout_s": timeout_s,
 		"submit_single": submit_single,
+		"targets_from_env": targets_from_env,
+		"targets_before_status_filter": targets_before_status_filter,
 		"targets": targets,
 		"failures": failures,
 		"failures_by_peer": failures_by_peer,
