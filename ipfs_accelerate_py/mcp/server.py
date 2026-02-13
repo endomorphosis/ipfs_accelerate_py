@@ -410,6 +410,15 @@ class StandaloneMCP:
                     tool = self.tools[tool_name]
                     tool_function = tool["function"]
                     result = tool_function(**(data or {}))
+                    try:
+                        import inspect
+
+                        if inspect.isawaitable(result):
+                            result = await result
+                    except Exception:
+                        # Best-effort: if inspect isn't available or something
+                        # odd happens, just return the raw result.
+                        pass
                     return result
                 except HTTPException:
                     raise

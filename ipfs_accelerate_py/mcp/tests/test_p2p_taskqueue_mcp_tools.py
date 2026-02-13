@@ -1,9 +1,12 @@
 import os
+import inspect
 import socket
 import subprocess
 import sys
 import tempfile
 import time
+
+import anyio
 
 
 def _pick_free_port() -> int:
@@ -70,7 +73,15 @@ def test_mcp_p2p_taskqueue_status_against_real_service() -> None:
             register_tools(mcp)
 
             tool_fn = mcp.tools["p2p_taskqueue_status"]["function"]
-            resp = tool_fn(remote_multiaddr=multiaddr, timeout_s=10.0, detail=False)
+
+            async def _call_tool() -> dict:
+                result = tool_fn(remote_multiaddr=multiaddr, timeout_s=10.0, detail=False)
+                if inspect.isawaitable(result):
+                    result = await result
+                assert isinstance(result, dict)
+                return result
+
+            resp = anyio.run(_call_tool, backend="trio")
             assert isinstance(resp, dict)
             assert resp.get("ok") is True
             assert resp.get("peer_id")
