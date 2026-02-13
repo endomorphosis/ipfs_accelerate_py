@@ -65,6 +65,10 @@ class DockerExecutionConfig:
     command: Optional[List[str]] = None
     entrypoint: Optional[List[str]] = None
     working_dir: Optional[str] = None
+
+    # GPU settings
+    # Common value: "all" (equivalent to docker run --gpus all)
+    gpus: Optional[str] = None
     
     # Resource limits
     memory_limit: Optional[str] = "2g"  # e.g., "512m", "2g"
@@ -209,6 +213,10 @@ class DockerExecutor:
     def _build_docker_command(self, config: DockerExecutionConfig) -> List[str]:
         """Build docker run command from configuration"""
         cmd = [self.docker_command, "run", "--rm"]
+
+        # GPU settings
+        if config.gpus:
+            cmd.extend(["--gpus", str(config.gpus)])
         
         # Resource limits
         if config.memory_limit:

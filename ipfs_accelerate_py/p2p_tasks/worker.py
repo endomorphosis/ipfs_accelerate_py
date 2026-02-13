@@ -278,6 +278,16 @@ def _build_docker_run_cmd(*, payload: Dict[str, Any]) -> Tuple[list[str], float 
 
     cmd: list[str] = ["docker", "run", "--rm"]
 
+    # GPU support (optional): docker run --gpus <value>
+    # Common values: "all", "device=0".
+    gpus = payload.get("gpus")
+    if gpus is None:
+        gpus = payload.get("gpu")
+    if gpus is True:
+        gpus = "all"
+    if isinstance(gpus, str) and gpus.strip():
+        cmd.extend(["--gpus", str(gpus).strip()])
+
     memory_limit = payload.get("memory_limit")
     if memory_limit is not None:
         cmd.extend(["--memory", str(memory_limit)])
@@ -797,6 +807,11 @@ def run_worker(
         volumes = {str(k): str(v) for k, v in volumes.items()}
 
         kwargs: Dict[str, Any] = {}
+        # GPU support (optional): passed through to docker_executor.
+        if payload.get("gpus") is not None:
+            kwargs["gpus"] = "all" if payload.get("gpus") is True else str(payload.get("gpus"))
+        elif payload.get("gpu") is not None:
+            kwargs["gpus"] = "all" if payload.get("gpu") is True else str(payload.get("gpu"))
         if payload.get("memory_limit") is not None:
             kwargs["memory_limit"] = str(payload.get("memory_limit"))
         if payload.get("cpu_limit") is not None:
