@@ -124,7 +124,12 @@ def _endpoint_key_from_multiaddr(ma: str) -> str:
 	return text
 
 
-def _filter_targets_by_status(*, targets: list[dict[str, str]], timeout_s: float) -> list[dict[str, str]]:
+def _filter_targets_by_status(
+	*,
+	targets: list[dict[str, str]],
+	timeout_s: float,
+	require_docker_worker: bool = False,
+) -> list[dict[str, str]]:
 	"""Drop stale/unreachable targets by attempting a quick TaskQueue `status` RPC.
 
 	Also de-duplicates by endpoint (ip:port) and keeps the first candidate per
@@ -155,11 +160,22 @@ def _filter_targets_by_status(*, targets: list[dict[str, str]], timeout_s: float
 			pid = str(c.get("peer_id") or "")
 			try:
 				remote = RemoteQueue(peer_id=pid, multiaddr=ma)
-				trace = discover_status_sync(remote=remote, timeout_s=float(timeout_s), detail=False)
-				if isinstance(trace, dict) and trace.get("ok") and isinstance(trace.get("result"), dict):
-					resolved_pid = str((trace.get("result") or {}).get("peer_id") or pid).strip()
-					chosen = {"peer_id": resolved_pid, "multiaddr": ma}
-					break
+				trace = discover_status_sync(remote=remote, timeout_s=float(timeout_s), detail=True)
+				if not (isinstance(trace, dict) and trace.get("ok") and isinstance(trace.get("result"), dict)):
+					continue
+				result = trace.get("result") or {}
+				resolved_pid = str((result.get("peer_id") or pid)).strip()
+				if require_docker_worker:
+					scheduler = result.get("scheduler") if isinstance(result.get("scheduler"), dict) else {}
+					counts = scheduler.get("counts") if isinstance(scheduler.get("counts"), dict) else {}
+					try:
+						docker_workers = int(counts.get("docker_workers") or 0)
+					except Exception:
+						docker_workers = 0
+					if docker_workers <= 0:
+						continue
+				chosen = {"peer_id": resolved_pid, "multiaddr": ma}
+				break
 			except Exception:
 				continue
 		if chosen and chosen.get("peer_id") and chosen["peer_id"] not in seen_peer_ids:
@@ -316,7 +332,12 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		status_timeout_s = float(os.environ.get("IPFS_ACCELERATE_PY_TEST_P2P_STATUS_TIMEOUT_S") or "3")
 	except Exception:
 		status_timeout_s = 3.0
-	targets = _filter_targets_by_status(targets=targets, timeout_s=float(status_timeout_s))
+	require_docker_worker = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_P2P_REQUIRE_DOCKER_WORKER") or "1")
+	targets = _filter_targets_by_status(
+		targets=targets,
+		timeout_s=float(status_timeout_s),
+		require_docker_worker=bool(require_docker_worker),
+	)
 
 	if len(targets) < 1:
 		pretty = ", ".join([str(t.get("multiaddr") or "") for t in (targets or []) if t])

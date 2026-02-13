@@ -1308,6 +1308,7 @@ async def serve_task_queue(
                         "worker_id": worker_id,
                         "peer_hint": claimed_peer_id,
                         "transport_peer_id": str(remote_peer_id or "").strip(),
+                        "supported_task_types": list(supported_list),
                     },
                 )
 
@@ -1447,9 +1448,70 @@ async def serve_task_queue(
                     "autonat": _autonat_status_dict(autonat),
                 }
                 session = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
+
+                resp: Dict[str, Any] = {"ok": True, "capabilities": caps, "peer_id": peer_id, "nat": nat, "session": session}
+                if detail:
+                    now = time.time()
+                    peer_rows: list[dict[str, Any]] = []
+                    worker_rows: list[dict[str, Any]] = []
+                    docker_worker_ids: set[str] = set()
+
+                    docker_task_types = {
+                        "docker.execute",
+                        "docker.execute_docker_container",
+                        "docker.github",
+                    }
+
+                    for _pid, info in list(known_peers.items()):
+                        last_seen_raw = info.get("last_seen")
+                        if isinstance(last_seen_raw, (int, float)):
+                            last_seen = float(last_seen_raw)
+                        elif isinstance(last_seen_raw, str):
+                            try:
+                                last_seen = float(last_seen_raw)
+                            except Exception:
+                                last_seen = 0.0
+                        else:
+                            last_seen = 0.0
+                        if (now - last_seen) > float(peer_timeout_s):
+                            continue
+
+                        wid = str(info.get("worker_id") or "").strip()
+                        supported = info.get("supported_task_types")
+                        if isinstance(supported, str):
+                            supported_list = [p.strip() for p in supported.split(",") if p.strip()]
+                        elif isinstance(supported, (list, tuple, set)):
+                            supported_list = [str(t).strip() for t in supported if str(t).strip()]
+                        else:
+                            supported_list = []
+
+                        row = {
+                            "peer_id": str(info.get("peer_id") or "").strip(),
+                            "last_seen": float(last_seen),
+                            "worker_id": wid,
+                            "supported_task_types": supported_list,
+                            "transport_peer_id": str(info.get("transport_peer_id") or "").strip(),
+                            "peer_hint": str(info.get("peer_hint") or "").strip(),
+                        }
+                        peer_rows.append(row)
+                        if wid:
+                            worker_rows.append(row)
+                            if any(t in docker_task_types for t in supported_list):
+                                docker_worker_ids.add(wid)
+
+                    resp["scheduler"] = {
+                        "clock": sched_clock.to_dict(),
+                        "known_peers": peer_rows,
+                        "known_workers": worker_rows,
+                        "counts": {
+                            "peers": int(len(peer_rows)),
+                            "workers": int(len(worker_rows)),
+                            "docker_workers": int(len(docker_worker_ids)),
+                        },
+                    }
+
                 await stream.write(
-                    json.dumps({"ok": True, "capabilities": caps, "peer_id": peer_id, "nat": nat, "session": session}).encode("utf-8")
-                    + b"\n"
+                    json.dumps(resp).encode("utf-8") + b"\n"
                 )
                 return
 
