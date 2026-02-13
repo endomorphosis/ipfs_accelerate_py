@@ -172,7 +172,22 @@ def _filter_targets_by_status(
 						docker_workers = int(counts.get("docker_workers") or 0)
 					except Exception:
 						docker_workers = 0
-					if docker_workers <= 0:
+
+					local_ok = False
+					local = result.get("local_worker")
+					if isinstance(local, dict):
+						if bool(local.get("enabled")) and bool(local.get("docker_enabled")):
+							sup = local.get("supported_task_types")
+							if isinstance(sup, str):
+								sup_list = [p.strip() for p in sup.split(",") if p.strip()]
+							elif isinstance(sup, (list, tuple, set)):
+								sup_list = [str(x).strip() for x in sup if str(x).strip()]
+							else:
+								sup_list = []
+							if any(t.startswith("docker.") for t in sup_list) or ("docker.execute" in sup_list):
+								local_ok = True
+
+					if docker_workers <= 0 and not local_ok:
 						continue
 				chosen = {"peer_id": resolved_pid, "multiaddr": ma}
 				break
@@ -375,7 +390,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	except Exception:
 		tasks, concurrency, timeout_s = 50, 10, 180.0
 
-	image = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_IMAGE") or "nvidia/cuda:12.4.0-base").strip()
+	image = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_IMAGE") or "nvidia/cuda:12.4.0-base-ubuntu22.04").strip()
 	gpus = str(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_GPUS") or "all").strip()
 	expect_mesh = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION"))
 	submit_single = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_DOCKER_SUBMIT_SINGLE_TARGET"))
@@ -395,7 +410,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			task_id = await submit_docker_hub_task(
 				remote=remote,
 				image=image,
-				command=["nvidia-smi"],
+					command=["nvidia-smi", "-L"],
 				gpus=gpus,
 				stream_output=False,
 			)
@@ -571,7 +586,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		"task_type": "docker.execute",
 		"workload": {
 			"image": image,
-			"command": ["nvidia-smi"],
+				"command": ["nvidia-smi", "-L"],
 			"gpus": gpus,
 		},
 		"tasks": tasks,
