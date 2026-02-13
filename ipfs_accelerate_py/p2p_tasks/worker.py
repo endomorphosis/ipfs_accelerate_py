@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
 import subprocess
 import threading
 import time
@@ -50,7 +51,10 @@ def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, tem
         if _HF_TEXTGEN_PIPELINE is None or _HF_TEXTGEN_MODEL_ID != requested_model:
             tokenizer = AutoTokenizer.from_pretrained(requested_model)
             model = AutoModelForCausalLM.from_pretrained(requested_model)
-            if getattr(tokenizer, "pad_token_id", None) is None and getattr(tokenizer, "eos_token_id", None) is not None:
+            if (
+                getattr(tokenizer, "pad_token_id", None) is None
+                and getattr(tokenizer, "eos_token_id", None) is not None
+            ):
                 tokenizer.pad_token_id = tokenizer.eos_token_id
 
             _HF_TEXTGEN_PIPELINE = pipeline(
@@ -220,26 +224,45 @@ def _run_shell(task: Dict[str, Any]) -> Dict[str, Any]:
     if not allow:
         raise RuntimeError("shell task_type disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL=1)")
 
+    if not _docker_tasks_enabled():
+        raise RuntimeError("shell requires docker (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1)")
+
     payload = task.get("payload") or {}
     if not isinstance(payload, dict):
         raise ValueError("shell payload must be a dict")
+
     argv = payload.get("argv")
     if not isinstance(argv, list) or not argv or not all(isinstance(x, str) and x for x in argv):
         raise ValueError("shell payload.argv must be a non-empty list[str]")
+
     timeout_s = payload.get("timeout_s")
     try:
         timeout_v = float(timeout_s) if timeout_s is not None else None
     except Exception:
         timeout_v = None
 
-    proc = subprocess.run(
-        argv,
-        capture_output=True,
-        text=True,
-        timeout=timeout_v,
-        check=False,
+    image = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_SHELL_IMAGE") or "ubuntu:22.04").strip() or "ubuntu:22.04"
+    cmd_str = shlex.join([str(x) for x in argv])
+    command = ["/bin/sh", "-lc", cmd_str]
+
+    from ipfs_accelerate_py.docker_executor import execute_docker_hub_container
+
+    res = execute_docker_hub_container(
+        image=image,
+        command=command,
+        timeout=int(timeout_v) if timeout_v is not None else 300,
+        network_mode="none",
+        no_new_privileges=True,
+        stream_output=bool(payload.get("stream_output")),
     )
-    return {"returncode": int(proc.returncode), "stdout": proc.stdout, "stderr": proc.stderr}
+
+    return {
+        "returncode": int(getattr(res, "exit_code", -1)),
+        "stdout": str(getattr(res, "stdout", "") or ""),
+        "stderr": str(getattr(res, "stderr", "") or ""),
+        "success": bool(getattr(res, "success", False)),
+        "exit_code": int(getattr(res, "exit_code", -1)),
+    }
 
 
 def _docker_tasks_enabled() -> bool:
@@ -378,6 +401,12 @@ def _stream_subprocess(
     last_flush = 0.0
     last_heartbeat = 0.0
 
+    def _safe_update(**kwargs: Any) -> None:
+        try:
+            queue.update(**kwargs)
+        except Exception:
+            pass
+
     def _pump(stream, *, stream_name: str) -> None:
         if stream is None:
             return
@@ -405,7 +434,7 @@ def _stream_subprocess(
                     proc.kill()
                 except Exception:
                     pass
-                queue.update(
+                _safe_update(
                     task_id=task_id,
                     status="running",
                     result_patch={"progress": {"phase": "timeout", "ts": now}},
@@ -417,7 +446,7 @@ def _stream_subprocess(
             rc = proc.poll()
 
             if now - last_heartbeat >= heartbeat_interval_s:
-                queue.update(
+                _safe_update(
                     task_id=task_id,
                     status="running",
                     result_patch={"progress": {"phase": "running", "heartbeat_ts": now}},
@@ -428,10 +457,20 @@ def _stream_subprocess(
                 # Flush buffered stdout/stderr lines to the queue.
                 while stdout_buf:
                     line = stdout_buf.pop(0)
-                    queue.update(task_id=task_id, status="running", append_log=line.rstrip("\n"), log_stream="stdout")
+                    _safe_update(
+                        task_id=task_id,
+                        status="running",
+                        append_log=line.rstrip("\n"),
+                        log_stream="stdout",
+                    )
                 while stderr_buf:
                     line = stderr_buf.pop(0)
-                    queue.update(task_id=task_id, status="running", append_log=line.rstrip("\n"), log_stream="stderr")
+                    _safe_update(
+                        task_id=task_id,
+                        status="running",
+                        append_log=line.rstrip("\n"),
+                        log_stream="stderr",
+                    )
                 last_flush = now
 
             if rc is not None:
@@ -442,10 +481,20 @@ def _stream_subprocess(
         # Final flush
         while stdout_buf:
             line = stdout_buf.pop(0)
-            queue.update(task_id=task_id, status="running", append_log=line.rstrip("\n"), log_stream="stdout")
+            _safe_update(
+                task_id=task_id,
+                status="running",
+                append_log=line.rstrip("\n"),
+                log_stream="stdout",
+            )
         while stderr_buf:
             line = stderr_buf.pop(0)
-            queue.update(task_id=task_id, status="running", append_log=line.rstrip("\n"), log_stream="stderr")
+            _safe_update(
+                task_id=task_id,
+                status="running",
+                append_log=line.rstrip("\n"),
+                log_stream="stderr",
+            )
     finally:
         try:
             t_out.join(timeout=0.5)
@@ -553,21 +602,20 @@ def _read_local_announce_peer_id() -> str:
 
 
 def _mesh_safe_task_types(supported: list[str]) -> list[str]:
-    """Restrict mesh claiming to task types that don't require local-queue streaming.
+    """Return supported task types for mesh claiming.
 
-    This keeps the mesh path focused on LLM inference (and optionally tool calls)
-    without trying to proxy docker/shell progress updates.
+    Historically, mesh mode used an allowlist. We now allow whatever task types
+    this worker is configured to support.
     """
 
-    allow = {"text-generation", "text_generation", "generation", "tool.call", "tool"}
     out: list[str] = []
     for t in list(supported or []):
         tt = str(t or "").strip()
-        if tt and tt in allow:
+        if tt:
             out.append(tt)
-    # Always ensure text-generation is present.
-    if "text-generation" not in out:
-        out.append("text-generation")
+
+    if not out:
+        out = ["text-generation"]
     return out
 
 
@@ -687,6 +735,7 @@ def run_worker(
             name=f"ipfs_accelerate_p2p_task_service[{worker_id}]",
             daemon=True,
         )
+
         t.start()
 
     queue = TaskQueue(queue_path)
@@ -704,19 +753,19 @@ def run_worker(
     handlers["generation"] = _wrap(_run_text_generation)
     handlers["tool.call"] = _wrap(_run_tool_call)
     handlers["tool"] = _wrap(_run_tool_call)
+
     def _shell_handler(task_dict: Dict[str, Any]) -> Dict[str, Any]:
         payload = task_dict.get("payload") or {}
         if not isinstance(payload, dict):
             raise ValueError("shell payload must be a dict")
 
-        allow = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL") or "").strip().lower() in {
-            "1",
-            "true",
-            "yes",
-            "on",
-        }
+        enable_shell_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL") or ""
+        allow = str(enable_shell_raw).strip().lower() in {"1", "true", "yes", "on"}
         if not allow:
             raise RuntimeError("shell task_type disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL=1)")
+
+        if not _docker_tasks_enabled():
+            raise RuntimeError("shell requires docker (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1)")
 
         task_id = str(task_dict.get("task_id") or "")
         argv = payload.get("argv")
@@ -729,23 +778,50 @@ def run_worker(
         except Exception:
             timeout_v = None
 
-        stream_mode = bool(payload.get("stream_output"))
-        if stream_mode:
-            queue.update(task_id=task_id, status="running", append_log=f"[worker] exec: {' '.join(argv)}", log_stream="stderr")
-            return _stream_subprocess(argv=argv, task_id=task_id, queue=queue, timeout_s=timeout_v)
+        image = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_SHELL_IMAGE") or "ubuntu:22.04").strip() or "ubuntu:22.04"
+        cmd_str = shlex.join([str(x) for x in argv])
+        command = ["/bin/sh", "-lc", cmd_str]
 
-        proc = subprocess.run(
-            argv,
-            capture_output=True,
-            text=True,
-            timeout=timeout_v,
-            check=False,
+        try:
+            queue.update(
+                task_id=task_id,
+                status="running",
+                result_patch={"progress": {"phase": "starting", "ts": time.time(), "image": image}},
+            )
+        except Exception:
+            pass
+
+        from ipfs_accelerate_py.docker_executor import execute_docker_hub_container
+
+        res = execute_docker_hub_container(
+            image=image,
+            command=command,
+            timeout=int(timeout_v) if timeout_v is not None else 300,
+            network_mode="none",
+            no_new_privileges=True,
+            stream_output=bool(payload.get("stream_output")),
         )
-        for line in (proc.stdout or "").splitlines():
-            queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
-        for line in (proc.stderr or "").splitlines():
-            queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
-        return {"returncode": int(proc.returncode), "stdout": proc.stdout, "stderr": proc.stderr}
+
+        stdout = str(getattr(res, "stdout", "") or "")
+        stderr = str(getattr(res, "stderr", "") or "")
+        for line in stdout.splitlines():
+            try:
+                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
+            except Exception:
+                pass
+        for line in stderr.splitlines():
+            try:
+                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
+            except Exception:
+                pass
+
+        return {
+            "returncode": int(getattr(res, "exit_code", -1)),
+            "stdout": stdout,
+            "stderr": stderr,
+            "success": bool(getattr(res, "success", False)),
+            "exit_code": int(getattr(res, "exit_code", -1)),
+        }
 
     handlers["shell"] = _shell_handler
 
@@ -759,11 +835,14 @@ def run_worker(
         if not isinstance(payload, dict):
             raise ValueError("docker payload must be a dict")
         task_id = str(task_dict.get("task_id") or "")
-        queue.update(
-            task_id=task_id,
-            status="running",
-            result_patch={"progress": {"phase": "starting", "ts": time.time()}},
-        )
+        try:
+            queue.update(
+                task_id=task_id,
+                status="running",
+                result_patch={"progress": {"phase": "starting", "ts": time.time()}},
+            )
+        except Exception:
+            pass
 
         image = str(payload.get("image") or "").strip()
         if not image:
@@ -777,18 +856,24 @@ def run_worker(
 
         if stream_mode:
             argv, timeout_v = _build_docker_run_cmd(payload=payload)
-            queue.update(
-                task_id=task_id,
-                status="running",
-                append_log=f"[worker] exec: {' '.join(argv)}",
-                log_stream="stderr",
-            )
+            try:
+                queue.update(
+                    task_id=task_id,
+                    status="running",
+                    append_log=f"[worker] exec: {' '.join(argv)}",
+                    log_stream="stderr",
+                )
+            except Exception:
+                pass
             result = _stream_subprocess(argv=argv, task_id=task_id, queue=queue, timeout_s=timeout_v)
-            queue.update(
-                task_id=task_id,
-                status="running",
-                result_patch={"progress": {"phase": "exited", "ts": time.time()}},
-            )
+            try:
+                queue.update(
+                    task_id=task_id,
+                    status="running",
+                    result_patch={"progress": {"phase": "exited", "ts": time.time()}},
+                )
+            except Exception:
+                pass
             return result
 
         from ipfs_accelerate_py.docker_executor import execute_docker_hub_container
@@ -839,11 +924,14 @@ def run_worker(
 
         def _hb() -> None:
             while not stop.is_set():
-                queue.update(
-                    task_id=task_id,
-                    status="running",
-                    result_patch={"progress": {"phase": "running", "heartbeat_ts": time.time(), "image": image}},
-                )
+                try:
+                    queue.update(
+                        task_id=task_id,
+                        status="running",
+                        result_patch={"progress": {"phase": "running", "heartbeat_ts": time.time(), "image": image}},
+                    )
+                except Exception:
+                    pass
                 stop.wait(0.5)
 
         t = threading.Thread(target=_hb, name=f"docker_hb[{task_id}]", daemon=True)
@@ -867,21 +955,33 @@ def run_worker(
         stdout = str(getattr(res, "stdout", "") or "")
         stderr = str(getattr(res, "stderr", "") or "")
         for line in stdout.splitlines():
-            queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
+            try:
+                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
+            except Exception:
+                pass
         for line in stderr.splitlines():
-            queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
+            try:
+                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
+            except Exception:
+                pass
         if getattr(res, "error_message", None):
+            try:
+                queue.update(
+                    task_id=task_id,
+                    status="running",
+                    append_log=str(getattr(res, "error_message")),
+                    log_stream="stderr",
+                )
+            except Exception:
+                pass
+        try:
             queue.update(
                 task_id=task_id,
                 status="running",
-                append_log=str(getattr(res, "error_message")),
-                log_stream="stderr",
+                result_patch={"progress": {"phase": "exited", "ts": time.time(), "image": image}},
             )
-        queue.update(
-            task_id=task_id,
-            status="running",
-            result_patch={"progress": {"phase": "exited", "ts": time.time(), "image": image}},
-        )
+        except Exception:
+            pass
 
         return {
             "success": bool(getattr(res, "success", False)),
@@ -950,11 +1050,14 @@ def run_worker(
         if payload.get("user") is not None:
             kwargs["user"] = str(payload.get("user"))
 
-        queue.update(
-            task_id=task_id,
-            status="running",
-            result_patch={"progress": {"phase": "building", "ts": time.time(), "repo_url": repo_url}},
-        )
+        try:
+            queue.update(
+                task_id=task_id,
+                status="running",
+                result_patch={"progress": {"phase": "building", "ts": time.time(), "repo_url": repo_url}},
+            )
+        except Exception:
+            pass
 
         from ipfs_accelerate_py.docker_executor import build_and_execute_from_github
 
@@ -962,18 +1065,21 @@ def run_worker(
 
         def _hb() -> None:
             while not stop.is_set():
-                queue.update(
-                    task_id=task_id,
-                    status="running",
-                    result_patch={
-                        "progress": {
-                            "phase": "building_and_running",
-                            "heartbeat_ts": time.time(),
-                            "repo_url": repo_url,
-                            "branch": branch,
-                        }
-                    },
-                )
+                try:
+                    queue.update(
+                        task_id=task_id,
+                        status="running",
+                        result_patch={
+                            "progress": {
+                                "phase": "building_and_running",
+                                "heartbeat_ts": time.time(),
+                                "repo_url": repo_url,
+                                "branch": branch,
+                            }
+                        },
+                    )
+                except Exception:
+                    pass
                 stop.wait(0.5)
 
         t = threading.Thread(target=_hb, name=f"docker_github_hb[{task_id}]", daemon=True)
@@ -1000,21 +1106,33 @@ def run_worker(
         stdout = str(getattr(res, "stdout", "") or "")
         stderr = str(getattr(res, "stderr", "") or "")
         for line in stdout.splitlines():
-            queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
+            try:
+                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stdout")
+            except Exception:
+                pass
         for line in stderr.splitlines():
-            queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
+            try:
+                queue.update(task_id=task_id, status="running", append_log=line, log_stream="stderr")
+            except Exception:
+                pass
         if getattr(res, "error_message", None):
+            try:
+                queue.update(
+                    task_id=task_id,
+                    status="running",
+                    append_log=str(getattr(res, "error_message")),
+                    log_stream="stderr",
+                )
+            except Exception:
+                pass
+        try:
             queue.update(
                 task_id=task_id,
                 status="running",
-                append_log=str(getattr(res, "error_message")),
-                log_stream="stderr",
+                result_patch={"progress": {"phase": "exited", "ts": time.time(), "repo_url": repo_url}},
             )
-        queue.update(
-            task_id=task_id,
-            status="running",
-            result_patch={"progress": {"phase": "exited", "ts": time.time(), "repo_url": repo_url}},
-        )
+        except Exception:
+            pass
 
         return {
             "success": bool(getattr(res, "success", False)),
@@ -1039,7 +1157,11 @@ def run_worker(
 
     mesh_enabled = bool(_worker_mesh_enabled()) if mesh is None else bool(mesh)
     mesh_refresh = float(_worker_mesh_refresh_s()) if mesh_refresh_s is None else float(mesh_refresh_s)
-    mesh_claim_interval = float(_worker_mesh_claim_interval_s()) if mesh_claim_interval_s is None else float(mesh_claim_interval_s)
+    mesh_claim_interval = (
+        float(_worker_mesh_claim_interval_s())
+        if mesh_claim_interval_s is None
+        else float(mesh_claim_interval_s)
+    )
     mesh_peers_limit = int(_worker_mesh_max_peers()) if mesh_max_peers is None else int(mesh_max_peers)
 
     # Mesh discovery state.
@@ -1156,6 +1278,18 @@ def run_worker(
                                 "payload": remote_task.get("payload"),
                             }
                         )
+                        if isinstance(result, dict):
+                            # Ensure mesh executions are attributable.
+                            result = dict(result)
+                            progress = result.get("progress")
+                            if not isinstance(progress, dict):
+                                progress = {}
+                            if not progress.get("worker_id"):
+                                progress = dict(progress)
+                                progress["worker_id"] = str(worker_id)
+                                progress["task_type"] = str(remote_task.get("task_type") or "")
+                                progress["mesh"] = True
+                            result["progress"] = progress
                         ok = True
                     except Exception as exc:
                         ok = False

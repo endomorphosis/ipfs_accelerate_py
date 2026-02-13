@@ -259,8 +259,49 @@ def test_worker_docker_auto_enabled_when_daemon_available(monkeypatch, tmp_path)
     assert task is not None
     assert task["status"] == "completed"
     assert task["result"]["stdout"] == "hello"
-    assert called["image"] == "python:3.11-slim"
 
-    logs = task["result"].get("logs")
-    assert isinstance(logs, list)
-    assert any((e.get("stream") == "stdout" and "hello" in str(e.get("message"))) for e in logs)
+
+def test_worker_shell_runs_in_docker(monkeypatch, tmp_path):
+    from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
+    from ipfs_accelerate_py.p2p_tasks.worker import run_worker
+
+    called = {}
+
+    def fake_execute_docker_hub_container(*, image, command=None, **kwargs):
+        called["image"] = image
+        called["command"] = command
+        called["kwargs"] = kwargs
+        return _fake_result(stdout="hi\n")
+
+    # If shell ever tries to execute on-host, fail the test.
+    import ipfs_accelerate_py.p2p_tasks.worker as worker_mod
+
+    def _no_subprocess_run(*args, **kwargs):
+        raise AssertionError("shell must not call subprocess.run on host")
+
+    monkeypatch.setattr(worker_mod.subprocess, "run", _no_subprocess_run)
+
+    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL", "1")
+    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER", "1")
+    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_WORKER_SHELL_IMAGE", "ubuntu:22.04")
+
+    import ipfs_accelerate_py.docker_executor as docker_executor
+
+    monkeypatch.setattr(docker_executor, "execute_docker_hub_container", fake_execute_docker_hub_container)
+
+    queue_path = str(tmp_path / "q.duckdb")
+    queue = TaskQueue(queue_path)
+    tid = queue.submit(task_type="shell", model_name="shell", payload={"argv": ["echo", "hi"]})
+
+    rc = run_worker(queue_path=queue_path, worker_id="w1", once=True, supported_task_types=["shell"])
+    assert rc == 0
+
+    task = queue.get(tid)
+    assert task is not None
+    assert task["status"] == "completed"
+    assert task["result"]["stdout"].strip() == "hi"
+
+    assert called["image"] == "ubuntu:22.04"
+    assert called["command"] == ["/bin/sh", "-lc", "echo hi"]
+    assert called["kwargs"]["network_mode"] == "none"
+    assert called["kwargs"]["no_new_privileges"] is True

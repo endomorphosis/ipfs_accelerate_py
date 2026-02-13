@@ -320,6 +320,9 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_REPORT_PATH=/path/to/report.json
 	- IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION=1
 	(asserts >1 executor observed via GPU UUIDs; falls back to worker_id)
+	- IPFS_ACCELERATE_PY_TEST_EXPECT_ALL_PEERS=1
+	(asserts >=N executors observed, where N=len(targets); best-effort and may be
+	flaky if concurrency/tasks are too low)
 	"""
 
 	if not _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST")):
@@ -462,12 +465,15 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	)
 
 	expect_mesh = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION"))
+	expect_all = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_EXPECT_ALL_PEERS"))
 	if expect_mesh and len(targets) < 2:
 		pytest.skip(
 			"Need at least 2 reachable TaskQueue peers to assert mesh distribution. "
 			f"mode={p2p_mode} expected_port={expected_port} targets_found={len(targets)}. "
 			"Ensure both machines are running the TaskQueue p2p service on the same port (default 9710)."
 		)
+	if expect_all and len(targets) < 2:
+		pytest.skip("Need at least 2 reachable peers to assert all-peers distribution")
 
 	if len(targets) < 1:
 		pretty = ", ".join([str(t.get("multiaddr") or "") for t in (targets or []) if t])
@@ -720,5 +726,15 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			assert len(gpu_uuids) >= 2, f"Expected distribution (>=2 GPU UUIDs), saw {sorted(gpu_uuids)}"
 		else:
 			assert len(worker_ids) >= 2, f"Expected distribution (>=2 worker_ids), saw {sorted(worker_ids)}"
+
+	if expect_all:
+		# Stronger version of the above: require evidence that all targets executed
+		# at least one task. This relies on either unique GPU UUIDs per host or
+		# unique worker_id naming across peers.
+		want = int(len(targets))
+		if gpu_uuids:
+			assert len(gpu_uuids) >= want, f"Expected >= {want} GPU UUIDs, saw {sorted(gpu_uuids)}"
+		else:
+			assert len(worker_ids) >= want, f"Expected >= {want} worker_ids, saw {sorted(worker_ids)}"
 
 	assert failures == 0, f"docker.execute had {failures} failures (see logs for per-peer diagnostics)"
