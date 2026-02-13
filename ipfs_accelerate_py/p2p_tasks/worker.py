@@ -154,14 +154,26 @@ def _run_text_generation(task: Dict[str, Any], *, accelerate_instance: object | 
     # with InferenceBackendManager multiplexing when enabled via env vars.
     from ipfs_accelerate_py import llm_router
 
-    text = llm_router.generate_text(
-        str(prompt or ""),
-        provider=None,
-        model_name=model_name or None,
-        max_new_tokens=max_new_tokens,
-        temperature=temperature,
-    )
-    return {"text": str(text)}
+    try:
+        text = llm_router.generate_text(
+            str(prompt or ""),
+            provider=None,
+            model_name=model_name or None,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+        )
+        return {"text": str(text)}
+    except Exception:
+        # If optional providers (e.g. Codex/Copilot CLIs) are importable but not
+        # actually functional on this machine, fall back to a minimal local HF
+        # path so LAN workers can still run text-generation workloads.
+        text = _hf_textgen(
+            str(prompt or ""),
+            model_name=model_name or None,
+            max_new_tokens=max_new_tokens,
+            temperature=temperature,
+        )
+        return {"text": str(text)}
 
 
 def _run_tool_call(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
