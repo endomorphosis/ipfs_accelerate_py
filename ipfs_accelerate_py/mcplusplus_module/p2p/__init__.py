@@ -8,13 +8,14 @@ Components:
 -----------
 - taskqueue: P2P task queue client for distributed task execution
 - workflow: P2P workflow scheduler for multi-peer coordination
-- peer_registry: Peer discovery and registry management
+- peer_registry: Peer discovery and registry management (GitHub Issues-based)
 - bootstrap: Bootstrap helpers for peer discovery
+- connectivity: P2P connectivity and discovery mechanisms
 
 All components are designed to work natively with Trio's structured concurrency.
 """
 
-# Import P2P components (will be copied and refactored)
+# Import P2P components
 try:
     from .taskqueue import P2PTaskQueue, RemoteQueue
 except ImportError:
@@ -48,15 +49,27 @@ try:
 except ImportError:
     SimplePeerBootstrap = None
 
+try:
+    from .connectivity import DiscoveryConfig, ConnectivityHelper
+except ImportError:
+    DiscoveryConfig = None
+    ConnectivityHelper = None
+
 __all__ = [
+    # Task queue
     "P2PTaskQueue",
     "RemoteQueue",
+    # Workflow scheduler
     "P2PWorkflowScheduler",
     "P2PTask",
     "WorkflowTag",
     "MerkleClock",
     "get_scheduler",
     "HAVE_P2P_SCHEDULER",
+    # Peer discovery
     "P2PPeerRegistry",
     "SimplePeerBootstrap",
+    # Connectivity
+    "DiscoveryConfig",
+    "ConnectivityHelper",
 ]
