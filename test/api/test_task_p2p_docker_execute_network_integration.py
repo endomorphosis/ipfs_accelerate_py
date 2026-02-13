@@ -115,6 +115,60 @@ def _default_report_path() -> str:
 	return str(state_dir / f"docker_execute_nvidia_smi_network_{ts}.json")
 
 
+def _endpoint_key_from_multiaddr(ma: str) -> str:
+	"""Best-effort endpoint key (ip:port) from a /ip4/.../tcp/... multiaddr."""
+	text = str(ma or "")
+	m = re.search(r"/ip4/([^/]+)/tcp/(\d+)", text)
+	if m:
+		return f"{m.group(1)}:{m.group(2)}"
+	return text
+
+
+def _filter_targets_by_status(*, targets: list[dict[str, str]], timeout_s: float) -> list[dict[str, str]]:
+	"""Drop stale/unreachable targets by attempting a quick TaskQueue `status` RPC.
+
+	Also de-duplicates by endpoint (ip:port) and keeps the first candidate per
+	endpoint that successfully responds.
+	"""
+	try:
+		from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, discover_status_sync
+	except Exception:
+		return list(targets or [])
+
+	by_endpoint: dict[str, list[dict[str, str]]] = {}
+	for t in list(targets or []):
+		if not isinstance(t, dict):
+			continue
+		ma = str(t.get("multiaddr") or "").strip()
+		pid = str(t.get("peer_id") or "").strip()
+		if not ma:
+			continue
+		key = _endpoint_key_from_multiaddr(ma)
+		by_endpoint.setdefault(key, []).append({"peer_id": pid, "multiaddr": ma})
+
+	filtered: list[dict[str, str]] = []
+	seen_peer_ids: set[str] = set()
+	for _endpoint, candidates in by_endpoint.items():
+		chosen: dict[str, str] | None = None
+		for c in candidates:
+			ma = str(c.get("multiaddr") or "")
+			pid = str(c.get("peer_id") or "")
+			try:
+				remote = RemoteQueue(peer_id=pid, multiaddr=ma)
+				trace = discover_status_sync(remote=remote, timeout_s=float(timeout_s), detail=False)
+				if isinstance(trace, dict) and trace.get("ok") and isinstance(trace.get("result"), dict):
+					resolved_pid = str((trace.get("result") or {}).get("peer_id") or pid).strip()
+					chosen = {"peer_id": resolved_pid, "multiaddr": ma}
+					break
+			except Exception:
+				continue
+		if chosen and chosen.get("peer_id") and chosen["peer_id"] not in seen_peer_ids:
+			seen_peer_ids.add(chosen["peer_id"])
+			filtered.append(chosen)
+
+	return filtered
+
+
 
 def _load_local_announce(*, expected_port: int) -> dict[str, str]:
 	repo_root = Path(__file__).resolve().parents[2]
@@ -255,6 +309,14 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			targets = merged
 		else:
 			pytest.skip("Provide at least 2 targets via IPFS_ACCELERATE_PY_TEST_P2P_TARGETS[_FILE] or enable mDNS autodiscovery")
+
+	# Drop stale/unreachable targets (common when services restart and peer IDs rotate).
+	# Keep this quick so it doesn't dominate the runtime.
+	try:
+		status_timeout_s = float(os.environ.get("IPFS_ACCELERATE_PY_TEST_P2P_STATUS_TIMEOUT_S") or "3")
+	except Exception:
+		status_timeout_s = 3.0
+	targets = _filter_targets_by_status(targets=targets, timeout_s=float(status_timeout_s))
 
 	if len(targets) < 1:
 		pretty = ", ".join([str(t.get("multiaddr") or "") for t in (targets or []) if t])
