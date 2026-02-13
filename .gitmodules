@@ -30,3 +30,6 @@
 	path = test/huggingface_doc_builder
 	url = https://github.com/huggingface/doc-builder.git
 	branch = main
+[submodule "ipfs_accelerate_py/mcplusplus"]
+	path = ipfs_accelerate_py/mcplusplus
+	url = https://github.com/endomorphosis/Mcp-Plus-Plus.git
