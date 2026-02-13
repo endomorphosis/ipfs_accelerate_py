@@ -859,6 +859,72 @@ async def serve_task_queue(
     except Exception:
         cache_replicate_timeout_s = 1.0
 
+    # Optional explicit replication targets (public-network safe).
+    # When set, replication is attempted ONLY to these targets (plus any
+    # peer IDs that are already known in the peerstore and match the list).
+    # Supports entries like:
+    #   - /ip4/203.0.113.10/tcp/9100/p2p/12D3Koo...
+    #   - /dnsaddr/node.example.com/p2p/12D3Koo...
+    #   - 12D3Koo... (only if already present in peerstore)
+    cache_replicate_targets_raw = str(
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_REPLICATE_TARGETS")
+        or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_REPLICATE_PEERS")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_CACHE_REPLICATE_TARGETS")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_CACHE_REPLICATE_PEERS")
+        or ""
+    )
+    cache_replicate_targets: list[str] = [
+        s.strip() for s in cache_replicate_targets_raw.split(",") if str(s or "").strip()
+    ]
+    try:
+        cache_replicate_max_message_bytes = int(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_REPLICATE_MAX_MESSAGE_BYTES")
+            or os.environ.get("IPFS_DATASETS_PY_TASK_P2P_CACHE_REPLICATE_MAX_MESSAGE_BYTES")
+            or 65536
+        )
+    except Exception:
+        cache_replicate_max_message_bytes = 65536
+
+    def _peer_id_text(p: object) -> str:
+        try:
+            pretty = getattr(p, "pretty", None)
+            if callable(pretty):
+                return str(pretty() or "").strip()
+        except Exception:
+            pass
+        return str(p or "").strip()
+
+    _cache_replicate_target_peerinfos: dict[str, object] | None = None
+
+    def _get_cache_replicate_target_peerinfos() -> dict[str, object]:
+        """Parse target multiaddrs into PeerInfo objects (lazy, best-effort)."""
+        nonlocal _cache_replicate_target_peerinfos
+        if _cache_replicate_target_peerinfos is not None:
+            return _cache_replicate_target_peerinfos
+        out: dict[str, object] = {}
+        if not cache_replicate_targets:
+            _cache_replicate_target_peerinfos = out
+            return out
+        try:
+            from libp2p.peer.peerinfo import info_from_p2p_addr
+        except Exception:
+            _cache_replicate_target_peerinfos = out
+            return out
+        for entry in cache_replicate_targets:
+            text = str(entry or "").strip()
+            if not text or "/p2p/" not in text:
+                continue
+            try:
+                pi = info_from_p2p_addr(Multiaddr(text))
+                pid = getattr(pi, "peer_id", None)
+                key = _peer_id_text(pid)
+                if key:
+                    out[key] = pi
+            except Exception:
+                continue
+        _cache_replicate_target_peerinfos = out
+        return out
+
     def _multiaddr_has_private_ipv4(addr: object) -> bool:
         try:
             text = str(addr or "")
@@ -878,10 +944,47 @@ async def serve_task_queue(
     def _candidate_cache_replication_peers() -> list[object]:
         if not cache_replicate_enabled:
             return []
+
         try:
             ps = host.get_peerstore()
         except Exception:
             return []
+
+        # Public-network safe mode: explicit targets take priority.
+        if cache_replicate_targets:
+            out: list[object] = []
+
+            # 1) Multiaddr targets (dialable)
+            peerinfos = _get_cache_replicate_target_peerinfos()
+            for pi in peerinfos.values():
+                try:
+                    pid = getattr(pi, "peer_id", None)
+                    if pid is not None:
+                        out.append(pid)
+                except Exception:
+                    continue
+
+            # 2) Peer-id targets (only if already present in peerstore)
+            target_texts = {str(t).strip() for t in cache_replicate_targets if "/p2p/" not in str(t or "")}
+            if target_texts:
+                try:
+                    for pid in list(ps.peer_ids()):  # type: ignore[attr-defined]
+                        if _peer_id_text(pid) in target_texts:
+                            out.append(pid)
+                except Exception:
+                    pass
+
+            # Deduplicate and apply ordering/limits.
+            uniq: dict[str, object] = {}
+            for pid in out:
+                key = _peer_id_text(pid)
+                if not key:
+                    continue
+                uniq.setdefault(key, pid)
+            out2 = list(uniq.values())
+            out2.sort(key=_peer_id_text)
+            return out2[: max(0, int(cache_replicate_max_peers))]
+
         try:
             peer_ids = list(ps.peer_ids())  # type: ignore[attr-defined]
         except Exception:
@@ -911,16 +1014,7 @@ async def serve_task_queue(
             out.append(pid)
 
         # Best-effort stability: deterministic order for tests/logging.
-        def _pid_key(p: object) -> str:
-            try:
-                pretty = getattr(p, "pretty", None)
-                if callable(pretty):
-                    return str(pretty() or "")
-            except Exception:
-                pass
-            return str(p or "")
-
-        out.sort(key=_pid_key)
+        out.sort(key=_peer_id_text)
         return out[: max(0, int(cache_replicate_max_peers))]
 
     async def _replicate_cache_message(message: dict) -> None:
@@ -936,14 +1030,29 @@ async def serve_task_queue(
         if token:
             fwd["token"] = token
         payload = (json.dumps(fwd, ensure_ascii=False) + "\n").encode("utf-8")
+        try:
+            max_b = int(cache_replicate_max_message_bytes)
+        except Exception:
+            max_b = 0
+        if max_b > 0 and len(payload) > max_b:
+            return
 
         peers = _candidate_cache_replication_peers()
         if not peers:
             return
 
+        peerinfos = _get_cache_replicate_target_peerinfos() if cache_replicate_targets else {}
         for pid in peers:
             try:
                 with anyio.fail_after(float(cache_replicate_timeout_s)):
+                    # If this peer is an explicit multiaddr target, make a
+                    # best-effort connect first so its addrs land in peerstore.
+                    try:
+                        pi = peerinfos.get(_peer_id_text(pid))
+                        if pi is not None:
+                            await host.connect(pi)
+                    except Exception:
+                        pass
                     stream2 = await host.new_stream(pid, [PROTOCOL_V1])
                     try:
                         await stream2.write(payload)
