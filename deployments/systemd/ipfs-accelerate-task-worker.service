@@ -11,6 +11,10 @@ WorkingDirectory=/opt/ipfs_accelerate_py
 # Load per-host settings (listen port, session tag, caches, etc.)
 EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
 
+# Enable docker task types by default (override in task-worker.env if needed).
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1
+Environment=IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1
+
 # Run the worker loop and start the libp2p TaskQueue service in-process.
 # Mesh mode lets this worker also claim tasks from discovered peers so a client
 # can submit to either daemon and both machines will contribute.

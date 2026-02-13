@@ -1,5 +1,5 @@
 [Unit]
-Description=IPFS Accelerate MCP Server
+Description=IPFS Accelerate (primary) MCP + TaskQueue P2P service
 Documentation=https://github.com/endomorphosis/ipfs_accelerate_py
 After=network-online.target
 Wants=network-online.target
@@ -40,8 +40,10 @@ Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
 # TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
 Environment=IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1
 Environment=IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation
-Environment=IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1
+Environment=IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,docker.execute,docker.execute_docker_container,docker.github
+Environment=IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,docker.execute,docker.execute_docker_container,docker.github
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT=9100

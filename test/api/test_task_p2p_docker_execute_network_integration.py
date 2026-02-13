@@ -188,10 +188,31 @@ def _filter_targets_by_status(
 
 def _load_local_announce(*, expected_port: int) -> dict[str, str]:
 	repo_root = Path(__file__).resolve().parents[2]
-	paths = [
-		repo_root / "state" / "task_p2p_announce.json",
-		repo_root / "state" / "task_p2p_announce_mcp.json",
-	]
+	paths: list[Path] = []
+
+	# Prefer explicit env-configured announce file when present.
+	env_path = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or "").strip()
+	if env_path:
+		try:
+			paths.append(Path(env_path))
+		except Exception:
+			pass
+
+	# Repo-local files (common in dev).
+	paths.extend(
+		[
+			repo_root / "state" / "task_p2p_announce.json",
+			repo_root / "state" / "task_p2p_announce_mcp.json",
+		]
+	)
+
+	# systemd-managed locations (used by the provided unit files).
+	paths.extend(
+		[
+			Path("/var/cache/ipfs-accelerate/task_p2p_announce.json"),
+			Path("/var/cache/ipfs-accelerate/task_p2p_announce_mcp.json"),
+		]
+	)
 
 	def _port_matches(ma: str) -> bool:
 		try:

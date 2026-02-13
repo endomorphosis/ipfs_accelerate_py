@@ -1451,6 +1451,43 @@ async def serve_task_queue(
 
                 resp: Dict[str, Any] = {"ok": True, "capabilities": caps, "peer_id": peer_id, "nat": nat, "session": session}
                 if detail:
+                    def _truthy_env(*names: str) -> bool:
+                        for n in names:
+                            v = os.environ.get(n)
+                            if v is None:
+                                continue
+                            if str(v).strip().lower() in {"1", "true", "yes", "y", "on"}:
+                                return True
+                            if str(v).strip().lower() in {"0", "false", "no", "off"}:
+                                return False
+                        return False
+
+                    def _docker_enabled_env() -> bool:
+                        return _truthy_env(
+                            "IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER",
+                            "IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER",
+                        )
+
+                    def _supported_task_types_env() -> list[str]:
+                        raw = (
+                            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES")
+                            or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES")
+                            or ""
+                        )
+                        parts = [p.strip() for p in str(raw).split(",") if p.strip()]
+                        if parts:
+                            return parts
+                        base = ["text-generation"]
+                        if _docker_enabled_env():
+                            base.extend(
+                                [
+                                    "docker.execute",
+                                    "docker.execute_docker_container",
+                                    "docker.github",
+                                ]
+                            )
+                        return base
+
                     now = time.time()
                     peer_rows: list[dict[str, Any]] = []
                     worker_rows: list[dict[str, Any]] = []
@@ -1509,6 +1546,31 @@ async def serve_task_queue(
                             "docker_workers": int(len(docker_worker_ids)),
                         },
                     }
+
+                    # Also surface local (in-process) worker configuration when
+                    # MCP started a task worker thread. This does not prove the
+                    # worker is actively processing, but it explains why a peer
+                    # may accept tasks yet never claim a given task_type.
+                    local_worker_enabled = _truthy_env(
+                        "IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER",
+                        "IPFS_ACCELERATE_PY_TASK_WORKER",
+                        "IPFS_DATASETS_PY_TASK_WORKER",
+                    )
+                    local_supported = _supported_task_types_env()
+                    local_docker_enabled = _docker_enabled_env()
+                    resp["local_worker"] = {
+                        "enabled": bool(local_worker_enabled),
+                        "docker_enabled": bool(local_docker_enabled),
+                        "supported_task_types": list(local_supported or []),
+                    }
+
+                    try:
+                        if local_worker_enabled and any(t.startswith("docker.") for t in (local_supported or [])):
+                            resp["scheduler"]["counts"]["docker_workers_configured"] = 1
+                        else:
+                            resp["scheduler"]["counts"]["docker_workers_configured"] = 0
+                    except Exception:
+                        resp["scheduler"]["counts"]["docker_workers_configured"] = 0
 
                 await stream.write(
                     json.dumps(resp).encode("utf-8") + b"\n"

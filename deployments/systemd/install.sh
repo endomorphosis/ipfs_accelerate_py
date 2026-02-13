@@ -3,7 +3,7 @@ set -euo pipefail
 
 # Installs the systemd unit(s) from deployments/systemd/ into /etc/systemd/system.
 #
-# Default: installs ipfs-accelerate-mcp.service for the invoking user.
+# Default: installs ipfs-accelerate.service for the invoking user.
 #
 # Usage:
 #   sudo deployments/systemd/install.sh
@@ -13,7 +13,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-UNITS=("ipfs-accelerate-mcp.service")
+UNITS=("ipfs-accelerate.service")
 TARGET_DIR="/etc/systemd/system"
 NO_START="0"
 INSTALL_BOTH="0"
@@ -24,8 +24,8 @@ print_usage() {
 Usage: sudo deployments/systemd/install.sh [options]
 
 Options:
-  --unit NAME     Unit file to install (repeatable; default: ipfs-accelerate-mcp.service)
-  --both          Install both MCP units (ipfs-accelerate.service + ipfs-accelerate-mcp.service)
+  --unit NAME     Unit file to install (repeatable; default: ipfs-accelerate.service)
+  --both          Install both instances (ipfs-accelerate.service + ipfs-accelerate-mcp.service)
   --user USER     Set User=/Group= in the unit (default: SUDO_USER, else current user)
   --no-start      Do not enable/restart the service
   --purge-dropins Move aside existing /etc/systemd/system/<unit>.d drop-ins (backs up then removes)
@@ -121,7 +121,7 @@ main() {
         shift 2
         ;;
       --both)
-        if [[ "${#UNITS[@]}" -gt 1 || "${UNITS[0]}" != "ipfs-accelerate-mcp.service" ]]; then
+        if [[ "${#UNITS[@]}" -gt 1 || "${UNITS[0]}" != "ipfs-accelerate.service" ]]; then
           echo "ERROR: --both cannot be combined with --unit" >&2
           exit 2
         fi
@@ -158,7 +158,7 @@ main() {
   fi
 
   # Remove the default placeholder unit when explicit units were provided.
-  if [[ "${#UNITS[@]}" -gt 1 && "${UNITS[0]}" == "ipfs-accelerate-mcp.service" ]]; then
+  if [[ "${#UNITS[@]}" -gt 1 && "${UNITS[0]}" == "ipfs-accelerate.service" ]]; then
     UNITS=("${UNITS[@]:1}")
   fi
 
