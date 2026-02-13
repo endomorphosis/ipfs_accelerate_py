@@ -1604,6 +1604,320 @@ async def discover_peers_via_mdns(*, timeout_s: float = 10.0, limit: int = 10, e
     return [RemoteQueue(peer_id=pid, multiaddr=ma) for (pid, ma) in found.items()]
 
 
+async def discover_peers_via_rendezvous(
+    *,
+    timeout_s: float = 10.0,
+    limit: int = 10,
+    exclude_self: bool = True,
+    namespace: str = "",
+) -> list[RemoteQueue]:
+    """Discover peers via libp2p rendezvous.
+
+    This requires at least one reachable rendezvous service in the network.
+    When unavailable, this returns an empty list.
+    """
+
+    if not _have_libp2p():
+        raise RuntimeError("libp2p is not installed")
+
+    import anyio
+    import inspect
+
+    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
+    from libp2p import new_host
+    from libp2p.tools.async_service import background_trio_service
+    from multiaddr import Multiaddr
+
+    if not ensure_libp2p_compatible():
+        raise RuntimeError(
+            "libp2p is installed but dependency compatibility patches could not be applied. "
+            "This environment likely has an incompatible `multihash` module."
+        )
+
+    ns = (namespace or "").strip() or _env_str(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
+        default="ipfs-accelerate-task-queue",
+    )
+
+    candidates = [
+        ("libp2p.discovery.rendezvous.rendezvous", "RendezvousClient"),
+        ("libp2p.discovery.rendezvous", "RendezvousClient"),
+        ("libp2p.rendezvous", "RendezvousClient"),
+    ]
+    cli = None
+    for module_name, symbol in candidates:
+        try:
+            mod = __import__(module_name, fromlist=[symbol])
+            cls = getattr(mod, symbol)
+            cli = cls
+            break
+        except Exception:
+            continue
+    if cli is None:
+        return []
+
+    limit = max(1, int(limit))
+    exclude_peer_id = _read_announce_peer_id_hint() if bool(exclude_self) else ""
+
+    host_obj = new_host()
+    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+
+    found: dict[str, str] = {}
+
+    async with background_trio_service(host.get_network()):
+        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+
+        deadline = anyio.current_time() + max(0.1, float(timeout_s))
+        cookie: bytes = b""
+
+        while anyio.current_time() < deadline and len(found) < limit:
+            try:
+                inst = cli(host)
+                discover = getattr(inst, "discover", None)
+                if not callable(discover):
+                    break
+                try:
+                    remaining = max(0.1, float(deadline - anyio.current_time()))
+                    with anyio.fail_after(remaining):
+                        peers, cookie = await discover(ns, limit=100, cookie=cookie)
+                except TypeError:
+                    remaining = max(0.1, float(deadline - anyio.current_time()))
+                    with anyio.fail_after(remaining):
+                        peers = list(discover(ns) or [])
+                except Exception:
+                    peers = []
+
+                for peer_info in list(peers or []):
+                    try:
+                        pid = getattr(peer_info, "peer_id", None)
+                        pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                        pid_text = str(pid_text or "").strip()
+                        if not pid_text or pid_text in found:
+                            continue
+                        if exclude_peer_id and pid_text == exclude_peer_id:
+                            continue
+
+                        dial_ma = ""
+                        for a_text in _best_effort_peerinfo_multiaddrs(peer_info):
+                            if a_text.startswith("/ip4/0.0.0.0/") or a_text.startswith("/ip6/::/"):
+                                continue
+                            dial_ma = str(a_text).strip()
+                            if dial_ma:
+                                break
+                        if not dial_ma:
+                            continue
+
+                        found[pid_text] = dial_ma
+                        _cache_set_multiaddr(pid_text, dial_ma)
+                    except Exception:
+                        continue
+            except Exception:
+                break
+
+            await anyio.sleep(0.1)
+
+    try:
+        await host.close()
+    except Exception:
+        pass
+
+    return [RemoteQueue(peer_id=pid, multiaddr=ma) for (pid, ma) in found.items()]
+
+
+def discover_peers_via_rendezvous_sync(
+    *,
+    timeout_s: float = 10.0,
+    limit: int = 10,
+    exclude_self: bool = True,
+    namespace: str = "",
+) -> list[RemoteQueue]:
+    import trio
+
+    result: list[RemoteQueue] = []
+
+    async def _main() -> None:
+        nonlocal result
+        result = await discover_peers_via_rendezvous(
+            timeout_s=float(timeout_s),
+            limit=int(limit),
+            exclude_self=bool(exclude_self),
+            namespace=str(namespace or ""),
+        )
+
+    trio.run(_main)
+    return list(result or [])
+
+
+async def discover_peers_via_dht(
+    *,
+    timeout_s: float = 10.0,
+    limit: int = 10,
+    exclude_self: bool = True,
+    namespace: str = "",
+) -> list[RemoteQueue]:
+    """Discover peers via KadDHT provider records.
+
+    Peers that run the TaskQueue P2P service publish provider records for the
+    rendezvous namespace key (see `service.py`). This helper queries the DHT for
+    providers and returns dialable multiaddrs.
+    """
+
+    if not _have_libp2p():
+        raise RuntimeError("libp2p is not installed")
+
+    import anyio
+    import inspect
+
+    from ipfs_accelerate_py.github_cli.libp2p_compat import ensure_libp2p_compatible
+    from libp2p import new_host
+    from libp2p.tools.async_service import background_trio_service
+    from multiaddr import Multiaddr
+
+    if not ensure_libp2p_compatible():
+        raise RuntimeError(
+            "libp2p is installed but dependency compatibility patches could not be applied. "
+            "This environment likely has an incompatible `multihash` module."
+        )
+
+    ns = (namespace or "").strip() or _env_str(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_NS",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_NS",
+        default="ipfs-accelerate-task-queue",
+    )
+    ns_key = _dht_key_for_namespace(ns)
+    ns_key_bytes = ns_key.encode("utf-8") if ns_key else b""
+
+    exclude_peer_id = _read_announce_peer_id_hint() if bool(exclude_self) else ""
+    limit = max(1, int(limit))
+
+    candidates = [
+        ("libp2p.kad_dht.kad_dht", "KadDHT"),
+        ("libp2p.kad_dht", "KadDHT"),
+    ]
+
+    host_obj = new_host()
+    host = await host_obj if inspect.isawaitable(host_obj) else host_obj
+
+    found: dict[str, str] = {}
+
+    async with background_trio_service(host.get_network()):
+        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+
+        deadline = anyio.current_time() + max(0.1, float(timeout_s))
+
+        for module_name, symbol in candidates:
+            if anyio.current_time() >= deadline or len(found) >= limit:
+                break
+            try:
+                mod = __import__(module_name, fromlist=[symbol])
+                cls = getattr(mod, symbol)
+
+                try:
+                    from libp2p.kad_dht.kad_dht import DHTMode  # type: ignore
+
+                    dht = cls(host, DHTMode.CLIENT)
+                except Exception:
+                    dht = cls(host)
+
+                from libp2p.tools.async_service.trio_service import background_trio_service as background_trio_service2
+
+                async with background_trio_service2(dht):
+                    try:
+                        remaining = max(0.1, float(deadline - anyio.current_time()))
+                        with anyio.fail_after(remaining):
+                            await _best_effort_connect_multiaddrs(host=host, addrs=_parse_bootstrap_peers())
+                    except Exception:
+                        pass
+
+                    for method_name in ("start", "bootstrap"):
+                        try:
+                            fn = getattr(dht, method_name, None)
+                            if not callable(fn):
+                                continue
+                            maybe = fn()
+                            if hasattr(maybe, "__await__"):
+                                await maybe
+                        except Exception:
+                            continue
+
+                    find_providers = getattr(dht, "find_providers", None)
+                    if not callable(find_providers):
+                        continue
+
+                    providers = None
+                    for key_candidate in (ns_key, ns_key_bytes, ns):
+                        try:
+                            remaining = max(0.1, float(deadline - anyio.current_time()))
+                            with anyio.fail_after(remaining):
+                                providers = await find_providers(key_candidate, 20)
+                            break
+                        except Exception:
+                            continue
+
+                    for peer_info in list(providers or []):
+                        if len(found) >= limit:
+                            break
+                        try:
+                            pid = getattr(peer_info, "peer_id", None)
+                            pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
+                            pid_text = str(pid_text or "").strip()
+                            if not pid_text or pid_text in found:
+                                continue
+                            if exclude_peer_id and pid_text == exclude_peer_id:
+                                continue
+
+                            dial_ma = ""
+                            for a_text in _best_effort_peerinfo_multiaddrs(peer_info):
+                                if a_text.startswith("/ip4/0.0.0.0/") or a_text.startswith("/ip6/::/"):
+                                    continue
+                                dial_ma = str(a_text).strip()
+                                if dial_ma:
+                                    break
+                            if not dial_ma:
+                                continue
+
+                            found[pid_text] = dial_ma
+                            _cache_set_multiaddr(pid_text, dial_ma)
+                        except Exception:
+                            continue
+            except Exception:
+                continue
+
+            await anyio.sleep(0.05)
+
+    try:
+        await host.close()
+    except Exception:
+        pass
+
+    return [RemoteQueue(peer_id=pid, multiaddr=ma) for (pid, ma) in found.items()]
+
+
+def discover_peers_via_dht_sync(
+    *,
+    timeout_s: float = 10.0,
+    limit: int = 10,
+    exclude_self: bool = True,
+    namespace: str = "",
+) -> list[RemoteQueue]:
+    import trio
+
+    result: list[RemoteQueue] = []
+
+    async def _main() -> None:
+        nonlocal result
+        result = await discover_peers_via_dht(
+            timeout_s=float(timeout_s),
+            limit=int(limit),
+            exclude_self=bool(exclude_self),
+            namespace=str(namespace or ""),
+        )
+
+    trio.run(_main)
+    return list(result or [])
+
+
 def discover_peers_via_mdns_sync(*, timeout_s: float = 10.0, limit: int = 10, exclude_self: bool = True) -> list[RemoteQueue]:
     import trio
 

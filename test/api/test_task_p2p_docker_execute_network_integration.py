@@ -200,7 +200,6 @@ def _filter_targets_by_status(
 	return filtered
 
 
-
 def _load_local_announce(*, expected_port: int) -> dict[str, str]:
 	repo_root = Path(__file__).resolve().parents[2]
 	paths: list[Path] = []
@@ -264,7 +263,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	Enable and configure via env:
 	- IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST=1
 	- IPFS_ACCELERATE_PY_TEST_P2P_TARGETS_FILE=/path/to/targets.json
-	  or IPFS_ACCELERATE_PY_TEST_P2P_TARGETS="/ip4/.../tcp/.../p2p/<pid>,..."
+	or IPFS_ACCELERATE_PY_TEST_P2P_TARGETS="/ip4/.../tcp/.../p2p/<pid>,..."
 	- If you do not set targets, the test can auto-discover peers via mDNS.
 
 	Optional tuning:
@@ -275,12 +274,12 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_TASKS (default: 50)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_CONCURRENCY (default: 10)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_TIMEOUT_S (default: 180)
-	- IPFS_ACCELERATE_PY_TEST_DOCKER_IMAGE (default: nvidia/cuda:12.4.0-base)
+	- IPFS_ACCELERATE_PY_TEST_DOCKER_IMAGE (default: nvidia/cuda:12.4.0-base-ubuntu22.04)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_GPUS (default: all)
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_SUBMIT_SINGLE_TARGET=1 (submit all tasks to targets[0])
 	- IPFS_ACCELERATE_PY_TEST_DOCKER_REPORT_PATH=/path/to/report.json
 	- IPFS_ACCELERATE_PY_TEST_EXPECT_MESH_DISTRIBUTION=1
-	  (asserts >1 executor observed via GPU UUIDs; falls back to worker_id)
+	(asserts >1 executor observed via GPU UUIDs; falls back to worker_id)
 	"""
 
 	if not _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_ENABLE_DOCKER_NETWORK_TEST")):
@@ -313,7 +312,11 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		autodiscover = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TEST_P2P_AUTODISCOVER") or autodiscover_default)
 		if autodiscover:
 			try:
-				from ipfs_accelerate_py.p2p_tasks.client import discover_peers_via_mdns_sync
+				from ipfs_accelerate_py.p2p_tasks.client import (
+					discover_peers_via_dht_sync,
+					discover_peers_via_mdns_sync,
+					discover_peers_via_rendezvous_sync,
+				)
 			except Exception as exc:
 				pytest.skip(f"mDNS autodiscovery unavailable: {exc}")
 
@@ -337,6 +340,35 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 					os.environ.pop("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT", None)
 				else:
 					os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = prior_mdns_port
+
+			# If multicast is blocked or peer advertisements are missing, fall back
+			# to DHT/provider discovery and rendezvous (when available).
+			fallback: list[object] = []
+			if len(list(discovered or [])) < 2:
+				try:
+					fallback.extend(
+						discover_peers_via_dht_sync(
+							timeout_s=float(timeout_s),
+							limit=int(limit),
+							exclude_self=True,
+						)
+						or []
+					)
+				except Exception:
+					pass
+				try:
+					fallback.extend(
+						discover_peers_via_rendezvous_sync(
+							timeout_s=float(timeout_s),
+							limit=int(limit),
+							exclude_self=True,
+						)
+						or []
+					)
+				except Exception:
+					pass
+			if fallback:
+				discovered = list(discovered or []) + list(fallback or [])
 
 			merged: list[dict[str, str]] = []
 			seen: set[str] = set()
@@ -410,7 +442,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 			task_id = await submit_docker_hub_task(
 				remote=remote,
 				image=image,
-					command=["nvidia-smi", "-L"],
+				command=["nvidia-smi", "-L"],
 				gpus=gpus,
 				stream_output=False,
 			)
@@ -586,7 +618,7 @@ def test_task_p2p_docker_execute_nvidia_smi_50x_across_network():
 		"task_type": "docker.execute",
 		"workload": {
 			"image": image,
-				"command": ["nvidia-smi", "-L"],
+			"command": ["nvidia-smi", "-L"],
 			"gpus": gpus,
 		},
 		"tasks": tasks,
