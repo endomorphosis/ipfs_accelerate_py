@@ -268,10 +268,16 @@ def _load_local_announce(*, expected_port: int) -> dict[str, str]:
 	paths: list[Path] = []
 
 	# Prefer explicit env-configured announce file when present.
-	env_path = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or "").strip()
+	env_path = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE")
 	if env_path:
 		try:
-			paths.append(Path(env_path))
+			p = Path(env_path)
+			if p.exists():
+				data = json.loads(p.read_text(encoding="utf-8"))
+				if isinstance(data, dict):
+					ma = str(data.get("multiaddr") or "")
+					if f"/tcp/{expected_port}/" in ma:
+						return data
 		except Exception:
 			pass
 
@@ -299,6 +305,8 @@ def _load_local_announce(*, expected_port: int) -> dict[str, str]:
 		except Exception:
 			return False
 
+	best: dict[str, str] = {}
+	best_mtime = -1.0
 	for path in paths:
 		try:
 			if not path.exists():
@@ -308,12 +316,16 @@ def _load_local_announce(*, expected_port: int) -> dict[str, str]:
 				continue
 			peer_id = str(data.get("peer_id") or "").strip()
 			multiaddr = str(data.get("multiaddr") or "").strip()
-			if peer_id and multiaddr and _port_matches(multiaddr):
-				return {"peer_id": peer_id, "multiaddr": multiaddr}
+			if not (peer_id and multiaddr and _port_matches(multiaddr)):
+				continue
+			mtime = float(path.stat().st_mtime)
+			if mtime > best_mtime:
+				best_mtime = mtime
+				best = {"peer_id": peer_id, "multiaddr": multiaddr}
 		except Exception:
 			continue
 
-	return {}
+	return best
 
 
 @pytest.mark.integration

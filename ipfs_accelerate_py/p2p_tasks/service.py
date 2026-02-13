@@ -1206,7 +1206,33 @@ async def serve_task_queue(
         )
 
     print("ipfs_accelerate_py task queue p2p service: creating host...", file=sys.stderr, flush=True)
-    host_obj = new_host()
+
+    # libp2p's ResourceManager can enter a "graceful degradation" mode when it
+    # believes connection limits are exhausted. In long-running processes with
+    # background discovery (DHT/rendezvous/mDNS), repeated failed dials can
+    # trigger this and effectively prevent new inbound dials.
+    #
+    # For the TaskQueue service we prefer availability over aggressive
+    # self-throttling, and we keep limits comfortably high for LAN workloads.
+    try:
+        from libp2p.rcmgr import ResourceLimits, new_resource_manager
+
+        max_conns = int(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_CONNECTIONS") or 100_000)
+        max_streams = int(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_STREAMS") or 100_000)
+        max_mem_mb = int(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_MEMORY_MB") or 1024)
+
+        rm = new_resource_manager(
+            limits=ResourceLimits(max_connections=max(64, max_conns), max_memory_mb=max(128, max_mem_mb), max_streams=max(1024, max_streams)),
+            enable_metrics=False,
+            enable_connection_pooling=False,
+            enable_memory_pooling=False,
+            enable_circuit_breaker=False,
+            enable_graceful_degradation=False,
+        )
+    except Exception:
+        rm = None
+
+    host_obj = new_host(resource_manager=rm)
     host = await host_obj if inspect.isawaitable(host_obj) else host_obj
     peer_id = host.get_id().pretty()
     _service_mark_running(peer_id=peer_id, listen_port=cfg.listen_port)

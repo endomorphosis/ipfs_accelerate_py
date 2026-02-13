@@ -427,26 +427,46 @@ def _read_announce_peer_id_hint() -> str:
     if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
         raw = None
 
+    explicit_path = str(raw).strip() if raw is not None else ""
+    if explicit_path:
+        try:
+            if os.path.exists(explicit_path):
+                text = open(explicit_path, "r", encoding="utf-8").read().strip()
+                info = json.loads(text) if text else {}
+                if isinstance(info, dict):
+                    pid = str(info.get("peer_id") or "").strip()
+                    if pid:
+                        return pid
+        except Exception:
+            pass
+
     candidates: list[str] = []
-    if raw is not None and str(raw).strip():
-        candidates.append(str(raw).strip())
     candidates.extend(_repo_local_announce_files())
     candidates.extend(_default_announce_files())
 
+    best_path = ""
+    best_mtime = -1.0
     for path in candidates:
         try:
             if not path or not os.path.exists(path):
                 continue
-            text = open(path, "r", encoding="utf-8").read().strip()
-            if not text:
-                continue
-            info = json.loads(text)
-            if isinstance(info, dict):
-                pid = str(info.get("peer_id") or "").strip()
-                if pid:
-                    return pid
+            mtime = float(os.path.getmtime(path))
+            if mtime > best_mtime:
+                best_mtime = mtime
+                best_path = path
         except Exception:
             continue
+
+    if not best_path:
+        return ""
+
+    try:
+        text = open(best_path, "r", encoding="utf-8").read().strip()
+        info = json.loads(text) if text else {}
+        if isinstance(info, dict):
+            return str(info.get("peer_id") or "").strip()
+    except Exception:
+        return ""
     return ""
 
 
@@ -458,26 +478,48 @@ def _read_announce_multiaddr() -> str:
     if raw is not None and str(raw).strip().lower() in {"0", "false", "no", "off"}:
         return ""
 
+    explicit_path = str(raw).strip() if raw is not None else ""
+    if explicit_path:
+        try:
+            if os.path.exists(explicit_path):
+                text = open(explicit_path, "r", encoding="utf-8").read().strip()
+                info = json.loads(text) if text else {}
+                if isinstance(info, dict):
+                    ma = str(info.get("multiaddr") or "").strip()
+                    if ma and "/p2p/" in ma:
+                        return ma
+        except Exception:
+            pass
+
     candidates: list[str] = []
-    if raw is not None and str(raw).strip():
-        candidates.append(str(raw).strip())
     candidates.extend(_repo_local_announce_files())
     candidates.extend(_default_announce_files())
 
+    best_path = ""
+    best_mtime = -1.0
     for path in candidates:
         try:
             if not path or not os.path.exists(path):
                 continue
-            text = open(path, "r", encoding="utf-8").read().strip()
-            if not text:
-                continue
-            info = json.loads(text)
-            if isinstance(info, dict):
-                ma = str(info.get("multiaddr") or "").strip()
-                if ma and "/p2p/" in ma:
-                    return ma
+            mtime = float(os.path.getmtime(path))
+            if mtime > best_mtime:
+                best_mtime = mtime
+                best_path = path
         except Exception:
             continue
+
+    if not best_path:
+        return ""
+
+    try:
+        text = open(best_path, "r", encoding="utf-8").read().strip()
+        info = json.loads(text) if text else {}
+        if isinstance(info, dict):
+            ma = str(info.get("multiaddr") or "").strip()
+            if ma and "/p2p/" in ma:
+                return ma
+    except Exception:
+        return ""
     return ""
 
 
