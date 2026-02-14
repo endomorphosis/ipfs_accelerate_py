@@ -409,6 +409,8 @@ class TaskQueue:
             ")"
         )
 
+        sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
+
         conn = self._connect()
         try:
             conn.execute("BEGIN TRANSACTION")
@@ -420,6 +422,10 @@ class TaskQueue:
                 placeholders = ",".join(["?"] * len(task_types))
                 where.append(f"task_type IN ({placeholders})")
                 params.extend([str(t) for t in task_types])
+
+            # Optional per-task sticky routing (session resume affinity).
+            where.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+            params.append(str(worker_id))
 
             if session:
                 where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
@@ -437,24 +443,17 @@ class TaskQueue:
 
             task_id = str(row[0])
 
+            # Re-check sticky+session guards at update time to avoid races.
+            update_sql = (
+                f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                f"WHERE task_id=? AND status='queued' "
+                f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
+            )
+            update_params: list[object] = [str(worker_id), now, task_id, str(worker_id)]
             if session:
-                conn.execute(
-                    f"""
-                    UPDATE tasks
-                    SET status='running', assigned_worker=?, updated_at=?
-                    WHERE task_id=? AND status='queued' AND ({required_expr} IS NULL OR {required_expr} = ?)
-                    """,
-                    (str(worker_id), now, task_id, str(session)),
-                )
-            else:
-                conn.execute(
-                    """
-                    UPDATE tasks
-                    SET status='running', assigned_worker=?, updated_at=?
-                    WHERE task_id=? AND status='queued'
-                    """,
-                    (str(worker_id), now, task_id),
-                )
+                update_sql += f" AND ({required_expr} IS NULL OR {required_expr} = ?)"
+                update_params.append(str(session))
+            conn.execute(update_sql, tuple(update_params))
 
             row2 = conn.execute(
                 "SELECT * FROM tasks WHERE task_id=? AND status='running' AND assigned_worker=?",
@@ -530,6 +529,8 @@ class TaskQueue:
             ")"
         )
 
+        sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
+
         conn = self._connect()
         try:
             conn.execute("BEGIN TRANSACTION")
@@ -544,6 +545,8 @@ class TaskQueue:
                     placeholders = ",".join(["?"] * len(task_types))
                     where0.append(f"task_type IN ({placeholders})")
                     params0.extend([str(t) for t in task_types])
+                where0.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+                params0.append(str(worker_id))
                 if session:
                     where0.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
                     params0.append(str(session))
@@ -567,6 +570,8 @@ class TaskQueue:
             if same_task_type and picked_type:
                 where.append("task_type = ?")
                 params.append(str(picked_type))
+            where.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+            params.append(str(worker_id))
             if session:
                 where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
                 params.append(str(session))
@@ -586,13 +591,13 @@ class TaskQueue:
                 # NOTE: this is best-effort; it prevents accidental claims even
                 # if the initial SELECT raced with another session.
                 conn.execute(
-                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({required_expr} IS NULL OR {required_expr} = ?)",
-                    tuple([str(worker_id), now] + ids + [str(session)]),
+                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({sticky_expr} IS NULL OR {sticky_expr} = ?) AND ({required_expr} IS NULL OR {required_expr} = ?)",
+                    tuple([str(worker_id), now] + ids + [str(worker_id), str(session)]),
                 )
             else:
                 conn.execute(
-                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued'",
-                    tuple([str(worker_id), now] + ids),
+                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)",
+                    tuple([str(worker_id), now] + ids + [str(worker_id)]),
                 )
 
             rows2 = conn.execute(
@@ -656,6 +661,7 @@ class TaskQueue:
             "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
             ")"
         )
+        sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
         conn = self._connect()
         try:
             conn.execute("BEGIN TRANSACTION")
@@ -664,18 +670,20 @@ class TaskQueue:
                     f"""
                     UPDATE tasks
                     SET status='running', assigned_worker=?, updated_at=?
-                    WHERE task_id=? AND status='queued' AND ({required_expr} IS NULL OR {required_expr} = ?)
+                    WHERE task_id=? AND status='queued'
+                      AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)
+                      AND ({required_expr} IS NULL OR {required_expr} = ?)
                     """,
-                    (str(worker_id), now, str(task_id), str(session)),
+                    (str(worker_id), now, str(task_id), str(worker_id), str(session)),
                 )
             else:
                 conn.execute(
                     """
                     UPDATE tasks
                     SET status='running', assigned_worker=?, updated_at=?
-                    WHERE task_id=? AND status='queued'
+                    WHERE task_id=? AND status='queued' AND (nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '') IS NULL OR nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '') = ?)
                     """,
-                    (str(worker_id), now, str(task_id)),
+                    (str(worker_id), now, str(task_id), str(worker_id)),
                 )
 
             row = conn.execute(
@@ -786,6 +794,70 @@ class TaskQueue:
                 ):
                     return False
                 raise
+
+    def cancel(self, *, task_id: str, reason: str | None = None) -> bool:
+        """Cancel a queued task.
+
+        This is used by higher-level orchestrators when a task is pinned to an
+        offline worker (e.g., session resume) and needs to be retried elsewhere.
+
+        Only tasks in status='queued' are cancelled.
+        """
+
+        if not task_id:
+            return False
+
+        now = time.time()
+
+        def _merge_progress(existing: Any) -> Dict[str, Any]:
+            base: Dict[str, Any] = {}
+            if isinstance(existing, dict):
+                base = dict(existing)
+            progress = base.get("progress")
+            if not isinstance(progress, dict):
+                progress = {}
+            base["progress"] = progress
+            return base
+
+        with self._conn_lock:
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN TRANSACTION")
+                row = conn.execute(
+                    "SELECT result_json FROM tasks WHERE task_id=? AND status='queued'",
+                    (str(task_id),),
+                ).fetchone()
+                if row is None:
+                    conn.execute("COMMIT")
+                    return False
+
+                try:
+                    existing = json.loads(row[0]) if row[0] else {}
+                except Exception:
+                    existing = {}
+
+                result_obj = _merge_progress(existing)
+                result_obj["progress"]["cancelled_at"] = now
+                if isinstance(reason, str) and reason.strip():
+                    result_obj["progress"]["cancel_reason"] = reason.strip()
+
+                conn.execute(
+                    "UPDATE tasks SET status='cancelled', result_json=?, updated_at=? WHERE task_id=? AND status='queued'",
+                    (json.dumps(result_obj, sort_keys=True), now, str(task_id)),
+                )
+                conn.execute("COMMIT")
+                return True
+            except Exception:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                raise
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
     def release(
         self,

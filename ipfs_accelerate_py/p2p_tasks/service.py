@@ -1632,6 +1632,21 @@ async def serve_task_queue(
                 await stream.write(json.dumps({"ok": True, "tasks": tasks, "peer_id": peer_id}).encode("utf-8") + b"\n")
                 return
 
+            if op in {"cancel", "task.cancel"}:
+                task_id = str(msg.get("task_id") or "").strip()
+                reason = msg.get("reason")
+                reason_text = str(reason).strip() if isinstance(reason, (str, int, float)) else None
+                if not task_id:
+                    await stream.write(json.dumps({"ok": False, "error": "missing_task_id", "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+                try:
+                    ok = bool(queue.cancel(task_id=task_id, reason=reason_text))
+                except Exception as exc:
+                    await stream.write(json.dumps({"ok": False, "error": str(exc), "peer_id": peer_id}).encode("utf-8") + b"\n")
+                    return
+                await stream.write(json.dumps({"ok": True, "cancelled": ok, "peer_id": peer_id}).encode("utf-8") + b"\n")
+                return
+
             if op in {"status", "capabilities", "describe"}:
                 detail = bool(msg.get("detail"))
                 caps = _accelerate_capabilities(accelerate_instance, detail=detail)

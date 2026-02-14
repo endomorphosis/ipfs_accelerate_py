@@ -210,6 +210,18 @@ def submit_task(
         provider = str(kwargs.get("provider") or "copilot_cli").strip() or "copilot_cli"
         payload["provider"] = provider
 
+        # Optional: encrypt prompt to avoid transmitting/storing plaintext.
+        # Routing keys must remain readable for claim-time enforcement.
+        try:
+            from ipfs_accelerate_py.p2p_tasks.protocol import encrypt_text
+
+            enc = encrypt_text(str(payload.get("prompt") or ""))
+            if isinstance(enc, dict):
+                payload.pop("prompt", None)
+                payload["prompt_enc"] = enc
+        except Exception:
+            pass
+
         for k in (
             "timeout",
             "trace",
@@ -219,6 +231,8 @@ def submit_task(
             "copilot_log_dir",
             "resume_session_id",
             "continue_session",
+            "chat_session_id",
+            "sticky_worker_id",
         ):
             if k in kwargs:
                 payload[k] = kwargs[k]
@@ -411,6 +425,195 @@ def wait_task(
         time.sleep(0.1)
         task = q.get(str(task_id))
     return task if isinstance(task, dict) else None
+
+
+# In-process best-effort registry for routing chat session resumes.
+#
+# Keyed by either `chat_session_id` (preferred) or provider session ids such as
+# `resume_session_id` when present.
+_STICKY_SESSION_WORKER: dict[str, str] = {}
+
+
+def generate_text_mesh(
+    prompt: str,
+    *,
+    model_name: Optional[str] = None,
+    provider: str = "copilot_cli",
+    chat_session_id: str | None = None,
+    resume_session_id: str | None = None,
+    continue_session: bool = False,
+    history: str | None = None,
+    timeout_s: float = 90.0,
+    max_route_attempts: int = 3,
+    queue_path: Optional[str] = None,
+    **kwargs: object,
+) -> str:
+    """Generate text by delegating `llm.generate` tasks to the P2P mesh.
+
+    Goals:
+    - Highest throughput: any eligible worker may claim new sessions.
+    - Session resume safety: resumed sessions can be pinned to the worker that
+      originally handled the session via `sticky_worker_id`.
+    - Failover: after `max_route_attempts` timeouts, fall back to starting a new
+      session using the recovered `history` (if provided).
+
+        Notes:
+        - Sticky routing is best-effort and stored in-process. For long-lived
+            orchestrators this is usually sufficient.
+        - Session continuity flags (`resume_session_id` / `continue_session`) are
+            only supported for provider='copilot_cli'.
+    """
+
+    provider_norm = str(provider or "").strip().lower() or "copilot_cli"
+    if provider_norm != "copilot_cli":
+        if (isinstance(resume_session_id, str) and resume_session_id.strip()) or bool(continue_session):
+            raise LLMRouterError(
+                "resume/continue session flags are only supported for provider='copilot_cli'"
+            )
+
+    try:
+        attempts = int(max_route_attempts)
+    except Exception:
+        attempts = 3
+    attempts = max(1, min(attempts, 10))
+
+    # Build a base payload with only safe/expected keys.
+    forwarded: Dict[str, object] = {}
+    if isinstance(chat_session_id, str) and chat_session_id.strip():
+        forwarded["chat_session_id"] = chat_session_id.strip()
+    if isinstance(resume_session_id, str) and resume_session_id.strip():
+        forwarded["resume_session_id"] = resume_session_id.strip()
+    if continue_session:
+        forwarded["continue_session"] = True
+
+    # Forward a minimal allowlist of provider args.
+    # Intentionally does NOT allow provider-specific command overrides (e.g.
+    # gemini_cmd) to avoid remote peers executing arbitrary commands.
+    for k in (
+        "timeout",
+        "trace",
+        "trace_jsonl_path",
+        "trace_dir",
+        "copilot_config_dir",
+        "copilot_log_dir",
+    ):
+        if k in kwargs:
+            forwarded[k] = kwargs[k]  # type: ignore[literal-required]
+
+    def _sticky_key() -> str:
+        if isinstance(chat_session_id, str) and chat_session_id.strip():
+            return chat_session_id.strip()
+        if isinstance(resume_session_id, str) and resume_session_id.strip():
+            return resume_session_id.strip()
+        return ""
+
+    sticky_key = _sticky_key()
+    sticky_worker_id = _STICKY_SESSION_WORKER.get(sticky_key, "") if sticky_key else ""
+
+    last_task_id: str | None = None
+    for i in range(attempts):
+        # Submit to the (possibly remote) queue.
+        submit_kwargs = dict(forwarded)
+        if sticky_worker_id:
+            submit_kwargs["sticky_worker_id"] = sticky_worker_id
+        task_id = submit_task(
+            prompt=str(prompt or ""),
+            model_name=str(model_name or "gpt2"),
+            task_type="llm.generate",
+            queue_path=queue_path,
+            provider=provider_norm,
+            **submit_kwargs,
+        )
+        last_task_id = task_id
+
+        task = wait_task(task_id, queue_path=queue_path, timeout_s=float(timeout_s))
+        if isinstance(task, dict) and str(task.get("status") or "") in {"completed", "failed"}:
+            result = task.get("result")
+            if isinstance(result, dict):
+                wid = str(result.get("executor_worker_id") or "").strip()
+                if sticky_key and wid:
+                    _STICKY_SESSION_WORKER[sticky_key] = wid
+            # Return text even if failed? Prefer raising with error.
+            if str(task.get("status")) == "failed":
+                err = str(task.get("error") or "") or str((result or {}).get("error") or "")
+                raise LLMRouterError(err or "mesh llm.generate failed")
+            if isinstance(result, dict) and "text" in result:
+                return str(result.get("text") or "")
+            return ""
+
+        # Timeout / not completed: cancel this queued work and retry.
+        try:
+            parsed = _decode_p2p_task_id(str(task_id))
+            if parsed:
+                import anyio
+
+                from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+                from ipfs_accelerate_py.p2p_tasks.client import cancel_task as cancel_task_p2p
+
+                peer_id, inner_id = parsed
+                remote_multiaddr = (
+                    os.environ.get("ipfs_accelerate_py_TASK_P2P_REMOTE_MULTIADDR")
+                    or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_MULTIADDR")
+                    or ""
+                ).strip()
+                ann = _read_task_p2p_announce() if not remote_multiaddr else None
+                if ann and not remote_multiaddr:
+                    remote_multiaddr = str(ann.get("multiaddr") or "").strip()
+                remote = RemoteQueue(peer_id=str(peer_id), multiaddr=str(remote_multiaddr))
+
+                async def _run_cancel() -> None:
+                    await cancel_task_p2p(remote=remote, task_id=str(inner_id), reason="route_timeout")
+
+                anyio.run(_run_cancel, backend="trio")
+            else:
+                # Local cancellation.
+                try:
+                    from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
+
+                    TaskQueue(queue_path).cancel(task_id=str(task_id), reason="route_timeout")
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+        # After the last retry, fall back to new session with history.
+        if i == (attempts - 1):
+            fallback_prompt = str(prompt or "")
+            if isinstance(history, str) and history.strip():
+                fallback_prompt = (
+                    "Continue this conversation, starting a fresh session if needed.\n\n"
+                    "Conversation history:\n"
+                    + history.strip()
+                    + "\n\nNext user message:\n"
+                    + str(prompt or "")
+                )
+
+            # Clear resume/session flags and sticky pin.
+            submit_kwargs2 = dict(forwarded)
+            submit_kwargs2.pop("resume_session_id", None)
+            submit_kwargs2.pop("continue_session", None)
+            submit_kwargs2.pop("sticky_worker_id", None)
+
+            task_id2 = submit_task(
+                prompt=str(fallback_prompt),
+                model_name=str(model_name or "gpt2"),
+                task_type="llm.generate",
+                queue_path=queue_path,
+                provider=provider_norm,
+                **submit_kwargs2,
+            )
+            task2 = wait_task(task_id2, queue_path=queue_path, timeout_s=float(timeout_s))
+            if not isinstance(task2, dict):
+                raise LLMRouterError("mesh llm.generate failed (no response)")
+            result2 = task2.get("result") if isinstance(task2.get("result"), dict) else {}
+            if str(task2.get("status") or "") == "failed":
+                err2 = str(task2.get("error") or "") or str((result2 or {}).get("error") or "")
+                raise LLMRouterError(err2 or "mesh llm.generate failed")
+            if isinstance(result2, dict) and "text" in result2:
+                return str(result2.get("text") or "")
+            return ""
+
+    raise LLMRouterError("mesh llm.generate failed")
 
 
 def get_remote_capabilities(*, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, object]:

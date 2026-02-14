@@ -2099,12 +2099,128 @@ def _session_allows_task(*, task_payload: object, local_session: str) -> bool:
     return required == str(local_session).strip()
 
 
+def _copilot_session_controls_allowed(
+    *,
+    payload: dict,
+    local_session: str,
+    assigned_worker_id: str,
+) -> None:
+    """Enforce safety policy for Copilot session controls.
+
+    Rationale:
+    - `--resume` and `--continue` can cause the worker to access prior chat state
+      associated with its local Copilot account.
+    - In a pooled/mesh setup, we only want peers within the same P2P session
+      boundary to be able to request session continuity.
+
+    Policy:
+    - If the worker has a configured P2P session (`local_session`), then any
+      task requesting session continuity must include a matching session id.
+    - Disallow `continue_session` without an explicit `resume_session_id`
+      unless the worker opts in via env.
+    """
+
+    if not isinstance(payload, dict):
+        return
+
+    resume_session_id = payload.get("resume_session_id")
+    continue_session = bool(payload.get("continue_session", False))
+
+    wants_resume = isinstance(resume_session_id, str) and bool(resume_session_id.strip())
+    wants_continue = bool(continue_session)
+
+    if not (wants_resume or wants_continue):
+        return
+
+    # Session ownership: only the worker that started/owns the session may
+    # attempt `--resume`/`--continue`. Enforce via sticky pin.
+    sticky = payload.get("sticky_worker_id")
+    sticky_text = str(sticky or "").strip() if isinstance(sticky, (str, int, float)) else ""
+    assigned = str(assigned_worker_id or "").strip()
+    if not sticky_text:
+        raise RuntimeError("copilot session continuity requires sticky_worker_id")
+    if assigned and sticky_text != assigned:
+        raise RuntimeError("copilot session continuity requires sticky_worker_id to match assigned_worker")
+
+    local = str(local_session or "").strip()
+    if local:
+        required = _task_required_session(payload)
+        if not required:
+            raise RuntimeError("copilot session continuity requires a session_id")
+        if required != local:
+            raise RuntimeError("copilot session continuity requires matching session_id")
+
+    if wants_continue and not wants_resume:
+        allow = (
+            str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_CONTINUE_WITHOUT_RESUME") or "")
+            .strip()
+            .lower()
+            in {"1", "true", "yes", "on"}
+        )
+        if not allow:
+            raise RuntimeError(
+                "copilot_cli disallows continue_session without resume_session_id "
+                "(set IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_CONTINUE_WITHOUT_RESUME=1 to override)"
+            )
+
+
+def _allowed_llm_providers() -> set[str]:
+    """Return allowed providers for llm.generate.
+
+    This prevents remote peers from selecting unexpected providers on a worker.
+
+    Env:
+      - IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS
+      - IPFS_DATASETS_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS (compat)
+    """
+
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS")
+    text = str(raw or "").strip()
+    if not text:
+        return {"copilot_cli"}
+
+    parts = [p.strip().lower() for p in text.split(",") if p.strip()]
+    if not parts:
+        return {"copilot_cli"}
+
+    if "*" in parts or "all" in parts:
+        # Conservative built-in allowlist. (Exclude 'mock' and other test-only providers.)
+        return {
+            "copilot_cli",
+            "copilot_sdk",
+            "codex_cli",
+            "gemini_cli",
+            "gemini_py",
+            "claude_code",
+            "claude_py",
+            "openrouter",
+        }
+
+    return set(parts)
+
+
 def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
     """Run an LLM provider via llm_router (intended for copilot_cli mesh)."""
 
     payload = task.get("payload") or {}
     if not isinstance(payload, dict):
         raise ValueError("llm.generate payload must be a dict")
+
+    # Decrypt encrypted prompt fields (if present) before extracting values.
+    if "prompt" not in payload and isinstance(payload.get("prompt_enc"), dict):
+        try:
+            from ipfs_accelerate_py.p2p_tasks.protocol import decrypt_text
+
+            pt = decrypt_text(payload.get("prompt_enc"))
+            if isinstance(pt, str):
+                payload["prompt"] = pt
+        except Exception:
+            pass
+
+    chat_session_id = payload.get("chat_session_id")
+    resume_session_id = payload.get("resume_session_id")
 
     prompt = payload.get("prompt")
     if prompt is None:
@@ -2113,40 +2229,88 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         prompt = payload.get("input")
 
     provider = str(payload.get("provider") or "copilot_cli").strip().lower() or "copilot_cli"
-    if provider != "copilot_cli":
-        raise RuntimeError("llm.generate currently supports provider='copilot_cli' only")
+    allowed = _allowed_llm_providers()
+    if provider not in allowed:
+        raise RuntimeError(f"llm.generate provider not allowed: {provider}")
 
-    allow = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI") or "").strip().lower() in {
+    # Session continuity is only supported for copilot_cli today.
+    if provider == "copilot_cli":
+        _copilot_session_controls_allowed(
+            payload=payload,
+            local_session=_expected_session_tag(),
+            assigned_worker_id=str(task.get("assigned_worker") or "").strip(),
+        )
+    else:
+        if (isinstance(payload.get("resume_session_id"), str) and str(payload.get("resume_session_id") or "").strip()) or bool(
+            payload.get("continue_session", False)
+        ):
+            raise RuntimeError("resume_session_id/continue_session only supported for provider='copilot_cli'")
+
+
+
+    if provider == "copilot_cli":
+        allow = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+        if not allow:
+            raise RuntimeError("copilot_cli tasks disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1)")
+
+    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
+
+    # Forward known safe flags.
+    kwargs: Dict[str, Any] = {}
+    allow_paths = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_LLM_PATH_ARGS") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    } or str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_PATH_ARGS") or "").strip().lower() in {
         "1",
         "true",
         "yes",
         "on",
     }
-    if not allow:
-        raise RuntimeError("copilot_cli tasks disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1)")
 
-    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
+    forwarded_keys = ["timeout", "trace", "trace_jsonl_path", "trace_dir"]
+    if provider == "copilot_cli":
+        forwarded_keys.extend(
+            [
+                "copilot_config_dir",
+                "copilot_log_dir",
+                "resume_session_id",
+                "continue_session",
+            ]
+        )
 
-    # Forward known Copilot CLI flags.
-    kwargs: Dict[str, Any] = {}
-    for k in (
-        "timeout",
-        "trace",
-        "trace_jsonl_path",
-        "trace_dir",
-        "copilot_config_dir",
-        "copilot_log_dir",
-        "resume_session_id",
-        "continue_session",
-    ):
+    for k in forwarded_keys:
         if k in payload:
+            # Path-like args can alter account/config state or write files.
+            # Require an explicit opt-in on the worker.
+            if not allow_paths and k in {"trace_jsonl_path", "trace_dir", "copilot_config_dir", "copilot_log_dir"}:
+                raise RuntimeError(
+                    f"llm.generate disallows '{k}' unless IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_LLM_PATH_ARGS=1"
+                )
             kwargs[k] = payload.get(k)
 
     from ipfs_accelerate_py import llm_router
 
     text = llm_router.generate_text(str(prompt or ""), model_name=model_name, provider=provider, **kwargs)
     session_id = _expected_session_tag()
-    return {"text": str(text), "provider": provider, "session_id": session_id}
+
+    out: Dict[str, Any] = {
+        "text": str(text),
+        "provider": provider,
+        "session_id": session_id,
+        "executor_worker_id": str(task.get("assigned_worker") or "").strip(),
+    }
+    if isinstance(chat_session_id, str) and chat_session_id.strip():
+        out["chat_session_id"] = chat_session_id.strip()
+    if isinstance(resume_session_id, str) and resume_session_id.strip():
+        out["resume_session_id"] = resume_session_id.strip()
+    return out
 
 
 def _read_local_announce_peer_id() -> str:

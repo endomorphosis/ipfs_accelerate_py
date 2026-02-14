@@ -2542,6 +2542,22 @@ async def request_status(*, remote: RemoteQueue, timeout_s: float = 10.0, detail
     )
     return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
 
+async def cancel_task(*, remote: RemoteQueue, task_id: str, reason: str | None = None) -> Dict[str, Any]:
+    message: Dict[str, Any] = {"op": "cancel", "task_id": str(task_id)}
+    if isinstance(reason, str) and reason.strip():
+        message["reason"] = reason.strip()
+    resp = await _dial_and_request(remote=remote, message=message)
+    return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+
+
+def cancel_task_sync(*, remote: RemoteQueue, task_id: str, reason: str | None = None) -> Dict[str, Any]:
+    import anyio
+
+    async def _do() -> Dict[str, Any]:
+        return await cancel_task(remote=remote, task_id=task_id, reason=reason)
+
+    return anyio.run(_do, backend="trio")
+
 
 def request_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
     import trio
