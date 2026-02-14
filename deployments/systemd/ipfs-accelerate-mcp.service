@@ -65,8 +65,28 @@ Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S=5"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS=10"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=1"
 
-Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,docker.execute,docker.execute_docker_container,docker.github"
-Environment="IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,docker.execute,docker.execute_docker_container,docker.github"
+# Batching + multi-peer draining (TaskQueue worker launched in this unit)
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT=4"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH=16"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH=8"
+
+# Enable additional HuggingFace task types (beyond text-generation)
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF=1"
+
+# Per-task micro-batch caps (0/auto enables safe estimation)
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX=auto"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX=auto"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX=auto"
+
+# Estimator tuning
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_FRACTION=0.75"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_RESERVE_MB=1024"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_ACT_MULT=4.0"
+
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,docker.execute,docker.execute_docker_container,docker.github"
+Environment="IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,docker.execute,docker.execute_docker_container,docker.github"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1"
 # Use a distinct P2P port so this unit can run alongside ipfs-accelerate.service

@@ -28,24 +28,341 @@ def _truthy(value: str | None) -> bool:
     return str(value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
+def _parse_batch_cap(raw: object | None, *, default: int = 1) -> int:
+    """Parse an env-style batch cap.
+
+    Conventions:
+      - unset/empty -> default
+      - integer > 0 -> hard cap
+      - 0 / "auto" -> request auto estimation (returns 0)
+    """
+
+    if raw is None:
+        return int(default)
+    s = str(raw).strip().lower()
+    if not s:
+        return int(default)
+    if s in {"auto"}:
+        return 0
+    try:
+        v = int(float(s))
+        return v
+    except Exception:
+        return int(default)
+
+
+def _minimal_hf_enabled() -> bool:
+    # Reuse existing gating used by the drain harness.
+    if _truthy(os.environ.get("IPFS_ACCEL_SKIP_CORE")):
+        return True
+    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_LLM")):
+        return True
+    # General-purpose minimal HF inference for non-textgen tasks.
+    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF")):
+        return True
+    return False
+
+
 _HF_TEXTGEN_LOCK = threading.RLock()
 _HF_TEXTGEN_PIPELINE: object | None = None
 _HF_TEXTGEN_MODEL_ID: str | None = None
+_HF_TEXTGEN_MODEL_BYTES: int | None = None
+_HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH: int | None = None
+
+_HF_TEXT2TEXT_LOCK = threading.RLock()
+_HF_TEXT2TEXT_PIPELINE: object | None = None
+_HF_TEXT2TEXT_MODEL_ID: str | None = None
+_HF_TEXT2TEXT_MODEL_BYTES: int | None = None
+_HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH: int | None = None
+
+_HF_TEXTCLS_LOCK = threading.RLock()
+_HF_TEXTCLS_PIPELINE: object | None = None
+_HF_TEXTCLS_MODEL_ID: str | None = None
+_HF_TEXTCLS_MODEL_BYTES: int | None = None
+_HF_TEXTCLS_ACT_BYTES_PER_TOKEN_PER_BATCH: int | None = None
+
+_HF_EMBED_LOCK = threading.RLock()
+_HF_EMBED_MODEL: object | None = None
+_HF_EMBED_TOKENIZER: object | None = None
+_HF_EMBED_MODEL_ID: str | None = None
+_HF_EMBED_MODEL_BYTES: int | None = None
+_HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH: int | None = None
 
 
-def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, temperature: float) -> str:
-    """Minimal local text-generation without importing ipfs_accelerate_py core."""
+def _available_ram_bytes() -> int:
+    """Best-effort available system RAM bytes (Linux-friendly)."""
 
-    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID
+    # Prefer psutil if installed.
+    try:
+        import psutil  # type: ignore
+
+        vm = psutil.virtual_memory()
+        return int(getattr(vm, "available", 0) or 0)
+    except Exception:
+        pass
+
+    # Linux fallback.
+    try:
+        with open("/proc/meminfo", "r", encoding="utf-8") as handle:
+            for line in handle:
+                if line.startswith("MemAvailable:"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        kb = int(parts[1])
+                        return int(kb) * 1024
+    except Exception:
+        pass
+    return 0
+
+
+def _available_vram_bytes() -> int:
+    """Best-effort free VRAM bytes for CUDA device 0 (if available)."""
 
     try:
-        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
-    except Exception as exc:
-        raise RuntimeError(f"transformers is required for minimal text-generation: {exc}")
+        import torch  # type: ignore
 
-    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip() or "gpt2"
-    safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
-    temp = float(temperature) if temperature is not None else 0.2
+        if not bool(getattr(torch, "cuda", None)):
+            return 0
+        if not torch.cuda.is_available():
+            return 0
+        free_b, _total_b = torch.cuda.mem_get_info(0)
+        return int(free_b)
+    except Exception:
+        return 0
+
+
+def _hf_pipeline_device_kind(model: object) -> str:
+    try:
+        import torch  # type: ignore
+
+        for p in getattr(model, "parameters", lambda: [])():
+            dev = getattr(p, "device", None)
+            if dev is not None:
+                return "cuda" if str(getattr(dev, "type", "")) == "cuda" else "cpu"
+        return "cpu"
+    except Exception:
+        return "cpu"
+
+
+def _hf_estimate_max_batch_size(
+    *,
+    model: object,
+    max_seq_len_tokens: int,
+) -> int:
+    """Estimate a safe max batch size for causal LM generation.
+
+    Uses a simple budget model:
+      available_memory * fraction - model_bytes >= batch * seq_len * kv_bytes_per_token_per_batch
+
+    KV cache approximation (per batch, per token):
+      num_layers * 2(K/V) * hidden_size * bytes_per_elem
+
+    This is intentionally conservative and meant to prevent OOM.
+    """
+
+    global _HF_TEXTGEN_MODEL_BYTES, _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH
+
+    max_seq_len = max(1, int(max_seq_len_tokens or 1))
+
+    # Determine memory kind based on where the model lives.
+    kind = _hf_pipeline_device_kind(model)
+    avail = _available_vram_bytes() if kind == "cuda" else _available_ram_bytes()
+    if avail <= 0:
+        return 1
+
+    # Fraction of free memory we're willing to consume for generation.
+    # Default: a bit more conservative on GPU.
+    try:
+        frac_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MEM_FRACTION")
+        frac = float(frac_raw) if frac_raw is not None else (0.55 if kind == "cuda" else 0.65)
+    except Exception:
+        frac = 0.55 if kind == "cuda" else 0.65
+    frac = max(0.1, min(frac, 0.95))
+
+    # Reserve some slack for Python/runtime overhead.
+    try:
+        reserve_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_RESERVE_MB")
+        reserve_bytes = int(float(reserve_raw) * 1024 * 1024) if reserve_raw is not None else (512 * 1024 * 1024)
+    except Exception:
+        reserve_bytes = 512 * 1024 * 1024
+    reserve_bytes = max(0, reserve_bytes)
+
+    budget = int(avail * frac) - int(reserve_bytes)
+    if budget <= 0:
+        return 1
+
+    # Cache model bytes and KV bytes-per-token-per-batch for this loaded model.
+    if _HF_TEXTGEN_MODEL_BYTES is None:
+        try:
+            total = 0
+            for p in getattr(model, "parameters", lambda: [])():
+                try:
+                    total += int(p.numel()) * int(p.element_size())
+                except Exception:
+                    continue
+            _HF_TEXTGEN_MODEL_BYTES = int(total)
+        except Exception:
+            _HF_TEXTGEN_MODEL_BYTES = 0
+
+    if _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH is None:
+        try:
+            cfg = getattr(model, "config", None)
+            n_layers = int(
+                getattr(cfg, "n_layer", None)
+                or getattr(cfg, "num_hidden_layers", None)
+                or getattr(cfg, "n_layers", None)
+                or 0
+            )
+            hidden = int(
+                getattr(cfg, "n_embd", None)
+                or getattr(cfg, "hidden_size", None)
+                or getattr(cfg, "d_model", None)
+                or 0
+            )
+
+            elem_bytes = 4
+            try:
+                # Use the first parameter dtype.
+                for p in getattr(model, "parameters", lambda: [])():
+                    elem_bytes = int(p.element_size())
+                    break
+            except Exception:
+                elem_bytes = 4
+
+            # KV cache: K and V per layer.
+            kv = int(max(1, n_layers)) * 2 * int(max(1, hidden)) * int(max(1, elem_bytes))
+            # Apply a safety multiplier for attention/activation overhead.
+            kv = int(kv * 1.35)
+            _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH = int(kv)
+        except Exception:
+            _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH = 0
+
+    model_bytes = int(_HF_TEXTGEN_MODEL_BYTES or 0)
+    kv_per_token = int(_HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH or 0)
+    if kv_per_token <= 0:
+        return 1
+
+    remaining = budget - model_bytes
+    if remaining <= 0:
+        return 1
+
+    per_batch = int(kv_per_token) * int(max_seq_len)
+    if per_batch <= 0:
+        return 1
+
+    max_b = int(remaining // per_batch)
+    return max(1, min(max_b, 128))
+
+
+def _hf_estimate_max_batch_size_encoder(
+    *,
+    model: object,
+    max_seq_len_tokens: int,
+    cache_act_bytes_ref: list[int | None],
+    cache_model_bytes_ref: list[int | None],
+) -> int:
+    """Conservative estimator for encoder-style inference (embeddings/classification).
+
+    Budgets (weights + per-token activation scratch). This is intentionally rough
+    and biased toward avoiding OOM.
+    """
+
+    max_seq_len = max(1, int(max_seq_len_tokens or 1))
+    kind = _hf_pipeline_device_kind(model)
+    avail = _available_vram_bytes() if kind == "cuda" else _available_ram_bytes()
+    if avail <= 0:
+        return 1
+
+    try:
+        frac_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_FRACTION")
+        frac = float(frac_raw) if frac_raw is not None else (0.75 if kind == "cuda" else 0.60)
+    except Exception:
+        frac = 0.75 if kind == "cuda" else 0.60
+    frac = max(0.05, min(0.95, float(frac)))
+
+    try:
+        reserve_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_RESERVE_MB")
+        reserve_mb = int(float(reserve_raw)) if reserve_raw is not None else (1024 if kind == "cuda" else 2048)
+    except Exception:
+        reserve_mb = 1024 if kind == "cuda" else 2048
+    reserve_bytes = max(0, int(reserve_mb)) * 1024 * 1024
+
+    budget = int(avail * frac) - int(reserve_bytes)
+    if budget <= 0:
+        return 1
+
+    if cache_model_bytes_ref and cache_model_bytes_ref[0] is None:
+        try:
+            total = 0
+            for p in getattr(model, "parameters", lambda: [])():
+                try:
+                    total += int(p.numel()) * int(p.element_size())
+                except Exception:
+                    continue
+            cache_model_bytes_ref[0] = int(total)
+        except Exception:
+            cache_model_bytes_ref[0] = 0
+
+    model_bytes = int((cache_model_bytes_ref[0] or 0) if cache_model_bytes_ref else 0)
+    remaining = budget - model_bytes
+    if remaining <= 0:
+        return 1
+
+    if cache_act_bytes_ref and cache_act_bytes_ref[0] is None:
+        act = 0
+        try:
+            cfg = getattr(model, "config", None)
+            hidden = int(getattr(cfg, "hidden_size", None) or getattr(cfg, "d_model", None) or 0)
+            layers = int(
+                getattr(cfg, "num_hidden_layers", None)
+                or getattr(cfg, "num_layers", None)
+                or getattr(cfg, "n_layer", None)
+                or getattr(cfg, "encoder_layers", None)
+                or 0
+            )
+            if hidden <= 0:
+                hidden = 768
+            if layers <= 0:
+                layers = 12
+
+            elem_bytes = 2
+            try:
+                for p in getattr(model, "parameters", lambda: [])():
+                    elem_bytes = int(p.element_size())
+                    break
+            except Exception:
+                elem_bytes = 2
+
+            try:
+                mult_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_ACT_MULT")
+                mult = float(mult_raw) if mult_raw is not None else 8.0
+            except Exception:
+                mult = 8.0
+            mult = max(2.0, min(32.0, float(mult)))
+
+            act = int(layers) * int(hidden) * int(max(1, elem_bytes))
+            act = int(act * mult)
+        except Exception:
+            act = 0
+        cache_act_bytes_ref[0] = int(act)
+
+    act_per_token = int((cache_act_bytes_ref[0] or 0) if cache_act_bytes_ref else 0)
+    if act_per_token <= 0:
+        return 1
+
+    per_batch = int(act_per_token) * int(max_seq_len)
+    if per_batch <= 0:
+        return 1
+    max_b = int(remaining // per_batch)
+    return max(1, min(int(max_b), 128))
+
+
+def _hf_get_textgen_pipeline(*, requested_model: str) -> object:
+    """Get or create the cached HF text-generation pipeline."""
+
+    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID, _HF_TEXTGEN_MODEL_BYTES, _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH
+
+    from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
 
     with _HF_TEXTGEN_LOCK:
         if _HF_TEXTGEN_PIPELINE is None or _HF_TEXTGEN_MODEL_ID != requested_model:
@@ -64,8 +381,95 @@ def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, tem
                 device=-1,
             )
             _HF_TEXTGEN_MODEL_ID = requested_model
+            _HF_TEXTGEN_MODEL_BYTES = None
+            _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH = None
 
-        gen = _HF_TEXTGEN_PIPELINE
+        return _HF_TEXTGEN_PIPELINE
+
+
+def _hf_get_text2text_pipeline(*, requested_model: str) -> object:
+    """Get or create the cached HF text2text-generation pipeline."""
+
+    global _HF_TEXT2TEXT_PIPELINE, _HF_TEXT2TEXT_MODEL_ID, _HF_TEXT2TEXT_MODEL_BYTES, _HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH
+
+    from transformers import AutoModelForSeq2SeqLM, AutoTokenizer, pipeline  # type: ignore
+
+    with _HF_TEXT2TEXT_LOCK:
+        if _HF_TEXT2TEXT_PIPELINE is None or _HF_TEXT2TEXT_MODEL_ID != requested_model:
+            tokenizer = AutoTokenizer.from_pretrained(requested_model)
+            model = AutoModelForSeq2SeqLM.from_pretrained(requested_model)
+            if (
+                getattr(tokenizer, "pad_token_id", None) is None
+                and getattr(tokenizer, "eos_token_id", None) is not None
+            ):
+                tokenizer.pad_token_id = tokenizer.eos_token_id
+            _HF_TEXT2TEXT_PIPELINE = pipeline(
+                "text2text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                device=-1,
+            )
+            _HF_TEXT2TEXT_MODEL_ID = requested_model
+            _HF_TEXT2TEXT_MODEL_BYTES = None
+            _HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH = None
+        return _HF_TEXT2TEXT_PIPELINE
+
+
+def _hf_get_textcls_pipeline(*, requested_model: str) -> object:
+    """Get or create the cached HF text-classification pipeline."""
+
+    global _HF_TEXTCLS_PIPELINE, _HF_TEXTCLS_MODEL_ID, _HF_TEXTCLS_MODEL_BYTES, _HF_TEXTCLS_ACT_BYTES_PER_TOKEN_PER_BATCH
+
+    from transformers import AutoModelForSequenceClassification, AutoTokenizer, pipeline  # type: ignore
+
+    with _HF_TEXTCLS_LOCK:
+        if _HF_TEXTCLS_PIPELINE is None or _HF_TEXTCLS_MODEL_ID != requested_model:
+            tokenizer = AutoTokenizer.from_pretrained(requested_model)
+            model = AutoModelForSequenceClassification.from_pretrained(requested_model)
+            _HF_TEXTCLS_PIPELINE = pipeline(
+                "text-classification",
+                model=model,
+                tokenizer=tokenizer,
+                device=-1,
+            )
+            _HF_TEXTCLS_MODEL_ID = requested_model
+            _HF_TEXTCLS_MODEL_BYTES = None
+            _HF_TEXTCLS_ACT_BYTES_PER_TOKEN_PER_BATCH = None
+        return _HF_TEXTCLS_PIPELINE
+
+
+def _hf_get_embed_components(*, requested_model: str) -> tuple[object, object]:
+    """Get or create cached (tokenizer, model) for embeddings."""
+
+    global _HF_EMBED_MODEL, _HF_EMBED_TOKENIZER, _HF_EMBED_MODEL_ID, _HF_EMBED_MODEL_BYTES, _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH
+
+    from transformers import AutoModel, AutoTokenizer  # type: ignore
+
+    with _HF_EMBED_LOCK:
+        if _HF_EMBED_MODEL is None or _HF_EMBED_TOKENIZER is None or _HF_EMBED_MODEL_ID != requested_model:
+            tok = AutoTokenizer.from_pretrained(requested_model)
+            model = AutoModel.from_pretrained(requested_model)
+            _HF_EMBED_TOKENIZER = tok
+            _HF_EMBED_MODEL = model
+            _HF_EMBED_MODEL_ID = requested_model
+            _HF_EMBED_MODEL_BYTES = None
+            _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH = None
+        return (_HF_EMBED_TOKENIZER, _HF_EMBED_MODEL)
+
+
+def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, temperature: float) -> str:
+    """Minimal local text-generation without importing ipfs_accelerate_py core."""
+
+    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID
+
+    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip() or "gpt2"
+    safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
+    temp = float(temperature) if temperature is not None else 0.2
+
+    try:
+        gen = _hf_get_textgen_pipeline(requested_model=requested_model)
+    except Exception as exc:
+        raise RuntimeError(f"transformers is required for minimal text-generation: {exc}")
 
     # Pipeline calls are not guaranteed thread-safe; guard the call.
     with _HF_TEXTGEN_LOCK:
@@ -100,36 +504,14 @@ def _hf_textgen_batch(
     if not prompts:
         return []
 
-    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID
-
-    try:
-        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
-    except Exception as exc:
-        raise RuntimeError(f"transformers is required for minimal text-generation: {exc}")
-
     requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip() or "gpt2"
     safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
     temp = float(temperature) if temperature is not None else 0.2
 
-    with _HF_TEXTGEN_LOCK:
-        if _HF_TEXTGEN_PIPELINE is None or _HF_TEXTGEN_MODEL_ID != requested_model:
-            tokenizer = AutoTokenizer.from_pretrained(requested_model)
-            model = AutoModelForCausalLM.from_pretrained(requested_model)
-            if (
-                getattr(tokenizer, "pad_token_id", None) is None
-                and getattr(tokenizer, "eos_token_id", None) is not None
-            ):
-                tokenizer.pad_token_id = tokenizer.eos_token_id
-
-            _HF_TEXTGEN_PIPELINE = pipeline(
-                "text-generation",
-                model=model,
-                tokenizer=tokenizer,
-                device=-1,
-            )
-            _HF_TEXTGEN_MODEL_ID = requested_model
-
-        gen = _HF_TEXTGEN_PIPELINE
+    try:
+        gen = _hf_get_textgen_pipeline(requested_model=requested_model)
+    except Exception as exc:
+        raise RuntimeError(f"transformers is required for minimal text-generation: {exc}")
 
     with _HF_TEXTGEN_LOCK:
         out = gen(
@@ -155,6 +537,350 @@ def _hf_textgen_batch(
 
     # Unexpected shape; fall back to per-prompt.
     return [_hf_textgen(p, model_name=requested_model, max_new_tokens=safe_max_new, temperature=temp) for p in prompts]
+
+
+def _hf_textgen_batch_auto(
+    prompts: list[str],
+    *,
+    model_name: str | None,
+    max_new_tokens: int,
+    temperature: float,
+    requested_batch_max: int,
+) -> tuple[list[str], int]:
+    """Generate for a batch, auto-capping size based on memory."""
+
+    if not prompts:
+        return ([], 0)
+
+    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip() or "gpt2"
+    safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
+    temp = float(temperature) if temperature is not None else 0.2
+
+    gen = _hf_get_textgen_pipeline(requested_model=requested_model)
+    tokenizer = getattr(gen, "tokenizer", None)
+    model = getattr(gen, "model", None)
+
+    # Estimate max seq len in tokens for this batch.
+    max_prompt_tokens = 0
+    if tokenizer is not None:
+        try:
+            for p in prompts:
+                ids = getattr(tokenizer, "encode", None)
+                if callable(ids):
+                    n = len(tokenizer.encode(str(p or "")))
+                else:
+                    n = len(tokenizer(str(p or ""), add_special_tokens=False).get("input_ids") or [])
+                if n > max_prompt_tokens:
+                    max_prompt_tokens = n
+        except Exception:
+            max_prompt_tokens = 0
+
+    max_seq_len = int(max_prompt_tokens) + int(safe_max_new)
+
+    auto_max = 1
+    if model is not None:
+        try:
+            auto_max = _hf_estimate_max_batch_size(model=model, max_seq_len_tokens=max_seq_len)
+        except Exception:
+            auto_max = 1
+
+    cap = int(requested_batch_max) if int(requested_batch_max) > 0 else int(auto_max)
+    cap = max(1, min(cap, int(auto_max), 128, len(prompts)))
+    texts = _hf_textgen_batch(
+        prompts[:cap],
+        model_name=requested_model,
+        max_new_tokens=safe_max_new,
+        temperature=temp,
+    )
+    return (texts, cap)
+
+
+def _extract_hf_input_text(task_payload: Any) -> str:
+    if isinstance(task_payload, dict):
+        for k in ("prompt", "text", "input", "inputs", "sentence", "query"):
+            v = task_payload.get(k)
+            if isinstance(v, str):
+                return v
+    if isinstance(task_payload, str):
+        return task_payload
+    return str(task_payload or "")
+
+
+def _hf_text2text_batch_auto(
+    prompts: list[str],
+    *,
+    model_name: str | None,
+    max_new_tokens: int,
+    temperature: float,
+    requested_batch_max: int,
+) -> tuple[list[str], int]:
+    """Seq2seq generation batch with optional auto batch-size estimation."""
+
+    if not prompts:
+        return ([], 0)
+
+    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "t5-small").strip() or "t5-small"
+    safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
+    temp = float(temperature) if temperature is not None else 0.2
+
+    try:
+        gen = _hf_get_text2text_pipeline(requested_model=requested_model)
+    except Exception as exc:
+        raise RuntimeError(f"transformers is required for minimal text2text-generation: {exc}")
+
+    tokenizer = getattr(gen, "tokenizer", None)
+    model = getattr(gen, "model", None)
+
+    max_prompt_tokens = 0
+    if tokenizer is not None:
+        try:
+            for p in prompts:
+                ids = getattr(tokenizer, "encode", None)
+                if callable(ids):
+                    n = len(tokenizer.encode(str(p or "")))
+                else:
+                    n = len(tokenizer(str(p or ""), add_special_tokens=False).get("input_ids") or [])
+                if n > max_prompt_tokens:
+                    max_prompt_tokens = n
+        except Exception:
+            max_prompt_tokens = 0
+
+    # Conservative proxy: input + output tokens.
+    max_seq_len = int(max_prompt_tokens) + int(safe_max_new)
+
+    auto_max = 1
+    if model is not None:
+        # Cache model bytes + kv per token for this model.
+        global _HF_TEXT2TEXT_MODEL_BYTES, _HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH
+
+        if _HF_TEXT2TEXT_MODEL_BYTES is None:
+            try:
+                total = 0
+                for p in getattr(model, "parameters", lambda: [])():
+                    try:
+                        total += int(p.numel()) * int(p.element_size())
+                    except Exception:
+                        continue
+                _HF_TEXT2TEXT_MODEL_BYTES = int(total)
+            except Exception:
+                _HF_TEXT2TEXT_MODEL_BYTES = 0
+
+        if _HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH is None:
+            try:
+                cfg = getattr(model, "config", None)
+                layers = int(
+                    getattr(cfg, "num_decoder_layers", None)
+                    or getattr(cfg, "decoder_layers", None)
+                    or getattr(cfg, "num_layers", None)
+                    or getattr(cfg, "n_layer", None)
+                    or 0
+                )
+                hidden = int(getattr(cfg, "d_model", None) or getattr(cfg, "hidden_size", None) or 0)
+                if layers <= 0:
+                    layers = 12
+                if hidden <= 0:
+                    hidden = 768
+                elem_bytes = 2
+                try:
+                    for p in getattr(model, "parameters", lambda: [])():
+                        elem_bytes = int(p.element_size())
+                        break
+                except Exception:
+                    elem_bytes = 2
+                kv = int(layers) * 2 * int(hidden) * int(max(1, elem_bytes))
+                kv = int(kv * 1.35)
+                _HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH = int(kv)
+            except Exception:
+                _HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH = 0
+
+        kind = _hf_pipeline_device_kind(model)
+        avail = _available_vram_bytes() if kind == "cuda" else _available_ram_bytes()
+        if avail > 0:
+            try:
+                frac_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_FRACTION")
+                frac = float(frac_raw) if frac_raw is not None else (0.75 if kind == "cuda" else 0.60)
+            except Exception:
+                frac = 0.75 if kind == "cuda" else 0.60
+            frac = max(0.05, min(0.95, float(frac)))
+
+            try:
+                reserve_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_RESERVE_MB")
+                reserve_mb = int(float(reserve_raw)) if reserve_raw is not None else (1024 if kind == "cuda" else 2048)
+            except Exception:
+                reserve_mb = 1024 if kind == "cuda" else 2048
+            reserve_bytes = max(0, int(reserve_mb)) * 1024 * 1024
+
+            budget = int(avail * frac) - int(reserve_bytes)
+            remaining = int(budget) - int(_HF_TEXT2TEXT_MODEL_BYTES or 0)
+            denom = int(_HF_TEXT2TEXT_KV_BYTES_PER_TOKEN_PER_BATCH or 0) * int(max_seq_len)
+            if remaining > 0 and denom > 0:
+                auto_max = int(remaining // denom)
+                auto_max = max(1, min(int(auto_max), 128))
+
+    cap = int(requested_batch_max) if int(requested_batch_max) > 0 else int(auto_max)
+    cap = max(1, min(cap, int(auto_max), 128, len(prompts)))
+
+    with _HF_TEXT2TEXT_LOCK:
+        out = gen(
+            [str(p or "") for p in prompts[:cap]],
+            max_new_tokens=int(safe_max_new),
+            do_sample=temp > 0,
+            temperature=max(float(temp), 1e-6),
+            pad_token_id=getattr(getattr(gen, "tokenizer", None), "pad_token_id", None),
+        )
+
+    texts: list[str] = []
+    if isinstance(out, list):
+        for item in out:
+            if isinstance(item, dict):
+                texts.append(str(item.get("generated_text") or item.get("text") or item.get("output") or ""))
+            else:
+                texts.append(str(item))
+    else:
+        texts = [str(out)]
+    return (texts, int(cap))
+
+
+def _hf_textcls_batch_auto(
+    texts: list[str],
+    *,
+    model_name: str | None,
+    requested_batch_max: int,
+) -> tuple[list[Any], int]:
+    if not texts:
+        return ([], 0)
+
+    requested_model = str(model_name or "distilbert-base-uncased-finetuned-sst-2-english").strip() or "distilbert-base-uncased-finetuned-sst-2-english"
+
+    try:
+        clf = _hf_get_textcls_pipeline(requested_model=requested_model)
+    except Exception as exc:
+        raise RuntimeError(f"transformers is required for minimal text-classification: {exc}")
+
+    tokenizer = getattr(clf, "tokenizer", None)
+    model = getattr(clf, "model", None)
+
+    max_seq_len = 1
+    if tokenizer is not None:
+        try:
+            for t in texts:
+                ids = getattr(tokenizer, "encode", None)
+                if callable(ids):
+                    n = len(tokenizer.encode(str(t or "")))
+                else:
+                    n = len(tokenizer(str(t or ""), add_special_tokens=False).get("input_ids") or [])
+                if n > max_seq_len:
+                    max_seq_len = n
+        except Exception:
+            max_seq_len = 1
+
+    auto_max = 1
+    if model is not None:
+        global _HF_TEXTCLS_MODEL_BYTES, _HF_TEXTCLS_ACT_BYTES_PER_TOKEN_PER_BATCH
+        act_ref = [_HF_TEXTCLS_ACT_BYTES_PER_TOKEN_PER_BATCH]
+        model_ref = [_HF_TEXTCLS_MODEL_BYTES]
+        auto_max = _hf_estimate_max_batch_size_encoder(
+            model=model,
+            max_seq_len_tokens=int(max_seq_len),
+            cache_act_bytes_ref=act_ref,
+            cache_model_bytes_ref=model_ref,
+        )
+        _HF_TEXTCLS_ACT_BYTES_PER_TOKEN_PER_BATCH = act_ref[0]
+        _HF_TEXTCLS_MODEL_BYTES = model_ref[0]
+
+    cap = int(requested_batch_max) if int(requested_batch_max) > 0 else int(auto_max)
+    cap = max(1, min(cap, int(auto_max), 128, len(texts)))
+
+    with _HF_TEXTCLS_LOCK:
+        out = clf([str(t or "") for t in texts[:cap]], truncation=True)
+    if isinstance(out, list):
+        return (out, int(cap))
+    return ([out], int(cap))
+
+
+def _hf_embed_batch_auto(
+    texts: list[str],
+    *,
+    model_name: str | None,
+    requested_batch_max: int,
+) -> tuple[list[list[float]], int]:
+    if not texts:
+        return ([], 0)
+
+    requested_model = str(model_name or "sentence-transformers/all-MiniLM-L6-v2").strip() or "sentence-transformers/all-MiniLM-L6-v2"
+
+    try:
+        tok, model = _hf_get_embed_components(requested_model=requested_model)
+    except Exception as exc:
+        raise RuntimeError(f"transformers is required for minimal embedding: {exc}")
+
+    max_seq_len = 1
+    try:
+        for t in texts:
+            enc = tok(str(t or ""), add_special_tokens=True, truncation=False)
+            ids = enc.get("input_ids") if isinstance(enc, dict) else None
+            if isinstance(ids, list):
+                max_seq_len = max(max_seq_len, len(ids))
+    except Exception:
+        max_seq_len = 1
+
+    global _HF_EMBED_MODEL_BYTES, _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH
+    act_ref = [_HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH]
+    model_ref = [_HF_EMBED_MODEL_BYTES]
+    auto_max = _hf_estimate_max_batch_size_encoder(
+        model=model,
+        max_seq_len_tokens=int(max_seq_len),
+        cache_act_bytes_ref=act_ref,
+        cache_model_bytes_ref=model_ref,
+    )
+    _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH = act_ref[0]
+    _HF_EMBED_MODEL_BYTES = model_ref[0]
+
+    cap = int(requested_batch_max) if int(requested_batch_max) > 0 else int(auto_max)
+    cap = max(1, min(cap, int(auto_max), 128, len(texts)))
+
+    try:
+        import torch  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(f"torch is required for minimal embedding: {exc}")
+
+    device = "cpu"
+    try:
+        for p in getattr(model, "parameters", lambda: [])():
+            dev = getattr(p, "device", None)
+            if dev is not None:
+                device = str(getattr(dev, "type", "cpu"))
+                break
+    except Exception:
+        device = "cpu"
+
+    batch_texts = [str(t or "") for t in texts[:cap]]
+    with torch.no_grad():
+        encoded = tok(batch_texts, padding=True, truncation=True, return_tensors="pt")
+        try:
+            encoded = {k: v.to(device) for k, v in encoded.items()}
+        except Exception:
+            pass
+        outputs = model(**encoded)
+        last = getattr(outputs, "last_hidden_state", None)
+        if last is None and isinstance(outputs, (tuple, list)) and outputs:
+            last = outputs[0]
+        if last is None:
+            raise RuntimeError("embedding model returned no last_hidden_state")
+        mask = encoded.get("attention_mask")
+        if mask is None:
+            pooled = last.mean(dim=1)
+        else:
+            mask_f = mask.unsqueeze(-1).type_as(last)
+            summed = (last * mask_f).sum(dim=1)
+            denom = mask_f.sum(dim=1).clamp(min=1e-6)
+            pooled = summed / denom
+        try:
+            pooled = torch.nn.functional.normalize(pooled, p=2, dim=1)
+        except Exception:
+            pass
+        vecs = pooled.detach().cpu().tolist()
+    return ([list(map(float, v)) for v in (vecs if isinstance(vecs, list) else [])], int(cap))
 
 
 def _extract_text(value: Any) -> str:
@@ -251,6 +977,179 @@ def _run_text_generation(task: Dict[str, Any], *, accelerate_instance: object | 
             temperature=temperature,
         )
         return {"text": str(text)}
+
+
+def _run_text2text_generation(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+    model_name = str(task.get("model_name") or "")
+    payload = task.get("payload") or {}
+    prompt = _extract_hf_input_text(payload)
+
+    # Prefer dispatching through accelerate_instance if available.
+    if accelerate_instance is not None and isinstance(payload, dict):
+        try:
+            import anyio
+            import inspect
+
+            infer = getattr(accelerate_instance, "infer", None)
+            if callable(infer):
+                endpoint_hint = payload.get("endpoint")
+                endpoint_type_hint = payload.get("endpoint_type")
+                data = dict(payload)
+                data.setdefault("prompt", str(prompt or ""))
+
+                async def _do_infer() -> Any:
+                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    if inspect.isawaitable(result):
+                        return await result
+                    return result
+
+                accel_result = anyio.run(_do_infer, backend="trio")
+                if isinstance(accel_result, BaseException):
+                    raise accel_result
+                return {"text": _extract_text(accel_result)}
+        except Exception:
+            pass
+
+    max_new_tokens = int(payload.get("max_new_tokens") or payload.get("max_tokens") or 128) if isinstance(payload, dict) else 128
+    temperature = float(payload.get("temperature") or 0.2) if isinstance(payload, dict) else 0.2
+
+    if not _minimal_hf_enabled():
+        raise RuntimeError("text2text-generation requires accelerate_instance or minimal HF enabled")
+
+    texts, _used = _hf_text2text_batch_auto(
+        [str(prompt or "")],
+        model_name=(model_name or None),
+        max_new_tokens=int(max_new_tokens),
+        temperature=float(temperature),
+        requested_batch_max=1,
+    )
+    return {"text": str(texts[0] if texts else "")}
+
+
+def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+    model_name = str(task.get("model_name") or "")
+    payload = task.get("payload") or {}
+
+    if accelerate_instance is not None and isinstance(payload, dict):
+        try:
+            import anyio
+            import inspect
+
+            infer = getattr(accelerate_instance, "infer", None)
+            if callable(infer):
+                endpoint_hint = payload.get("endpoint")
+                endpoint_type_hint = payload.get("endpoint_type")
+                data = dict(payload)
+                data.setdefault("text", _extract_hf_input_text(payload))
+
+                async def _do_infer() -> Any:
+                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    if inspect.isawaitable(result):
+                        return await result
+                    return result
+
+                accel_result = anyio.run(_do_infer, backend="trio")
+                if isinstance(accel_result, BaseException):
+                    raise accel_result
+                return {"result": accel_result}
+        except Exception:
+            pass
+
+    if not _minimal_hf_enabled():
+        raise RuntimeError("embedding requires accelerate_instance or minimal HF enabled")
+
+    text = _extract_hf_input_text(payload)
+    vecs, _used = _hf_embed_batch_auto([str(text or "")], model_name=(model_name or None), requested_batch_max=1)
+    emb = vecs[0] if vecs else []
+    return {"embedding": emb, "dim": int(len(emb))}
+
+
+def _run_text_classification(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+    model_name = str(task.get("model_name") or "")
+    payload = task.get("payload") or {}
+    text = _extract_hf_input_text(payload)
+
+    if accelerate_instance is not None and isinstance(payload, dict):
+        try:
+            import anyio
+            import inspect
+
+            infer = getattr(accelerate_instance, "infer", None)
+            if callable(infer):
+                endpoint_hint = payload.get("endpoint")
+                endpoint_type_hint = payload.get("endpoint_type")
+                data = dict(payload)
+                data.setdefault("text", str(text or ""))
+
+                async def _do_infer() -> Any:
+                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    if inspect.isawaitable(result):
+                        return await result
+                    return result
+
+                accel_result = anyio.run(_do_infer, backend="trio")
+                if isinstance(accel_result, BaseException):
+                    raise accel_result
+                return {"result": accel_result}
+        except Exception:
+            pass
+
+    if not _minimal_hf_enabled():
+        raise RuntimeError("text-classification requires accelerate_instance or minimal HF enabled")
+
+    out, _used = _hf_textcls_batch_auto([str(text or "")], model_name=(model_name or None), requested_batch_max=1)
+    return {"result": out[0] if isinstance(out, list) and out else out}
+
+
+def _run_hf_pipeline(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
+    model_name = str(task.get("model_name") or "")
+    payload = task.get("payload") or {}
+    if not isinstance(payload, dict):
+        raise ValueError("hf.pipeline payload must be a dict")
+    pipeline_task = str(payload.get("pipeline_task") or payload.get("task") or "").strip()
+    if not pipeline_task:
+        raise ValueError("hf.pipeline requires payload.pipeline_task")
+
+    if accelerate_instance is not None:
+        try:
+            import anyio
+            import inspect
+
+            infer = getattr(accelerate_instance, "infer", None)
+            if callable(infer):
+                endpoint_hint = payload.get("endpoint")
+                endpoint_type_hint = payload.get("endpoint_type")
+                data = dict(payload)
+                data.setdefault("pipeline_task", pipeline_task)
+
+                async def _do_infer() -> Any:
+                    result = infer(model_name or None, data, endpoint=endpoint_hint, endpoint_type=endpoint_type_hint)
+                    if inspect.isawaitable(result):
+                        return await result
+                    return result
+
+                accel_result = anyio.run(_do_infer, backend="trio")
+                if isinstance(accel_result, BaseException):
+                    raise accel_result
+                return {"result": accel_result}
+        except Exception:
+            pass
+
+    if not _minimal_hf_enabled():
+        raise RuntimeError("hf.pipeline requires accelerate_instance or minimal HF enabled")
+
+    try:
+        from transformers import pipeline  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(f"transformers is required for hf.pipeline: {exc}")
+
+    kwargs = dict(payload)
+    kwargs.pop("pipeline_task", None)
+    kwargs.pop("task", None)
+    inputs = kwargs.pop("inputs", None)
+    p = pipeline(pipeline_task, model=(model_name or None))
+    out = p(inputs, **kwargs)  # type: ignore[misc]
+    return {"result": out}
 
 
 def _run_tool_call(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
@@ -389,7 +1288,12 @@ def _build_docker_run_cmd(*, payload: Dict[str, Any]) -> Tuple[list[str], float 
 
     memory_limit = payload.get("memory_limit")
     if memory_limit is not None:
-        cmd.extend(["--memory", str(memory_limit)])
+        cmd.extend(
+            [
+                "--memory",
+                str(memory_limit),
+            ]
+        )
     cpu_limit = payload.get("cpu_limit")
     if cpu_limit is not None:
         try:
@@ -652,6 +1556,21 @@ def _compute_supported_task_types(
 
     # Default: include all handler aliases we can run locally.
     base_defaults = ["text-generation", "text_generation", "generation"]
+    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF")):
+        base_defaults.extend(
+            [
+                "text2text-generation",
+                "text2text_generation",
+                "embedding",
+                "embeddings",
+                "text-embedding",
+                "text_embedding",
+                "text-classification",
+                "text_classification",
+                "hf.pipeline",
+                "hf_pipeline",
+            ]
+        )
     out = _supported_task_types_from_env(base_defaults)
 
     # Add tool.call only when we can actually execute it, and only when the
@@ -927,6 +1846,21 @@ def run_worker(
     handlers["text-generation"] = _wrap(_run_text_generation)
     handlers["text_generation"] = _wrap(_run_text_generation)
     handlers["generation"] = _wrap(_run_text_generation)
+
+    handlers["text2text-generation"] = _wrap(_run_text2text_generation)
+    handlers["text2text_generation"] = _wrap(_run_text2text_generation)
+
+    handlers["embedding"] = _wrap(_run_embedding)
+    handlers["embeddings"] = _wrap(_run_embedding)
+    handlers["text-embedding"] = _wrap(_run_embedding)
+    handlers["text_embedding"] = _wrap(_run_embedding)
+
+    handlers["text-classification"] = _wrap(_run_text_classification)
+    handlers["text_classification"] = _wrap(_run_text_classification)
+
+    handlers["hf.pipeline"] = _wrap(_run_hf_pipeline)
+    handlers["hf_pipeline"] = _wrap(_run_hf_pipeline)
+
     handlers["tool.call"] = _wrap(_run_tool_call)
     handlers["tool"] = _wrap(_run_tool_call)
 
@@ -1399,56 +2333,81 @@ def run_worker(
         if not mesh_supported:
             mesh_supported = ["text-generation"]
 
-        # Try one peer per poll in round-robin order.
-        idx = int(mesh_rr) % max(1, len(peers))
-        mesh_rr = (idx + 1) % max(1, len(peers))
-        remote = peers[idx]
+        # Try a small number of peers per poll (fanout) so one worker can help
+        # drain multiple remote queues promptly when several peers are backed up.
+        try:
+            fanout_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT")
+            fanout_n = int(float(fanout_raw)) if fanout_raw is not None else 1
+        except Exception:
+            fanout_n = 1
+        fanout_n = max(1, min(int(fanout_n), 16))
+
+        idx0 = int(mesh_rr) % max(1, len(peers))
+        mesh_rr = (idx0 + fanout_n) % max(1, len(peers))
 
         # Batch-claim when enabled (reduces RPC overhead; enables micro-batching).
         try:
             batch_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH")
-            batch_n = int(batch_raw) if batch_raw is not None else 1
+            batch_n = int(float(batch_raw)) if batch_raw is not None else 1
         except Exception:
             batch_n = 1
         batch_n = max(1, min(int(batch_n), 64))
 
-        if batch_n > 1:
+        for i in range(min(int(fanout_n), len(peers))):
+            remote = peers[(idx0 + i) % max(1, len(peers))]
+
+            # Use any prefetched tasks from prior batch-claims first.
             try:
-                tasks = claim_many_sync(
-                    remote=remote,
+                buf = getattr(remote, "_mesh_prefetched", None)
+            except Exception:
+                buf = None
+            if isinstance(buf, list) and buf:
+                t0 = buf[0] if isinstance(buf[0], dict) else None
+                try:
+                    setattr(remote, "_mesh_prefetched", list(buf[1:]))
+                except Exception:
+                    pass
+                if isinstance(t0, dict):
+                    return (remote, t0)
+
+            if batch_n > 1:
+                try:
+                    tasks = claim_many_sync(
+                        remote=remote,
+                        worker_id=str(worker_id),
+                        supported_task_types=list(mesh_supported),
+                        max_tasks=int(batch_n),
+                        same_task_type=True,
+                        peer_id=str(worker_id),
+                        clock=None,
+                    )
+                    if tasks and isinstance(tasks[0], dict):
+                        # Return the first; stash the rest on the remote object.
+                        try:
+                            setattr(remote, "_mesh_prefetched", list(tasks[1:]))
+                        except Exception:
+                            pass
+                        return (remote, tasks[0])
+                except Exception:
+                    # Fall back to single-claim.
+                    pass
+
+            try:
+                task = claim_next_sync(
+                    remote=remote,  # RemoteQueue
                     worker_id=str(worker_id),
                     supported_task_types=list(mesh_supported),
-                    max_tasks=int(batch_n),
-                    same_task_type=True,
                     peer_id=str(worker_id),
                     clock=None,
                 )
-                if tasks and isinstance(tasks[0], dict):
-                    # Return the first; stash the rest on the remote object.
-                    try:
-                        setattr(remote, "_mesh_prefetched", list(tasks[1:]))
-                    except Exception:
-                        pass
-                    return (remote, tasks[0])
+                if task is None:
+                    continue
+                if isinstance(task, dict):
+                    return (remote, task)
             except Exception:
-                # Fall back to single-claim.
-                pass
+                continue
 
-        try:
-            task = claim_next_sync(
-                remote=remote,  # RemoteQueue
-                worker_id=str(worker_id),
-                supported_task_types=list(mesh_supported),
-                peer_id=str(worker_id),
-                clock=None,
-            )
-            if task is None:
-                return None
-            if isinstance(task, dict):
-                return (remote, task)
-            return None
-        except Exception:
-            return None
+        return None
 
     def _pop_prefetched(remote: object) -> list[Dict[str, Any]]:
         try:
@@ -1485,12 +2444,277 @@ def run_worker(
         except Exception:
             return
 
+    def _complete_local_task(*, task_id: str, ok: bool, result: Dict[str, Any] | None, error: str | None) -> None:
+        try:
+            if ok:
+                queue.complete(task_id=str(task_id), status="completed", result=(result or {}))
+            else:
+                queue.complete(task_id=str(task_id), status="failed", error=str(error or "unknown error"))
+        except Exception:
+            return
+
+    def _microbatch_and_complete(
+        *,
+        batch_tasks: list[Dict[str, Any]],
+        mesh: bool,
+        remote: object | None,
+    ) -> list[Dict[str, Any]]:
+        """Best-effort micro-batching for homogeneous HF tasks.
+
+        Completes any tasks that are successfully micro-batched and returns the
+        remaining tasks that should be executed sequentially.
+        """
+
+        if not batch_tasks:
+            return []
+
+        try:
+            ttype0 = str(batch_tasks[0].get("task_type") or "").strip().lower()
+        except Exception:
+            ttype0 = ""
+
+        def _complete_one(*, tid: str, ok: bool, res: Dict[str, Any] | None, err: str | None) -> None:
+            if mesh:
+                if remote is None:
+                    return
+                if ok and isinstance(res, dict):
+                    res = dict(res)
+                    progress = res.get("progress")
+                    if not isinstance(progress, dict):
+                        progress = {}
+                    if not progress.get("worker_id"):
+                        progress = dict(progress)
+                        progress["worker_id"] = str(worker_id)
+                        progress["task_type"] = str(ttype0)
+                        progress["mesh"] = True
+                    res["progress"] = progress
+                _complete_mesh_task(remote=remote, task_id=tid, ok=ok, result=res, error=err)
+            else:
+                if ok and isinstance(res, dict):
+                    res = dict(res)
+                    progress = res.get("progress")
+                    if not isinstance(progress, dict):
+                        progress = {}
+                    if not progress.get("worker_id"):
+                        progress = dict(progress)
+                        progress["worker_id"] = str(worker_id)
+                        progress["task_type"] = str(ttype0)
+                    res["progress"] = progress
+                _complete_local_task(task_id=tid, ok=ok, result=res, error=err)
+
+        # text-generation batching (minimal HF only)
+        tb_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX"), default=1)
+        tb_limit = 64 if tb_cap <= 0 else max(1, min(int(tb_cap), 64))
+        can_textgen_batch = (
+            ttype0 in {"text-generation", "text_generation", "generation"}
+            and tb_limit > 1
+            and accelerate_instance is None
+            and (
+                _truthy(os.environ.get("IPFS_ACCEL_SKIP_CORE"))
+                or _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_LLM"))
+            )
+        )
+
+        if can_textgen_batch:
+            text_tasks: list[Dict[str, Any]] = []
+            for t in batch_tasks[:tb_limit]:
+                if str(t.get("task_type") or "").strip().lower() not in {"text-generation", "text_generation", "generation"}:
+                    break
+                text_tasks.append(t)
+
+            def _params(t: Dict[str, Any]) -> tuple[str, int, float]:
+                payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                model = str(t.get("model_name") or "")
+                mx = int((payload or {}).get("max_new_tokens") or (payload or {}).get("max_tokens") or 128)
+                temp = float((payload or {}).get("temperature") or 0.2)
+                return (model, mx, temp)
+
+            if text_tasks:
+                base = _params(text_tasks[0])
+                if all(_params(t) == base for t in text_tasks):
+                    prompts = []
+                    for t in text_tasks:
+                        payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                        prompts.append(str(_extract_hf_input_text(payload) or ""))
+
+                    texts, used = _hf_textgen_batch_auto(
+                        prompts,
+                        model_name=(base[0] or None),
+                        max_new_tokens=int(base[1]),
+                        temperature=float(base[2]),
+                        requested_batch_max=int(tb_cap),
+                    )
+
+                    for t, text in zip(text_tasks[:used], texts):
+                        tid = str(t.get("task_id") or "").strip()
+                        if not tid:
+                            continue
+                        _complete_one(tid=tid, ok=True, res={"text": str(text)}, err=None)
+
+                    return list(batch_tasks[used:])
+
+        # text2text-generation batching (minimal HF only)
+        t2t_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX"), default=1)
+        t2t_limit = 64 if t2t_cap <= 0 else max(1, min(int(t2t_cap), 64))
+        can_t2t_batch = (
+            ttype0 in {"text2text-generation", "text2text_generation"}
+            and t2t_limit > 1
+            and accelerate_instance is None
+            and _minimal_hf_enabled()
+        )
+        if can_t2t_batch:
+            t2t_tasks: list[Dict[str, Any]] = []
+            for t in batch_tasks[:t2t_limit]:
+                if str(t.get("task_type") or "").strip().lower() not in {"text2text-generation", "text2text_generation"}:
+                    break
+                t2t_tasks.append(t)
+
+            def _t2t_params(t: Dict[str, Any]) -> tuple[str, int, float]:
+                payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                model = str(t.get("model_name") or "")
+                mx = int((payload or {}).get("max_new_tokens") or (payload or {}).get("max_tokens") or 128)
+                temp = float((payload or {}).get("temperature") or 0.2)
+                return (model, mx, temp)
+
+            if t2t_tasks:
+                base = _t2t_params(t2t_tasks[0])
+                if all(_t2t_params(t) == base for t in t2t_tasks):
+                    prompts = []
+                    for t in t2t_tasks:
+                        payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                        prompts.append(str(_extract_hf_input_text(payload) or ""))
+
+                    texts, used = _hf_text2text_batch_auto(
+                        prompts,
+                        model_name=(base[0] or None),
+                        max_new_tokens=int(base[1]),
+                        temperature=float(base[2]),
+                        requested_batch_max=int(t2t_cap),
+                    )
+
+                    for t, text in zip(t2t_tasks[:used], texts):
+                        tid = str(t.get("task_id") or "").strip()
+                        if not tid:
+                            continue
+                        _complete_one(tid=tid, ok=True, res={"text": str(text)}, err=None)
+
+                    return list(batch_tasks[used:])
+
+        # text-classification batching (minimal HF only)
+        cls_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX"), default=1)
+        cls_limit = 64 if cls_cap <= 0 else max(1, min(int(cls_cap), 64))
+        can_cls_batch = (
+            ttype0 in {"text-classification", "text_classification"}
+            and cls_limit > 1
+            and accelerate_instance is None
+            and _minimal_hf_enabled()
+        )
+        if can_cls_batch:
+            cls_tasks: list[Dict[str, Any]] = []
+            for t in batch_tasks[:cls_limit]:
+                if str(t.get("task_type") or "").strip().lower() not in {"text-classification", "text_classification"}:
+                    break
+                cls_tasks.append(t)
+
+            def _cls_params(t: Dict[str, Any]) -> tuple[str]:
+                return (str(t.get("model_name") or ""),)
+
+            if cls_tasks:
+                base = _cls_params(cls_tasks[0])
+                if all(_cls_params(t) == base for t in cls_tasks):
+                    texts_in = []
+                    for t in cls_tasks:
+                        payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                        texts_in.append(str(_extract_hf_input_text(payload) or ""))
+
+                    outs, used = _hf_textcls_batch_auto(
+                        texts_in,
+                        model_name=(base[0] or None),
+                        requested_batch_max=int(cls_cap),
+                    )
+
+                    for t, out in zip(cls_tasks[:used], outs):
+                        tid = str(t.get("task_id") or "").strip()
+                        if not tid:
+                            continue
+                        _complete_one(tid=tid, ok=True, res={"result": out}, err=None)
+
+                    return list(batch_tasks[used:])
+
+        # embedding batching (minimal HF only)
+        emb_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX"), default=1)
+        emb_limit = 64 if emb_cap <= 0 else max(1, min(int(emb_cap), 64))
+        can_emb_batch = (
+            ttype0 in {"embedding", "embeddings", "text-embedding", "text_embedding"}
+            and emb_limit > 1
+            and accelerate_instance is None
+            and _minimal_hf_enabled()
+        )
+        if can_emb_batch:
+            emb_types = {"embedding", "embeddings", "text-embedding", "text_embedding"}
+            emb_tasks: list[Dict[str, Any]] = []
+            for t in batch_tasks[:emb_limit]:
+                if str(t.get("task_type") or "").strip().lower() not in emb_types:
+                    break
+                emb_tasks.append(t)
+
+            def _emb_params(t: Dict[str, Any]) -> tuple[str]:
+                return (str(t.get("model_name") or ""),)
+
+            if emb_tasks:
+                base = _emb_params(emb_tasks[0])
+                if all(_emb_params(t) == base for t in emb_tasks):
+                    texts_in = []
+                    for t in emb_tasks:
+                        payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                        texts_in.append(str(_extract_hf_input_text(payload) or ""))
+
+                    vecs, used = _hf_embed_batch_auto(
+                        texts_in,
+                        model_name=(base[0] or None),
+                        requested_batch_max=int(emb_cap),
+                    )
+
+                    for t, vec in zip(emb_tasks[:used], vecs):
+                        tid = str(t.get("task_id") or "").strip()
+                        if not tid:
+                            continue
+                        emb = list(vec) if isinstance(vec, list) else []
+                        _complete_one(tid=tid, ok=True, res={"embedding": emb, "dim": int(len(emb))}, err=None)
+
+                    return list(batch_tasks[used:])
+
+        return list(batch_tasks)
+
+    # Local batch-claim (homogeneous) to enable micro-batching.
+    local_claim_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH"), default=1)
+    try:
+        local_claim_n = int(local_claim_cap) if int(local_claim_cap) > 0 else 1
+    except Exception:
+        local_claim_n = 1
+    local_claim_n = max(1, min(int(local_claim_n), 128))
+
     try:
         while True:
             if stop_event is not None and stop_event.is_set():
                 return 0
-            task = queue.claim_next(worker_id=worker_id, supported_task_types=supported)
-            if task is None:
+
+            claimed_local: list[QueuedTask] = []
+            if local_claim_n > 1:
+                try:
+                    claimed_local = queue.claim_next_many(
+                        worker_id=worker_id,
+                        supported_task_types=supported,
+                        max_tasks=int(local_claim_n),
+                        same_task_type=True,
+                    )
+                except Exception:
+                    claimed_local = []
+            else:
+                one = queue.claim_next(worker_id=worker_id, supported_task_types=supported)
+                claimed_local = [one] if one is not None else []
+
+            if not claimed_local:
                 # No local work; optionally help the mesh by claiming from peers.
                 mesh_claim = _maybe_claim_from_mesh()
                 if mesh_claim is not None:
@@ -1504,66 +2728,8 @@ def run_worker(
                     # prior batch claim.
                     batch_tasks = [remote_task] + _pop_prefetched(remote)
 
-                    # Micro-batch text-generation when safe and enabled.
-                    try:
-                        ttype0 = str(batch_tasks[0].get("task_type") or "").strip().lower()
-                    except Exception:
-                        ttype0 = ""
-
-                    try:
-                        tb_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX")
-                        tb_max = int(tb_raw) if tb_raw is not None else 1
-                    except Exception:
-                        tb_max = 1
-                    tb_max = max(1, min(int(tb_max), 64))
-
-                    can_textgen_batch = (
-                        ttype0 in {"text-generation", "text_generation", "generation"}
-                        and tb_max > 1
-                        and accelerate_instance is None
-                        and (_truthy(os.environ.get("IPFS_ACCEL_SKIP_CORE")) or _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_LLM")))
-                    )
-
-                    if can_textgen_batch:
-                        text_tasks = []
-                        for t in batch_tasks[:tb_max]:
-                            if str(t.get("task_type") or "").strip().lower() not in {"text-generation", "text_generation", "generation"}:
-                                break
-                            text_tasks.append(t)
-
-                        # Require homogeneous generation params for batching.
-                        def _params(t: Dict[str, Any]) -> tuple[str, int, float]:
-                            payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
-                            model = str(t.get("model_name") or "")
-                            mx = int((payload or {}).get("max_new_tokens") or (payload or {}).get("max_tokens") or 128)
-                            temp = float((payload or {}).get("temperature") or 0.2)
-                            return (model, mx, temp)
-
-                        base = _params(text_tasks[0])
-                        if all(_params(t) == base for t in text_tasks):
-                            prompts = []
-                            for t in text_tasks:
-                                payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
-                                pr = payload.get("prompt") if isinstance(payload, dict) else None
-                                prompts.append(str(pr or ""))
-
-                            texts = _hf_textgen_batch(
-                                prompts,
-                                model_name=base[0] or None,
-                                max_new_tokens=int(base[1]),
-                                temperature=float(base[2]),
-                            )
-
-                            for t, text in zip(text_tasks, texts):
-                                tid = str(t.get("task_id") or "").strip()
-                                if not tid:
-                                    continue
-                                res: Dict[str, Any] = {"text": str(text)}
-                                res["progress"] = {"worker_id": str(worker_id), "task_type": str(t.get("task_type") or ""), "mesh": True}
-                                _complete_mesh_task(remote=remote, task_id=tid, ok=True, result=res, error=None)
-
-                            # Process remaining tasks (if any) sequentially.
-                            batch_tasks = batch_tasks[len(text_tasks) :]
+                    # Micro-batch a homogeneous prefix when safe and enabled.
+                    batch_tasks = _microbatch_and_complete(batch_tasks=batch_tasks, mesh=True, remote=remote)
 
                     for t in batch_tasks:
                         tid = str(t.get("task_id") or "").strip()
@@ -1614,6 +2780,65 @@ def run_worker(
                 else:
                     stop_event.wait(sleep_s)
                 continue
+
+            # Batch path: complete a homogeneous set locally (no per-task heartbeat).
+            if len(claimed_local) > 1:
+                batch_tasks_local: list[Dict[str, Any]] = []
+                for t in claimed_local:
+                    if t is None:
+                        continue
+                    batch_tasks_local.append(
+                        {
+                            "task_id": t.task_id,
+                            "task_type": t.task_type,
+                            "model_name": t.model_name,
+                            "payload": t.payload,
+                        }
+                    )
+
+                batch_tasks_local = _microbatch_and_complete(batch_tasks=batch_tasks_local, mesh=False, remote=None)
+
+                for t in batch_tasks_local:
+                    tid = str(t.get("task_id") or "").strip()
+                    if not tid:
+                        continue
+                    result: Dict[str, Any] | None = None
+                    error: str | None = None
+                    ok = False
+                    try:
+                        ttype = str(t.get("task_type") or "").strip().lower()
+                        handler = handlers.get(ttype)
+                        if handler is None:
+                            raise RuntimeError(f"Unsupported task_type: {t.get('task_type')}")
+                        result = handler(
+                            {
+                                "task_id": tid,
+                                "task_type": t.get("task_type"),
+                                "model_name": t.get("model_name"),
+                                "payload": t.get("payload"),
+                            }
+                        )
+                        if isinstance(result, dict):
+                            result = dict(result)
+                            progress = result.get("progress")
+                            if not isinstance(progress, dict):
+                                progress = {}
+                            if not progress.get("worker_id"):
+                                progress = dict(progress)
+                                progress["worker_id"] = str(worker_id)
+                                progress["task_type"] = str(t.get("task_type") or "")
+                            result["progress"] = progress
+                        ok = True
+                    except Exception as exc:
+                        ok = False
+                        error = str(exc)
+                    _complete_local_task(task_id=tid, ok=ok, result=result, error=error)
+
+                if once:
+                    return 0
+                continue
+
+            task = claimed_local[0]
 
             # Generic heartbeat/progress so peers can observe long-running tasks via
             # RPC get/wait polling even for non-docker handlers.
