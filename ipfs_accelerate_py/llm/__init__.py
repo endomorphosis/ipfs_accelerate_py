@@ -1,6 +1,23 @@
-"""LLM utilities and interfaces for ipfs_accelerate_py.
+"""LLM package.
 
-This package provides LLM-specific functionality that extends the core llm_router.
+This package contains GraphRAG-oriented LLM utilities (prompt libraries,
+semantic validation, reasoning tracing) and bridges to runtime LLM backends.
+
+The primary integration point is `LLMInterfaceFactory.create()`, which will
+produce a mock implementation by default, or a router-backed implementation
+when a real provider/model is configured (see env vars in `ipfs_datasets_py.llm_router`).
 """
 
-__all__ = []
+from .llm_interface import (
+	LLMConfig,
+	LLMInterface,
+	LLMInterfaceFactory,
+	MockLLMInterface,
+	PromptTemplate,
+	PromptLibrary,
+	AdaptivePrompting,
+	GraphRAGPromptTemplates,
+)
+
+from .llm_router_interface import RoutedLLMInterface
+
