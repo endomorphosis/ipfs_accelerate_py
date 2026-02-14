@@ -15,7 +15,7 @@ Architecture:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 logger = logging.getLogger("ipfs_accelerate_mcp.unified_tools")
 
@@ -30,49 +30,57 @@ def register_unified_tools(mcp: Any) -> None:
         mcp: MCP server instance
     """
     logger.info("Registering unified MCP tools")
-    
+
+    # Make unified registration work with both StandaloneMCP (register_tool)
+    # and FastMCP (decorator-based tool registration).
+    try:
+        from .fastmcp_compat import ensure_register_tool_compat
+        ensure_register_tool_compat(mcp)
+    except Exception as e:
+        logger.debug(f"FastMCP compatibility shim not applied: {e}")
+
     # Register GitHub tools
     try:
         register_github_tools(mcp)
         logger.debug("Registered GitHub unified tools")
     except Exception as e:
         logger.warning(f"Failed to register GitHub tools: {e}")
-    
+
     # Register Docker tools
     try:
         register_docker_tools(mcp)
         logger.debug("Registered Docker unified tools")
     except Exception as e:
         logger.warning(f"Failed to register Docker tools: {e}")
-    
+
     # Register Hardware tools
     try:
         register_hardware_tools(mcp)
         logger.debug("Registered Hardware unified tools")
     except Exception as e:
         logger.warning(f"Failed to register Hardware tools: {e}")
-    
+
     # Register Runner tools
     try:
         register_runner_tools(mcp)
         logger.debug("Registered Runner unified tools")
     except Exception as e:
         logger.warning(f"Failed to register Runner tools: {e}")
-    
+
     # Register IPFS Files tools
     try:
         register_ipfs_files_tools(mcp)
         logger.debug("Registered IPFS Files unified tools")
     except Exception as e:
         logger.warning(f"Failed to register IPFS Files tools: {e}")
-    
+
     # Register Network tools
     try:
         register_network_tools(mcp)
         logger.debug("Registered Network unified tools")
     except Exception as e:
         logger.warning(f"Failed to register Network tools: {e}")
-    
+
     logger.info("All unified tools registered")
 
 

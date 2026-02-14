@@ -10,7 +10,8 @@ from typing import Any
 # Set up logging
 logger = logging.getLogger("ipfs_accelerate_mcp.tools")
 
-def register_all_tools(mcp: Any) -> None:
+
+def register_all_tools(mcp: Any, *, include_p2p_taskqueue_tools: bool = True) -> None:
     """
     Register all tools with the MCP server
     
@@ -22,7 +23,14 @@ def register_all_tools(mcp: Any) -> None:
         mcp: MCP server instance
     """
     logger.debug("Registering all tools with MCP server")
-    
+
+    # Provide StandaloneMCP-like register_tool API when running under FastMCP.
+    try:
+        from ..fastmcp_compat import ensure_register_tool_compat
+        ensure_register_tool_compat(mcp)
+    except Exception as e:
+        logger.debug(f"FastMCP compatibility shim not applied: {e}")
+
     try:
         # Register unified tools (new architecture) - wraps kit modules
         try:
@@ -31,7 +39,7 @@ def register_all_tools(mcp: Any) -> None:
             logger.info("Registered unified tools from kit modules")
         except Exception as e:
             logger.warning(f"Unified tools not registered: {e}")
-        
+
         # Always register hardware tools (supports both Standalone and FastMCP styles)
         from .hardware import register_hardware_tools
         register_hardware_tools(mcp)
@@ -96,13 +104,16 @@ def register_all_tools(mcp: Any) -> None:
                 logger.warning(f"GitHub CLI tools not registered: {e}")
 
             # Register p2p TaskQueue tools
-            try:
-                from .p2p_taskqueue import register_tools as register_p2p_taskqueue_tools
-                register_p2p_taskqueue_tools(mcp)
-                logger.debug("Registered p2p TaskQueue tools")
-            except Exception as e:
-                logger.warning(f"p2p TaskQueue tools not registered: {e}")
-            
+            if include_p2p_taskqueue_tools:
+                try:
+                    from .p2p_taskqueue import (
+                        register_tools as register_p2p_taskqueue_tools,
+                    )
+                    register_p2p_taskqueue_tools(mcp)
+                    logger.debug("Registered p2p TaskQueue tools")
+                except Exception as e:
+                    logger.warning(f"p2p TaskQueue tools not registered: {e}")
+
             # Register Docker tools
             try:
                 from .docker_tools import register_docker_tools
@@ -111,7 +122,9 @@ def register_all_tools(mcp: Any) -> None:
             except Exception as e:
                 logger.warning(f"Docker tools not registered: {e}")
         else:
-            logger.warning("FastMCP decorators not available; only hardware and model tools registered in standalone mode")
+            logger.warning(
+                "FastMCP decorators not available; only hardware and model tools registered in standalone mode"
+            )
 
         logger.debug("All tools registered with MCP server")
 

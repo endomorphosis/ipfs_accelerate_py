@@ -158,6 +158,18 @@ class TrioMCPServer:
             # Register P2P tools if enabled
             if self.config.enable_p2p_tools:
                 self._register_p2p_tools()
+
+            # Register the broader IPFS Accelerate MCP tools for feature parity
+            # (unified kit wrappers + legacy tools). Skip p2p taskqueue tools
+            # here to avoid duplicate registrations; MCP++ already registers
+            # the dedicated P2P tool set above.
+            try:
+                from ipfs_accelerate_py.mcp.tools import register_all_tools
+
+                register_all_tools(self.mcp, include_p2p_taskqueue_tools=False)
+                logger.info("Registered core ipfs_accelerate_py MCP tools")
+            except Exception as e:
+                logger.warning(f"Core MCP tools not registered: {e}")
             
             # Create FastAPI app for ASGI
             self.fastapi_app = self._create_fastapi_app()
