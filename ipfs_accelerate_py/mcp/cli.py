@@ -20,7 +20,9 @@ logger = logging.getLogger("ipfs_accelerate_mcp_cli")
 
 
 def _default_p2p_queue_path() -> str:
-    env_path = os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_PATH") or os.environ.get("IPFS_DATASETS_PY_TASK_QUEUE_PATH")
+    env_path = os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_PATH") or os.environ.get(
+        "IPFS_DATASETS_PY_TASK_QUEUE_PATH"
+    )
     if env_path and str(env_path).strip():
         return str(env_path).strip()
 
@@ -44,22 +46,23 @@ def _default_task_p2p_announce_file() -> str:
     except Exception:
         return str(Path(os.getcwd()) / "state" / "p2p" / "task_p2p_announce.json")
 
+
 def main():
     """Main entry point for the MCP server CLI."""
     parser = argparse.ArgumentParser(
         description="IPFS Accelerate Model Context Protocol (MCP) Server"
     )
-    
+
     # Define command-line arguments
     parser.add_argument(
-        "--host", 
-        default="0.0.0.0", 
+        "--host",
+        default="0.0.0.0",
         help="Host address to bind (default: 0.0.0.0)"
     )
     parser.add_argument(
-        "--port", 
-        type=int, 
-        default=9000, 
+        "--port",
+        type=int,
+        default=9000,
         help="Port to listen on (default: 9000)"
     )
 
@@ -70,14 +73,14 @@ def main():
         help="libp2p port for MCP-adjacent P2P services (default: 9100)",
     )
     parser.add_argument(
-        "--log-level", 
+        "--log-level",
         choices=["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"],
-        default="INFO", 
+        default="INFO",
         help="Set the logging level (default: INFO)"
     )
     parser.add_argument(
-        "--dev", 
-        action="store_true", 
+        "--dev",
+        action="store_true",
         help="Run in development mode with auto-reload"
     )
 
@@ -87,7 +90,10 @@ def main():
     parser.add_argument(
         "--p2p-task-worker",
         action="store_true",
-        help="Also start accelerate-owned DuckDB task worker (+ optional libp2p TaskQueue service) in a background thread",
+        help=(
+            "Also start accelerate-owned DuckDB task worker (+ optional libp2p TaskQueue service) "
+            "in a background thread"
+        ),
     )
     parser.add_argument(
         "--p2p-queue",
@@ -170,9 +176,12 @@ def main():
     parser.add_argument(
         "--p2p-enable-tools",
         action="store_true",
-        help="Enable remote op=call_tool on the TaskQueue p2p service (sets IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1)",
+        help=(
+            "Enable remote op=call_tool on the TaskQueue p2p service "
+            "(sets IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1)"
+        ),
     )
-    
+
     # Parse arguments
     args = parser.parse_args()
 
@@ -193,7 +202,9 @@ def main():
     if args.p2p_listen_port is None and getattr(args, "mcp_p2p_port", None):
         # Only apply this when we will actually start the p2p TaskQueue service.
         # (Otherwise leave defaults untouched for pure-HTTP usage.)
-        if args.p2p_service or str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") or "").strip().lower() in {"1", "true", "yes", "on"}:
+        env_mcp_p2p_service = os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE")
+        env_mcp_p2p_service_enabled = str(env_mcp_p2p_service or "").strip().lower() in {"1", "true", "yes", "on"}
+        if args.p2p_service or env_mcp_p2p_service_enabled:
             args.p2p_listen_port = int(args.mcp_p2p_port)
 
     # Allow systemd to toggle p2p features via env without changing unit args.
@@ -209,6 +220,15 @@ def main():
         env_enable_tools = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS")
         if str(env_enable_tools or "").strip().lower() in {"1", "true", "yes", "on"}:
             args.p2p_enable_tools = True
+
+    # Let systemd enable autoscaled workers to help drain *remote* backlogs via mesh.
+    # This is intentionally separate from IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE
+    # and IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE, which are read in the
+    # worker thread (so the CLI can remain a thin wrapper).
+    if not args.p2p_autoscale_mesh_children:
+        env_mesh_children = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN")
+        if str(env_mesh_children or "").strip().lower() in {"1", "true", "yes", "on"}:
+            args.p2p_autoscale_mesh_children = True
 
     if args.p2p_enable_tools:
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS"] = "1"
@@ -234,15 +254,16 @@ def main():
 
         # Avoid port conflicts when the GitHub cache would otherwise try to
         # listen on the same port.
+
         os.environ["CACHE_ENABLE_P2P"] = "false"
-    
+
     # Set log level
     logging.getLogger().setLevel(getattr(logging, args.log_level))
-    
+
     # Import MCP components (import here to avoid circular imports)
     from ipfs_accelerate_py import ipfs_accelerate_py
     from ipfs_accelerate_py.mcp.server import create_mcp_server
-    
+
     try:
         # Create IPFS Accelerate instance
         logger.info("Initializing IPFS Accelerate...")
@@ -291,6 +312,17 @@ def main():
                             autoscale_remote_env or ""
                         ).strip().lower() in {"1", "true", "yes", "on"}
 
+                        mesh_children_enabled = bool(args.p2p_autoscale_mesh_children)
+                        # If you ask us to scale based on remote backlog, but you
+                        # don't enable mesh-claiming for child workers, the extra
+                        # workers cannot actually help drain remote queues.
+                        if autoscale_remote_enabled and not mesh_children_enabled:
+                            mesh_children_enabled = True
+                            logger.info(
+                                "Enabling mesh-claiming for autoscaled child workers "
+                                "because remote-backlog autoscaling is enabled"
+                            )
+
                         run_autoscaled_workers(
                             queue_path=queue_path,
                             base_worker_id=str(args.p2p_worker_id),
@@ -305,7 +337,7 @@ def main():
                             accelerate_instance=accelerate,
                             supported_task_types=None,
                             mesh=None,
-                            mesh_children=bool(args.p2p_autoscale_mesh_children),
+                            mesh_children=bool(mesh_children_enabled),
                             autoscale_remote=bool(autoscale_remote_enabled),
                             remote_refresh_s=float(args.p2p_autoscale_remote_refresh_s),
                             remote_max_peers=int(args.p2p_autoscale_remote_max_peers),
@@ -367,11 +399,11 @@ def main():
                 "Started ipfs_accelerate_py TaskQueue p2p service thread "
                 f"(queue={queue_path}, listen_port={args.p2p_listen_port or 'env/default'})"
             )
-        
+
         # Create MCP server
         logger.info("Creating MCP server...")
         mcp_server = create_mcp_server(accelerate_instance=accelerate)
-        
+
         # Start the server
         logger.info(f"Starting MCP server on {args.host}:{args.port}...")
         if args.dev:
@@ -379,12 +411,13 @@ def main():
             mcp_server.run(host=args.host, port=args.port, reload=True)
         else:
             mcp_server.run(host=args.host, port=args.port)
-        
+
     except Exception as e:
         logger.error(f"Error starting MCP server: {str(e)}")
         import traceback
         traceback.print_exc()
         sys.exit(1)
+
 
 if __name__ == "__main__":
     main()

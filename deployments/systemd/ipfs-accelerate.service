@@ -40,6 +40,19 @@ Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
 # TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
 Environment=IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1
 Environment=IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER=1
+
+# Autoscaling: rely on the MCP+p2p server to scale worker threads up/down.
+# Remote autoscale + mesh children means this host can help drain peer backlogs.
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX=4
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S=2
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S=30
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S=5
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS=10
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=1
+
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1
 Environment=IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,docker.execute,docker.execute_docker_container,docker.github
