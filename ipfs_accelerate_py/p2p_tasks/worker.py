@@ -157,7 +157,30 @@ def _available_ram_bytes() -> int:
 
 
 def _available_vram_bytes() -> int:
-    """Best-effort free VRAM bytes for CUDA device 0 (if available)."""
+    """Best-effort free VRAM bytes for CUDA device 0 (if available).
+
+    Deprecated: prefer `_cuda_free_bytes(device_index=...)` or
+    `_available_vram_bytes_for_model(model)`.
+    """
+
+    return _cuda_free_bytes(device_index=0)
+
+
+def _cuda_device_count() -> int:
+    try:
+        import torch  # type: ignore
+
+        if not bool(getattr(torch, "cuda", None)):
+            return 0
+        if not torch.cuda.is_available():
+            return 0
+        return max(0, int(torch.cuda.device_count()))
+    except Exception:
+        return 0
+
+
+def _cuda_free_bytes(*, device_index: int) -> int:
+    """Best-effort free VRAM bytes for a CUDA device."""
 
     try:
         import torch  # type: ignore
@@ -166,8 +189,141 @@ def _available_vram_bytes() -> int:
             return 0
         if not torch.cuda.is_available():
             return 0
-        free_b, _total_b = torch.cuda.mem_get_info(0)
+        idx = int(device_index)
+        if idx < 0 or idx >= int(torch.cuda.device_count()):
+            return 0
+        free_b, _total_b = torch.cuda.mem_get_info(idx)
         return int(free_b)
+    except Exception:
+        return 0
+
+
+def _cuda_free_bytes_all() -> int:
+    """Best-effort sum of free VRAM across all CUDA devices."""
+
+    total = 0
+    for i in range(_cuda_device_count()):
+        total += int(_cuda_free_bytes(device_index=i))
+    return int(total)
+
+
+def _cuda_best_device_index() -> int | None:
+    """Return the CUDA device index with the most free VRAM."""
+
+    best_i: int | None = None
+    best_free = -1
+    for i in range(_cuda_device_count()):
+        free_b = int(_cuda_free_bytes(device_index=i))
+        if free_b > best_free:
+            best_free = free_b
+            best_i = int(i)
+    return best_i
+
+
+def _hf_device_pref() -> str:
+    """Parse desired HF device preference.
+
+    Returns a normalized string:
+      - 'auto'
+      - 'cpu'
+      - 'cuda:{i}'
+    """
+
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_HF_DEVICE")
+        or "auto"
+    )
+    s = str(raw).strip().lower()
+    if not s or s in {"auto"}:
+        return "auto"
+    if s in {"cpu", "-1"}:
+        return "cpu"
+    if s in {"cuda", "gpu"}:
+        return "cuda:0"
+    if s.startswith("cuda:"):
+        tail = s.split(":", 1)[1].strip()
+        try:
+            return f"cuda:{int(float(tail))}"
+        except Exception:
+            return "auto"
+    try:
+        return f"cuda:{int(float(s))}"
+    except Exception:
+        return "auto"
+
+
+def _hf_cuda_max_memory_map() -> dict[int, int]:
+    """Compute a conservative `max_memory` map for Transformers device_map.
+
+    Uses per-device free VRAM at runtime, reserving some slack.
+    """
+
+    try:
+        frac_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_GPU_MAX_MEMORY_FRACTION")
+        frac = float(frac_raw) if frac_raw is not None else 0.92
+    except Exception:
+        frac = 0.92
+    frac = max(0.1, min(0.99, float(frac)))
+
+    try:
+        reserve_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_GPU_MEMORY_RESERVE_MB")
+        reserve_mb = int(float(reserve_raw)) if reserve_raw is not None else 768
+    except Exception:
+        reserve_mb = 768
+    reserve_b = max(0, int(reserve_mb)) * 1024 * 1024
+
+    mm: dict[int, int] = {}
+    for i in range(_cuda_device_count()):
+        free_b = int(_cuda_free_bytes(device_index=i))
+        allow = int(free_b * frac) - int(reserve_b)
+        # Transformers expects positive values; skip unusable devices.
+        if allow > 256 * 1024 * 1024:
+            mm[int(i)] = int(allow)
+    return mm
+
+
+def _available_vram_bytes_for_model(model: object) -> int:
+    """Best-effort free VRAM budget for the model placement.
+
+    - If the model is sharded (`hf_device_map`), use sum free VRAM.
+    - If the model is on a single CUDA device, use free VRAM of that device.
+    - Otherwise return 0.
+    """
+
+    try:
+        device_map = getattr(model, "hf_device_map", None)
+        if isinstance(device_map, dict) and device_map:
+            used: set[int] = set()
+            for v in device_map.values():
+                s = str(v)
+                if s.startswith("cuda:"):
+                    try:
+                        used.add(int(s.split(":", 1)[1]))
+                    except Exception:
+                        continue
+            # Conservative: treat usable budget as the minimum free VRAM among
+            # devices participating in the shard.
+            if used:
+                mins: list[int] = [int(_cuda_free_bytes(device_index=i)) for i in sorted(used)]
+                mins = [m for m in mins if m > 0]
+                return int(min(mins)) if mins else 0
+            return int(_cuda_free_bytes_all())
+    except Exception:
+        pass
+
+    try:
+        import torch  # type: ignore
+
+        for p in getattr(model, "parameters", lambda: [])():
+            dev = getattr(p, "device", None)
+            if dev is not None and str(getattr(dev, "type", "")) == "cuda":
+                idx = getattr(dev, "index", None)
+                if idx is None:
+                    # If index is unknown, treat as aggregate.
+                    return int(_cuda_free_bytes_all())
+                return int(_cuda_free_bytes(device_index=int(idx)))
+        return 0
     except Exception:
         return 0
 
@@ -183,35 +339,34 @@ def _hf_pipeline_device() -> int:
       IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE=auto|cpu|cuda|0|1|cuda:0|cuda:1
     """
 
-    raw = (
-        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE")
-        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_HF_DEVICE")
-        or "auto"
-    )
-    s = str(raw).strip().lower()
-    if not s or s in {"auto"}:
-        pass
-    elif s in {"cpu", "-1"}:
+    # NOTE: this helper returns a *single* pipeline `device` value.
+    # Multi-GPU sharding is handled separately via `device_map='auto'`.
+    pref = _hf_device_pref()
+    if pref == "cpu":
         return -1
-    elif s in {"cuda", "gpu"}:
-        return 0
-    else:
-        if s.startswith("cuda:"):
-            s = s.split(":", 1)[1].strip()
+    if pref.startswith("cuda:"):
         try:
-            return int(float(s))
+            return int(float(pref.split(":", 1)[1]))
         except Exception:
-            # Fall back to auto.
-            pass
-
-    try:
-        import torch  # type: ignore
-
-        if bool(getattr(torch, "cuda", None)) and torch.cuda.is_available() and int(torch.cuda.device_count()) > 0:
             return 0
-    except Exception:
-        pass
+
+    best = _cuda_best_device_index()
+    if best is not None:
+        return int(best)
     return -1
+
+
+def _hf_should_use_device_map_auto() -> bool:
+    """True if we should attempt Transformers `device_map='auto'` sharding."""
+
+    if _hf_device_pref() != "auto":
+        return False
+    if _cuda_device_count() <= 0:
+        return False
+    # We *attempt* device_map=auto even on 1 GPU because it can still
+    # automatically choose dtype/placement. If accelerate isn't installed, we'll
+    # fall back to single-device.
+    return True
 
 
 def _hf_pipeline_device_kind(model: object) -> str:
@@ -225,6 +380,42 @@ def _hf_pipeline_device_kind(model: object) -> str:
         return "cpu"
     except Exception:
         return "cpu"
+
+
+def _hf_model_primary_input_device(model: object) -> str:
+    """Return a best-effort device string for placing input tensors.
+
+    For sharded models, we choose the first CUDA device in the hf_device_map.
+    """
+
+    try:
+        device_map = getattr(model, "hf_device_map", None)
+        if isinstance(device_map, dict):
+            cuda_idxs: list[int] = []
+            for v in device_map.values():
+                s = str(v)
+                if s.startswith("cuda:"):
+                    try:
+                        cuda_idxs.append(int(s.split(":", 1)[1]))
+                    except Exception:
+                        continue
+            if cuda_idxs:
+                return f"cuda:{min(cuda_idxs)}"
+    except Exception:
+        pass
+
+    try:
+        for p in getattr(model, "parameters", lambda: [])():
+            dev = getattr(p, "device", None)
+            if dev is not None:
+                t = str(getattr(dev, "type", "cpu"))
+                idx = getattr(dev, "index", None)
+                if t == "cuda" and idx is not None:
+                    return f"cuda:{int(idx)}"
+                return str(t)
+    except Exception:
+        pass
+    return "cpu"
 
 
 def _hf_estimate_max_batch_size(
@@ -249,7 +440,7 @@ def _hf_estimate_max_batch_size(
 
     # Determine memory kind based on where the model lives.
     kind = _hf_pipeline_device_kind(model)
-    avail = _available_vram_bytes() if kind == "cuda" else _available_ram_bytes()
+    avail = _available_vram_bytes_for_model(model) if kind == "cuda" else _available_ram_bytes()
     if avail <= 0:
         return 1
 
@@ -352,7 +543,7 @@ def _hf_estimate_max_batch_size_encoder(
 
     max_seq_len = max(1, int(max_seq_len_tokens or 1))
     kind = _hf_pipeline_device_kind(model)
-    avail = _available_vram_bytes() if kind == "cuda" else _available_ram_bytes()
+    avail = _available_vram_bytes_for_model(model) if kind == "cuda" else _available_ram_bytes()
     if avail <= 0:
         return 1
 
@@ -450,7 +641,49 @@ def _hf_get_textgen_pipeline(*, requested_model: str) -> object:
     with _HF_TEXTGEN_LOCK:
         if _HF_TEXTGEN_PIPELINE is None or _HF_TEXTGEN_MODEL_ID != requested_model:
             tokenizer = AutoTokenizer.from_pretrained(requested_model)
-            model = AutoModelForCausalLM.from_pretrained(requested_model)
+            # Automatic placement:
+            # - If HF_DEVICE is pinned (cpu/cuda:i), load normally and let pipeline move.
+            # - If HF_DEVICE=auto and CUDA is available, prefer device_map='auto'
+            #   with a max_memory budget based on free VRAM.
+            pref = _hf_device_pref()
+            device_arg: int = -1
+            model_kwargs: dict[str, Any] = {}
+
+            if pref.startswith("cuda:"):
+                try:
+                    device_arg = int(float(pref.split(":", 1)[1]))
+                except Exception:
+                    device_arg = _hf_pipeline_device()
+                model = AutoModelForCausalLM.from_pretrained(requested_model)
+            elif pref == "cpu":
+                device_arg = -1
+                model = AutoModelForCausalLM.from_pretrained(requested_model)
+            else:
+                # auto
+                model = None
+                if _hf_should_use_device_map_auto():
+                    try:
+                        mm = _hf_cuda_max_memory_map()
+                        model_kwargs = {
+                            "device_map": "auto",
+                            "max_memory": mm if mm else None,
+                            "torch_dtype": "auto",
+                            "low_cpu_mem_usage": True,
+                        }
+                        # Remove None entries for older transformers.
+                        model_kwargs = {k: v for k, v in model_kwargs.items() if v is not None}
+                        model = AutoModelForCausalLM.from_pretrained(requested_model, **model_kwargs)
+                        # When sharded, do not let pipeline relocate the model.
+                        device_arg = -1
+                    except Exception:
+                        model = None
+
+                if model is None:
+                    # Fallback: pick the best single GPU (most free VRAM) and
+                    # let pipeline move it.
+                    best = _cuda_best_device_index()
+                    device_arg = int(best) if best is not None else -1
+                    model = AutoModelForCausalLM.from_pretrained(requested_model)
             if (
                 getattr(tokenizer, "pad_token_id", None) is None
                 and getattr(tokenizer, "eos_token_id", None) is not None
@@ -461,7 +694,7 @@ def _hf_get_textgen_pipeline(*, requested_model: str) -> object:
                 "text-generation",
                 model=model,
                 tokenizer=tokenizer,
-                device=_hf_pipeline_device(),
+                device=int(device_arg),
             )
             _HF_TEXTGEN_MODEL_ID = requested_model
             _HF_TEXTGEN_MODEL_BYTES = None
@@ -480,7 +713,38 @@ def _hf_get_text2text_pipeline(*, requested_model: str) -> object:
     with _HF_TEXT2TEXT_LOCK:
         if _HF_TEXT2TEXT_PIPELINE is None or _HF_TEXT2TEXT_MODEL_ID != requested_model:
             tokenizer = AutoTokenizer.from_pretrained(requested_model)
-            model = AutoModelForSeq2SeqLM.from_pretrained(requested_model)
+            pref = _hf_device_pref()
+            device_arg: int = -1
+
+            if pref.startswith("cuda:"):
+                try:
+                    device_arg = int(float(pref.split(":", 1)[1]))
+                except Exception:
+                    device_arg = _hf_pipeline_device()
+                model = AutoModelForSeq2SeqLM.from_pretrained(requested_model)
+            elif pref == "cpu":
+                device_arg = -1
+                model = AutoModelForSeq2SeqLM.from_pretrained(requested_model)
+            else:
+                model = None
+                if _hf_should_use_device_map_auto():
+                    try:
+                        mm = _hf_cuda_max_memory_map()
+                        kwargs: dict[str, Any] = {
+                            "device_map": "auto",
+                            "max_memory": mm if mm else None,
+                            "torch_dtype": "auto",
+                            "low_cpu_mem_usage": True,
+                        }
+                        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+                        model = AutoModelForSeq2SeqLM.from_pretrained(requested_model, **kwargs)
+                        device_arg = -1
+                    except Exception:
+                        model = None
+                if model is None:
+                    best = _cuda_best_device_index()
+                    device_arg = int(best) if best is not None else -1
+                    model = AutoModelForSeq2SeqLM.from_pretrained(requested_model)
             if (
                 getattr(tokenizer, "pad_token_id", None) is None
                 and getattr(tokenizer, "eos_token_id", None) is not None
@@ -490,7 +754,7 @@ def _hf_get_text2text_pipeline(*, requested_model: str) -> object:
                 "text2text-generation",
                 model=model,
                 tokenizer=tokenizer,
-                device=_hf_pipeline_device(),
+                device=int(device_arg),
             )
             _HF_TEXT2TEXT_MODEL_ID = requested_model
             _HF_TEXT2TEXT_MODEL_BYTES = None
@@ -508,12 +772,43 @@ def _hf_get_textcls_pipeline(*, requested_model: str) -> object:
     with _HF_TEXTCLS_LOCK:
         if _HF_TEXTCLS_PIPELINE is None or _HF_TEXTCLS_MODEL_ID != requested_model:
             tokenizer = AutoTokenizer.from_pretrained(requested_model)
-            model = AutoModelForSequenceClassification.from_pretrained(requested_model)
+            pref = _hf_device_pref()
+            device_arg: int = -1
+
+            if pref.startswith("cuda:"):
+                try:
+                    device_arg = int(float(pref.split(":", 1)[1]))
+                except Exception:
+                    device_arg = _hf_pipeline_device()
+                model = AutoModelForSequenceClassification.from_pretrained(requested_model)
+            elif pref == "cpu":
+                device_arg = -1
+                model = AutoModelForSequenceClassification.from_pretrained(requested_model)
+            else:
+                model = None
+                if _hf_should_use_device_map_auto():
+                    try:
+                        mm = _hf_cuda_max_memory_map()
+                        kwargs: dict[str, Any] = {
+                            "device_map": "auto",
+                            "max_memory": mm if mm else None,
+                            "torch_dtype": "auto",
+                            "low_cpu_mem_usage": True,
+                        }
+                        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+                        model = AutoModelForSequenceClassification.from_pretrained(requested_model, **kwargs)
+                        device_arg = -1
+                    except Exception:
+                        model = None
+                if model is None:
+                    best = _cuda_best_device_index()
+                    device_arg = int(best) if best is not None else -1
+                    model = AutoModelForSequenceClassification.from_pretrained(requested_model)
             _HF_TEXTCLS_PIPELINE = pipeline(
                 "text-classification",
                 model=model,
                 tokenizer=tokenizer,
-                device=_hf_pipeline_device(),
+                device=int(device_arg),
             )
             _HF_TEXTCLS_MODEL_ID = requested_model
             _HF_TEXTCLS_MODEL_BYTES = None
@@ -531,7 +826,40 @@ def _hf_get_embed_components(*, requested_model: str) -> tuple[object, object]:
     with _HF_EMBED_LOCK:
         if _HF_EMBED_MODEL is None or _HF_EMBED_TOKENIZER is None or _HF_EMBED_MODEL_ID != requested_model:
             tok = AutoTokenizer.from_pretrained(requested_model)
-            model = AutoModel.from_pretrained(requested_model)
+            pref = _hf_device_pref()
+            if pref.startswith("cuda:"):
+                model = AutoModel.from_pretrained(requested_model)
+                # Move the model explicitly for embedding forward() path.
+                try:
+                    dev = pref
+                    model = model.to(dev)
+                except Exception:
+                    pass
+            elif pref == "cpu":
+                model = AutoModel.from_pretrained(requested_model)
+            else:
+                model = None
+                if _hf_should_use_device_map_auto():
+                    try:
+                        mm = _hf_cuda_max_memory_map()
+                        kwargs: dict[str, Any] = {
+                            "device_map": "auto",
+                            "max_memory": mm if mm else None,
+                            "torch_dtype": "auto",
+                            "low_cpu_mem_usage": True,
+                        }
+                        kwargs = {k: v for k, v in kwargs.items() if v is not None}
+                        model = AutoModel.from_pretrained(requested_model, **kwargs)
+                    except Exception:
+                        model = None
+                if model is None:
+                    model = AutoModel.from_pretrained(requested_model)
+                    best = _cuda_best_device_index()
+                    if best is not None:
+                        try:
+                            model = model.to(f"cuda:{int(best)}")
+                        except Exception:
+                            pass
             _HF_EMBED_TOKENIZER = tok
             _HF_EMBED_MODEL = model
             _HF_EMBED_MODEL_ID = requested_model
@@ -955,15 +1283,7 @@ def _hf_embed_batch_auto(
     except Exception as exc:
         raise RuntimeError(f"torch is required for minimal embedding: {exc}")
 
-    device = "cpu"
-    try:
-        for p in getattr(model, "parameters", lambda: [])():
-            dev = getattr(p, "device", None)
-            if dev is not None:
-                device = str(getattr(dev, "type", "cpu"))
-                break
-    except Exception:
-        device = "cpu"
+    device = _hf_model_primary_input_device(model)
 
     batch_texts = [str(t or "") for t in texts[:cap]]
     with torch.no_grad():
