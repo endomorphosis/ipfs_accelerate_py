@@ -118,8 +118,24 @@ async def _submit_and_wait(*, remote_peer_id: str, remote_multiaddr: str, args: 
             "temperature": float(args.temperature),
             "meta": {"submitted_by": worker_id, "index": i},
         }
-        info = await submit_task_with_info(remote=remote, task_type="text-generation", model_name="gpt2", payload=payload)
-        submitted.append({"task_id": info.get("task_id"), "submit_info": info, "payload": payload})
+        info: Dict[str, Any] | None = None
+        submit_error: str | None = None
+        for attempt in range(2):
+            try:
+                info = await submit_task_with_info(
+                    remote=remote,
+                    task_type="text-generation",
+                    model_name="gpt2",
+                    payload=payload,
+                )
+                submit_error = None
+                break
+            except Exception as exc:
+                submit_error = str(exc)
+                # Brief backoff for transient dial/stream failures.
+                await anyio.sleep(0.25 * (attempt + 1))
+
+        submitted.append({"task_id": (info or {}).get("task_id"), "submit_info": info, "payload": payload, "error": submit_error})
 
     # Wait for completions with bounded concurrency.
     results_by_id: Dict[str, Any] = {}
@@ -128,13 +144,24 @@ async def _submit_and_wait(*, remote_peer_id: str, remote_multiaddr: str, args: 
         # `wait` is a long-poll RPC; it may return None on timeout.
         deadline = anyio.current_time() + float(args.timeout_s)
         last: Optional[Dict[str, Any]] = None
+        last_error: Optional[Dict[str, Any]] = None
         while anyio.current_time() < deadline:
-            t = await wait_task(remote=remote, task_id=str(task_id), timeout_s=min(60.0, float(args.timeout_s)))
+            try:
+                t = await wait_task(remote=remote, task_id=str(task_id), timeout_s=min(60.0, float(args.timeout_s)))
+            except Exception as exc:
+                # Treat transient stream/dial issues as retryable; keep trying
+                # until deadline and record the last error for debugging.
+                last_error = {"status": "error", "error": str(exc)}
+                await anyio.sleep(0.35)
+                continue
+
             if t is not None:
                 last = t
                 break
+
             await anyio.sleep(0.2)
-        results_by_id[str(task_id)] = last
+
+        results_by_id[str(task_id)] = last if last is not None else last_error
 
     task_ids = [str(x.get("task_id") or "") for x in submitted if x.get("task_id")]
 
