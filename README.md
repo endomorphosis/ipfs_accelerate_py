@@ -60,6 +60,33 @@ pip install ipfs-accelerate-py
 python -c "from ipfs_accelerate_py import IPFSAccelerator; print('✅ Ready!')"
 ```
 
+### NVIDIA CUDA (PyTorch)
+
+By default, pip may install a CPU-only PyTorch wheel from PyPI (e.g. `torch==...+cpu`) because the CUDA-enabled wheels are published on PyTorch's wheel indexes.
+
+If you have an NVIDIA GPU and want to ensure CUDA is available in PyTorch, install PyTorch from the CUDA wheel index:
+
+```bash
+python -m pip install -U pip
+python -m pip install --upgrade --force-reinstall -r install/requirements_torch_cu124.txt
+
+python -c "import torch; print('torch=', torch.__version__); print('cuda_available=', torch.cuda.is_available()); print('torch_cuda=', torch.version.cuda)"
+```
+
+If you're on an NVIDIA **GB10 / DGX Spark**-class system (CUDA capability **12.1**, CUDA **13.0**), stable builds may warn that your GPU is unsupported. In that case, use the CUDA 13.0 **nightly** wheels:
+
+```bash
+./scripts/install_torch_cuda_cu130_nightly.sh
+```
+
+If you're installing from source/editable mode, you can also run:
+
+```bash
+python -m pip install -e . --no-deps
+python -m pip install --upgrade --force-reinstall -r install/requirements_torch_cu124.txt
+python -m pip install -r requirements.txt
+```
+
 ### Installation Profiles
 
 Choose the profile that matches your needs:

@@ -3,7 +3,8 @@ ipfs_model_manager_py @ git+https://github.com/endomorphosis/ipfs_model_manager_
 libp2p_kit_py==0.0.19
 ipfs_transformers_py @ git+https://github.com/endomorphosis/ipfs_transformers_py.git@main
 transformers==4.46
---find-links https://download.pytorch.org/whl/cu124
+--index-url https://download.pytorch.org/whl/cu124
+--extra-index-url https://pypi.org/simple
 torch
 torchvision
 numpy

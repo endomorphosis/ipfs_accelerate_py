@@ -78,8 +78,11 @@ pip install ipfs_accelerate_py[all]
 #### Hardware-Specific Installations
 
 ```bash
-# For NVIDIA CUDA support
-pip install ipfs_accelerate_py[cuda]
+# For NVIDIA CUDA support (PyTorch)
+# Note: CUDA-enabled PyTorch wheels are hosted on PyTorch's wheel index.
+python -m pip install --upgrade --force-reinstall \
+    torch torchvision torchaudio \
+    --index-url https://download.pytorch.org/whl/cu124
 
 # For Intel OpenVINO support
 pip install ipfs_accelerate_py[openvino]
@@ -617,7 +620,11 @@ nvidia-smi
 nvcc --version
 
 # Install PyTorch with CUDA support
-pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+
+# If you're on a very new GPU (e.g. NVIDIA GB10 / compute capability 12.1) and see
+# a warning that your GPU is unsupported, install nightly CUDA 13.0 wheels instead:
+pip install --pre torch torchvision torchaudio --index-url https://download.pytorch.org/whl/nightly/cu130
 ```
 
 #### IPFS connection failed
