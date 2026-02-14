@@ -36,15 +36,16 @@ class install_depends_py():
         self.stdout = {}
         self.stderr = {}
         self.install_results = {}
-        self.test_hardware = self.test_hardware
-        
-        if "test_ipfs_accelerate" not in globals() and "test_ipfs_accelerate" not in list(self.resources.keys()):
-            import test.test_ipfs_accelerate as test_ipfs_accelerate
-            self.test_ipfs_accelerate = test_ipfs_accelerate.test_ipfs_accelerate(resources, metadata)
-        elif "test_ipfs_accelerate" in list(self.resources.keys()): 
+
+        # Optional distributed storage integration
+        self.storage = _storage
+
+        # Optional test harness callback (only if the caller provides it).
+        # Importing `test.test_ipfs_accelerate` at init-time is expensive and brittle,
+        # and is not required for dependency installation.
+        self.test_ipfs_accelerate = None
+        if isinstance(self.resources, dict) and "test_ipfs_accelerate" in self.resources:
             self.test_ipfs_accelerate = self.resources["test_ipfs_accelerate"]
-        elif "test_ipfs_accelerate" in globals():
-            self.test_ipfs_accelerate = test_ipfs_accelerate(resources, metadata)
 
     async def test_hardware(self):
         install_file_hash = None

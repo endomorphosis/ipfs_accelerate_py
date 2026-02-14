@@ -21,7 +21,48 @@ import time
 from typing import Any, Callable, Dict, Optional, Tuple
 
 import importlib
+import importlib.util
 from .task_queue import TaskQueue
+
+
+def _transformers_spec_origin() -> str:
+    """Best-effort module origin for diagnosing import issues."""
+
+    try:
+        spec = importlib.util.find_spec("transformers")
+        if spec is None:
+            return ""
+        origin = getattr(spec, "origin", None)
+        if origin:
+            return str(origin)
+        locs = getattr(spec, "submodule_search_locations", None)
+        if locs:
+            locs_list = list(locs)
+            if locs_list:
+                return str(locs_list[0])
+    except Exception:
+        return ""
+    return ""
+
+
+def _transformers_import_ok() -> tuple[bool, str]:
+    """Return (ok, detail) for importing transformers.
+
+    We use this to avoid claiming mesh tasks on workers that will fail at
+    runtime due to a broken/recursive transformers import (common when a local
+    `transformers.py` shadows the package).
+    """
+
+    origin = _transformers_spec_origin()
+    try:
+        importlib.import_module("transformers")
+        return (True, origin)
+    except Exception as exc:
+        if origin:
+            detail = f"{origin} ({type(exc).__name__}: {exc})"
+        else:
+            detail = f"{type(exc).__name__}: {exc}"
+        return (False, detail)
 
 
 def _truthy(value: str | None) -> bool:
@@ -129,6 +170,48 @@ def _available_vram_bytes() -> int:
         return int(free_b)
     except Exception:
         return 0
+
+
+def _hf_pipeline_device() -> int:
+    """Return HF pipeline `device` arg.
+
+    Convention (HF transformers):
+      -1 => CPU
+      >=0 => CUDA device index
+
+    Override via env:
+      IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE=auto|cpu|cuda|0|1|cuda:0|cuda:1
+    """
+
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_HF_DEVICE")
+        or "auto"
+    )
+    s = str(raw).strip().lower()
+    if not s or s in {"auto"}:
+        pass
+    elif s in {"cpu", "-1"}:
+        return -1
+    elif s in {"cuda", "gpu"}:
+        return 0
+    else:
+        if s.startswith("cuda:"):
+            s = s.split(":", 1)[1].strip()
+        try:
+            return int(float(s))
+        except Exception:
+            # Fall back to auto.
+            pass
+
+    try:
+        import torch  # type: ignore
+
+        if bool(getattr(torch, "cuda", None)) and torch.cuda.is_available() and int(torch.cuda.device_count()) > 0:
+            return 0
+    except Exception:
+        pass
+    return -1
 
 
 def _hf_pipeline_device_kind(model: object) -> str:
@@ -378,7 +461,7 @@ def _hf_get_textgen_pipeline(*, requested_model: str) -> object:
                 "text-generation",
                 model=model,
                 tokenizer=tokenizer,
-                device=-1,
+                device=_hf_pipeline_device(),
             )
             _HF_TEXTGEN_MODEL_ID = requested_model
             _HF_TEXTGEN_MODEL_BYTES = None
@@ -407,7 +490,7 @@ def _hf_get_text2text_pipeline(*, requested_model: str) -> object:
                 "text2text-generation",
                 model=model,
                 tokenizer=tokenizer,
-                device=-1,
+                device=_hf_pipeline_device(),
             )
             _HF_TEXT2TEXT_MODEL_ID = requested_model
             _HF_TEXT2TEXT_MODEL_BYTES = None
@@ -430,7 +513,7 @@ def _hf_get_textcls_pipeline(*, requested_model: str) -> object:
                 "text-classification",
                 model=model,
                 tokenizer=tokenizer,
-                device=-1,
+                device=_hf_pipeline_device(),
             )
             _HF_TEXTCLS_MODEL_ID = requested_model
             _HF_TEXTCLS_MODEL_BYTES = None
@@ -468,8 +551,22 @@ def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, tem
 
     try:
         gen = _hf_get_textgen_pipeline(requested_model=requested_model)
+    except (ModuleNotFoundError, ImportError) as exc:
+        raise RuntimeError(
+            "transformers is required for minimal text-generation; install it (and ensure it is importable)"
+        ) from exc
+    except RecursionError as exc:
+        origin = _transformers_spec_origin()
+        hint = (
+            f" (origin={origin})" if origin else ""
+        )
+        raise RuntimeError(
+            "failed to import transformers (RecursionError) for minimal text-generation"
+            + hint
+            + "; this often means a local 'transformers.py' is shadowing the package"
+        ) from exc
     except Exception as exc:
-        raise RuntimeError(f"transformers is required for minimal text-generation: {exc}")
+        raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
 
     # Pipeline calls are not guaranteed thread-safe; guard the call.
     with _HF_TEXTGEN_LOCK:
@@ -510,8 +607,22 @@ def _hf_textgen_batch(
 
     try:
         gen = _hf_get_textgen_pipeline(requested_model=requested_model)
+    except (ModuleNotFoundError, ImportError) as exc:
+        raise RuntimeError(
+            "transformers is required for minimal text-generation; install it (and ensure it is importable)"
+        ) from exc
+    except RecursionError as exc:
+        origin = _transformers_spec_origin()
+        hint = (
+            f" (origin={origin})" if origin else ""
+        )
+        raise RuntimeError(
+            "failed to import transformers (RecursionError) for minimal text-generation"
+            + hint
+            + "; this often means a local 'transformers.py' is shadowing the package"
+        ) from exc
     except Exception as exc:
-        raise RuntimeError(f"transformers is required for minimal text-generation: {exc}")
+        raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
 
     with _HF_TEXTGEN_LOCK:
         out = gen(
@@ -1147,7 +1258,11 @@ def _run_hf_pipeline(task: Dict[str, Any], *, accelerate_instance: object | None
     kwargs.pop("pipeline_task", None)
     kwargs.pop("task", None)
     inputs = kwargs.pop("inputs", None)
-    p = pipeline(pipeline_task, model=(model_name or None))
+    # Allow explicit device override via payload.device; otherwise pick GPU when available.
+    device_arg = kwargs.pop("device", None)
+    if device_arg is None:
+        device_arg = _hf_pipeline_device()
+    p = pipeline(pipeline_task, model=(model_name or None), device=device_arg)
     out = p(inputs, **kwargs)  # type: ignore[misc]
     return {"result": out}
 
@@ -1554,8 +1669,18 @@ def _compute_supported_task_types(
         out = [str(x).strip() for x in supported_task_types if str(x).strip()]
         return out
 
-    # Default: include all handler aliases we can run locally.
-    base_defaults = ["text-generation", "text_generation", "generation"]
+    # Default: include handler aliases we can run locally.
+    # NOTE: text-generation requires either an accelerate instance (preferred)
+    # or a working `transformers` import for the minimal fallback.
+    base_defaults: list[str] = []
+    can_textgen = False
+    if accelerate_instance is not None and callable(getattr(accelerate_instance, "infer", None)):
+        can_textgen = True
+    else:
+        ok, _detail = _transformers_import_ok()
+        can_textgen = bool(ok)
+    if can_textgen:
+        base_defaults.extend(["text-generation", "text_generation", "generation"])
     if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF")):
         base_defaults.extend(
             [
@@ -1659,9 +1784,6 @@ def _mesh_safe_task_types(supported: list[str]) -> list[str]:
         tt = str(t or "").strip()
         if tt:
             out.append(tt)
-
-    if not out:
-        out = ["text-generation"]
     return out
 
 
@@ -2331,7 +2453,7 @@ def run_worker(
         # Restrict mesh to safe task types.
         mesh_supported = _mesh_safe_task_types(list(supported or []))
         if not mesh_supported:
-            mesh_supported = ["text-generation"]
+            return None
 
         # Try a small number of peers per poll (fanout) so one worker can help
         # drain multiple remote queues promptly when several peers are backed up.
