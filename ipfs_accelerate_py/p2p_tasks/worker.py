@@ -744,6 +744,54 @@ def _start_mesh_discovery_thread(
     return t
 
 
+def _worker_mesh_static_peers() -> list[object]:
+    """Return RemoteQueue targets to use for mesh claims, if configured.
+
+    Env:
+      IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEERS
+
+    Format:
+      - Comma-separated list of multiaddrs including /p2p/<peer_id>
+        Example: /ip4/192.168.0.54/tcp/9101/p2p/12D3KooW...
+
+    When provided and valid, the worker will skip mDNS discovery and only
+    claim tasks from these peers.
+    """
+
+    raw = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEERS") or "").strip()
+    if not raw:
+        return []
+
+    # Lazy import: this is only used in mesh mode.
+    try:
+        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+    except Exception:
+        return []
+
+    out: list[object] = []
+    for part in [p.strip() for p in raw.split(",")]:
+        if not part:
+            continue
+
+        multiaddr = str(part).strip()
+        peer_id = ""
+        if "/p2p/" in multiaddr:
+            try:
+                peer_id = multiaddr.split("/p2p/", 1)[1].split("/", 1)[0].strip()
+            except Exception:
+                peer_id = ""
+        if not peer_id:
+            # Require peer id to avoid ambiguous dialing.
+            continue
+
+        try:
+            out.append(RemoteQueue(peer_id=str(peer_id), multiaddr=str(multiaddr)))
+        except Exception:
+            continue
+
+    return out
+
+
 def run_worker(
     *,
     queue_path: str,
@@ -1232,14 +1280,19 @@ def run_worker(
 
     mesh_thread: threading.Thread | None = None
     if mesh_enabled:
-        mesh_thread = _start_mesh_discovery_thread(
-            stop=mesh_stop,
-            worker_id=str(worker_id),
-            peers_out=mesh_peers_state,
-            peers_lock=mesh_peers_lock,
-            max_peers=int(mesh_peers_limit),
-            refresh_s=float(mesh_refresh),
-        )
+        static_peers = _worker_mesh_static_peers()
+        if static_peers:
+            with mesh_peers_lock:
+                mesh_peers_state["peers"] = list(static_peers)
+        else:
+            mesh_thread = _start_mesh_discovery_thread(
+                stop=mesh_stop,
+                worker_id=str(worker_id),
+                peers_out=mesh_peers_state,
+                peers_lock=mesh_peers_lock,
+                max_peers=int(mesh_peers_limit),
+                refresh_s=float(mesh_refresh),
+            )
 
     def _snapshot_mesh_peers() -> list[object]:
         with mesh_peers_lock:
