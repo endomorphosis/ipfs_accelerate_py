@@ -241,7 +241,10 @@ def _run_shell(task: Dict[str, Any]) -> Dict[str, Any]:
     except Exception:
         timeout_v = None
 
-    image = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_SHELL_IMAGE") or "ubuntu:22.04").strip() or "ubuntu:22.04"
+    image = (
+        str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_SHELL_IMAGE") or "ubuntu:22.04").strip()
+        or "ubuntu:22.04"
+    )
     cmd_str = shlex.join([str(x) for x in argv])
     command = ["/bin/sh", "-lc", cmd_str]
 
@@ -542,7 +545,58 @@ def _supported_task_types_from_env(default: list[str]) -> list[str]:
                 "docker.build_and_execute_github_repo",
             ]
         )
+    # Shell tasks are docker-backed; only enable when explicitly allowed.
+    enable_shell_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_SHELL") or ""
+    enable_shell = str(enable_shell_raw).strip().lower() in {"1", "true", "yes", "on"}
+    if enable_shell and _docker_tasks_enabled():
+        base.append("shell")
     return base
+
+
+def _task_types_overridden_via_env() -> bool:
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES")
+        or ""
+    )
+    return bool([p.strip() for p in str(raw).split(",") if p.strip()])
+
+
+def _accelerate_supports_tool_call(accelerate_instance: object | None) -> bool:
+    fn = getattr(accelerate_instance, "call_tool", None)
+    return bool(callable(fn))
+
+
+def _compute_supported_task_types(
+    *,
+    supported_task_types: Optional[list[str]],
+    accelerate_instance: object | None,
+) -> list[str]:
+    # If explicitly provided, respect it.
+    if isinstance(supported_task_types, list) and supported_task_types:
+        out = [str(x).strip() for x in supported_task_types if str(x).strip()]
+        return out
+
+    # Default: include all handler aliases we can run locally.
+    base_defaults = ["text-generation", "text_generation", "generation"]
+    out = _supported_task_types_from_env(base_defaults)
+
+    # Add tool.call only when we can actually execute it, and only when the
+    # task types weren't explicitly overridden via env (where the user likely
+    # wants an exact allowlist).
+    if (not _task_types_overridden_via_env()) and _accelerate_supports_tool_call(accelerate_instance):
+        out.extend(["tool.call", "tool"])
+
+    # Deduplicate while keeping order.
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for t in out:
+        tt = str(t or "").strip()
+        if not tt or tt in seen:
+            continue
+        seen.add(tt)
+        deduped.append(tt)
+    return deduped
 
 
 def _worker_mesh_enabled() -> bool:
@@ -704,6 +758,7 @@ def run_worker(
     mesh_refresh_s: Optional[float] = None,
     mesh_claim_interval_s: Optional[float] = None,
     mesh_max_peers: Optional[int] = None,
+    stop_event: threading.Event | None = None,
 ) -> int:
     if p2p_service:
         # Run the libp2p service in a background thread so the worker loop can
@@ -778,7 +833,10 @@ def run_worker(
         except Exception:
             timeout_v = None
 
-        image = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_SHELL_IMAGE") or "ubuntu:22.04").strip() or "ubuntu:22.04"
+        image = (
+            str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_SHELL_IMAGE") or "ubuntu:22.04").strip()
+            or "ubuntu:22.04"
+        )
         cmd_str = shlex.join([str(x) for x in argv])
         command = ["/bin/sh", "-lc", cmd_str]
 
@@ -1151,9 +1209,10 @@ def run_worker(
     handlers["docker.github_repo"] = _docker_github_handler
     handlers["docker.build_and_execute_github_repo"] = _docker_github_handler
 
-    supported = supported_task_types if isinstance(supported_task_types, list) and supported_task_types else None
-    if supported is None:
-        supported = _supported_task_types_from_env(["text-generation"])
+    supported = _compute_supported_task_types(
+        supported_task_types=supported_task_types,
+        accelerate_instance=accelerate_instance,
+    )
 
     mesh_enabled = bool(_worker_mesh_enabled()) if mesh is None else bool(mesh)
     mesh_refresh = float(_worker_mesh_refresh_s()) if mesh_refresh_s is None else float(mesh_refresh_s)
@@ -1235,7 +1294,14 @@ def run_worker(
         except Exception:
             return None
 
-    def _complete_mesh_task(*, remote: object, task_id: str, ok: bool, result: Dict[str, Any] | None, error: str | None) -> None:
+    def _complete_mesh_task(
+        *,
+        remote: object,
+        task_id: str,
+        ok: bool,
+        result: Dict[str, Any] | None,
+        error: str | None,
+    ) -> None:
         try:
             from ipfs_accelerate_py.p2p_tasks.client import complete_task_sync
 
@@ -1251,6 +1317,8 @@ def run_worker(
 
     try:
         while True:
+            if stop_event is not None and stop_event.is_set():
+                return 0
             task = queue.claim_next(worker_id=worker_id, supported_task_types=supported)
             if task is None:
                 # No local work; optionally help the mesh by claiming from peers.
@@ -1301,7 +1369,11 @@ def run_worker(
 
                 if once:
                     return 0
-                time.sleep(max(0.05, float(poll_interval_s)))
+                sleep_s = max(0.05, float(poll_interval_s))
+                if stop_event is None:
+                    time.sleep(sleep_s)
+                else:
+                    stop_event.wait(sleep_s)
                 continue
 
             # Generic heartbeat/progress so peers can observe long-running tasks via
@@ -1384,6 +1456,10 @@ def run_worker(
             if once:
                 return 0
     finally:
+        try:
+            queue.close()
+        except Exception:
+            pass
         if mesh_enabled:
             mesh_stop.set()
             if mesh_thread is not None:
@@ -1391,6 +1467,280 @@ def run_worker(
                     mesh_thread.join(timeout=0.5)
                 except Exception:
                     pass
+
+
+def run_autoscaled_workers(
+    *,
+    queue_path: str,
+    base_worker_id: str,
+    min_workers: int = 1,
+    max_workers: int = 4,
+    scale_poll_s: float = 2.0,
+    scale_down_idle_s: float = 30.0,
+    poll_interval_s: float = 0.25,
+    once: bool = False,
+    p2p_service: bool = False,
+    p2p_listen_port: Optional[int] = None,
+    accelerate_instance: object | None = None,
+    supported_task_types: Optional[list[str]] = None,
+    mesh: Optional[bool] = None,
+    mesh_children: Optional[bool] = False,
+    autoscale_remote: bool = False,
+    remote_refresh_s: float = 5.0,
+    remote_max_peers: int = 10,
+    stop_event: threading.Event | None = None,
+) -> int:
+    """Autoscale worker threads based on local and (optionally) remote backlog.
+
+    This manager starts between `min_workers` and `max_workers` worker threads.
+    Each worker runs `run_worker(...)` with a unique worker_id.
+
+        Notes:
+        - By default, scale decisions are based on the *local* DuckDB queue backlog.
+        - When `autoscale_remote=True`, the manager also polls discovered peers
+            (via TaskQueue status(detail=True)) and scales up when remote queues have
+            queued tasks of types this node supports.
+    - Workers stop cooperatively after they finish their current task.
+    """
+
+    import uuid
+
+    min_w = max(0, int(min_workers))
+    max_w = max(min_w, int(max_workers))
+    poll_s = max(0.2, float(scale_poll_s))
+    idle_s = max(0.0, float(scale_down_idle_s))
+
+    if once:
+        # Autoscale manager is intended for long-running services.
+        # For one-shot runs, just run a single worker.
+        return run_worker(
+            queue_path=queue_path,
+            worker_id=str(base_worker_id),
+            poll_interval_s=float(poll_interval_s),
+            once=True,
+            p2p_service=bool(p2p_service),
+            p2p_listen_port=p2p_listen_port,
+            accelerate_instance=accelerate_instance,
+            supported_task_types=supported_task_types,
+            mesh=mesh,
+            stop_event=stop_event,
+        )
+
+    # Determine supported task types for counting and for child workers.
+    # If not explicitly provided, mirror run_worker() defaults.
+    supported_for_workers = _compute_supported_task_types(
+        supported_task_types=supported_task_types,
+        accelerate_instance=accelerate_instance,
+    )
+
+    # Lightweight queue reader used only for counts.
+    q = TaskQueue(queue_path)
+
+    workers_lock = threading.RLock()
+    workers: list[tuple[str, threading.Thread, threading.Event]] = []
+    last_nonzero_ts = 0.0
+
+    # Remote backlog aggregation state.
+    remote_lock = threading.RLock()
+    remote_state: dict[str, object] = {
+        "queued": 0,
+        "queued_by_type": {},
+        "peers": [],
+        "ts": 0.0,
+    }
+    remote_stop = threading.Event()
+    remote_thread: threading.Thread | None = None
+
+    def _make_id(idx: int) -> str:
+        return f"{str(base_worker_id)}-w{int(idx)}-{uuid.uuid4().hex[:6]}"
+
+    def _start_one(*, idx: int, start_service: bool) -> None:
+        wid = _make_id(idx)
+        ev = threading.Event()
+
+        def _run() -> None:
+            run_worker(
+                queue_path=queue_path,
+                worker_id=wid,
+                poll_interval_s=float(poll_interval_s),
+                once=False,
+                p2p_service=bool(start_service),
+                p2p_listen_port=p2p_listen_port,
+                accelerate_instance=accelerate_instance,
+                supported_task_types=list(supported_for_workers or []),
+                mesh=mesh if start_service else (mesh_children if mesh_children is not None else mesh),
+                stop_event=ev,
+            )
+
+        t = threading.Thread(target=_run, name=f"task_worker[{wid}]", daemon=True)
+        t.start()
+        with workers_lock:
+            workers.append((wid, t, ev))
+
+    def _stop_extra(desired: int) -> None:
+        with workers_lock:
+            while len(workers) > desired:
+                wid, t, ev = workers.pop()
+                try:
+                    ev.set()
+                except Exception:
+                    pass
+                try:
+                    t.join(timeout=0.2)
+                except Exception:
+                    pass
+
+    # Start initial pool.
+    initial = min_w if min_w > 0 else 1
+    initial = min(initial, max_w)
+    for i in range(initial):
+        _start_one(idx=i, start_service=(bool(p2p_service) and i == 0))
+
+    # Optional: remote backlog polling thread.
+    if bool(autoscale_remote):
+        try:
+            from ipfs_accelerate_py.p2p_tasks.client import (
+                RemoteQueue,
+                discover_peers_via_mdns_sync,
+                request_status_sync,
+            )
+
+            expected_session = _expected_session_tag()
+
+            def _remote_loop() -> None:
+                refresh_s = max(0.5, float(remote_refresh_s))
+                limit = max(1, min(100, int(remote_max_peers)))
+
+                while not remote_stop.is_set() and (stop_event is None or not stop_event.is_set()):
+                    peers: list[RemoteQueue] = []
+                    try:
+                        peers = discover_peers_via_mdns_sync(timeout_s=1.0, limit=limit, exclude_self=True)
+                    except Exception:
+                        peers = []
+
+                    queued_total = 0
+                    queued_by_type: dict[str, int] = {}
+                    keep: list[RemoteQueue] = []
+                    for rq in list(peers or []):
+                        try:
+                            resp = request_status_sync(remote=rq, timeout_s=3.0, detail=True)
+                        except Exception:
+                            continue
+                        if not (isinstance(resp, dict) and resp.get("ok")):
+                            continue
+                        if expected_session and str(resp.get("session") or "").strip() != expected_session:
+                            continue
+
+                        queue_info = resp.get("queue")
+                        if not isinstance(queue_info, dict):
+                            continue
+                        qb = queue_info.get("queued_by_type")
+                        if not isinstance(qb, dict):
+                            qb = {}
+
+                        keep.append(rq)
+                        for ttype, count in qb.items():
+                            tt = str(ttype or "").strip()
+                            if not tt:
+                                continue
+                            if supported_for_workers and tt not in supported_for_workers:
+                                continue
+                            try:
+                                n = int(count)
+                            except Exception:
+                                n = 0
+                            if n <= 0:
+                                continue
+                            queued_total += n
+                            queued_by_type[tt] = int(queued_by_type.get(tt, 0) + n)
+
+                    with remote_lock:
+                        remote_state["queued"] = int(queued_total)
+                        remote_state["queued_by_type"] = dict(queued_by_type)
+                        remote_state["peers"] = list(keep)
+                        remote_state["ts"] = float(time.time())
+
+                    remote_stop.wait(refresh_s)
+
+            remote_thread = threading.Thread(
+                target=_remote_loop,
+                name=f"task_worker_autoscale_remote[{base_worker_id}]",
+                daemon=True,
+            )
+            remote_thread.start()
+        except Exception:
+            remote_thread = None
+
+    try:
+        while True:
+            if stop_event is not None and stop_event.is_set():
+                break
+
+            try:
+                pending_local = int(q.count(status="queued", task_types=list(supported_for_workers or [])))
+            except Exception:
+                pending_local = 0
+
+            pending_remote = 0
+            if bool(autoscale_remote):
+                with remote_lock:
+                    try:
+                        pending_remote = int(remote_state.get("queued") or 0)
+                    except Exception:
+                        pending_remote = 0
+
+            pending = max(0, int(pending_local + pending_remote))
+
+            now = time.time()
+            if pending > 0:
+                last_nonzero_ts = now
+
+            # Simple heuristic: scale workers up to min(max_w, max(min_w, pending)).
+            desired = min_w
+            if pending > 0:
+                desired = max(min_w, min(max_w, pending))
+
+            # Scale down only after being idle for a while.
+            with workers_lock:
+                current = len(workers)
+            if desired < current:
+                if idle_s <= 0.0 or (last_nonzero_ts and (now - last_nonzero_ts) >= idle_s) or pending == 0:
+                    _stop_extra(desired)
+            elif desired > current:
+                for i in range(current, desired):
+                    _start_one(idx=i, start_service=False)
+
+            if stop_event is None:
+                time.sleep(poll_s)
+            else:
+                stop_event.wait(poll_s)
+
+    finally:
+        remote_stop.set()
+        if remote_thread is not None:
+            try:
+                remote_thread.join(timeout=0.5)
+            except Exception:
+                pass
+        # Stop all child workers.
+        with workers_lock:
+            for _wid, _t, _ev in workers:
+                try:
+                    _ev.set()
+                except Exception:
+                    pass
+            for _wid, _t, _ev in workers:
+                try:
+                    _t.join(timeout=0.5)
+                except Exception:
+                    pass
+            workers.clear()
+        try:
+            q.close()
+        except Exception:
+            pass
+
+    return 0
 
 
 def main(argv: Optional[list[str]] = None) -> int:

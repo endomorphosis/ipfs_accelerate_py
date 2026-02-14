@@ -99,6 +99,59 @@ def main():
         default="accelerate-mcp-worker",
         help="Worker id used when claiming tasks (default: accelerate-mcp-worker)",
     )
+
+    parser.add_argument(
+        "--p2p-autoscale",
+        action="store_true",
+        help="Autoscale P2P task workers based on local queue backlog (spawns unique worker IDs)",
+    )
+    parser.add_argument(
+        "--p2p-autoscale-min",
+        type=int,
+        default=int(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN", "1")),
+        help="Minimum autoscaled worker count (default: 1)",
+    )
+    parser.add_argument(
+        "--p2p-autoscale-max",
+        type=int,
+        default=int(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX", "4")),
+        help="Maximum autoscaled worker count (default: 4)",
+    )
+    parser.add_argument(
+        "--p2p-autoscale-idle-s",
+        type=float,
+        default=float(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S", "30")),
+        help="Seconds idle before scaling down (default: 30)",
+    )
+    parser.add_argument(
+        "--p2p-autoscale-poll-s",
+        type=float,
+        default=float(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S", "2")),
+        help="Autoscaler polling interval seconds (default: 2)",
+    )
+    parser.add_argument(
+        "--p2p-autoscale-mesh-children",
+        action="store_true",
+        help="Enable mesh peer-claiming for autoscaled child workers (default: off)",
+    )
+
+    parser.add_argument(
+        "--p2p-autoscale-remote",
+        action="store_true",
+        help="Scale autoscaled workers based on remote peer queued backlog (default: off)",
+    )
+    parser.add_argument(
+        "--p2p-autoscale-remote-refresh-s",
+        type=float,
+        default=float(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S", "5")),
+        help="Remote backlog poll interval seconds (default: 5)",
+    )
+    parser.add_argument(
+        "--p2p-autoscale-remote-max-peers",
+        type=int,
+        default=int(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS", "10")),
+        help="Max peers to poll for remote backlog (default: 10)",
+    )
     parser.add_argument(
         "--p2p-service",
         action="store_true",
@@ -221,6 +274,44 @@ def main():
             def _run_p2p_worker() -> None:
                 try:
                     from ipfs_accelerate_py.p2p_tasks.worker import run_worker
+
+                    autoscale_env = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE")
+                    autoscale_enabled = bool(args.p2p_autoscale) or str(autoscale_env or "").strip().lower() in {
+                        "1",
+                        "true",
+                        "yes",
+                        "on",
+                    }
+
+                    if autoscale_enabled:
+                        from ipfs_accelerate_py.p2p_tasks.worker import run_autoscaled_workers
+
+                        autoscale_remote_env = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE")
+                        autoscale_remote_enabled = bool(args.p2p_autoscale_remote) or str(
+                            autoscale_remote_env or ""
+                        ).strip().lower() in {"1", "true", "yes", "on"}
+
+                        run_autoscaled_workers(
+                            queue_path=queue_path,
+                            base_worker_id=str(args.p2p_worker_id),
+                            min_workers=int(args.p2p_autoscale_min),
+                            max_workers=int(args.p2p_autoscale_max),
+                            scale_poll_s=float(args.p2p_autoscale_poll_s),
+                            scale_down_idle_s=float(args.p2p_autoscale_idle_s),
+                            poll_interval_s=0.25,
+                            once=False,
+                            p2p_service=bool(args.p2p_service),
+                            p2p_listen_port=args.p2p_listen_port,
+                            accelerate_instance=accelerate,
+                            supported_task_types=None,
+                            mesh=None,
+                            mesh_children=bool(args.p2p_autoscale_mesh_children),
+                            autoscale_remote=bool(autoscale_remote_enabled),
+                            remote_refresh_s=float(args.p2p_autoscale_remote_refresh_s),
+                            remote_max_peers=int(args.p2p_autoscale_remote_max_peers),
+                            stop_event=None,
+                        )
+                        return
 
                     run_worker(
                         queue_path=queue_path,

@@ -126,21 +126,21 @@ class TaskQueue:
 
                 try:
                     conn.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS tasks (
-                        task_id VARCHAR PRIMARY KEY,
-                        task_type VARCHAR NOT NULL,
-                        model_name VARCHAR NOT NULL,
-                        payload_json VARCHAR NOT NULL,
-                        status VARCHAR NOT NULL,
-                        assigned_worker VARCHAR,
-                        created_at DOUBLE NOT NULL,
-                        updated_at DOUBLE NOT NULL,
-                        result_json VARCHAR,
-                        error VARCHAR
+                        """
+                        CREATE TABLE IF NOT EXISTS tasks (
+                            task_id VARCHAR PRIMARY KEY,
+                            task_type VARCHAR NOT NULL,
+                            model_name VARCHAR NOT NULL,
+                            payload_json VARCHAR NOT NULL,
+                            status VARCHAR NOT NULL,
+                            assigned_worker VARCHAR,
+                            created_at DOUBLE NOT NULL,
+                            updated_at DOUBLE NOT NULL,
+                            result_json VARCHAR,
+                            error VARCHAR
+                        )
+                        """
                     )
-                    """
-                )
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_tasks_status_created ON tasks(status, created_at)")
                     return
                 except Exception as exc:
@@ -326,6 +326,66 @@ class TaskQueue:
                 }
             )
         return out
+
+    def counts_by_task_type(
+        self,
+        *,
+        status: Optional[str] = None,
+        task_types: Optional[Iterable[str]] = None,
+    ) -> Dict[str, int]:
+        """Return counts grouped by task_type.
+
+        This is intended for lightweight monitoring/autoscaling logic.
+        """
+
+        status_norm = str(status).strip().lower() if status is not None else ""
+        types = [t for t in (task_types or []) if isinstance(t, str) and t.strip()]
+
+        where = []
+        params: list[Any] = []
+        if status_norm:
+            where.append("status = ?")
+            params.append(status_norm)
+        if types:
+            where.append("task_type IN (%s)" % ",".join(["?"] * len(types)))
+            params.extend([str(t) for t in types])
+
+        sql = "SELECT task_type, COUNT(*) AS n FROM tasks"
+        if where:
+            sql += " WHERE " + " AND ".join(where)
+        sql += " GROUP BY task_type"
+
+        # Use a fresh connection so readers reliably observe updates from other
+        # TaskQueue instances across threads/processes.
+        with self._conn_lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(sql, params).fetchall()
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        out: Dict[str, int] = {}
+        for row in rows or []:
+            try:
+                ttype, n = row
+                out[str(ttype)] = int(n)
+            except Exception:
+                continue
+        return out
+
+    def count(
+        self,
+        *,
+        status: Optional[str] = None,
+        task_types: Optional[Iterable[str]] = None,
+    ) -> int:
+        """Return a total count of tasks matching filters."""
+
+        counts = self.counts_by_task_type(status=status, task_types=task_types)
+        return int(sum(int(v) for v in counts.values()))
 
     def claim_next(
         self,

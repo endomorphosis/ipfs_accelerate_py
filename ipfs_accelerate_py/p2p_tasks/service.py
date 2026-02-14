@@ -1478,6 +1478,32 @@ async def serve_task_queue(
 
                 resp: Dict[str, Any] = {"ok": True, "capabilities": caps, "peer_id": peer_id, "nat": nat, "session": session}
                 if detail:
+                    # Provide queue backlog counts for remote autoscalers.
+                    # Keep this under detail=True because it hits DuckDB.
+                    try:
+                        queued_by_type = queue.counts_by_task_type(status="queued")
+                    except Exception:
+                        queued_by_type = {}
+                    try:
+                        running_by_type = queue.counts_by_task_type(status="running")
+                    except Exception:
+                        running_by_type = {}
+                    try:
+                        queued_total = int(queue.count(status="queued"))
+                    except Exception:
+                        queued_total = 0
+                    try:
+                        running_total = int(queue.count(status="running"))
+                    except Exception:
+                        running_total = 0
+
+                    resp["queue"] = {
+                        "queued": int(queued_total),
+                        "running": int(running_total),
+                        "queued_by_type": queued_by_type if isinstance(queued_by_type, dict) else {},
+                        "running_by_type": running_by_type if isinstance(running_by_type, dict) else {},
+                    }
+
                     def _truthy_env(*names: str) -> bool:
                         for n in names:
                             v = os.environ.get(n)
