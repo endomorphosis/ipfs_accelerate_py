@@ -93,6 +93,22 @@ def patch_libp2p_compatibility():
             if not callable(orig_digest):
                 return
 
+            # Idempotency: patching multiple times can stack wrappers and hit
+            # Python's recursion limit (KadDHT calls digest heavily).
+            if getattr(orig_digest, "_ipfs_accelerate_patched_digest_encodeable", False):
+                return
+
+            # If we already captured the true original digest for this module,
+            # wrap that instead of wrapping a wrapper.
+            captured_orig = getattr(target_mod, "_ipfs_accelerate_orig_digest", None)
+            if callable(captured_orig):
+                orig_digest = captured_orig
+            else:
+                try:
+                    setattr(target_mod, "_ipfs_accelerate_orig_digest", orig_digest)
+                except Exception:
+                    pass
+
             class _BytesWithEncode(bytes):
                 def encode(self) -> bytes:  # type: ignore[override]
                     return bytes(self)
@@ -165,6 +181,7 @@ def patch_libp2p_compatibility():
                     return _BytesWithEncode(out)
                 return out
 
+            setattr(digest, "_ipfs_accelerate_patched_digest_encodeable", True)
             target_mod.digest = digest
 
         # Check if Func already exists
