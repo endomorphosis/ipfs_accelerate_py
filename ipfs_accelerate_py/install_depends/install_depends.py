@@ -5,6 +5,9 @@ import json
 import hashlib
 import platform
 import tempfile
+import re
+from pathlib import Path
+from typing import Optional, Tuple, List, Dict, Any
 
 try:
     from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
@@ -145,7 +148,7 @@ class install_depends_py():
             return await self.install_ollama()
         elif package == "ipex":
             return await self.install_ipex()
-        elif package == "tortch":
+        elif package in {"torch", "tortch"}:
             return await self.install_torch()
         elif package == "storacha":
             return await self.install_storacha()
@@ -191,6 +194,50 @@ class install_depends_py():
             return [ all(await self.install_package(package) for package in self.resources["packages"]) ]
         else:
             return None
+
+    @staticmethod
+    def _repo_root() -> Path:
+        # install_depends.py lives at: ipfs_accelerate_py/ipfs_accelerate_py/install_depends/install_depends.py
+        # Repo root is 3 levels up.
+        return Path(__file__).resolve().parents[2]
+
+    @staticmethod
+    def _detect_cuda_version_from_nvidia_smi() -> Optional[str]:
+        try:
+            out = subprocess.check_output(["nvidia-smi"], text=True, stderr=subprocess.STDOUT)
+        except Exception:
+            return None
+        m = re.search(r"CUDA Version:\s*(\d+\.\d+)", out)
+        return m.group(1) if m else None
+
+    @staticmethod
+    def _parse_major_minor(version: str) -> Optional[Tuple[int, int]]:
+        m = re.match(r"^(\d+)(?:\.(\d+))?", (version or "").strip())
+        if not m:
+            return None
+        major = int(m.group(1))
+        minor = int(m.group(2) or 0)
+        return major, minor
+
+    @staticmethod
+    def _pip_run(args: List[str]) -> Dict[str, Any]:
+        try:
+            completed = subprocess.run(args, check=True, capture_output=True, text=True)
+            return {
+                "ok": True,
+                "returncode": completed.returncode,
+                "stdout": completed.stdout,
+                "stderr": completed.stderr,
+                "cmd": args,
+            }
+        except subprocess.CalledProcessError as e:
+            return {
+                "ok": False,
+                "returncode": e.returncode,
+                "stdout": getattr(e, "stdout", ""),
+                "stderr": getattr(e, "stderr", ""),
+                "cmd": args,
+            }
         
     async def test_package(self, package):
         if package == "cuda":
@@ -481,11 +528,7 @@ class install_depends_py():
     async def test_cuda(self):
         try:
             import torch
-            gpus = torch.cuda.device_count()
-            if type(gpus) == int and type(gpus) != ValueError:
-                return True
-            else:
-                return False
+            return bool(torch.cuda.is_available()) and int(torch.cuda.device_count()) > 0
         except Exception as e:
             print(e)
             raise ValueError(e)
@@ -513,29 +556,6 @@ class install_depends_py():
             install_results["onnx"] = e.stderr
             print(f"Failed to install ONNX: {e.stderr}")
         return install_results
-    
-    async def install_cuda(self):
-        install_results = {}
-        try:
-            install_cmd = [sys.executable , "-m", "pip", "install", "torch", "torchvision", "torchaudio", "torchtext", "--index-url", " https://download.pytorch.org/whl/cpu", "--break-system-packages"]
-            print(install_cmd)
-            install_results["cuda"] = subprocess.run(install_cmd, check=True)
-        except Exception as e:
-            install_results["cuda"] = e
-            print(e)
-        return install_results
-    
-    async def test_cuda(self):
-        try:
-            import torch
-            gpus = torch.cuda.device_count()
-            if type(gpus) == int and type(gpus) != ValueError:
-                return True
-            else:
-                return False
-        except Exception as e:
-            print(e)
-            raise ValueError(e)
     
     async def install_faiss(self):
         install_results = {}
@@ -936,24 +956,101 @@ class install_depends_py():
         return install_results
 
     async def install_cuda(self):
-        install_results = {}
-        install_cuda_cmd = ["apt-get", "install", "nvidia-cuda-toolkit", "--break-system-packages"]
-        try:
-            install_results["install_cuda"] = subprocess.run(install_cuda_cmd, check=True)
-        except Exception as e:
-            install_results["install_cuda"] = e
-            print(e)
-        try:
-            import torch
-            torch.cuda.is_available()
-            install_results["install_cuda"] = True
-        except Exception as e:
-            install_results["install_cuda"] = e
-            print(e)
-            
-        install_results["install_cuda"] = None
-        
-        return None
+        """Install a CUDA-capable PyTorch stack when possible.
+
+        Notes:
+        - This does NOT install system CUDA drivers/toolkits.
+        - It installs Python wheels appropriate for the detected CUDA runtime.
+
+        Controls:
+        - Set env `IPFS_ACCELERATE_PY_TORCH_MODE` to one of:
+          `auto` (default), `cu124`, `cu130-nightly`, `cpu`, `skip`.
+        """
+
+        install_results: dict = {
+            "platform": platform.system().lower(),
+            "machine": platform.machine().lower(),
+        }
+
+        mode = (os.environ.get("IPFS_ACCELERATE_PY_TORCH_MODE") or "auto").strip().lower()
+        install_results["requested_mode"] = mode
+
+        cuda_version = self._detect_cuda_version_from_nvidia_smi()
+        install_results["nvidia_smi_cuda_version"] = cuda_version
+
+        if mode in {"skip", "none"}:
+            install_results["skipped"] = True
+            return install_results
+
+        selected_mode = mode
+        if mode == "auto":
+            if cuda_version is None:
+                selected_mode = "cpu"
+            else:
+                parsed = self._parse_major_minor(cuda_version)
+                if parsed and parsed[0] >= 13:
+                    selected_mode = "cu130-nightly"
+                elif parsed and parsed[0] == 12:
+                    selected_mode = "cu124"
+                else:
+                    # CUDA < 12 or unknown: fall back to CPU wheels (still usable).
+                    selected_mode = "cpu"
+
+        install_results["selected_mode"] = selected_mode
+
+        repo_root = self._repo_root()
+        req_map = {
+            "cu124": repo_root / "install" / "requirements_torch_cu124.txt",
+            "cu130-nightly": repo_root / "install" / "requirements_torch_cu130_nightly.txt",
+        }
+
+        # Prefer our curated requirement files when present (especially important on linux/aarch64).
+        if selected_mode in req_map and req_map[selected_mode].exists():
+            req_path = str(req_map[selected_mode])
+            pip_args = [sys.executable, "-m", "pip", "install", "-r", req_path, "--break-system-packages"]
+            if selected_mode == "cu130-nightly":
+                # Some nightly pins require pre-releases.
+                pip_args.insert(4, "--pre")
+            install_results["pip_install"] = self._pip_run(pip_args)
+        else:
+            # Fallback path when the repo-local requirement files are not present
+            # (e.g., installed from a wheel / sdist without bundled install/ files).
+            if selected_mode == "cu124":
+                index_args = ["--index-url", "https://download.pytorch.org/whl/cu124", "--extra-index-url", "https://pypi.org/simple"]
+                pkgs = ["torch", "torchvision", "torchaudio"]
+                pip_args = [sys.executable, "-m", "pip", "install", *pkgs, *index_args, "--break-system-packages"]
+                install_results["pip_install"] = self._pip_run(pip_args)
+            elif selected_mode == "cu130-nightly":
+                index_args = ["--pre", "--index-url", "https://download.pytorch.org/whl/nightly/cu130", "--extra-index-url", "https://pypi.org/simple"]
+                pkgs = ["torch", "torchvision", "torchaudio"]
+                pip_args = [sys.executable, "-m", "pip", "install", *pkgs, *index_args, "--break-system-packages"]
+                install_results["pip_install"] = self._pip_run(pip_args)
+            else:
+                # CPU-only wheels
+                index_args = ["--index-url", "https://download.pytorch.org/whl/cpu", "--extra-index-url", "https://pypi.org/simple"]
+                pkgs = ["torch", "torchvision", "torchaudio"]
+                pip_args = [sys.executable, "-m", "pip", "install", *pkgs, *index_args, "--break-system-packages"]
+                install_results["pip_install"] = self._pip_run(pip_args)
+
+        # Validate torch import + CUDA availability
+        validate_code = (
+            "import torch; "
+            "print('torch', torch.__version__); "
+            "print('cuda_available', torch.cuda.is_available()); "
+            "print('cuda_device_count', torch.cuda.device_count() if torch.cuda.is_available() else 0)"
+        )
+        install_results["validate"] = self._pip_run([sys.executable, "-c", validate_code])
+
+        # If we expected CUDA, flag a clear error when it isn't available.
+        if selected_mode in {"cu124", "cu130-nightly"}:
+            try:
+                import torch  # type: ignore
+                install_results["cuda_is_available"] = bool(torch.cuda.is_available())
+            except Exception as e:
+                install_results["cuda_is_available"] = False
+                install_results["torch_import_error"] = repr(e)
+
+        return install_results
     
     async def install_faiss(self):
         install_results = {}
@@ -1347,6 +1444,9 @@ class install_depends_py():
             pass
         try:
             cuda_test = await self.test_cuda()
+            if cuda_test is False:
+                cuda_install = await self.install_cuda()
+                cuda_test = await self.test_cuda()
         except Exception as e:
             try:
                 cuda_install = await self.install_cuda()
