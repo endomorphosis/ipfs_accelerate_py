@@ -60,6 +60,11 @@ dev = [
   "mypy>=1.8.0",
 ]
 
+# Optional extras
+textgen = [
+  "transformers>=4.46",
+]
+
 minimal = [
   "aiohttp>=3.8.1",
   "duckdb>=0.7.0",

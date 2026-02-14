@@ -10,6 +10,7 @@ pyarrow>=14.0.0
 
 # Always-installed ML runtime
 torch>=2.1
+transformers>=4.46
 
 # Compatibility: ipfshttpclient may still depend on urllib3<2
 urllib3<2
