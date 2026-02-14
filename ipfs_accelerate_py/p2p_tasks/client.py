@@ -2264,6 +2264,7 @@ async def claim_next(
     remote: RemoteQueue,
     worker_id: str,
     supported_task_types: list[str] | None = None,
+    session_id: str | None = None,
     peer_id: str | None = None,
     clock: Dict[str, Any] | None = None,
 ) -> Optional[Dict[str, Any]]:
@@ -2273,6 +2274,7 @@ async def claim_next(
             "op": "claim",
             "worker_id": str(worker_id),
             "supported_task_types": list(supported_task_types or []),
+            "session_id": str(session_id or "").strip(),
             "peer_id": str(peer_id) if peer_id else "",
             "clock": clock,
         },
@@ -2290,6 +2292,7 @@ async def claim_many(
     supported_task_types: list[str] | None = None,
     max_tasks: int = 1,
     same_task_type: bool = True,
+    session_id: str | None = None,
     peer_id: str | None = None,
     clock: Dict[str, Any] | None = None,
 ) -> list[Dict[str, Any]]:
@@ -2301,6 +2304,7 @@ async def claim_many(
             "supported_task_types": list(supported_task_types or []),
             "max_tasks": int(max_tasks),
             "same_task_type": bool(same_task_type),
+            "session_id": str(session_id or "").strip(),
             "peer_id": str(peer_id) if peer_id else "",
             "clock": clock,
         },
@@ -2316,6 +2320,7 @@ def claim_next_sync(
     remote: RemoteQueue,
     worker_id: str,
     supported_task_types: list[str] | None = None,
+    session_id: str | None = None,
     peer_id: str | None = None,
     clock: Dict[str, Any] | None = None,
 ) -> Optional[Dict[str, Any]]:
@@ -2326,6 +2331,7 @@ def claim_next_sync(
             remote=remote,
             worker_id=worker_id,
             supported_task_types=supported_task_types,
+            session_id=session_id,
             peer_id=peer_id,
             clock=clock,
         )
@@ -2340,6 +2346,7 @@ def claim_many_sync(
     supported_task_types: list[str] | None = None,
     max_tasks: int = 1,
     same_task_type: bool = True,
+    session_id: str | None = None,
     peer_id: str | None = None,
     clock: Dict[str, Any] | None = None,
 ) -> list[Dict[str, Any]]:
@@ -2352,6 +2359,7 @@ def claim_many_sync(
             supported_task_types=supported_task_types,
             max_tasks=max_tasks,
             same_task_type=same_task_type,
+            session_id=session_id,
             peer_id=peer_id,
             clock=clock,
         )
@@ -2430,6 +2438,42 @@ async def complete_task(
     if not resp.get("ok"):
         raise RuntimeError(f"complete failed: {resp}")
     return resp
+
+
+async def release_task(
+    *,
+    remote: RemoteQueue,
+    task_id: str,
+    worker_id: str,
+    reason: str | None = None,
+) -> Dict[str, Any]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={
+            "op": "release",
+            "task_id": str(task_id),
+            "worker_id": str(worker_id),
+            "reason": str(reason) if reason else "",
+        },
+    )
+    if not resp.get("ok"):
+        raise RuntimeError(f"release failed: {resp}")
+    return resp
+
+
+def release_task_sync(
+    *,
+    remote: RemoteQueue,
+    task_id: str,
+    worker_id: str,
+    reason: str | None = None,
+) -> Dict[str, Any]:
+    import anyio
+
+    async def _do() -> Dict[str, Any]:
+        return await release_task(remote=remote, task_id=task_id, worker_id=worker_id, reason=reason)
+
+    return anyio.run(_do, backend="trio")
 
 
 def complete_task_sync(

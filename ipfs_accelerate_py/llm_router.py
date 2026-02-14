@@ -172,7 +172,7 @@ def submit_task(
     """Submit an LLM task to a local task queue, or to a remote peer via libp2p.
 
     This provides a simple multi-worker delegation mechanism.
-    Workers can be run via `python -m ipfs_accelerate_py.accelerate_integration.worker`.
+    Workers can be run via `python -m ipfs_accelerate_py.p2p_tasks.worker`.
     """
 
     remote_peer_id = (
@@ -194,7 +194,7 @@ def submit_task(
     auto_discovery = _p2p_auto_discovery_enabled()
 
     try:
-        from ipfs_accelerate_py.accelerate_integration.task_queue import TaskQueue
+        from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
     except Exception as exc:
         raise LLMRouterError("Task delegation helpers not available") from exc
 
@@ -202,6 +202,32 @@ def submit_task(
     for k in ("max_new_tokens", "max_tokens", "temperature"):
         if k in kwargs:
             payload[k] = kwargs[k]
+
+    # Session-affinity + provider routing for interactive LLM tasks.
+    # This is primarily intended for mesh execution of copilot_cli prompts.
+    ttype_norm = str(task_type or "").strip().lower()
+    if ttype_norm in {"llm.generate", "llm_generate"}:
+        provider = str(kwargs.get("provider") or "copilot_cli").strip() or "copilot_cli"
+        payload["provider"] = provider
+
+        for k in (
+            "timeout",
+            "trace",
+            "trace_jsonl_path",
+            "trace_dir",
+            "copilot_config_dir",
+            "copilot_log_dir",
+            "resume_session_id",
+            "continue_session",
+        ):
+            if k in kwargs:
+                payload[k] = kwargs[k]
+
+        sid = kwargs.get("session_id")
+        if not (isinstance(sid, str) and sid.strip()):
+            sid = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or ""
+        if isinstance(sid, str) and sid.strip():
+            payload["session_id"] = sid.strip()
 
     # Avoid slow discovery attempts by default: only try when
     # - caller explicitly configured a multiaddr, OR
@@ -220,8 +246,8 @@ def submit_task(
         try:
             import anyio
 
-            from ipfs_accelerate_py.accelerate_integration.p2p_task_client import RemoteQueue
-            from ipfs_accelerate_py.accelerate_integration.p2p_task_client import submit_task_with_info
+            from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+            from ipfs_accelerate_py.p2p_tasks.client import submit_task_with_info
 
             remote = RemoteQueue(peer_id=remote_peer_id or "", multiaddr=remote_multiaddr)
 
@@ -291,8 +317,8 @@ def get_task(task_id: str, *, queue_path: Optional[str] = None) -> Optional[dict
         try:
             import anyio
 
-            from ipfs_accelerate_py.accelerate_integration.p2p_task_client import RemoteQueue
-            from ipfs_accelerate_py.accelerate_integration.p2p_task_client import get_task as get_task_p2p
+            from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+            from ipfs_accelerate_py.p2p_tasks.client import get_task as get_task_p2p
 
             remote = RemoteQueue(peer_id=effective_peer_id or "", multiaddr=remote_multiaddr)
 
@@ -305,7 +331,7 @@ def get_task(task_id: str, *, queue_path: Optional[str] = None) -> Optional[dict
             return None
 
     try:
-        from ipfs_accelerate_py.accelerate_integration.task_queue import TaskQueue
+        from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
     except Exception:
         return None
     return TaskQueue(queue_path).get(task_id)
@@ -358,8 +384,8 @@ def wait_task(
         try:
             import anyio
 
-            from ipfs_accelerate_py.accelerate_integration.p2p_task_client import RemoteQueue
-            from ipfs_accelerate_py.accelerate_integration.p2p_task_client import wait_task as wait_task_p2p
+            from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+            from ipfs_accelerate_py.p2p_tasks.client import wait_task as wait_task_p2p
 
             remote = RemoteQueue(peer_id=effective_peer_id or "", multiaddr=remote_multiaddr)
 
@@ -372,7 +398,7 @@ def wait_task(
             return None
 
     try:
-        from ipfs_accelerate_py.accelerate_integration.task_queue import TaskQueue
+        from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
     except Exception:
         return None
 
@@ -411,8 +437,8 @@ def get_remote_capabilities(*, timeout_s: float = 10.0, detail: bool = False) ->
     try:
         import anyio
 
-        from ipfs_accelerate_py.accelerate_integration.p2p_task_client import RemoteQueue
-        from ipfs_accelerate_py.accelerate_integration.p2p_task_client import get_capabilities as get_capabilities_p2p
+        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+        from ipfs_accelerate_py.p2p_tasks.client import get_capabilities as get_capabilities_p2p
 
         remote = RemoteQueue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
 
@@ -450,8 +476,8 @@ def call_remote_tool(
     try:
         import anyio
 
-        from ipfs_accelerate_py.accelerate_integration.p2p_task_client import RemoteQueue
-        from ipfs_accelerate_py.accelerate_integration.p2p_task_client import call_tool as call_tool_p2p
+        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+        from ipfs_accelerate_py.p2p_tasks.client import call_tool as call_tool_p2p
 
         remote = RemoteQueue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
         safe_args: Dict[str, object] = args if isinstance(args, dict) else {}
@@ -485,8 +511,8 @@ def get_remote_cache_value(*, key: str, timeout_s: float = 10.0) -> Dict[str, ob
     try:
         import anyio
 
-        from ipfs_accelerate_py.accelerate_integration.p2p_task_client import RemoteQueue
-        from ipfs_accelerate_py.accelerate_integration.p2p_task_client import cache_get as cache_get_p2p
+        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+        from ipfs_accelerate_py.p2p_tasks.client import cache_get as cache_get_p2p
 
         remote = RemoteQueue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
 
@@ -525,8 +551,8 @@ def set_remote_cache_value(
     try:
         import anyio
 
-        from ipfs_accelerate_py.accelerate_integration.p2p_task_client import RemoteQueue
-        from ipfs_accelerate_py.accelerate_integration.p2p_task_client import cache_set as cache_set_p2p
+        from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+        from ipfs_accelerate_py.p2p_tasks.client import cache_set as cache_set_p2p
 
         remote = RemoteQueue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
 

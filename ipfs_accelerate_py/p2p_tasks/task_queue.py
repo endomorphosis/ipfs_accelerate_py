@@ -392,41 +392,69 @@ class TaskQueue:
         *,
         worker_id: str,
         supported_task_types: Optional[Iterable[str]] = None,
+        session_id: str | None = None,
     ) -> Optional[QueuedTask]:
         if not worker_id:
             raise ValueError("worker_id is required")
 
         task_types = [t for t in (supported_task_types or []) if isinstance(t, str) and t.strip()]
+        session = str(session_id or "").strip()
         now = time.time()
+
+        required_expr = (
+            "coalesce(" 
+            "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
+            "nullif(json_extract_string(payload_json, '$.session'), ''), "
+            "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
+            ")"
+        )
 
         conn = self._connect()
         try:
             conn.execute("BEGIN TRANSACTION")
 
+            where: list[str] = ["status='queued'"]
+            params: list[object] = []
+
             if task_types:
                 placeholders = ",".join(["?"] * len(task_types))
-                row = conn.execute(
-                    f"SELECT task_id FROM tasks WHERE status='queued' AND task_type IN ({placeholders}) ORDER BY created_at ASC LIMIT 1",
-                    tuple(task_types),
-                ).fetchone()
-            else:
-                row = conn.execute(
-                    "SELECT task_id FROM tasks WHERE status='queued' ORDER BY created_at ASC LIMIT 1"
-                ).fetchone()
+                where.append(f"task_type IN ({placeholders})")
+                params.extend([str(t) for t in task_types])
+
+            if session:
+                where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+                params.append(str(session))
+
+            where_sql = " AND ".join(where)
+            row = conn.execute(
+                f"SELECT task_id FROM tasks WHERE {where_sql} ORDER BY created_at ASC LIMIT 1",
+                tuple(params),
+            ).fetchone()
 
             if row is None:
                 conn.execute("COMMIT")
                 return None
 
             task_id = str(row[0])
-            conn.execute(
-                """
-                UPDATE tasks
-                SET status='running', assigned_worker=?, updated_at=?
-                WHERE task_id=? AND status='queued'
-                """,
-                (str(worker_id), now, task_id),
-            )
+
+            if session:
+                conn.execute(
+                    f"""
+                    UPDATE tasks
+                    SET status='running', assigned_worker=?, updated_at=?
+                    WHERE task_id=? AND status='queued' AND ({required_expr} IS NULL OR {required_expr} = ?)
+                    """,
+                    (str(worker_id), now, task_id, str(session)),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE tasks
+                    SET status='running', assigned_worker=?, updated_at=?
+                    WHERE task_id=? AND status='queued'
+                    """,
+                    (str(worker_id), now, task_id),
+                )
 
             row2 = conn.execute(
                 "SELECT * FROM tasks WHERE task_id=? AND status='running' AND assigned_worker=?",
@@ -471,6 +499,7 @@ class TaskQueue:
         supported_task_types: Optional[Iterable[str]] = None,
         max_tasks: int = 1,
         same_task_type: bool = True,
+        session_id: str | None = None,
     ) -> list[QueuedTask]:
         """Atomically claim up to `max_tasks` queued tasks.
 
@@ -490,7 +519,16 @@ class TaskQueue:
         limit = max(1, min(limit, 128))
 
         task_types = [t for t in (supported_task_types or []) if isinstance(t, str) and t.strip()]
+        session = str(session_id or "").strip()
         now = time.time()
+
+        required_expr = (
+            "coalesce(" 
+            "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
+            "nullif(json_extract_string(payload_json, '$.session'), ''), "
+            "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
+            ")"
+        )
 
         conn = self._connect()
         try:
@@ -500,16 +538,20 @@ class TaskQueue:
             # to establish the batch's task_type.
             picked_type: str | None = None
             if same_task_type:
+                where0: list[str] = ["status='queued'"]
+                params0: list[object] = []
                 if task_types:
                     placeholders = ",".join(["?"] * len(task_types))
-                    row0 = conn.execute(
-                        f"SELECT task_type FROM tasks WHERE status='queued' AND task_type IN ({placeholders}) ORDER BY created_at ASC LIMIT 1",
-                        tuple(task_types),
-                    ).fetchone()
-                else:
-                    row0 = conn.execute(
-                        "SELECT task_type FROM tasks WHERE status='queued' ORDER BY created_at ASC LIMIT 1"
-                    ).fetchone()
+                    where0.append(f"task_type IN ({placeholders})")
+                    params0.extend([str(t) for t in task_types])
+                if session:
+                    where0.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+                    params0.append(str(session))
+                where0_sql = " AND ".join(where0)
+                row0 = conn.execute(
+                    f"SELECT task_type FROM tasks WHERE {where0_sql} ORDER BY created_at ASC LIMIT 1",
+                    tuple(params0),
+                ).fetchone()
                 if row0 is None:
                     conn.execute("COMMIT")
                     return []
@@ -525,6 +567,9 @@ class TaskQueue:
             if same_task_type and picked_type:
                 where.append("task_type = ?")
                 params.append(str(picked_type))
+            if session:
+                where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+                params.append(str(session))
 
             where_sql = " AND ".join(where)
             rows = conn.execute(
@@ -537,10 +582,18 @@ class TaskQueue:
                 return []
 
             id_placeholders = ",".join(["?"] * len(ids))
-            conn.execute(
-                f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued'",
-                tuple([str(worker_id), now] + ids),
-            )
+            if session:
+                # NOTE: this is best-effort; it prevents accidental claims even
+                # if the initial SELECT raced with another session.
+                conn.execute(
+                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({required_expr} IS NULL OR {required_expr} = ?)",
+                    tuple([str(worker_id), now] + ids + [str(session)]),
+                )
+            else:
+                conn.execute(
+                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued'",
+                    tuple([str(worker_id), now] + ids),
+                )
 
             rows2 = conn.execute(
                 f"SELECT * FROM tasks WHERE task_id IN ({id_placeholders}) AND status='running' AND assigned_worker=? ORDER BY created_at ASC",
@@ -585,6 +638,7 @@ class TaskQueue:
         *,
         task_id: str,
         worker_id: str,
+        session_id: str | None = None,
     ) -> Optional[QueuedTask]:
         """Atomically claim a specific queued task by id."""
 
@@ -594,17 +648,35 @@ class TaskQueue:
             raise ValueError("worker_id is required")
 
         now = time.time()
+        session = str(session_id or "").strip()
+        required_expr = (
+            "coalesce(" 
+            "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
+            "nullif(json_extract_string(payload_json, '$.session'), ''), "
+            "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
+            ")"
+        )
         conn = self._connect()
         try:
             conn.execute("BEGIN TRANSACTION")
-            conn.execute(
-                """
-                UPDATE tasks
-                SET status='running', assigned_worker=?, updated_at=?
-                WHERE task_id=? AND status='queued'
-                """,
-                (str(worker_id), now, str(task_id)),
-            )
+            if session:
+                conn.execute(
+                    f"""
+                    UPDATE tasks
+                    SET status='running', assigned_worker=?, updated_at=?
+                    WHERE task_id=? AND status='queued' AND ({required_expr} IS NULL OR {required_expr} = ?)
+                    """,
+                    (str(worker_id), now, str(task_id), str(session)),
+                )
+            else:
+                conn.execute(
+                    """
+                    UPDATE tasks
+                    SET status='running', assigned_worker=?, updated_at=?
+                    WHERE task_id=? AND status='queued'
+                    """,
+                    (str(worker_id), now, str(task_id)),
+                )
 
             row = conn.execute(
                 "SELECT * FROM tasks WHERE task_id=? AND status='running' AND assigned_worker=?",
@@ -714,6 +786,76 @@ class TaskQueue:
                 ):
                     return False
                 raise
+
+    def release(
+        self,
+        *,
+        task_id: str,
+        worker_id: str,
+        reason: str | None = None,
+    ) -> bool:
+        """Best-effort: release a running task back to queued.
+
+        This is used when a worker claims a task but determines it should not
+        execute it (e.g., session-affinity mismatch).
+
+        Only releases tasks currently in status='running' and assigned to the
+        provided worker_id.
+        """
+
+        tid = str(task_id or "").strip()
+        wid = str(worker_id or "").strip()
+        if not tid or not wid:
+            return False
+
+        now = time.time()
+        try:
+            note = str(reason or "released")
+        except Exception:
+            note = "released"
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            try:
+                row = conn.execute(
+                    "SELECT result_json FROM tasks WHERE task_id=?",
+                    (tid,),
+                ).fetchone()
+                existing = {}
+                if row and isinstance(row[0], str) and row[0]:
+                    try:
+                        parsed = json.loads(row[0])
+                        existing = parsed if isinstance(parsed, dict) else {}
+                    except Exception:
+                        existing = {}
+
+                merged: Dict[str, Any] = dict(existing) if isinstance(existing, dict) else {}
+                progress = merged.get("progress")
+                if not isinstance(progress, dict):
+                    progress = {}
+                progress = dict(progress)
+                progress.setdefault("release_count", 0)
+                try:
+                    progress["release_count"] = int(progress.get("release_count") or 0) + 1
+                except Exception:
+                    progress["release_count"] = 1
+                progress["last_release_reason"] = note
+                progress["last_release_ts"] = float(now)
+                merged["progress"] = progress
+
+                result_json = json.dumps(merged, sort_keys=True) if merged else None
+
+                conn.execute(
+                    """
+                    UPDATE tasks
+                    SET status='queued', assigned_worker=NULL, updated_at=?, result_json=?
+                    WHERE task_id=? AND status='running' AND assigned_worker=?
+                    """,
+                    (float(now), result_json, tid, wid),
+                )
+                return True
+            except Exception:
+                return False
 
 
     def update(

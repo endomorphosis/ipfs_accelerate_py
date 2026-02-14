@@ -1161,11 +1161,27 @@ async def serve_task_queue(
             peers.append(req)
         return peers
 
-    def _pick_task_for_peer(*, peer_id_hint: str, supported_types: list[str]) -> dict | None:
+    def _pick_task_for_peer(
+        *,
+        peer_id_hint: str,
+        supported_types: list[str],
+        session_id: str | None = None,
+    ) -> dict | None:
         try:
             candidates = queue.list(status="queued", limit=200, task_types=supported_types or None)
         except Exception:
             return None
+
+        session = str(session_id or "").strip()
+
+        def _required_session(payload: object) -> str:
+            if not isinstance(payload, dict):
+                return ""
+            for k in ("session_id", "session", "p2p_session"):
+                v = payload.get(k)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+            return ""
 
         def _prio_key(t: dict) -> tuple[int, float]:
             payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
@@ -1189,6 +1205,15 @@ async def serve_task_queue(
                 tid = str(t.get("task_id") or "")
                 ttype = str(t.get("task_type") or "")
                 mname = str(t.get("model_name") or "")
+
+                payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                required = _required_session(payload)
+                if required:
+                    if not session:
+                        continue
+                    if required != session:
+                        continue
+
                 th = _task_hash(task_id=tid, task_type=ttype, model_name=mname)
                 owner = _select_owner_peer(peer_ids=peers, clock_hash=clock_hash, task_hash_hex=th)
                 if owner and owner == peer_id_hint:
@@ -1321,6 +1346,8 @@ async def serve_task_queue(
                     await stream.write(json.dumps({"ok": False, "error": "missing_worker_id", "peer_id": peer_id}).encode("utf-8") + b"\n")
                     return
 
+                session_id = str(msg.get("session_id") or msg.get("session") or msg.get("p2p_session") or "").strip()
+
                 claimed_peer_id = str(msg.get("peer") or msg.get("peer_id") or "").strip()
                 # For deterministic scheduling, use the caller-provided peer id
                 # when present (supports multiple logical peers behind one
@@ -1346,18 +1373,31 @@ async def serve_task_queue(
                         "peer_hint": claimed_peer_id,
                         "transport_peer_id": str(remote_peer_id or "").strip(),
                         "supported_task_types": list(supported_list),
+                        "session_id": session_id,
                     },
                 )
 
                 try:
                     if deterministic_enabled:
-                        picked = _pick_task_for_peer(peer_id_hint=peer_ident, supported_types=supported_list)
+                        picked = _pick_task_for_peer(
+                            peer_id_hint=peer_ident,
+                            supported_types=supported_list,
+                            session_id=session_id or None,
+                        )
                         if picked is None:
                             claimed = None
                         else:
-                            claimed = queue.claim(task_id=str(picked.get("task_id") or ""), worker_id=worker_id)
+                            claimed = queue.claim(
+                                task_id=str(picked.get("task_id") or ""),
+                                worker_id=worker_id,
+                                session_id=session_id or None,
+                            )
                     else:
-                        claimed = queue.claim_next(worker_id=worker_id, supported_task_types=supported_list)
+                        claimed = queue.claim_next(
+                            worker_id=worker_id,
+                            supported_task_types=supported_list,
+                            session_id=session_id or None,
+                        )
                 except Exception as exc:
                     await stream.write(
                         json.dumps({"ok": False, "error": str(exc), "peer_id": peer_id}).encode("utf-8") + b"\n"
@@ -1397,6 +1437,8 @@ async def serve_task_queue(
                     )
                     return
 
+                session_id = str(msg.get("session_id") or msg.get("session") or msg.get("p2p_session") or "").strip()
+
                 claimed_peer_id = str(msg.get("peer") or msg.get("peer_id") or "").strip()
                 peer_ident = (claimed_peer_id or remote_peer_id or worker_id).strip()
                 clock_dict = msg.get("clock") if isinstance(msg.get("clock"), dict) else None
@@ -1428,17 +1470,26 @@ async def serve_task_queue(
                         "peer_hint": claimed_peer_id,
                         "transport_peer_id": str(remote_peer_id or "").strip(),
                         "supported_task_types": list(supported_list),
+                        "session_id": session_id,
                     },
                 )
 
                 try:
                     if deterministic_enabled:
                         # Deterministic scheduling currently only selects one task.
-                        picked = _pick_task_for_peer(peer_id_hint=peer_ident, supported_types=supported_list)
+                        picked = _pick_task_for_peer(
+                            peer_id_hint=peer_ident,
+                            supported_types=supported_list,
+                            session_id=session_id or None,
+                        )
                         if picked is None:
                             claimed_many = []
                         else:
-                            one = queue.claim(task_id=str(picked.get("task_id") or ""), worker_id=worker_id)
+                            one = queue.claim(
+                                task_id=str(picked.get("task_id") or ""),
+                                worker_id=worker_id,
+                                session_id=session_id or None,
+                            )
                             claimed_many = [one] if one is not None else []
                     else:
                         claimed_many = queue.claim_next_many(
@@ -1446,6 +1497,7 @@ async def serve_task_queue(
                             supported_task_types=supported_list,
                             max_tasks=int(max_tasks),
                             same_task_type=bool(same_type_bool),
+                            session_id=session_id or None,
                         )
                 except Exception as exc:
                     await stream.write(
@@ -1492,6 +1544,32 @@ async def serve_task_queue(
                     return
 
                 await stream.write(json.dumps({"ok": ok, "task_id": task_id, "peer_id": peer_id}).encode("utf-8") + b"\n")
+                return
+
+            if op in {"release", "task.release", "release_task"}:
+                task_id = str(msg.get("task_id") or "").strip()
+                worker_id = str(msg.get("worker_id") or msg.get("assigned_worker") or "").strip()
+                reason = msg.get("reason")
+                if not task_id:
+                    await stream.write(
+                        json.dumps({"ok": False, "error": "missing_task_id", "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    )
+                    return
+                if not worker_id:
+                    await stream.write(
+                        json.dumps({"ok": False, "error": "missing_worker_id", "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    )
+                    return
+                try:
+                    ok = bool(queue.release(task_id=task_id, worker_id=worker_id, reason=str(reason) if reason else None))
+                except Exception as exc:
+                    await stream.write(
+                        json.dumps({"ok": False, "error": str(exc), "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    )
+                    return
+                await stream.write(
+                    json.dumps({"ok": ok, "task_id": task_id, "peer_id": peer_id}).encode("utf-8") + b"\n"
+                )
                 return
 
             if op in {"peer.heartbeat", "heartbeat", "peer"}:

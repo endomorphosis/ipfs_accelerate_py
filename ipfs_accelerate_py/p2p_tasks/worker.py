@@ -22,7 +22,7 @@ from typing import Any, Callable, Dict, Optional, Tuple
 
 import importlib
 import importlib.util
-from .task_queue import TaskQueue
+from .task_queue import QueuedTask, TaskQueue
 
 
 def _transformers_spec_origin() -> str:
@@ -2071,6 +2071,79 @@ def _expected_session_tag() -> str:
     return str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
 
 
+def _task_required_session(task_payload: object) -> str:
+    """Extract an optional session affinity tag from a task payload."""
+
+    if not isinstance(task_payload, dict):
+        return ""
+    for k in ("session_id", "session", "p2p_session"):
+        v = task_payload.get(k)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return ""
+
+
+def _session_allows_task(*, task_payload: object, local_session: str) -> bool:
+    required = _task_required_session(task_payload)
+    if not required:
+        return True
+    if not str(local_session or "").strip():
+        # If a task requires a session but this worker has none configured,
+        # treat it as not eligible.
+        return False
+    return required == str(local_session).strip()
+
+
+def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
+    """Run an LLM provider via llm_router (intended for copilot_cli mesh)."""
+
+    payload = task.get("payload") or {}
+    if not isinstance(payload, dict):
+        raise ValueError("llm.generate payload must be a dict")
+
+    prompt = payload.get("prompt")
+    if prompt is None:
+        prompt = payload.get("text")
+    if prompt is None:
+        prompt = payload.get("input")
+
+    provider = str(payload.get("provider") or "copilot_cli").strip().lower() or "copilot_cli"
+    if provider != "copilot_cli":
+        raise RuntimeError("llm.generate currently supports provider='copilot_cli' only")
+
+    allow = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI") or "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if not allow:
+        raise RuntimeError("copilot_cli tasks disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1)")
+
+    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
+
+    # Forward known Copilot CLI flags.
+    kwargs: Dict[str, Any] = {}
+    for k in (
+        "timeout",
+        "trace",
+        "trace_jsonl_path",
+        "trace_dir",
+        "copilot_config_dir",
+        "copilot_log_dir",
+        "resume_session_id",
+        "continue_session",
+    ):
+        if k in payload:
+            kwargs[k] = payload.get(k)
+
+    from ipfs_accelerate_py import llm_router
+
+    text = llm_router.generate_text(str(prompt or ""), model_name=model_name, provider=provider, **kwargs)
+    session_id = _expected_session_tag()
+    return {"text": str(text), "provider": provider, "session_id": session_id}
+
+
 def _read_local_announce_peer_id() -> str:
     """Best-effort local peer id from announce JSON.
 
@@ -2277,6 +2350,8 @@ def run_worker(
 
     queue = TaskQueue(queue_path)
 
+    local_session = _expected_session_tag()
+
     handlers: dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {}
 
     def _wrap(fn: Callable[..., Dict[str, Any]]) -> Callable[[Dict[str, Any]], Dict[str, Any]]:
@@ -2305,6 +2380,11 @@ def run_worker(
 
     handlers["tool.call"] = _wrap(_run_tool_call)
     handlers["tool"] = _wrap(_run_tool_call)
+
+    # Mesh-targeted LLM execution (e.g., copilot_cli). This handler intentionally
+    # does not take accelerate_instance.
+    handlers["llm.generate"] = _run_llm_generate
+    handlers["llm_generate"] = _run_llm_generate
 
     def _shell_handler(task_dict: Dict[str, Any]) -> Dict[str, Any]:
         payload = task_dict.get("payload") or {}
@@ -2820,6 +2900,7 @@ def run_worker(
                         supported_task_types=list(mesh_supported),
                         max_tasks=int(batch_n),
                         same_task_type=True,
+                        session_id=local_session or None,
                         peer_id=str(worker_id),
                         clock=None,
                     )
@@ -2839,6 +2920,7 @@ def run_worker(
                     remote=remote,  # RemoteQueue
                     worker_id=str(worker_id),
                     supported_task_types=list(mesh_supported),
+                    session_id=local_session or None,
                     peer_id=str(worker_id),
                     clock=None,
                 )
@@ -3149,11 +3231,16 @@ def run_worker(
                         supported_task_types=supported,
                         max_tasks=int(local_claim_n),
                         same_task_type=True,
+                        session_id=local_session or None,
                     )
                 except Exception:
                     claimed_local = []
             else:
-                one = queue.claim_next(worker_id=worker_id, supported_task_types=supported)
+                one = queue.claim_next(
+                    worker_id=worker_id,
+                    supported_task_types=supported,
+                    session_id=local_session or None,
+                )
                 claimed_local = [one] if one is not None else []
 
             if not claimed_local:
@@ -3164,6 +3251,21 @@ def run_worker(
                     task_id = str(remote_task.get("task_id") or "").strip()
                     if not task_id:
                         # Nothing we can do.
+                        continue
+
+                    if not _session_allows_task(task_payload=remote_task.get("payload"), local_session=local_session):
+                        # Best-effort: release and skip.
+                        try:
+                            from ipfs_accelerate_py.p2p_tasks.client import release_task_sync
+
+                            release_task_sync(
+                                remote=remote,  # RemoteQueue
+                                task_id=str(task_id),
+                                worker_id=str(worker_id),
+                                reason="session_mismatch",
+                            )
+                        except Exception:
+                            pass
                         continue
 
                     # Opportunistically include any prefetched tasks from a
@@ -3229,6 +3331,12 @@ def run_worker(
                 for t in claimed_local:
                     if t is None:
                         continue
+                    if not _session_allows_task(task_payload=t.payload, local_session=local_session):
+                        try:
+                            queue.release(task_id=str(t.task_id), worker_id=str(worker_id), reason="session_mismatch")
+                        except Exception:
+                            pass
+                        continue
                     batch_tasks_local.append(
                         {
                             "task_id": t.task_id,
@@ -3281,6 +3389,15 @@ def run_worker(
                 continue
 
             task = claimed_local[0]
+
+            if task is not None and not _session_allows_task(task_payload=task.payload, local_session=local_session):
+                try:
+                    queue.release(task_id=str(task.task_id), worker_id=str(worker_id), reason="session_mismatch")
+                except Exception:
+                    pass
+                if once:
+                    return 0
+                continue
 
             # Generic heartbeat/progress so peers can observe long-running tasks via
             # RPC get/wait polling even for non-docker handlers.
