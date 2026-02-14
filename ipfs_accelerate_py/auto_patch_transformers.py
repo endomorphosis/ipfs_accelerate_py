@@ -25,6 +25,7 @@ Usage:
 import importlib
 import importlib.abc
 import importlib.util
+from importlib.machinery import PathFinder
 import os
 import sys
 import logging
@@ -127,7 +128,10 @@ class _TransformersLazyPatchHook(importlib.abc.MetaPathFinder, importlib.abc.Loa
         if fullname != "transformers":
             return None
 
-        spec = importlib.util.find_spec(fullname)
+        # IMPORTANT: do *not* call importlib.util.find_spec() here.
+        # That function consults sys.meta_path, which includes this hook,
+        # leading to infinite recursion / RecursionError during import.
+        spec = PathFinder.find_spec(fullname, path)
         if spec is None:
             return None
 
@@ -136,12 +140,12 @@ class _TransformersLazyPatchHook(importlib.abc.MetaPathFinder, importlib.abc.Loa
 
         class _Loader(importlib.abc.Loader):
             def create_module(self, spec):
-                if hasattr(original_loader, "create_module"):
+                if original_loader is not None and hasattr(original_loader, "create_module"):
                     return original_loader.create_module(spec)
                 return None
 
             def exec_module(self, module):
-                if hasattr(original_loader, "exec_module"):
+                if original_loader is not None and hasattr(original_loader, "exec_module"):
                     original_loader.exec_module(module)
                 else:
                     importlib.import_module(fullname)
