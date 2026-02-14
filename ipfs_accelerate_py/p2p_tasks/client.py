@@ -2283,6 +2283,34 @@ async def claim_next(
     return task if isinstance(task, dict) else None
 
 
+async def claim_many(
+    *,
+    remote: RemoteQueue,
+    worker_id: str,
+    supported_task_types: list[str] | None = None,
+    max_tasks: int = 1,
+    same_task_type: bool = True,
+    peer_id: str | None = None,
+    clock: Dict[str, Any] | None = None,
+) -> list[Dict[str, Any]]:
+    resp = await _dial_and_request(
+        remote=remote,
+        message={
+            "op": "claim_many",
+            "worker_id": str(worker_id),
+            "supported_task_types": list(supported_task_types or []),
+            "max_tasks": int(max_tasks),
+            "same_task_type": bool(same_task_type),
+            "peer_id": str(peer_id) if peer_id else "",
+            "clock": clock,
+        },
+    )
+    if not resp.get("ok"):
+        raise RuntimeError(f"claim_many failed: {resp}")
+    tasks = resp.get("tasks")
+    return list(tasks) if isinstance(tasks, list) else []
+
+
 def claim_next_sync(
     *,
     remote: RemoteQueue,
@@ -2298,6 +2326,32 @@ def claim_next_sync(
             remote=remote,
             worker_id=worker_id,
             supported_task_types=supported_task_types,
+            peer_id=peer_id,
+            clock=clock,
+        )
+
+    return anyio.run(_do, backend="trio")
+
+
+def claim_many_sync(
+    *,
+    remote: RemoteQueue,
+    worker_id: str,
+    supported_task_types: list[str] | None = None,
+    max_tasks: int = 1,
+    same_task_type: bool = True,
+    peer_id: str | None = None,
+    clock: Dict[str, Any] | None = None,
+) -> list[Dict[str, Any]]:
+    import anyio
+
+    async def _do() -> list[Dict[str, Any]]:
+        return await claim_many(
+            remote=remote,
+            worker_id=worker_id,
+            supported_task_types=supported_task_types,
+            max_tasks=max_tasks,
+            same_task_type=same_task_type,
             peer_id=peer_id,
             clock=clock,
         )

@@ -1388,6 +1388,92 @@ async def serve_task_queue(
                 )
                 return
 
+            if op in {"claim_many", "claim_batch"}:
+                worker_id = str(msg.get("worker_id") or "").strip()
+                if not worker_id:
+                    await stream.write(
+                        json.dumps({"ok": False, "error": "missing_worker_id", "peer_id": peer_id}).encode("utf-8")
+                        + b"\n"
+                    )
+                    return
+
+                claimed_peer_id = str(msg.get("peer") or msg.get("peer_id") or "").strip()
+                peer_ident = (claimed_peer_id or remote_peer_id or worker_id).strip()
+                clock_dict = msg.get("clock") if isinstance(msg.get("clock"), dict) else None
+
+                supported = msg.get("supported_task_types")
+                if supported is None:
+                    supported = msg.get("task_types")
+                if isinstance(supported, str):
+                    supported_list = [p.strip() for p in supported.split(",") if p.strip()]
+                elif isinstance(supported, (list, tuple, set)):
+                    supported_list = [str(t).strip() for t in supported if str(t).strip()]
+                else:
+                    supported_list = []
+
+                try:
+                    max_tasks = int(msg.get("max_tasks") or msg.get("limit") or 1)
+                except Exception:
+                    max_tasks = 1
+                same_type = msg.get("same_task_type")
+                if same_type is None:
+                    same_type = msg.get("same_type")
+                same_type_bool = bool(same_type) if same_type is not None else True
+
+                _update_peer_state(
+                    peer_ident,
+                    clock_dict,
+                    extra={
+                        "worker_id": worker_id,
+                        "peer_hint": claimed_peer_id,
+                        "transport_peer_id": str(remote_peer_id or "").strip(),
+                        "supported_task_types": list(supported_list),
+                    },
+                )
+
+                try:
+                    if deterministic_enabled:
+                        # Deterministic scheduling currently only selects one task.
+                        picked = _pick_task_for_peer(peer_id_hint=peer_ident, supported_types=supported_list)
+                        if picked is None:
+                            claimed_many = []
+                        else:
+                            one = queue.claim(task_id=str(picked.get("task_id") or ""), worker_id=worker_id)
+                            claimed_many = [one] if one is not None else []
+                    else:
+                        claimed_many = queue.claim_next_many(
+                            worker_id=worker_id,
+                            supported_task_types=supported_list,
+                            max_tasks=int(max_tasks),
+                            same_task_type=bool(same_type_bool),
+                        )
+                except Exception as exc:
+                    await stream.write(
+                        json.dumps({"ok": False, "error": str(exc), "peer_id": peer_id}).encode("utf-8") + b"\n"
+                    )
+                    return
+
+                tasks_out = []
+                for claimed in list(claimed_many or []):
+                    if claimed is None:
+                        continue
+                    tasks_out.append(
+                        {
+                            "task_id": claimed.task_id,
+                            "task_type": claimed.task_type,
+                            "model_name": claimed.model_name,
+                            "payload": claimed.payload,
+                            "created_at": claimed.created_at,
+                            "status": claimed.status,
+                            "assigned_worker": claimed.assigned_worker,
+                        }
+                    )
+
+                await stream.write(
+                    json.dumps({"ok": True, "tasks": tasks_out, "peer_id": peer_id}).encode("utf-8") + b"\n"
+                )
+                return
+
             if op in {"complete", "task.complete", "complete_task"}:
                 task_id = str(msg.get("task_id") or "").strip()
                 if not task_id:

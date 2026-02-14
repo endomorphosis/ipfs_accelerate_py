@@ -84,6 +84,79 @@ def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, tem
     return str(out)
 
 
+def _hf_textgen_batch(
+    prompts: list[str],
+    *,
+    model_name: str | None,
+    max_new_tokens: int,
+    temperature: float,
+) -> list[str]:
+    """Minimal local batched text-generation.
+
+    Uses the same cached HF pipeline as `_hf_textgen`, but submits a list of
+    prompts in one call to reduce per-request overhead.
+    """
+
+    if not prompts:
+        return []
+
+    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID
+
+    try:
+        from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline  # type: ignore
+    except Exception as exc:
+        raise RuntimeError(f"transformers is required for minimal text-generation: {exc}")
+
+    requested_model = str(model_name or os.environ.get("IPFS_ACCELERATE_PY_LLM_MODEL") or "gpt2").strip() or "gpt2"
+    safe_max_new = max(1, min(int(max_new_tokens or 128), 1024))
+    temp = float(temperature) if temperature is not None else 0.2
+
+    with _HF_TEXTGEN_LOCK:
+        if _HF_TEXTGEN_PIPELINE is None or _HF_TEXTGEN_MODEL_ID != requested_model:
+            tokenizer = AutoTokenizer.from_pretrained(requested_model)
+            model = AutoModelForCausalLM.from_pretrained(requested_model)
+            if (
+                getattr(tokenizer, "pad_token_id", None) is None
+                and getattr(tokenizer, "eos_token_id", None) is not None
+            ):
+                tokenizer.pad_token_id = tokenizer.eos_token_id
+
+            _HF_TEXTGEN_PIPELINE = pipeline(
+                "text-generation",
+                model=model,
+                tokenizer=tokenizer,
+                device=-1,
+            )
+            _HF_TEXTGEN_MODEL_ID = requested_model
+
+        gen = _HF_TEXTGEN_PIPELINE
+
+    with _HF_TEXTGEN_LOCK:
+        out = gen(
+            [str(p or "") for p in prompts],
+            max_new_tokens=safe_max_new,
+            do_sample=temp > 0,
+            temperature=max(temp, 1e-6),
+            pad_token_id=getattr(getattr(gen, "tokenizer", None), "pad_token_id", None),
+        )
+
+    texts: list[str] = []
+    if isinstance(out, list):
+        for item in out:
+            if isinstance(item, list) and item and isinstance(item[0], dict):
+                v = item[0].get("generated_text")
+                texts.append(str(v) if v is not None else str(item))
+            elif isinstance(item, dict):
+                v = item.get("generated_text")
+                texts.append(str(v) if v is not None else str(item))
+            else:
+                texts.append(str(item))
+        return texts
+
+    # Unexpected shape; fall back to per-prompt.
+    return [_hf_textgen(p, model_name=requested_model, max_new_tokens=safe_max_new, temperature=temp) for p in prompts]
+
+
 def _extract_text(value: Any) -> str:
     if isinstance(value, str):
         return value
@@ -1317,7 +1390,7 @@ def run_worker(
 
         # Lazy import to avoid requiring libp2p in non-mesh deployments.
         try:
-            from ipfs_accelerate_py.p2p_tasks.client import claim_next_sync
+            from ipfs_accelerate_py.p2p_tasks.client import claim_many_sync, claim_next_sync
         except Exception:
             return None
 
@@ -1330,6 +1403,36 @@ def run_worker(
         idx = int(mesh_rr) % max(1, len(peers))
         mesh_rr = (idx + 1) % max(1, len(peers))
         remote = peers[idx]
+
+        # Batch-claim when enabled (reduces RPC overhead; enables micro-batching).
+        try:
+            batch_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH")
+            batch_n = int(batch_raw) if batch_raw is not None else 1
+        except Exception:
+            batch_n = 1
+        batch_n = max(1, min(int(batch_n), 64))
+
+        if batch_n > 1:
+            try:
+                tasks = claim_many_sync(
+                    remote=remote,
+                    worker_id=str(worker_id),
+                    supported_task_types=list(mesh_supported),
+                    max_tasks=int(batch_n),
+                    same_task_type=True,
+                    peer_id=str(worker_id),
+                    clock=None,
+                )
+                if tasks and isinstance(tasks[0], dict):
+                    # Return the first; stash the rest on the remote object.
+                    try:
+                        setattr(remote, "_mesh_prefetched", list(tasks[1:]))
+                    except Exception:
+                        pass
+                    return (remote, tasks[0])
+            except Exception:
+                # Fall back to single-claim.
+                pass
 
         try:
             task = claim_next_sync(
@@ -1346,6 +1449,20 @@ def run_worker(
             return None
         except Exception:
             return None
+
+    def _pop_prefetched(remote: object) -> list[Dict[str, Any]]:
+        try:
+            buf = getattr(remote, "_mesh_prefetched", None)
+        except Exception:
+            buf = None
+        if not isinstance(buf, list) or not buf:
+            return []
+        out = [x for x in buf if isinstance(x, dict)]
+        try:
+            setattr(remote, "_mesh_prefetched", [])
+        except Exception:
+            pass
+        return out
 
     def _complete_mesh_task(
         *,
@@ -1383,39 +1500,108 @@ def run_worker(
                         # Nothing we can do.
                         continue
 
-                    result: Dict[str, Any] | None = None
-                    error: str | None = None
-                    ok = False
+                    # Opportunistically include any prefetched tasks from a
+                    # prior batch claim.
+                    batch_tasks = [remote_task] + _pop_prefetched(remote)
+
+                    # Micro-batch text-generation when safe and enabled.
                     try:
-                        ttype = str(remote_task.get("task_type") or "").strip().lower()
-                        handler = handlers.get(ttype)
-                        if handler is None:
-                            raise RuntimeError(f"Unsupported task_type: {remote_task.get('task_type')}")
-                        result = handler(
-                            {
-                                "task_id": task_id,
-                                "task_type": remote_task.get("task_type"),
-                                "model_name": remote_task.get("model_name"),
-                                "payload": remote_task.get("payload"),
-                            }
-                        )
-                        if isinstance(result, dict):
-                            # Ensure mesh executions are attributable.
-                            result = dict(result)
-                            progress = result.get("progress")
-                            if not isinstance(progress, dict):
-                                progress = {}
-                            if not progress.get("worker_id"):
-                                progress = dict(progress)
-                                progress["worker_id"] = str(worker_id)
-                                progress["task_type"] = str(remote_task.get("task_type") or "")
-                                progress["mesh"] = True
-                            result["progress"] = progress
-                        ok = True
-                    except Exception as exc:
+                        ttype0 = str(batch_tasks[0].get("task_type") or "").strip().lower()
+                    except Exception:
+                        ttype0 = ""
+
+                    try:
+                        tb_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX")
+                        tb_max = int(tb_raw) if tb_raw is not None else 1
+                    except Exception:
+                        tb_max = 1
+                    tb_max = max(1, min(int(tb_max), 64))
+
+                    can_textgen_batch = (
+                        ttype0 in {"text-generation", "text_generation", "generation"}
+                        and tb_max > 1
+                        and accelerate_instance is None
+                        and (_truthy(os.environ.get("IPFS_ACCEL_SKIP_CORE")) or _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_LLM")))
+                    )
+
+                    if can_textgen_batch:
+                        text_tasks = []
+                        for t in batch_tasks[:tb_max]:
+                            if str(t.get("task_type") or "").strip().lower() not in {"text-generation", "text_generation", "generation"}:
+                                break
+                            text_tasks.append(t)
+
+                        # Require homogeneous generation params for batching.
+                        def _params(t: Dict[str, Any]) -> tuple[str, int, float]:
+                            payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                            model = str(t.get("model_name") or "")
+                            mx = int((payload or {}).get("max_new_tokens") or (payload or {}).get("max_tokens") or 128)
+                            temp = float((payload or {}).get("temperature") or 0.2)
+                            return (model, mx, temp)
+
+                        base = _params(text_tasks[0])
+                        if all(_params(t) == base for t in text_tasks):
+                            prompts = []
+                            for t in text_tasks:
+                                payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
+                                pr = payload.get("prompt") if isinstance(payload, dict) else None
+                                prompts.append(str(pr or ""))
+
+                            texts = _hf_textgen_batch(
+                                prompts,
+                                model_name=base[0] or None,
+                                max_new_tokens=int(base[1]),
+                                temperature=float(base[2]),
+                            )
+
+                            for t, text in zip(text_tasks, texts):
+                                tid = str(t.get("task_id") or "").strip()
+                                if not tid:
+                                    continue
+                                res: Dict[str, Any] = {"text": str(text)}
+                                res["progress"] = {"worker_id": str(worker_id), "task_type": str(t.get("task_type") or ""), "mesh": True}
+                                _complete_mesh_task(remote=remote, task_id=tid, ok=True, result=res, error=None)
+
+                            # Process remaining tasks (if any) sequentially.
+                            batch_tasks = batch_tasks[len(text_tasks) :]
+
+                    for t in batch_tasks:
+                        tid = str(t.get("task_id") or "").strip()
+                        if not tid:
+                            continue
+                        result: Dict[str, Any] | None = None
+                        error: str | None = None
                         ok = False
-                        error = str(exc)
-                    _complete_mesh_task(remote=remote, task_id=task_id, ok=ok, result=result, error=error)
+                        try:
+                            ttype = str(t.get("task_type") or "").strip().lower()
+                            handler = handlers.get(ttype)
+                            if handler is None:
+                                raise RuntimeError(f"Unsupported task_type: {t.get('task_type')}")
+                            result = handler(
+                                {
+                                    "task_id": tid,
+                                    "task_type": t.get("task_type"),
+                                    "model_name": t.get("model_name"),
+                                    "payload": t.get("payload"),
+                                }
+                            )
+                            if isinstance(result, dict):
+                                # Ensure mesh executions are attributable.
+                                result = dict(result)
+                                progress = result.get("progress")
+                                if not isinstance(progress, dict):
+                                    progress = {}
+                                if not progress.get("worker_id"):
+                                    progress = dict(progress)
+                                    progress["worker_id"] = str(worker_id)
+                                    progress["task_type"] = str(t.get("task_type") or "")
+                                    progress["mesh"] = True
+                                result["progress"] = progress
+                            ok = True
+                        except Exception as exc:
+                            ok = False
+                            error = str(exc)
+                        _complete_mesh_task(remote=remote, task_id=tid, ok=ok, result=result, error=error)
                     if once:
                         return 0
                     continue

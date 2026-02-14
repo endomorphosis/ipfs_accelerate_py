@@ -464,6 +464,122 @@ class TaskQueue:
             assigned_worker=str(row2[5]) if row2[5] else None,
         )
 
+    def claim_next_many(
+        self,
+        *,
+        worker_id: str,
+        supported_task_types: Optional[Iterable[str]] = None,
+        max_tasks: int = 1,
+        same_task_type: bool = True,
+    ) -> list[QueuedTask]:
+        """Atomically claim up to `max_tasks` queued tasks.
+
+        When `same_task_type=True`, the first claimed task determines the
+        `task_type`, and the method claims additional queued tasks of that same
+        type (FIFO by created_at). This is useful for batching homogeneous work
+        (e.g., text-generation).
+        """
+
+        if not worker_id:
+            raise ValueError("worker_id is required")
+
+        try:
+            limit = int(max_tasks)
+        except Exception:
+            limit = 1
+        limit = max(1, min(limit, 128))
+
+        task_types = [t for t in (supported_task_types or []) if isinstance(t, str) and t.strip()]
+        now = time.time()
+
+        conn = self._connect()
+        try:
+            conn.execute("BEGIN TRANSACTION")
+
+            # Pick the oldest queued task (optionally filtered by supported types)
+            # to establish the batch's task_type.
+            picked_type: str | None = None
+            if same_task_type:
+                if task_types:
+                    placeholders = ",".join(["?"] * len(task_types))
+                    row0 = conn.execute(
+                        f"SELECT task_type FROM tasks WHERE status='queued' AND task_type IN ({placeholders}) ORDER BY created_at ASC LIMIT 1",
+                        tuple(task_types),
+                    ).fetchone()
+                else:
+                    row0 = conn.execute(
+                        "SELECT task_type FROM tasks WHERE status='queued' ORDER BY created_at ASC LIMIT 1"
+                    ).fetchone()
+                if row0 is None:
+                    conn.execute("COMMIT")
+                    return []
+                picked_type = str(row0[0])
+
+            # Select task_ids to claim.
+            params: list[object] = []
+            where = ["status='queued'"]
+            if task_types:
+                placeholders = ",".join(["?"] * len(task_types))
+                where.append(f"task_type IN ({placeholders})")
+                params.extend([str(t) for t in task_types])
+            if same_task_type and picked_type:
+                where.append("task_type = ?")
+                params.append(str(picked_type))
+
+            where_sql = " AND ".join(where)
+            rows = conn.execute(
+                f"SELECT task_id FROM tasks WHERE {where_sql} ORDER BY created_at ASC LIMIT {int(limit)}",
+                tuple(params),
+            ).fetchall()
+            ids = [str(r[0]) for r in (rows or []) if r and r[0]]
+            if not ids:
+                conn.execute("COMMIT")
+                return []
+
+            id_placeholders = ",".join(["?"] * len(ids))
+            conn.execute(
+                f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued'",
+                tuple([str(worker_id), now] + ids),
+            )
+
+            rows2 = conn.execute(
+                f"SELECT * FROM tasks WHERE task_id IN ({id_placeholders}) AND status='running' AND assigned_worker=? ORDER BY created_at ASC",
+                tuple(ids + [str(worker_id)]),
+            ).fetchall()
+
+            conn.execute("COMMIT")
+        except Exception:
+            try:
+                conn.execute("ROLLBACK")
+            except Exception:
+                pass
+            raise
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        out: list[QueuedTask] = []
+        for row2 in rows2 or []:
+            try:
+                payload = json.loads(row2[3])
+            except Exception:
+                payload = {"raw": row2[3]}
+
+            out.append(
+                QueuedTask(
+                    task_id=str(row2[0]),
+                    task_type=str(row2[1]),
+                    model_name=str(row2[2]),
+                    payload=payload if isinstance(payload, dict) else {"payload": payload},
+                    created_at=float(row2[6]),
+                    status=str(row2[4]),
+                    assigned_worker=str(row2[5]) if row2[5] else None,
+                )
+            )
+        return out
+
     def claim(
         self,
         *,
