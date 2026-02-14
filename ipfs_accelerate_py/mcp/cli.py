@@ -123,6 +123,18 @@ def main():
     # Parse arguments
     args = parser.parse_args()
 
+    # Export the canonical MCP-adjacent libp2p port so downstream libraries
+    # (TaskQueue client discovery, mDNS, etc.) can reliably operate in
+    # single-port MCP mode.
+    if getattr(args, "mcp_p2p_port", None):
+        try:
+            os.environ.setdefault(
+                "IPFS_ACCELERATE_PY_MCP_P2P_PORT",
+                str(int(args.mcp_p2p_port)),
+            )
+        except Exception:
+            pass
+
     # When running under MCP/systemd, standardize on a single "MCP p2p port"
     # unless the caller explicitly set a TaskQueue listen port.
     if args.p2p_listen_port is None and getattr(args, "mcp_p2p_port", None):

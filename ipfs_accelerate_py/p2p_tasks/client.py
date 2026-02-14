@@ -375,6 +375,48 @@ def _mdns_port() -> int:
         return 9710
 
 
+def _mcp_single_port() -> int | None:
+    """Return the canonical libp2p port used in MCP single-port deployments."""
+
+    raw = os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_PORT")
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    try:
+        port = int(text)
+    except Exception:
+        return None
+    return port if port > 0 else None
+
+
+def _normalize_peer_multiaddr_port(peer_multiaddr: str) -> str:
+    """Best-effort normalize legacy TaskQueue multiaddrs in MCP mode.
+
+    In MCP deployments we standardize on a single libp2p port (typically 9100).
+    Older discovery caches may still surface /tcp/9710 addresses; rewriting that
+    legacy default avoids persistent dial failures after migrating to MCP port.
+
+    This is intentionally conservative: it only rewrites the legacy default port
+    9710 to the MCP canonical port when the latter is explicitly configured.
+    """
+
+    ma = str(peer_multiaddr or "").strip()
+    if not ma:
+        return ma
+
+    desired = _mcp_single_port()
+    if not desired or desired == 9710:
+        return ma
+
+    # Only rewrite the legacy default port to avoid surprising behavior for
+    # custom ports.
+    legacy = "/tcp/9710"
+    if legacy not in ma:
+        return ma
+
+    return ma.replace(legacy, f"/tcp/{int(desired)}", 1)
+
+
 def _client_listen_host() -> str:
     # Reuse the service listen host env var for consistency in local/LAN setups
     # and tests. Default remains 0.0.0.0.
@@ -552,6 +594,7 @@ async def _try_peer_multiaddr(*, host, peer_multiaddr: str, message: Dict[str, A
     from multiaddr import Multiaddr
     from libp2p.peer.peerinfo import info_from_p2p_addr
 
+    peer_multiaddr = _normalize_peer_multiaddr_port(peer_multiaddr)
     peer_info = info_from_p2p_addr(Multiaddr(peer_multiaddr))
     await host.connect(peer_info)
     stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
