@@ -2016,6 +2016,11 @@ def _compute_supported_task_types(
                 "hf_pipeline",
             ]
         )
+
+    # Mesh-targeted LLM execution (e.g., copilot_cli). Only advertise this task
+    # type when explicitly enabled, since it may rely on external tooling.
+    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI")):
+        base_defaults.extend(["llm.generate", "llm_generate"])
     out = _supported_task_types_from_env(base_defaults)
 
     # Add tool.call only when we can actually execute it, and only when the
