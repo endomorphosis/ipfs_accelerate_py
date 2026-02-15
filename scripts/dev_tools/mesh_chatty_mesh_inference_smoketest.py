@@ -290,7 +290,7 @@ def main() -> int:
     ap.add_argument(
         "--attempt-resume",
         action="store_true",
-        help="Attempt a resume/continue task (requires native `copilot` binary on PATH)",
+        help="Attempt a sticky resume/continue routing test (requires sticky_worker_id + matching session_id)",
     )
 
     args = ap.parse_args()
@@ -317,6 +317,9 @@ def main() -> int:
     env_base["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "0"
     # Allow copilot_cli execution on workers.
     env_base.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI", "1")
+    # For smoketesting, allow continue_session without an explicit resume token.
+    # (Still enforced by sticky_worker_id + session_id matching.)
+    env_base.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_CONTINUE_WITHOUT_RESUME", "1")
     # Ensure workers advertise llm.generate.
     env_base.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES", "llm.generate")
 
@@ -380,6 +383,7 @@ def main() -> int:
                     "  p2p_service=False,\n"
                     "  supported_task_types=['llm.generate'],\n"
                     "  mesh=True,\n"
+                    "  mesh_children=True,\n"
                     ")\n"
                 ),
             ]
@@ -432,32 +436,20 @@ def main() -> int:
                 tid = _submit_task(remote_a, payload=payload)
                 mismatch_tasks.append((j + 1, tid, prompt))
 
-            # Phase 3: optional resume/continue (requires native `copilot`).
+            # Phase 3: optional sticky resume/continue routing test.
             resume_task: tuple[str, str] | None = None
             if bool(args.attempt_resume):
-                have_copilot = shutil.which("copilot") is not None
-                if not have_copilot:
-                    print("\n--- phase 3: resume/continue ---")
-                    print("SKIP: native `copilot` binary not found on PATH; cannot test resume/continue flags")
-                else:
-                    print("\n--- phase 3: resume/continue (requires sticky + matching session) ---")
-                    prompt = "Continue the prior conversation and return exactly: OK"
-                    # We do not know a real resume_session_id from Copilot here; this phase is
-                    # intended for environments where a real resume id is available.
-                    payload = {
-                        "provider": provider,
-                        "prompt": prompt,
-                        "chat_session_id": f"chatty-mesh-resume-{uuid.uuid4().hex}",
-                        "session_id": session_b,
-                        # Pinning to a specific worker id is only meaningful when you
-                        # know the exact assigned_worker value; this phase is intended
-                        # for manual use with a real Copilot session.
-                        "resume_session_id": "sess-EXAMPLE",  # replace with a real session id for a true resume
-                        "continue_session": True,
-                        "timeout": float(timeout_s),
-                    }
-                    tid = _submit_task(remote_a, payload=payload)
-                    resume_task = (tid, prompt)
+                print("\n--- phase 3: sticky resume/continue routing (session_id=session_b) ---")
+                prompt = "Return exactly: OK (resume round1)"
+                payload = {
+                    "provider": provider,
+                    "prompt": prompt,
+                    "chat_session_id": f"chatty-mesh-resume-{uuid.uuid4().hex}",
+                    "session_id": session_b,
+                    "timeout": float(timeout_s),
+                }
+                tid = _submit_task(remote_a, payload=payload)
+                resume_task = (tid, prompt)
 
             # Wait all tasks and print chatty output.
             import anyio
@@ -473,6 +465,10 @@ def main() -> int:
                     t0 = time.monotonic()
                     try:
                         task = await _wait_task_local(a_queue, tid, timeout_s=timeout_s)
+                        if task is None:
+                            # Some environments still lock the DuckDB file even for read-only
+                            # connections. Fall back to the p2p wait path in that case.
+                            task = await _wait_task(remote_a, tid, timeout_s=timeout_s)
                     except Exception as exc:
                         task = None
                         task_exc = str(exc)
@@ -517,6 +513,32 @@ def main() -> int:
                         tg.start_soon(_collect, "resume", jobs + session_jobs + 1, tid, prompt)
 
             anyio.run(_run_all, backend="trio")
+
+            # If requested, submit round2 pinned to round1's executor.
+            expected_resume_worker = ""
+            if resume_task is not None and completed_resume:
+                expected_resume_worker = str((completed_resume[0].meta or {}).get("executor_worker_id") or "").strip()
+                if not expected_resume_worker:
+                    print("FAILED: resume round1 missing executor_worker_id")
+                    return 2
+
+                prompt2 = "Return exactly: OK (resume round2)"
+                payload2 = {
+                    "provider": provider,
+                    "prompt": prompt2,
+                    "chat_session_id": str((completed_resume[0].meta or {}).get("chat_session_id") or "")
+                    or f"chatty-mesh-resume2-{uuid.uuid4().hex}",
+                    "session_id": session_b,
+                    "sticky_worker_id": expected_resume_worker,
+                    "continue_session": True,
+                    "timeout": float(timeout_s),
+                }
+                tid2 = _submit_task(remote_a, payload=payload2)
+
+                async def _wait_round2() -> None:
+                    await _collect("resume", jobs + session_jobs + 2, tid2, prompt2)
+
+                anyio.run(_wait_round2, backend="trio")
 
             # Write JSONL transcript if requested.
             transcript_path = str(args.transcript_jsonl or "").strip()
@@ -569,6 +591,13 @@ def main() -> int:
             if not ok_sess:
                 print("FAILED: expected session-bound tasks to be executed with session_id=session_b")
                 return 2
+
+            if expected_resume_worker and len(completed_resume) >= 2:
+                got = str((completed_resume[-1].meta or {}).get("executor_worker_id") or "").strip()
+                if got and got != expected_resume_worker:
+                    print("FAILED: sticky resume ran on different worker")
+                    print(f"expected executor_worker_id={expected_resume_worker} got={got}")
+                    return 2
 
             # Mismatch tasks must remain queued/unassigned.
             for _idx, tid, _prompt in mismatch_tasks:

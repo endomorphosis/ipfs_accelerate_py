@@ -92,6 +92,9 @@ async def _run_one(*, remote, provider: str, prompt: str, timeout_s: float) -> J
         "chat_session_id": f"pool-smoke-{uuid.uuid4().hex}",
         "timeout": max(30.0, float(timeout_s)),
     }
+    session_id = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
+    if session_id:
+        payload["session_id"] = session_id
 
     t_submit_wall = time.time()
     t_submit_mono = time.monotonic()
@@ -200,8 +203,17 @@ def main() -> int:
         default=2,
         help="Exit code 2 if fewer distinct executor_worker_id values are observed",
     )
+    ap.add_argument(
+        "--session-id",
+        type=str,
+        default="",
+        help="Optional session_id to include in payload (also exported as IPFS_ACCELERATE_PY_TASK_P2P_SESSION for the driver)",
+    )
 
     args = ap.parse_args()
+
+    if isinstance(args.session_id, str) and args.session_id.strip():
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = args.session_id.strip()
 
     peer_id = str(args.peer_id or "").strip()
     multiaddr = str(args.multiaddr or "").strip()
