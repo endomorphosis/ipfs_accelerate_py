@@ -333,6 +333,10 @@ def main() -> int:
     session_b = str(args.session_b or "").strip() or "S2"
     session_jobs = max(1, int(args.session_jobs))
 
+    import shutil
+
+    native_copilot_available = shutil.which("copilot") is not None
+
     py = _must_python()
 
     # Base env: keep everything local and deterministic.
@@ -463,7 +467,8 @@ def main() -> int:
             # Phase 3: optional sticky resume/continue routing test.
             resume_task: tuple[str, str] | None = None
             if bool(args.attempt_resume):
-                print("\n--- phase 3: sticky resume/continue routing (session_id=session_b) ---")
+                mode = "native" if native_copilot_available else "sticky-only"
+                print(f"\n--- phase 3: sticky resume/continue routing (session_id=session_b, mode={mode}) ---")
                 prompt = "Return exactly: OK (resume round1)"
                 payload = {
                     "provider": provider,
@@ -550,9 +555,10 @@ def main() -> int:
                     or f"chatty-mesh-resume2-{uuid.uuid4().hex}",
                     "session_id": session_b,
                     "sticky_worker_id": expected_resume_worker,
-                    "continue_session": True,
                     "timeout": float(timeout_s),
                 }
+                if native_copilot_available:
+                    payload2["continue_session"] = True
                 tid2 = _submit_task(remote_a, payload=payload2)
 
                 async def _wait_round2() -> None:
