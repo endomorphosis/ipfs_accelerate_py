@@ -3824,6 +3824,7 @@ def run_autoscaled_workers(
                 sys.executable,
                 "-m",
                 "ipfs_accelerate_py.p2p_tasks.worker",
+                "--no-autoscale",
                 "--queue",
                 str(queue_path),
                 "--worker-id",
@@ -3833,16 +3834,23 @@ def run_autoscaled_workers(
             ]
             if bool(start_service):
                 cmd.append("--p2p-service")
-                if p2p_listen_port is not None:
-                    cmd.extend(["--p2p-listen-port", str(int(p2p_listen_port))])
+            else:
+                cmd.append("--no-p2p-service")
+
+            if p2p_listen_port is not None:
+                cmd.extend(["--p2p-listen-port", str(int(p2p_listen_port))])
+
             if bool(mesh_for_worker):
                 cmd.append("--mesh")
-                if mesh_refresh_s is not None:
-                    cmd.extend(["--mesh-refresh-s", str(float(mesh_refresh_s))])
-                if mesh_claim_interval_s is not None:
-                    cmd.extend(["--mesh-claim-interval-s", str(float(mesh_claim_interval_s))])
-                if mesh_max_peers is not None:
-                    cmd.extend(["--mesh-max-peers", str(int(mesh_max_peers))])
+            else:
+                cmd.append("--no-mesh")
+
+            if mesh_refresh_s is not None:
+                cmd.extend(["--mesh-refresh-s", str(float(mesh_refresh_s))])
+            if mesh_claim_interval_s is not None:
+                cmd.extend(["--mesh-claim-interval-s", str(float(mesh_claim_interval_s))])
+            if mesh_max_peers is not None:
+                cmd.extend(["--mesh-max-peers", str(int(mesh_max_peers))])
 
             env = dict(os.environ)
             if supported_for_workers:
@@ -4079,6 +4087,7 @@ def run_autoscaled_workers(
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="ipfs_accelerate_py task worker")
     from .task_queue import default_queue_path
+    import socket
 
     parser.add_argument(
         "--queue",
@@ -4086,21 +4095,31 @@ def main(argv: Optional[list[str]] = None) -> int:
         default=default_queue_path(),
         help="Path to task queue DuckDB file (default: env or shared cache path)",
     )
-    parser.add_argument("--worker-id", dest="worker_id", required=True, help="Worker identifier")
+    parser.add_argument(
+        "--worker-id",
+        dest="worker_id",
+        default=os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ID")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_ID")
+        or socket.gethostname(),
+        help="Worker identifier (default: env IPFS_ACCELERATE_PY_TASK_WORKER_ID or hostname)",
+    )
     parser.add_argument("--poll-interval-s", dest="poll_interval_s", type=float, default=0.5)
     parser.add_argument("--once", action="store_true", help="Process at most one task")
-    parser.add_argument("--p2p-service", action="store_true", help="Also start a local libp2p TaskQueue RPC service")
+    parser.add_argument("--p2p-service", dest="p2p_service", action="store_true", help="Start a local libp2p TaskQueue RPC service")
+    parser.add_argument(
+        "--no-p2p-service",
+        dest="p2p_service",
+        action="store_false",
+        help="Disable local libp2p TaskQueue RPC service",
+    )
     parser.add_argument(
         "--p2p-listen-port",
         type=int,
         default=None,
         help="TCP port for libp2p service (default: env or 9710)",
     )
-    parser.add_argument(
-        "--mesh",
-        action="store_true",
-        help="Enable mDNS mesh mode: discover peers and claim tasks from them (opt-in).",
-    )
+    parser.add_argument("--mesh", dest="mesh", action="store_true", help="Enable mDNS mesh mode")
+    parser.add_argument("--no-mesh", dest="mesh", action="store_false", help="Disable mDNS mesh mode")
     parser.add_argument(
         "--mesh-refresh-s",
         type=float,
@@ -4122,8 +4141,15 @@ def main(argv: Optional[list[str]] = None) -> int:
 
     parser.add_argument(
         "--autoscale",
+        dest="autoscale",
         action="store_true",
-        help="Enable autoscaling worker threads (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE)",
+        help="Enable autoscaling (manager spawns/tears down workers)",
+    )
+    parser.add_argument(
+        "--no-autoscale",
+        dest="autoscale",
+        action="store_false",
+        help="Disable autoscaling (run a single worker loop)",
     )
     parser.add_argument(
         "--autoscale-min",
@@ -4151,8 +4177,15 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument(
         "--autoscale-remote",
+        dest="autoscale_remote",
         action="store_true",
-        help="Also scale based on discovered remote backlog (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE)",
+        help="Also scale based on discovered remote backlog",
+    )
+    parser.add_argument(
+        "--no-autoscale-remote",
+        dest="autoscale_remote",
+        action="store_false",
+        help="Do not scale based on remote backlog",
     )
     parser.add_argument(
         "--autoscale-remote-refresh-s",
@@ -4168,16 +4201,47 @@ def main(argv: Optional[list[str]] = None) -> int:
     )
     parser.add_argument(
         "--autoscale-mesh-children",
+        dest="autoscale_mesh_children",
         action="store_true",
-        help="Enable mesh mode for autoscaled child workers (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN)",
+        help="Enable mesh mode for autoscaled child workers",
+    )
+    parser.add_argument(
+        "--no-autoscale-mesh-children",
+        dest="autoscale_mesh_children",
+        action="store_false",
+        help="Disable mesh mode for autoscaled child workers",
     )
     parser.add_argument(
         "--autoscale-processes",
+        dest="autoscale_processes",
         action="store_true",
-        help="Spawn autoscaled workers as child processes (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES)",
+        help="Spawn autoscaled workers as child processes",
+    )
+    parser.add_argument(
+        "--no-autoscale-processes",
+        dest="autoscale_processes",
+        action="store_false",
+        help="Spawn autoscaled workers as threads instead of child processes",
+    )
+
+    # Default behavior: act like a systemd-friendly daemon.
+    # - host a p2p service
+    # - participate in mesh draining
+    # - autoscale by spawning/retiring worker processes
+    parser.set_defaults(
+        p2p_service=True,
+        mesh=True,
+        autoscale=True,
+        autoscale_remote=True,
+        autoscale_mesh_children=True,
+        autoscale_processes=True,
     )
 
     args = parser.parse_args(argv)
+
+    # If user explicitly asked for a one-shot run, force autoscale off.
+    if bool(args.once):
+        args.autoscale = False
 
     env_autoscale = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE")) or _truthy(
         os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_AUTOSCALE")

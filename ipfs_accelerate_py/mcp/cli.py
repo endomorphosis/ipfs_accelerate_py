@@ -10,6 +10,8 @@ import logging
 import os
 import sys
 from pathlib import Path
+import subprocess
+import atexit
 
 # Configure logging
 logging.basicConfig(
@@ -84,16 +86,19 @@ def main():
         help="Run in development mode with auto-reload"
     )
 
-    # Optional: also run ipfs_datasets_py P2P task worker/service in-process.
-    # This enables a remote machine running the MCP server to pick up libp2p
-    # task submissions from other nodes.
+    # Default behavior: run MCP + TaskQueue worker/service.
+    # Provide --no-* switches to disable for pure-HTTP usage.
     parser.add_argument(
         "--p2p-task-worker",
+        dest="p2p_task_worker",
         action="store_true",
-        help=(
-            "Also start accelerate-owned DuckDB task worker (+ optional libp2p TaskQueue service) "
-            "in a background thread"
-        ),
+        help="Start a DuckDB task worker alongside MCP (default: on)",
+    )
+    parser.add_argument(
+        "--no-p2p-task-worker",
+        dest="p2p_task_worker",
+        action="store_false",
+        help="Do not start the task worker",
     )
     parser.add_argument(
         "--p2p-queue",
@@ -108,8 +113,15 @@ def main():
 
     parser.add_argument(
         "--p2p-autoscale",
+        dest="p2p_autoscale",
         action="store_true",
-        help="Autoscale P2P task workers based on local queue backlog (spawns unique worker IDs)",
+        help="Autoscale workers based on backlog (default: on)",
+    )
+    parser.add_argument(
+        "--no-p2p-autoscale",
+        dest="p2p_autoscale",
+        action="store_false",
+        help="Disable autoscaling",
     )
     parser.add_argument(
         "--p2p-autoscale-min",
@@ -137,14 +149,28 @@ def main():
     )
     parser.add_argument(
         "--p2p-autoscale-mesh-children",
+        dest="p2p_autoscale_mesh_children",
         action="store_true",
-        help="Enable mesh peer-claiming for autoscaled child workers (default: off)",
+        help="Enable mesh peer-claiming for autoscaled child workers (default: on)",
+    )
+    parser.add_argument(
+        "--no-p2p-autoscale-mesh-children",
+        dest="p2p_autoscale_mesh_children",
+        action="store_false",
+        help="Disable mesh peer-claiming for autoscaled child workers",
     )
 
     parser.add_argument(
         "--p2p-autoscale-remote",
+        dest="p2p_autoscale_remote",
         action="store_true",
-        help="Scale autoscaled workers based on remote peer queued backlog (default: off)",
+        help="Scale workers based on remote peer backlog too (default: on)",
+    )
+    parser.add_argument(
+        "--no-p2p-autoscale-remote",
+        dest="p2p_autoscale_remote",
+        action="store_false",
+        help="Do not scale workers based on remote backlog",
     )
     parser.add_argument(
         "--p2p-autoscale-remote-refresh-s",
@@ -160,11 +186,15 @@ def main():
     )
     parser.add_argument(
         "--p2p-service",
+        dest="p2p_service",
         action="store_true",
-        help=(
-            "Start the libp2p TaskQueue RPC service (writes an announce file for zero-config client auto-discovery). "
-            "If used with --p2p-task-worker, the worker will host the service; otherwise the service runs standalone."
-        ),
+        help="Start the libp2p TaskQueue RPC service (default: on)",
+    )
+    parser.add_argument(
+        "--no-p2p-service",
+        dest="p2p_service",
+        action="store_false",
+        help="Do not start the libp2p TaskQueue RPC service",
     )
     parser.add_argument(
         "--p2p-listen-port",
@@ -175,11 +205,20 @@ def main():
 
     parser.add_argument(
         "--p2p-enable-tools",
+        dest="p2p_enable_tools",
         action="store_true",
         help=(
             "Enable remote op=call_tool on the TaskQueue p2p service "
             "(sets IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1)"
         ),
+    )
+
+    parser.set_defaults(
+        p2p_task_worker=True,
+        p2p_service=True,
+        p2p_autoscale=True,
+        p2p_autoscale_remote=True,
+        p2p_autoscale_mesh_children=True,
     )
 
     # Parse arguments
@@ -207,28 +246,27 @@ def main():
         if args.p2p_service or env_mcp_p2p_service_enabled:
             args.p2p_listen_port = int(args.mcp_p2p_port)
 
-    # Allow systemd to toggle p2p features via env without changing unit args.
-    if not args.p2p_service:
-        env_p2p_service = os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE")
-        if str(env_p2p_service or "").strip().lower() in {"1", "true", "yes", "on"}:
-            args.p2p_service = True
-    if not args.p2p_task_worker:
-        env_p2p_worker = os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER")
-        if str(env_p2p_worker or "").strip().lower() in {"1", "true", "yes", "on"}:
-            args.p2p_task_worker = True
+    # Allow env to override behavior without changing args.
     if not args.p2p_enable_tools:
         env_enable_tools = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS")
         if str(env_enable_tools or "").strip().lower() in {"1", "true", "yes", "on"}:
             args.p2p_enable_tools = True
 
-    # Let systemd enable autoscaled workers to help drain *remote* backlogs via mesh.
-    # This is intentionally separate from IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE
-    # and IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE, which are read in the
-    # worker thread (so the CLI can remain a thin wrapper).
-    if not args.p2p_autoscale_mesh_children:
-        env_mesh_children = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN")
-        if str(env_mesh_children or "").strip().lower() in {"1", "true", "yes", "on"}:
-            args.p2p_autoscale_mesh_children = True
+    # Environment may still override these defaults if explicitly set.
+    if os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") is not None:
+        args.p2p_service = str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
+    if os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER") is not None:
+        args.p2p_task_worker = str(os.environ.get("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER") or "").strip().lower() in {
+            "1",
+            "true",
+            "yes",
+            "on",
+        }
 
     if args.p2p_enable_tools:
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS"] = "1"
@@ -236,6 +274,11 @@ def main():
     if args.p2p_service and args.p2p_listen_port:
         os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port)))
         os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(int(args.p2p_listen_port)))
+
+    if args.p2p_service and getattr(args, "mcp_p2p_port", None):
+        # Make p2p_tasks.worker default to the same port when spawned.
+        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT", str(int(args.mcp_p2p_port)))
+        os.environ.setdefault("IPFS_DATASETS_PY_TASK_P2P_LISTEN_PORT", str(int(args.mcp_p2p_port)))
 
     # Ensure the announce file is writable and consistent across MCP/systemd.
     # Without this, clients may read stale ~/.cache announce data while the
@@ -282,91 +325,59 @@ def main():
             logger.debug(f"GitHub API cache init skipped: {exc}")
 
         if args.p2p_task_worker:
-            import threading
-
             # Mark the local worker as enabled for TaskQueue status reporting.
-            # The TaskQueue service uses env vars to describe in-process worker
-            # configuration in `status(detail=True)`.
             os.environ.setdefault("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER", "1")
             os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER", "1")
 
             queue_path = os.path.expanduser(str(args.p2p_queue))
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_QUEUE_PATH", queue_path)
+            os.environ.setdefault("IPFS_DATASETS_PY_TASK_QUEUE_PATH", queue_path)
 
-            def _run_p2p_worker() -> None:
+            # Give the worker a stable id unless overridden.
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_ID", str(args.p2p_worker_id))
+            os.environ.setdefault("IPFS_DATASETS_PY_TASK_WORKER_ID", str(args.p2p_worker_id))
+
+            worker_cmd = [
+                sys.executable,
+                "-m",
+                "ipfs_accelerate_py.p2p_tasks.worker",
+            ]
+
+            # Best-effort: pass ports explicitly if the caller set them.
+            if args.p2p_listen_port is not None:
+                worker_cmd.extend(["--p2p-listen-port", str(int(args.p2p_listen_port))])
+
+            # If user explicitly disabled p2p service, reflect that.
+            if not bool(args.p2p_service):
+                worker_cmd.append("--no-p2p-service")
+
+            # If user explicitly disabled autoscaling, reflect that.
+            if not bool(args.p2p_autoscale):
+                worker_cmd.append("--no-autoscale")
+
+            if not bool(args.p2p_autoscale_remote):
+                worker_cmd.append("--no-autoscale-remote")
+
+            if not bool(args.p2p_autoscale_mesh_children):
+                worker_cmd.append("--no-autoscale-mesh-children")
+
+            logger.info("Starting ipfs_accelerate_py task worker subprocess")
+            worker_proc = subprocess.Popen(worker_cmd, env=dict(os.environ))
+
+            def _cleanup_worker_proc() -> None:
                 try:
-                    from ipfs_accelerate_py.p2p_tasks.worker import run_worker
+                    worker_proc.terminate()
+                except Exception:
+                    return
+                try:
+                    worker_proc.wait(timeout=2.0)
+                except Exception:
+                    try:
+                        worker_proc.kill()
+                    except Exception:
+                        pass
 
-                    autoscale_env = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE")
-                    autoscale_enabled = bool(args.p2p_autoscale) or str(autoscale_env or "").strip().lower() in {
-                        "1",
-                        "true",
-                        "yes",
-                        "on",
-                    }
-
-                    if autoscale_enabled:
-                        from ipfs_accelerate_py.p2p_tasks.worker import run_autoscaled_workers
-
-                        autoscale_remote_env = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE")
-                        autoscale_remote_enabled = bool(args.p2p_autoscale_remote) or str(
-                            autoscale_remote_env or ""
-                        ).strip().lower() in {"1", "true", "yes", "on"}
-
-                        mesh_children_enabled = bool(args.p2p_autoscale_mesh_children)
-                        # If you ask us to scale based on remote backlog, but you
-                        # don't enable mesh-claiming for child workers, the extra
-                        # workers cannot actually help drain remote queues.
-                        if autoscale_remote_enabled and not mesh_children_enabled:
-                            mesh_children_enabled = True
-                            logger.info(
-                                "Enabling mesh-claiming for autoscaled child workers "
-                                "because remote-backlog autoscaling is enabled"
-                            )
-
-                        run_autoscaled_workers(
-                            queue_path=queue_path,
-                            base_worker_id=str(args.p2p_worker_id),
-                            min_workers=int(args.p2p_autoscale_min),
-                            max_workers=int(args.p2p_autoscale_max),
-                            scale_poll_s=float(args.p2p_autoscale_poll_s),
-                            scale_down_idle_s=float(args.p2p_autoscale_idle_s),
-                            poll_interval_s=0.25,
-                            once=False,
-                            p2p_service=bool(args.p2p_service),
-                            p2p_listen_port=args.p2p_listen_port,
-                            accelerate_instance=accelerate,
-                            supported_task_types=None,
-                            mesh=None,
-                            mesh_children=bool(mesh_children_enabled),
-                            autoscale_remote=bool(autoscale_remote_enabled),
-                            remote_refresh_s=float(args.p2p_autoscale_remote_refresh_s),
-                            remote_max_peers=int(args.p2p_autoscale_remote_max_peers),
-                            stop_event=None,
-                        )
-                        return
-
-                    run_worker(
-                        queue_path=queue_path,
-                        worker_id=str(args.p2p_worker_id),
-                        poll_interval_s=0.25,
-                        once=False,
-                        p2p_service=bool(args.p2p_service),
-                        p2p_listen_port=args.p2p_listen_port,
-                        accelerate_instance=accelerate,
-                    )
-                except Exception as exc:
-                    logger.error(f"Failed to start ipfs_accelerate_py P2P task worker: {exc}")
-
-            t = threading.Thread(
-                target=_run_p2p_worker,
-                name="ipfs_accelerate_py_p2p_task_worker",
-                daemon=True,
-            )
-            t.start()
-            logger.info(
-                "Started ipfs_accelerate_py task worker thread "
-                f"(queue={queue_path}, worker_id={args.p2p_worker_id}, p2p_service={bool(args.p2p_service)})"
-            )
+            atexit.register(_cleanup_worker_proc)
 
         # If the user asked for the p2p service but did not start the worker,
         # run the TaskQueue libp2p RPC service standalone.

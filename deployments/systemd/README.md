@@ -196,21 +196,13 @@ python scripts/p2p_rpc.py --peer-id <REMOTE_PEER_ID> discover --timeout 10 --det
 
 ## Autoscaling Workers (systemd)
 
-There are two distinct ways to “scale workers” under systemd:
+Autoscaling worker **processes** (spawn/retire based on local + peer backlog) is the default behavior for the TaskQueue worker daemon and for the primary MCP unit.
 
-1) **In-process autoscaling** (thread-based)
-  - Used by the integrated MCP unit ([deployments/systemd/ipfs-accelerate.service](deployments/systemd/ipfs-accelerate.service)).
-  - Scales worker *threads* inside the MCP process.
+Use the env files only to *override* defaults (min/max/idle, disabling remote backlog, etc.).
 
-2) **Dedicated task-worker autoscaling** (thread or process-based)
-  - Used by [deployments/systemd/ipfs-accelerate-task-worker.service](deployments/systemd/ipfs-accelerate-task-worker.service).
-  - Can scale worker threads *or* spawn/retire separate **child worker processes**.
-  - Process mode is useful when you want lifecycle isolation (spawn/destroy) or
-    if you hit stability issues with threaded libp2p.
+### Optional overrides
 
-### Enable process-based autoscaling
-
-1) Copy the example env file:
+1) Copy the example env file (only if you want overrides):
 
 ```bash
 sudo mkdir -p /etc/ipfs-accelerate
@@ -218,12 +210,12 @@ sudo cp deployments/systemd/task-worker.env.example /etc/ipfs-accelerate/task-wo
 sudo chmod 644 /etc/ipfs-accelerate/task-worker.env
 ```
 
-2) In `/etc/ipfs-accelerate/task-worker.env`, set:
+2) In `/etc/ipfs-accelerate/task-worker.env`, override as needed (examples):
 
-- `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE=1`
-- `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES=1`
-- (optional) `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=1`
-- (optional) `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=1`
+- `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX=8`
+- `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S=60`
+- `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=0`
+- `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES=0` (use threads instead)
 
 3) Restart the unit:
 

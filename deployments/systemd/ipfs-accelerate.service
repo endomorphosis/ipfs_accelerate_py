@@ -37,21 +37,8 @@ Environment=CACHE_ENABLE_P2P=false
 Environment=CACHE_LISTEN_PORT=9100
 Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
 
-# TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
-Environment=IPFS_ACCELERATE_PY_MCP_P2P_SERVICE=1
-Environment=IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER=1
-
-# Autoscaling: rely on the MCP+p2p server to scale worker threads up/down.
-# Remote autoscale + mesh children means this host can help drain peer backlogs.
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX=4
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S=2
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S=30
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S=5
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS=10
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=1
+# TaskQueue P2P RPC service + worker autoscaling are enabled by default by the MCP CLI.
+# Use env overrides only if you need to disable or tune behavior.
 
 # Batching + multi-peer draining
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT=1
@@ -102,7 +89,7 @@ Environment=IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0
 
-ExecStart=%h/ipfs_accelerate_py/.venv/bin/python3 -m ipfs_accelerate_py.mcp.cli --host 0.0.0.0 --port 9000 --log-level INFO --p2p-service --p2p-listen-port 9100 --p2p-enable-tools --p2p-task-worker
+ExecStart=%h/ipfs_accelerate_py/.venv/bin/python3 -m ipfs_accelerate_py.mcp.cli --host 0.0.0.0 --port 9000 --log-level INFO
 ExecReload=/bin/kill -HUP $MAINPID
 Restart=always
 RestartSec=10
