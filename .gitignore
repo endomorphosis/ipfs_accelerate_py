@@ -5,6 +5,7 @@
 .venv-wsl
 .venv-win311
 *benchmark_report_*
+state/*
 *benchmark_status_*
 *comprehensive_benchmark_report*
 *_model_hardware_report*

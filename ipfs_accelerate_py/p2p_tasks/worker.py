@@ -2306,6 +2306,11 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         "session_id": session_id,
         "executor_worker_id": str(task.get("assigned_worker") or "").strip(),
     }
+    try:
+        out["executor_peer_id"] = _read_local_announce_peer_id()
+        out["executor_multiaddr"] = _read_local_announce_multiaddr()
+    except Exception:
+        pass
     if isinstance(chat_session_id, str) and chat_session_id.strip():
         out["chat_session_id"] = chat_session_id.strip()
     if isinstance(resume_session_id, str) and resume_session_id.strip():
@@ -2329,6 +2334,21 @@ def _read_local_announce_peer_id() -> str:
         data = json.loads(open(path, "r", encoding="utf-8").read() or "{}")
         if isinstance(data, dict):
             return str(data.get("peer_id") or "").strip()
+    except Exception:
+        return ""
+    return ""
+
+
+def _read_local_announce_multiaddr() -> str:
+    path = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE") or "").strip()
+    if not path or path.lower() in {"0", "false", "no", "off"}:
+        return ""
+    try:
+        if not os.path.exists(path):
+            return ""
+        data = json.loads(open(path, "r", encoding="utf-8").read() or "{}")
+        if isinstance(data, dict):
+            return str(data.get("multiaddr") or "").strip()
     except Exception:
         return ""
     return ""

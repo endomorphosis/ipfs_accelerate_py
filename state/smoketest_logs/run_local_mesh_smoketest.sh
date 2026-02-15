@@ -91,6 +91,7 @@ echo "=== running driver ==="
 "$ROOT_DIR/.venv/bin/python" "$ROOT_DIR/scripts/dev_tools/mesh_pooling_smoketest.py" \
   --announce "$ANNOUNCE_FILE" \
   --jobs 12 --concurrency 6 --timeout-s 60 \
+  --transcript-jsonl "$LOG_DIR/transcript.jsonl" \
   >"$LOG_DIR/driver.out" 2>&1 || {
     code=$?
     echo "Driver exit code: $code"
@@ -105,3 +106,4 @@ cat "$LOG_DIR/driver.out"
 echo "=== log locations ==="
 echo "  $LOG_DIR/controller.log"
 echo "  $LOG_DIR/driver.out"
+echo "  $LOG_DIR/transcript.jsonl"
