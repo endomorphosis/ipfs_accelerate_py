@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Chatty 2+ peer mesh inference smoketest.
+"""Chatty mesh inference smoketest.
 
 Goals
 - Demonstrate throughput scaling: multiple mesh workers drain a single peer's queue.
@@ -13,7 +13,8 @@ with metadata (executor worker/peer ids, elapsed time, session ids, etc.).
 
 Topology (local simulation)
 - Peer A: runs the TaskQueue RPC service and owns the queue.
-- Peer B/C/...: run workers in mesh mode (static peer list) and drain from A.
+- Peer B (mesh drainer): runs N worker threads in mesh mode (static peer list)
+    and drains from A.
 
 Notes
 - For repeatability without a real Copilot install, you can set:
@@ -131,40 +132,64 @@ async def _wait_task(remote, task_id: str, *, timeout_s: float) -> Optional[dict
     return None
 
 
-async def _wait_task_local(queue_path: str, task_id: str, *, timeout_s: float) -> Optional[dict]:
-    """Wait for a task by reading the local DuckDB queue.
+def _read_task_readonly(queue_path: str, task_id: str) -> Optional[dict]:
+    """Read a task row using a read-only DuckDB connection.
 
-    This avoids repeated libp2p dials during the smoketest, which can be flaky in
-    some environments when multiple workers are active.
+    Using TaskQueue.get() opens a read-write connection, which conflicts with the
+    service process holding a write lock on the DB file. Read-only polling avoids
+    that lock contention.
     """
 
-    sys.path.insert(0, str(REPO_ROOT))
-    from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue  # noqa: E402
+    if not task_id:
+        return None
+    try:
+        import duckdb
 
+        conn = duckdb.connect(str(queue_path), read_only=True)
+        try:
+            row = conn.execute(
+                "SELECT task_id, status, assigned_worker, result_json, error FROM tasks WHERE task_id = ?",
+                (str(task_id),),
+            ).fetchone()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+    except Exception:
+        return None
+
+    if not row:
+        return None
+
+    _tid, status, assigned_worker, result_json, error = row
+    result: Any = None
+    if isinstance(result_json, str) and result_json:
+        try:
+            result = json.loads(result_json)
+        except Exception:
+            result = result_json
+    return {
+        "task_id": str(_tid),
+        "status": str(status or ""),
+        "assigned_worker": str(assigned_worker) if assigned_worker else None,
+        "result": result,
+        "error": str(error or ""),
+    }
+
+
+async def _wait_task_local(queue_path: str, task_id: str, *, timeout_s: float) -> Optional[dict]:
     import anyio
 
     deadline = time.time() + float(timeout_s)
     last: Optional[dict] = None
-
-    q = TaskQueue(str(queue_path))
-    try:
-        while time.time() < deadline:
-            try:
-                last = q.get(str(task_id))
-            except Exception:
-                last = None
-
-            if isinstance(last, dict):
-                st = str(last.get("status") or "").strip().lower()
-                if st in {"completed", "failed"}:
-                    return last
-            await anyio.sleep(0.1)
-    finally:
-        try:
-            q.close()
-        except Exception:
-            pass
-
+    while time.time() < deadline:
+        last = _read_task_readonly(queue_path, task_id)
+        if isinstance(last, dict):
+            st = str(last.get("status") or "").strip().lower()
+            if st in {"completed", "failed"}:
+                return last
+        await anyio.sleep(0.1)
     return last
 
 
@@ -317,9 +342,7 @@ def main() -> int:
         ]
         svc = subprocess.Popen(svc_cmd, cwd=str(REPO_ROOT), env=env_a)
 
-        workers: list[subprocess.Popen] = []
-        worker_ids: list[str] = []
-        worker_session: dict[str, str] = {}
+        drainer: subprocess.Popen | None = None
 
         try:
             ann_a = _read_json(a_announce)
@@ -331,37 +354,39 @@ def main() -> int:
             print(f"provider: {provider}")
             print(f"workers: {n_workers}  jobs: {jobs}  concurrency: {conc}  timeout_s: {timeout_s}")
 
-            # Start N mesh workers. Exactly one gets session_b; the rest get session_a.
-            for i in range(n_workers):
-                wid = f"peer-w{i+1}"
-                worker_ids.append(wid)
-                sess = session_b if i == 0 else session_a
-                worker_session[wid] = sess
+            # Start a single mesh-drainer process that runs N worker threads.
+            # All drainer workers share the same session (session_b).
+            drainer_queue = str(root / "drainer.duckdb")
+            env_b = dict(env_base)
+            env_b["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = session_b
+            env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEERS"] = a_multiaddr
+            env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_INTERVAL_S"] = "0.1"
+            env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT"] = "4"
+            env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH"] = "4"
 
-                w_queue = str(root / f"{wid}.duckdb")
-
-                env_w = dict(env_base)
-                # Workers do not need to run their own P2P service for mesh draining.
-                # Reducing per-worker libp2p host churn improves stability.
-                env_w["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = sess
-                env_w["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEERS"] = a_multiaddr
-                env_w["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_INTERVAL_S"] = "0.1"
-                env_w["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT"] = "4"
-                env_w["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH"] = "4"
-
-                w_cmd = [
-                    py,
-                    "-m",
-                    "ipfs_accelerate_py.p2p_tasks.worker",
-                    "--queue",
-                    w_queue,
-                    "--worker-id",
-                    wid,
-                    "--mesh",
-                    "--poll-interval-s",
-                    "0.1",
-                ]
-                workers.append(subprocess.Popen(w_cmd, cwd=str(REPO_ROOT), env=env_w))
+            drainer_cmd = [
+                py,
+                "-c",
+                (
+                    "import os, threading\n"
+                    "from ipfs_accelerate_py.p2p_tasks.worker import run_autoscaled_workers\n"
+                    "stop = threading.Event()\n"
+                    "run_autoscaled_workers(\n"
+                    "  queue_path=os.environ['DRAINER_QUEUE'],\n"
+                    "  base_worker_id=os.environ.get('DRAINER_BASE','drainer'),\n"
+                    "  min_workers=int(os.environ.get('DRAINER_N','2')),\n"
+                    "  max_workers=int(os.environ.get('DRAINER_N','2')),\n"
+                    "  poll_interval_s=0.1,\n"
+                    "  p2p_service=False,\n"
+                    "  supported_task_types=['llm.generate'],\n"
+                    "  mesh=True,\n"
+                    ")\n"
+                ),
+            ]
+            env_b["DRAINER_QUEUE"] = drainer_queue
+            env_b["DRAINER_N"] = str(n_workers)
+            env_b["DRAINER_BASE"] = "drainer"
+            drainer = subprocess.Popen(drainer_cmd, cwd=str(REPO_ROOT), env=env_b)
 
             # Phase 1: no-session throughput distribution.
             print("\n--- phase 1: throughput (no session_id) ---")
@@ -392,6 +417,21 @@ def main() -> int:
                 tid = _submit_task(remote_a, payload=payload)
                 session_tasks.append((j + 1, tid, prompt))
 
+            # Phase 2b: session mismatch should remain queued/unassigned.
+            print("\n--- phase 2b: session mismatch (session_id=session_a should NOT drain) ---")
+            mismatch_tasks: list[tuple[int, str, str]] = []
+            for j in range(max(1, min(2, session_jobs))):
+                prompt = f"Return exactly: OK (mismatch session job {j+1})"
+                payload = {
+                    "provider": provider,
+                    "prompt": prompt,
+                    "chat_session_id": f"chatty-mesh-mismatch-{uuid.uuid4().hex}",
+                    "session_id": session_a,
+                    "timeout": float(timeout_s),
+                }
+                tid = _submit_task(remote_a, payload=payload)
+                mismatch_tasks.append((j + 1, tid, prompt))
+
             # Phase 3: optional resume/continue (requires native `copilot`).
             resume_task: tuple[str, str] | None = None
             if bool(args.attempt_resume):
@@ -409,8 +449,9 @@ def main() -> int:
                         "prompt": prompt,
                         "chat_session_id": f"chatty-mesh-resume-{uuid.uuid4().hex}",
                         "session_id": session_b,
-                        # Pin to the first worker (the only one with session_b).
-                        "sticky_worker_id": worker_ids[0],
+                        # Pinning to a specific worker id is only meaningful when you
+                        # know the exact assigned_worker value; this phase is intended
+                        # for manual use with a real Copilot session.
                         "resume_session_id": "sess-EXAMPLE",  # replace with a real session id for a true resume
                         "continue_session": True,
                         "timeout": float(timeout_s),
@@ -508,13 +549,12 @@ def main() -> int:
             ex_no = {str((c.meta or {}).get("executor_worker_id") or "") for c in completed_no}
             ex_no.discard("")
 
-            # Session gating: all session-bound tasks must execute on worker_ids[0] (session_b).
-            sess_allowed = {worker_ids[0]}
-            ok_sess = _expect_only_executors(completed_sess, sess_allowed)
+            # Session gating: session_b tasks should complete (drainer runs session_b).
+            ok_sess = all(str((c.meta or {}).get("session_id") or "").strip() == session_b for c in completed_sess)
 
             print("\n--- expectations ---")
             print(f"phase1 distinct executors: {sorted(ex_no) or ['(none)']}")
-            print(f"phase2 session_b={session_b} allowed_executor: {list(sess_allowed)} ok={ok_sess}")
+            print(f"phase2 session_b={session_b} ok={ok_sess}")
 
             ok_completed = all(c.status == "completed" for c in completed_no) and all(c.status == "completed" for c in completed_sess)
 
@@ -527,14 +567,23 @@ def main() -> int:
                 print(f"FAILED: expected throughput distribution across >= {expected_distinct} worker(s)")
                 return 2
             if not ok_sess:
-                print("FAILED: expected session-bound tasks to be executed only by the session_b worker")
+                print("FAILED: expected session-bound tasks to be executed with session_id=session_b")
                 return 2
+
+            # Mismatch tasks must remain queued/unassigned.
+            for _idx, tid, _prompt in mismatch_tasks:
+                t = _read_task_readonly(a_queue, str(tid)) or {}
+                st = str(t.get("status") or "").strip().lower()
+                aw = str(t.get("assigned_worker") or "").strip()
+                if st != "queued" or aw:
+                    print(f"FAILED: mismatch session task drained unexpectedly: task_id={tid} status={st} assigned_worker={aw!r}")
+                    return 2
 
             print("\nPASS")
             return 0
         finally:
-            for p in workers:
-                _kill(p, name="worker")
+            if drainer is not None:
+                _kill(drainer, name="drainer")
             _kill(svc, name="service")
 
 
