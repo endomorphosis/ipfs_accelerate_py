@@ -336,6 +336,12 @@ def main() -> int:
     import shutil
 
     native_copilot_available = shutil.which("copilot") is not None
+    native_copilot_enabled = str(os.environ.get("IPFS_ACCELERATE_PY_SMOKETEST_NATIVE_COPILOT") or "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    use_native_copilot_session = bool(native_copilot_available and native_copilot_enabled)
 
     py = _must_python()
 
@@ -467,7 +473,7 @@ def main() -> int:
             # Phase 3: optional sticky resume/continue routing test.
             resume_task: tuple[str, str] | None = None
             if bool(args.attempt_resume):
-                mode = "native" if native_copilot_available else "sticky-only"
+                mode = "native" if use_native_copilot_session else "sticky-only"
                 print(f"\n--- phase 3: sticky resume/continue routing (session_id=session_b, mode={mode}) ---")
                 prompt = "Return exactly: OK (resume round1)"
                 payload = {
@@ -557,7 +563,7 @@ def main() -> int:
                     "sticky_worker_id": expected_resume_worker,
                     "timeout": float(timeout_s),
                 }
-                if native_copilot_available:
+                if use_native_copilot_session:
                     payload2["continue_session"] = True
                 tid2 = _submit_task(remote_a, payload=payload2)
 
