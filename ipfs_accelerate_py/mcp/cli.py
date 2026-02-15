@@ -307,6 +307,10 @@ def main():
     from ipfs_accelerate_py import ipfs_accelerate_py
     from ipfs_accelerate_py.mcp.server import create_mcp_server
 
+    # P2P task components
+    from ipfs_accelerate_py.p2p_tasks.orchestrator import start_orchestrator_in_background
+    from ipfs_accelerate_py.p2p_tasks.runtime import TaskQueueP2PServiceRuntime
+
     try:
         # Create IPFS Accelerate instance
         logger.info("Initializing IPFS Accelerate...")
@@ -324,92 +328,72 @@ def main():
         except Exception as exc:
             logger.debug(f"GitHub API cache init skipped: {exc}")
 
+        queue_path = os.path.expanduser(str(args.p2p_queue))
+        os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_QUEUE_PATH", queue_path)
+        os.environ.setdefault("IPFS_DATASETS_PY_TASK_QUEUE_PATH", queue_path)
+
+        # Start the TaskQueue p2p service in-process (the MCP process owns the mesh).
+        rt: TaskQueueP2PServiceRuntime | None = None
+        if args.p2p_service:
+            rt = TaskQueueP2PServiceRuntime()
+            rt.start(queue_path=queue_path, listen_port=args.p2p_listen_port, accelerate_instance=accelerate)
+
+            def _stop_p2p_service() -> None:
+                try:
+                    rt.stop()  # type: ignore[union-attr]
+                except Exception:
+                    pass
+
+            atexit.register(_stop_p2p_service)
+            logger.info(
+                "Started ipfs_accelerate_py TaskQueue p2p service "
+                f"(queue={queue_path}, listen_port={args.p2p_listen_port or 'env/default'})"
+            )
+
+        # If enabled, start orchestrator loop that spawns thin workers.
+        orchestrator = None
         if args.p2p_task_worker:
-            # Mark the local worker as enabled for TaskQueue status reporting.
             os.environ.setdefault("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER", "1")
             os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER", "1")
 
-            queue_path = os.path.expanduser(str(args.p2p_queue))
-            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_QUEUE_PATH", queue_path)
-            os.environ.setdefault("IPFS_DATASETS_PY_TASK_QUEUE_PATH", queue_path)
-
-            # Give the worker a stable id unless overridden.
+            # Base worker id used as a prefix by the orchestrator for spawned workers.
             os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_ID", str(args.p2p_worker_id))
             os.environ.setdefault("IPFS_DATASETS_PY_TASK_WORKER_ID", str(args.p2p_worker_id))
 
-            worker_cmd = [
-                sys.executable,
-                "-m",
-                "ipfs_accelerate_py.p2p_tasks.worker",
-            ]
+            # Plumb MCP flags into env so orchestrator can consume them.
+            if args.p2p_autoscale_min is not None:
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN"] = str(int(args.p2p_autoscale_min))
+            if args.p2p_autoscale_max is not None:
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX"] = str(int(args.p2p_autoscale_max))
+            if args.p2p_autoscale_poll_s is not None:
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S"] = str(float(args.p2p_autoscale_poll_s))
+            if args.p2p_autoscale_idle_s is not None:
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S"] = str(float(args.p2p_autoscale_idle_s))
 
-            # Best-effort: pass ports explicitly if the caller set them.
-            if args.p2p_listen_port is not None:
-                worker_cmd.extend(["--p2p-listen-port", str(int(args.p2p_listen_port))])
-
-            # If user explicitly disabled p2p service, reflect that.
-            if not bool(args.p2p_service):
-                worker_cmd.append("--no-p2p-service")
-
-            # If user explicitly disabled autoscaling, reflect that.
+            # If autoscale is explicitly disabled, clamp min=max=1.
             if not bool(args.p2p_autoscale):
-                worker_cmd.append("--no-autoscale")
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN"] = "1"
+                os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX"] = "1"
 
+            # Mesh draining is owned by orchestrator; allow disabling by setting max_peers=0.
             if not bool(args.p2p_autoscale_remote):
-                worker_cmd.append("--no-autoscale-remote")
+                os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_MAX_PEERS", "0")
 
-            if not bool(args.p2p_autoscale_mesh_children):
-                worker_cmd.append("--no-autoscale-mesh-children")
-
-            logger.info("Starting ipfs_accelerate_py task worker subprocess")
-            worker_proc = subprocess.Popen(worker_cmd, env=dict(os.environ))
-
-            def _cleanup_worker_proc() -> None:
-                try:
-                    worker_proc.terminate()
-                except Exception:
-                    return
-                try:
-                    worker_proc.wait(timeout=2.0)
-                except Exception:
-                    try:
-                        worker_proc.kill()
-                    except Exception:
-                        pass
-
-            atexit.register(_cleanup_worker_proc)
-
-        # If the user asked for the p2p service but did not start the worker,
-        # run the TaskQueue libp2p RPC service standalone.
-        if (not args.p2p_task_worker) and args.p2p_service:
-            import threading
-
-            queue_path = os.path.expanduser(str(args.p2p_queue))
-
-            def _run_p2p_service_only() -> None:
-                try:
-                    from ipfs_accelerate_py.p2p_tasks.runtime import TaskQueueP2PServiceRuntime
-
-                    rt = TaskQueueP2PServiceRuntime()
-                    rt.start(queue_path=queue_path, listen_port=args.p2p_listen_port, accelerate_instance=accelerate)
-                    # Keep thread alive as long as the process is alive.
-                    while True:
-                        import time
-
-                        time.sleep(3600)
-                except Exception as exc:
-                    logger.error(f"Failed to start standalone ipfs_accelerate_py TaskQueue p2p service: {exc}")
-
-            t2 = threading.Thread(
-                target=_run_p2p_service_only,
-                name="ipfs_accelerate_py_p2p_task_service",
-                daemon=True,
+            orchestrator = start_orchestrator_in_background(
+                queue_path=queue_path,
+                accelerate_instance=accelerate,
+                supported_task_types=None,
             )
-            t2.start()
-            logger.info(
-                "Started ipfs_accelerate_py TaskQueue p2p service thread "
-                f"(queue={queue_path}, listen_port={args.p2p_listen_port or 'env/default'})"
-            )
+
+            def _stop_orchestrator() -> None:
+                try:
+                    if orchestrator is not None:
+                        orchestrator.stop(timeout_s=2.0)
+                except Exception:
+                    pass
+
+            atexit.register(_stop_orchestrator)
+            logger.info("Started task orchestrator (spawns thin workers as needed)")
 
         # Create MCP server
         logger.info("Creating MCP server...")

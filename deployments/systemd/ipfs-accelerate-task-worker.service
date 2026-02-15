@@ -15,24 +15,42 @@ EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1
 Environment=IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1
 
-# Run the worker loop and start the libp2p TaskQueue service in-process.
-# Mesh mode lets this worker also claim tasks from discovered peers so a client
-# can submit to either daemon and both machines will contribute.
+# Run the TaskQueue worker daemon.
+# Default behavior includes:
+# - hosting the TaskQueue libp2p service
+# - mDNS mesh draining
+# - autoscaling by spawning/retiring child worker processes
 #
-# Note: autoscaling (including spawning autoscaled child processes) is controlled
-# via env vars in /etc/ipfs-accelerate/task-worker.env (see deployments/systemd/task-worker.env.example).
-ExecStart=/opt/ipfs_accelerate_py/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker \
-  --queue ${IPFS_ACCELERATE_PY_TASK_QUEUE_PATH} \
-  --worker-id ${IPFS_ACCELERATE_PY_TASK_WORKER_ID} \
-  --p2p-service \
-  --p2p-listen-port ${IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT} \
-  --mesh
+# /etc/ipfs-accelerate/task-worker.env remains optional for per-host overrides
+# (ports, session tags, queue path, max workers, disabling remote autoscale, etc.).
+ExecStart=/opt/ipfs_accelerate_py/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker
 
 Restart=always
 RestartSec=2
 
 # You almost certainly want a higher limit for model downloads.
 LimitNOFILE=1048576
+
+[Unit]
+Description=IPFS Accelerate Task Worker (LEGACY)
+After=network.target
+
+# NOTE: This unit is intentionally kept as a legacy/manual option.
+# The unified architecture runs orchestration (p2p service, mesh draining,
+# worker scaling) inside the MCP service. Workers are spawned on-demand by
+# the MCP orchestrator and should not be run as a standalone daemon.
+
+[Service]
+Type=simple
+User=%i
+WorkingDirectory=/opt/ipfs-accelerate-py
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
+
+# Thin executor only (no p2p service, no mesh, no autoscale).
+ExecStart=/opt/ipfs-accelerate-py/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker --no-p2p-service --no-mesh --no-autoscale
+Restart=always
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

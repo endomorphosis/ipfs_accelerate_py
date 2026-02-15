@@ -3177,6 +3177,37 @@ def run_worker(
         return out
 
     def _complete_local_task(*, task_id: str, ok: bool, result: Dict[str, Any] | None, error: str | None) -> None:
+        # If this is a proxy task (claimed from a peer by the orchestrator),
+        # also complete the *remote* task.
+        proxy: dict[str, object] | None = None
+        try:
+            t = queue.get(str(task_id))
+            payload = (t or {}).get("payload")
+            if isinstance(payload, dict):
+                p = payload.get("_p2p_proxy")
+                proxy = p if isinstance(p, dict) else None
+        except Exception:
+            proxy = None
+
+        if proxy is not None:
+            try:
+                from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, complete_task_sync
+
+                peer_id = str(proxy.get("peer_id") or "").strip()
+                multiaddr = str(proxy.get("multiaddr") or "").strip()
+                remote_task_id = str(proxy.get("task_id") or "").strip()
+                if peer_id and multiaddr and remote_task_id:
+                    rq = RemoteQueue(peer_id=peer_id, multiaddr=multiaddr)
+                    complete_task_sync(
+                        remote=rq,
+                        task_id=remote_task_id,
+                        status="completed" if ok else "failed",
+                        result=(result if ok else None),
+                        error=(None if ok else str(error or "unknown error")),
+                    )
+            except Exception:
+                pass
+
         try:
             if ok:
                 queue.complete(task_id=str(task_id), status="completed", result=(result or {}))
@@ -4224,17 +4255,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Spawn autoscaled workers as threads instead of child processes",
     )
 
-    # Default behavior: act like a systemd-friendly daemon.
-    # - host a p2p service
-    # - participate in mesh draining
-    # - autoscale by spawning/retiring worker processes
+    # Default behavior: thin executor.
+    # Orchestration (p2p service, mesh draining, scaling) is owned by the MCP+p2p server.
     parser.set_defaults(
-        p2p_service=True,
-        mesh=True,
-        autoscale=True,
-        autoscale_remote=True,
-        autoscale_mesh_children=True,
-        autoscale_processes=True,
+        p2p_service=False,
+        mesh=False,
+        autoscale=False,
+        autoscale_remote=False,
+        autoscale_mesh_children=False,
+        autoscale_processes=False,
     )
 
     args = parser.parse_args(argv)

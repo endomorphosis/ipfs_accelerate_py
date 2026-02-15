@@ -196,7 +196,10 @@ python scripts/p2p_rpc.py --peer-id <REMOTE_PEER_ID> discover --timeout 10 --det
 
 ## Autoscaling Workers (systemd)
 
-Autoscaling worker **processes** (spawn/retire based on local + peer backlog) is the default behavior for the TaskQueue worker daemon and for the primary MCP unit.
+Autoscaling worker **processes** (spawn/retire based on local + peer backlog) is owned by the primary MCP unit.
+
+The MCP process hosts the TaskQueue p2p service, performs mesh draining, and spawns thin worker processes on-demand.
+You generally do not need a separate task-worker systemd unit.
 
 Use the env files only to *override* defaults (min/max/idle, disabling remote backlog, etc.).
 
@@ -221,8 +224,8 @@ sudo chmod 644 /etc/ipfs-accelerate/task-worker.env
 
 ```bash
 sudo systemctl daemon-reload
-sudo systemctl restart ipfs-accelerate-task-worker.service
-sudo journalctl -u ipfs-accelerate-task-worker -f
+sudo systemctl restart ipfs-accelerate.service
+sudo journalctl -u ipfs-accelerate -f
 ```
 
 ## Logs
