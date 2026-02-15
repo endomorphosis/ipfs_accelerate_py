@@ -1183,6 +1183,15 @@ async def serve_task_queue(
                     return v.strip()
             return ""
 
+        def _sticky_worker(payload: object) -> str:
+            if not isinstance(payload, dict):
+                return ""
+            for k in ("sticky_worker_id", "sticky_worker"):
+                v = payload.get(k)
+                if isinstance(v, str) and v.strip():
+                    return v.strip()
+            return ""
+
         def _prio_key(t: dict) -> tuple[int, float]:
             payload = t.get("payload") if isinstance(t.get("payload"), dict) else {}
             try:
@@ -1213,6 +1222,15 @@ async def serve_task_queue(
                         continue
                     if required != session:
                         continue
+
+                # Sticky affinity: if a task is pinned to a specific worker,
+                # deterministically assign it to that worker regardless of the
+                # normal hash-based peer ownership.
+                sticky = _sticky_worker(payload)
+                if sticky:
+                    if sticky != peer_id_hint:
+                        continue
+                    return t
 
                 th = _task_hash(task_id=tid, task_type=ttype, model_name=mname)
                 owner = _select_owner_peer(peer_ids=peers, clock_hash=clock_hash, task_hash_hex=th)

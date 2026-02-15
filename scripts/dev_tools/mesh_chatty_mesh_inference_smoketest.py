@@ -132,6 +132,35 @@ async def _wait_task(remote, task_id: str, *, timeout_s: float) -> Optional[dict
     return None
 
 
+async def _poll_task(remote, task_id: str, *, timeout_s: float, poll_s: float = 0.2) -> Optional[dict]:
+    """Poll task status over p2p until terminal.
+
+    This avoids DuckDB lock contention (local reads) and avoids long-poll
+    flakiness/latency from the `wait` RPC.
+    """
+
+    import anyio
+
+    sys.path.insert(0, str(REPO_ROOT))
+    from ipfs_accelerate_py.p2p_tasks.client import get_task  # noqa: E402
+
+    deadline = time.time() + float(timeout_s)
+    last: Optional[dict] = None
+    while time.time() < deadline:
+        try:
+            last = await get_task(remote=remote, task_id=str(task_id))
+        except Exception:
+            last = None
+
+        if isinstance(last, dict):
+            st = str(last.get("status") or "").strip().lower()
+            if st in {"completed", "failed"}:
+                return last
+
+        await anyio.sleep(float(max(0.05, poll_s)))
+    return last
+
+
 def _read_task_readonly(queue_path: str, task_id: str) -> Optional[dict]:
     """Read a task row using a read-only DuckDB connection.
 
@@ -315,6 +344,8 @@ def main() -> int:
     env_base["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
     env_base["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
     env_base["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "0"
+    # Make the default provider deterministic for local runs (no real Copilot required).
+    env_base.setdefault("ipfs_accelerate_py_COPILOT_CLI_CMD", 'bash -lc "echo OK"')
     # Allow copilot_cli execution on workers.
     env_base.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI", "1")
     # For smoketesting, allow continue_session without an explicit resume token.
@@ -360,7 +391,6 @@ def main() -> int:
             # Start N mesh worker *processes* (not threads).
             # This avoids libp2p dial/handshake issues seen when running anyio/libp2p
             # request loops from multiple Python threads.
-            drainer_queue = str(root / "drainer.duckdb")
             env_b = dict(env_base)
             env_b["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = session_b
             env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEERS"] = a_multiaddr
@@ -372,6 +402,8 @@ def main() -> int:
             for i in range(int(n_workers)):
                 wid = f"drainer-w{i}-{uuid.uuid4().hex[:6]}"
                 drainer_worker_ids.append(wid)
+                # Each worker needs its own local DuckDB to avoid file lock contention.
+                drainer_queue = str(root / f"drainer_{i}.duckdb")
                 cmd = [
                     py,
                     "-m",
@@ -456,11 +488,7 @@ def main() -> int:
                 async with sem:
                     t0 = time.monotonic()
                     try:
-                        task = await _wait_task_local(a_queue, tid, timeout_s=timeout_s)
-                        if task is None:
-                            # Some environments still lock the DuckDB file even for read-only
-                            # connections. Fall back to the p2p wait path in that case.
-                            task = await _wait_task(remote_a, tid, timeout_s=timeout_s)
+                        task = await _wait_task(remote_a, tid, timeout_s=timeout_s)
                     except Exception as exc:
                         task = None
                         task_exc = str(exc)
@@ -586,14 +614,42 @@ def main() -> int:
 
             if expected_resume_worker and len(completed_resume) >= 2:
                 got = str((completed_resume[-1].meta or {}).get("executor_worker_id") or "").strip()
-                if got and got != expected_resume_worker:
+                st2 = str(completed_resume[-1].status or "").strip().lower()
+                if st2 != "completed":
+                    print("FAILED: sticky resume round2 did not complete")
+                    print(f"expected status=completed got status={st2!r}")
+                    return 2
+                if not got:
+                    print("FAILED: sticky resume round2 missing executor_worker_id")
+                    return 2
+                if got != expected_resume_worker:
                     print("FAILED: sticky resume ran on different worker")
                     print(f"expected executor_worker_id={expected_resume_worker} got={got}")
+                    return 2
+            elif bool(args.attempt_resume):
+                # If resume was requested, require that both round1 and round2 were executed.
+                if not expected_resume_worker:
+                    print("FAILED: sticky resume round1 did not produce executor_worker_id")
+                    return 2
+                if len(completed_resume) < 2:
+                    print("FAILED: sticky resume round2 did not run")
                     return 2
 
             # Mismatch tasks must remain queued/unassigned.
             for _idx, tid, _prompt in mismatch_tasks:
-                t = _read_task_readonly(a_queue, str(tid)) or {}
+                try:
+                    import anyio
+
+                    async def _get() -> Optional[dict]:
+                        sys.path.insert(0, str(REPO_ROOT))
+                        from ipfs_accelerate_py.p2p_tasks.client import get_task  # noqa: E402
+
+                        return await get_task(remote=remote_a, task_id=str(tid))
+
+                    t = anyio.run(_get, backend="trio")
+                except Exception:
+                    t = None
+                t = t if isinstance(t, dict) else {}
                 st = str(t.get("status") or "").strip().lower()
                 aw = str(t.get("assigned_worker") or "").strip()
                 if st != "queued" or aw:
