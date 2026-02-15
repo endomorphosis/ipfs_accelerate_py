@@ -7,6 +7,10 @@ import tempfile
 import time
 
 import anyio
+import pytest
+
+
+pytest.importorskip("libp2p")
 
 
 def _pick_free_port() -> int:
