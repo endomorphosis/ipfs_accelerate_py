@@ -439,6 +439,7 @@ def generate_text_mesh(
     *,
     model_name: Optional[str] = None,
     provider: str = "copilot_cli",
+    session_id: str | None = None,
     chat_session_id: str | None = None,
     resume_session_id: str | None = None,
     continue_session: bool = False,
@@ -479,6 +480,8 @@ def generate_text_mesh(
 
     # Build a base payload with only safe/expected keys.
     forwarded: Dict[str, object] = {}
+    if isinstance(session_id, str) and session_id.strip():
+        forwarded["session_id"] = session_id.strip()
     if isinstance(chat_session_id, str) and chat_session_id.strip():
         forwarded["chat_session_id"] = chat_session_id.strip()
     if isinstance(resume_session_id, str) and resume_session_id.strip():

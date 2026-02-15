@@ -52,6 +52,7 @@ Environment="IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py"
 # TaskQueue P2P RPC service (used for MCP-over-P2P tool calls)
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1"
 Environment="IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1"
 
 # Autoscaling: allow this unit to scale worker threads up/down when using the
 # integrated MCP CLI worker thread path.
