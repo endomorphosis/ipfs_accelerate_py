@@ -122,5 +122,21 @@ def register_copilot_tools(mcp: FastMCP) -> None:
                 "tool": "copilot_suggest_git_command",
                 "timestamp": time.time()
             }
+
+    def _set_execution_context(tool_name: str, execution_context: str) -> None:
+        tools = getattr(mcp, "tools", None)
+        if not isinstance(tools, dict):
+            return
+        tool_entry = tools.get(tool_name)
+        if not isinstance(tool_entry, dict):
+            return
+        tool_entry["execution_context"] = execution_context
+
+    for _tool_name in [
+        "copilot_suggest_command",
+        "copilot_explain_command",
+        "copilot_suggest_git_command",
+    ]:
+        _set_execution_context(_tool_name, "server")
     
     logger.info("Copilot CLI tools registered successfully")

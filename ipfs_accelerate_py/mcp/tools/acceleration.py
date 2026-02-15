@@ -305,6 +305,20 @@ def register_acceleration_tools(mcp: FastMCP) -> None:
                 "error": str(e)
             }
 
+    def _set_execution_context(tool_name: str, execution_context: str) -> None:
+        tools = getattr(mcp, "tools", None)
+        if not isinstance(tools, dict):
+            return
+        tool_entry = tools.get(tool_name)
+        if not isinstance(tool_entry, dict):
+            return
+        tool_entry["execution_context"] = execution_context
+
+    _set_execution_context("ipfs_get_hardware_info", "server")
+    _set_execution_context("ipfs_model_status", "server")
+    _set_execution_context("ipfs_accelerate_model", "worker")
+    _set_execution_context("ipfs_benchmark_model", "worker")
+
 
 if __name__ == "__main__":
     # This can be used for standalone testing

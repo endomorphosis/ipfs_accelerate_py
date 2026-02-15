@@ -246,6 +246,25 @@ def register_network_tools(mcp: FastMCP) -> None:
             await ctx.error(f"Error finding providers: {str(e)}")
             return [{"error": str(e)}]
 
+    def _set_execution_context(tool_name: str, execution_context: str) -> None:
+        tools = getattr(mcp, "tools", None)
+        if not isinstance(tools, dict):
+            return
+        tool_entry = tools.get(tool_name)
+        if not isinstance(tool_entry, dict):
+            return
+        tool_entry["execution_context"] = execution_context
+
+    for _tool_name in [
+        "ipfs_id",
+        "ipfs_swarm_peers",
+        "ipfs_swarm_connect",
+        "ipfs_pubsub_pub",
+        "ipfs_dht_findpeer",
+        "ipfs_dht_findprovs",
+    ]:
+        _set_execution_context(_tool_name, "server")
+
 
 if __name__ == "__main__":
     # This can be used for standalone testing

@@ -1535,6 +1535,39 @@ def register_tools(mcp):
                     "status": "error"
                 }
 
+    def _set_execution_context(tool_name: str, execution_context: str) -> None:
+        tools = getattr(mcp, "tools", None)
+        if not isinstance(tools, dict):
+            return
+        tool_entry = tools.get(tool_name)
+        if not isinstance(tool_entry, dict):
+            return
+        tool_entry["execution_context"] = execution_context
+
+    for _tool_name in [
+        "register_endpoint",
+        "get_endpoint_status",
+        "configure_api_provider",
+        "search_huggingface_models",
+        "get_queue_status",
+        "get_queue_history",
+        "register_cli_endpoint_tool",
+        "list_cli_endpoints_tool",
+        "get_cli_providers",
+        "get_cli_config",
+        "get_cli_install",
+        "validate_cli_config",
+        "check_cli_version",
+        "get_cli_capabilities",
+    ]:
+        _set_execution_context(_tool_name, "server")
+
+    for _tool_name in [
+        "multiplex_inference",
+        "cli_inference",
+    ]:
+        _set_execution_context(_tool_name, "worker")
+
 
 def _run_local_inference(model: str, prompt: str, task_type: str, **kwargs) -> Dict[str, Any]:
     """Run inference using local models"""

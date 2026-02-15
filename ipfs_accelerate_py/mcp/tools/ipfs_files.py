@@ -56,10 +56,17 @@ except ImportError:
         file_ops = None
 
 # Import the get_ipfs_client function from tools module for fallback
-try:
-    from . import get_ipfs_client
-except ImportError:
-    from tools import get_ipfs_client
+def get_ipfs_client(addr: Optional[str] = None) -> Any:
+    """Create an IPFS HTTP client.
+
+    This is intentionally lazy (no connection attempt at import-time).
+    """
+    import ipfshttpclient
+
+    connect_addr = addr or os.environ.get("IPFS_HTTP_CLIENT_ADDR")
+    if connect_addr:
+        return ipfshttpclient.connect(connect_addr)
+    return ipfshttpclient.connect()
 
 
 async def get_ipfs_client_async(ctx: Context) -> Any:
@@ -482,6 +489,28 @@ def register_files_tools(mcp: FastMCP) -> None:
         except Exception as e:
             await ctx.error(f"Error reading file: {str(e)}")
             return f"Error reading {path}: {str(e)}"
+
+    def _set_execution_context(tool_name: str, execution_context: str) -> None:
+        tools = getattr(mcp, "tools", None)
+        if not isinstance(tools, dict):
+            return
+        tool_entry = tools.get(tool_name)
+        if not isinstance(tool_entry, dict):
+            return
+        tool_entry["execution_context"] = execution_context
+
+    for _tool_name in [
+        "add_file_shared",
+        "ipfs_add_file",
+        "ipfs_cat",
+        "ipfs_ls",
+        "ipfs_mkdir",
+        "ipfs_pin_add",
+        "ipfs_pin_rm",
+        "ipfs_files_write",
+        "ipfs_files_read",
+    ]:
+        _set_execution_context(_tool_name, "worker")
 
 
 if __name__ == "__main__":
