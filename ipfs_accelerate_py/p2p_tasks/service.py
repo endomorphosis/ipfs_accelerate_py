@@ -2252,9 +2252,14 @@ async def serve_task_queue(
 def main(argv: Optional[list[str]] = None) -> int:
     import argparse
     import anyio
+    from .task_queue import default_queue_path
 
     parser = argparse.ArgumentParser(description="Run libp2p TaskQueue RPC service")
-    parser.add_argument("--queue", required=True, help="Path to task queue DuckDB file")
+    parser.add_argument(
+        "--queue",
+        default=default_queue_path(),
+        help="Path to task queue DuckDB file (default: env or shared cache path)",
+    )
     parser.add_argument("--listen-port", type=int, default=None)
 
     args = parser.parse_args(argv)

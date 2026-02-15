@@ -3405,11 +3405,16 @@ def run_worker(
                 except Exception:
                     claimed_local = []
             else:
-                one = queue.claim_next(
-                    worker_id=worker_id,
-                    supported_task_types=supported,
-                    session_id=local_session or None,
-                )
+                try:
+                    one = queue.claim_next(
+                        worker_id=worker_id,
+                        supported_task_types=supported,
+                        session_id=local_session or None,
+                    )
+                except Exception:
+                    # Treat claim errors as transient; avoid crashing the worker loop.
+                    time.sleep(max(0.05, float(poll_interval_s)))
+                    one = None
                 claimed_local = [one] if one is not None else []
 
             if not claimed_local:
@@ -3937,7 +3942,14 @@ def run_autoscaled_workers(
 
 def main(argv: Optional[list[str]] = None) -> int:
     parser = argparse.ArgumentParser(description="ipfs_accelerate_py task worker")
-    parser.add_argument("--queue", dest="queue_path", required=True, help="Path to task queue DuckDB file")
+    from .task_queue import default_queue_path
+
+    parser.add_argument(
+        "--queue",
+        dest="queue_path",
+        default=default_queue_path(),
+        help="Path to task queue DuckDB file (default: env or shared cache path)",
+    )
     parser.add_argument("--worker-id", dest="worker_id", required=True, help="Worker identifier")
     parser.add_argument("--poll-interval-s", dest="poll_interval_s", type=float, default=0.5)
     parser.add_argument("--once", action="store_true", help="Process at most one task")

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import threading
 import time
 import uuid
@@ -411,70 +412,87 @@ class TaskQueue:
 
         sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
 
-        conn = self._connect()
-        try:
-            conn.execute("BEGIN TRANSACTION")
-
-            where: list[str] = ["status='queued'"]
-            params: list[object] = []
-
-            if task_types:
-                placeholders = ",".join(["?"] * len(task_types))
-                where.append(f"task_type IN ({placeholders})")
-                params.extend([str(t) for t in task_types])
-
-            # Optional per-task sticky routing (session resume affinity).
-            where.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
-            params.append(str(worker_id))
-
-            if session:
-                where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
-                params.append(str(session))
-
-            where_sql = " AND ".join(where)
-            row = conn.execute(
-                f"SELECT task_id FROM tasks WHERE {where_sql} ORDER BY created_at ASC LIMIT 1",
-                tuple(params),
-            ).fetchone()
-
-            if row is None:
-                conn.execute("COMMIT")
-                return None
-
-            task_id = str(row[0])
-
-            # Re-check sticky+session guards at update time to avoid races.
-            update_sql = (
-                f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
-                f"WHERE task_id=? AND status='queued' "
-                f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
+        def _is_transient_conflict(exc: Exception) -> bool:
+            msg = str(exc or "")
+            low = msg.lower()
+            return (
+                "conflict on tuple" in low
+                or "transactioncontext" in low
+                or ("transaction" in low and "conflict" in low)
             )
-            update_params: list[object] = [str(worker_id), now, task_id, str(worker_id)]
-            if session:
-                update_sql += f" AND ({required_expr} IS NULL OR {required_expr} = ?)"
-                update_params.append(str(session))
-            conn.execute(update_sql, tuple(update_params))
 
-            row2 = conn.execute(
-                "SELECT * FROM tasks WHERE task_id=? AND status='running' AND assigned_worker=?",
-                (task_id, str(worker_id)),
-            ).fetchone()
-            if row2 is None:
+        row2 = None
+        for attempt in range(8):
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN TRANSACTION")
+
+                where: list[str] = ["status='queued'"]
+                params: list[object] = []
+
+                if task_types:
+                    placeholders = ",".join(["?"] * len(task_types))
+                    where.append(f"task_type IN ({placeholders})")
+                    params.extend([str(t) for t in task_types])
+
+                # Optional per-task sticky routing (session resume affinity).
+                where.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+                params.append(str(worker_id))
+
+                if session:
+                    where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+                    params.append(str(session))
+
+                where_sql = " AND ".join(where)
+                row = conn.execute(
+                    f"SELECT task_id FROM tasks WHERE {where_sql} ORDER BY created_at ASC LIMIT 1",
+                    tuple(params),
+                ).fetchone()
+
+                if row is None:
+                    conn.execute("COMMIT")
+                    return None
+
+                task_id = str(row[0])
+
+                # Re-check sticky+session guards at update time to avoid races.
+                update_sql = (
+                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                    f"WHERE task_id=? AND status='queued' "
+                    f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
+                )
+                update_params: list[object] = [str(worker_id), now, task_id, str(worker_id)]
+                if session:
+                    update_sql += f" AND ({required_expr} IS NULL OR {required_expr} = ?)"
+                    update_params.append(str(session))
+                conn.execute(update_sql, tuple(update_params))
+
+                row2 = conn.execute(
+                    "SELECT * FROM tasks WHERE task_id=? AND status='running' AND assigned_worker=?",
+                    (task_id, str(worker_id)),
+                ).fetchone()
                 conn.execute("COMMIT")
-                return None
 
-            conn.execute("COMMIT")
-        except Exception:
-            try:
-                conn.execute("ROLLBACK")
-            except Exception:
-                pass
-            raise
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+                if row2 is None:
+                    return None
+                break
+            except Exception as exc:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                if attempt < 7 and _is_transient_conflict(exc):
+                    time.sleep(0.002 + random.random() * 0.02)
+                    continue
+                raise
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+
+        if row2 is None:
+            return None
 
         try:
             payload = json.loads(row2[3])
@@ -531,92 +549,107 @@ class TaskQueue:
 
         sticky_expr = "nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '')"
 
-        conn = self._connect()
-        try:
-            conn.execute("BEGIN TRANSACTION")
+        def _is_transient_conflict(exc: Exception) -> bool:
+            msg = str(exc or "")
+            low = msg.lower()
+            return (
+                "conflict on tuple" in low
+                or "transactioncontext" in low
+                or ("transaction" in low and "conflict" in low)
+            )
 
-            # Pick the oldest queued task (optionally filtered by supported types)
-            # to establish the batch's task_type.
-            picked_type: str | None = None
-            if same_task_type:
-                where0: list[str] = ["status='queued'"]
-                params0: list[object] = []
+        rows2: list[object] = []
+        for attempt in range(8):
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN TRANSACTION")
+
+                # Pick the oldest queued task (optionally filtered by supported types)
+                # to establish the batch's task_type.
+                picked_type: str | None = None
+                if same_task_type:
+                    where0: list[str] = ["status='queued'"]
+                    params0: list[object] = []
+                    if task_types:
+                        placeholders = ",".join(["?"] * len(task_types))
+                        where0.append(f"task_type IN ({placeholders})")
+                        params0.extend([str(t) for t in task_types])
+                    where0.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+                    params0.append(str(worker_id))
+                    if session:
+                        where0.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+                        params0.append(str(session))
+                    where0_sql = " AND ".join(where0)
+                    row0 = conn.execute(
+                        f"SELECT task_type FROM tasks WHERE {where0_sql} ORDER BY created_at ASC LIMIT 1",
+                        tuple(params0),
+                    ).fetchone()
+                    if row0 is None:
+                        conn.execute("COMMIT")
+                        return []
+                    picked_type = str(row0[0])
+
+                # Select task_ids to claim.
+                params: list[object] = []
+                where = ["status='queued'"]
                 if task_types:
                     placeholders = ",".join(["?"] * len(task_types))
-                    where0.append(f"task_type IN ({placeholders})")
-                    params0.extend([str(t) for t in task_types])
-                where0.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
-                params0.append(str(worker_id))
+                    where.append(f"task_type IN ({placeholders})")
+                    params.extend([str(t) for t in task_types])
+                if same_task_type and picked_type:
+                    where.append("task_type = ?")
+                    params.append(str(picked_type))
+                where.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
+                params.append(str(worker_id))
                 if session:
-                    where0.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
-                    params0.append(str(session))
-                where0_sql = " AND ".join(where0)
-                row0 = conn.execute(
-                    f"SELECT task_type FROM tasks WHERE {where0_sql} ORDER BY created_at ASC LIMIT 1",
-                    tuple(params0),
-                ).fetchone()
-                if row0 is None:
+                    where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
+                    params.append(str(session))
+
+                where_sql = " AND ".join(where)
+                rows = conn.execute(
+                    f"SELECT task_id FROM tasks WHERE {where_sql} ORDER BY created_at ASC LIMIT {int(limit)}",
+                    tuple(params),
+                ).fetchall()
+                ids = [str(r[0]) for r in (rows or []) if r and r[0]]
+                if not ids:
                     conn.execute("COMMIT")
                     return []
-                picked_type = str(row0[0])
 
-            # Select task_ids to claim.
-            params: list[object] = []
-            where = ["status='queued'"]
-            if task_types:
-                placeholders = ",".join(["?"] * len(task_types))
-                where.append(f"task_type IN ({placeholders})")
-                params.extend([str(t) for t in task_types])
-            if same_task_type and picked_type:
-                where.append("task_type = ?")
-                params.append(str(picked_type))
-            where.append(f"({sticky_expr} IS NULL OR {sticky_expr} = ?)")
-            params.append(str(worker_id))
-            if session:
-                where.append(f"({required_expr} IS NULL OR {required_expr} = ?)")
-                params.append(str(session))
+                id_placeholders = ",".join(["?"] * len(ids))
+                if session:
+                    # NOTE: this is best-effort; it prevents accidental claims even
+                    # if the initial SELECT raced with another session.
+                    conn.execute(
+                        f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({sticky_expr} IS NULL OR {sticky_expr} = ?) AND ({required_expr} IS NULL OR {required_expr} = ?)",
+                        tuple([str(worker_id), now] + ids + [str(worker_id), str(session)]),
+                    )
+                else:
+                    conn.execute(
+                        f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)",
+                        tuple([str(worker_id), now] + ids + [str(worker_id)]),
+                    )
 
-            where_sql = " AND ".join(where)
-            rows = conn.execute(
-                f"SELECT task_id FROM tasks WHERE {where_sql} ORDER BY created_at ASC LIMIT {int(limit)}",
-                tuple(params),
-            ).fetchall()
-            ids = [str(r[0]) for r in (rows or []) if r and r[0]]
-            if not ids:
+                rows2 = conn.execute(
+                    f"SELECT * FROM tasks WHERE task_id IN ({id_placeholders}) AND status='running' AND assigned_worker=? ORDER BY created_at ASC",
+                    tuple(ids + [str(worker_id)]),
+                ).fetchall()
+
                 conn.execute("COMMIT")
-                return []
-
-            id_placeholders = ",".join(["?"] * len(ids))
-            if session:
-                # NOTE: this is best-effort; it prevents accidental claims even
-                # if the initial SELECT raced with another session.
-                conn.execute(
-                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({sticky_expr} IS NULL OR {sticky_expr} = ?) AND ({required_expr} IS NULL OR {required_expr} = ?)",
-                    tuple([str(worker_id), now] + ids + [str(worker_id), str(session)]),
-                )
-            else:
-                conn.execute(
-                    f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)",
-                    tuple([str(worker_id), now] + ids + [str(worker_id)]),
-                )
-
-            rows2 = conn.execute(
-                f"SELECT * FROM tasks WHERE task_id IN ({id_placeholders}) AND status='running' AND assigned_worker=? ORDER BY created_at ASC",
-                tuple(ids + [str(worker_id)]),
-            ).fetchall()
-
-            conn.execute("COMMIT")
-        except Exception:
-            try:
-                conn.execute("ROLLBACK")
-            except Exception:
-                pass
-            raise
-        finally:
-            try:
-                conn.close()
-            except Exception:
-                pass
+                break
+            except Exception as exc:
+                try:
+                    conn.execute("ROLLBACK")
+                except Exception:
+                    pass
+                if attempt < 7 and _is_transient_conflict(exc):
+                    time.sleep(0.002 + random.random() * 0.02)
+                    continue
+                raise
+            finally:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
 
         out: list[QueuedTask] = []
         for row2 in rows2 or []:
