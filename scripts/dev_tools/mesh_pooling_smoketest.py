@@ -24,6 +24,7 @@ Exit codes
 from __future__ import annotations
 
 import argparse
+import datetime
 import json
 import os
 import time
@@ -43,6 +44,19 @@ class JobResult:
     status: str
     executor_worker_id: str
     error: str
+    prompt: str
+    text: str
+    submitted_at_s: float
+    completed_at_s: float
+    elapsed_ms: int
+    result_meta: Dict[str, Any]
+
+
+def _iso_utc(ts: float) -> str:
+    try:
+        return datetime.datetime.fromtimestamp(float(ts), tz=datetime.timezone.utc).isoformat()
+    except Exception:
+        return ""
 
 
 def _load_announce(path: Path) -> dict:
@@ -79,10 +93,24 @@ async def _run_one(*, remote, provider: str, prompt: str, timeout_s: float) -> J
         "timeout": max(30.0, float(timeout_s)),
     }
 
+    t_submit_wall = time.time()
+    t_submit_mono = time.monotonic()
+
     info = await submit_task_with_info(remote=remote, task_type="llm.generate", model_name="", payload=payload)
     task_id = str(info.get("task_id") or "").strip()
     if not task_id:
-        return JobResult(task_id="", status="submit_failed", executor_worker_id="", error="missing task_id")
+        return JobResult(
+            task_id="",
+            status="submit_failed",
+            executor_worker_id="",
+            error="missing task_id",
+            prompt=prompt,
+            text="",
+            submitted_at_s=t_submit_wall,
+            completed_at_s=time.time(),
+            elapsed_ms=int(max(0.0, (time.monotonic() - t_submit_mono)) * 1000.0),
+            result_meta={},
+        )
 
     task = await wait_task(remote=remote, task_id=task_id, timeout_s=float(timeout_s))
     if task is None:
@@ -90,20 +118,46 @@ async def _run_one(*, remote, provider: str, prompt: str, timeout_s: float) -> J
             await cancel_task(remote=remote, task_id=task_id, reason="pooling smoketest timeout")
         except Exception:
             pass
-        return JobResult(task_id=task_id, status="timeout", executor_worker_id="", error="timeout")
+        return JobResult(
+            task_id=task_id,
+            status="timeout",
+            executor_worker_id="",
+            error="timeout",
+            prompt=prompt,
+            text="",
+            submitted_at_s=t_submit_wall,
+            completed_at_s=time.time(),
+            elapsed_ms=int(max(0.0, (time.monotonic() - t_submit_mono)) * 1000.0),
+            result_meta={},
+        )
 
     status = str(task.get("status") or "").strip() or "unknown"
     err = str(task.get("error") or "").strip()
 
     executor = ""
     result = task.get("result")
+    text = ""
+    meta: Dict[str, Any] = {}
     if isinstance(result, dict):
         executor = str(result.get("executor_worker_id") or "").strip()
+        text = str(result.get("text") or "")
+        meta = dict(result)
     if not executor:
         executor = str(task.get("assigned_worker") or "").strip()
 
     await anyio.sleep(0)
-    return JobResult(task_id=task_id, status=status, executor_worker_id=executor, error=err)
+    return JobResult(
+        task_id=task_id,
+        status=status,
+        executor_worker_id=executor,
+        error=err,
+        prompt=prompt,
+        text=text,
+        submitted_at_s=t_submit_wall,
+        completed_at_s=time.time(),
+        elapsed_ms=int(max(0.0, (time.monotonic() - t_submit_mono)) * 1000.0),
+        result_meta=meta,
+    )
 
 
 async def _run_all(*, remote, jobs: int, concurrency: int, provider: str, prompt: str, timeout_s: float) -> list[JobResult]:
@@ -134,6 +188,12 @@ def main() -> int:
     ap.add_argument("--timeout-s", type=float, default=120.0, help="Per-task wait timeout")
     ap.add_argument("--provider", type=str, default="copilot_cli", help="LLM provider for llm.generate")
     ap.add_argument("--prompt", type=str, default="Return exactly: OK", help="Prompt to send")
+    ap.add_argument(
+        "--transcript-jsonl",
+        type=str,
+        default="",
+        help="Optional path to write per-task transcript JSONL (prompt/text + metadata)",
+    )
     ap.add_argument(
         "--expect-workers",
         type=int,
@@ -171,6 +231,7 @@ def main() -> int:
     timeout_s = max(5.0, float(args.timeout_s))
     provider = str(args.provider or "").strip().lower() or "copilot_cli"
     prompt = str(args.prompt or "").strip()
+    transcript_path = str(args.transcript_jsonl or "").strip()
 
     print("=== mesh pooling smoketest ===")
     print(f"service peer_id: {peer_id}")
@@ -193,6 +254,38 @@ def main() -> int:
 
     results = anyio.run(_do, backend="trio")
     dt = max(0.001, time.time() - t0)
+
+    if transcript_path:
+        run_id = f"pool-smoke-{uuid.uuid4().hex}"
+        out_path = Path(transcript_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Stable order for humans: by submission time.
+        ordered = sorted(results, key=lambda r: (float(r.submitted_at_s or 0.0), r.task_id))
+        with out_path.open("w", encoding="utf-8") as f:
+            for r in ordered:
+                meta = dict(r.result_meta or {})
+                record = {
+                    "run_id": run_id,
+                    "task_id": r.task_id,
+                    "provider": provider,
+                    "prompt": r.prompt,
+                    "text": r.text,
+                    "status": r.status,
+                    "error": r.error,
+                    "submitted_at": _iso_utc(r.submitted_at_s),
+                    "completed_at": _iso_utc(r.completed_at_s),
+                    "elapsed_ms": int(r.elapsed_ms),
+                    "session_id": str(meta.get("session_id") or ""),
+                    "chat_session_id": str(meta.get("chat_session_id") or ""),
+                    "resume_session_id": str(meta.get("resume_session_id") or ""),
+                    "executor_worker_id": str(meta.get("executor_worker_id") or r.executor_worker_id or ""),
+                    "executor_peer_id": str(meta.get("executor_peer_id") or ""),
+                    "executor_multiaddr": str(meta.get("executor_multiaddr") or ""),
+                    "service_peer_id": peer_id,
+                    "service_multiaddr": multiaddr,
+                }
+                f.write(json.dumps(record, sort_keys=True) + "\n")
 
     by_worker: Dict[str, int] = {}
     status_counts: Dict[str, int] = {}

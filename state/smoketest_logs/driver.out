@@ -1,7 +1,22 @@
-usage: mesh_pooling_smoketest.py [-h] [--announce ANNOUNCE]
-                                 [--peer-id PEER_ID] [--multiaddr MULTIADDR]
-                                 [--jobs JOBS] [--concurrency CONCURRENCY]
-                                 [--timeout-s TIMEOUT_S] [--provider PROVIDER]
-                                 [--prompt PROMPT]
-                                 [--expect-workers EXPECT_WORKERS]
-mesh_pooling_smoketest.py: error: unrecognized arguments: --transcript-jsonl /home/barberb/ipfs_accelerate_py/state/smoketest_logs/transcript.jsonl
+=== mesh pooling smoketest ===
+service peer_id: 12D3KooWJDidrdwxqhTJQ5yi51GbYm1GtaDjK9f2XkFep6invaT6
+service multiaddr: /ip4/127.0.0.1/tcp/51323/p2p/12D3KooWJDidrdwxqhTJQ5yi51GbYm1GtaDjK9f2XkFep6invaT6
+provider: copilot_cli
+jobs: 12  concurrency: 6  timeout_s: 60.0
+2026-02-15 00:55:35,750 [INFO] [ipfs_kit_py.core.service_manager] Registered service: ipfs
+2026-02-15 00:55:35,754 [INFO] [ipfs_kit_py.core.test_framework] Registered test suite: core_infrastructure
+2026-02-15 00:55:35,754 [INFO] [ipfs_kit_py.core.test_framework] Registered test suite: performance
+2026-02-15 00:55:35,754 [INFO] [ipfs_kit_py.core.test_framework] Registered test suite: integration
+2026-02-15 00:55:35,758 [INFO] [ipfs_accelerate_py.ipfs_kit_integration] Successfully imported ipfs_kit_py modules from /home/barberb/ipfs_kit_py/ipfs_kit_py/__init__.py
+2026-02-15 00:55:35,758 [INFO] [ipfs_accelerate_py.ipfs_kit_integration] IPFS Kit integration enabled successfully
+2026-02-15 00:55:35,758 [INFO] [ipfs_accelerate_py.common.storage_wrapper] Storage initialized with distributed backend
+
+--- summary ---
+elapsed_s: 0.79
+tasks_per_s: 15.14
+status_counts: {"completed": 12}
+by_worker:
+  pool-w0-0eb567: 7
+  pool-w1-2f3b31: 5
+
+PASS
