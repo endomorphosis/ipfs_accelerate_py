@@ -87,6 +87,7 @@ Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_ACT_MULT=4.0"
 
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,docker.execute,docker.execute_docker_container,docker.github"
 Environment="IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,docker.execute,docker.execute_docker_container,docker.github"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_CONTINUE_WITHOUT_RESUME=1"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_TOOLS=1"
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_ENABLE_CACHE=1"
 # Use a distinct P2P port so this unit can run alongside ipfs-accelerate.service
