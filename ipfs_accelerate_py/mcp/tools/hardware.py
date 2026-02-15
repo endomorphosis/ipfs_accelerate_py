@@ -41,7 +41,8 @@ def register_hardware_tools(mcp: Any) -> None:
                     }
                 },
                 "required": []
-            }
+            },
+            execution_context="server",
         )
         
         # Register test_hardware tool
@@ -66,7 +67,8 @@ def register_hardware_tools(mcp: Any) -> None:
                     }
                 },
                 "required": []
-            }
+            },
+            execution_context="server",
         )
         
         # Register recommend_hardware tool
@@ -94,7 +96,8 @@ def register_hardware_tools(mcp: Any) -> None:
                     }
                 },
                 "required": ["model_name"]
-            }
+            },
+            execution_context="server",
         )
         
         logger.debug("Hardware tools registered")

@@ -498,7 +498,16 @@ def register_docker_tools(mcp_server):
     
     for tool_name, tool_func in MCP_DOCKER_TOOLS.items():
         try:
-            mcp_server.tool()(tool_func)
+            # Use register_tool so we can attach execution context metadata.
+            # FastMCP compatibility: register_tool shim will delegate to tool()
+            # and ignore extra kwargs.
+            mcp_server.register_tool(
+                name=str(tool_name),
+                function=tool_func,
+                description=str(getattr(tool_func, "__doc__", "") or "Docker tool"),
+                input_schema={"type": "object", "properties": {}, "required": []},
+                execution_context="worker",
+            )
             logger.debug(f"Registered Docker tool: {tool_name}")
         except Exception as e:
             logger.error(f"Failed to register Docker tool {tool_name}: {e}")

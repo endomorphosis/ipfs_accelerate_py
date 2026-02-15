@@ -216,7 +216,8 @@ def register_github_tools(mcp: Any) -> None:
                 "owner": {"type": "string", "description": "Repository owner"},
                 "limit": {"type": "integer", "description": "Maximum number of repos", "default": 30}
             }
-        }
+        },
+        execution_context="server",
     )
     
     mcp.register_tool(
@@ -229,7 +230,8 @@ def register_github_tools(mcp: Any) -> None:
                 "repo": {"type": "string", "description": "Repository (owner/name)"}
             },
             "required": ["repo"]
-        }
+        },
+        execution_context="server",
     )
     
     mcp.register_tool(
@@ -244,7 +246,8 @@ def register_github_tools(mcp: Any) -> None:
                 "limit": {"type": "integer", "description": "Maximum number of PRs", "default": 30}
             },
             "required": ["repo"]
-        }
+        },
+        execution_context="server",
     )
     
     mcp.register_tool(
@@ -258,7 +261,8 @@ def register_github_tools(mcp: Any) -> None:
                 "number": {"type": "integer", "description": "PR number"}
             },
             "required": ["repo", "number"]
-        }
+        },
+        execution_context="server",
     )
     
     mcp.register_tool(
@@ -273,7 +277,8 @@ def register_github_tools(mcp: Any) -> None:
                 "limit": {"type": "integer", "description": "Maximum number of issues", "default": 30}
             },
             "required": ["repo"]
-        }
+        },
+        execution_context="server",
     )
     
     mcp.register_tool(
@@ -287,7 +292,8 @@ def register_github_tools(mcp: Any) -> None:
                 "number": {"type": "integer", "description": "Issue number"}
             },
             "required": ["repo", "number"]
-        }
+        },
+        execution_context="server",
     )
 
 
@@ -405,7 +411,8 @@ def register_docker_tools(mcp: Any) -> None:
                 "timeout": {"type": "integer", "description": "Timeout in seconds", "default": 300}
             },
             "required": ["image"]
-        }
+        },
+        execution_context="worker",
     )
     
     mcp.register_tool(
@@ -417,7 +424,8 @@ def register_docker_tools(mcp: Any) -> None:
             "properties": {
                 "all_containers": {"type": "boolean", "description": "Include stopped containers", "default": False}
             }
-        }
+        },
+        execution_context="worker",
     )
     
     mcp.register_tool(
@@ -430,7 +438,8 @@ def register_docker_tools(mcp: Any) -> None:
                 "container": {"type": "string", "description": "Container ID or name"}
             },
             "required": ["container"]
-        }
+        },
+        execution_context="worker",
     )
     
     mcp.register_tool(
@@ -443,7 +452,8 @@ def register_docker_tools(mcp: Any) -> None:
                 "image": {"type": "string", "description": "Image name"}
             },
             "required": ["image"]
-        }
+        },
+        execution_context="worker",
     )
 
 
@@ -522,7 +532,8 @@ def register_hardware_tools(mcp: Any) -> None:
             "properties": {
                 "include_detailed": {"type": "boolean", "description": "Include detailed information", "default": False}
             }
-        }
+        },
+        execution_context="server",
     )
     
     mcp.register_tool(
@@ -535,7 +546,8 @@ def register_hardware_tools(mcp: Any) -> None:
                 "accelerator": {"type": "string", "enum": ["cuda", "cpu", "all"], "default": "all"},
                 "test_level": {"type": "string", "enum": ["basic", "comprehensive"], "default": "basic"}
             }
-        }
+        },
+        execution_context="server",
     )
     
     mcp.register_tool(
@@ -550,7 +562,8 @@ def register_hardware_tools(mcp: Any) -> None:
                 "consider_available_only": {"type": "boolean", "description": "Only consider available hardware", "default": True}
             },
             "required": ["model_name"]
-        }
+        },
+        execution_context="server",
     )
 
 
@@ -760,7 +773,8 @@ def register_runner_tools(mcp: Any) -> None:
                 "runner_image": {"type": "string", "default": "myoung34/github-runner:latest"},
                 "background": {"type": "boolean", "default": True, "description": "Run in background"}
             }
-        }
+        },
+        execution_context="worker",
     )
     
     mcp.register_tool(
@@ -770,7 +784,8 @@ def register_runner_tools(mcp: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {}
-        }
+        },
+        execution_context="worker",
     )
     
     mcp.register_tool(
@@ -780,7 +795,8 @@ def register_runner_tools(mcp: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {}
-        }
+        },
+        execution_context="worker",
     )
     
     mcp.register_tool(
@@ -790,7 +806,8 @@ def register_runner_tools(mcp: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {}
-        }
+        },
+        execution_context="worker",
     )
     
     mcp.register_tool(
@@ -803,7 +820,8 @@ def register_runner_tools(mcp: Any) -> None:
                 "repo": {"type": "string", "description": "Repository in format 'owner/repo'"}
             },
             "required": ["repo"]
-        }
+        },
+        execution_context="worker",
     )
     
     mcp.register_tool(
@@ -813,7 +831,8 @@ def register_runner_tools(mcp: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {}
-        }
+        },
+        execution_context="worker",
     )
     
     mcp.register_tool(
@@ -826,7 +845,8 @@ def register_runner_tools(mcp: Any) -> None:
                 "container": {"type": "string", "description": "Container ID or name"}
             },
             "required": ["container"]
-        }
+        },
+        execution_context="worker",
     )
 
 

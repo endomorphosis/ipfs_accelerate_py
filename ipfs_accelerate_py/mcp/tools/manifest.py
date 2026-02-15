@@ -13,3 +13,9 @@ def register_tools(mcp: Any) -> None:
         from ipfs_accelerate_py.tool_manifest import extract_mcp_manifest
 
         return extract_mcp_manifest(mcp, include_schemas=bool(include_schemas))
+
+    tools_dict = getattr(mcp, "tools", None)
+    if isinstance(tools_dict, dict):
+        entry = tools_dict.get("get_mcp_manifest")
+        if isinstance(entry, dict):
+            entry["execution_context"] = "server"

@@ -334,6 +334,23 @@ def register_tools(mcp: Any) -> None:
                 'success': False,
                 'error': str(e)
             }
+
+    # Ensure GitHub control-plane tools run in the server process when using a
+    # dict-based registry (StandaloneMCP). Avoid changing decorator signatures
+    # to keep compatibility with FastMCP.
+    tools_dict = getattr(mcp, "tools", None)
+    if isinstance(tools_dict, dict):
+        for tool_name in [
+            "gh_list_runners",
+            "gh_create_workflow_queues",
+            "gh_get_cache_stats",
+            "gh_get_auth_status",
+            "gh_list_workflow_runs",
+            "gh_get_runner_labels",
+        ]:
+            entry = tools_dict.get(tool_name)
+            if isinstance(entry, dict):
+                entry["execution_context"] = "server"
     
     logger.debug("Registered 7 GitHub CLI tools")
 

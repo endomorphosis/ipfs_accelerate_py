@@ -752,5 +752,45 @@ def register_shared_tools(mcp: FastMCP) -> None:
                 "tool": "get_endpoint_handlers_by_model",
                 "timestamp": time.time()
             }
+
+    # Set execution context metadata when using StandaloneMCP (dict-based
+    # registry). Do this post-registration to avoid relying on decorator keyword
+    # support in other MCP implementations.
+    tools_dict = getattr(mcp, "tools", None)
+    if isinstance(tools_dict, dict):
+        server_tools = {
+            # Model/network/queue status queries
+            "list_available_models",
+            "search_models",
+            "get_model_information",
+            "check_network_status",
+            "get_connected_peers",
+            "get_system_status",
+            "get_queue_status",
+            "get_queue_history",
+            "get_model_queues",
+            "get_endpoint_details",
+            "get_endpoint_handlers_by_model",
+        }
+        worker_tools = {
+            # Compute-heavy inference / tests / file operations
+            "generate_text",
+            "classify_text",
+            "run_inference",
+            "run_model_test",
+            "add_file_to_ipfs",
+            "get_file_from_ipfs",
+            "add_file",
+        }
+
+        for tool_name in server_tools:
+            entry = tools_dict.get(tool_name)
+            if isinstance(entry, dict):
+                entry["execution_context"] = "server"
+
+        for tool_name in worker_tools:
+            entry = tools_dict.get(tool_name)
+            if isinstance(entry, dict):
+                entry["execution_context"] = "worker"
     
     logger.info("Shared operation tools registered successfully")

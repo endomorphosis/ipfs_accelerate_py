@@ -380,5 +380,23 @@ def register_p2p_workflow_tools(mcp: FastMCP) -> None:
                 "tool": "p2p_get_merkle_clock",
                 "timestamp": time.time()
             }
+
+    # Ensure P2P scheduler control-plane tools run in the server process when
+    # using StandaloneMCP (dict-based registry). Do this post-registration to
+    # avoid relying on decorator keyword support in other MCP implementations.
+    tools_dict = getattr(mcp, "tools", None)
+    if isinstance(tools_dict, dict):
+        for tool_name in [
+            "p2p_scheduler_status",
+            "p2p_submit_task",
+            "p2p_get_next_task",
+            "p2p_mark_task_complete",
+            "p2p_check_workflow_tags",
+            "p2p_update_peer_state",
+            "p2p_get_merkle_clock",
+        ]:
+            entry = tools_dict.get(tool_name)
+            if isinstance(entry, dict):
+                entry["execution_context"] = "server"
     
     logger.info("P2P workflow scheduler tools registered successfully")

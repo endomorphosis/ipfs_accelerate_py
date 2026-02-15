@@ -176,7 +176,9 @@ class StandaloneMCP:
         name: str,
         function: Callable,
         description: str,
-        input_schema: Dict[str, Any]
+        input_schema: Dict[str, Any],
+        execution_context: str | None = None,
+        tags: list[str] | None = None,
     ) -> None:
         """
         Register a tool with the MCP server
@@ -187,15 +189,32 @@ class StandaloneMCP:
             description: Description of the tool
             input_schema: JSON schema for the tool's input
         """
+        ctx = str(execution_context or "").strip().lower()
+        if ctx not in {"", "server", "worker"}:
+            ctx = ""
+
         self.tools[name] = {
             "function": function,
             "description": description,
-            "input_schema": input_schema
+            "input_schema": input_schema,
+            # Tool routing metadata used by p2p call_tool.
+            # - 'server': safe/control-plane, can run inline in the MCP+p2p process
+            # - 'worker': must run in thin executor workers
+            "execution_context": ctx or None,
+            "tags": [str(t) for t in (tags or []) if str(t).strip()],
         }
         
         logger.debug(f"Registered tool: {name}")
     
-    def tool(self):
+    def tool(
+        self,
+        *,
+        name: str | None = None,
+        description: str | None = None,
+        input_schema: Dict[str, Any] | None = None,
+        execution_context: str | None = None,
+        tags: list[str] | None = None,
+    ):
         """
         Decorator for registering tools (FastMCP compatibility)
         
@@ -207,8 +226,8 @@ class StandaloneMCP:
         """
         def decorator(func):
             # Extract function name and docstring
-            tool_name = func.__name__
-            description = func.__doc__ or "No description"
+            tool_name = str(name or func.__name__)
+            tool_desc = description if description is not None else (func.__doc__ or "No description")
             
             # Create a simple input schema from the function signature
             import inspect
@@ -245,18 +264,22 @@ class StandaloneMCP:
                 if param.default == inspect.Parameter.empty:
                     required.append(param_name)
             
-            input_schema = {
+            derived_schema = {
                 "type": "object",
                 "properties": properties,
-                "required": required
+                "required": required,
             }
+
+            schema = input_schema if isinstance(input_schema, dict) else derived_schema
             
             # Register the tool
             self.register_tool(
                 name=tool_name,
                 function=func,
-                description=description,
-                input_schema=input_schema
+                description=str(tool_desc),
+                input_schema=schema,
+                execution_context=execution_context,
+                tags=tags,
             )
             
             return func
@@ -988,6 +1011,7 @@ class MCPServerWrapper:
                     function=get_hardware_info,
                     description="Detect available hardware",
                     input_schema={"type": "object", "properties": {}, "required": []},
+                    execution_context="server",
                 )
 
             if "get_optimal_hardware" not in self.mcp.tools:
@@ -1013,6 +1037,7 @@ class MCPServerWrapper:
                         },
                         "required": ["model_name"],
                     },
+                    execution_context="server",
                 )
         except Exception:
             pass

@@ -542,5 +542,19 @@ def register_tools(mcp):
             Dictionary with system metrics
         """
         return get_system_metrics()
+
+    # Dashboard tools are control-plane/status queries and should run in the
+    # server process when using StandaloneMCP (dict-based registry).
+    tools_dict = getattr(mcp, "tools", None)
+    if isinstance(tools_dict, dict):
+        for tool_name in [
+            "get_dashboard_user_info",
+            "get_dashboard_cache_stats",
+            "get_dashboard_peer_status",
+            "get_dashboard_system_metrics",
+        ]:
+            entry = tools_dict.get(tool_name)
+            if isinstance(entry, dict):
+                entry["execution_context"] = "server"
     
     logger.info("Registered dashboard data tools with MCP server")

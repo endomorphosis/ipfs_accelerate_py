@@ -1891,66 +1891,20 @@ async def serve_task_queue(
                     )
                     return
 
-                def _should_run_in_worker(name: str) -> bool:
-                    n = str(name or "").strip()
-                    low = n.lower()
-
-                    # Worker-first patterns: anything that can execute code, run containers,
-                    # do inference, or otherwise consume substantial compute.
-                    worker_prefixes = (
-                        "docker_",
-                        "runner_",
-                        "hf_",
-                        "transformers_",
-                        "inference_",
-                        "benchmark_",
-                        "shell_",
-                    )
-                    if low.startswith(worker_prefixes):
-                        return True
-                    if any(
-                        k in low
-                        for k in (
-                            "docker",
-                            "container",
-                            "execute",
-                            "run_shell",
-                            "shell",
-                            "inference",
-                            "generate",
-                            "embedding",
-                        )
-                    ):
-                        return True
-
-                    # Server-safe control-plane patterns: discovery/status/listing/metadata.
-                    server_prefixes = (
-                        "get_",
-                        "list_",
-                        "show_",
-                        "status_",
-                        "health_",
-                        "peer_",
-                        "network_",
-                        "hardware_",
-                        "model_manager_",
-                        "dashboard_",
-                        "docs_",
-                        "search_",
-                        "recommend_",
-                    )
-                    if low.startswith(server_prefixes):
-                        return False
-
-                    # Default: run unknown tools in-server (control-plane bias).
-                    # If a tool turns out to be compute-heavy, it should be added to the
-                    # worker patterns above.
-                    return False
-
                 timeout_s = float(msg.get("timeout_s") or 30.0)
 
                 try:
-                    if _should_run_in_worker(tool_name):
+                    # Metadata-driven routing: tools explicitly tagged as
+                    # execution_context='worker' must run in thin workers.
+                    # Unknown/unannotated tools default to worker for safety.
+                    from ipfs_accelerate_py.tool_manifest import tool_execution_context
+                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+
+                    mcp_like = get_mcp_server_instance()
+                    ctx = tool_execution_context(mcp_like, tool_name=tool_name) if mcp_like is not None else None
+                    must_run_in_worker = (ctx != "server")
+
+                    if must_run_in_worker:
                         # Enqueue as a task so execution happens in workers.
                         from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 
@@ -2015,10 +1969,13 @@ async def serve_task_queue(
                         return
 
                     # Control-plane: invoke tool locally.
-                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
                     from ipfs_accelerate_py.tool_manifest import invoke_mcp_tool
 
-                    mcp_like = get_mcp_server_instance()
+                    if mcp_like is None:
+                        resp = {"ok": False, "tool": tool_name, "error": "mcp_registry_unavailable"}
+                        resp.setdefault("peer_id", peer_id)
+                        await _safe_write_json(resp)
+                        return
                     resp = await invoke_mcp_tool(
                         mcp_like,
                         tool_name=tool_name,

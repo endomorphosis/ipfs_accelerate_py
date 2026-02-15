@@ -185,6 +185,54 @@ def _resolve_tool(server: Any, tool_name: str) -> Tuple[Optional[Any], Optional[
     return None, None, ""
 
 
+def tool_execution_context(mcp_like: Any, *, tool_name: str) -> str | None:
+    """Return the execution context for a tool.
+
+    Values:
+      - 'server': safe/control-plane; may run in the MCP+p2p process
+      - 'worker': compute/side-effect heavy; must be executed by thin workers
+      - None: unknown/unset
+
+    Metadata is sourced from the tool registry entry. For StandaloneMCP this is
+    the dict stored in `server.tools[name]`.
+    """
+
+    server = getattr(mcp_like, "mcp", None) or mcp_like
+    tool_obj, _fn, _desc = _resolve_tool(server, str(tool_name))
+    if tool_obj is None:
+        return None
+
+    try:
+        if isinstance(tool_obj, dict):
+            raw = tool_obj.get("execution_context")
+            if raw is None:
+                # Back-compat aliases.
+                if tool_obj.get("requires_worker") is True:
+                    raw = "worker"
+                elif tool_obj.get("requires_worker") is False:
+                    raw = "server"
+
+            ctx = str(raw or "").strip().lower()
+            return ctx if ctx in {"server", "worker"} else None
+
+        raw_attr = getattr(tool_obj, "execution_context", None)
+        ctx = str(raw_attr or "").strip().lower()
+        if ctx in {"server", "worker"}:
+            return ctx
+
+        tags = getattr(tool_obj, "tags", None)
+        if isinstance(tags, (list, tuple, set)):
+            low_tags = {str(t).strip().lower() for t in tags if str(t).strip()}
+            if "exec:worker" in low_tags or "execution:worker" in low_tags:
+                return "worker"
+            if "exec:server" in low_tags or "execution:server" in low_tags:
+                return "server"
+    except Exception:
+        return None
+
+    return None
+
+
 def _build_ctx(accelerate_instance: Any = None) -> Any:
     # Mimic the shape used throughout this repo: ctx.state.accelerate
     return SimpleNamespace(state=SimpleNamespace(accelerate=accelerate_instance))

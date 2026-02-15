@@ -519,6 +519,27 @@ def register_tools(mcp):
                 'status': 'error',
                 'error': str(e)
             }
+
+    # Ensure workflow orchestration tools run in the server process when using
+    # StandaloneMCP (dict-based registry). Do this post-registration to avoid
+    # relying on decorator keyword support in other MCP implementations.
+    tools_dict = getattr(mcp, "tools", None)
+    if isinstance(tools_dict, dict):
+        for tool_name in [
+            "create_workflow",
+            "list_workflows",
+            "get_workflow",
+            "start_workflow",
+            "pause_workflow",
+            "stop_workflow",
+            "update_workflow",
+            "delete_workflow",
+            "get_workflow_templates",
+            "create_workflow_from_template",
+        ]:
+            entry = tools_dict.get(tool_name)
+            if isinstance(entry, dict):
+                entry["execution_context"] = "server"
     
     logger.info("Workflow management tools registered successfully (10 tools: create, list, get, update, start, pause, stop, delete, templates, create_from_template)")
 

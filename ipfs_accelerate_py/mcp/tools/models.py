@@ -264,7 +264,8 @@ def register_model_tools(mcp) -> None:
                         "limit": {"type": "integer", "description": "Max results", "default": 20}
                     },
                     "required": ["query"]
-                }
+                },
+                execution_context="server",
             )
             
             mcp.register_tool(
@@ -280,7 +281,8 @@ def register_model_tools(mcp) -> None:
                         "limit": {"type": "integer", "description": "Max recommendations", "default": 5}
                     },
                     "required": ["task_type"]
-                }
+                },
+                execution_context="server",
             )
             
             mcp.register_tool(
@@ -293,7 +295,8 @@ def register_model_tools(mcp) -> None:
                         "model_id": {"type": "string", "description": "HuggingFace model ID"}
                     },
                     "required": ["model_id"]
-                }
+                },
+                execution_context="server",
             )
             
             mcp.register_tool(
@@ -304,7 +307,8 @@ def register_model_tools(mcp) -> None:
                     "type": "object",
                     "properties": {},
                     "required": []
-                }
+                },
+                execution_context="server",
             )
         elif hasattr(mcp, 'tool'):
             # FastMCP decorator style

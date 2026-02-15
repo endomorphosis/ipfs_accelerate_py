@@ -287,6 +287,22 @@ def register_tools(mcp):
             return {
                 "error": f"Error logging operation: {str(e)}"
             }
+
+    # Ensure control-plane status tools run in the server process when using
+    # StandaloneMCP (dict-based registry). Do this post-registration to avoid
+    # relying on decorator keyword support in other MCP implementations.
+    tools_dict = getattr(mcp, "tools", None)
+    if isinstance(tools_dict, dict):
+        for tool_name in [
+            "get_server_status",
+            "get_performance_metrics",
+            "start_session",
+            "end_session",
+            "log_operation",
+        ]:
+            entry = tools_dict.get(tool_name)
+            if isinstance(entry, dict):
+                entry["execution_context"] = "server"
     
     @mcp.tool()
     def get_session(session_id: str) -> Dict[str, Any]:

@@ -559,3 +559,31 @@ def register_tools(mcp: Any) -> None:
         except Exception as exc:
             logger.exception("list_peers failed")
             return {"ok": False, "error": str(exc)}
+
+    # Attach explicit tool routing metadata for p2p call_tool.
+    # These tools are control-plane (discovery/submit/status) and should run
+    # in the MCP+p2p server process, not in thin executor workers.
+    try:
+        tools_raw = getattr(mcp, "tools", None)
+        if isinstance(tools_raw, dict):
+            for name in (
+                "p2p_taskqueue_status",
+                "p2p_taskqueue_submit",
+                "p2p_taskqueue_claim_next",
+                "p2p_taskqueue_call_tool",
+                "p2p_taskqueue_list_tasks",
+                "p2p_taskqueue_get_task",
+                "p2p_taskqueue_wait_task",
+                "p2p_taskqueue_complete_task",
+                "p2p_taskqueue_heartbeat",
+                "p2p_taskqueue_cache_get",
+                "p2p_taskqueue_cache_set",
+                "p2p_taskqueue_submit_docker_hub",
+                "p2p_taskqueue_submit_docker_github",
+                "list_peers",
+            ):
+                entry = tools_raw.get(str(name))
+                if isinstance(entry, dict):
+                    entry["execution_context"] = "server"
+    except Exception:
+        pass

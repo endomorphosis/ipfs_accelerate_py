@@ -596,3 +596,28 @@ def register_tools(mcp):
                 "status": "error",
                 "max_model_size_b": 13_000_000_000  # 13B fallback
             }
+
+    # Set execution context metadata when using StandaloneMCP (dict-based
+    # registry). Do this post-registration to avoid relying on decorator keyword
+    # support in other MCP implementations.
+    tools_dict = getattr(mcp, "tools", None)
+    if isinstance(tools_dict, dict):
+        server_tools = {
+            "get_model_list",
+            "get_distributed_capabilities",
+        }
+        worker_tools = {
+            "run_inference",
+            "download_model",
+            "run_distributed_inference",
+        }
+
+        for tool_name in server_tools:
+            entry = tools_dict.get(tool_name)
+            if isinstance(entry, dict):
+                entry["execution_context"] = "server"
+
+        for tool_name in worker_tools:
+            entry = tools_dict.get(tool_name)
+            if isinstance(entry, dict):
+                entry["execution_context"] = "worker"
