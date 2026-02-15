@@ -3157,6 +3157,25 @@ def run_worker(
         except Exception:
             return
 
+    def _stamp_result_meta(*, result: Dict[str, Any] | None, assigned_worker: str | None = None) -> Dict[str, Any] | None:
+        if not isinstance(result, dict):
+            return result
+        out = dict(result)
+        try:
+            wid = str(assigned_worker or "").strip() or str(worker_id)
+        except Exception:
+            wid = str(worker_id)
+        try:
+            sid = str(local_session or "").strip()
+        except Exception:
+            sid = ""
+
+        if wid and not str(out.get("executor_worker_id") or "").strip():
+            out["executor_worker_id"] = wid
+        if sid and not str(out.get("session_id") or "").strip():
+            out["session_id"] = sid
+        return out
+
     def _complete_local_task(*, task_id: str, ok: bool, result: Dict[str, Any] | None, error: str | None) -> None:
         try:
             if ok:
@@ -3192,6 +3211,7 @@ def run_worker(
                     return
                 if ok and isinstance(res, dict):
                     res = dict(res)
+                    res = _stamp_result_meta(result=res)
                     progress = res.get("progress")
                     if not isinstance(progress, dict):
                         progress = {}
@@ -3205,6 +3225,7 @@ def run_worker(
             else:
                 if ok and isinstance(res, dict):
                     res = dict(res)
+                    res = _stamp_result_meta(result=res)
                     progress = res.get("progress")
                     if not isinstance(progress, dict):
                         progress = {}
@@ -3493,6 +3514,7 @@ def run_worker(
                             if isinstance(result, dict):
                                 # Ensure mesh executions are attributable.
                                 result = dict(result)
+                                result = _stamp_result_meta(result=result, assigned_worker=str(t.get("assigned_worker") or worker_id).strip())
                                 progress = result.get("progress")
                                 if not isinstance(progress, dict):
                                     progress = {}
@@ -3567,6 +3589,7 @@ def run_worker(
                         )
                         if isinstance(result, dict):
                             result = dict(result)
+                            result = _stamp_result_meta(result=result, assigned_worker=str(t.get("assigned_worker") or worker_id).strip())
                             progress = result.get("progress")
                             if not isinstance(progress, dict):
                                 progress = {}
@@ -3657,6 +3680,7 @@ def run_worker(
                             "assigned_worker": str(task.assigned_worker or worker_id).strip(),
                         }
                     )
+                    result = _stamp_result_meta(result=result, assigned_worker=str(task.assigned_worker or worker_id).strip())
                     status = "completed"
             except Exception as exc:
                 status = "failed"
@@ -4008,7 +4032,126 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Max peers to keep from mDNS discovery (default: env or 10)",
     )
 
+    parser.add_argument(
+        "--autoscale",
+        action="store_true",
+        help="Enable autoscaling worker threads (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE)",
+    )
+    parser.add_argument(
+        "--autoscale-min",
+        type=int,
+        default=None,
+        help="Min autoscaled workers (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN or 1)",
+    )
+    parser.add_argument(
+        "--autoscale-max",
+        type=int,
+        default=None,
+        help="Max autoscaled workers (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX or 4)",
+    )
+    parser.add_argument(
+        "--autoscale-poll-s",
+        type=float,
+        default=None,
+        help="Autoscale poll seconds (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S or 2)",
+    )
+    parser.add_argument(
+        "--autoscale-idle-s",
+        type=float,
+        default=None,
+        help="Seconds idle before scaling down (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S or 30)",
+    )
+    parser.add_argument(
+        "--autoscale-remote",
+        action="store_true",
+        help="Also scale based on discovered remote backlog (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE)",
+    )
+    parser.add_argument(
+        "--autoscale-remote-refresh-s",
+        type=float,
+        default=None,
+        help="Remote backlog refresh seconds (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S or 5)",
+    )
+    parser.add_argument(
+        "--autoscale-remote-max-peers",
+        type=int,
+        default=None,
+        help="Max remote peers for backlog polling (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS or 10)",
+    )
+    parser.add_argument(
+        "--autoscale-mesh-children",
+        action="store_true",
+        help="Enable mesh mode for autoscaled child workers (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN)",
+    )
+
     args = parser.parse_args(argv)
+
+    env_autoscale = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE")) or _truthy(
+        os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_AUTOSCALE")
+    )
+    autoscale_enabled = bool(args.autoscale) or bool(env_autoscale)
+
+    def _env_int(name: str, default: int) -> int:
+        raw = os.environ.get(name)
+        try:
+            return int(float(str(raw).strip()))
+        except Exception:
+            return int(default)
+
+    def _env_float(name: str, default: float) -> float:
+        raw = os.environ.get(name)
+        try:
+            return float(str(raw).strip())
+        except Exception:
+            return float(default)
+
+    if autoscale_enabled:
+        min_w = int(args.autoscale_min) if args.autoscale_min is not None else _env_int(
+            "IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN", 1
+        )
+        max_w = int(args.autoscale_max) if args.autoscale_max is not None else _env_int(
+            "IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX", 4
+        )
+        poll_s = float(args.autoscale_poll_s) if args.autoscale_poll_s is not None else _env_float(
+            "IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S", 2.0
+        )
+        idle_s = float(args.autoscale_idle_s) if args.autoscale_idle_s is not None else _env_float(
+            "IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S", 30.0
+        )
+        remote_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE"))
+        remote_refresh_s = (
+            float(args.autoscale_remote_refresh_s)
+            if args.autoscale_remote_refresh_s is not None
+            else _env_float("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S", 5.0)
+        )
+        remote_max_peers = (
+            int(args.autoscale_remote_max_peers)
+            if args.autoscale_remote_max_peers is not None
+            else _env_int("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS", 10)
+        )
+        mesh_children_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN"))
+
+        return run_autoscaled_workers(
+            queue_path=args.queue_path,
+            base_worker_id=str(args.worker_id),
+            min_workers=max(1, int(min_w)),
+            max_workers=max(1, int(max_w)),
+            scale_poll_s=max(0.1, float(poll_s)),
+            scale_down_idle_s=max(0.0, float(idle_s)),
+            poll_interval_s=float(args.poll_interval_s),
+            once=bool(args.once),
+            p2p_service=bool(args.p2p_service),
+            p2p_listen_port=args.p2p_listen_port,
+            mesh=(bool(args.mesh) if bool(args.mesh) else None),
+            mesh_refresh_s=args.mesh_refresh_s,
+            mesh_claim_interval_s=args.mesh_claim_interval_s,
+            mesh_max_peers=args.mesh_max_peers,
+            mesh_children=bool(args.autoscale_mesh_children) or bool(mesh_children_default),
+            autoscale_remote=bool(args.autoscale_remote) or bool(remote_default),
+            remote_refresh_s=max(0.5, float(remote_refresh_s)),
+            remote_max_peers=max(1, int(remote_max_peers)),
+        )
+
     return run_worker(
         queue_path=args.queue_path,
         worker_id=args.worker_id,
