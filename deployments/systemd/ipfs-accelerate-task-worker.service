@@ -18,6 +18,9 @@ Environment=IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1
 # Run the worker loop and start the libp2p TaskQueue service in-process.
 # Mesh mode lets this worker also claim tasks from discovered peers so a client
 # can submit to either daemon and both machines will contribute.
+#
+# Note: autoscaling (including spawning autoscaled child processes) is controlled
+# via env vars in /etc/ipfs-accelerate/task-worker.env (see deployments/systemd/task-worker.env.example).
 ExecStart=/opt/ipfs_accelerate_py/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker \
   --queue ${IPFS_ACCELERATE_PY_TASK_QUEUE_PATH} \
   --worker-id ${IPFS_ACCELERATE_PY_TASK_WORKER_ID} \

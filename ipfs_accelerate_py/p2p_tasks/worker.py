@@ -3729,16 +3729,24 @@ def run_autoscaled_workers(
     accelerate_instance: object | None = None,
     supported_task_types: Optional[list[str]] = None,
     mesh: Optional[bool] = None,
+    mesh_refresh_s: float | None = None,
+    mesh_claim_interval_s: float | None = None,
+    mesh_max_peers: int | None = None,
     mesh_children: Optional[bool] = False,
     autoscale_remote: bool = False,
     remote_refresh_s: float = 5.0,
     remote_max_peers: int = 10,
+    use_processes: bool = False,
     stop_event: threading.Event | None = None,
 ) -> int:
-    """Autoscale worker threads based on local and (optionally) remote backlog.
+    """Autoscale workers based on local and (optionally) remote backlog.
 
-    This manager starts between `min_workers` and `max_workers` worker threads.
+    This manager starts between `min_workers` and `max_workers` workers.
     Each worker runs `run_worker(...)` with a unique worker_id.
+
+    By default workers run as threads.
+    When `use_processes=True`, workers are spawned as child Python processes and
+    terminated when scaled down.
 
         Notes:
         - By default, scale decisions are based on the *local* DuckDB queue backlog.
@@ -3749,11 +3757,18 @@ def run_autoscaled_workers(
     """
 
     import uuid
+    import subprocess
+    import sys
 
     min_w = max(0, int(min_workers))
     max_w = max(min_w, int(max_workers))
     poll_s = max(0.2, float(scale_poll_s))
     idle_s = max(0.0, float(scale_down_idle_s))
+
+    if bool(use_processes) and accelerate_instance is not None:
+        # In-process accelerate instances can't be shared across processes.
+        # Fall back to threads in that case.
+        use_processes = False
 
     if once:
         # Autoscale manager is intended for long-running services.
@@ -3783,6 +3798,7 @@ def run_autoscaled_workers(
 
     workers_lock = threading.RLock()
     workers: list[tuple[str, threading.Thread, threading.Event]] = []
+    procs: list[tuple[str, subprocess.Popen[object]]] = []
     last_nonzero_ts = 0.0
 
     # Remote backlog aggregation state.
@@ -3801,6 +3817,44 @@ def run_autoscaled_workers(
 
     def _start_one(*, idx: int, start_service: bool) -> None:
         wid = _make_id(idx)
+
+        mesh_for_worker = mesh if start_service else (mesh_children if mesh_children is not None else mesh)
+        if bool(use_processes):
+            cmd: list[str] = [
+                sys.executable,
+                "-m",
+                "ipfs_accelerate_py.p2p_tasks.worker",
+                "--queue",
+                str(queue_path),
+                "--worker-id",
+                str(wid),
+                "--poll-interval-s",
+                str(float(poll_interval_s)),
+            ]
+            if bool(start_service):
+                cmd.append("--p2p-service")
+                if p2p_listen_port is not None:
+                    cmd.extend(["--p2p-listen-port", str(int(p2p_listen_port))])
+            if bool(mesh_for_worker):
+                cmd.append("--mesh")
+                if mesh_refresh_s is not None:
+                    cmd.extend(["--mesh-refresh-s", str(float(mesh_refresh_s))])
+                if mesh_claim_interval_s is not None:
+                    cmd.extend(["--mesh-claim-interval-s", str(float(mesh_claim_interval_s))])
+                if mesh_max_peers is not None:
+                    cmd.extend(["--mesh-max-peers", str(int(mesh_max_peers))])
+
+            env = dict(os.environ)
+            if supported_for_workers:
+                joined = ",".join(list(supported_for_workers))
+                env.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES", joined)
+                env.setdefault("IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES", joined)
+
+            proc = subprocess.Popen(cmd, env=env)
+            with workers_lock:
+                procs.append((wid, proc))
+            return
+
         ev = threading.Event()
 
         def _run() -> None:
@@ -3813,7 +3867,10 @@ def run_autoscaled_workers(
                 p2p_listen_port=p2p_listen_port,
                 accelerate_instance=accelerate_instance,
                 supported_task_types=list(supported_for_workers or []),
-                mesh=mesh if start_service else (mesh_children if mesh_children is not None else mesh),
+                mesh=mesh_for_worker,
+                mesh_refresh_s=mesh_refresh_s,
+                mesh_claim_interval_s=mesh_claim_interval_s,
+                mesh_max_peers=mesh_max_peers,
                 stop_event=ev,
             )
 
@@ -3824,6 +3881,23 @@ def run_autoscaled_workers(
 
     def _stop_extra(desired: int) -> None:
         with workers_lock:
+            while len(procs) > desired:
+                wid, proc = procs.pop()
+                try:
+                    proc.terminate()
+                except Exception:
+                    pass
+                try:
+                    proc.wait(timeout=1.0)
+                except Exception:
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
+                    try:
+                        proc.wait(timeout=0.5)
+                    except Exception:
+                        pass
             while len(workers) > desired:
                 wid, t, ev = workers.pop()
                 try:
@@ -3947,7 +4021,7 @@ def run_autoscaled_workers(
 
             # Scale down only after being idle for a while.
             with workers_lock:
-                current = len(workers)
+                current = (len(procs) if bool(use_processes) else 0) + len(workers)
             if desired < current:
                 if idle_s <= 0.0 or (last_nonzero_ts and (now - last_nonzero_ts) >= idle_s) or pending == 0:
                     _stop_extra(desired)
@@ -3969,6 +4043,19 @@ def run_autoscaled_workers(
                 pass
         # Stop all child workers.
         with workers_lock:
+            for _wid, _proc in procs:
+                try:
+                    _proc.terminate()
+                except Exception:
+                    pass
+            for _wid, _proc in procs:
+                try:
+                    _proc.wait(timeout=1.0)
+                except Exception:
+                    try:
+                        _proc.kill()
+                    except Exception:
+                        pass
             for _wid, _t, _ev in workers:
                 try:
                     _ev.set()
@@ -3980,6 +4067,7 @@ def run_autoscaled_workers(
                 except Exception:
                     pass
             workers.clear()
+            procs.clear()
         try:
             q.close()
         except Exception:
@@ -4083,6 +4171,11 @@ def main(argv: Optional[list[str]] = None) -> int:
         action="store_true",
         help="Enable mesh mode for autoscaled child workers (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN)",
     )
+    parser.add_argument(
+        "--autoscale-processes",
+        action="store_true",
+        help="Spawn autoscaled workers as child processes (default: env IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -4130,6 +4223,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             else _env_int("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS", 10)
         )
         mesh_children_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN"))
+        proc_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES"))
 
         return run_autoscaled_workers(
             queue_path=args.queue_path,
@@ -4150,6 +4244,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             autoscale_remote=bool(args.autoscale_remote) or bool(remote_default),
             remote_refresh_s=max(0.5, float(remote_refresh_s)),
             remote_max_peers=max(1, int(remote_max_peers)),
+            use_processes=bool(args.autoscale_processes) or bool(proc_default),
         )
 
     return run_worker(

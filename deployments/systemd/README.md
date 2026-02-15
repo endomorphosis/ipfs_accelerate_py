@@ -194,6 +194,45 @@ Tip: for “no pre-shared multiaddr” runs, try `discover` with a peer-id hint:
 python scripts/p2p_rpc.py --peer-id <REMOTE_PEER_ID> discover --timeout 10 --detail --pretty
 ```
 
+## Autoscaling Workers (systemd)
+
+There are two distinct ways to “scale workers” under systemd:
+
+1) **In-process autoscaling** (thread-based)
+  - Used by the integrated MCP unit ([deployments/systemd/ipfs-accelerate.service](deployments/systemd/ipfs-accelerate.service)).
+  - Scales worker *threads* inside the MCP process.
+
+2) **Dedicated task-worker autoscaling** (thread or process-based)
+  - Used by [deployments/systemd/ipfs-accelerate-task-worker.service](deployments/systemd/ipfs-accelerate-task-worker.service).
+  - Can scale worker threads *or* spawn/retire separate **child worker processes**.
+  - Process mode is useful when you want lifecycle isolation (spawn/destroy) or
+    if you hit stability issues with threaded libp2p.
+
+### Enable process-based autoscaling
+
+1) Copy the example env file:
+
+```bash
+sudo mkdir -p /etc/ipfs-accelerate
+sudo cp deployments/systemd/task-worker.env.example /etc/ipfs-accelerate/task-worker.env
+sudo chmod 644 /etc/ipfs-accelerate/task-worker.env
+```
+
+2) In `/etc/ipfs-accelerate/task-worker.env`, set:
+
+- `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE=1`
+- `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES=1`
+- (optional) `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=1`
+- (optional) `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=1`
+
+3) Restart the unit:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl restart ipfs-accelerate-task-worker.service
+sudo journalctl -u ipfs-accelerate-task-worker -f
+```
+
 ## Logs
 - All logs go to journald by default:
   - `sudo journalctl -u ipfs-accelerate -f`
