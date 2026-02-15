@@ -3487,6 +3487,7 @@ def run_worker(
                                     "task_type": t.get("task_type"),
                                     "model_name": t.get("model_name"),
                                     "payload": t.get("payload"),
+                                    "assigned_worker": str(t.get("assigned_worker") or worker_id).strip(),
                                 }
                             )
                             if isinstance(result, dict):
@@ -3537,6 +3538,7 @@ def run_worker(
                             "task_type": t.task_type,
                             "model_name": t.model_name,
                             "payload": t.payload,
+                            "assigned_worker": str(t.assigned_worker or worker_id).strip(),
                         }
                     )
 
@@ -3560,6 +3562,7 @@ def run_worker(
                                 "task_type": t.get("task_type"),
                                 "model_name": t.get("model_name"),
                                 "payload": t.get("payload"),
+                                "assigned_worker": str(t.get("assigned_worker") or worker_id).strip(),
                             }
                         )
                         if isinstance(result, dict):
@@ -3651,6 +3654,7 @@ def run_worker(
                             "task_type": task.task_type,
                             "model_name": task.model_name,
                             "payload": task.payload,
+                            "assigned_worker": str(task.assigned_worker or worker_id).strip(),
                         }
                     )
                     status = "completed"
