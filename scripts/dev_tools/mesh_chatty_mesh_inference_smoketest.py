@@ -145,24 +145,25 @@ async def _wait_task_local(queue_path: str, task_id: str, *, timeout_s: float) -
 
     deadline = time.time() + float(timeout_s)
     last: Optional[dict] = None
-    while time.time() < deadline:
-        try:
-            q = TaskQueue(str(queue_path))
+
+    q = TaskQueue(str(queue_path))
+    try:
+        while time.time() < deadline:
             try:
                 last = q.get(str(task_id))
-            finally:
-                try:
-                    q.close()
-                except Exception:
-                    pass
-        except Exception:
-            last = None
+            except Exception:
+                last = None
 
-        if isinstance(last, dict):
-            st = str(last.get("status") or "").strip().lower()
-            if st in {"completed", "failed"}:
-                return last
-        await anyio.sleep(0.1)
+            if isinstance(last, dict):
+                st = str(last.get("status") or "").strip().lower()
+                if st in {"completed", "failed"}:
+                    return last
+            await anyio.sleep(0.1)
+    finally:
+        try:
+            q.close()
+        except Exception:
+            pass
 
     return last
 
@@ -338,8 +339,6 @@ def main() -> int:
                 worker_session[wid] = sess
 
                 w_queue = str(root / f"{wid}.duckdb")
-                w_announce = root / f"{wid}_announce.json"
-                w_port = _pick_free_port()
 
                 env_w = dict(env_base)
                 # Workers do not need to run their own P2P service for mesh draining.
