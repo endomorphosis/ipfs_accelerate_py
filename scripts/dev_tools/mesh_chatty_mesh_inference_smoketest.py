@@ -345,7 +345,7 @@ def main() -> int:
         ]
         svc = subprocess.Popen(svc_cmd, cwd=str(REPO_ROOT), env=env_a)
 
-        drainer: subprocess.Popen | None = None
+        drainers: list[subprocess.Popen] = []
 
         try:
             ann_a = _read_json(a_announce)
@@ -357,8 +357,9 @@ def main() -> int:
             print(f"provider: {provider}")
             print(f"workers: {n_workers}  jobs: {jobs}  concurrency: {conc}  timeout_s: {timeout_s}")
 
-            # Start a single mesh-drainer process that runs N worker threads.
-            # All drainer workers share the same session (session_b).
+            # Start N mesh worker *processes* (not threads).
+            # This avoids libp2p dial/handshake issues seen when running anyio/libp2p
+            # request loops from multiple Python threads.
             drainer_queue = str(root / "drainer.duckdb")
             env_b = dict(env_base)
             env_b["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = session_b
@@ -367,30 +368,21 @@ def main() -> int:
             env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT"] = "4"
             env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH"] = "4"
 
-            drainer_cmd = [
-                py,
-                "-c",
-                (
-                    "import os, threading\n"
-                    "from ipfs_accelerate_py.p2p_tasks.worker import run_autoscaled_workers\n"
-                    "stop = threading.Event()\n"
-                    "run_autoscaled_workers(\n"
-                    "  queue_path=os.environ['DRAINER_QUEUE'],\n"
-                    "  base_worker_id=os.environ.get('DRAINER_BASE','drainer'),\n"
-                    "  min_workers=int(os.environ.get('DRAINER_N','2')),\n"
-                    "  max_workers=int(os.environ.get('DRAINER_N','2')),\n"
-                    "  poll_interval_s=0.1,\n"
-                    "  p2p_service=False,\n"
-                    "  supported_task_types=['llm.generate'],\n"
-                    "  mesh=True,\n"
-                    "  mesh_children=True,\n"
-                    ")\n"
-                ),
-            ]
-            env_b["DRAINER_QUEUE"] = drainer_queue
-            env_b["DRAINER_N"] = str(n_workers)
-            env_b["DRAINER_BASE"] = "drainer"
-            drainer = subprocess.Popen(drainer_cmd, cwd=str(REPO_ROOT), env=env_b)
+            drainer_worker_ids: list[str] = []
+            for i in range(int(n_workers)):
+                wid = f"drainer-w{i}-{uuid.uuid4().hex[:6]}"
+                drainer_worker_ids.append(wid)
+                cmd = [
+                    py,
+                    "-m",
+                    "ipfs_accelerate_py.p2p_tasks.worker",
+                    "--queue",
+                    drainer_queue,
+                    "--worker-id",
+                    wid,
+                    "--mesh",
+                ]
+                drainers.append(subprocess.Popen(cmd, cwd=str(REPO_ROOT), env=env_b))
 
             # Phase 1: no-session throughput distribution.
             print("\n--- phase 1: throughput (no session_id) ---")
@@ -611,8 +603,8 @@ def main() -> int:
             print("\nPASS")
             return 0
         finally:
-            if drainer is not None:
-                _kill(drainer, name="drainer")
+            for i, proc in enumerate(list(drainers)):
+                _kill(proc, name=f"drainer[{i}]")
             _kill(svc, name="service")
 
 
