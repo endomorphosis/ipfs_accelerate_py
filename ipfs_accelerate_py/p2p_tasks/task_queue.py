@@ -184,7 +184,16 @@ class TaskQueue:
             conn = self._get_conn()
             conn.execute(
                 """
-                INSERT INTO tasks(task_id, task_type, model_name, payload_json, status, assigned_worker, created_at, updated_at)
+                INSERT INTO tasks(
+                    task_id,
+                    task_type,
+                    model_name,
+                    payload_json,
+                    status,
+                    assigned_worker,
+                    created_at,
+                    updated_at
+                )
                 VALUES(?, ?, ?, ?, 'queued', NULL, ?, ?)
                 """,
                 (tid, str(task_type), str(model_name), payload_json, now, now),
@@ -265,7 +274,11 @@ class TaskQueue:
             if status_norm and types:
                 placeholders = ",".join(["?"] * len(types))
                 rows = conn.execute(
-                    f"SELECT * FROM tasks WHERE status=? AND task_type IN ({placeholders}) ORDER BY created_at ASC LIMIT ?",
+                    (
+                        "SELECT * FROM tasks WHERE status=? "
+                        f"AND task_type IN ({placeholders}) "
+                        "ORDER BY created_at ASC LIMIT ?"
+                    ),
                     (status_norm, *types, lim),
                 ).fetchall()
             elif status_norm:
@@ -403,7 +416,7 @@ class TaskQueue:
         now = time.time()
 
         required_expr = (
-            "coalesce(" 
+            "coalesce("
             "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
             "nullif(json_extract_string(payload_json, '$.session'), ''), "
             "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
@@ -540,7 +553,7 @@ class TaskQueue:
         now = time.time()
 
         required_expr = (
-            "coalesce(" 
+            "coalesce("
             "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
             "nullif(json_extract_string(payload_json, '$.session'), ''), "
             "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
@@ -607,7 +620,11 @@ class TaskQueue:
 
                 where_sql = " AND ".join(where)
                 rows = conn.execute(
-                    f"SELECT task_id FROM tasks WHERE {where_sql} ORDER BY created_at ASC LIMIT {int(limit)}",
+                    (
+                        f"SELECT task_id FROM tasks WHERE {where_sql} "
+                        "ORDER BY created_at ASC "
+                        f"LIMIT {int(limit)}"
+                    ),
                     tuple(params),
                 ).fetchall()
                 ids = [str(r[0]) for r in (rows or []) if r and r[0]]
@@ -619,18 +636,33 @@ class TaskQueue:
                 if session:
                     # NOTE: this is best-effort; it prevents accidental claims even
                     # if the initial SELECT raced with another session.
+                    sql = (
+                        "UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                        f"WHERE task_id IN ({id_placeholders}) AND status='queued' "
+                        f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?) "
+                        f"AND ({required_expr} IS NULL OR {required_expr} = ?)"
+                    )
                     conn.execute(
-                        f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({sticky_expr} IS NULL OR {sticky_expr} = ?) AND ({required_expr} IS NULL OR {required_expr} = ?)",
+                        sql,
                         tuple([str(worker_id), now] + ids + [str(worker_id), str(session)]),
                     )
                 else:
+                    sql = (
+                        "UPDATE tasks SET status='running', assigned_worker=?, updated_at=? "
+                        f"WHERE task_id IN ({id_placeholders}) AND status='queued' "
+                        f"AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)"
+                    )
                     conn.execute(
-                        f"UPDATE tasks SET status='running', assigned_worker=?, updated_at=? WHERE task_id IN ({id_placeholders}) AND status='queued' AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)",
+                        sql,
                         tuple([str(worker_id), now] + ids + [str(worker_id)]),
                     )
 
                 rows2 = conn.execute(
-                    f"SELECT * FROM tasks WHERE task_id IN ({id_placeholders}) AND status='running' AND assigned_worker=? ORDER BY created_at ASC",
+                    (
+                        f"SELECT * FROM tasks WHERE task_id IN ({id_placeholders}) "
+                        "AND status='running' AND assigned_worker=? "
+                        "ORDER BY created_at ASC"
+                    ),
                     tuple(ids + [str(worker_id)]),
                 ).fetchall()
 
@@ -688,7 +720,7 @@ class TaskQueue:
         now = time.time()
         session = str(session_id or "").strip()
         required_expr = (
-            "coalesce(" 
+            "coalesce("
             "nullif(json_extract_string(payload_json, '$.session_id'), ''), "
             "nullif(json_extract_string(payload_json, '$.session'), ''), "
             "nullif(json_extract_string(payload_json, '$.p2p_session'), '')"
@@ -711,11 +743,12 @@ class TaskQueue:
                 )
             else:
                 conn.execute(
-                    """
+                    f"""
                     UPDATE tasks
                     SET status='running', assigned_worker=?, updated_at=?
-                    WHERE task_id=? AND status='queued' AND (nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '') IS NULL OR nullif(json_extract_string(payload_json, '$.sticky_worker_id'), '') = ?)
-                    """,
+                    WHERE task_id=? AND status='queued'
+                      AND ({sticky_expr} IS NULL OR {sticky_expr} = ?)
+                    """.strip(),
                     (str(worker_id), now, str(task_id), str(worker_id)),
                 )
 
@@ -875,7 +908,10 @@ class TaskQueue:
                     result_obj["progress"]["cancel_reason"] = reason.strip()
 
                 conn.execute(
-                    "UPDATE tasks SET status='cancelled', result_json=?, updated_at=? WHERE task_id=? AND status='queued'",
+                    (
+                        "UPDATE tasks SET status='cancelled', result_json=?, updated_at=? "
+                        "WHERE task_id=? AND status='queued'"
+                    ),
                     (json.dumps(result_obj, sort_keys=True), now, str(task_id)),
                 )
                 conn.execute("COMMIT")
@@ -891,6 +927,69 @@ class TaskQueue:
                     conn.close()
                 except Exception:
                     pass
+
+    def delete(self, *, task_id: str) -> bool:
+        """Delete a task row by id.
+
+        This is intended for internal/ephemeral tasks where the caller already
+        returned the result to the requester (e.g. p2p call_tool -> tool.call).
+        """
+
+        if not task_id:
+            return False
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            try:
+                conn.execute("DELETE FROM tasks WHERE task_id=?", (str(task_id),))
+                return True
+            except Exception:
+                return False
+
+    def prune_terminal(
+        self,
+        *,
+        older_than_s: float,
+        limit: int = 1000,
+        statuses: Optional[Iterable[str]] = None,
+    ) -> int:
+        """Prune terminal tasks (completed/failed/cancelled) older than a cutoff."""
+
+        keep_s = float(older_than_s)
+        if keep_s <= 0:
+            return 0
+        lim = max(1, min(int(limit or 1000), 10000))
+
+        st_default = {"completed", "failed", "cancelled"}
+        st_in = [str(s).strip().lower() for s in (statuses or st_default) if str(s).strip()]
+        st_in = [s for s in st_in if s in st_default]
+        if not st_in:
+            st_in = sorted(st_default)
+
+        cutoff = time.time() - keep_s
+        placeholders = ",".join(["?"] * len(st_in))
+
+        # Delete in small batches to avoid long write locks.
+        sql = (
+            "DELETE FROM tasks WHERE task_id IN ("
+            "  SELECT task_id FROM tasks"
+            f"  WHERE status IN ({placeholders}) AND updated_at < ?"
+            "  ORDER BY updated_at ASC"
+            "  LIMIT ?"
+            ")"
+        )
+        params: list[Any] = [*st_in, float(cutoff), int(lim)]
+
+        with self._conn_lock:
+            conn = self._get_conn()
+            try:
+                cur = conn.execute(sql, tuple(params))
+                try:
+                    return int(getattr(cur, "rowcount", 0) or 0)
+                except Exception:
+                    return 0
+            except Exception:
+                return 0
 
     def release(
         self,
@@ -961,7 +1060,6 @@ class TaskQueue:
                 return True
             except Exception:
                 return False
-
 
     def update(
         self,

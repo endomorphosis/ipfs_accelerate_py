@@ -20,7 +20,7 @@ import socket
 import threading
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 def _truthy(raw: object) -> bool:
@@ -165,7 +165,11 @@ class TaskOrchestrator:
 
                     if expected_session:
                         try:
-                            resp = request_status_sync(remote=rq, timeout_s=float(self._cfg.remote_status_timeout_s), detail=False)
+                            resp = request_status_sync(
+                                remote=rq,
+                                timeout_s=float(self._cfg.remote_status_timeout_s),
+                                detail=False,
+                            )
                             if not (isinstance(resp, dict) and resp.get("ok")):
                                 continue
                             if str(resp.get("session") or "").strip() != expected_session:
@@ -468,12 +472,26 @@ class TaskOrchestrator:
         from ipfs_accelerate_py.p2p_tasks.task_queue import TaskQueue
 
         q = TaskQueue(self._cfg.queue_path)
+        last_prune_ts = 0.0
+        try:
+            retention_s = float(os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_RETENTION_S") or 86400.0)
+        except Exception:
+            retention_s = 86400.0
+        prune_every_s = 30.0
         initial = max(1, min(int(self._cfg.max_workers), int(self._cfg.min_workers)))
         for i in range(initial):
             self._spawn_worker(idx=i)
 
         while not self._stop.is_set():
             self._prune_dead_workers()
+
+            now = time.time()
+            if retention_s > 0 and (now - last_prune_ts) >= prune_every_s:
+                try:
+                    q.prune_terminal(older_than_s=float(retention_s), limit=500)
+                except Exception:
+                    pass
+                last_prune_ts = now
 
             try:
                 local_pending = int(q.count(status="queued"))
@@ -484,7 +502,6 @@ class TaskOrchestrator:
             remote_pending, _by_type = self._remote_backlog(peers)
             pending_total = int(local_pending) + int(remote_pending)
 
-            now = time.time()
             if pending_total > 0:
                 self._last_nonzero_ts = now
 
@@ -498,7 +515,15 @@ class TaskOrchestrator:
                     self._spawn_worker(idx=i)
             elif desired < current:
                 idle_s = max(0.0, float(self._cfg.scale_down_idle_s))
-                if idle_s <= 0.0 or (self._last_nonzero_ts and (now - self._last_nonzero_ts) >= idle_s) or pending_total == 0:
+                should_scale_down = (
+                    idle_s <= 0.0
+                    or (
+                        self._last_nonzero_ts
+                        and (now - self._last_nonzero_ts) >= idle_s
+                    )
+                    or pending_total == 0
+                )
+                if should_scale_down:
                     self._stop_extra_workers(desired)
 
             # Mesh draining: pull tasks from peers into local queue.
@@ -523,10 +548,17 @@ def start_orchestrator_in_background(
     accelerate_instance: object | None = None,
     supported_task_types: Optional[list[str]] = None,
 ) -> TaskOrchestrator:
+    orch_id = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_ORCHESTRATOR_ID") or "").strip()
+    if not orch_id:
+        orch_id = _default_orchestrator_id()
+    base_worker_id = str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ID") or "").strip()
+    if not base_worker_id:
+        base_worker_id = _default_base_worker_id()
+
     cfg = OrchestratorConfig(
         queue_path=str(queue_path),
-        orchestrator_id=str(os.environ.get("IPFS_ACCELERATE_PY_TASK_ORCHESTRATOR_ID") or "").strip() or _default_orchestrator_id(),
-        base_worker_id=str(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ID") or "").strip() or _default_base_worker_id(),
+        orchestrator_id=orch_id,
+        base_worker_id=base_worker_id,
         min_workers=_env_int("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN", 1),
         max_workers=_env_int("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX", 4),
         scale_poll_s=_env_float("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S", 2.0),
@@ -538,6 +570,10 @@ def start_orchestrator_in_background(
         mesh_claim_batch=_env_int("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH", 8),
     )
 
-    orch = TaskOrchestrator(config=cfg, accelerate_instance=accelerate_instance, supported_task_types=supported_task_types)
+    orch = TaskOrchestrator(
+        config=cfg,
+        accelerate_instance=accelerate_instance,
+        supported_task_types=supported_task_types,
+    )
     orch.start()
     return orch

@@ -10,7 +10,6 @@ import logging
 import os
 import sys
 from pathlib import Path
-import subprocess
 import atexit
 
 # Configure logging
@@ -92,7 +91,7 @@ def main():
         "--p2p-task-worker",
         dest="p2p_task_worker",
         action="store_true",
-        help="Start a DuckDB task worker alongside MCP (default: on)",
+        help="Start the task orchestrator (spawns thin workers) (default: on)",
     )
     parser.add_argument(
         "--no-p2p-task-worker",
@@ -108,7 +107,7 @@ def main():
     parser.add_argument(
         "--p2p-worker-id",
         default="accelerate-mcp-worker",
-        help="Worker id used when claiming tasks (default: accelerate-mcp-worker)",
+        help="Base worker id prefix for orchestrator-spawned workers (default: accelerate-mcp-worker)",
     )
 
     parser.add_argument(

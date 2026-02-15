@@ -1600,7 +1600,14 @@ def _run_tool_call(task: Dict[str, Any], *, accelerate_instance: object | None =
         args = {"value": args}
 
     if accelerate_instance is None:
-        raise RuntimeError("tool.call requires accelerate_instance")
+        # Thin worker processes are spawned without an accelerate instance.
+        # Lazily create one only when tool execution is requested.
+        try:
+            from ipfs_accelerate_py import ipfs_accelerate_py
+
+            accelerate_instance = ipfs_accelerate_py()
+        except Exception as exc:
+            raise RuntimeError(f"tool.call requires accelerate_instance (init failed: {exc})")
     fn = getattr(accelerate_instance, "call_tool", None)
     if not callable(fn):
         raise RuntimeError("accelerate_instance does not implement call_tool")
