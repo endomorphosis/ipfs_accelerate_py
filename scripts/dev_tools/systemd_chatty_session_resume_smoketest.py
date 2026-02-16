@@ -242,44 +242,84 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
             _print_block(f"Peer {peer.name} probe FAILED", {"peer": peer.__dict__, "error": str(exc)})
             return 2
 
-    # Phase 1: session gating
-    chat_id = f"chat-{int(time.time())}"
-    prompt1 = "(smoketest) Round 1: say OK and echo the word ALPHA."
-    tid1 = await _submit_llm_task(
+    # Phase 1: session gating + real Copilot execution on both peers
+    chat_id_a = f"chat-{int(time.time())}-A"
+    prompt1a = "(smoketest) Round 1A: say OK and echo the word ALPHA."
+    tid1a = await _submit_llm_task(
         peer=peer_a,
-        prompt=prompt1,
+        prompt=prompt1a,
         provider=str(args.provider),
         model_name=str(args.model),
         session_id=peer_a.session,
-        chat_session_id=chat_id,
+        chat_session_id=chat_id_a,
     )
 
-    t1 = await _wait_completed_chatty(remote=peer_a.remote(), task_id=tid1, timeout_s=float(args.timeout_s))
-    if not isinstance(t1, dict):
-        _print_block("Round 1 TIMEOUT", {"task_id": tid1, "peer": peer_a.__dict__})
+    t1a = await _wait_completed_chatty(remote=peer_a.remote(), task_id=tid1a, timeout_s=float(args.timeout_s))
+    if not isinstance(t1a, dict):
+        _print_block("Round 1A TIMEOUT", {"task_id": tid1a, "peer": peer_a.__dict__})
         return 3
 
-    ex_peer1, ex_worker1 = _result_executor(t1)
-    block1 = {
-        "phase": "round1",
-        "task_id": tid1,
+    ex_peer1a, ex_worker1a = _result_executor(t1a)
+    block1a = {
+        "phase": "round1a",
+        "task_id": tid1a,
         "submit_peer": peer_a.__dict__,
-        "status": t1.get("status"),
-        "error": t1.get("error"),
-        "executor_peer_id": ex_peer1,
-        "executor_worker_id": ex_worker1,
-        "result_excerpt": _fmt_excerpt(_result_text(t1)),
-        "result": t1.get("result"),
+        "status": t1a.get("status"),
+        "error": t1a.get("error"),
+        "executor_peer_id": ex_peer1a,
+        "executor_worker_id": ex_worker1a,
+        "result_excerpt": _fmt_excerpt(_result_text(t1a)),
+        "result": t1a.get("result"),
     }
-    _print_block("Round 1 result", block1)
+    _print_block("Round 1A result", block1a)
 
-    if str(t1.get("status") or "").lower() != "completed":
+    if str(t1a.get("status") or "").lower() != "completed":
         return 4
 
-    if peer_a.session != peer_b.session and ex_peer1 and ex_peer1 != peer_a.peer_id:
+    if ex_peer1a and ex_peer1a != peer_a.peer_id:
         _print_block(
-            "FAIL: Session-gated task executed on wrong peer",
-            {"expected_peer_id": peer_a.peer_id, "got_peer_id": ex_peer1, "task": block1},
+            "FAIL: Round 1A executed on wrong peer",
+            {"expected_peer_id": peer_a.peer_id, "got_peer_id": ex_peer1a, "task": block1a},
+        )
+        return 10
+
+    chat_id_b = f"chat-{int(time.time())}-B"
+    prompt1b = "(smoketest) Round 1B: say OK and echo the word BETA."
+    tid1b = await _submit_llm_task(
+        peer=peer_b,
+        prompt=prompt1b,
+        provider=str(args.provider),
+        model_name=str(args.model),
+        session_id=peer_b.session,
+        chat_session_id=chat_id_b,
+    )
+
+    t1b = await _wait_completed_chatty(remote=peer_b.remote(), task_id=tid1b, timeout_s=float(args.timeout_s))
+    if not isinstance(t1b, dict):
+        _print_block("Round 1B TIMEOUT", {"task_id": tid1b, "peer": peer_b.__dict__})
+        return 3
+
+    ex_peer1b, ex_worker1b = _result_executor(t1b)
+    block1b = {
+        "phase": "round1b",
+        "task_id": tid1b,
+        "submit_peer": peer_b.__dict__,
+        "status": t1b.get("status"),
+        "error": t1b.get("error"),
+        "executor_peer_id": ex_peer1b,
+        "executor_worker_id": ex_worker1b,
+        "result_excerpt": _fmt_excerpt(_result_text(t1b)),
+        "result": t1b.get("result"),
+    }
+    _print_block("Round 1B result", block1b)
+
+    if str(t1b.get("status") or "").lower() != "completed":
+        return 4
+
+    if ex_peer1b and ex_peer1b != peer_b.peer_id:
+        _print_block(
+            "FAIL: Round 1B executed on wrong peer",
+            {"expected_peer_id": peer_b.peer_id, "got_peer_id": ex_peer1b, "task": block1b},
         )
         return 10
 
@@ -289,13 +329,14 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
             {
                 "reason": "--skip-sticky-resume was set",
                 "note": "Round 2 requires continue_session support, which typically needs a native Copilot CLI with persistent auth on the worker.",
-                "round1_executor_worker_id": ex_worker1,
+                "round1a_executor_worker_id": ex_worker1a,
+                "round1b_executor_worker_id": ex_worker1b,
             },
         )
         return 0
 
-    if not ex_worker1:
-        _print_block("FAIL: Missing executor_worker_id", {"task": block1})
+    if not ex_worker1a:
+        _print_block("FAIL: Missing executor_worker_id", {"task": block1a})
         return 11
 
     # Phase 2: sticky resume (requires continue_session support in the provider)
@@ -306,14 +347,14 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
         provider=str(args.provider),
         model_name=str(args.model),
         session_id=peer_a.session,
-        sticky_worker_id=ex_worker1,
-        chat_session_id=chat_id,
+        sticky_worker_id=ex_worker1a,
+        chat_session_id=chat_id_a,
         continue_session=True,
     )
 
     t2 = await _wait_completed_chatty(remote=peer_a.remote(), task_id=tid2, timeout_s=float(args.timeout_s))
     if not isinstance(t2, dict):
-        _print_block("Round 2 TIMEOUT", {"task_id": tid2, "peer": peer_a.__dict__, "sticky_worker_id": ex_worker1})
+        _print_block("Round 2 TIMEOUT", {"task_id": tid2, "peer": peer_a.__dict__, "sticky_worker_id": ex_worker1a})
         return 5
 
     ex_peer2, ex_worker2 = _result_executor(t2)
@@ -321,7 +362,7 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
         "phase": "round2",
         "task_id": tid2,
         "submit_peer": peer_a.__dict__,
-        "sticky_worker_id": ex_worker1,
+        "sticky_worker_id": ex_worker1a,
         "status": t2.get("status"),
         "error": t2.get("error"),
         "executor_peer_id": ex_peer2,
@@ -334,10 +375,10 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
     if str(t2.get("status") or "").lower() != "completed":
         return 6
 
-    if ex_worker2 and ex_worker2 != ex_worker1:
+    if ex_worker2 and ex_worker2 != ex_worker1a:
         _print_block(
             "FAIL: Sticky resume executed on different worker",
-            {"expected_worker_id": ex_worker1, "got_worker_id": ex_worker2, "task": block2},
+            {"expected_worker_id": ex_worker1a, "got_worker_id": ex_worker2, "task": block2},
         )
         return 12
 

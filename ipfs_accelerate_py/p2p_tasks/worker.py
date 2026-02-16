@@ -2130,6 +2130,111 @@ def _session_allows_task(*, task_payload: object, local_session: str) -> bool:
     return required == str(local_session).strip()
 
 
+def _session_failover_enabled() -> bool:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER")
+    if raw is None:
+        return False
+    return _truthy(str(raw))
+
+
+def _session_failover_after_s() -> float:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S")
+    if raw is None:
+        return 180.0
+    try:
+        return max(0.0, float(raw))
+    except Exception:
+        return 180.0
+
+
+def _session_failover_scan_interval_s() -> float:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_SCAN_INTERVAL_S")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_SCAN_INTERVAL_S")
+    if raw is None:
+        return 2.0
+    try:
+        return max(0.1, float(raw))
+    except Exception:
+        return 2.0
+
+
+def _session_failover_max_per_scan() -> int:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_MAX_PER_SCAN")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_MAX_PER_SCAN")
+    if raw is None:
+        return 2
+    try:
+        return max(1, min(int(float(raw)), 50))
+    except Exception:
+        return 2
+
+
+def _chat_cache_key(chat_session_id: str) -> str:
+    return f"chat_history:{str(chat_session_id or '').strip()}"
+
+
+def _chat_cache_get_transcript(chat_session_id: str) -> str | None:
+    sid = str(chat_session_id or "").strip()
+    if not sid:
+        return None
+    try:
+        from ipfs_accelerate_py.p2p_tasks.cache_store import DiskTTLCache, cache_enabled, default_cache_dir
+
+        if not cache_enabled():
+            return None
+        cache = DiskTTLCache(default_cache_dir())
+        val = cache.get(_chat_cache_key(sid))
+        if isinstance(val, dict):
+            val = val.get("text")
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    except Exception:
+        return None
+    return None
+
+
+def _chat_cache_append_turn(*, chat_session_id: str, user_prompt: str, assistant_text: str, ttl_s: float | None = None) -> None:
+    sid = str(chat_session_id or "").strip()
+    if not sid:
+        return
+    turn = f"User: {str(user_prompt or '').strip()}\nAssistant: {str(assistant_text or '').strip()}".strip()
+    if not turn:
+        return
+    try:
+        from ipfs_accelerate_py.p2p_tasks.cache_store import DiskTTLCache, cache_enabled, default_cache_dir
+
+        if not cache_enabled():
+            return
+        cache = DiskTTLCache(default_cache_dir())
+        key = _chat_cache_key(sid)
+        prior = cache.get(key)
+        prior_text = ""
+        if isinstance(prior, dict):
+            prior_text = str(prior.get("text") or "")
+        elif isinstance(prior, str):
+            prior_text = prior
+        merged = (prior_text.strip() + "\n\n" + turn).strip() if str(prior_text or "").strip() else turn
+
+        # Prevent unbounded growth; keep the last ~64KB of transcript.
+        try:
+            max_chars = int(float(os.environ.get("IPFS_ACCELERATE_PY_TASK_CHAT_HISTORY_MAX_CHARS") or 65536))
+        except Exception:
+            max_chars = 65536
+        max_chars = max(4096, min(max_chars, 1024 * 1024))
+        if len(merged) > max_chars:
+            merged = merged[-max_chars:]
+
+        cache.set(key, {"text": merged, "updated_at": time.time()}, ttl_s=ttl_s)
+    except Exception:
+        return
+
+
 def _copilot_session_controls_allowed(
     *,
     payload: dict,
@@ -2344,6 +2449,17 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         pass
     if isinstance(chat_session_id, str) and chat_session_id.strip():
         out["chat_session_id"] = chat_session_id.strip()
+        # Best-effort: persist transcript for failover/resubmission.
+        # Stored in the TaskQueue cache store (when enabled).
+        try:
+            _chat_cache_append_turn(
+                chat_session_id=chat_session_id.strip(),
+                user_prompt=str(prompt or ""),
+                assistant_text=str(text or ""),
+                ttl_s=7 * 24 * 3600,
+            )
+        except Exception:
+            pass
     if isinstance(resume_session_id, str) and resume_session_id.strip():
         out["resume_session_id"] = resume_session_id.strip()
     return out
@@ -2572,6 +2688,118 @@ def run_worker(
     queue = TaskQueue(queue_path)
 
     local_session = _expected_session_tag()
+
+    last_failover_scan = 0.0
+
+    def _maybe_failover_stale_session_tasks() -> int:
+        nonlocal last_failover_scan
+
+        if not _session_failover_enabled():
+            return 0
+        if not str(local_session or "").strip():
+            return 0
+
+        now = time.time()
+        if (now - float(last_failover_scan or 0.0)) < float(_session_failover_scan_interval_s()):
+            return 0
+        last_failover_scan = now
+
+        after_s = float(_session_failover_after_s())
+        max_n = int(_session_failover_max_per_scan())
+
+        try:
+            rows = queue.list(status="queued", limit=250)
+        except Exception:
+            return 0
+
+        changed = 0
+        for row in list(rows or []):
+            if changed >= max_n:
+                break
+            if not isinstance(row, dict):
+                continue
+
+            tid = str(row.get("task_id") or "").strip()
+            ttype = str(row.get("task_type") or "").strip()
+            model_name = str(row.get("model_name") or "").strip()
+            payload = row.get("payload")
+            if not tid or not ttype or not isinstance(payload, dict):
+                continue
+
+            required = _task_required_session(payload)
+            if not required:
+                continue
+            if required == str(local_session).strip():
+                continue
+
+            # Allow per-task opt-out.
+            if payload.get("session_failover") is False or payload.get("disable_session_failover") is True:
+                continue
+
+            try:
+                created_at = float(row.get("created_at") or 0.0)
+            except Exception:
+                created_at = 0.0
+            age_s = now - created_at if created_at > 0 else 0.0
+            if age_s < after_s:
+                continue
+
+            # Build a new payload targeted at the local session.
+            new_payload: Dict[str, Any] = dict(payload)
+            # Reset continuity pins since we're intentionally failing over.
+            new_payload.pop("sticky_worker_id", None)
+            new_payload.pop("resume_session_id", None)
+            new_payload.pop("continue_session", None)
+
+            # Force new session affinity.
+            new_payload["session_id"] = str(local_session).strip()
+            new_payload.pop("session", None)
+            new_payload.pop("p2p_session", None)
+
+            # Extract original prompt.
+            orig_prompt = new_payload.get("prompt")
+            if orig_prompt is None:
+                orig_prompt = new_payload.get("text")
+            if orig_prompt is None:
+                orig_prompt = new_payload.get("input")
+            orig_prompt_str = str(orig_prompt or "")
+
+            chat_session_id = new_payload.get("chat_session_id")
+            transcript = None
+            if isinstance(chat_session_id, str) and chat_session_id.strip():
+                transcript = _chat_cache_get_transcript(chat_session_id.strip())
+            if isinstance(transcript, str) and transcript.strip():
+                new_payload["prompt"] = (
+                    "(failover) Previous chat transcript (best-effort):\n"
+                    + transcript.strip()
+                    + "\n\nUser: "
+                    + orig_prompt_str.strip()
+                ).strip()
+            else:
+                new_payload["prompt"] = orig_prompt_str
+
+            new_payload["failover"] = {
+                "from_task_id": tid,
+                "from_session_id": required,
+                "to_session_id": str(local_session).strip(),
+                "ts": float(now),
+                "reason": "session_peer_unavailable_or_slow",
+            }
+
+            try:
+                new_tid = queue.submit(task_type=str(ttype), model_name=str(model_name), payload=new_payload)
+            except Exception:
+                continue
+
+            # Best-effort: cancel the old queued task so only one executes.
+            try:
+                queue.cancel(task_id=str(tid), reason=f"session_failover->{new_tid}")
+            except Exception:
+                pass
+
+            changed += 1
+
+        return int(changed)
 
     handlers: dict[str, Callable[[Dict[str, Any]], Dict[str, Any]]] = {}
 
@@ -3597,6 +3825,17 @@ def run_worker(
                     continue
 
                 if once:
+                    # In once-mode, still run failover once so we can resubmit
+                    # session-bound tasks locally when the matching peer is
+                    # offline/rate-limited.
+                    try:
+                        n = _maybe_failover_stale_session_tasks()
+                    except Exception:
+                        n = 0
+                    if n > 0:
+                        # A failover created local work; keep looping so we can
+                        # claim/complete it in this run.
+                        continue
                     return 0
                 sleep_s = max(0.05, float(poll_interval_s))
                 if stop_event is None:
