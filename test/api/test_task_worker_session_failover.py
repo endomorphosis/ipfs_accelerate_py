@@ -11,7 +11,9 @@ def test_worker_session_failover_resubmits_locally_with_transcript(monkeypatch, 
     monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_SESSION", "S_A")
 
     # Enable worker-side failover and make it immediate for the test.
-    monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER", "1")
+    # Failover should be enabled by default (env var unset).
+    monkeypatch.delenv("IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER", raising=False)
+    monkeypatch.delenv("IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER", raising=False)
     monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S", "0")
     monkeypatch.setenv("IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_SCAN_INTERVAL_S", "0")
 

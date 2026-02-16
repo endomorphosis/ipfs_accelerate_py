@@ -2134,8 +2134,11 @@ def _session_failover_enabled() -> bool:
     raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER")
     if raw is None:
         raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER")
+    # Default-on behavior: if this env var is unset, we enable session failover
+    # but keep it conservative via `IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S`.
+    # Set to 0/false to explicitly disable.
     if raw is None:
-        return False
+        return True
     return _truthy(str(raw))
 
 
