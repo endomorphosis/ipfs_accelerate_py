@@ -2083,6 +2083,30 @@ def _expected_session_tag() -> str:
     return str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
 
 
+def _mesh_filter_peers_by_session() -> bool:
+        """Whether mesh peer discovery should filter peers by their *service* session tag.
+
+        Default is False.
+
+        Rationale:
+            - A task's required session is enforced at claim-time using the payload's
+                `session_id`.
+            - Filtering peers by the remote service's configured session can prevent
+                draining session-bound tasks that were enqueued on the "wrong" machine.
+
+        Env:
+            - IPFS_ACCELERATE_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION (compat:
+                IPFS_DATASETS_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION)
+        """
+
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION")
+        if raw is None:
+                raw = os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION")
+        if raw is None:
+                return False
+        return _truthy(str(raw))
+
+
 def _task_required_session(task_payload: object) -> str:
     """Extract an optional session affinity tag from a task payload."""
 
@@ -2391,6 +2415,7 @@ def _start_mesh_discovery_thread(
     """
 
     expected_session = _expected_session_tag()
+    filter_peer_session = _mesh_filter_peers_by_session()
 
     def _loop() -> None:
         # Import lazily: libp2p is optional in some environments.
@@ -2425,7 +2450,7 @@ def _start_mesh_discovery_thread(
                 if local_peer_id and pid == local_peer_id:
                     continue
 
-                if expected_session:
+                if expected_session and filter_peer_session:
                     try:
                         resp = request_status_sync(remote=rq, timeout_s=3.0, detail=False)
                         if not (isinstance(resp, dict) and resp.get("ok")):
@@ -3971,6 +3996,7 @@ def run_autoscaled_workers(
             )
 
             expected_session = _expected_session_tag()
+            filter_peer_session = _mesh_filter_peers_by_session()
 
             def _remote_loop() -> None:
                 refresh_s = max(0.5, float(remote_refresh_s))
@@ -3993,7 +4019,7 @@ def run_autoscaled_workers(
                             continue
                         if not (isinstance(resp, dict) and resp.get("ok")):
                             continue
-                        if expected_session and str(resp.get("session") or "").strip() != expected_session:
+                        if expected_session and filter_peer_session and str(resp.get("session") or "").strip() != expected_session:
                             continue
 
                         queue_info = resp.get("queue")

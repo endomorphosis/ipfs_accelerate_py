@@ -43,6 +43,7 @@ import shlex
 import shutil
 import subprocess
 import tempfile
+import threading
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
@@ -52,6 +53,7 @@ from html import unescape
 import hashlib
 import importlib
 import importlib.util
+from pathlib import Path
 from typing import Callable, Dict, List, Optional, Protocol, Sequence, TypedDict, runtime_checkable
 
 from .router_deps import RouterDeps, get_default_router_deps
@@ -232,6 +234,7 @@ def submit_task(
             "resume_session_id",
             "continue_session",
             "chat_session_id",
+            "history_cid",
             "sticky_worker_id",
         ):
             if k in kwargs:
@@ -434,6 +437,138 @@ def wait_task(
 _STICKY_SESSION_WORKER: dict[str, str] = {}
 
 
+_CHAT_HISTORY_LOCK = threading.RLock()
+_CHAT_HISTORY_INDEX: dict[str, str] = {}
+_CHAT_HISTORY_INDEX_LOADED = False
+
+
+def _chat_history_cache_dir() -> Path:
+    cache_root = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return Path(cache_root) / "ipfs_accelerate_py" / "chat_history"
+
+
+def _chat_history_index_path() -> Path:
+    return _chat_history_cache_dir() / "index.json"
+
+
+def _safe_cid_filename(cid: str) -> str:
+    # CIDs are typically safe as filenames. Keep a conservative fallback.
+    out = str(cid or "").strip()
+    if not out:
+        return ""
+    return "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in out)
+
+
+def _cid_for_bytes(data: bytes) -> str:
+    # Prefer multiformats CIDv1 (raw, sha2-256) when available.
+    try:
+        from multiformats import CID, multihash  # type: ignore
+
+        mh = multihash.digest(data, "sha2-256")
+        try:
+            cid = CID("base32", 1, "raw", mh)
+        except TypeError:
+            # Older constructor variant.
+            cid = CID("base32", "raw", mh)
+        return str(cid)
+    except Exception:
+        return "sha256_" + hashlib.sha256(data).hexdigest()
+
+
+def _cid_for_text(text: str) -> str:
+    return _cid_for_bytes(str(text or "").encode("utf-8"))
+
+
+def _load_chat_history_index() -> None:
+    global _CHAT_HISTORY_INDEX_LOADED
+    if _CHAT_HISTORY_INDEX_LOADED:
+        return
+    path = _chat_history_index_path()
+    try:
+        if path.exists() and path.stat().st_size > 0:
+            data = json.loads(path.read_text("utf-8"))
+            if isinstance(data, dict):
+                for k, v in data.items():
+                    ks = str(k or "").strip()
+                    vs = str(v or "").strip()
+                    if ks and vs:
+                        _CHAT_HISTORY_INDEX[ks] = vs
+    except Exception:
+        pass
+    _CHAT_HISTORY_INDEX_LOADED = True
+
+
+def _save_chat_history_index() -> None:
+    path = _chat_history_index_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(_CHAT_HISTORY_INDEX, sort_keys=True), "utf-8")
+    except Exception:
+        pass
+
+
+def _store_chat_history_text(text: str) -> str:
+    cid = _cid_for_text(text)
+    base = _chat_history_cache_dir() / "cids"
+    try:
+        base.mkdir(parents=True, exist_ok=True)
+        fname = _safe_cid_filename(cid)
+        if fname:
+            path = base / f"{fname}.txt"
+            if not path.exists():
+                path.write_text(str(text or ""), "utf-8")
+    except Exception:
+        pass
+    return cid
+
+
+def _load_chat_history_text(cid: str) -> str | None:
+    text = str(cid or "").strip()
+    if not text:
+        return None
+    base = _chat_history_cache_dir() / "cids"
+    try:
+        path = base / f"{_safe_cid_filename(text)}.txt"
+        if path.exists() and path.stat().st_size > 0:
+            return path.read_text("utf-8")
+    except Exception:
+        return None
+    return None
+
+
+def _chat_history_get(chat_session_id: str) -> tuple[str | None, str | None]:
+    sid = str(chat_session_id or "").strip()
+    if not sid:
+        return (None, None)
+    with _CHAT_HISTORY_LOCK:
+        _load_chat_history_index()
+        cid = str(_CHAT_HISTORY_INDEX.get(sid) or "").strip()
+    if not cid:
+        return (None, None)
+    return (_load_chat_history_text(cid), cid)
+
+
+def _chat_history_append_turn(*, chat_session_id: str, user_prompt: str, assistant_text: str) -> str | None:
+    sid = str(chat_session_id or "").strip()
+    if not sid:
+        return None
+
+    # Simple plaintext transcript; intended for best-effort failover prompts.
+    turn = f"User: {str(user_prompt or '').strip()}\nAssistant: {str(assistant_text or '').strip()}".strip()
+    if not turn:
+        return None
+
+    with _CHAT_HISTORY_LOCK:
+        _load_chat_history_index()
+        prior_cid = str(_CHAT_HISTORY_INDEX.get(sid) or "").strip()
+        prior_text = _load_chat_history_text(prior_cid) if prior_cid else None
+        merged = (str(prior_text or "").strip() + "\n\n" + turn).strip() if str(prior_text or "").strip() else turn
+        cid = _store_chat_history_text(merged)
+        _CHAT_HISTORY_INDEX[sid] = cid
+        _save_chat_history_index()
+        return cid
+
+
 def generate_text_mesh(
     prompt: str,
     *,
@@ -513,12 +648,24 @@ def generate_text_mesh(
     sticky_key = _sticky_key()
     sticky_worker_id = _STICKY_SESSION_WORKER.get(sticky_key, "") if sticky_key else ""
 
+    # Best-effort: carry forward an archived history CID when available.
+    history_cid: str | None = None
+    if not (isinstance(history, str) and history.strip()) and isinstance(chat_session_id, str) and chat_session_id.strip():
+        try:
+            _hist_text, _hist_cid = _chat_history_get(chat_session_id.strip())
+            if isinstance(_hist_cid, str) and _hist_cid.strip():
+                history_cid = _hist_cid.strip()
+        except Exception:
+            pass
+
     last_task_id: str | None = None
     for i in range(attempts):
         # Submit to the (possibly remote) queue.
         submit_kwargs = dict(forwarded)
         if sticky_worker_id:
             submit_kwargs["sticky_worker_id"] = sticky_worker_id
+        if isinstance(history_cid, str) and history_cid.strip():
+            submit_kwargs["history_cid"] = history_cid.strip()
         task_id = submit_task(
             prompt=str(prompt or ""),
             model_name=str(model_name or "gpt2"),
@@ -541,7 +688,20 @@ def generate_text_mesh(
                 err = str(task.get("error") or "") or str((result or {}).get("error") or "")
                 raise LLMRouterError(err or "mesh llm.generate failed")
             if isinstance(result, dict) and "text" in result:
-                return str(result.get("text") or "")
+                text = str(result.get("text") or "")
+                # Record successful turn for later failover.
+                if isinstance(chat_session_id, str) and chat_session_id.strip():
+                    try:
+                        cid = _chat_history_append_turn(
+                            chat_session_id=chat_session_id.strip(),
+                            user_prompt=str(prompt or ""),
+                            assistant_text=text,
+                        )
+                        if isinstance(cid, str) and cid.strip():
+                            history_cid = cid.strip()
+                    except Exception:
+                        pass
+                return text
             return ""
 
         # Timeout / not completed: cancel this queued work and retry.
@@ -582,11 +742,29 @@ def generate_text_mesh(
         # After the last retry, fall back to new session with history.
         if i == (attempts - 1):
             fallback_prompt = str(prompt or "")
-            if isinstance(history, str) and history.strip():
+            effective_history = str(history or "").strip() if isinstance(history, str) else ""
+            effective_history_cid: str | None = None
+
+            if not effective_history and isinstance(chat_session_id, str) and chat_session_id.strip():
+                try:
+                    cached_text, cached_cid = _chat_history_get(chat_session_id.strip())
+                    if isinstance(cached_text, str) and cached_text.strip():
+                        effective_history = cached_text.strip()
+                    if isinstance(cached_cid, str) and cached_cid.strip():
+                        effective_history_cid = cached_cid.strip()
+                except Exception:
+                    pass
+
+            if effective_history:
+                # Ensure the recovered history is persisted and content-addressed.
+                try:
+                    effective_history_cid = effective_history_cid or _store_chat_history_text(effective_history)
+                except Exception:
+                    pass
                 fallback_prompt = (
                     "Continue this conversation, starting a fresh session if needed.\n\n"
                     "Conversation history:\n"
-                    + history.strip()
+                    + effective_history
                     + "\n\nNext user message:\n"
                     + str(prompt or "")
                 )
@@ -596,6 +774,22 @@ def generate_text_mesh(
             submit_kwargs2.pop("resume_session_id", None)
             submit_kwargs2.pop("continue_session", None)
             submit_kwargs2.pop("sticky_worker_id", None)
+
+            # If the session-bound route timed out, resubmit with a fresh session
+            # id on this machine so local workers can drain the queued task.
+            if _truthy(os.environ.get("IPFS_ACCELERATE_PY_LLM_MESH_FAILOVER_REWRITE_SESSION_ID", "1")):
+                failover_sid = str(
+                    os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_FAILOVER_SESSION")
+                    or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION")
+                    or ""
+                ).strip()
+                if failover_sid:
+                    submit_kwargs2["session_id"] = failover_sid
+                else:
+                    submit_kwargs2.pop("session_id", None)
+
+            if isinstance(effective_history_cid, str) and effective_history_cid.strip():
+                submit_kwargs2["history_cid"] = effective_history_cid.strip()
 
             task_id2 = submit_task(
                 prompt=str(fallback_prompt),
@@ -613,7 +807,19 @@ def generate_text_mesh(
                 err2 = str(task2.get("error") or "") or str((result2 or {}).get("error") or "")
                 raise LLMRouterError(err2 or "mesh llm.generate failed")
             if isinstance(result2, dict) and "text" in result2:
-                return str(result2.get("text") or "")
+                text2 = str(result2.get("text") or "")
+                if isinstance(chat_session_id, str) and chat_session_id.strip():
+                    try:
+                        cid2 = _chat_history_append_turn(
+                            chat_session_id=chat_session_id.strip(),
+                            user_prompt=str(prompt or ""),
+                            assistant_text=text2,
+                        )
+                        if isinstance(cid2, str) and cid2.strip():
+                            history_cid = cid2.strip()
+                    except Exception:
+                        pass
+                return text2
             return ""
 
     raise LLMRouterError("mesh llm.generate failed")

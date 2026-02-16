@@ -302,7 +302,12 @@ def main() -> int:
         "--session-jobs",
         type=int,
         default=4,
-        help="Number of session-bound jobs to submit (session_id=session-b)",
+        help="Number of session-bound jobs to submit (per-session when --split-worker-sessions is set)",
+    )
+    ap.add_argument(
+        "--split-worker-sessions",
+        action="store_true",
+        help="Start workers split across session-a and session-b, and verify each session's tasks run on the matching workers",
     )
     ap.add_argument(
         "--provider",
@@ -332,6 +337,7 @@ def main() -> int:
     session_a = str(args.session_a or "").strip() or "S1"
     session_b = str(args.session_b or "").strip() or "S2"
     session_jobs = max(1, int(args.session_jobs))
+    split_sessions = bool(args.split_worker_sessions)
 
     import shutil
 
@@ -397,23 +403,34 @@ def main() -> int:
             print(f"peerA multiaddr: {a_multiaddr}")
             print(f"provider: {provider}")
             print(f"workers: {n_workers}  jobs: {jobs}  concurrency: {conc}  timeout_s: {timeout_s}")
+            if split_sessions:
+                print(f"worker sessions: split across session_a={session_a} and session_b={session_b}")
+            else:
+                print(f"worker session: session_b={session_b}")
 
             # Start N mesh worker *processes* (not threads).
             # This avoids libp2p dial/handshake issues seen when running anyio/libp2p
             # request loops from multiple Python threads.
             env_b = dict(env_base)
-            env_b["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = session_b
             env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEERS"] = a_multiaddr
             env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_INTERVAL_S"] = "0.1"
             env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT"] = "4"
             env_b["IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH"] = "4"
 
             drainer_worker_ids: list[str] = []
+            drainer_sessions_by_worker_id: dict[str, str] = {}
             for i in range(int(n_workers)):
                 wid = f"drainer-w{i}-{uuid.uuid4().hex[:6]}"
                 drainer_worker_ids.append(wid)
+                if split_sessions:
+                    # Alternate worker sessions: even -> session_a, odd -> session_b.
+                    drainer_sessions_by_worker_id[wid] = session_a if (i % 2 == 0) else session_b
+                else:
+                    drainer_sessions_by_worker_id[wid] = session_b
                 # Each worker needs its own local DuckDB to avoid file lock contention.
                 drainer_queue = str(root / f"drainer_{i}.duckdb")
+                env_worker = dict(env_b)
+                env_worker["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = drainer_sessions_by_worker_id[wid]
                 cmd = [
                     py,
                     "-m",
@@ -424,7 +441,7 @@ def main() -> int:
                     wid,
                     "--mesh",
                 ]
-                drainers.append(subprocess.Popen(cmd, cwd=str(REPO_ROOT), env=env_b))
+                drainers.append(subprocess.Popen(cmd, cwd=str(REPO_ROOT), env=env_worker))
 
             # Phase 1: no-session throughput distribution.
             print("\n--- phase 1: throughput (no session_id) ---")
@@ -441,22 +458,42 @@ def main() -> int:
                 no_session_tasks.append((j + 1, tid, prompt))
 
             # Phase 2: session-gated tasks should only execute on session_b worker.
-            print("\n--- phase 2: session gating (session_id=session_b) ---")
-            session_tasks: list[tuple[int, str, str]] = []
+            if split_sessions:
+                print("\n--- phase 2: session gating (session_id=session_a and session_id=session_b) ---")
+            else:
+                print("\n--- phase 2: session gating (session_id=session_b) ---")
+
+            session_tasks_a: list[tuple[int, str, str]] = []
+            session_tasks_b: list[tuple[int, str, str]] = []
+
+            if split_sessions:
+                for j in range(session_jobs):
+                    prompt = f"Return exactly: OK (session_a job {j+1}/{session_jobs})"
+                    payload = {
+                        "provider": provider,
+                        "prompt": prompt,
+                        "chat_session_id": f"chatty-mesh-sess-a-{uuid.uuid4().hex}",
+                        "session_id": session_a,
+                        "timeout": float(timeout_s),
+                    }
+                    tid = _submit_task(remote_a, payload=payload)
+                    session_tasks_a.append((j + 1, tid, prompt))
+
             for j in range(session_jobs):
-                prompt = f"Return exactly: OK (session job {j+1}/{session_jobs})"
+                prompt = f"Return exactly: OK (session_b job {j+1}/{session_jobs})"
                 payload = {
                     "provider": provider,
                     "prompt": prompt,
-                    "chat_session_id": f"chatty-mesh-sess-{uuid.uuid4().hex}",
+                    "chat_session_id": f"chatty-mesh-sess-b-{uuid.uuid4().hex}",
                     "session_id": session_b,
                     "timeout": float(timeout_s),
                 }
                 tid = _submit_task(remote_a, payload=payload)
-                session_tasks.append((j + 1, tid, prompt))
+                session_tasks_b.append((j + 1, tid, prompt))
 
             # Phase 2b: session mismatch should remain queued/unassigned.
-            print("\n--- phase 2b: session mismatch (session_id=session_a should NOT drain) ---")
+            mismatch_session = f"{session_a}-MISMATCH"
+            print(f"\n--- phase 2b: session mismatch (session_id={mismatch_session} should NOT drain) ---")
             mismatch_tasks: list[tuple[int, str, str]] = []
             for j in range(max(1, min(2, session_jobs))):
                 prompt = f"Return exactly: OK (mismatch session job {j+1})"
@@ -464,7 +501,7 @@ def main() -> int:
                     "provider": provider,
                     "prompt": prompt,
                     "chat_session_id": f"chatty-mesh-mismatch-{uuid.uuid4().hex}",
-                    "session_id": session_a,
+                    "session_id": mismatch_session,
                     "timeout": float(timeout_s),
                 }
                 tid = _submit_task(remote_a, payload=payload)
@@ -490,7 +527,8 @@ def main() -> int:
             import anyio
 
             completed_no: list[Completed] = []
-            completed_sess: list[Completed] = []
+            completed_sess_a: list[Completed] = []
+            completed_sess_b: list[Completed] = []
             completed_resume: list[Completed] = []
 
             sem = anyio.Semaphore(conc)
@@ -499,7 +537,7 @@ def main() -> int:
                 async with sem:
                     t0 = time.monotonic()
                     try:
-                        task = await _wait_task(remote_a, tid, timeout_s=timeout_s)
+                        task = await _poll_task(remote_a, tid, timeout_s=timeout_s, poll_s=0.5)
                     except Exception as exc:
                         task = None
                         task_exc = str(exc)
@@ -528,8 +566,10 @@ def main() -> int:
 
                     if which == "no":
                         completed_no.append(c)
-                    elif which == "sess":
-                        completed_sess.append(c)
+                    elif which == "sess_a":
+                        completed_sess_a.append(c)
+                    elif which == "sess_b":
+                        completed_sess_b.append(c)
                     else:
                         completed_resume.append(c)
 
@@ -537,11 +577,13 @@ def main() -> int:
                 async with anyio.create_task_group() as tg:
                     for idx, tid, prompt in no_session_tasks:
                         tg.start_soon(_collect, "no", idx, tid, prompt)
-                    for idx, tid, prompt in session_tasks:
-                        tg.start_soon(_collect, "sess", idx, tid, prompt)
+                    for idx, tid, prompt in session_tasks_a:
+                        tg.start_soon(_collect, "sess_a", jobs + idx, tid, prompt)
+                    for idx, tid, prompt in session_tasks_b:
+                        tg.start_soon(_collect, "sess_b", jobs + session_jobs + idx, tid, prompt)
                     if resume_task is not None:
                         tid, prompt = resume_task
-                        tg.start_soon(_collect, "resume", jobs + session_jobs + 1, tid, prompt)
+                        tg.start_soon(_collect, "resume", jobs + (session_jobs * (2 if split_sessions else 1)) + 1, tid, prompt)
 
             anyio.run(_run_all, backend="trio")
 
@@ -579,7 +621,7 @@ def main() -> int:
                 out_path.parent.mkdir(parents=True, exist_ok=True)
                 run_id = f"chatty-mesh-{uuid.uuid4().hex}"
                 with out_path.open("w", encoding="utf-8") as f:
-                    for c in list(completed_no) + list(completed_sess) + list(completed_resume):
+                    for c in list(completed_no) + list(completed_sess_a) + list(completed_sess_b) + list(completed_resume):
                         meta = dict(c.meta or {})
                         record = {
                             "run_id": run_id,
@@ -603,14 +645,34 @@ def main() -> int:
             ex_no = {str((c.meta or {}).get("executor_worker_id") or "") for c in completed_no}
             ex_no.discard("")
 
-            # Session gating: session_b tasks should complete (drainer runs session_b).
-            ok_sess = all(str((c.meta or {}).get("session_id") or "").strip() == session_b for c in completed_sess)
+            worker_ids_a = {wid for wid, sess in drainer_sessions_by_worker_id.items() if sess == session_a}
+            worker_ids_b = {wid for wid, sess in drainer_sessions_by_worker_id.items() if sess == session_b}
+
+            ok_sess_a = True
+            if split_sessions and completed_sess_a:
+                ok_sess_a = all(
+                    (str((c.meta or {}).get("session_id") or "").strip() == session_a)
+                    and (str((c.meta or {}).get("executor_worker_id") or "").strip() in worker_ids_a)
+                    for c in completed_sess_a
+                )
+
+            ok_sess_b = all(
+                (str((c.meta or {}).get("session_id") or "").strip() == session_b)
+                and (str((c.meta or {}).get("executor_worker_id") or "").strip() in worker_ids_b)
+                for c in completed_sess_b
+            )
 
             print("\n--- expectations ---")
             print(f"phase1 distinct executors: {sorted(ex_no) or ['(none)']}")
-            print(f"phase2 session_b={session_b} ok={ok_sess}")
+            if split_sessions:
+                print(f"phase2 session_a={session_a} ok={ok_sess_a} (allowed workers={sorted(worker_ids_a)})")
+            print(f"phase2 session_b={session_b} ok={ok_sess_b} (allowed workers={sorted(worker_ids_b)})")
 
-            ok_completed = all(c.status == "completed" for c in completed_no) and all(c.status == "completed" for c in completed_sess)
+            ok_completed = (
+                all(c.status == "completed" for c in completed_no)
+                and all(c.status == "completed" for c in completed_sess_b)
+                and (all(c.status == "completed" for c in completed_sess_a) if split_sessions else True)
+            )
 
             expected_distinct = 2 if (n_workers >= 2 and jobs >= 2) else 1
             ok_dist = len(ex_no) >= expected_distinct
@@ -620,8 +682,11 @@ def main() -> int:
             if not ok_dist:
                 print(f"FAILED: expected throughput distribution across >= {expected_distinct} worker(s)")
                 return 2
-            if not ok_sess:
-                print("FAILED: expected session-bound tasks to be executed with session_id=session_b")
+            if split_sessions and not ok_sess_a:
+                print("FAILED: expected session_a tasks to run on a session_a worker")
+                return 2
+            if not ok_sess_b:
+                print("FAILED: expected session_b tasks to run on a session_b worker")
                 return 2
 
             if expected_resume_worker and len(completed_resume) >= 2:
