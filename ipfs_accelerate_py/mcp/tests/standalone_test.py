@@ -3,6 +3,8 @@
 Standalone MCP server test
 
 This script creates a simple MCP server without relying on the ipfs_mcp structure.
+
+Note: This is a FastMCP smoke script; execution_context metadata is not used here.
 """
 import sys
 import os

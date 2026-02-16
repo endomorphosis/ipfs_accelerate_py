@@ -680,5 +680,32 @@ def register_p2p_taskqueue_tools(mcp: Any) -> None:
             logger.exception("list_peers failed")
             return {"ok": False, "error": str(exc)}
 
+    def _set_execution_context(tool_name: str, execution_context: str) -> None:
+        tools = getattr(mcp, "tools", None)
+        if not isinstance(tools, dict):
+            return
+        tool_entry = tools.get(tool_name)
+        if not isinstance(tool_entry, dict):
+            return
+        tool_entry["execution_context"] = execution_context
+
+    for _tool_name in [
+        "p2p_taskqueue_status",
+        "p2p_taskqueue_submit",
+        "p2p_taskqueue_claim_next",
+        "p2p_taskqueue_call_tool",
+        "p2p_taskqueue_list_tasks",
+        "p2p_taskqueue_get_task",
+        "p2p_taskqueue_wait_task",
+        "p2p_taskqueue_complete_task",
+        "p2p_taskqueue_heartbeat",
+        "p2p_taskqueue_cache_get",
+        "p2p_taskqueue_cache_set",
+        "p2p_taskqueue_submit_docker_hub",
+        "p2p_taskqueue_submit_docker_github",
+        "list_peers",
+    ]:
+        _set_execution_context(_tool_name, "server")
+
 
 __all__ = ["register_p2p_taskqueue_tools"]

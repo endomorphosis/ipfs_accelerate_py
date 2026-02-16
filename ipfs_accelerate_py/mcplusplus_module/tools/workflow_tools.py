@@ -341,6 +341,26 @@ def register_p2p_workflow_tools(mcp: Any) -> None:
                 "tool": "p2p_get_merkle_clock",
                 "timestamp": time.time()
             }
+
+    def _set_execution_context(tool_name: str, execution_context: str) -> None:
+        tools = getattr(mcp, "tools", None)
+        if not isinstance(tools, dict):
+            return
+        tool_entry = tools.get(tool_name)
+        if not isinstance(tool_entry, dict):
+            return
+        tool_entry["execution_context"] = execution_context
+
+    for _tool_name in [
+        "p2p_scheduler_status",
+        "p2p_submit_task",
+        "p2p_get_next_task",
+        "p2p_mark_task_complete",
+        "p2p_check_workflow_tags",
+        "p2p_update_peer_state",
+        "p2p_get_merkle_clock",
+    ]:
+        _set_execution_context(_tool_name, "server")
     
     logger.info("P2P workflow scheduler tools registered successfully")
 

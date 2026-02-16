@@ -1147,7 +1147,37 @@ class InferenceTools:
                     "message": f"Failed to record feedback: {str(e)}"
                 }
         
-        logger.info("All inference tools registered (13 total tools)")
+        def _set_execution_context(tool_name: str, execution_context: str) -> None:
+            tools = getattr(mcp, "tools", None)
+            if not isinstance(tools, dict):
+                return
+            tool_entry = tools.get(tool_name)
+            if not isinstance(tool_entry, dict):
+                return
+            tool_entry["execution_context"] = execution_context
+
+        for _tool_name in [
+            "generate_text",
+            "fill_mask",
+            "classify_text",
+            "generate_embeddings",
+            "generate_image",
+            "answer_question",
+            "transcribe_audio",
+            "classify_image",
+            "detect_objects",
+            "generate_image_caption",
+            "answer_visual_question",
+            "synthesize_speech",
+            "translate_text",
+            "summarize_text",
+            "classify_audio",
+        ]:
+            _set_execution_context(_tool_name, "worker")
+
+        _set_execution_context("provide_inference_feedback", "server")
+
+        logger.info("All inference tools registered (16 total tools)")
 
 def create_inference_tools(model_manager: ModelManager, 
                          bandit_recommender: BanditModelRecommender) -> InferenceTools:

@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 Test script with explicit file output
+
+Note: This is a FastMCP smoke script; execution_context metadata is not used here.
 """
 import sys
 import os

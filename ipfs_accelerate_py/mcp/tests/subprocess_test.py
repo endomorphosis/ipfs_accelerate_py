@@ -3,6 +3,8 @@
 Simple MCP test server.
 
 This script creates a simple MCP test server that runs on a test port.
+
+Note: This is a FastMCP smoke script; execution_context metadata is not used here.
 """
 import os
 import sys

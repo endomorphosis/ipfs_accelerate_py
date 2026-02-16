@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
 Very basic test with print statements
+
+Note: This is a standalone FastMCP smoke script; execution_context metadata is not used here.
 """
 import sys
 

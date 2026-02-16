@@ -3,6 +3,8 @@
 Simple MCP Server Test with Non-Blocking IO
 
 This script tests the MCP server in a separate process with improved output handling.
+
+Note: This is a FastMCP smoke script; execution_context metadata is not used here.
 """
 import os
 import sys
