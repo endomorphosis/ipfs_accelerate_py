@@ -161,6 +161,11 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--model", default="gpt-5-mini")
     p.add_argument("--jobs", type=int, default=6)
     p.add_argument("--timeout-s", type=float, default=180.0)
+    p.add_argument(
+        "--skip-sticky-resume",
+        action="store_true",
+        help="Skip Round 2 (continue_session + sticky_worker_id). Useful when using real copilot_cli via npx without native session support.",
+    )
     args = p.parse_args(argv)
 
     peer_a = Peer("A", args.peer_a_id, args.peer_a_multiaddr, args.peer_a_session)
@@ -178,7 +183,7 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
             _print_block(f"Peer {peer.name} probe FAILED", {"peer": peer.__dict__, "error": str(exc)})
             return 2
 
-    # Phase 1: session gating + sticky resume
+    # Phase 1: session gating
     chat_id = f"chat-{int(time.time())}"
     prompt1 = "(smoketest) Round 1: say OK and echo the word ALPHA."
     tid1 = await _submit_llm_task(
@@ -219,10 +224,22 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
         )
         return 10
 
+    if bool(args.skip_sticky_resume):
+        _print_block(
+            "Skipping Round 2 (sticky resume)",
+            {
+                "reason": "--skip-sticky-resume was set",
+                "note": "Round 2 requires continue_session support, which typically needs a native Copilot CLI with persistent auth on the worker.",
+                "round1_executor_worker_id": ex_worker1,
+            },
+        )
+        return 0
+
     if not ex_worker1:
         _print_block("FAIL: Missing executor_worker_id", {"task": block1})
         return 11
 
+    # Phase 2: sticky resume (requires continue_session support in the provider)
     prompt2 = "(smoketest) Round 2: continue the previous session and say OK then echo BETA."
     tid2 = await _submit_llm_task(
         peer=peer_a,

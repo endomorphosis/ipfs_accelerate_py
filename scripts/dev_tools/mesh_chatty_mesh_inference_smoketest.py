@@ -326,6 +326,16 @@ def main() -> int:
         action="store_true",
         help="Attempt a sticky resume/continue routing test (requires sticky_worker_id + matching session_id)",
     )
+    ap.add_argument(
+        "--real-copilot",
+        action="store_true",
+        help="Do not set a deterministic ipfs_accelerate_py_COPILOT_CLI_CMD; use the real Copilot CLI",
+    )
+    ap.add_argument(
+        "--native-copilot",
+        action="store_true",
+        help="Force native `copilot` binary mode (required for resume/continue flags)",
+    )
 
     args = ap.parse_args()
 
@@ -342,12 +352,15 @@ def main() -> int:
     import shutil
 
     native_copilot_available = shutil.which("copilot") is not None
-    native_copilot_enabled = str(os.environ.get("IPFS_ACCELERATE_PY_SMOKETEST_NATIVE_COPILOT") or "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
+    native_copilot_enabled = bool(
+        args.native_copilot
+        or str(os.environ.get("IPFS_ACCELERATE_PY_SMOKETEST_NATIVE_COPILOT") or "").strip().lower() in ("1", "true", "yes")
     )
     use_native_copilot_session = bool(native_copilot_available and native_copilot_enabled)
+
+    if args.native_copilot and not native_copilot_available:
+        print("ERROR: --native-copilot requested but `copilot` binary not found on PATH")
+        return 3
 
     py = _must_python()
 
@@ -360,8 +373,11 @@ def main() -> int:
     env_base["IPFS_ACCELERATE_PY_TASK_P2P_DHT"] = "0"
     env_base["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
     env_base["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "0"
-    # Make the default provider deterministic for local runs (no real Copilot required).
-    env_base.setdefault("ipfs_accelerate_py_COPILOT_CLI_CMD", 'bash -lc "echo OK"')
+    # Default behavior: keep local runs deterministic unless real Copilot is requested.
+    if args.real_copilot:
+        env_base.pop("ipfs_accelerate_py_COPILOT_CLI_CMD", None)
+    else:
+        env_base.setdefault("ipfs_accelerate_py_COPILOT_CLI_CMD", 'bash -lc "echo OK"')
     # Allow copilot_cli execution on workers.
     env_base.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI", "1")
     # For smoketesting, allow continue_session without an explicit resume token.
@@ -369,6 +385,9 @@ def main() -> int:
     env_base.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_CONTINUE_WITHOUT_RESUME", "1")
     # Ensure workers advertise llm.generate.
     env_base.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES", "llm.generate")
+
+    if args.native_copilot:
+        env_base["IPFS_ACCELERATE_PY_SMOKETEST_NATIVE_COPILOT"] = "1"
 
     with tempfile.TemporaryDirectory(prefix="ipfs-accel-chatty-mesh-") as td:
         root = Path(td)

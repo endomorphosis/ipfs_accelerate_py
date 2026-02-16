@@ -20,6 +20,11 @@ Environment=PYTHONPATH=%h/ipfs_accelerate_py
 #   IPFS_ACCELERATE_GITHUB_REPO=owner/repo
 EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
 
+# If you use `gh auth login` (user-scoped auth), point gh at the service user's
+# config directory. This is especially important when the unit is installed with
+# `deployments/systemd/install.sh --user <you>`.
+Environment=GH_CONFIG_DIR=%h/.config/gh
+
 # Keep caches/state out of $HOME (ProtectHome=read-only)
 CacheDirectory=ipfs-accelerate
 StateDirectory=ipfs-accelerate

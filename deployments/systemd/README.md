@@ -10,6 +10,12 @@ Quick install helper:
 sudo deployments/systemd/install.sh
 ```
 
+Install the unit to run as your regular user (recommended if you rely on user-scoped auth like Copilot/GitHub CLI):
+
+```bash
+sudo deployments/systemd/install.sh --user "$USER"
+```
+
 Install both MCP instances (so two can run on one machine):
 
 ```bash
@@ -81,8 +87,13 @@ sudo mkdir -p /etc/ipfs-accelerate
 sudo tee /etc/ipfs-accelerate/secrets.env >/dev/null <<'EOF'
 IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
 GH_TOKEN=...your_token...
+COPILOT_GITHUB_TOKEN=...your_copilot_token...
 EOF
-sudo chmod 600 /etc/ipfs-accelerate/secrets.env
+
+# If the service runs as a non-root user (via --user), the unit needs to read this file.
+# The installer will set safe permissions automatically, but these are the expected perms:
+sudo chown root:"$USER" /etc/ipfs-accelerate/secrets.env
+sudo chmod 640 /etc/ipfs-accelerate/secrets.env
 ```
 
 ### Fast two-node bring-up (recommended)

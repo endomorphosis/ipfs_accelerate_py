@@ -43,6 +43,11 @@ EnvironmentFile=-%h/ipfs_accelerate_py/state/mcpplusplus.env
 
 EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
 
+# If you use `gh auth login` (user-scoped auth), point gh at the service user's
+# config directory. This is especially important when the unit is installed with
+# `deployments/systemd/install.sh --user <you>`.
+Environment=GH_CONFIG_DIR=%h/.config/gh
+
 # P2P Cache Configuration (GitHub CLI cache)
 # When the TaskQueue P2P service is enabled, prefer sharing cache entries via
 # TaskQueue cache.get/set over a *second* libp2p host (avoids port conflicts).

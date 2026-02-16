@@ -154,6 +154,7 @@ patch_unit_user_group() {
 }
 
 ensure_secrets_env() {
+  local service_user="${1:-}"
   mkdir -p /etc/ipfs-accelerate
   chmod 0755 /etc/ipfs-accelerate
 
@@ -162,6 +163,7 @@ ensure_secrets_env() {
 # Optional secrets/env overrides.
 # GH_TOKEN=...
 # GITHUB_TOKEN=...
+# COPILOT_GITHUB_TOKEN=...
 # IPFS_ACCELERATE_GITHUB_REPO=owner/repo
 
 # MCP++ HTTPS (Hypercorn)
@@ -174,7 +176,22 @@ ensure_secrets_env() {
 # MCP_SSL_CERTFILE=/etc/letsencrypt/live/<your-domain>/fullchain.pem
 # MCP_SSL_KEYFILE=/etc/letsencrypt/live/<your-domain>/privkey.pem
 EOF
-    chmod 0600 /etc/ipfs-accelerate/secrets.env
+  fi
+
+  # If the service is configured to run as a non-root user, the unit must be
+  # able to read secrets.env. Keep it root-owned but make it group-readable by
+  # the service user's primary group.
+  if [[ -n "${service_user}" && "${service_user}" != "root" ]]; then
+    local service_group
+    service_group="$(id -gn "${service_user}" 2>/dev/null || true)"
+    if [[ -n "${service_group}" ]]; then
+      chown root:"${service_group}" /etc/ipfs-accelerate/secrets.env || true
+      chmod 0640 /etc/ipfs-accelerate/secrets.env || true
+    else
+      chmod 0600 /etc/ipfs-accelerate/secrets.env || true
+    fi
+  else
+    chmod 0600 /etc/ipfs-accelerate/secrets.env || true
   fi
 }
 
@@ -241,7 +258,7 @@ main() {
   local home
   home="$(infer_home "${user}")"
 
-  ensure_secrets_env
+  ensure_secrets_env "${user}"
 
   mkdir -p "${TARGET_DIR}"
   for unit in "${UNITS[@]}"; do

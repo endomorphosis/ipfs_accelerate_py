@@ -1698,7 +1698,10 @@ def _get_codex_cli_provider() -> Optional[LLMProvider]:
 
 
 def _get_copilot_cli_provider() -> Optional[LLMProvider]:
-    default_command = "npx --yes @github/copilot -p {prompt}"
+    # Default to the official Copilot CLI via npx. We run it in "interactive"
+    # mode with an auto-executed prompt (`-i`) so this works in non-interactive
+    # worker subprocesses.
+    default_command = "npx --yes @github/copilot"
     command = os.environ.get("ipfs_accelerate_py_COPILOT_CLI_CMD", default_command)
     if not _cli_available(command):
         return None
@@ -1730,7 +1733,19 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                 or continue_session
             )
 
-            if not needs_native:
+            # Template mode: allow deterministic stubs like `bash -lc "echo OK"`.
+            # This mode can't safely support session/resume/continue flags.
+            rendered_template_mode = "{prompt}" in str(command or "")
+            base_parts = shlex.split(str(command or ""))
+            base_exe = str(base_parts[0] if base_parts else "").strip().lower()
+            structured_ok = bool(base_exe in {"npx", "copilot"} and not rendered_template_mode)
+
+            if not structured_ok:
+                if needs_native:
+                    raise RuntimeError(
+                        "copilot_cli session/tracing flags require a real Copilot CLI command (e.g. `npx --yes @github/copilot` or `copilot`). "
+                        "Unset ipfs_accelerate_py_COPILOT_CLI_CMD or set it to a real copilot command; current value appears to be a template/stub."
+                    )
                 return _clean_copilot_output(
                     _run_cli_command(
                         command,
@@ -1739,12 +1754,6 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                         template_vars={"model": model},
                         label="Copilot CLI",
                     )
-                )
-
-            if shutil.which("copilot") is None:
-                raise RuntimeError(
-                    "copilot CLI binary not found on PATH (required for session/tracing flags). "
-                    "Install the GitHub Copilot CLI, or unset session args to use the command-template mode."
                 )
 
             def _utc_stamp() -> str:
@@ -1764,16 +1773,11 @@ def _get_copilot_cli_provider() -> Optional[LLMProvider]:
                         f"copilot_session_{_utc_stamp()}_{os.getpid()}.md",
                     )
 
-            cmd: list[str] = [
-                "copilot",
-                "-s",
-                "--stream",
-                "off",
-                "--model",
-                model,
-                "-p",
-                str(prompt),
-            ]
+            # Structured mode: invoke Copilot CLI directly with supported args.
+            # Use `-i` (interactive with auto-executed prompt) for non-interactive
+            # worker processes.
+            cmd: list[str] = list(base_parts)
+            cmd.extend(["--silent", "--stream", "off", "--model", model, "-i", str(prompt)])
 
             if isinstance(copilot_config_dir, str) and copilot_config_dir.strip():
                 cmd.extend(["--config-dir", copilot_config_dir.strip()])
