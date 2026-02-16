@@ -97,7 +97,18 @@ class TaskOrchestrator:
         self._thread: threading.Thread | None = None
 
         self._lock = threading.RLock()
-        self._workers: list[tuple[str, subprocess.Popen[object], float]] = []  # (wid, proc, started_ts)
+
+        @dataclass
+        class _WorkerHandle:
+            worker_id: str
+            started_ts: float
+            kind: str  # "process" | "thread"
+            proc: subprocess.Popen[object] | None = None
+            thread: threading.Thread | None = None
+            stop_event: threading.Event | None = None
+
+        self._WorkerHandle = _WorkerHandle  # type: ignore[assignment]
+        self._workers: list[_WorkerHandle] = []
         self._last_nonzero_ts = 0.0
 
         # inflight remote tasks: remote_task_id -> {remote, local_task_id, ts}
@@ -206,66 +217,132 @@ class TaskOrchestrator:
 
     def _spawn_worker(self, *, idx: int) -> None:
         wid = f"{self._cfg.base_worker_id}-w{int(idx)}-{int(time.time()*1000) % 1000000:06d}"
-        cmd: list[str] = [
-            sys.executable,
-            "-m",
-            "ipfs_accelerate_py.p2p_tasks.worker",
-            "--no-autoscale",
-            "--no-p2p-service",
-            "--no-mesh",
-            "--queue",
-            str(self._cfg.queue_path),
-            "--worker-id",
-            str(wid),
-            "--poll-interval-s",
-            "0.25",
-        ]
-        proc = subprocess.Popen(cmd, env=dict(os.environ))
+
+        # DuckDB enforces a single-writer lock across *processes*.
+        # Thread-based workers avoid this contention while still allowing
+        # concurrent task execution.
+        use_processes = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES"))
+
+        if use_processes:
+            cmd: list[str] = [
+                sys.executable,
+                "-m",
+                "ipfs_accelerate_py.p2p_tasks.worker",
+                "--no-autoscale",
+                "--no-p2p-service",
+                "--no-mesh",
+                "--queue",
+                str(self._cfg.queue_path),
+                "--worker-id",
+                str(wid),
+                "--poll-interval-s",
+                "0.25",
+            ]
+            proc = subprocess.Popen(cmd, env=dict(os.environ))
+            with self._lock:
+                self._workers.append(self._WorkerHandle(worker_id=wid, started_ts=time.time(), kind="process", proc=proc))
+            return
+
+        stop_ev = threading.Event()
+
+        def _run() -> None:
+            try:
+                from ipfs_accelerate_py.p2p_tasks.worker import run_worker
+
+                run_worker(
+                    queue_path=str(self._cfg.queue_path),
+                    worker_id=str(wid),
+                    poll_interval_s=0.25,
+                    once=False,
+                    p2p_service=False,
+                    mesh=False,
+                    accelerate_instance=self._accelerate,
+                    supported_task_types=self._supported_task_types,
+                    stop_event=stop_ev,
+                )
+            except Exception:
+                # Best-effort: worker thread exceptions should not crash orchestrator.
+                return
+
+        t = threading.Thread(target=_run, name=f"ipfs_accelerate_py_task_worker[{wid}]", daemon=True)
+        t.start()
         with self._lock:
-            self._workers.append((wid, proc, time.time()))
+            self._workers.append(
+                self._WorkerHandle(worker_id=wid, started_ts=time.time(), kind="thread", thread=t, stop_event=stop_ev)
+            )
 
     def _stop_all_workers(self) -> None:
         with self._lock:
             workers = list(self._workers)
             self._workers = []
 
-        for _wid, proc, _ts in workers:
-            try:
-                proc.terminate()
-            except Exception:
-                pass
-        for _wid, proc, _ts in workers:
-            try:
-                proc.wait(timeout=1.0)
-            except Exception:
+        for w in workers:
+            if w.kind == "thread" and w.stop_event is not None:
                 try:
-                    proc.kill()
+                    w.stop_event.set()
                 except Exception:
                     pass
+
+        for w in workers:
+            if w.kind == "process" and w.proc is not None:
+                try:
+                    w.proc.terminate()
+                except Exception:
+                    pass
+
+        for w in workers:
+            if w.kind == "thread" and w.thread is not None:
+                try:
+                    w.thread.join(timeout=1.0)
+                except Exception:
+                    pass
+
+        for w in workers:
+            if w.kind == "process" and w.proc is not None:
+                try:
+                    w.proc.wait(timeout=1.0)
+                except Exception:
+                    try:
+                        w.proc.kill()
+                    except Exception:
+                        pass
 
     def _stop_extra_workers(self, desired: int) -> None:
         with self._lock:
             while len(self._workers) > int(desired):
-                _wid, proc, _ts = self._workers.pop()
-                try:
-                    proc.terminate()
-                except Exception:
-                    pass
-                try:
-                    proc.wait(timeout=1.0)
-                except Exception:
+                w = self._workers.pop()
+                if w.kind == "thread" and w.stop_event is not None:
                     try:
-                        proc.kill()
+                        w.stop_event.set()
                     except Exception:
                         pass
+                    continue
+                if w.kind == "process" and w.proc is not None:
+                    try:
+                        w.proc.terminate()
+                    except Exception:
+                        pass
+                    try:
+                        w.proc.wait(timeout=1.0)
+                    except Exception:
+                        try:
+                            w.proc.kill()
+                        except Exception:
+                            pass
 
     def _prune_dead_workers(self) -> None:
         with self._lock:
-            keep: list[tuple[str, subprocess.Popen[object], float]] = []
-            for wid, proc, ts in self._workers:
+            keep: list[self._WorkerHandle] = []  # type: ignore[name-defined]
+            for w in self._workers:
                 try:
-                    if proc.poll() is None:
-                        keep.append((wid, proc, ts))
+                    if w.kind == "process" and w.proc is not None:
+                        if w.proc.poll() is None:
+                            keep.append(w)
+                        continue
+                    if w.kind == "thread" and w.thread is not None:
+                        if w.thread.is_alive():
+                            keep.append(w)
+                        continue
                 except Exception:
                     continue
             self._workers = keep

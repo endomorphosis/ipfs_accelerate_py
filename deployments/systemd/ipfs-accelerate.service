@@ -50,6 +50,11 @@ Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT=1
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH=1
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH=1
 
+# DuckDB-backed TaskQueue uses a single-writer lock per DB file.
+# Ensure autoscaling uses threads (single process) to avoid worker child
+# processes contending on the same queue DB.
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES=0
+
 # Enable additional HuggingFace task types (beyond text-generation)
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF=1
 # Minimal HF fallback is opt-in for this integrated service.
@@ -69,8 +74,8 @@ Environment=IPFS_ACCELERATE_PY_TASK_WORKER_HF_ACT_MULT=4.0
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1
 Environment=IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,docker.execute,docker.execute_docker_container,docker.github
-Environment=IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,docker.execute,docker.execute_docker_container,docker.github
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TASK_TYPES=tool.call,llm.generate,llm_generate,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,docker.execute,docker.execute_docker_container,docker.github
+Environment=IPFS_DATASETS_PY_TASK_WORKER_TASK_TYPES=tool.call,llm.generate,llm_generate,text-generation,text2text-generation,embedding,text-classification,hf.pipeline,docker.execute,docker.execute_docker_container,docker.github
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ALLOW_COPILOT_CONTINUE_WITHOUT_RESUME=1
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MESH_REFRESH_S=1.0
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_INTERVAL_S=0.1
