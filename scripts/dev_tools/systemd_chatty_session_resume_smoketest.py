@@ -28,10 +28,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Tuple
+
+# Keep this dev tool quiet and predictable by default.
+# These env vars are safe to override from the shell when you *want* full-stack
+# initialization.
+os.environ.setdefault("IPFS_KIT_DISABLE", "1")
+os.environ.setdefault("STORAGE_FORCE_LOCAL", "1")
+os.environ.setdefault("TRANSFORMERS_PATCH_DISABLE", "1")
+os.environ.setdefault("IPFS_ACCEL_SKIP_CORE", "1")
 
 import anyio
 
@@ -101,8 +110,47 @@ def _print_block(title: str, block: Dict[str, Any]) -> None:
     print(json.dumps(block, indent=2, sort_keys=True))
 
 
+def _summarize_capabilities(caps: object) -> object:
+    if not isinstance(caps, dict):
+        return caps
+
+    out: Dict[str, Any] = {}
+    for k in ("task_types", "models", "hwtest", "endpoint_types_by_model", "endpoints_by_model"):
+        if k in caps:
+            out[k] = caps.get(k)
+
+    mcp = caps.get("mcp")
+    if isinstance(mcp, dict):
+        mcp_out: Dict[str, Any] = {}
+        if "counts" in mcp:
+            mcp_out["counts"] = mcp.get("counts")
+
+        def _name_sample(value: object, *, key: str, limit: int = 12) -> None:
+            if not isinstance(value, list):
+                return
+            names: list[str] = []
+            for item in value:
+                if isinstance(item, dict):
+                    n = item.get("name") or item.get("uri")
+                    if isinstance(n, str) and n.strip():
+                        names.append(n.strip())
+                elif isinstance(item, str) and item.strip():
+                    names.append(item.strip())
+            uniq = sorted(set(names))
+            mcp_out[f"{key}_count"] = len(uniq)
+            mcp_out[f"{key}_sample"] = uniq[: max(0, int(limit))]
+
+        _name_sample(mcp.get("tools"), key="tool")
+        _name_sample(mcp.get("prompts"), key="prompt")
+        _name_sample(mcp.get("resources"), key="resource")
+
+        out["mcp"] = mcp_out
+
+    return out
+
+
 async def _probe_peer(peer: Peer) -> Dict[str, Any]:
-    caps = await get_capabilities(remote=peer.remote(), timeout_s=8.0, detail=True)
+    caps = await get_capabilities(remote=peer.remote(), timeout_s=8.0, detail=False)
     return caps
 
 
@@ -162,6 +210,11 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--jobs", type=int, default=6)
     p.add_argument("--timeout-s", type=float, default=180.0)
     p.add_argument(
+        "--probe-detail",
+        action="store_true",
+        help="Print verbose peer capabilities (can be very large).",
+    )
+    p.add_argument(
         "--skip-sticky-resume",
         action="store_true",
         help="Skip Round 2 (continue_session + sticky_worker_id). Useful when using real copilot_cli via npx without native session support.",
@@ -177,8 +230,14 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
     # Probe
     for peer in (peer_a, peer_b):
         try:
-            caps = await _probe_peer(peer)
-            _print_block(f"Peer {peer.name} capabilities", {"peer": peer.__dict__, "capabilities": caps})
+            caps = await get_capabilities(remote=peer.remote(), timeout_s=8.0, detail=bool(args.probe_detail))
+            _print_block(
+                f"Peer {peer.name} capabilities",
+                {
+                    "peer": peer.__dict__,
+                    "capabilities": caps if bool(args.probe_detail) else _summarize_capabilities(caps),
+                },
+            )
         except Exception as exc:
             _print_block(f"Peer {peer.name} probe FAILED", {"peer": peer.__dict__, "error": str(exc)})
             return 2
