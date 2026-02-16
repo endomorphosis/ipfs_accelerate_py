@@ -156,6 +156,9 @@ def main() -> int:
     env_base["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
     env_base["IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS"] = "0"
 
+    # Single-host deterministic discovery/dialing.
+    env_base["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_ALLOW_LOOPBACK"] = "1"
+
     # LLM execution: deterministic stub.
     env_base["IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI"] = "1"
     env_base["ipfs_accelerate_py_COPILOT_CLI_CMD"] = str(args.copilot_cmd)
@@ -169,6 +172,10 @@ def main() -> int:
         a_queue = str(root / "peer_a.duckdb")
         a_announce = root / "peer_a_announce.json"
         a_port = _pick_free_port()
+
+        # Use the service listen port as the mDNS discovery port so we don't
+        # pick up unrelated libp2p peers on the LAN.
+        env_base["IPFS_ACCELERATE_PY_TASK_P2P_MDNS_PORT"] = str(a_port)
 
         env_a = dict(env_base)
         env_a["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = "127.0.0.1"
@@ -195,6 +202,7 @@ def main() -> int:
             b_queue = str(root / "worker_b.duckdb")
 
             env_b = dict(env_base)
+            env_b["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = "127.0.0.1"
             env_b["IPFS_ACCELERATE_PY_TASK_P2P_SESSION"] = session_y
 
             # Crucially, do NOT set IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEERS.

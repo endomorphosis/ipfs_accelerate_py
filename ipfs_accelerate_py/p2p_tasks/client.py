@@ -117,14 +117,61 @@ def _addr_to_peer_multiaddr_text(addr: object, peer_id: str) -> str:
     if text.startswith("/ip4/0.0.0.0/") or text.startswith("/ip6/::/"):
         return ""
     # Avoid loopback / link-local addresses as they are not dialable from
-    # other hosts (common in mDNS TXT records).
-    if text.startswith("/ip4/127.") or text.startswith("/ip6/::1/"):
+    # other hosts (common in mDNS TXT records). Allow opt-in for single-host
+    # test setups that expect to dial 127.0.0.1.
+    if not _mdns_allow_loopback() and (text.startswith("/ip4/127.") or text.startswith("/ip6/::1/")):
         return ""
     if text.startswith("/ip4/169.254.") or text.startswith("/ip6/fe80:"):
         return ""
     if "/p2p/" not in text:
         text = f"{text}/p2p/{pid}"
     return text
+
+
+def _mdns_allow_loopback() -> bool:
+    return _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_MDNS_ALLOW_LOOPBACK",
+        compat="IPFS_DATASETS_PY_TASK_P2P_MDNS_ALLOW_LOOPBACK",
+        default=False,
+    )
+
+
+def _pick_best_peer_multiaddr_text(addrs: object, peer_id: str) -> str:
+    """Pick the best dial target from a peerstore address set.
+
+    When loopback dialing is explicitly allowed, prefer loopback addresses for
+    determinism in single-host environments.
+    """
+
+    pid = str(peer_id or "").strip()
+    if not pid:
+        return ""
+    allow_loopback = _mdns_allow_loopback()
+
+    candidates: list[str] = []
+    try:
+        items = list(addrs or [])
+    except Exception:
+        items = []
+
+    for a in items:
+        ma = _addr_to_peer_multiaddr_text(a, pid)
+        if ma:
+            candidates.append(ma)
+
+    if not candidates:
+        return ""
+
+    def _score(ma: str) -> tuple[int, int, str]:
+        text = str(ma or "")
+        is_loop = text.startswith("/ip4/127.") or text.startswith("/ip6/::1/")
+        # Lower is better.
+        loop_rank = 0 if (allow_loopback and is_loop) else 1
+        ip_rank = 0 if text.startswith("/ip4/") else (1 if text.startswith("/ip6/") else 2)
+        return (loop_rank, ip_rank, text)
+
+    candidates.sort(key=_score)
+    return candidates[0]
 
 
 def _multiaddr_peer_id(multiaddr: str) -> str:
@@ -706,14 +753,12 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
                     continue
 
                 dial_addrs = []
-                dial_ma = ""
+                dial_ma = _pick_best_peer_multiaddr_text(addrs, pid_text)
                 for a in list(addrs or []):
                     # Filter out undialable wildcard addresses.
                     if str(a).startswith("/ip4/0.0.0.0/") or str(a).startswith("/ip6/::/"):
                         continue
                     dial_addrs.append(a)
-                    if not dial_ma:
-                        dial_ma = _addr_to_peer_multiaddr_text(a, pid_text)
 
                 if not dial_addrs:
                     continue
@@ -1569,11 +1614,10 @@ async def discover_multiaddr_via_mdns(*, peer_id: str, timeout_s: float = 10.0) 
                     if pid_text != require_peer_id:
                         continue
                     addrs = host.get_network().peerstore.addrs(pid)
-                    for a in list(addrs or []):
-                        ma = _addr_to_peer_multiaddr_text(a, pid_text)
-                        if ma:
-                            _cache_set_multiaddr(pid_text, ma)
-                            return ma
+                    ma = _pick_best_peer_multiaddr_text(addrs, pid_text)
+                    if ma:
+                        _cache_set_multiaddr(pid_text, ma)
+                        return ma
                 await anyio.sleep(0.1)
         finally:
             try:
@@ -1665,11 +1709,7 @@ async def discover_peers_via_mdns(*, timeout_s: float = 10.0, limit: int = 10, e
                         continue
 
                     addrs = host.get_network().peerstore.addrs(pid)
-                    dial_ma = ""
-                    for a in list(addrs or []):
-                        dial_ma = _addr_to_peer_multiaddr_text(a, pid_text)
-                        if dial_ma:
-                            break
+                    dial_ma = _pick_best_peer_multiaddr_text(addrs, pid_text)
                     if not dial_ma:
                         continue
 
