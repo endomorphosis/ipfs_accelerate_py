@@ -1353,9 +1353,54 @@ async def serve_task_queue(
                 await _safe_write_json({"ok": False, "error": "invalid_message", "peer_id": peer_id})
                 return
 
-            if not auth_ok(msg):
-                await _safe_write_json({"ok": False, "error": "unauthorized", "peer_id": peer_id})
-                return
+            auth_mode = (
+                str(
+                    os.environ.get("IPFS_DATASETS_PY_TASK_P2P_AUTH_MODE")
+                    or os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_AUTH_MODE")
+                    or ""
+                )
+                .strip()
+                .lower()
+            )
+
+            if auth_mode in {"mcp_token", "mcp", "jwt"}:
+                # Host-driven auth: require the embedding host to validate the message.
+                allowed = False
+                try:
+                    if accelerate_instance is not None and hasattr(accelerate_instance, "validate_p2p_message"):
+                        maybe = accelerate_instance.validate_p2p_message(msg)
+                        if hasattr(maybe, "__await__"):
+                            allowed = bool(await maybe)
+                        else:
+                            allowed = bool(maybe)
+                except Exception:
+                    allowed = False
+
+                if not allowed:
+                    await _safe_write_json({"ok": False, "error": "unauthorized", "peer_id": peer_id})
+                    return
+            elif auth_mode in {"shared_token", "shared", "token"}:
+                if not auth_ok(msg):
+                    await _safe_write_json({"ok": False, "error": "unauthorized", "peer_id": peer_id})
+                    return
+            else:
+                # Back-compat default: shared token, if configured, is enforced.
+                # If shared token auth fails, consult the optional host validator.
+                if not auth_ok(msg):
+                    allowed = False
+                    try:
+                        if accelerate_instance is not None and hasattr(accelerate_instance, "validate_p2p_message"):
+                            maybe = accelerate_instance.validate_p2p_message(msg)
+                            if hasattr(maybe, "__await__"):
+                                allowed = bool(await maybe)
+                            else:
+                                allowed = bool(maybe)
+                    except Exception:
+                        allowed = False
+
+                    if not allowed:
+                        await _safe_write_json({"ok": False, "error": "unauthorized", "peer_id": peer_id})
+                        return
 
             op = (msg.get("op") or "").strip().lower()
 
@@ -1898,10 +1943,34 @@ async def serve_task_queue(
                     # execution_context='worker' must run in thin workers.
                     # Unknown/unannotated tools default to worker for safety.
                     from ipfs_accelerate_py.tool_manifest import tool_execution_context
-                    from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
 
-                    mcp_like = get_mcp_server_instance()
+                    # Prefer an explicitly provided host registry.
+                    mcp_like = None
+                    if accelerate_instance is not None:
+                        # Some callers provide a lightweight object exposing
+                        # only a call_tool() method (no MCP registry). Only
+                        # treat accelerate_instance as an MCP-like registry if
+                        # it explicitly exposes one.
+                        mcp_like = getattr(accelerate_instance, "mcp", None)
+                        if mcp_like is None and getattr(accelerate_instance, "tools", None) is not None:
+                            mcp_like = accelerate_instance
+
+                    # Back-compat: fall back to the ipfs_accelerate_py MCP wrapper.
+                    if mcp_like is None and accelerate_instance is None:
+                        try:
+                            from ipfs_accelerate_py.mcp.server import get_mcp_server_instance
+
+                            mcp_like = get_mcp_server_instance()
+                        except Exception:
+                            mcp_like = None
+
                     ctx = tool_execution_context(mcp_like, tool_name=tool_name) if mcp_like is not None else None
+
+                    # When embedded in a host MCP server, default unknown tools to
+                    # 'server' so call_tool works without requiring extra metadata.
+                    if ctx is None and accelerate_instance is not None:
+                        ctx = "server"
+
                     must_run_in_worker = (ctx != "server")
 
                     if must_run_in_worker:
@@ -1972,6 +2041,29 @@ async def serve_task_queue(
                     from ipfs_accelerate_py.tool_manifest import invoke_mcp_tool
 
                     if mcp_like is None:
+                        # Back-compat: allow callers to provide a lightweight
+                        # accelerate_instance with a direct call_tool() method
+                        # (without a full MCP registry).
+                        try:
+                            import inspect
+
+                            direct = getattr(accelerate_instance, "call_tool", None)
+                            if callable(direct):
+                                out = direct(tool_name, args)
+                                if inspect.isawaitable(out):
+                                    out = await out
+                                if isinstance(out, dict):
+                                    resp = out
+                                    resp.setdefault("tool", tool_name)
+                                    resp.setdefault("ok", True)
+                                else:
+                                    resp = {"ok": True, "tool": tool_name, "result": out}
+                                resp.setdefault("peer_id", peer_id)
+                                await _safe_write_json(resp)
+                                return
+                        except Exception:
+                            pass
+
                         resp = {"ok": False, "tool": tool_name, "error": "mcp_registry_unavailable"}
                         resp.setdefault("peer_id", peer_id)
                         await _safe_write_json(resp)
@@ -1980,7 +2072,8 @@ async def serve_task_queue(
                         mcp_like,
                         tool_name=tool_name,
                         args=args,
-                        accelerate_instance=accelerate_instance,
+                        accelerate_instance=getattr(accelerate_instance, "accelerate_instance", None)
+                        or accelerate_instance,
                     )
                     if not isinstance(resp, dict):
                         resp = {"ok": True, "tool": tool_name, "result": resp}

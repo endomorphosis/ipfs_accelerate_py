@@ -26,7 +26,16 @@ import sys
 import socket
 import time
 import traceback
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
+
+
+# When invoked directly (e.g. via subprocess in tests), ensure the repository
+# root (the directory containing the `ipfs_accelerate_py/` package) is on
+# sys.path even if the package is not installed.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 
 def _peer_id_from_multiaddr(multiaddr: str) -> str:

@@ -32,7 +32,16 @@ import importlib.util
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict, Optional, TYPE_CHECKING, TextIO
+
+
+# When this script is invoked directly (e.g. via subprocess in tests), the
+# ipfs_accelerate_py package may not be installed. Ensure the repo root (the
+# directory containing the `ipfs_accelerate_py/` package) is importable.
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 if TYPE_CHECKING:
     from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
