@@ -11,6 +11,7 @@ from __future__ import annotations
 import os
 import base64
 import hashlib
+import json
 from typing import Any, Dict, Optional
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -18,6 +19,66 @@ from cryptography.fernet import Fernet, InvalidToken
 
 # Keep the protocol id stable for interop with existing nodes.
 PROTOCOL_V1 = "/ipfs-datasets/task-queue/1.0.0"
+
+
+async def read_ndjson_message(
+    stream: Any,
+    *,
+    max_message_bytes: int = 1024 * 1024,
+    chunk_size: int = 1024,
+) -> tuple[dict[str, Any] | None, str | None]:
+    """Read a single newline-delimited JSON message from a libp2p stream.
+
+    Returns (message, error_code).
+
+    Error codes are stable strings intended to be forwarded to callers.
+    """
+
+    raw = bytearray()
+    saw_newline = False
+
+    try:
+        max_b = int(max_message_bytes)
+    except Exception:
+        max_b = 1024 * 1024
+    max_b = max(1024, max_b)
+
+    try:
+        chunk_b = int(chunk_size)
+    except Exception:
+        chunk_b = 1024
+    chunk_b = max(1, min(1024 * 1024, chunk_b))
+
+    while len(raw) < max_b:
+        chunk = await stream.read(chunk_b)
+        if not chunk:
+            break
+        raw.extend(chunk)
+        if b"\n" in chunk:
+            saw_newline = True
+            break
+
+    if not raw:
+        return None, "empty"
+
+    # If we hit the max byte budget without reaching the frame delimiter,
+    # treat this as a deterministic abuse/oversize violation.
+    if len(raw) >= max_b and not saw_newline:
+        return None, "frame_too_large"
+
+    try:
+        msg = json.loads(bytes(raw).rstrip(b"\n").decode("utf-8"))
+    except Exception:
+        return None, "invalid_json"
+
+    if not isinstance(msg, dict):
+        return None, "invalid_message"
+
+    # Normalize to a plain dict[str, Any] for downstream callers.
+    try:
+        return dict(msg), None
+    except Exception:
+        return None, "invalid_message"
 
 
 def get_shared_token() -> Optional[str]:

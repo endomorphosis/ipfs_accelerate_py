@@ -47,7 +47,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
-from .protocol import PROTOCOL_V1, auth_ok, get_shared_token
+from .protocol import PROTOCOL_V1, auth_ok, get_shared_token, read_ndjson_message
 from .task_queue import TaskQueue
 from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
 
@@ -1323,34 +1323,22 @@ async def serve_task_queue(
             from libp2p.network.stream.exceptions import StreamEOF
             from libp2p.stream_muxer.exceptions import MuxedStreamEOF
 
-            raw = bytearray()
-            max_bytes = 1024 * 1024
-
             async def _safe_write_json(obj: dict[str, Any]) -> None:
                 try:
                     await stream.write(json.dumps(obj).encode("utf-8") + b"\n")
                 except Exception:
                     pass
-            while len(raw) < max_bytes:
-                try:
-                    chunk = await stream.read(1024)
-                except (StreamEOF, MuxedStreamEOF):
-                    return
-                if not chunk:
-                    break
-                raw.extend(chunk)
-                if b"\n" in chunk:
-                    break
-            if not raw:
-                return
+
             try:
-                msg = json.loads(bytes(raw).rstrip(b"\n").decode("utf-8"))
-            except Exception:
-                await _safe_write_json({"ok": False, "error": "invalid_json", "peer_id": peer_id})
+                msg, err = await read_ndjson_message(stream, max_message_bytes=1024 * 1024, chunk_size=1024)
+            except (StreamEOF, MuxedStreamEOF):
                 return
 
-            if not isinstance(msg, dict):
-                await _safe_write_json({"ok": False, "error": "invalid_message", "peer_id": peer_id})
+            if msg is None:
+                # Empty stream: no response required.
+                if err == "empty":
+                    return
+                await _safe_write_json({"ok": False, "error": str(err or "invalid_message"), "peer_id": peer_id})
                 return
 
             auth_mode = (
