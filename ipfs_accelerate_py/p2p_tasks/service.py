@@ -48,6 +48,9 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 from .protocol import PROTOCOL_V1, auth_ok, get_shared_token, read_ndjson_message
+
+# Optional MCP++ transport binding skeleton (length-prefixed JSON-RPC over libp2p)
+from .mcp_p2p import PROTOCOL_MCP_P2P_V1, handle_mcp_p2p_stream
 from .task_queue import TaskQueue
 from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
 
@@ -2226,6 +2229,16 @@ async def serve_task_queue(
                 pass
 
     host.set_stream_handler(PROTOCOL_V1, _handle)
+
+    async def _handle_mcp_p2p(stream) -> None:
+        await handle_mcp_p2p_stream(
+            stream,
+            local_peer_id=peer_id,
+            registry=accelerate_instance,
+            max_frame_bytes=1024 * 1024,
+        )
+
+    host.set_stream_handler(PROTOCOL_MCP_P2P_V1, _handle_mcp_p2p)
 
     listen_addr = Multiaddr(f"/ip4/{cfg.listen_host}/tcp/{cfg.listen_port}")
     print(
