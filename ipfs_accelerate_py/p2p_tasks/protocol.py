@@ -41,7 +41,7 @@ async def read_ndjson_message(
         max_b = int(max_message_bytes)
     except Exception:
         max_b = 1024 * 1024
-    max_b = max(1024, max_b)
+    max_b = max(1, max_b)
 
     try:
         chunk_b = int(chunk_size)
