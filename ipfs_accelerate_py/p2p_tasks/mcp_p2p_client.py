@@ -113,6 +113,10 @@ class MCPP2PClient:
         if resp is None:
             raise MCPFramingError(str(err or "invalid_message"))
 
+        resp_id = resp.get("id")
+        if resp_id is not None and id_value is not None and resp_id != id_value:
+            raise MCPFramingError(f"mismatched_id expected={id_value!r} got={resp_id!r}")
+
         if "error" in resp and isinstance(resp.get("error"), dict):
             e = resp["error"]
             raise MCPRemoteError(
@@ -126,10 +130,17 @@ class MCPP2PClient:
     async def request_raw(self, msg: dict[str, Any]) -> dict[str, Any]:
         """Send a raw framed JSON-RPC message and await a single response."""
 
-        await write_u32_framed_json(self._stream, dict(msg))
+        request_msg = dict(msg)
+        await write_u32_framed_json(self._stream, request_msg)
         resp, err = await read_u32_framed_json(self._stream, max_frame_bytes=self._max_frame_bytes)
         if resp is None:
             raise MCPFramingError(str(err or "invalid_message"))
+
+        if "id" in request_msg:
+            expected_id = request_msg.get("id")
+            resp_id = resp.get("id")
+            if resp_id is not None and expected_id is not None and resp_id != expected_id:
+                raise MCPFramingError(f"mismatched_id expected={expected_id!r} got={resp_id!r}")
 
         if "error" in resp and isinstance(resp.get("error"), dict):
             e = resp["error"]
@@ -139,6 +150,25 @@ class MCPP2PClient:
                 id_value=resp.get("id"),
             )
         return resp
+
+    async def notify(self, method: str, params: Optional[dict[str, Any]] = None) -> None:
+        """Send a JSON-RPC notification (no `id`) and do not await a response."""
+
+        await write_u32_framed_json(
+            self._stream,
+            {
+                "jsonrpc": "2.0",
+                "method": str(method),
+                "params": params or {},
+            },
+        )
+
+    async def notify_raw(self, msg: dict[str, Any]) -> None:
+        """Send a raw JSON-RPC notification frame (must omit `id`)."""
+
+        m = dict(msg)
+        m.pop("id", None)
+        await write_u32_framed_json(self._stream, m)
 
     async def initialize(self, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         return await self.request("initialize", params or {}, id_value=1)

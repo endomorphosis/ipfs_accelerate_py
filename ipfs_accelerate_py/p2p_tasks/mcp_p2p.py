@@ -196,14 +196,6 @@ async def handle_mcp_p2p_stream(
         initialized = False
         frames_seen = 0
         while True:
-            frames_seen += 1
-            if frames_seen > max_frames:
-                await write_u32_framed_json(
-                    stream,
-                    _jsonrpc_error(id_value=None, code=-32010, message="rate_limited"),
-                )
-                break
-
             msg, err = await read_u32_framed_json(stream, max_frame_bytes=max_frame_bytes)
             if msg is None:
                 # empty/eof -> end session
@@ -216,47 +208,50 @@ async def handle_mcp_p2p_stream(
                 )
                 break
 
+            frames_seen += 1
+            if frames_seen > max_frames:
+                # Notifications must not receive a response.
+                if "id" not in msg:
+                    break
+                await write_u32_framed_json(stream, _jsonrpc_error(id_value=msg.get("id"), code=-32010, message="rate_limited"))
+                break
+
             if not await _maybe_validate(registry, msg):
-                await write_u32_framed_json(
-                    stream,
-                    _jsonrpc_error(id_value=msg.get("id"), code=-32001, message="unauthorized"),
-                )
+                # Notifications must not receive a response.
+                if "id" not in msg:
+                    break
+                await write_u32_framed_json(stream, _jsonrpc_error(id_value=msg.get("id"), code=-32001, message="unauthorized"))
                 break
 
             method = str(msg.get("method") or "")
             id_value = msg.get("id")
             jsonrpc = str(msg.get("jsonrpc") or "")
+            is_notification = "id" not in msg
 
             if jsonrpc != "2.0":
-                await write_u32_framed_json(
-                    stream,
-                    _jsonrpc_error(id_value=id_value, code=-32600, message="invalid_jsonrpc"),
-                )
+                # Ignore invalid notifications; deterministically error for requests.
+                if is_notification:
+                    continue
+                await write_u32_framed_json(stream, _jsonrpc_error(id_value=id_value, code=-32600, message="invalid_jsonrpc"))
                 break
 
             if not initialized:
                 if method != "initialize":
-                    await write_u32_framed_json(
-                        stream,
-                        _jsonrpc_error(id_value=id_value, code=-32000, message="init_required"),
-                    )
+                    # Notifications must not receive responses; ignore and keep waiting.
+                    if is_notification:
+                        continue
+                    await write_u32_framed_json(stream, _jsonrpc_error(id_value=id_value, code=-32000, message="init_required"))
                     break
+                # `initialize` as a notification is ignored; the session is not initialized.
+                if is_notification:
+                    continue
                 initialized = True
-                await write_u32_framed_json(
-                    stream,
-                    {
-                        "jsonrpc": "2.0",
-                        "id": id_value,
-                        "result": {
-                            "ok": True,
-                            "transport": PROTOCOL_MCP_P2P_V1,
-                            "server": {"peer_id": str(local_peer_id or "")},
-                        },
-                    },
-                )
+                await write_u32_framed_json(stream, {"jsonrpc": "2.0", "id": id_value, "result": {"ok": True, "transport": PROTOCOL_MCP_P2P_V1, "server": {"peer_id": str(local_peer_id or "")}}})
                 continue
 
             if method in {"tools/list", "tools.list"}:
+                if is_notification:
+                    continue
                 tools = _get_registry_tools(registry)
                 items: list[dict[str, Any]] = []
                 for name, desc in tools.items():
@@ -277,6 +272,8 @@ async def handle_mcp_p2p_stream(
                 continue
 
             if method in {"tools/call", "tools.call"}:
+                if is_notification:
+                    continue
                 params = msg.get("params")
                 if not isinstance(params, dict):
                     await write_u32_framed_json(
@@ -297,6 +294,9 @@ async def handle_mcp_p2p_stream(
                     stream,
                     {"jsonrpc": "2.0", "id": id_value, "result": {"content": out}},
                 )
+                continue
+
+            if is_notification:
                 continue
 
             await write_u32_framed_json(
