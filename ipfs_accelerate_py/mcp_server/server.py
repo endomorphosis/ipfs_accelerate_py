@@ -8,6 +8,7 @@ package while delegating runtime behavior to the existing
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from .configs import UnifiedMCPServerConfig, parse_preload_categories
@@ -20,6 +21,12 @@ from .mcplusplus.delegation import validate_raw_delegation_chain
 from .mcplusplus.policy_engine import evaluate_raw_policy
 from .mcplusplus.event_dag import EventDAGStore
 from .mcplusplus.risk_scheduler import RiskScheduler
+from .risk_scorer import RiskScorer, RiskScoringPolicy
+from .policy_audit_log import PolicyAuditLog
+from .secrets_vault import SecretsVault
+from .monitoring import EnhancedMetricsCollector, P2PMetricsCollector
+from .otel_tracing import MCPTracer, configure_tracing
+from .prometheus_exporter import PrometheusExporter
 
 logger = logging.getLogger(__name__)
 
@@ -127,6 +134,76 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     event_store = EventDAGStore()
     artifact_store = ArtifactStore()
     risk_scheduler = RiskScheduler()
+    risk_scorer = RiskScorer()
+    policy_audit = PolicyAuditLog(enabled=config.enable_policy_audit)
+    metrics_collector = EnhancedMetricsCollector(enabled=config.enable_monitoring)
+    metrics_collector.start_monitoring()
+    p2p_metrics_collector = P2PMetricsCollector(base_collector=metrics_collector)
+    tracer = MCPTracer()
+    tracing_status: dict[str, Any] = {
+        "enabled": False,
+        "configured": False,
+        "service_name": str(config.otel_service_name),
+        "endpoint": str(config.otel_exporter_endpoint or ""),
+        "protocol": str(config.otel_export_protocol or "grpc"),
+        "error": "",
+        "info": tracer.get_info(),
+    }
+    if config.enable_otel_tracing:
+        try:
+            tracing_status["configured"] = bool(
+                configure_tracing(
+                    service_name=config.otel_service_name,
+                    otlp_endpoint=config.otel_exporter_endpoint or None,
+                    export_protocol=config.otel_export_protocol,
+                )
+            )
+            tracing_status["enabled"] = bool(tracing_status["configured"])
+        except Exception as exc:
+            tracing_status["error"] = str(exc)
+
+    prometheus_exporter = (
+        PrometheusExporter(
+            collector=metrics_collector,
+            port=config.prometheus_port,
+            namespace=config.prometheus_namespace,
+        )
+        if config.enable_prometheus_exporter
+        else None
+    )
+    prometheus_status: dict[str, Any] = {
+        "enabled": prometheus_exporter is not None,
+        "http_started": False,
+        "error": "",
+        "info": prometheus_exporter.get_info() if prometheus_exporter is not None else {
+            "exporter": "prometheus",
+            "namespace": config.prometheus_namespace,
+            "port": config.prometheus_port,
+            "prometheus_available": False,
+            "http_server_running": False,
+        },
+    }
+    if prometheus_exporter is not None and config.enable_prometheus_http_server:
+        try:
+            prometheus_exporter.start_http_server()
+            prometheus_status["http_started"] = True
+            prometheus_status["info"] = prometheus_exporter.get_info()
+        except Exception as exc:
+            prometheus_status["error"] = str(exc)
+    secrets_vault = SecretsVault() if config.enable_secrets_vault else None
+    secrets_status: dict[str, Any] = {
+        "attached": secrets_vault is not None,
+        "env_autoload_enabled": bool(config.enable_secrets_env_autoload),
+        "env_overwrite": bool(config.enable_secrets_env_overwrite),
+        "env_loaded": [],
+        "error": "",
+    }
+    if secrets_vault is not None and config.enable_secrets_env_autoload:
+        try:
+            loaded_names = secrets_vault.load_into_env(overwrite=config.enable_secrets_env_overwrite)
+            secrets_status["env_loaded"] = list(loaded_names)
+        except Exception as exc:
+            secrets_status["error"] = str(exc)
     configure_wave_a_loaders(manager)
     manager.register_category_loader(
         "idl",
@@ -249,6 +326,31 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
     async def tools_dispatch(category: str, tool_name: str, parameters: dict[str, Any]) -> Any:
         payload = dict(parameters) if isinstance(parameters, dict) else {}
+        dispatch_started = time.perf_counter()
+
+        def _record_observability(status: str) -> None:
+            latency_seconds = max(0.0, time.perf_counter() - dispatch_started)
+            success = status == "success"
+            metrics_collector.track_tool_execution(
+                tool_name=f"{category}.{tool_name}",
+                execution_time_ms=latency_seconds * 1000.0,
+                success=success,
+            )
+            if prometheus_exporter is not None:
+                prometheus_exporter.record_tool_call(
+                    category=category,
+                    tool=tool_name,
+                    status=status,
+                    latency_seconds=latency_seconds,
+                )
+                prometheus_exporter.update()
+        dispatch_intent_cid = compute_artifact_cid(
+            {
+                "category": category,
+                "tool_name": tool_name,
+                "parameters": payload,
+            }
+        )
 
         emit_artifacts = bool(payload.pop("__emit_artifacts", config.enable_cid_artifact_emission))
         proof_cid = str(payload.pop("__proof_cid", "") or "")
@@ -266,6 +368,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         ucan_revoked_proof_cids = payload.pop("__ucan_revoked_proof_cids", [])
         if not isinstance(ucan_revoked_proof_cids, list):
             ucan_revoked_proof_cids = []
+        ucan_context_cids = payload.pop("__ucan_context_cids", [])
+        if not isinstance(ucan_context_cids, list):
+            ucan_context_cids = []
         enforce_policy = bool(payload.pop("__enforce_policy", config.enable_policy_evaluation))
         policy_actor = str(payload.pop("__policy_actor", "") or ucan_actor or "*")
         policy_clauses = payload.pop("__policy_clauses", [])
@@ -278,8 +383,50 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         if not isinstance(parent_event_cids, list):
             parent_event_cids = []
         risk_actor = str(payload.pop("__risk_actor", "") or policy_actor or ucan_actor or "*")
+        enforce_risk = bool(payload.pop("__enforce_risk", config.enable_risk_scoring))
+        raw_risk_policy = payload.pop("__risk_policy", {})
+        if not isinstance(raw_risk_policy, dict):
+            raw_risk_policy = {}
         execute_frontier = bool(payload.pop("__execute_frontier", config.enable_risk_frontier_execution))
         policy_decision_binding: dict[str, Any] | None = None
+        risk_assessment = None
+
+        if enforce_risk:
+            scorer = risk_scorer
+            if raw_risk_policy:
+                scorer = RiskScorer(
+                    RiskScoringPolicy(
+                        tool_risk_overrides=dict(raw_risk_policy.get("tool_risk_overrides") or {}),
+                        default_risk=float(raw_risk_policy.get("default_risk", 0.3) or 0.3),
+                        actor_trust_levels=dict(raw_risk_policy.get("actor_trust_levels") or {}),
+                        max_acceptable_risk=float(raw_risk_policy.get("max_acceptable_risk", 0.75) or 0.75),
+                    )
+                )
+
+            risk_assessment = scorer.score_intent(
+                tool=f"{category}.{tool_name}",
+                actor=risk_actor,
+                params=payload,
+            )
+            if not risk_assessment.is_acceptable:
+                record = risk_scheduler.record_outcome(actor=risk_actor, allowed=False)
+                policy_audit.record(
+                    decision="risk_denied",
+                    tool=f"{category}.{tool_name}",
+                    actor=risk_actor,
+                    intent_cid=dispatch_intent_cid,
+                    policy_cid=policy_cid,
+                    justification="risk score exceeds acceptable threshold",
+                    extra={"score": risk_assessment.score, "level": risk_assessment.level.value},
+                )
+                _record_observability("error")
+                return {
+                    "ok": False,
+                    "error": "risk_denied",
+                    "risk_assessment": risk_assessment.to_dict(),
+                    "risk": record.to_dict(),
+                    "audit": policy_audit.stats() if policy_audit.enabled else None,
+                }
 
         if enforce_ucan:
             verdict = validate_raw_delegation_chain(
@@ -290,9 +437,20 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 require_signatures=ucan_require_signatures,
                 issuer_public_keys=ucan_issuer_public_keys,
                 revoked_proof_cids=ucan_revoked_proof_cids,
+                context_cids=ucan_context_cids,
             )
             if not verdict.allowed:
                 record = risk_scheduler.record_outcome(actor=risk_actor, allowed=False)
+                policy_audit.record(
+                    decision="authorization_denied",
+                    tool=f"{category}.{tool_name}",
+                    actor=ucan_actor or risk_actor,
+                    intent_cid=dispatch_intent_cid,
+                    policy_cid=policy_cid,
+                    justification=verdict.reason,
+                    extra={"scheme": "ucan", "chain_length": verdict.chain_length},
+                )
+                _record_observability("error")
                 return {
                     "ok": False,
                     "error": "authorization_denied",
@@ -300,7 +458,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                         "scheme": "ucan",
                         **verdict.to_dict(),
                     },
+                    "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
                     "risk": record.to_dict(),
+                    "audit": policy_audit.stats() if policy_audit.enabled else None,
                 }
 
         policy_decision = None
@@ -337,34 +497,81 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
             if policy_decision.decision == "deny":
                 record = risk_scheduler.record_outcome(actor=risk_actor, allowed=False)
+                policy_audit.record(
+                    decision="policy_denied",
+                    tool=f"{category}.{tool_name}",
+                    actor=policy_actor or risk_actor,
+                    intent_cid=dispatch_intent_cid,
+                    policy_cid=policy_cid,
+                    justification=policy_decision.justification,
+                    obligations=[str(x.get("type") or "") for x in policy_decision.obligations],
+                    extra={"scheme": "temporal_policy"},
+                )
+                _record_observability("error")
                 return {
                     "ok": False,
                     "error": "policy_denied",
                     "policy": policy_decision.to_dict(),
                     "policy_decision": dict(policy_decision_binding or {}),
+                    "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
                     "risk": record.to_dict(),
+                    "audit": policy_audit.stats() if policy_audit.enabled else None,
                 }
 
-        result = await manager.dispatch(category, tool_name, payload)
+        try:
+            result = await manager.dispatch(category, tool_name, payload)
+        except Exception:
+            _record_observability("error")
+            raise
         if not emit_artifacts:
             obligations = len(policy_decision.obligations) if policy_decision is not None else 0
             record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
+            policy_decision_label = "allow"
+            policy_justification = ""
+            policy_obligations: list[str] = []
+            if policy_decision is not None:
+                policy_decision_label = policy_decision.decision
+                policy_justification = policy_decision.justification
+                policy_obligations = [str(x.get("type") or "") for x in policy_decision.obligations]
+            policy_audit.record(
+                decision=policy_decision_label,
+                tool=f"{category}.{tool_name}",
+                actor=policy_actor or ucan_actor or risk_actor,
+                intent_cid=dispatch_intent_cid,
+                policy_cid=policy_cid,
+                justification=policy_justification,
+                obligations=policy_obligations,
+                extra={"emit_artifacts": False},
+            )
             if policy_decision is None:
                 if isinstance(result, dict):
                     enriched = dict(result)
                     enriched.setdefault("risk", record.to_dict())
+                    enriched.setdefault(
+                        "risk_assessment",
+                        risk_assessment.to_dict() if risk_assessment is not None else None,
+                    )
+                    if policy_audit.enabled:
+                        enriched.setdefault("audit", policy_audit.stats())
+                    _record_observability("success")
                     return enriched
+                _record_observability("success")
                 return {
                     "ok": True,
                     "result": result,
+                    "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
                     "risk": record.to_dict(),
+                    "audit": policy_audit.stats() if policy_audit.enabled else None,
                 }
+            _record_observability("success")
             return {
                 "ok": True,
                 "result": result,
                 "policy": policy_decision.to_dict(),
                 "policy_decision": dict(policy_decision_binding or {}),
+                "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
                 "risk": record.to_dict(),
+                "audit": policy_audit.stats() if policy_audit.enabled else None,
             }
 
         # Build immutable artifact references without changing default dispatch
@@ -462,6 +669,25 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             popped = risk_scheduler.pop_next()
             frontier_execution = await _bind_frontier_execution(popped)
 
+        policy_decision_label = "allow"
+        policy_justification = ""
+        policy_obligations: list[str] = []
+        if policy_decision is not None:
+            policy_decision_label = policy_decision.decision
+            policy_justification = policy_decision.justification
+            policy_obligations = [str(x.get("type") or "") for x in policy_decision.obligations]
+        policy_audit.record(
+            decision=policy_decision_label,
+            tool=f"{category}.{tool_name}",
+            actor=policy_actor or ucan_actor or risk_actor,
+            intent_cid=envelope["intent_cid"],
+            policy_cid=policy_cid,
+            justification=policy_justification,
+            obligations=policy_obligations,
+            extra={"emit_artifacts": True, "event_cid": envelope["event_cid"]},
+        )
+        _record_observability("success")
+
         return {
             "ok": True,
             "result": result,
@@ -486,6 +712,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             },
             "artifact_store": persisted_artifacts_meta,
             "event_dag": event_dag_meta,
+            "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
             "risk": record.to_dict(),
             "frontier": {
                 "enqueued": frontier_item is not None,
@@ -495,13 +722,27 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 "stats": risk_scheduler.stats(),
             },
             "policy": policy_decision.to_dict() if policy_decision is not None else None,
+            "audit": policy_audit.stats() if policy_audit.enabled else None,
         }
 
         # unreachable placeholder to keep static analyzers calm about branch
         # structure; response is returned above.
 
     async def tools_runtime_metrics() -> dict[str, Any]:
-        return {"runtimes": runtime_router.get_metrics()}
+        return {
+            "runtimes": runtime_router.get_metrics(),
+            "observability": {
+                "monitoring": {
+                    "info": metrics_collector.get_info(),
+                    "snapshot": metrics_collector.get_snapshot(),
+                },
+                "tracing": dict(tracing_status),
+                "prometheus": {
+                    **dict(prometheus_status),
+                    "info": prometheus_exporter.get_info() if prometheus_exporter is not None else dict(prometheus_status.get("info") or {}),
+                },
+            },
+        }
 
     # Attach migration components for callers that want the unified surface.
     setattr(server, "_unified_runtime_router", runtime_router)
@@ -513,6 +754,16 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_artifact_store", artifact_store)
     setattr(server, "_unified_event_dag", event_store)
     setattr(server, "_unified_risk_scheduler", risk_scheduler)
+    setattr(server, "_unified_risk_scorer", risk_scorer)
+    setattr(server, "_unified_policy_audit", policy_audit)
+    setattr(server, "_unified_metrics_collector", metrics_collector)
+    setattr(server, "_unified_p2p_metrics_collector", p2p_metrics_collector)
+    setattr(server, "_unified_tracer", tracer)
+    setattr(server, "_unified_tracing_status", tracing_status)
+    setattr(server, "_unified_prometheus_exporter", prometheus_exporter)
+    setattr(server, "_unified_prometheus_status", prometheus_status)
+    setattr(server, "_unified_secrets_vault", secrets_vault)
+    setattr(server, "_unified_secrets_status", secrets_status)
     setattr(server, "_unified_supported_profiles", get_unified_supported_profiles())
     setattr(
         server,

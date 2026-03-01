@@ -24,6 +24,16 @@ from .tool_metadata import (
 )
 from .tool_registry import ToolRegistry, get_global_registry
 from .wave_a_loaders import configure_wave_a_loaders
+from .monitoring import (
+    EnhancedMetricsCollector,
+    HealthCheckResult,
+    MetricData,
+    P2PMetricsCollector,
+    get_metrics_collector,
+    get_p2p_metrics_collector,
+)
+from .otel_tracing import MCPTracer, configure_tracing
+from .prometheus_exporter import PrometheusExporter
 
 __all__ = [
     "create_server",
@@ -43,4 +53,13 @@ __all__ = [
     "configure_wave_a_loaders",
     "ToolRegistry",
     "get_global_registry",
+    "MetricData",
+    "HealthCheckResult",
+    "EnhancedMetricsCollector",
+    "P2PMetricsCollector",
+    "get_metrics_collector",
+    "get_p2p_metrics_collector",
+    "MCPTracer",
+    "configure_tracing",
+    "PrometheusExporter",
 ]
