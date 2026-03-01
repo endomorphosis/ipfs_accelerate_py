@@ -17,10 +17,13 @@ from .runtime_router import RuntimeRouter
 from .wave_a_loaders import configure_wave_a_loaders
 from .tools.idl import load_idl_tools
 from .tools.admin_tools import register_native_admin_tools
+from .tools.alert_tools import register_native_alert_tools
 from .tools.analysis_tools import register_native_analysis_tools
 from .tools.auth_tools import register_native_auth_tools
+from .tools.audit_tools import register_native_audit_tools
 from .tools.cache_tools import register_native_cache_tools
 from .tools.data_processing_tools import register_native_data_processing_tools
+from .tools.email_tools import register_native_email_tools
 from .tools.geospatial_tools import register_native_geospatial_tools
 from .tools.file_detection_tools import register_native_file_detection_tools
 from .tools.index_management_tools import register_native_index_management_tools
@@ -28,6 +31,8 @@ from .tools.provenance_tools import register_native_provenance_tools
 from .tools.search_tools import register_native_search_tools
 from .tools.security_tools import register_native_security_tools
 from .tools.session_tools import register_native_session_tools
+from .tools.storage_tools import register_native_storage_tools
+from .tools.vector_store_tools import register_native_vector_store_tools
 from .tools.rate_limiting import register_native_rate_limiting_tools
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
@@ -223,6 +228,14 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_admin_tools(mgr),
     )
     manager.register_category_loader(
+        "alert_tools",
+        lambda mgr: register_native_alert_tools(mgr),
+    )
+    manager.register_category_loader(
+        "audit_tools",
+        lambda mgr: register_native_audit_tools(mgr),
+    )
+    manager.register_category_loader(
         "analysis_tools",
         lambda mgr: register_native_analysis_tools(mgr),
     )
@@ -237,6 +250,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "data_processing_tools",
         lambda mgr: register_native_data_processing_tools(mgr),
+    )
+    manager.register_category_loader(
+        "email_tools",
+        lambda mgr: register_native_email_tools(mgr),
     )
     manager.register_category_loader(
         "file_detection_tools",
@@ -265,6 +282,14 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "session_tools",
         lambda mgr: register_native_session_tools(mgr),
+    )
+    manager.register_category_loader(
+        "storage_tools",
+        lambda mgr: register_native_storage_tools(mgr),
+    )
+    manager.register_category_loader(
+        "vector_store_tools",
+        lambda mgr: register_native_vector_store_tools(mgr),
     )
     manager.register_category_loader(
         "rate_limiting",

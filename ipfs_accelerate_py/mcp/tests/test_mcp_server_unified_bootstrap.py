@@ -609,12 +609,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             categories = await list_categories()
             self.assertIn("admin_tools", categories["categories"])
+            self.assertIn("alert_tools", categories["categories"])
+            self.assertIn("audit_tools", categories["categories"])
             self.assertIn("smoke", categories["categories"])
             self.assertIn("analysis_tools", categories["categories"])
             self.assertIn("auth_tools", categories["categories"])
             self.assertIn("rate_limiting", categories["categories"])
             self.assertIn("cache_tools", categories["categories"])
             self.assertIn("data_processing_tools", categories["categories"])
+            self.assertIn("email_tools", categories["categories"])
             self.assertIn("file_detection_tools", categories["categories"])
             self.assertIn("geospatial_tools", categories["categories"])
             self.assertIn("index_management_tools", categories["categories"])
@@ -622,6 +625,8 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("security_tools", categories["categories"])
             self.assertIn("search_tools", categories["categories"])
             self.assertIn("session_tools", categories["categories"])
+            self.assertIn("storage_tools", categories["categories"])
+            self.assertIn("vector_store_tools", categories["categories"])
 
             tools = await list_tools("smoke")
             self.assertEqual(tools["tools"][0]["name"], "echo")
@@ -836,6 +841,59 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 },
             )
             self.assertTrue("mime_type" in detection_result or "error" in detection_result)
+
+            storage_result = await dispatch(
+                "storage_tools",
+                "manage_collections",
+                {
+                    "action": "list",
+                },
+            )
+            self.assertIn(storage_result.get("success"), [True, False])
+            self.assertEqual(storage_result.get("action"), "list")
+
+            vector_result = await dispatch(
+                "vector_store_tools",
+                "vector_index",
+                {
+                    "action": "info",
+                    "index_name": "smoke-index",
+                },
+            )
+            self.assertEqual(vector_result.get("action"), "info")
+            self.assertEqual(vector_result.get("index_name"), "smoke-index")
+
+            audit_result = await dispatch(
+                "audit_tools",
+                "record_audit_event",
+                {
+                    "action": "smoke.test",
+                    "resource_id": "smoke-resource",
+                    "severity": "info",
+                },
+            )
+            self.assertIn(audit_result.get("status"), ["success", "error"])
+            self.assertEqual(audit_result.get("action"), "smoke.test")
+
+            alert_result = await dispatch(
+                "alert_tools",
+                "list_alert_rules",
+                {
+                    "enabled_only": False,
+                },
+            )
+            self.assertIn(alert_result.get("status"), ["success", "error"])
+
+            email_result = await dispatch(
+                "email_tools",
+                "email_test_connection",
+                {
+                    "protocol": "imap",
+                    "server": "mail.example.com",
+                    "timeout": 1,
+                },
+            )
+            self.assertIn(email_result.get("status"), ["success", "error"])
 
             metrics_payload = await runtime_metrics()
             self.assertIn("runtimes", metrics_payload)
