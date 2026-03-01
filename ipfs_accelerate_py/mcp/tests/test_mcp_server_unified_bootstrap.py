@@ -608,13 +608,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             runtime_metrics = server.tools["tools_runtime_metrics"]["function"]
 
             categories = await list_categories()
+            self.assertIn("admin_tools", categories["categories"])
             self.assertIn("smoke", categories["categories"])
             self.assertIn("analysis_tools", categories["categories"])
+            self.assertIn("auth_tools", categories["categories"])
             self.assertIn("rate_limiting", categories["categories"])
             self.assertIn("cache_tools", categories["categories"])
             self.assertIn("data_processing_tools", categories["categories"])
+            self.assertIn("file_detection_tools", categories["categories"])
             self.assertIn("geospatial_tools", categories["categories"])
             self.assertIn("index_management_tools", categories["categories"])
+            self.assertIn("provenance_tools", categories["categories"])
             self.assertIn("security_tools", categories["categories"])
             self.assertIn("search_tools", categories["categories"])
             self.assertIn("session_tools", categories["categories"])
@@ -790,6 +794,48 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn(index_status_result.get("status"), ["success", "error"])
             self.assertEqual(index_status_result.get("action"), "status")
+
+            auth_decode_result = await dispatch(
+                "auth_tools",
+                "validate_token",
+                {
+                    "token": "smoke-token",
+                    "action": "decode",
+                },
+            )
+            self.assertEqual(auth_decode_result.get("status"), "success")
+            self.assertIn("message", auth_decode_result)
+
+            provenance_result = await dispatch(
+                "provenance_tools",
+                "record_provenance",
+                {
+                    "dataset_id": "smoke-dataset",
+                    "operation": "transform",
+                    "parameters": {"step": "normalize"},
+                },
+            )
+            self.assertIn(provenance_result.get("status"), ["success", "error"])
+            self.assertEqual(provenance_result.get("dataset_id"), "smoke-dataset")
+
+            admin_result = await dispatch(
+                "admin_tools",
+                "manage_endpoints",
+                {
+                    "action": "list",
+                },
+            )
+            self.assertEqual(admin_result.get("status"), "success")
+            self.assertEqual(admin_result.get("action"), "list")
+
+            detection_result = await dispatch(
+                "file_detection_tools",
+                "detect_file_type",
+                {
+                    "file_path": "README.md",
+                },
+            )
+            self.assertTrue("mime_type" in detection_result or "error" in detection_result)
 
             metrics_payload = await runtime_metrics()
             self.assertIn("runtimes", metrics_payload)

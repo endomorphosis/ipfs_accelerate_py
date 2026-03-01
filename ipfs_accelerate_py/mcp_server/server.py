@@ -16,11 +16,15 @@ from .hierarchical_tool_manager import HierarchicalToolManager
 from .runtime_router import RuntimeRouter
 from .wave_a_loaders import configure_wave_a_loaders
 from .tools.idl import load_idl_tools
+from .tools.admin_tools import register_native_admin_tools
 from .tools.analysis_tools import register_native_analysis_tools
+from .tools.auth_tools import register_native_auth_tools
 from .tools.cache_tools import register_native_cache_tools
 from .tools.data_processing_tools import register_native_data_processing_tools
 from .tools.geospatial_tools import register_native_geospatial_tools
+from .tools.file_detection_tools import register_native_file_detection_tools
 from .tools.index_management_tools import register_native_index_management_tools
+from .tools.provenance_tools import register_native_provenance_tools
 from .tools.search_tools import register_native_search_tools
 from .tools.security_tools import register_native_security_tools
 from .tools.session_tools import register_native_session_tools
@@ -215,8 +219,16 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             secrets_status["error"] = str(exc)
     configure_wave_a_loaders(manager)
     manager.register_category_loader(
+        "admin_tools",
+        lambda mgr: register_native_admin_tools(mgr),
+    )
+    manager.register_category_loader(
         "analysis_tools",
         lambda mgr: register_native_analysis_tools(mgr),
+    )
+    manager.register_category_loader(
+        "auth_tools",
+        lambda mgr: register_native_auth_tools(mgr),
     )
     manager.register_category_loader(
         "cache_tools",
@@ -227,12 +239,20 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_data_processing_tools(mgr),
     )
     manager.register_category_loader(
+        "file_detection_tools",
+        lambda mgr: register_native_file_detection_tools(mgr),
+    )
+    manager.register_category_loader(
         "geospatial_tools",
         lambda mgr: register_native_geospatial_tools(mgr),
     )
     manager.register_category_loader(
         "index_management_tools",
         lambda mgr: register_native_index_management_tools(mgr),
+    )
+    manager.register_category_loader(
+        "provenance_tools",
+        lambda mgr: register_native_provenance_tools(mgr),
     )
     manager.register_category_loader(
         "security_tools",
