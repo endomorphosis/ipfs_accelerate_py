@@ -160,17 +160,17 @@ class RuntimeRouter:
 
     async def route_tool_call(
         self,
-        tool_name: str,
+        registered_tool_name: str,
         tool_func: Callable[..., Any],
         *args: Any,
         **kwargs: Any,
     ) -> Any:
         """Execute a tool via the resolved runtime backend."""
         if not callable(tool_func):
-            raise RuntimeRoutingError(f"Tool function for '{tool_name}' is not callable")
+            raise RuntimeRoutingError(f"Tool function for '{registered_tool_name}' is not callable")
 
-        runtime = self.resolve_runtime(tool_name, tool_func)
-        timeout_seconds = self.resolve_timeout_seconds(tool_name, tool_func)
+        runtime = self.resolve_runtime(registered_tool_name, tool_func)
+        timeout_seconds = self.resolve_timeout_seconds(registered_tool_name, tool_func)
         start = time.perf_counter()
         error = False
         timed_out = False
@@ -196,12 +196,12 @@ class RuntimeRouter:
         except TimeoutError as exc:
             error = True
             timed_out = True
-            raise RuntimeExecutionError(runtime, tool_name, f"timed out after {timeout_seconds}s") from exc
+            raise RuntimeExecutionError(runtime, registered_tool_name, f"timed out after {timeout_seconds}s") from exc
         except Exception as exc:
             error = True
             if isinstance(exc, RuntimeRoutingError):
                 raise
-            raise RuntimeExecutionError(runtime, tool_name, exc) from exc
+            raise RuntimeExecutionError(runtime, registered_tool_name, exc) from exc
         finally:
             if self.enable_metrics:
                 elapsed_ms = (time.perf_counter() - start) * 1000.0
