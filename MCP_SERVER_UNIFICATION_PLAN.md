@@ -261,3 +261,119 @@ This plan is complete when:
 - `mcpplusplus/CONFORMANCE_CHECKLIST.md` critical requirements are all `PASS`.
 - Transport parity is enforced in both default and libp2p-enabled CI lanes.
 - Legacy `mcp` facade remains only as a temporary rollback-compatible layer.
+
+## 13. Sprint Execution Board
+
+Legend:
+
+- Status: `todo` | `in-progress` | `done`
+- Owner lanes: `runtime`, `tools`, `transport`, `security`, `observability`, `release`
+
+### Sprint 1 (Week 1): Transport Gate Closure
+
+1. Status: `todo`  Owner: `transport`
+  Task: Promote libp2p trio networked test to required CI lane.
+  Files: `.github/workflows/*`, `ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py`
+  Verify:
+  - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_transport_trio_p2p_networked`
+
+2. Status: `todo`  Owner: `transport`
+  Task: Keep non-libp2p transport suite green and required in default lane.
+  Files: `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_parity.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_transport_subprocess_contracts.py`
+  Verify:
+  - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_transport_parity ipfs_accelerate_py.mcp.tests.test_mcp_server_transport_e2e_matrix ipfs_accelerate_py.mcp.tests.test_mcp_transport_process_level ipfs_accelerate_py.mcp.tests.test_mcp_transport_subprocess_contracts`
+
+3. Status: `todo`  Owner: `runtime`
+  Task: Add integration tests proving `_unified_services` factories are consumed by runtime paths (not only present).
+  Files: `ipfs_accelerate_py/mcp_server/server.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+  Verify:
+  - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_unified_bootstrap`
+
+Sprint 1 Exit:
+
+- `MCPP-013` has required CI coverage in both default and libp2p-enabled lanes.
+
+### Sprint 2 (Weeks 2-3): Tool Surface Wave B
+
+1. Status: `todo`  Owner: `tools`
+  Task: Port next high-impact source categories (start with `security_tools`, `monitoring_tools`).
+  Files: `ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/*`, `ipfs_accelerate_py/mcp_server/tools/*`, `ipfs_accelerate_py/mcp_server/wave_a_loaders.py`
+  Verify:
+  - deterministic `tools_dispatch` tests per migrated tool in `ipfs_accelerate_py/mcp/tests/`
+
+2. Status: `todo`  Owner: `tools`
+  Task: Add schema parity checks for representative tools per migrated category.
+  Files: `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (or category-specific test files)
+  Verify:
+  - `python3 -m unittest <new_category_test_modules>`
+
+3. Status: `todo`  Owner: `runtime`
+  Task: Update native precedence skip lists to prevent duplicate registrations.
+  Files: `ipfs_accelerate_py/mcp_server/wave_a_loaders.py`
+  Verify:
+  - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_unified_bootstrap`
+
+Sprint 2 Exit:
+
+- `MCPP-012` parity percentage increased with evidence updates in both conformance docs.
+
+### Sprint 3 (Week 4): Security and Policy Parity
+
+1. Status: `todo`  Owner: `security`
+  Task: Port policy/audit/vault/risk primitives from source server.
+  Files: `ipfs_datasets_py/ipfs_datasets_py/mcp_server/policy_audit_log.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/secrets_vault.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/risk_scorer.py`, `ipfs_accelerate_py/mcp_server/*`
+  Verify:
+  - New unit/integration tests under `ipfs_accelerate_py/mcp/tests/`
+
+2. Status: `todo`  Owner: `security`
+  Task: Add policy enforcement and audit integrity tests for migrated paths.
+  Files: `ipfs_accelerate_py/mcp/tests/*security*`
+  Verify:
+  - `python3 -m unittest <security_test_modules>`
+
+Sprint 3 Exit:
+
+- `MCPP-014` moved to `PASS`.
+
+### Sprint 4 (Week 5): Observability Parity
+
+1. Status: `todo`  Owner: `observability`
+  Task: Port monitoring/tracing/exporter modules from source server.
+  Files: `ipfs_datasets_py/ipfs_datasets_py/mcp_server/monitoring.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/otel_tracing.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/prometheus_exporter.py`, `ipfs_accelerate_py/mcp_server/*`
+  Verify:
+  - observability tests in `ipfs_accelerate_py/mcp/tests/`
+
+2. Status: `todo`  Owner: `observability`
+  Task: Add SLO/latency/error-rate assertions for critical dispatch paths.
+  Files: `ipfs_accelerate_py/mcp/tests/*transport*`, `ipfs_accelerate_py/mcp/tests/*metrics*`
+  Verify:
+  - `python3 -m unittest <observability_test_modules>`
+
+Sprint 4 Exit:
+
+- `MCPP-015` moved to `PASS`.
+
+### Sprint 5 (Week 6): Cutover and Release
+
+1. Status: `todo`  Owner: `release`
+  Task: Flip default runtime to unified `mcp_server` path.
+  Files: `ipfs_accelerate_py/mcp/server.py`, `ipfs_accelerate_py/mcp_server/server.py`, startup scripts/config
+  Verify:
+  - full MCP regression suite and transport suite pass
+
+2. Status: `todo`  Owner: `release`
+  Task: Keep compatibility facade and validate rollback path.
+  Files: `ipfs_accelerate_py/mcp/*`, release docs/changelog
+  Verify:
+  - rollback smoke test in CI
+
+Sprint 5 Exit:
+
+- Unified runtime is default.
+- Compatibility rollback path is validated.
+
+## 14. Operational Rules
+
+1. Every status move in `mcpplusplus/CONFORMANCE_CHECKLIST.md` must include runnable test evidence.
+2. No category migration is complete without deterministic `tools_dispatch` tests.
+3. No cutover without `MCPP-012`/`MCPP-013`/`MCPP-014`/`MCPP-015` meeting gate thresholds.
