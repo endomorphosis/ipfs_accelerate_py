@@ -44,6 +44,19 @@ class _DummyRegistry:
         self.tools = {}
 
 
+class _RejectingRegistry:
+    def __init__(self) -> None:
+        self.tools = {}
+
+    def validate_p2p_message(self, _msg: dict) -> bool:
+        return False
+
+
+class _FailingWriteStream(_FakeStream):
+    async def write(self, _data: bytes) -> None:
+        raise RuntimeError("write_failed")
+
+
 def _decode_all_frames(buffer: bytes) -> list[dict]:
     out: list[dict] = []
     idx = 0
@@ -183,6 +196,58 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         self.assertEqual(limits.get("max_frames"), 42)
         self.assertEqual(limits.get("rate_capacity"), 7)
         self.assertEqual(limits.get("rate_refill_per_sec"), 3.5)
+
+    def test_handler_tracks_unauthorized_counter(self) -> None:
+        request = encode_jsonrpc_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {},
+            }
+        )
+        stream = _FakeStream(request)
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_RejectingRegistry(),
+                max_frame_bytes=1024 * 1024,
+            )
+
+        anyio.run(_run)
+
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(responses[0].get("error", {}).get("code"), -32001)
+        self.assertEqual(responses[0].get("error", {}).get("message"), "unauthorized")
+
+        stats = get_mcp_p2p_stats()
+        self.assertEqual(stats.get("unauthorized"), 1)
+        self.assertEqual(stats.get("sessions_started"), 1)
+        self.assertEqual(stats.get("sessions_closed"), 1)
+
+    def test_handler_tracks_internal_error_counter_when_write_fails(self) -> None:
+        # Oversized declaration triggers deterministic error response path;
+        # with write failure, outer exception accounting should increment internal_errors.
+        stream = _FailingWriteStream((4097).to_bytes(4, byteorder="big", signed=False))
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_DummyRegistry(),
+                max_frame_bytes=1024,
+            )
+
+        anyio.run(_run)
+
+        stats = get_mcp_p2p_stats()
+        self.assertEqual(stats.get("frame_errors"), 1)
+        self.assertEqual(stats.get("internal_errors"), 1)
+        self.assertEqual(stats.get("sessions_started"), 1)
+        self.assertEqual(stats.get("sessions_closed"), 1)
 
 
 if __name__ == "__main__":
