@@ -1163,9 +1163,42 @@ def create_mcp_server(
     port: int = 9000,
     mount_path: str = "/mcp",
     debug: bool = False,
+    _skip_unified_bridge: bool = False,
 ) -> MCPServerWrapper:
     """Create a compatibility MCP server wrapper."""
     global _MCP_SERVER_INSTANCE
+
+    # Optional migration bridge: route creation through the new unified package
+    # when explicitly enabled. The private skip flag prevents recursion.
+    if not _skip_unified_bridge:
+        try:
+            bridge_enabled = os.environ.get("IPFS_MCP_ENABLE_UNIFIED_BRIDGE", "").strip().lower() in {
+                "1",
+                "true",
+                "yes",
+                "on",
+            }
+            if bridge_enabled:
+                from ipfs_accelerate_py.mcp_server.server import create_server as create_unified_server
+
+                server = create_unified_server(
+                    name=name,
+                    description=description,
+                    accelerate_instance=accelerate_instance,
+                    host=host,
+                    port=port,
+                    mount_path=mount_path,
+                    debug=debug,
+                )
+                _MCP_SERVER_INSTANCE = server
+                try:
+                    set_mcp_like_instance(getattr(server, "mcp", None) or server)
+                except Exception:
+                    pass
+                return server
+        except Exception as e:
+            logger.warning(f"Unified MCP bridge unavailable, falling back to legacy wrapper: {e}")
+
     server = MCPServerWrapper(
         name=name,
         description=description,
