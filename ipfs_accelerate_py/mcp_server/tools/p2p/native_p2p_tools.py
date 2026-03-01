@@ -246,6 +246,144 @@ async def p2p_taskqueue_heartbeat(
         return {"ok": False, "error": str(exc)}
 
 
+async def _cache_get(
+    key: str,
+    timeout_s: float = 10.0,
+    remote_multiaddr: str = "",
+    remote_peer_id: str = "",
+) -> Any:
+    """Read shared cache using legacy p2p client helpers lazily."""
+    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
+    from ipfs_accelerate_py.p2p_tasks.client import cache_get
+
+    remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
+    return await _run_in_trio(
+        cache_get,
+        remote=remote,
+        key=str(key),
+        timeout_s=float(timeout_s),
+    )
+
+
+async def p2p_taskqueue_cache_get(
+    key: str,
+    timeout_s: float = 10.0,
+    remote_multiaddr: str = "",
+    remote_peer_id: str = "",
+) -> Dict[str, Any]:
+    """Read shared cache from native unified p2p tool path."""
+    try:
+        resp = await _cache_get(
+            key=key,
+            timeout_s=timeout_s,
+            remote_multiaddr=remote_multiaddr,
+            remote_peer_id=remote_peer_id,
+        )
+        return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+async def _cache_set(
+    key: str,
+    value: Any,
+    ttl_s: Optional[float] = None,
+    timeout_s: float = 10.0,
+    remote_multiaddr: str = "",
+    remote_peer_id: str = "",
+) -> Any:
+    """Write shared cache using legacy p2p client helpers lazily."""
+    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
+    from ipfs_accelerate_py.p2p_tasks.client import cache_set
+
+    remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
+    return await _run_in_trio(
+        cache_set,
+        remote=remote,
+        key=str(key),
+        value=value,
+        ttl_s=ttl_s,
+        timeout_s=float(timeout_s),
+    )
+
+
+async def p2p_taskqueue_cache_set(
+    key: str,
+    value: Any,
+    ttl_s: Optional[float] = None,
+    timeout_s: float = 10.0,
+    remote_multiaddr: str = "",
+    remote_peer_id: str = "",
+) -> Dict[str, Any]:
+    """Write shared cache from native unified p2p tool path."""
+    try:
+        resp = await _cache_set(
+            key=key,
+            value=value,
+            ttl_s=ttl_s,
+            timeout_s=timeout_s,
+            remote_multiaddr=remote_multiaddr,
+            remote_peer_id=remote_peer_id,
+        )
+        return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
+async def _submit_docker_hub(
+    image: str,
+    command: Any = None,
+    entrypoint: Any = None,
+    environment: Optional[Dict[str, Any]] = None,
+    volumes: Optional[Dict[str, Any]] = None,
+    remote_multiaddr: str = "",
+    remote_peer_id: str = "",
+    **kwargs: Any,
+) -> Any:
+    """Submit Docker Hub task using legacy p2p client helpers lazily."""
+    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
+    from ipfs_accelerate_py.p2p_tasks.client import submit_docker_hub_task
+
+    remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
+    return await _run_in_trio(
+        submit_docker_hub_task,
+        remote=remote,
+        image=str(image),
+        command=command,
+        entrypoint=entrypoint,
+        environment=(environment if isinstance(environment, dict) else None),
+        volumes=(volumes if isinstance(volumes, dict) else None),
+        **kwargs,
+    )
+
+
+async def p2p_taskqueue_submit_docker_hub(
+    image: str,
+    command: Any = None,
+    entrypoint: Any = None,
+    environment: Optional[Dict[str, Any]] = None,
+    volumes: Optional[Dict[str, Any]] = None,
+    remote_multiaddr: str = "",
+    remote_peer_id: str = "",
+    **kwargs: Any,
+) -> Dict[str, Any]:
+    """Submit Docker Hub task from native unified p2p tool path."""
+    try:
+        task_id = await _submit_docker_hub(
+            image=image,
+            command=command,
+            entrypoint=entrypoint,
+            environment=environment,
+            volumes=volumes,
+            remote_multiaddr=remote_multiaddr,
+            remote_peer_id=remote_peer_id,
+            **kwargs,
+        )
+        return {"ok": True, "task_id": task_id}
+    except Exception as exc:
+        return {"ok": False, "error": str(exc)}
+
+
 def register_native_p2p_tools(manager: Any) -> None:
     """Register native p2p tools in the unified hierarchical manager."""
     manager.register_tool(
@@ -368,6 +506,75 @@ def register_native_p2p_tools(manager: Any) -> None:
                 "remote_peer_id": {"type": "string", "default": ""},
             },
             "required": ["peer_id"],
+        },
+        runtime="trio",
+        tags=["native", "wave-a", "p2p"],
+    )
+
+    manager.register_tool(
+        category="p2p",
+        name="p2p_taskqueue_cache_get",
+        func=p2p_taskqueue_cache_get,
+        description="Read p2p TaskQueue shared cache using unified native implementation.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string"},
+                "timeout_s": {"type": "number", "default": 10.0},
+                "remote_multiaddr": {"type": "string", "default": ""},
+                "remote_peer_id": {"type": "string", "default": ""},
+            },
+            "required": ["key"],
+        },
+        runtime="trio",
+        tags=["native", "wave-a", "p2p"],
+    )
+
+    manager.register_tool(
+        category="p2p",
+        name="p2p_taskqueue_cache_set",
+        func=p2p_taskqueue_cache_set,
+        description="Write p2p TaskQueue shared cache using unified native implementation.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "key": {"type": "string"},
+                "value": {},
+                "ttl_s": {"type": ["number", "null"], "default": None},
+                "timeout_s": {"type": "number", "default": 10.0},
+                "remote_multiaddr": {"type": "string", "default": ""},
+                "remote_peer_id": {"type": "string", "default": ""},
+            },
+            "required": ["key", "value"],
+        },
+        runtime="trio",
+        tags=["native", "wave-a", "p2p"],
+    )
+
+    manager.register_tool(
+        category="p2p",
+        name="p2p_taskqueue_submit_docker_hub",
+        func=p2p_taskqueue_submit_docker_hub,
+        description="Submit Docker Hub task using unified native p2p implementation.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "image": {"type": "string"},
+                "command": {},
+                "entrypoint": {},
+                "environment": {
+                    "type": ["object", "null"],
+                    "additionalProperties": True,
+                },
+                "volumes": {
+                    "type": ["object", "null"],
+                    "additionalProperties": True,
+                },
+                "remote_multiaddr": {"type": "string", "default": ""},
+                "remote_peer_id": {"type": "string", "default": ""},
+            },
+            "required": ["image"],
+            "additionalProperties": True,
         },
         runtime="trio",
         tags=["native", "wave-a", "p2p"],

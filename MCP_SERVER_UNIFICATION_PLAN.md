@@ -67,7 +67,13 @@ Port `ipfs_datasets_py/ipfs_datasets_py/mcp_server` into `ipfs_accelerate_py/ipf
   - `p2p_taskqueue_complete_task`
 - [x] Additional native Wave A p2p tool ported in unified package:
   - `p2p_taskqueue_heartbeat`
-- [x] Unified bootstrap E2E tests passing in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (37 tests).
+- [x] Additional native Wave A p2p tool ported in unified package:
+  - `p2p_taskqueue_cache_get`
+- [x] Additional native Wave A p2p tool ported in unified package:
+  - `p2p_taskqueue_cache_set`
+- [x] Additional native Wave A p2p tool ported in unified package:
+  - `p2p_taskqueue_submit_docker_hub`
+- [x] Unified bootstrap E2E tests passing in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (40 tests).
 
 ## Rollout Flags
 

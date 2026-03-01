@@ -84,7 +84,7 @@ def load_p2p_tools(manager: HierarchicalToolManager) -> None:
             manager,
             collector.tools,
             category="p2p",
-            skip_names={"p2p_taskqueue_status", "p2p_taskqueue_list_tasks", "p2p_taskqueue_get_task", "p2p_taskqueue_wait_task", "p2p_taskqueue_complete_task", "p2p_taskqueue_heartbeat"},
+            skip_names={"p2p_taskqueue_status", "p2p_taskqueue_list_tasks", "p2p_taskqueue_get_task", "p2p_taskqueue_wait_task", "p2p_taskqueue_complete_task", "p2p_taskqueue_heartbeat", "p2p_taskqueue_cache_get", "p2p_taskqueue_cache_set", "p2p_taskqueue_submit_docker_hub"},
         )
 
     # Native tools are registered last so they override legacy-captured tools

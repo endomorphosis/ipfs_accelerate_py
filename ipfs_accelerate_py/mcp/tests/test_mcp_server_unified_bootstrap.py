@@ -1689,6 +1689,174 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
         anyio.run(_run_dispatch)
 
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_native_p2p_cache_get_dispatch_via_meta_tools_success(self, mock_wrapper):
+        """Unified `tools_dispatch` should execute native p2p cache-get and pass through response payload."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "p2p",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="native-p2p-cache-get-dispatch")
+
+        async def _run_dispatch() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            p2p_tools = await tools_list("p2p")
+            p2p_names = [tool["name"] for tool in p2p_tools["tools"]]
+            self.assertIn("p2p_taskqueue_cache_get", p2p_names)
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._cache_get",
+                return_value={"ok": True, "key": "k1", "value": {"n": 1}},
+            ):
+                result = await dispatch(
+                    "p2p",
+                    "p2p_taskqueue_cache_get",
+                    {"key": "k1", "timeout_s": 2.0},
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["key"], "k1")
+            self.assertEqual(result["value"], {"n": 1})
+
+        anyio.run(_run_dispatch)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_native_p2p_cache_set_dispatch_via_meta_tools_success(self, mock_wrapper):
+        """Unified `tools_dispatch` should execute native p2p cache-set and pass through response payload."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "p2p",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="native-p2p-cache-set-dispatch")
+
+        async def _run_dispatch() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            p2p_tools = await tools_list("p2p")
+            p2p_names = [tool["name"] for tool in p2p_tools["tools"]]
+            self.assertIn("p2p_taskqueue_cache_set", p2p_names)
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._cache_set",
+                return_value={"ok": True, "key": "k1", "stored": True},
+            ):
+                result = await dispatch(
+                    "p2p",
+                    "p2p_taskqueue_cache_set",
+                    {"key": "k1", "value": {"n": 2}, "ttl_s": 30.0, "timeout_s": 2.0},
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["key"], "k1")
+            self.assertTrue(result["stored"])
+
+        anyio.run(_run_dispatch)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_native_p2p_submit_docker_hub_dispatch_via_meta_tools_success(self, mock_wrapper):
+        """Unified `tools_dispatch` should execute native p2p submit-docker-hub and pass through task id."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "p2p",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="native-p2p-submit-docker-hub-dispatch")
+
+        async def _run_dispatch() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            p2p_tools = await tools_list("p2p")
+            p2p_names = [tool["name"] for tool in p2p_tools["tools"]]
+            self.assertIn("p2p_taskqueue_submit_docker_hub", p2p_names)
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._submit_docker_hub",
+                return_value="task-123",
+            ):
+                result = await dispatch(
+                    "p2p",
+                    "p2p_taskqueue_submit_docker_hub",
+                    {
+                        "image": "alpine:latest",
+                        "command": ["echo", "hi"],
+                        "environment": {"A": "1"},
+                    },
+                )
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(result["task_id"], "task-123")
+
+        anyio.run(_run_dispatch)
+
 
 if __name__ == "__main__":
     unittest.main()
