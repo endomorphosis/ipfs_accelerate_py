@@ -16,6 +16,15 @@ from .hierarchical_tool_manager import HierarchicalToolManager
 from .runtime_router import RuntimeRouter
 from .wave_a_loaders import configure_wave_a_loaders
 from .tools.idl import load_idl_tools
+from .tools.analysis_tools import register_native_analysis_tools
+from .tools.cache_tools import register_native_cache_tools
+from .tools.data_processing_tools import register_native_data_processing_tools
+from .tools.geospatial_tools import register_native_geospatial_tools
+from .tools.index_management_tools import register_native_index_management_tools
+from .tools.search_tools import register_native_search_tools
+from .tools.security_tools import register_native_security_tools
+from .tools.session_tools import register_native_session_tools
+from .tools.rate_limiting import register_native_rate_limiting_tools
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
 from .mcplusplus.policy_engine import evaluate_raw_policy
@@ -205,6 +214,42 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         except Exception as exc:
             secrets_status["error"] = str(exc)
     configure_wave_a_loaders(manager)
+    manager.register_category_loader(
+        "analysis_tools",
+        lambda mgr: register_native_analysis_tools(mgr),
+    )
+    manager.register_category_loader(
+        "cache_tools",
+        lambda mgr: register_native_cache_tools(mgr),
+    )
+    manager.register_category_loader(
+        "data_processing_tools",
+        lambda mgr: register_native_data_processing_tools(mgr),
+    )
+    manager.register_category_loader(
+        "geospatial_tools",
+        lambda mgr: register_native_geospatial_tools(mgr),
+    )
+    manager.register_category_loader(
+        "index_management_tools",
+        lambda mgr: register_native_index_management_tools(mgr),
+    )
+    manager.register_category_loader(
+        "security_tools",
+        lambda mgr: register_native_security_tools(mgr),
+    )
+    manager.register_category_loader(
+        "search_tools",
+        lambda mgr: register_native_search_tools(mgr),
+    )
+    manager.register_category_loader(
+        "session_tools",
+        lambda mgr: register_native_session_tools(mgr),
+    )
+    manager.register_category_loader(
+        "rate_limiting",
+        lambda mgr: register_native_rate_limiting_tools(mgr),
+    )
     manager.register_category_loader(
         "idl",
         lambda mgr: load_idl_tools(mgr, supported_capabilities=get_unified_supported_profiles()),

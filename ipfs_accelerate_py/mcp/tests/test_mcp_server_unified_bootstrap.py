@@ -609,6 +609,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             categories = await list_categories()
             self.assertIn("smoke", categories["categories"])
+            self.assertIn("analysis_tools", categories["categories"])
+            self.assertIn("rate_limiting", categories["categories"])
+            self.assertIn("cache_tools", categories["categories"])
+            self.assertIn("data_processing_tools", categories["categories"])
+            self.assertIn("geospatial_tools", categories["categories"])
+            self.assertIn("index_management_tools", categories["categories"])
+            self.assertIn("security_tools", categories["categories"])
+            self.assertIn("search_tools", categories["categories"])
+            self.assertIn("session_tools", categories["categories"])
 
             tools = await list_tools("smoke")
             self.assertEqual(tools["tools"][0]["name"], "echo")
@@ -619,6 +628,168 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             result = await dispatch("smoke", "echo", {"value": "ok"})
             self.assertEqual(result["echo"], "ok")
+
+            configured = await dispatch(
+                "rate_limiting",
+                "configure_rate_limits",
+                {
+                    "limits": [
+                        {
+                            "name": "smoke_limit",
+                            "strategy": "token_bucket",
+                            "requests_per_second": 1000,
+                            "burst_capacity": 1000,
+                            "enabled": True,
+                        }
+                    ]
+                },
+            )
+            self.assertEqual(configured.get("configured_count"), 1)
+
+            check = await dispatch(
+                "rate_limiting",
+                "check_rate_limit",
+                {
+                    "limit_name": "smoke_limit",
+                    "identifier": "worker-1",
+                },
+            )
+            self.assertTrue(check.get("allowed", False))
+
+            listing = await dispatch(
+                "rate_limiting",
+                "manage_rate_limits",
+                {"action": "list"},
+            )
+            self.assertGreaterEqual(int(listing.get("total_count", 0)), 1)
+
+            set_result = await dispatch(
+                "cache_tools",
+                "cache_set",
+                {"key": "smoke-key", "value": "smoke-value", "namespace": "smoke"},
+            )
+            self.assertTrue(set_result.get("success", False))
+
+            get_result = await dispatch(
+                "cache_tools",
+                "cache_get",
+                {"key": "smoke-key", "namespace": "smoke"},
+            )
+            self.assertEqual(get_result.get("value"), "smoke-value")
+            self.assertTrue(get_result.get("hit", False))
+
+            stats_result = await dispatch(
+                "cache_tools",
+                "manage_cache",
+                {"operation": "stats", "namespace": "smoke"},
+            )
+            self.assertTrue(stats_result.get("success", False))
+            self.assertIn("cache_stats", stats_result)
+
+            created_session = await dispatch(
+                "session_tools",
+                "create_session",
+                {
+                    "session_name": "smoke-session",
+                    "user_id": "smoke-user",
+                },
+            )
+            self.assertEqual(created_session.get("status"), "success")
+            session_id = created_session.get("session_id")
+            self.assertIsInstance(session_id, str)
+
+            get_session = await dispatch(
+                "session_tools",
+                "manage_session_state",
+                {
+                    "session_id": session_id,
+                    "action": "get",
+                },
+            )
+            self.assertEqual(get_session.get("status"), "success")
+            self.assertEqual(get_session.get("session", {}).get("session_id"), session_id)
+
+            pause_session = await dispatch(
+                "session_tools",
+                "manage_session_state",
+                {
+                    "session_id": session_id,
+                    "action": "pause",
+                },
+            )
+            self.assertEqual(pause_session.get("status"), "success")
+            self.assertEqual(pause_session.get("session_status"), "paused")
+
+            search_result = await dispatch(
+                "search_tools",
+                "semantic_search",
+                {
+                    "query": "smoke query",
+                    "top_k": 2,
+                    "collection": "smoke",
+                },
+            )
+            self.assertEqual(search_result.get("query"), "smoke query")
+            self.assertGreaterEqual(int(search_result.get("total_found", 0)), 1)
+
+            conversion_result = await dispatch(
+                "data_processing_tools",
+                "convert_format",
+                {
+                    "data": {"k": "v"},
+                    "source_format": "json",
+                    "target_format": "json",
+                },
+            )
+            self.assertEqual(conversion_result.get("status"), "success")
+            self.assertEqual(conversion_result.get("source_format"), "json")
+            self.assertEqual(conversion_result.get("target_format"), "json")
+
+            permission_result = await dispatch(
+                "security_tools",
+                "check_access_permission",
+                {
+                    "resource_id": "smoke-resource",
+                    "user_id": "smoke-user",
+                    "permission_type": "read",
+                },
+            )
+            self.assertIn(permission_result.get("status"), ["success", "error"])
+            self.assertEqual(permission_result.get("resource_id"), "smoke-resource")
+
+            analysis_result = await dispatch(
+                "analysis_tools",
+                "analyze_data_distribution",
+                {
+                    "data_source": "mock",
+                    "analysis_type": "comprehensive",
+                    "data_params": {"n_samples": 20, "n_features": 8},
+                },
+            )
+            self.assertEqual(analysis_result.get("status"), "success")
+            self.assertEqual(analysis_result.get("data_source"), "mock")
+
+            geospatial_result = await dispatch(
+                "geospatial_tools",
+                "query_geographic_context",
+                {
+                    "query": "find events near London",
+                    "corpus_data": "Sample event data",
+                    "radius_km": 25.0,
+                },
+            )
+            self.assertEqual(geospatial_result.get("status"), "success")
+            self.assertEqual(geospatial_result.get("query"), "find events near London")
+
+            index_status_result = await dispatch(
+                "index_management_tools",
+                "load_index",
+                {
+                    "action": "status",
+                },
+            )
+            self.assertIn(index_status_result.get("status"), ["success", "error"])
+            self.assertEqual(index_status_result.get("action"), "status")
 
             metrics_payload = await runtime_metrics()
             self.assertIn("runtimes", metrics_payload)
