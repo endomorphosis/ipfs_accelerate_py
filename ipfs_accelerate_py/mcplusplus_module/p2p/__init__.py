@@ -1,21 +1,12 @@
-"""
-P2P networking layer for MCP++
+"""P2P networking compatibility layer for MCP++.
 
-This module provides peer-to-peer networking capabilities using libp2p,
-refactored from the original MCP implementation to work natively with Trio.
-
-Components:
------------
-- taskqueue: P2P task queue client for distributed task execution
-- workflow: P2P workflow scheduler for multi-peer coordination
-- peer_registry: Peer discovery and registry management (GitHub Issues-based)
-- bootstrap: Bootstrap helpers for peer discovery
-- connectivity: P2P connectivity and discovery mechanisms
-
-All components are designed to work natively with Trio's structured concurrency.
+This package preserves the historical ``mcplusplus_module.p2p`` import surface,
+while delegating to canonical implementations in
+``ipfs_accelerate_py.mcp_server.mcplusplus`` where available.
 """
 
-# Import P2P components
+# Task queue compatibility layer (canonical implementation lives under
+# ipfs_accelerate_py.mcp_server.mcplusplus.task_queue).
 try:
     from .taskqueue import P2PTaskQueue, RemoteQueue
 except ImportError:
@@ -50,8 +41,14 @@ except ImportError:
     SimplePeerBootstrap = None
 
 try:
-    from .connectivity import DiscoveryConfig, ConnectivityHelper
+    from .connectivity import ConnectivityConfig, UniversalConnectivity
+
+    # Backward-compatible aliases used by older call sites.
+    DiscoveryConfig = ConnectivityConfig
+    ConnectivityHelper = UniversalConnectivity
 except ImportError:
+    ConnectivityConfig = None
+    UniversalConnectivity = None
     DiscoveryConfig = None
     ConnectivityHelper = None
 
@@ -70,6 +67,8 @@ __all__ = [
     "P2PPeerRegistry",
     "SimplePeerBootstrap",
     # Connectivity
+    "ConnectivityConfig",
+    "UniversalConnectivity",
     "DiscoveryConfig",
     "ConnectivityHelper",
 ]
