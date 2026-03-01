@@ -616,6 +616,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("auth_tools", categories["categories"])
             self.assertIn("rate_limiting", categories["categories"])
             self.assertIn("cache_tools", categories["categories"])
+            self.assertIn("background_task_tools", categories["categories"])
+            self.assertIn("dashboard_tools", categories["categories"])
+            self.assertIn("dataset_tools", categories["categories"])
+            self.assertIn("embedding_tools", categories["categories"])
+            self.assertIn("monitoring_tools", categories["categories"])
+            self.assertIn("sparse_embedding_tools", categories["categories"])
+            self.assertIn("web_scraping_tools", categories["categories"])
             self.assertIn("data_processing_tools", categories["categories"])
             self.assertIn("email_tools", categories["categories"])
             self.assertIn("file_detection_tools", categories["categories"])
@@ -894,6 +901,55 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 },
             )
             self.assertIn(email_result.get("status"), ["success", "error"])
+
+            dashboard_result = await dispatch(
+                "dashboard_tools",
+                "get_tdfol_metrics",
+                {},
+            )
+            self.assertIn(dashboard_result.get("status"), ["success", "error"])
+
+            background_task_result = await dispatch(
+                "background_task_tools",
+                "manage_task_queue",
+                {"action": "get_stats"},
+            )
+            self.assertIn(background_task_result.get("status"), ["success", "error"])
+
+            dataset_result = await dispatch(
+                "dataset_tools",
+                "load_dataset",
+                {"source": "smoke_source"},
+            )
+            self.assertIn(dataset_result.get("status"), ["success", "error"])
+
+            embedding_result = await dispatch(
+                "embedding_tools",
+                "generate_embeddings",
+                {"texts": ["smoke embedding input"]},
+            )
+            self.assertIn(embedding_result.get("status"), ["success", "error"])
+
+            monitoring_result = await dispatch(
+                "monitoring_tools",
+                "health_check",
+                {},
+            )
+            self.assertTrue("status" in monitoring_result)
+
+            sparse_embedding_result = await dispatch(
+                "sparse_embedding_tools",
+                "generate_sparse_embedding",
+                {"text": "smoke sparse embedding input"},
+            )
+            self.assertTrue("model" in sparse_embedding_result or "status" in sparse_embedding_result)
+
+            web_scraping_result = await dispatch(
+                "web_scraping_tools",
+                "check_scraper_methods_tool",
+                {},
+            )
+            self.assertIn(web_scraping_result.get("status"), ["success", "error"])
 
             metrics_payload = await runtime_metrics()
             self.assertIn("runtimes", metrics_payload)

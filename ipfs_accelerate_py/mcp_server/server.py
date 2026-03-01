@@ -21,18 +21,25 @@ from .tools.alert_tools import register_native_alert_tools
 from .tools.analysis_tools import register_native_analysis_tools
 from .tools.auth_tools import register_native_auth_tools
 from .tools.audit_tools import register_native_audit_tools
+from .tools.background_task_tools import register_native_background_task_tools
 from .tools.cache_tools import register_native_cache_tools
+from .tools.dashboard_tools import register_native_dashboard_tools
 from .tools.data_processing_tools import register_native_data_processing_tools
+from .tools.dataset_tools import register_native_dataset_tools
+from .tools.embedding_tools import register_native_embedding_tools
 from .tools.email_tools import register_native_email_tools
 from .tools.geospatial_tools import register_native_geospatial_tools
 from .tools.file_detection_tools import register_native_file_detection_tools
 from .tools.index_management_tools import register_native_index_management_tools
+from .tools.monitoring_tools import register_native_monitoring_tools
 from .tools.provenance_tools import register_native_provenance_tools
 from .tools.search_tools import register_native_search_tools
 from .tools.security_tools import register_native_security_tools
 from .tools.session_tools import register_native_session_tools
+from .tools.sparse_embedding_tools import register_native_sparse_embedding_tools
 from .tools.storage_tools import register_native_storage_tools
 from .tools.vector_store_tools import register_native_vector_store_tools
+from .tools.web_scraping_tools import register_native_web_scraping_tools
 from .tools.rate_limiting import register_native_rate_limiting_tools
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
@@ -246,6 +253,34 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "cache_tools",
         lambda mgr: register_native_cache_tools(mgr),
+    )
+    manager.register_category_loader(
+        "background_task_tools",
+        lambda mgr: register_native_background_task_tools(mgr),
+    )
+    manager.register_category_loader(
+        "dashboard_tools",
+        lambda mgr: register_native_dashboard_tools(mgr),
+    )
+    manager.register_category_loader(
+        "dataset_tools",
+        lambda mgr: register_native_dataset_tools(mgr),
+    )
+    manager.register_category_loader(
+        "embedding_tools",
+        lambda mgr: register_native_embedding_tools(mgr),
+    )
+    manager.register_category_loader(
+        "monitoring_tools",
+        lambda mgr: register_native_monitoring_tools(mgr),
+    )
+    manager.register_category_loader(
+        "sparse_embedding_tools",
+        lambda mgr: register_native_sparse_embedding_tools(mgr),
+    )
+    manager.register_category_loader(
+        "web_scraping_tools",
+        lambda mgr: register_native_web_scraping_tools(mgr),
     )
     manager.register_category_loader(
         "data_processing_tools",
