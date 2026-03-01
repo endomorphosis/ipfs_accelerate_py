@@ -30,8 +30,12 @@ from .tools.embedding_tools import register_native_embedding_tools
 from .tools.email_tools import register_native_email_tools
 from .tools.geospatial_tools import register_native_geospatial_tools
 from .tools.file_detection_tools import register_native_file_detection_tools
+from .tools.functions import register_native_function_tools
 from .tools.index_management_tools import register_native_index_management_tools
+from .tools.ipfs_cluster_tools import register_native_ipfs_cluster_tools
 from .tools.monitoring_tools import register_native_monitoring_tools
+from .tools.p2p_workflow_tools import register_native_p2p_workflow_tools
+from .tools.p2p_tools import register_native_p2p_tools_category
 from .tools.provenance_tools import register_native_provenance_tools
 from .tools.search_tools import register_native_search_tools
 from .tools.security_tools import register_native_security_tools
@@ -39,7 +43,9 @@ from .tools.session_tools import register_native_session_tools
 from .tools.sparse_embedding_tools import register_native_sparse_embedding_tools
 from .tools.storage_tools import register_native_storage_tools
 from .tools.vector_store_tools import register_native_vector_store_tools
+from .tools.vector_tools import register_native_vector_tools
 from .tools.web_scraping_tools import register_native_web_scraping_tools
+from .tools.workflow_tools import register_native_workflow_tools_category
 from .tools.rate_limiting import register_native_rate_limiting_tools
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
@@ -275,6 +281,26 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_monitoring_tools(mgr),
     )
     manager.register_category_loader(
+        "ipfs_cluster_tools",
+        lambda mgr: register_native_ipfs_cluster_tools(mgr),
+    )
+    manager.register_category_loader(
+        "p2p_workflow_tools",
+        lambda mgr: register_native_p2p_workflow_tools(mgr),
+    )
+    manager.register_category_loader(
+        "p2p_tools",
+        lambda mgr: register_native_p2p_tools_category(mgr),
+    )
+    manager.register_category_loader(
+        "functions",
+        lambda mgr: register_native_function_tools(mgr),
+    )
+    manager.register_category_loader(
+        "workflow_tools",
+        lambda mgr: register_native_workflow_tools_category(mgr),
+    )
+    manager.register_category_loader(
         "sparse_embedding_tools",
         lambda mgr: register_native_sparse_embedding_tools(mgr),
     )
@@ -325,6 +351,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "vector_store_tools",
         lambda mgr: register_native_vector_store_tools(mgr),
+    )
+    manager.register_category_loader(
+        "vector_tools",
+        lambda mgr: register_native_vector_tools(mgr),
     )
     manager.register_category_loader(
         "rate_limiting",

@@ -621,6 +621,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("dataset_tools", categories["categories"])
             self.assertIn("embedding_tools", categories["categories"])
             self.assertIn("monitoring_tools", categories["categories"])
+            self.assertIn("ipfs_cluster_tools", categories["categories"])
+            self.assertIn("p2p_workflow_tools", categories["categories"])
+            self.assertIn("p2p_tools", categories["categories"])
+            self.assertIn("functions", categories["categories"])
+            self.assertIn("workflow_tools", categories["categories"])
             self.assertIn("sparse_embedding_tools", categories["categories"])
             self.assertIn("web_scraping_tools", categories["categories"])
             self.assertIn("data_processing_tools", categories["categories"])
@@ -634,6 +639,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("session_tools", categories["categories"])
             self.assertIn("storage_tools", categories["categories"])
             self.assertIn("vector_store_tools", categories["categories"])
+            self.assertIn("vector_tools", categories["categories"])
 
             tools = await list_tools("smoke")
             self.assertEqual(tools["tools"][0]["name"], "echo")
@@ -870,6 +876,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(vector_result.get("action"), "info")
             self.assertEqual(vector_result.get("index_name"), "smoke-index")
 
+            vector_tools_result = await dispatch(
+                "vector_tools",
+                "create_vector_index",
+                {
+                    "vectors": [[0.1, 0.2, 0.3], [0.3, 0.2, 0.1]],
+                    "index_id": "smoke-vector-tools",
+                    "metric": "cosine",
+                },
+            )
+            self.assertEqual(vector_tools_result.get("status"), "success")
+
             audit_result = await dispatch(
                 "audit_tools",
                 "record_audit_event",
@@ -943,6 +960,44 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 {"text": "smoke sparse embedding input"},
             )
             self.assertTrue("model" in sparse_embedding_result or "status" in sparse_embedding_result)
+
+            ipfs_cluster_result = await dispatch(
+                "ipfs_cluster_tools",
+                "manage_ipfs_cluster",
+                {"action": "status"},
+            )
+            self.assertTrue("status" in ipfs_cluster_result)
+
+            p2p_workflow_result = await dispatch(
+                "p2p_workflow_tools",
+                "get_p2p_scheduler_status",
+                {},
+            )
+            self.assertTrue("status" in p2p_workflow_result or "success" in p2p_workflow_result)
+
+            p2p_tools_result = await dispatch(
+                "p2p_tools",
+                "p2p_service_status",
+                {},
+            )
+            self.assertTrue("ok" in p2p_tools_result or "status" in p2p_tools_result)
+
+            function_result = await dispatch(
+                "functions",
+                "execute_python_snippet",
+                {"code": "print('smoke')"},
+            )
+            self.assertTrue("status" in function_result)
+
+            workflow_tools_result = await dispatch(
+                "workflow_tools",
+                "schedule_workflow",
+                {
+                    "workflow_definition": {"name": "smoke-workflow", "steps": []},
+                    "schedule_config": {"cron": "0 * * * *"},
+                },
+            )
+            self.assertTrue("status" in workflow_tools_result or "success" in workflow_tools_result)
 
             web_scraping_result = await dispatch(
                 "web_scraping_tools",
