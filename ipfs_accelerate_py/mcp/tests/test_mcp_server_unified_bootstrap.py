@@ -640,6 +640,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("storage_tools", categories["categories"])
             self.assertIn("vector_store_tools", categories["categories"])
             self.assertIn("vector_tools", categories["categories"])
+            self.assertIn("web_archive_tools", categories["categories"])
+            self.assertIn("rate_limiting_tools", categories["categories"])
+            self.assertIn("discord_tools", categories["categories"])
+            self.assertIn("file_converter_tools", categories["categories"])
+            self.assertIn("development_tools", categories["categories"])
 
             tools = await list_tools("smoke")
             self.assertEqual(tools["tools"][0]["name"], "echo")
@@ -684,6 +689,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 {"action": "list"},
             )
             self.assertGreaterEqual(int(listing.get("total_count", 0)), 1)
+
+            listing_tools = await dispatch(
+                "rate_limiting_tools",
+                "manage_rate_limits",
+                {"action": "list"},
+            )
+            self.assertIn("total_count", listing_tools)
 
             set_result = await dispatch(
                 "cache_tools",
@@ -919,6 +931,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn(email_result.get("status"), ["success", "error"])
 
+            file_converter_result = await dispatch(
+                "file_converter_tools",
+                "file_info_tool",
+                {"input_path": "README.md"},
+            )
+            self.assertIn(file_converter_result.get("status"), ["success", "error"])
+
             dashboard_result = await dispatch(
                 "dashboard_tools",
                 "get_tdfol_metrics",
@@ -939,6 +958,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 {"source": "smoke_source"},
             )
             self.assertIn(dataset_result.get("status"), ["success", "error"])
+
+            development_result = await dispatch(
+                "development_tools",
+                "vscode_cli_status",
+                {},
+            )
+            self.assertTrue("success" in development_result or "status" in development_result)
+
+            discord_result = await dispatch(
+                "discord_tools",
+                "discord_list_guilds",
+                {},
+            )
+            self.assertIn(discord_result.get("status"), ["success", "error"])
 
             embedding_result = await dispatch(
                 "embedding_tools",
@@ -1005,6 +1038,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 {},
             )
             self.assertIn(web_scraping_result.get("status"), ["success", "error"])
+
+            web_archive_result = await dispatch(
+                "web_archive_tools",
+                "search_common_crawl",
+                {
+                    "domain": "example.com",
+                    "limit": 1,
+                },
+            )
+            self.assertIn(web_archive_result.get("status"), ["success", "error"])
 
             metrics_payload = await runtime_metrics()
             self.assertIn("runtimes", metrics_payload)

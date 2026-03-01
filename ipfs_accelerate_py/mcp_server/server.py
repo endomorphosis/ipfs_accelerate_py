@@ -26,8 +26,11 @@ from .tools.cache_tools import register_native_cache_tools
 from .tools.dashboard_tools import register_native_dashboard_tools
 from .tools.data_processing_tools import register_native_data_processing_tools
 from .tools.dataset_tools import register_native_dataset_tools
+from .tools.development_tools import register_native_development_tools
+from .tools.discord_tools import register_native_discord_tools
 from .tools.embedding_tools import register_native_embedding_tools
 from .tools.email_tools import register_native_email_tools
+from .tools.file_converter_tools import register_native_file_converter_tools
 from .tools.geospatial_tools import register_native_geospatial_tools
 from .tools.file_detection_tools import register_native_file_detection_tools
 from .tools.functions import register_native_function_tools
@@ -44,9 +47,11 @@ from .tools.sparse_embedding_tools import register_native_sparse_embedding_tools
 from .tools.storage_tools import register_native_storage_tools
 from .tools.vector_store_tools import register_native_vector_store_tools
 from .tools.vector_tools import register_native_vector_tools
+from .tools.web_archive_tools import register_native_web_archive_tools
 from .tools.web_scraping_tools import register_native_web_scraping_tools
 from .tools.workflow_tools import register_native_workflow_tools_category
 from .tools.rate_limiting import register_native_rate_limiting_tools
+from .tools.rate_limiting_tools import register_native_rate_limiting_tools_category
 from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
 from .mcplusplus.policy_engine import evaluate_raw_policy
@@ -273,6 +278,14 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_dataset_tools(mgr),
     )
     manager.register_category_loader(
+        "development_tools",
+        lambda mgr: register_native_development_tools(mgr),
+    )
+    manager.register_category_loader(
+        "discord_tools",
+        lambda mgr: register_native_discord_tools(mgr),
+    )
+    manager.register_category_loader(
         "embedding_tools",
         lambda mgr: register_native_embedding_tools(mgr),
     )
@@ -317,6 +330,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_email_tools(mgr),
     )
     manager.register_category_loader(
+        "file_converter_tools",
+        lambda mgr: register_native_file_converter_tools(mgr),
+    )
+    manager.register_category_loader(
         "file_detection_tools",
         lambda mgr: register_native_file_detection_tools(mgr),
     )
@@ -357,8 +374,16 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_vector_tools(mgr),
     )
     manager.register_category_loader(
+        "web_archive_tools",
+        lambda mgr: register_native_web_archive_tools(mgr),
+    )
+    manager.register_category_loader(
         "rate_limiting",
         lambda mgr: register_native_rate_limiting_tools(mgr),
+    )
+    manager.register_category_loader(
+        "rate_limiting_tools",
+        lambda mgr: register_native_rate_limiting_tools_category(mgr),
     )
     manager.register_category_loader(
         "idl",
