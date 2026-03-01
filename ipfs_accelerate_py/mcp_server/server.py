@@ -43,7 +43,13 @@ from .tools.ipfs_cluster_tools import register_native_ipfs_cluster_tools
 from .tools.ipfs_tools import register_native_ipfs_tools_category
 from .tools.investigation_tools import register_native_investigation_tools
 from .tools.legal_dataset_tools import register_native_legal_dataset_tools
+from .tools.legacy_mcp_tools import register_native_legacy_mcp_tools
+from .tools.lizardperson_argparse_programs import register_native_lizardperson_argparse_programs
+from .tools.lizardpersons_function_tools import register_native_lizardpersons_function_tools
+from .tools.logic_tools import register_native_logic_tools
 from .tools.media_tools import register_native_media_tools
+from .tools.mcplusplus import register_native_mcplusplus_tools
+from .tools.medical_research_scrapers import register_native_medical_research_scrapers
 from .tools.monitoring_tools import register_native_monitoring_tools
 from .tools.p2p_workflow_tools import register_native_p2p_workflow_tools
 from .tools.p2p_tools import register_native_p2p_tools_category
@@ -328,8 +334,32 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_legal_dataset_tools(mgr),
     )
     manager.register_category_loader(
+        "legacy_mcp_tools",
+        lambda mgr: register_native_legacy_mcp_tools(mgr),
+    )
+    manager.register_category_loader(
+        "lizardperson_argparse_programs",
+        lambda mgr: register_native_lizardperson_argparse_programs(mgr),
+    )
+    manager.register_category_loader(
+        "lizardpersons_function_tools",
+        lambda mgr: register_native_lizardpersons_function_tools(mgr),
+    )
+    manager.register_category_loader(
+        "logic_tools",
+        lambda mgr: register_native_logic_tools(mgr),
+    )
+    manager.register_category_loader(
         "media_tools",
         lambda mgr: register_native_media_tools(mgr),
+    )
+    manager.register_category_loader(
+        "mcplusplus",
+        lambda mgr: register_native_mcplusplus_tools(mgr),
+    )
+    manager.register_category_loader(
+        "medical_research_scrapers",
+        lambda mgr: register_native_medical_research_scrapers(mgr),
     )
     manager.register_category_loader(
         "p2p_workflow_tools",

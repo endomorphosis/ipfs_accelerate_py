@@ -628,6 +628,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("p2p_tools", categories["categories"])
             self.assertIn("functions", categories["categories"])
             self.assertIn("investigation_tools", categories["categories"])
+            self.assertIn("logic_tools", categories["categories"])
             self.assertIn("workflow_tools", categories["categories"])
             self.assertIn("sparse_embedding_tools", categories["categories"])
             self.assertIn("web_scraping_tools", categories["categories"])
@@ -654,7 +655,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("pdf_tools", categories["categories"])
             self.assertIn("finance_data_tools", categories["categories"])
             self.assertIn("legal_dataset_tools", categories["categories"])
+            self.assertIn("legacy_mcp_tools", categories["categories"])
+            self.assertIn("lizardperson_argparse_programs", categories["categories"])
+            self.assertIn("lizardpersons_function_tools", categories["categories"])
             self.assertIn("media_tools", categories["categories"])
+            self.assertIn("mcplusplus", categories["categories"])
+            self.assertIn("medical_research_scrapers", categories["categories"])
 
             tools = await list_tools("smoke")
             self.assertEqual(tools["tools"][0]["name"], "echo")
@@ -1067,12 +1073,54 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn(media_result.get("status"), ["success", "error"])
 
+            mcplusplus_result = await dispatch(
+                "mcplusplus",
+                "mcplusplus_engine_status",
+                {},
+            )
+            self.assertIn(mcplusplus_result.get("status"), ["success", "error"])
+
+            medical_research_result = await dispatch(
+                "medical_research_scrapers",
+                "scrape_pubmed_medical_research",
+                {"query": "smoke"},
+            )
+            self.assertIn(medical_research_result.get("status"), ["success", "error"])
+
+            legacy_result = await dispatch(
+                "legacy_mcp_tools",
+                "legacy_tools_inventory",
+                {},
+            )
+            self.assertIn(legacy_result.get("status"), ["success", "error"])
+
+            lizardperson_argparse_result = await dispatch(
+                "lizardperson_argparse_programs",
+                "municipal_bluebook_validator_info",
+                {},
+            )
+            self.assertIn(lizardperson_argparse_result.get("status"), ["success", "error"])
+
+            lizardpersons_function_result = await dispatch(
+                "lizardpersons_function_tools",
+                "get_current_time",
+                {"format_type": "iso"},
+            )
+            self.assertIn(lizardpersons_function_result.get("status"), ["success", "error"])
+
             investigation_result = await dispatch(
                 "investigation_tools",
                 "analyze_entities",
                 {"corpus_data": '{"documents": []}'},
             )
             self.assertIn(investigation_result.get("status"), ["success", "error"])
+
+            logic_result = await dispatch(
+                "logic_tools",
+                "logic_health",
+                {},
+            )
+            self.assertTrue("status" in logic_result or "success" in logic_result)
 
             p2p_workflow_result = await dispatch(
                 "p2p_workflow_tools",
