@@ -22,7 +22,9 @@ from .tools.analysis_tools import register_native_analysis_tools
 from .tools.auth_tools import register_native_auth_tools
 from .tools.audit_tools import register_native_audit_tools
 from .tools.background_task_tools import register_native_background_task_tools
+from .tools.bespoke_tools import register_native_bespoke_tools
 from .tools.cache_tools import register_native_cache_tools
+from .tools.cli import register_native_cli_tools
 from .tools.dashboard_tools import register_native_dashboard_tools
 from .tools.data_processing_tools import register_native_data_processing_tools
 from .tools.dataset_tools import register_native_dataset_tools
@@ -30,20 +32,28 @@ from .tools.development_tools import register_native_development_tools
 from .tools.discord_tools import register_native_discord_tools
 from .tools.embedding_tools import register_native_embedding_tools
 from .tools.email_tools import register_native_email_tools
+from .tools.finance_data_tools import register_native_finance_data_tools
 from .tools.file_converter_tools import register_native_file_converter_tools
 from .tools.geospatial_tools import register_native_geospatial_tools
+from .tools.graph_tools import register_native_graph_tools
 from .tools.file_detection_tools import register_native_file_detection_tools
 from .tools.functions import register_native_function_tools
 from .tools.index_management_tools import register_native_index_management_tools
 from .tools.ipfs_cluster_tools import register_native_ipfs_cluster_tools
+from .tools.ipfs_tools import register_native_ipfs_tools_category
+from .tools.investigation_tools import register_native_investigation_tools
+from .tools.legal_dataset_tools import register_native_legal_dataset_tools
+from .tools.media_tools import register_native_media_tools
 from .tools.monitoring_tools import register_native_monitoring_tools
 from .tools.p2p_workflow_tools import register_native_p2p_workflow_tools
 from .tools.p2p_tools import register_native_p2p_tools_category
+from .tools.pdf_tools import register_native_pdf_tools
 from .tools.provenance_tools import register_native_provenance_tools
 from .tools.search_tools import register_native_search_tools
 from .tools.security_tools import register_native_security_tools
 from .tools.session_tools import register_native_session_tools
 from .tools.sparse_embedding_tools import register_native_sparse_embedding_tools
+from .tools.software_engineering_tools import register_native_software_engineering_tools
 from .tools.storage_tools import register_native_storage_tools
 from .tools.vector_store_tools import register_native_vector_store_tools
 from .tools.vector_tools import register_native_vector_tools
@@ -262,8 +272,16 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_auth_tools(mgr),
     )
     manager.register_category_loader(
+        "bespoke_tools",
+        lambda mgr: register_native_bespoke_tools(mgr),
+    )
+    manager.register_category_loader(
         "cache_tools",
         lambda mgr: register_native_cache_tools(mgr),
+    )
+    manager.register_category_loader(
+        "cli",
+        lambda mgr: register_native_cli_tools(mgr),
     )
     manager.register_category_loader(
         "background_task_tools",
@@ -298,12 +316,32 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_ipfs_cluster_tools(mgr),
     )
     manager.register_category_loader(
+        "ipfs_tools",
+        lambda mgr: register_native_ipfs_tools_category(mgr),
+    )
+    manager.register_category_loader(
+        "investigation_tools",
+        lambda mgr: register_native_investigation_tools(mgr),
+    )
+    manager.register_category_loader(
+        "legal_dataset_tools",
+        lambda mgr: register_native_legal_dataset_tools(mgr),
+    )
+    manager.register_category_loader(
+        "media_tools",
+        lambda mgr: register_native_media_tools(mgr),
+    )
+    manager.register_category_loader(
         "p2p_workflow_tools",
         lambda mgr: register_native_p2p_workflow_tools(mgr),
     )
     manager.register_category_loader(
         "p2p_tools",
         lambda mgr: register_native_p2p_tools_category(mgr),
+    )
+    manager.register_category_loader(
+        "pdf_tools",
+        lambda mgr: register_native_pdf_tools(mgr),
     )
     manager.register_category_loader(
         "functions",
@@ -330,6 +368,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: register_native_email_tools(mgr),
     )
     manager.register_category_loader(
+        "finance_data_tools",
+        lambda mgr: register_native_finance_data_tools(mgr),
+    )
+    manager.register_category_loader(
         "file_converter_tools",
         lambda mgr: register_native_file_converter_tools(mgr),
     )
@@ -340,6 +382,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "geospatial_tools",
         lambda mgr: register_native_geospatial_tools(mgr),
+    )
+    manager.register_category_loader(
+        "graph_tools",
+        lambda mgr: register_native_graph_tools(mgr),
     )
     manager.register_category_loader(
         "index_management_tools",
@@ -356,6 +402,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     manager.register_category_loader(
         "search_tools",
         lambda mgr: register_native_search_tools(mgr),
+    )
+    manager.register_category_loader(
+        "software_engineering_tools",
+        lambda mgr: register_native_software_engineering_tools(mgr),
     )
     manager.register_category_loader(
         "session_tools",

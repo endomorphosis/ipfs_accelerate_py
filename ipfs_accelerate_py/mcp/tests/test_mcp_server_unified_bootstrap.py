@@ -614,8 +614,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("smoke", categories["categories"])
             self.assertIn("analysis_tools", categories["categories"])
             self.assertIn("auth_tools", categories["categories"])
+            self.assertIn("bespoke_tools", categories["categories"])
             self.assertIn("rate_limiting", categories["categories"])
             self.assertIn("cache_tools", categories["categories"])
+            self.assertIn("cli", categories["categories"])
             self.assertIn("background_task_tools", categories["categories"])
             self.assertIn("dashboard_tools", categories["categories"])
             self.assertIn("dataset_tools", categories["categories"])
@@ -625,6 +627,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("p2p_workflow_tools", categories["categories"])
             self.assertIn("p2p_tools", categories["categories"])
             self.assertIn("functions", categories["categories"])
+            self.assertIn("investigation_tools", categories["categories"])
             self.assertIn("workflow_tools", categories["categories"])
             self.assertIn("sparse_embedding_tools", categories["categories"])
             self.assertIn("web_scraping_tools", categories["categories"])
@@ -636,6 +639,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("provenance_tools", categories["categories"])
             self.assertIn("security_tools", categories["categories"])
             self.assertIn("search_tools", categories["categories"])
+            self.assertIn("software_engineering_tools", categories["categories"])
             self.assertIn("session_tools", categories["categories"])
             self.assertIn("storage_tools", categories["categories"])
             self.assertIn("vector_store_tools", categories["categories"])
@@ -645,6 +649,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("discord_tools", categories["categories"])
             self.assertIn("file_converter_tools", categories["categories"])
             self.assertIn("development_tools", categories["categories"])
+            self.assertIn("ipfs_tools", categories["categories"])
+            self.assertIn("graph_tools", categories["categories"])
+            self.assertIn("pdf_tools", categories["categories"])
+            self.assertIn("finance_data_tools", categories["categories"])
+            self.assertIn("legal_dataset_tools", categories["categories"])
+            self.assertIn("media_tools", categories["categories"])
 
             tools = await list_tools("smoke")
             self.assertEqual(tools["tools"][0]["name"], "echo")
@@ -711,6 +721,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(get_result.get("value"), "smoke-value")
             self.assertTrue(get_result.get("hit", False))
+
+            cli_result = await dispatch(
+                "cli",
+                "execute_command",
+                {"command": "echo", "args": ["smoke"]},
+            )
+            self.assertIn(cli_result.get("status"), ["success", "error"])
 
             stats_result = await dispatch(
                 "cache_tools",
@@ -815,6 +832,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(geospatial_result.get("status"), "success")
             self.assertEqual(geospatial_result.get("query"), "find events near London")
 
+            graph_result = await dispatch(
+                "graph_tools",
+                "graph_create",
+                {},
+            )
+            self.assertIn(graph_result.get("status"), ["success", "error"])
+
             index_status_result = await dispatch(
                 "index_management_tools",
                 "load_index",
@@ -835,6 +859,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(auth_decode_result.get("status"), "success")
             self.assertIn("message", auth_decode_result)
+
+            bespoke_result = await dispatch(
+                "bespoke_tools",
+                "system_health",
+                {},
+            )
+            self.assertTrue("success" in bespoke_result or "status" in bespoke_result)
 
             provenance_result = await dispatch(
                 "provenance_tools",
@@ -931,6 +962,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn(email_result.get("status"), ["success", "error"])
 
+            finance_result = await dispatch(
+                "finance_data_tools",
+                "scrape_stock_data",
+                {"symbols": ["AAPL"], "days": 1},
+            )
+            self.assertIn(finance_result.get("status"), ["success", "error"])
+
             file_converter_result = await dispatch(
                 "file_converter_tools",
                 "file_info_tool",
@@ -944,6 +982,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 {},
             )
             self.assertIn(dashboard_result.get("status"), ["success", "error"])
+
+            software_engineering_result = await dispatch(
+                "software_engineering_tools",
+                "search_repositories",
+                {"query": "smoke", "max_results": 1},
+            )
+            self.assertIn(software_engineering_result.get("status"), ["success", "error"])
 
             background_task_result = await dispatch(
                 "background_task_tools",
@@ -1001,6 +1046,34 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertTrue("status" in ipfs_cluster_result)
 
+            ipfs_tools_result = await dispatch(
+                "ipfs_tools",
+                "get_from_ipfs",
+                {"cid": "bafybeigdyrzt5examplecid"},
+            )
+            self.assertIn(ipfs_tools_result.get("status"), ["success", "error"])
+
+            legal_result = await dispatch(
+                "legal_dataset_tools",
+                "list_state_jurisdictions",
+                {},
+            )
+            self.assertIn(legal_result.get("status"), ["success", "error"])
+
+            media_result = await dispatch(
+                "media_tools",
+                "ytdlp_extract_info",
+                {"url": "https://example.com/media"},
+            )
+            self.assertIn(media_result.get("status"), ["success", "error"])
+
+            investigation_result = await dispatch(
+                "investigation_tools",
+                "analyze_entities",
+                {"corpus_data": '{"documents": []}'},
+            )
+            self.assertIn(investigation_result.get("status"), ["success", "error"])
+
             p2p_workflow_result = await dispatch(
                 "p2p_workflow_tools",
                 "get_p2p_scheduler_status",
@@ -1014,6 +1087,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 {},
             )
             self.assertTrue("ok" in p2p_tools_result or "status" in p2p_tools_result)
+
+            pdf_tools_result = await dispatch(
+                "pdf_tools",
+                "pdf_query_corpus",
+                {"query": "smoke pdf query"},
+            )
+            self.assertIn(pdf_tools_result.get("status"), ["success", "error"])
 
             function_result = await dispatch(
                 "functions",
