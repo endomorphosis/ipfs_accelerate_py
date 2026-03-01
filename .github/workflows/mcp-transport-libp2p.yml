@@ -1,0 +1,67 @@
+name: MCP Transport LibP2P Parity
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/mcp-transport-libp2p.yml"
+      - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py"
+      - "ipfs_accelerate_py/mcp/standalone.py"
+      - "ipfs_accelerate_py/mcp/integration.py"
+      - "ipfs_accelerate_py/mcp_server/**"
+  push:
+    branches: [main, develop]
+    paths:
+      - ".github/workflows/mcp-transport-libp2p.yml"
+      - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py"
+      - "ipfs_accelerate_py/mcp/standalone.py"
+      - "ipfs_accelerate_py/mcp/integration.py"
+      - "ipfs_accelerate_py/mcp_server/**"
+  workflow_dispatch:
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  libp2p-transport-parity:
+    name: LibP2P Networked Transport Parity
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install package and test dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install pytest anyio trio cryptography py-multiformats-cid
+
+      - name: Install libp2p dependency
+        shell: bash
+        run: |
+          python -m pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main"
+
+      - name: Validate libp2p import availability
+        shell: bash
+        run: |
+          python - <<'PY'
+          import importlib.util
+
+          if importlib.util.find_spec("libp2p") is None:
+              raise SystemExit("libp2p import not available in parity lane")
+
+          print("libp2p dependency resolved")
+          PY
+
+      - name: Run networked trio-p2p parity test
+        shell: bash
+        run: |
+          python -m pytest -q --maxfail=1 ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py

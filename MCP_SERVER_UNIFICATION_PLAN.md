@@ -271,7 +271,7 @@ Legend:
 
 ### Sprint 1 (Week 1): Transport Gate Closure
 
-1. Status: `todo`  Owner: `transport`
+1. Status: `done`  Owner: `transport`
   Task: Promote libp2p trio networked test to required CI lane.
   Files: `.github/workflows/*`, `ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py`
   Verify:
