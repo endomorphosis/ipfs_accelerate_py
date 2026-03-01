@@ -1,0 +1,28 @@
+# MCP++ Conformance Checklist
+
+This checklist tracks conformance of the canonical runtime in `ipfs_accelerate_py/mcp_server`.
+
+| ID | Requirement | Status | Evidence | Notes |
+| --- | --- | --- | --- | --- |
+| MCPP-001 | Canonical runtime package exists and is importable | PASS | `ipfs_accelerate_py/mcp_server/__init__.py` | Established as unification target. |
+| MCPP-002 | Unified runtime routing supports explicit runtime metadata and timeout semantics | PASS | `ipfs_accelerate_py/mcp_server/runtime_router.py` | Includes runtime resolution, per-tool timeout, and metrics. |
+| MCPP-003 | Routing is payload-safe for tool inputs containing `tool_name` | PASS | `ipfs_accelerate_py/mcp_server/runtime_router.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` | Router now uses `registered_tool_name` argument. |
+| MCPP-004 | Hierarchical registry and adapter provide single registration path | PASS | `ipfs_accelerate_py/mcp_server/hierarchical_tool_manager.py`, `ipfs_accelerate_py/mcp_server/registration_adapter.py` | Core control-plane path present. |
+| MCPP-005 | Unified meta-tools are registered and dispatch through canonical path | PASS | `ipfs_accelerate_py/mcp_server/server.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` | `tools_list_*`, `tools_get_schema`, `tools_dispatch`, `tools_runtime_metrics`. |
+| MCPP-006 | Native Wave A tool categories are available in canonical runtime | PASS | `ipfs_accelerate_py/mcp_server/tools/ipfs/native_ipfs_tools.py`, `ipfs_accelerate_py/mcp_server/tools/workflow/native_workflow_tools.py`, `ipfs_accelerate_py/mcp_server/tools/p2p/native_p2p_tools.py` | IPFS, workflow, and p2p categories are migrated. |
+| MCPP-007 | Unified bootstrap regression suite is stable | PASS | `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` | Current baseline is 45 deterministic dispatch tests. |
+| MCPP-008 | MCP++ task queue primitive exists in canonical runtime package | GAP | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/mcplusplus/task_queue.py`, `ipfs_accelerate_py/mcp_server/` | Not yet ported under `ipfs_accelerate_py/mcp_server/mcplusplus/`. |
+| MCPP-009 | MCP++ workflow engine/scheduler primitives exist in canonical runtime package | GAP | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/mcplusplus/workflow_engine.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/mcplusplus/workflow_scheduler.py`, `ipfs_accelerate_py/mcp_server/` | Pending W3 runtime merge workstream. |
+| MCPP-010 | MCP++ peer discovery/registry primitives exist in canonical runtime package | GAP | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/mcplusplus/peer_discovery.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/mcplusplus/peer_registry.py`, `ipfs_accelerate_py/mcp_server/` | Pending W3 runtime merge workstream. |
+| MCPP-011 | MCP++ result cache primitive exists in canonical runtime package | GAP | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/mcplusplus/result_cache.py`, `ipfs_accelerate_py/mcp_server/` | Pending W3 runtime merge workstream. |
+| MCPP-012 | Full source tool category parity is reached in canonical runtime | PARTIAL | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/`, `ipfs_accelerate_py/mcp_server/tools/` | Source has 51 categories; target currently has 3 migrated categories. |
+| MCPP-013 | Transport parity across stdio/http/trio-p2p is validated by compatibility tests | PARTIAL | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/standalone_server.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/fastapi_service.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/trio_adapter.py`, `ipfs_accelerate_py/mcp_server/runtime_router.py` | Router supports fastapi/trio execution, but parity test matrix is not complete. |
+| MCPP-014 | Security/policy/audit subsystems are ported and validated in canonical runtime | GAP | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/policy_audit_log.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/secrets_vault.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/risk_scorer.py`, `ipfs_accelerate_py/mcp_server/` | Planned for W6. |
+| MCPP-015 | Observability parity (monitoring, tracing, exporter) is ported and validated | GAP | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/monitoring.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/otel_tracing.py`, `ipfs_datasets_py/ipfs_datasets_py/mcp_server/prometheus_exporter.py`, `ipfs_accelerate_py/mcp_server/` | Planned for W7. |
+
+## Critical Next Closures
+
+1. Port `mcplusplus/*` runtime primitives into `ipfs_accelerate_py/mcp_server/mcplusplus/` and add primitive-level tests.
+2. Expand Wave migration beyond IPFS/workflow/p2p with deterministic dispatch tests per migrated tool.
+3. Add explicit transport parity tests that exercise stdio/http/trio-p2p compatibility behaviors.
+4. Port and verify security and observability modules before default runtime cutover.
