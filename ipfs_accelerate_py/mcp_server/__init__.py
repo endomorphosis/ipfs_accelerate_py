@@ -8,6 +8,7 @@ for compatibility while internals are progressively ported.
 from .server import (
     create_server,
     get_unified_meta_tool_names,
+    get_unified_supported_profiles,
     get_unified_wave_a_categories,
     main,
 )
@@ -27,6 +28,7 @@ from .wave_a_loaders import configure_wave_a_loaders
 __all__ = [
     "create_server",
     "get_unified_meta_tool_names",
+    "get_unified_supported_profiles",
     "get_unified_wave_a_categories",
     "main",
     "RuntimeRouter",

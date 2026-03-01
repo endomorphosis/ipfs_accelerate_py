@@ -13,9 +13,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+import os
 from typing import Any, Optional
 
 from .mcp_p2p import read_u32_framed_json, write_u32_framed_json
+from ipfs_accelerate_py.mcp_server.mcplusplus.p2p_framing import FrameSizeExceededError
 
 
 @dataclass(frozen=True)
@@ -32,6 +34,18 @@ class MCPRemoteError(Exception):
 
 class MCPFramingError(Exception):
     """Raised when the stream yields deterministic framing/JSON errors."""
+
+
+def _env_int_compat(primary: str, compat: str, default: int) -> int:
+    raw = os.environ.get(primary)
+    if raw is None:
+        raw = os.environ.get(compat)
+    if raw is None:
+        return int(default)
+    try:
+        return int(str(raw).strip())
+    except Exception:
+        return int(default)
 
 
 async def open_libp2p_stream_by_multiaddr(
@@ -86,9 +100,22 @@ async def trio_libp2p_host_listen(*, listen_multiaddr: str = "/ip4/127.0.0.1/tcp
 
 
 class MCPP2PClient:
-    def __init__(self, stream: Any, *, max_frame_bytes: int = 1024 * 1024) -> None:
+    def __init__(
+        self,
+        stream: Any,
+        *,
+        max_frame_bytes: int = 1024 * 1024,
+        max_outbound_frame_bytes: int | None = None,
+    ) -> None:
         self._stream = stream
         self._max_frame_bytes = int(max_frame_bytes)
+        self._max_outbound_frame_bytes = int(max_outbound_frame_bytes) if max_outbound_frame_bytes is not None else _env_int_compat(
+            "IPFS_ACCELERATE_PY_MCP_P2P_CLIENT_MAX_OUTBOUND_FRAME_BYTES",
+            "IPFS_DATASETS_PY_MCP_P2P_CLIENT_MAX_OUTBOUND_FRAME_BYTES",
+            self._max_frame_bytes,
+        )
+        if self._max_outbound_frame_bytes < 1:
+            self._max_outbound_frame_bytes = 1
         self._next_id = 1
 
     def _alloc_id(self) -> int:
@@ -99,15 +126,19 @@ class MCPP2PClient:
     async def request(self, method: str, params: Optional[dict[str, Any]] = None, *, id_value: Any = None) -> dict[str, Any]:
         if id_value is None:
             id_value = self._alloc_id()
-        await write_u32_framed_json(
-            self._stream,
-            {
-                "jsonrpc": "2.0",
-                "id": id_value,
-                "method": str(method),
-                "params": params or {},
-            },
-        )
+        try:
+            await write_u32_framed_json(
+                self._stream,
+                {
+                    "jsonrpc": "2.0",
+                    "id": id_value,
+                    "method": str(method),
+                    "params": params or {},
+                },
+                max_frame_bytes=self._max_outbound_frame_bytes,
+            )
+        except FrameSizeExceededError as exc:
+            raise MCPFramingError(str(exc)) from exc
 
         resp, err = await read_u32_framed_json(self._stream, max_frame_bytes=self._max_frame_bytes)
         if resp is None:
@@ -131,7 +162,14 @@ class MCPP2PClient:
         """Send a raw framed JSON-RPC message and await a single response."""
 
         request_msg = dict(msg)
-        await write_u32_framed_json(self._stream, request_msg)
+        try:
+            await write_u32_framed_json(
+                self._stream,
+                request_msg,
+                max_frame_bytes=self._max_outbound_frame_bytes,
+            )
+        except FrameSizeExceededError as exc:
+            raise MCPFramingError(str(exc)) from exc
         resp, err = await read_u32_framed_json(self._stream, max_frame_bytes=self._max_frame_bytes)
         if resp is None:
             raise MCPFramingError(str(err or "invalid_message"))
@@ -154,21 +192,32 @@ class MCPP2PClient:
     async def notify(self, method: str, params: Optional[dict[str, Any]] = None) -> None:
         """Send a JSON-RPC notification (no `id`) and do not await a response."""
 
-        await write_u32_framed_json(
-            self._stream,
-            {
-                "jsonrpc": "2.0",
-                "method": str(method),
-                "params": params or {},
-            },
-        )
+        try:
+            await write_u32_framed_json(
+                self._stream,
+                {
+                    "jsonrpc": "2.0",
+                    "method": str(method),
+                    "params": params or {},
+                },
+                max_frame_bytes=self._max_outbound_frame_bytes,
+            )
+        except FrameSizeExceededError as exc:
+            raise MCPFramingError(str(exc)) from exc
 
     async def notify_raw(self, msg: dict[str, Any]) -> None:
         """Send a raw JSON-RPC notification frame (must omit `id`)."""
 
         m = dict(msg)
         m.pop("id", None)
-        await write_u32_framed_json(self._stream, m)
+        try:
+            await write_u32_framed_json(
+                self._stream,
+                m,
+                max_frame_bytes=self._max_outbound_frame_bytes,
+            )
+        except FrameSizeExceededError as exc:
+            raise MCPFramingError(str(exc)) from exc
 
     async def initialize(self, params: Optional[dict[str, Any]] = None) -> dict[str, Any]:
         return await self.request("initialize", params or {}, id_value=1)

@@ -54,7 +54,7 @@ Open high-priority gaps:
 - Tool-surface parity (source has 51 categories; target has 3 migrated categories).
 - Security/policy/audit parity.
 - Monitoring/tracing/exporter parity.
-- `MCPP-013` transport parity CI enforcement in libp2p-enabled lane.
+- Full chapter-by-chapter MCP++ spec implementation beyond current primitive parity.
 
 ## 4. End-State Architecture
 
@@ -80,7 +80,8 @@ Open high-priority gaps:
 From `mcpplusplus/CONFORMANCE_CHECKLIST.md`:
 
 - PASS: `MCPP-001` through `MCPP-011`
-- PARTIAL: `MCPP-012` (tool category parity), `MCPP-013` (transport parity enforcement)
+- PARTIAL: `MCPP-012` (tool category parity)
+- PASS: `MCPP-013` (transport parity enforcement)
 - GAP: `MCPP-014` (security/policy/audit), `MCPP-015` (observability/exporters)
 
 ## 6. Workstreams
@@ -248,10 +249,10 @@ Risk: Scope expansion across 51 source categories.
 
 ## 11. Immediate Next Actions (Concrete)
 
-1. Promote `test_mcp_transport_trio_p2p_networked.py` to required in libp2p CI lane.
-2. Start Wave B category migration with one high-impact category from source `tools/`.
-3. Add runtime integration tests proving queue/cache/workflow/peer services are invoked from dispatch paths.
-4. Start security parity port (`policy_audit_log`, `secrets_vault`, `risk_scorer`) with tests.
+1. Start Wave B category migration with one high-impact category from source `tools/`.
+2. Add runtime integration tests proving queue/cache/workflow/peer services are invoked from dispatch paths.
+3. Start security parity port (`policy_audit_log`, `secrets_vault`, `risk_scorer`) with tests.
+4. Begin MCP-IDL profile implementation (descriptor canonicalization + repository APIs).
 
 ## 12. Success Definition
 
@@ -377,3 +378,97 @@ Sprint 5 Exit:
 1. Every status move in `mcpplusplus/CONFORMANCE_CHECKLIST.md` must include runnable test evidence.
 2. No category migration is complete without deterministic `tools_dispatch` tests.
 3. No cutover without `MCPP-012`/`MCPP-013`/`MCPP-014`/`MCPP-015` meeting gate thresholds.
+
+## 15. MCP++ Spec-Complete Plan (Chapter-Driven)
+
+This section aligns implementation directly to:
+
+- `docs/spec/mcp++-profiles-draft.md`
+- `docs/spec/mcp-idl.md`
+- `docs/spec/cid-native-artifacts.md`
+- `docs/spec/ucan-delegation.md`
+- `docs/spec/temporal-deontic-policy.md`
+- `docs/spec/event-dag-ordering.md`
+- `docs/spec/risk-scheduling.md`
+- `docs/spec/transport-mcp-p2p.md`
+
+### 15.1 Scope and Principles
+
+1. Preserve baseline MCP JSON-RPC semantics; MCP++ is additive by capability/profile negotiation.
+2. Implement deterministic canonicalization for all CID-materialized artifacts.
+3. Treat transport identity (`PeerID`) and execution authority (`proof_cid`/policy) as separate checks.
+4. Require executable conformance evidence for each profile before marking `PASS`.
+
+### 15.2 Profile Delivery Map
+
+| Profile / Chapter | Implementation Scope | Source Inputs | Target Delivery | Primary Tests | Gate |
+| --- | --- | --- | --- | --- | --- |
+| Profiles registry and negotiation (`mcp++-profiles-draft`) | Advertise/negotiate supported profiles in init metadata | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/server.py` | `ipfs_accelerate_py/mcp_server/server.py`, `ipfs_accelerate_py/mcp_server/tool_metadata.py` | `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (extend) | `MCPP-016` |
+| Profile A MCP-IDL (`mcp-idl`) | Interface descriptor canonicalization + repository APIs (`interfaces/list`, `interfaces/get`, `interfaces/compat`, optional `interfaces/select`) | Tool metadata in `ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/*` | New `ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py`; new tools under `ipfs_accelerate_py/mcp_server/tools/idl/` | New `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` | `MCPP-017` |
+| Profile B CID-native artifacts (`cid-native-artifacts`) | Canonical artifact models for intent/decision/receipt/event and CID computation pipelines | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/event_dag.py` | New `ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py`, `.../canonicalization.py` | New `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py` | `MCPP-018` |
+| Profile C UCAN delegation (`ucan-delegation`) | Proof bundle ingestion, validation hooks, execution-time authorization checks | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/ucan_delegation.py`, `.../nl_ucan_policy.py` | New `ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py`; dispatch middleware in `runtime_router.py` | New `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py` | `MCPP-019` |
+| Profile D temporal deontic policy (`temporal-deontic-policy`) | `policy_cid` model, evaluator runtime, `decision_cid` output, obligations/deadlines | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/temporal_policy.py`, `.../policy_audit_log.py` | New `ipfs_accelerate_py/mcp_server/mcplusplus/policy_engine.py`, `.../policy_audit.py` | New `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py` | `MCPP-020` |
+| Event DAG and ordering (`event-dag-ordering`) | Event node schema with immutable parent links, conflict hooks, replay traversal | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/event_dag.py` | New `ipfs_accelerate_py/mcp_server/mcplusplus/event_dag.py` integration with workflow engine | New `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py` | `MCPP-021` |
+| Risk, consensus, scheduling (`risk-scheduling`) | Risk scoring inputs from immutable artifacts, frontier scheduling, optional neighborhood consensus signals | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/risk_scorer.py`, `ipfs_accelerate_py/mcplusplus_module/p2p/workflow.py` | New `ipfs_accelerate_py/mcp_server/mcplusplus/risk_scheduler.py` | New `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py` | `MCPP-022` |
+| Profile E `mcp+p2p` (`transport-mcp-p2p`) | Protocol IDs, framing limits, session init semantics, abuse resistance, optional dissemination separation | `ipfs_datasets_py/ipfs_datasets_py/mcp_server/trio_adapter.py`, `ipfs_accelerate_py/mcplusplus_module/p2p/connectivity.py` | `ipfs_accelerate_py/mcp/standalone.py`, `ipfs_accelerate_py/mcp/integration.py`, plus framing helpers in `mcp_server` | Existing and expanded transport tests, including `ipfs_accelerate_py/mcp/tests/test_mcp_transport_p2p_framing_limits.py`, plus `.github/workflows/mcp-transport-libp2p.yml` | `MCPP-013`, `MCPP-023` |
+
+### 15.3 Implementation Phases
+
+Phase 1 (Week 1): Profile negotiation + MCP-IDL baseline
+
+1. Add profile capability advertisement and negotiation contract tests.
+2. Implement interface descriptor canonicalization and `interface_cid` generation.
+3. Implement `interfaces/list|get|compat` endpoints with deterministic outputs.
+
+Phase 2 (Week 2): CID-native artifact layer
+
+1. Add canonical artifact schemas (`intent`, `decision`, `receipt`, `event`).
+2. Add canonicalization and CID utility functions with test vectors.
+3. Wire artifact emission to dispatch paths with correlation IDs.
+
+Phase 3 (Week 3): Delegation and policy enforcement
+
+1. Port UCAN delegation verification and proof bundle handling.
+2. Port temporal policy evaluator and `decision_cid` generation.
+3. Enforce execution-time authz before tool dispatch; emit policy audit logs.
+
+Phase 4 (Week 4): Event DAG and risk scheduler integration
+
+1. Persist event nodes with immutable `parents[]` links.
+2. Add replay/rollback traversal APIs and conflict detection hooks.
+3. Integrate risk scoring and frontier scheduling with workflow engine.
+
+Phase 5 (Week 5): Tool surface and observability completion
+
+1. Continue category parity migration from `ipfs_datasets_py` source tools.
+2. Port observability modules (`monitoring.py`, `otel_tracing.py`, `prometheus_exporter.py`).
+3. Add profile-aware metrics (`decision_cid` counts, denial rates, obligation misses).
+
+Phase 6 (Week 6): Cutover and compliance lock
+
+1. Make `ipfs_accelerate_py/mcp_server` the default runtime path.
+2. Keep compatibility facade and validate rollback.
+3. Require all P0 profile gates to be `PASS` for release.
+
+### 15.4 Conformance Test Plan
+
+1. Add one deterministic unit test module per profile (`MCPP-017`..`MCPP-023`).
+2. Add cross-profile integration tests for invocation path:
+`intent_cid -> proof_cid -> policy_cid -> decision_cid -> receipt_cid -> event_cid`.
+3. Add negative tests:
+- invalid canonicalization bytes,
+- expired/attenuation-breaking delegation chains,
+- policy denial and obligation violation,
+- oversized p2p frames and rate-limit enforcement.
+4. Keep libp2p lane required for networked transport parity and abuse-resistance regressions.
+
+### 15.5 Release Gates for Full Spec Progress
+
+1. Profile coverage gate:
+`MCPP-016` through `MCPP-023` are at least `PARTIAL` before cutover dry-run.
+2. Baseline gate:
+`MCPP-013` and all non-optional baseline transport checks are `PASS`.
+3. Security gate:
+UCAN + temporal policy checks are enforced at execution time in integration tests.
+4. Provenance gate:
+every accepted tool call can emit immutable artifact chain references.

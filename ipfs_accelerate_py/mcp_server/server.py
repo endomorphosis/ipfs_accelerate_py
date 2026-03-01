@@ -14,6 +14,12 @@ from .configs import UnifiedMCPServerConfig, parse_preload_categories
 from .hierarchical_tool_manager import HierarchicalToolManager
 from .runtime_router import RuntimeRouter
 from .wave_a_loaders import configure_wave_a_loaders
+from .tools.idl import load_idl_tools
+from .mcplusplus.artifacts import compute_artifact_cid, envelope_from_payloads
+from .mcplusplus.delegation import validate_raw_delegation_chain
+from .mcplusplus.policy_engine import evaluate_raw_policy
+from .mcplusplus.event_dag import EventDAGStore
+from .mcplusplus.risk_scheduler import RiskScheduler
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +38,17 @@ def get_unified_meta_tool_names() -> list[str]:
 def get_unified_wave_a_categories() -> list[str]:
     """Return canonical Wave A categories supported by unified bootstrap."""
     return ["ipfs", "workflow", "p2p"]
+
+
+def get_unified_supported_profiles() -> list[str]:
+    """Return MCP++ profile capabilities advertised by unified bootstrap."""
+    return [
+        "mcp++/profile-a-idl",
+        "mcp++/profile-b-cid-artifacts",
+        "mcp++/profile-c-ucan",
+        "mcp++/profile-d-temporal-policy",
+        "mcp++/profile-e-mcp-p2p",
+    ]
 
 
 def _parse_preload_categories(value: str | None) -> list[str]:
@@ -85,6 +102,9 @@ def _build_unified_services() -> dict[str, Any]:
         ).ResultCache(backend=__import__(
             "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["MemoryCacheBackend"]
         ).MemoryCacheBackend(), **kwargs),
+        "risk_scheduler_factory": lambda **kwargs: __import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["RiskScheduler"]
+        ).RiskScheduler(**kwargs),
     }
 
 
@@ -96,7 +116,13 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     """
     runtime_router = RuntimeRouter(default_runtime="fastapi")
     manager = HierarchicalToolManager(runtime_router=runtime_router)
+    event_store = EventDAGStore()
+    risk_scheduler = RiskScheduler()
     configure_wave_a_loaders(manager)
+    manager.register_category_loader(
+        "idl",
+        lambda mgr: load_idl_tools(mgr, supported_capabilities=get_unified_supported_profiles()),
+    )
     preloaded_categories = _preload_configured_categories(manager, config.preload_categories)
 
     async def tools_list_categories() -> dict[str, Any]:
@@ -109,8 +135,172 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         return manager.get_tool_schema(category, tool_name)
 
     async def tools_dispatch(category: str, tool_name: str, parameters: dict[str, Any]) -> Any:
-        payload = parameters if isinstance(parameters, dict) else {}
-        return await manager.dispatch(category, tool_name, payload)
+        payload = dict(parameters) if isinstance(parameters, dict) else {}
+
+        emit_artifacts = bool(payload.pop("__emit_artifacts", config.enable_cid_artifact_emission))
+        proof_cid = str(payload.pop("__proof_cid", "") or "")
+        policy_cid = str(payload.pop("__policy_cid", "") or "")
+        correlation_id = str(payload.pop("__correlation_id", "") or "")
+        enforce_ucan = bool(payload.pop("__enforce_ucan", config.enable_ucan_validation))
+        ucan_actor = str(payload.pop("__ucan_actor", "") or "")
+        ucan_proof_chain = payload.pop("__ucan_proof_chain", [])
+        if not isinstance(ucan_proof_chain, list):
+            ucan_proof_chain = []
+        enforce_policy = bool(payload.pop("__enforce_policy", config.enable_policy_evaluation))
+        policy_actor = str(payload.pop("__policy_actor", "") or ucan_actor or "*")
+        policy_clauses = payload.pop("__policy_clauses", [])
+        if not isinstance(policy_clauses, list):
+            policy_clauses = []
+        policy_resource = payload.pop("__policy_resource", None)
+        if policy_resource is not None:
+            policy_resource = str(policy_resource)
+        parent_event_cids = payload.pop("__parent_event_cids", [])
+        if not isinstance(parent_event_cids, list):
+            parent_event_cids = []
+        risk_actor = str(payload.pop("__risk_actor", "") or policy_actor or ucan_actor or "*")
+
+        if enforce_ucan:
+            verdict = validate_raw_delegation_chain(
+                raw_chain=ucan_proof_chain,
+                resource=f"{category}.{tool_name}",
+                ability="invoke",
+                actor=ucan_actor,
+            )
+            if not verdict.allowed:
+                record = risk_scheduler.record_outcome(actor=risk_actor, allowed=False)
+                return {
+                    "ok": False,
+                    "error": "authorization_denied",
+                    "authorization": {
+                        "scheme": "ucan",
+                        **verdict.to_dict(),
+                    },
+                    "risk": record.to_dict(),
+                }
+
+        policy_decision = None
+        if enforce_policy:
+            policy_decision = evaluate_raw_policy(
+                raw_clauses=policy_clauses,
+                actor=policy_actor,
+                action=f"{category}.{tool_name}",
+                resource=policy_resource,
+            )
+            if policy_decision.decision == "deny":
+                record = risk_scheduler.record_outcome(actor=risk_actor, allowed=False)
+                return {
+                    "ok": False,
+                    "error": "policy_denied",
+                    "policy": policy_decision.to_dict(),
+                    "risk": record.to_dict(),
+                }
+
+        result = await manager.dispatch(category, tool_name, payload)
+        if not emit_artifacts:
+            obligations = len(policy_decision.obligations) if policy_decision is not None else 0
+            record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
+            if policy_decision is None:
+                if isinstance(result, dict):
+                    enriched = dict(result)
+                    enriched.setdefault("risk", record.to_dict())
+                    return enriched
+                return {
+                    "ok": True,
+                    "result": result,
+                    "risk": record.to_dict(),
+                }
+            return {
+                "ok": True,
+                "result": result,
+                "policy": policy_decision.to_dict(),
+                "risk": record.to_dict(),
+            }
+
+        # Build immutable artifact references without changing default dispatch
+        # shape unless artifact emission is explicitly requested.
+        tool_schema = manager.get_tool_schema(category, tool_name)
+        interface_cid = compute_artifact_cid(
+            {
+                "category": category,
+                "tool_name": tool_name,
+                "input_schema": tool_schema.get("input_schema", {}),
+            }
+        )
+        output_payload = result if isinstance(result, dict) else {"result": result}
+        envelope = envelope_from_payloads(
+            interface_cid=interface_cid,
+            input_payload=payload,
+            tool=f"{category}.{tool_name}",
+            output_payload=output_payload,
+            decision="allow",
+            proof_cid=proof_cid,
+            policy_cid=policy_cid,
+            correlation_id=correlation_id,
+            parent_event_cids=parent_event_cids,
+        )
+
+        event_dag_meta: dict[str, Any]
+        try:
+            event_store.add_event(envelope["event_cid"], envelope["event"])
+            obligations = len(policy_decision.obligations) if policy_decision is not None else 0
+            record = risk_scheduler.record_outcome(
+                actor=risk_actor,
+                allowed=True,
+                obligations=obligations,
+                event_cid=envelope["event_cid"],
+            )
+            frontier_item = risk_scheduler.enqueue_frontier(
+                event_cid=envelope["event_cid"],
+                actor=risk_actor,
+                expected_value=0.75,
+                dependency_ready=True,
+                metadata={"category": category, "tool_name": tool_name},
+            )
+            event_dag_meta = {
+                "persisted": True,
+                "lineage": event_store.get_lineage(envelope["event_cid"]),
+                "stats": event_store.stats(),
+            }
+        except Exception as exc:
+            event_dag_meta = {
+                "persisted": False,
+                "error": str(exc),
+                "lineage": [],
+                "stats": event_store.stats(),
+            }
+            record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True)
+            frontier_item = None
+
+        return {
+            "ok": True,
+            "result": result,
+            "artifacts": {
+                "input_cid": envelope["input_cid"],
+                "intent_cid": envelope["intent_cid"],
+                "decision_cid": envelope["decision_cid"],
+                "output_cid": envelope["output_cid"],
+                "receipt_cid": envelope["receipt_cid"],
+                "event_cid": envelope["event_cid"],
+            },
+            "artifact_payloads": {
+                "intent": envelope["intent"],
+                "decision": envelope["decision"],
+                "receipt": envelope["receipt"],
+                "event": envelope["event"],
+            },
+            "event_dag": event_dag_meta,
+            "risk": record.to_dict(),
+            "frontier": {
+                "enqueued": frontier_item is not None,
+                "priority": round(frontier_item.priority, 5) if frontier_item is not None else None,
+                "event_cid": frontier_item.event_cid if frontier_item is not None else None,
+                "stats": risk_scheduler.stats(),
+            },
+            "policy": policy_decision.to_dict() if policy_decision is not None else None,
+        }
+
+        # unreachable placeholder to keep static analyzers calm about branch
+        # structure; response is returned above.
 
     async def tools_runtime_metrics() -> dict[str, Any]:
         return {"runtimes": runtime_router.get_metrics()}
@@ -122,6 +312,18 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_meta_tools", get_unified_meta_tool_names())
     setattr(server, "_unified_preloaded_categories", preloaded_categories)
     setattr(server, "_unified_services", _build_unified_services())
+    setattr(server, "_unified_event_dag", event_store)
+    setattr(server, "_unified_risk_scheduler", risk_scheduler)
+    setattr(server, "_unified_supported_profiles", get_unified_supported_profiles())
+    setattr(
+        server,
+        "_unified_profile_negotiation",
+        {
+            "supports_profile_negotiation": True,
+            "mode": "optional_additive",
+            "profiles": get_unified_supported_profiles(),
+        },
+    )
 
     # Register compact hierarchical meta-tools if legacy server supports it.
     if hasattr(server, "register_tool") and callable(getattr(server, "register_tool")):

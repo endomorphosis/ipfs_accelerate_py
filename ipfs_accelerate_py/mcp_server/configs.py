@@ -41,6 +41,9 @@ class UnifiedMCPServerConfig:
 
     enable_unified_bridge: bool = False
     enable_unified_bootstrap: bool = False
+    enable_cid_artifact_emission: bool = False
+    enable_ucan_validation: bool = False
+    enable_policy_evaluation: bool = False
     preload_categories: List[str] = field(default_factory=list)
 
     @classmethod
@@ -50,11 +53,17 @@ class UnifiedMCPServerConfig:
         Environment variables:
         - `IPFS_MCP_ENABLE_UNIFIED_BRIDGE`
         - `IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP`
+        - `IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS`
+        - `IPFS_MCP_SERVER_ENABLE_UCAN_VALIDATION`
+        - `IPFS_MCP_SERVER_ENABLE_POLICY_EVALUATION`
         - `IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES`
         """
         return cls(
             enable_unified_bridge=env_enabled("IPFS_MCP_ENABLE_UNIFIED_BRIDGE", default=False),
             enable_unified_bootstrap=env_enabled("IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP", default=False),
+            enable_cid_artifact_emission=env_enabled("IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS", default=False),
+            enable_ucan_validation=env_enabled("IPFS_MCP_SERVER_ENABLE_UCAN_VALIDATION", default=False),
+            enable_policy_evaluation=env_enabled("IPFS_MCP_SERVER_ENABLE_POLICY_EVALUATION", default=False),
             preload_categories=parse_preload_categories(
                 os.environ.get("IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES", ""),
                 allowed_preload_categories,

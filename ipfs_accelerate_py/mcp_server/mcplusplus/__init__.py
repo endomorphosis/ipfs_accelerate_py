@@ -36,6 +36,46 @@ from .result_cache import (
     MemoryCacheBackend,
     ResultCache,
 )
+from .idl_registry import (
+    CompatibilityVerdict,
+    InterfaceDescriptorRegistry,
+    build_descriptor,
+    canonicalize_descriptor,
+    compute_interface_cid,
+)
+from .artifacts import (
+    build_decision,
+    build_event,
+    build_intent,
+    build_receipt,
+    canonicalize_artifact,
+    compute_artifact_cid,
+    envelope_from_payloads,
+)
+from .delegation import (
+    UcanCapability,
+    UcanDelegation,
+    UcanValidationResult,
+    parse_delegation_chain,
+    validate_delegation_chain,
+    validate_raw_delegation_chain,
+)
+from .policy_engine import (
+    PolicyClause,
+    PolicyDecision,
+    evaluate_policy,
+    evaluate_raw_policy,
+    parse_policy_clauses,
+)
+from .event_dag import EventDAGStore, EventNode
+from .risk_scheduler import FrontierItem, RiskRecord, RiskScheduler
+from .p2p_framing import (
+    FrameSizeExceededError,
+    FramingError,
+    TokenBucketLimiter,
+    decode_jsonrpc_frame,
+    encode_jsonrpc_frame,
+)
 
 __all__ = [
     "HAVE_TASK_QUEUE",
@@ -72,4 +112,37 @@ __all__ = [
     "MemoryCacheBackend",
     "DiskCacheBackend",
     "ResultCache",
+    "CompatibilityVerdict",
+    "InterfaceDescriptorRegistry",
+    "build_descriptor",
+    "canonicalize_descriptor",
+    "compute_interface_cid",
+    "build_intent",
+    "build_decision",
+    "build_receipt",
+    "build_event",
+    "canonicalize_artifact",
+    "compute_artifact_cid",
+    "envelope_from_payloads",
+    "UcanCapability",
+    "UcanDelegation",
+    "UcanValidationResult",
+    "parse_delegation_chain",
+    "validate_delegation_chain",
+    "validate_raw_delegation_chain",
+    "PolicyClause",
+    "PolicyDecision",
+    "parse_policy_clauses",
+    "evaluate_policy",
+    "evaluate_raw_policy",
+    "EventNode",
+    "EventDAGStore",
+    "RiskRecord",
+    "FrontierItem",
+    "RiskScheduler",
+    "FramingError",
+    "FrameSizeExceededError",
+    "TokenBucketLimiter",
+    "encode_jsonrpc_frame",
+    "decode_jsonrpc_frame",
 ]

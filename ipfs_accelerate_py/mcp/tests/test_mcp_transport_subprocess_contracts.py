@@ -98,7 +98,9 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
             with patch.object(router, '_execute_trio', AsyncMock(return_value={'mode': 'trio', 'value': 'ok'})) as mock_trio:
                 result = await dispatch('transport', 'echo_trio', {'value': 'ok'})
 
-            assert result == {'mode': 'trio', 'value': 'ok'}
+            assert isinstance(result, dict)
+            assert result.get('mode') == 'trio'
+            assert result.get('value') == 'ok'
             assert mock_trio.await_count == 1
             print('TRIO_DISPATCH_OK')
 

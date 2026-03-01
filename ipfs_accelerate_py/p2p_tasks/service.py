@@ -50,7 +50,7 @@ from typing import Any, Dict, Optional
 from .protocol import PROTOCOL_V1, auth_ok, get_shared_token, read_ndjson_message
 
 # Optional MCP++ transport binding skeleton (length-prefixed JSON-RPC over libp2p)
-from .mcp_p2p import PROTOCOL_MCP_P2P_V1, handle_mcp_p2p_stream
+from .mcp_p2p import PROTOCOL_MCP_P2P_V1, get_mcp_p2p_stats, handle_mcp_p2p_stream
 from .task_queue import TaskQueue
 from .cache_store import DiskTTLCache, cache_enabled as _cache_enabled, default_cache_dir
 
@@ -175,6 +175,18 @@ def _env_str(*, primary: str, compat: str, default: str) -> str:
         raw = os.environ.get(compat)
     text = str(raw).strip() if raw is not None else ""
     return text or str(default)
+
+
+def _env_int(*, primary: str, compat: str, default: int) -> int:
+    raw = os.environ.get(primary)
+    if raw is None:
+        raw = os.environ.get(compat)
+    if raw is None:
+        return int(default)
+    try:
+        return int(str(raw).strip())
+    except Exception:
+        return int(default)
 
 
 def _default_announce_file() -> str:
@@ -1888,6 +1900,13 @@ async def serve_task_queue(
                         "supported_task_types": list(local_supported or []),
                     }
 
+                    # Surface MCP+p2p transport abuse/framing counters for
+                    # remote operators and autoscalers.
+                    resp.setdefault("transport", {})
+                    resp["transport"]["mcp_p2p"] = {
+                        "stats": get_mcp_p2p_stats(),
+                    }
+
                     try:
                         if local_worker_enabled and any(t.startswith("docker.") for t in (local_supported or [])):
                             resp["scheduler"]["counts"]["docker_workers_configured"] = 1
@@ -2231,11 +2250,18 @@ async def serve_task_queue(
     host.set_stream_handler(PROTOCOL_V1, _handle)
 
     async def _handle_mcp_p2p(stream) -> None:
+        max_frame_bytes = _env_int(
+            primary="IPFS_ACCELERATE_PY_MCP_P2P_MAX_FRAME_BYTES",
+            compat="IPFS_DATASETS_PY_MCP_P2P_MAX_FRAME_BYTES",
+            default=1024 * 1024,
+        )
+        if max_frame_bytes < 1:
+            max_frame_bytes = 1
         await handle_mcp_p2p_stream(
             stream,
             local_peer_id=peer_id,
             registry=accelerate_instance,
-            max_frame_bytes=1024 * 1024,
+            max_frame_bytes=max_frame_bytes,
         )
 
     host.set_stream_handler(PROTOCOL_MCP_P2P_V1, _handle_mcp_p2p)
