@@ -55,6 +55,39 @@ def _preload_configured_categories(manager: HierarchicalToolManager, preload_cat
     return loaded
 
 
+def _build_unified_services() -> dict[str, Any]:
+    """Build lazy MCP++ service factories for unified runtime composition.
+
+    Services are attached as callables to avoid heavy startup side-effects from
+    optional runtime dependencies.
+    """
+    return {
+        "task_queue_factory": lambda **kwargs: __import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["create_task_queue"]
+        ).create_task_queue(**kwargs),
+        "workflow_scheduler_factory": lambda **kwargs: __import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["create_workflow_scheduler"]
+        ).create_workflow_scheduler(**kwargs),
+        "workflow_engine_factory": lambda **kwargs: __import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["WorkflowEngine"]
+        ).WorkflowEngine(**kwargs),
+        "workflow_dag_executor_factory": lambda **kwargs: __import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["WorkflowDAGExecutor"]
+        ).WorkflowDAGExecutor(**kwargs),
+        "peer_registry_factory": lambda **kwargs: __import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["create_peer_registry"]
+        ).create_peer_registry(**kwargs),
+        "peer_discovery_factory": lambda **kwargs: __import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["PeerDiscoveryManager"]
+        ).PeerDiscoveryManager(**kwargs),
+        "result_cache_factory": lambda **kwargs: __import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["ResultCache", "MemoryCacheBackend"]
+        ).ResultCache(backend=__import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["MemoryCacheBackend"]
+        ).MemoryCacheBackend(), **kwargs),
+    }
+
+
 def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> None:
     """Attach unified migration components to a legacy MCP server instance.
 
@@ -88,6 +121,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_bootstrap_enabled", True)
     setattr(server, "_unified_meta_tools", get_unified_meta_tool_names())
     setattr(server, "_unified_preloaded_categories", preloaded_categories)
+    setattr(server, "_unified_services", _build_unified_services())
 
     # Register compact hierarchical meta-tools if legacy server supports it.
     if hasattr(server, "register_tool") and callable(getattr(server, "register_tool")):

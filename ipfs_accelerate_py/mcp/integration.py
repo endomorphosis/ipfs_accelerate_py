@@ -14,6 +14,89 @@ from typing import Dict, Any, Optional, List, Union, Callable
 # Set up logging
 logger = logging.getLogger("ipfs_accelerate_mcp.integration")
 
+
+class _FallbackStandaloneApp:
+    """Minimal fallback app used when FastAPI is unavailable.
+
+    This keeps integration tests and non-HTTP environments functional without
+    importing FastAPI.
+    """
+
+    def __init__(self, title: str, description: str):
+        self.title = title
+        self.description = description
+        self.mounts: list[dict[str, Any]] = []
+        self.routes: list[dict[str, Any]] = []
+
+    def mount(self, path: str, app: Any, name: Optional[str] = None) -> None:
+        self.mounts.append({"path": path, "app": app, "name": name})
+
+    def add_route(self, path: str, endpoint: Callable[..., Any], methods: Optional[List[str]] = None) -> None:
+        self.routes.append({"path": path, "endpoint": endpoint, "methods": methods or ["GET"]})
+
+
+def create_standalone_app(
+    mount_path: str = "/mcp",
+    name: str = "ipfs-accelerate",
+    description: str = "IPFS Accelerate MCP Server",
+    verbose: bool = False,
+) -> Any:
+    """Create a standalone application and mount MCP routes at `mount_path`."""
+    del verbose
+
+    title = "IPFS Accelerate MCP API"
+    app: Any
+
+    try:
+        from fastapi import FastAPI
+
+        app = FastAPI(
+            title=title,
+            description=description,
+            version="0.1.0",
+            docs_url="/docs",
+            redoc_url="/redoc",
+        )
+
+        @app.get("/healthz")
+        async def _healthz() -> Dict[str, Any]:
+            return {"status": "ok", "service": name}
+
+    except ImportError:
+        logger.warning("FastAPI is not installed; using fallback standalone app")
+        app = _FallbackStandaloneApp(title=title, description=description)
+
+        async def _healthz() -> Dict[str, Any]:
+            return {"status": "ok", "service": name}
+
+        app.add_route("/healthz", _healthz, methods=["GET"])
+
+    from ipfs_accelerate_py.mcp.server import create_mcp_server
+
+    # Avoid double-prefix routes: parent app mounts at /mcp, so child mount_path="".
+    mcp_server = create_mcp_server(
+        name=name,
+        description=description,
+        mount_path="",
+    )
+
+    mountable = getattr(mcp_server, "app", None)
+    app.mount(mount_path, mountable if mountable is not None else mcp_server, name="mcp_server")
+
+    # Keep a reference for callers/tests that need access to the mounted server instance.
+    setattr(app, "_mcp_server", mcp_server)
+    return app
+
+
+def run_standalone_app(app: Any, host: str = "localhost", port: int = 8000, verbose: bool = False) -> None:
+    """Run a standalone app using uvicorn."""
+    try:
+        import uvicorn
+    except ImportError as exc:
+        raise RuntimeError("uvicorn is required to run the standalone MCP app") from exc
+
+    uvicorn.run(app, host=host, port=int(port), log_level="debug" if verbose else "info")
+
 def integrate_with_ipfs_accelerate(
     server: Any,
     ipfs_accelerate_module: Any = None,

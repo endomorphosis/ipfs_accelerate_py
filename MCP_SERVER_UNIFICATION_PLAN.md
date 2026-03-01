@@ -1,262 +1,263 @@
 # MCP Server Unification Master Plan
 
-## 1. Goal
+## 1. Objective
 
-Create a single canonical MCP implementation at `ipfs_accelerate_py/mcp_server` by:
+Create a single canonical MCP runtime in `ipfs_accelerate_py/mcp_server` by porting from
+`ipfs_datasets_py/ipfs_datasets_py/mcp_server`, merging MCP++ capabilities from
+`ipfs_accelerate_py/mcplusplus_module`, and closing conformance against spec artifacts in
+`ipfs_accelerate_py/mcpplusplus`.
 
-- Porting feature-complete capabilities from `ipfs_datasets_py/ipfs_datasets_py/mcp_server`.
-- Merging MCP++ runtime features (task queue, workflow engine, peer discovery, caching, scheduling).
-- Aligning implementation and tests to the MCP++ spec target at `ipfs_accelerate_py/mcpplusplus`.
-- Preserving backward compatibility through feature-flagged bridge/cutover stages.
+Target outcome:
 
-## 2. Path Reality Check (Current Workspace)
+- `ipfs_accelerate_py/mcp_server` is the default runtime path.
+- `ipfs_accelerate_py/mcp` remains a temporary compatibility facade.
+- Spec tracking in `mcpplusplus/CONFORMANCE_CHECKLIST.md` and `mcpplusplus/SPEC_GAP_MATRIX.md`
+  is the merge gate for cutover.
 
-Verified in this workspace:
+## 2. Source and Target Reality
 
-- Canonical target runtime package exists: `ipfs_accelerate_py/mcp_server`.
-- Full source implementation exists: `ipfs_datasets_py/ipfs_datasets_py/mcp_server`.
-- MCP++ implementation set is currently present under source server at:
-  - `ipfs_datasets_py/ipfs_datasets_py/mcp_server/mcplusplus/*`
-- Existing target package currently contains core framework plus native Wave A tools:
-  - `ipfs_accelerate_py/mcp_server/tools/ipfs/native_ipfs_tools.py`
-  - `ipfs_accelerate_py/mcp_server/tools/workflow/native_workflow_tools.py`
-  - `ipfs_accelerate_py/mcp_server/tools/p2p/native_p2p_tools.py`
+Verified source inputs:
 
-Action item from this path check:
+- Full source server: `ipfs_datasets_py/ipfs_datasets_py/mcp_server`
+- Source MCP++ primitives: `ipfs_datasets_py/ipfs_datasets_py/mcp_server/mcplusplus/*`
+- Existing MCP++ runtime package: `ipfs_accelerate_py/mcplusplus_module/*`
 
-- Establish `ipfs_accelerate_py/mcpplusplus` as the canonical spec directory if not present, and keep spec docs versioned there.
-- Stage MCP++ runtime internals under `ipfs_accelerate_py/mcp_server/mcplusplus/` (or equivalent subpackage) as target runtime primitives.
+Verified target outputs:
 
-## 3. Current Progress Snapshot
+- Canonical runtime package: `ipfs_accelerate_py/mcp_server`
+- Target MCP++ primitive package: `ipfs_accelerate_py/mcp_server/mcplusplus`
+- Spec directory: `ipfs_accelerate_py/mcpplusplus`
 
-Already completed in target `ipfs_accelerate_py/mcp_server`:
+## 3. Current Progress (As Of Now)
 
-- Core framework modules ported and active:
-  - `configs.py`, `exceptions.py`, `runtime_router.py`, `hierarchical_tool_manager.py`, `registration_adapter.py`, `tool_registry.py`, `tool_metadata.py`.
-- Bridge/bootstrap path implemented and feature-flagged.
-- Unified meta-tools implemented:
-  - `tools_list_categories`, `tools_list_tools`, `tools_get_schema`, `tools_dispatch`, `tools_runtime_metrics`.
-- Native Wave A migration advanced for IPFS, workflow, and p2p.
-- Unified bootstrap regression suite currently green at 45 tests.
+Completed:
 
-## 4. Target Architecture (End State)
+- Core unification control-plane is active in target:
+  - `runtime_router.py`, `hierarchical_tool_manager.py`, `registration_adapter.py`, `tool_registry.py`, `tool_metadata.py`
+- Unified bridge/bootstrap and meta-tools are active:
+  - `tools_list_categories`, `tools_list_tools`, `tools_get_schema`, `tools_dispatch`, `tools_runtime_metrics`
+- Wave A native tool categories in target:
+  - `ipfs`, `workflow`, `p2p`
+- MCP++ primitive package added in target:
+  - `task_queue.py`, `workflow_scheduler.py`, `workflow_dag.py`, `workflow_engine.py`, `peer_registry.py`, `peer_discovery.py`, `result_cache.py`
+- Unified service container wiring added at bootstrap:
+  - `server._unified_services` factories for queue/workflow/peer/cache
+- Transport validation expanded:
+  - router parity tests
+  - in-process E2E transport matrix tests
+  - process helper wiring tests
+  - subprocess startup contract tests
+  - optional real-network trio-p2p test
 
-### 4.1 Runtime and Package Structure
+Open high-priority gaps:
+
+- Tool-surface parity (source has 51 categories; target has 3 migrated categories).
+- Security/policy/audit parity.
+- Monitoring/tracing/exporter parity.
+- `MCPP-013` transport parity CI enforcement in libp2p-enabled lane.
+
+## 4. End-State Architecture
+
+### 4.1 Runtime Layout
 
 - Canonical runtime: `ipfs_accelerate_py/mcp_server`
-- Compatibility facade: `ipfs_accelerate_py/mcp` (temporary)
-- Spec and conformance docs: `ipfs_accelerate_py/mcpplusplus`
-- MCP++ runtime internals:
-  - `ipfs_accelerate_py/mcp_server/mcplusplus/bootstrap.py`
-  - `ipfs_accelerate_py/mcp_server/mcplusplus/executor.py`
-  - `ipfs_accelerate_py/mcp_server/mcplusplus/task_queue.py`
-  - `ipfs_accelerate_py/mcp_server/mcplusplus/workflow_*`
-  - `ipfs_accelerate_py/mcp_server/mcplusplus/peer_*`
-  - `ipfs_accelerate_py/mcp_server/mcplusplus/result_cache.py`
+- Compatibility facade: `ipfs_accelerate_py/mcp`
+- Spec source-of-truth: `ipfs_accelerate_py/mcpplusplus`
 
 ### 4.2 Control Plane
 
-- Single hierarchical tool registry and dispatch path.
-- Runtime router with explicit runtime metadata and timeout semantics.
-- One registration path per tool name (no duplicates across legacy/native).
+- Single registration/dispatch path via hierarchical manager.
+- Runtime routing resolved through `RuntimeRouter` metadata and timeout semantics.
+- Deterministic category loaders and native-over-legacy precedence.
 
 ### 4.3 Execution Plane
 
-- FastAPI/stdio/trio-p2p runtime modes normalized behind unified router.
-- MCP++ queue, scheduler, DAG, cache, and peer registry integrated as shared services.
+- Unified support for stdio/http/trio-p2p dispatch contracts.
+- Shared service container for MCP++ queue/workflow/peer/cache primitives.
 
-## 5. Scope Inventory
+## 5. Conformance Status Summary
 
-Port and merge scope includes:
+From `mcpplusplus/CONFORMANCE_CHECKLIST.md`:
 
-- Core server lifecycle and transports (`server.py`, `standalone_server.py`, `fastapi_service.py`, transport adapters).
-- Dispatch and registry internals (`dispatch_pipeline.py`, `hierarchical_tool_manager.py`, metadata layers).
-- Security and policy subsystems (auth/policy/audit/vault/risk).
-- Observability and reliability subsystems (monitoring, tracing, metrics exporters).
-- MCP++ runtime primitives (`mcplusplus/*`).
-- Tool categories under `ipfs_datasets_py/ipfs_datasets_py/mcp_server/tools/*`.
-
-Out of scope for initial cutover:
-
-- Deleting legacy facade immediately.
-- Big-bang replacement of all categories in one release.
+- PASS: `MCPP-001` through `MCPP-011`
+- PARTIAL: `MCPP-012` (tool category parity), `MCPP-013` (transport parity enforcement)
+- GAP: `MCPP-014` (security/policy/audit), `MCPP-015` (observability/exporters)
 
 ## 6. Workstreams
 
-### W1. Spec and Conformance Baseline
+### W1. Spec and Governance (P0)
 
-- Create/refresh `ipfs_accelerate_py/mcpplusplus`.
-- Add/maintain:
-  - `README.md`
-  - `CONFORMANCE_CHECKLIST.md`
-  - `SPEC_GAP_MATRIX.md` (required/implemented/tested per capability).
-- Treat checklist entries as testable requirements with explicit evidence links.
+- Keep checklist and matrix as authoritative merge gates.
+- Require evidence links for each status transition.
 
-### W2. Core Runtime Convergence
+### W2. Runtime Hardening (P0)
 
-- Finish parity for server startup, runtime routing, transport mode selection, and error taxonomy.
-- Normalize config model and environment flags.
-- Ensure bridge mode cannot recurse and has deterministic precedence.
+- Stabilize bridge/bootstrap defaults and recursion protections.
+- Ensure service container factories remain side-effect-light at startup.
 
-### W3. MCP++ Runtime Merge
+### W3. MCP++ Primitive Integration (P0)
 
-- Port `mcplusplus` runtime modules from source into target `mcp_server/mcplusplus`.
-- Introduce adapters for any existing in-target alternatives.
-- Unify task queue and workflow engine interfaces behind one abstraction.
+- Move from primitive existence to runtime integration in server lifecycle:
+  - queue usage in p2p dispatch paths
+  - workflow orchestration hook points
+  - peer lifecycle hook points
+  - cache reuse hook points in dispatch/workflow execution
 
-### W4. Tool Surface Port (Wave Strategy)
+### W4. Tool Parity Waves (P0/P1)
 
-- Continue native tool migration by category waves.
-- Each migrated tool must include:
-  - schema parity
-  - deterministic `tools_dispatch` test
-  - legacy override skip rule where needed
-  - runtime metadata tags
+- Port source tool categories in waves with deterministic tests.
+- Add schema parity checks for migrated tools.
 
-### W5. Transport Parity
+### W5. Transport Parity and CI Lanes (P0)
 
-- Ensure parity across stdio/http/trio-p2p execution paths.
-- Define transport behavior contract and compatibility tests.
+- Keep existing transport parity suites as required.
+- Add libp2p-enabled CI lane that runs `test_mcp_transport_trio_p2p_networked.py` as required.
 
-### W6. Security and Policy Parity
+### W6. Security and Policy (P1)
 
-- Port and validate auth, policy, audit, and secrets integrations.
-- Add conformance tests for policy enforcement and audit trail integrity.
+- Port `policy_audit_log.py`, `secrets_vault.py`, `risk_scorer.py` equivalents.
+- Add enforcement/integrity tests.
 
-### W7. Observability and Reliability
+### W7. Observability and Reliability (P1)
 
-- Port metrics/logging/tracing parity.
-- Add SLO dashboards and timeout/error burn-rate alerts.
+- Port monitoring/tracing/exporters.
+- Add SLO and failure-rate assertions for critical paths.
 
-### W8. Compatibility and Cutover
+### W8. Cutover and Deprecation (P0/P1)
 
-- Keep `mcp` facade as compatibility layer until gates pass.
-- Gradually move defaults to unified `mcp_server`.
-- Publish deprecation schedule and rollback instructions.
+- Transition default runtime to `mcp_server` once P0 gates are green.
+- Keep rollback path and compatibility facade for one release window.
 
-## 7. Phased Delivery Plan
+## 7. Detailed Porting Plan
 
-### Phase 0: Baseline and Planning (Now)
+### Phase A: Lock Core and Transport Gates (1 week)
 
-- Path inventory and scope map complete.
-- Existing unification baseline acknowledged.
-- Master plan and gap matrix authored.
+Deliverables:
+
+- Ensure transport test suites are green in default lane:
+  - `test_mcp_server_transport_parity.py`
+  - `test_mcp_server_transport_e2e_matrix.py`
+  - `test_mcp_transport_process_level.py`
+  - `test_mcp_transport_subprocess_contracts.py`
+- Add CI lane for libp2p-enabled optional test as required.
 
 Exit criteria:
 
-- Approved migration plan with owner/date per phase.
-- Spec checklist and gap matrix created/updated.
+- `MCPP-013` evidence is executable in both default and libp2p CI lanes.
 
-### Phase 1: Core and Runtime Hardening
+### Phase B: Expand Tool Surface (2-4 weeks)
 
-- Complete core parity for runtime router/transport selection/server lifecycle.
-- Stabilize bridge/bootstrap behavior.
+Priority order:
 
-Exit criteria:
+1. `ipfs_tools` parity expansion
+2. `workflow_tools` parity expansion
+3. `p2p_tools` and `mcplusplus_*_tools` completion
+4. Next critical categories: `security_tools`, `monitoring_tools`, `storage_tools`, `vector_tools`
 
-- Core parity tests pass.
-- Runtime mode compatibility tests pass for all configured modes.
+Per-category checklist:
 
-### Phase 2: MCP++ Runtime Merge
-
-- Port and wire MCP++ primitives (queue/scheduler/workflow/peer/cache).
-- Integrate these primitives into unified services layer.
-
-Exit criteria:
-
-- MCP++ primitive test suite passes in target package.
-- Conformance matrix shows all core MCP++ requirements implemented or deferred with rationale.
-
-### Phase 3: Tool Category Completion
-
-- Finish remaining tool categories from source `tools/*`.
-- Resolve naming collisions and runtime metadata consistency.
+- Register native category loader in `mcp_server`.
+- Add deterministic `tools_dispatch` tests.
+- Add schema parity assertions for representative tools.
+- Add native precedence skip rules in wave loaders when needed.
 
 Exit criteria:
 
-- Tool parity matrix reaches agreed threshold (recommended 95%+ required tools).
-- All required categories have deterministic dispatch tests.
+- `MCPP-012` moved from `PARTIAL` to agreed threshold.
 
-### Phase 4: Security/Observability/Performance
+### Phase C: Security and Observability Parity (2 weeks)
 
-- Port security/policy/audit and telemetry parity.
-- Execute performance and reliability validation.
+Deliverables:
 
-Exit criteria:
-
-- Security regression suite green.
-- SLO and latency benchmarks meet target thresholds.
-
-### Phase 5: Cutover and Deprecation
-
-- Flip unified runtime as default.
-- Maintain compatibility facade for one release window.
-- Execute controlled deprecation of legacy paths.
+- Security/policy/audit modules ported and covered.
+- Monitoring/tracing/exporter modules ported and covered.
 
 Exit criteria:
 
-- Default startup uses unified runtime without flags.
-- Rollback path documented and validated.
+- `MCPP-014` and `MCPP-015` moved to `PASS` with evidence.
 
-## 8. Test Strategy and Gates
+### Phase D: Default Runtime Cutover (1 week)
 
-### Unit Gates
+Deliverables:
 
-- Core modules: router, manager, adapter, metadata, configs.
-- MCP++ primitives: queue, scheduler, cache, peer registry, workflow engine.
-- Tool wrappers: schema and return contract checks.
+- Default startup path uses unified runtime without migration flags.
+- Compatibility facade remains as rollback path.
 
-### Integration Gates
+Exit criteria:
 
-- Unified bootstrap and dispatch tests.
-- Transport-mode tests (stdio/http/trio-p2p).
-- Cross-runtime interop tests.
+- All P0 checklist items green.
+- Rollback procedure documented and tested.
 
-### Conformance Gates
+## 8. Source-to-Target Module Mapping (High-Level)
 
-- `CONFORMANCE_CHECKLIST.md` requirements mapped to executable tests.
-- No cutover unless all critical checklist items are green.
+Core runtime:
 
-### Release Gates
+- Source `runtime_router.py` -> Target `mcp_server/runtime_router.py`
+- Source `hierarchical_tool_manager.py` -> Target `mcp_server/hierarchical_tool_manager.py`
+- Source `dispatch_pipeline.py` -> integrate into target routing/dispatch layers as needed
 
-- Performance smoke benchmarks within tolerance.
-- Security/audit checks pass.
-- Feature-flag rollback verified.
+MCP++ primitives:
 
-## 9. Risk Register
+- Source `mcplusplus/task_queue.py` -> Target `mcp_server/mcplusplus/task_queue.py`
+- Source `mcplusplus/workflow_*` -> Target `mcp_server/mcplusplus/workflow_*`
+- Source `mcplusplus/peer_*` -> Target `mcp_server/mcplusplus/peer_*`
+- Source `mcplusplus/result_cache.py` -> Target `mcp_server/mcplusplus/result_cache.py`
 
-- Runtime divergence across fastapi/trio/bridge paths.
-  - Mitigation: single runtime router contract + transport-specific tests.
-- Duplicate tool registrations and schema drift.
-  - Mitigation: centralized registration adapter + parity matrix.
-- Scope explosion from source tool breadth.
-  - Mitigation: strict wave planning, per-wave exit criteria, no speculative ports.
-- Path/spec ambiguity.
-  - Mitigation: path inventory gate and explicit spec source-of-truth docs.
+Transports and lifecycle:
 
-## 10. Execution Backlog (Prioritized)
+- Source `standalone_server.py`/`fastapi_service.py`/`trio_adapter.py`
+  -> Target `mcp_server/server.py` + `mcp/integration.py` + `mcp/standalone.py` parity path
 
-### Immediate (Next 1-2 weeks)
+## 9. Execution Gates
 
-1. Create/refresh `ipfs_accelerate_py/mcpplusplus` spec files and gap matrix.
-2. Build source-to-target capability matrix:
-   - Source: `ipfs_datasets_py/ipfs_datasets_py/mcp_server`
-   - Target: `ipfs_accelerate_py/mcp_server`
-   - MCP++ runtime: `ipfs_datasets_py/ipfs_datasets_py/mcp_server/mcplusplus`
-3. Port MCP++ runtime primitives into target subpackage with adapter seams.
-4. Finish transport-mode parity tests.
+Gate G1: Conformance gate
 
-### Near Term (Next 3-6 weeks)
+- No merge of major migration slice without checklist/matrix update and test evidence.
 
-1. Complete remaining tool-category waves.
-2. Finish security/policy/audit parity.
-3. Harden observability and performance baselines.
-4. Run staged cutover in CI, then default runtime switch.
+Gate G2: Regression gate
 
-## 11. Success Metrics
+- New category migrations require deterministic dispatch tests.
 
-- 100% critical spec requirements implemented and tested.
-- 0 critical parity gaps in core MCP++ runtime primitives.
-- 0 unresolved blocking tool-category gaps for required categories.
-- Stable unified bootstrap suite with trendline growth and no regression flapping.
-- Unified `mcp_server` becomes default runtime with rollback path retained.
+Gate G3: Transport gate
+
+- Transport suites must pass in default lane.
+- Networked trio-p2p suite must pass in libp2p-enabled lane.
+
+Gate G4: Cutover gate
+
+- `MCPP-012` threshold met.
+- `MCPP-013`, `MCPP-014`, `MCPP-015` at `PASS`.
+
+## 10. Risks and Mitigations
+
+Risk: Tool registry drift between legacy and native paths.
+
+- Mitigation: single adapter path + native precedence skip rules + schema tests.
+
+Risk: Transport parity appears green locally but fails in real p2p runtime.
+
+- Mitigation: required libp2p CI lane and subprocess/networked tests.
+
+Risk: Primitive wrappers exist but are not actually used in runtime.
+
+- Mitigation: service container wiring and integration tests through `tools_dispatch`.
+
+Risk: Scope expansion across 51 source categories.
+
+- Mitigation: wave sequencing with category-level exit criteria.
+
+## 11. Immediate Next Actions (Concrete)
+
+1. Promote `test_mcp_transport_trio_p2p_networked.py` to required in libp2p CI lane.
+2. Start Wave B category migration with one high-impact category from source `tools/`.
+3. Add runtime integration tests proving queue/cache/workflow/peer services are invoked from dispatch paths.
+4. Start security parity port (`policy_audit_log`, `secrets_vault`, `risk_scorer`) with tests.
+
+## 12. Success Definition
+
+This plan is complete when:
+
+- `ipfs_accelerate_py/mcp_server` is default runtime.
+- `mcpplusplus/CONFORMANCE_CHECKLIST.md` critical requirements are all `PASS`.
+- Transport parity is enforced in both default and libp2p-enabled CI lanes.
+- Legacy `mcp` facade remains only as a temporary rollback-compatible layer.

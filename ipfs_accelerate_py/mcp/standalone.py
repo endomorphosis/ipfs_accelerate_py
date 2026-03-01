@@ -44,19 +44,17 @@ def run_server(
     
     try:
         # Import MCP modules
-        from ipfs_accelerate_py.mcp.server import create_server, register_components, start_server
-        
-        # Create server
-        mcp = create_server(
+        from ipfs_accelerate_py.mcp.server import create_mcp_server
+
+        # Create server wrapper with compatible startup options.
+        mcp = create_mcp_server(
             host=host,
             port=port,
             name=name,
             description=description,
-            verbose=verbose
+            debug=bool(verbose),
+            mount_path="/mcp",
         )
-        
-        # Register components
-        register_components(mcp)
         
         # Set up signal handlers for graceful shutdown
         def signal_handler(sig, frame):
@@ -73,7 +71,10 @@ def run_server(
         
         # Start server (this will block until the server is stopped)
         logger.info(f"Server listening on http://{host}:{port}")
-        start_server(mcp, wait=True)
+        if hasattr(mcp, "run") and callable(getattr(mcp, "run")):
+            mcp.run(host=host, port=port)
+        else:
+            raise RuntimeError("MCP server instance does not expose a run() method")
     
     except KeyboardInterrupt:
         logger.info("Keyboard interrupt received, stopping server...")

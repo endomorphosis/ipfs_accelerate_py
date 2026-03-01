@@ -230,12 +230,63 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertIsNotNone(getattr(server, "_unified_runtime_router", None))
         self.assertEqual(getattr(server, "_unified_meta_tools", []), get_unified_meta_tool_names())
         self.assertEqual(getattr(server, "_unified_preloaded_categories", []), [])
+        self.assertIsInstance(getattr(server, "_unified_services", None), dict)
+        self.assertIn("task_queue_factory", server._unified_services)
+        self.assertIn("workflow_scheduler_factory", server._unified_services)
+        self.assertIn("workflow_engine_factory", server._unified_services)
+        self.assertIn("workflow_dag_executor_factory", server._unified_services)
+        self.assertIn("peer_registry_factory", server._unified_services)
+        self.assertIn("peer_discovery_factory", server._unified_services)
+        self.assertIn("result_cache_factory", server._unified_services)
         self.assertIn("tools_list_categories", server.tools)
         self.assertIn("tools_list_tools", server.tools)
         self.assertIn("tools_get_schema", server.tools)
         self.assertIn("tools_dispatch", server.tools)
         self.assertIn("tools_runtime_metrics", server.tools)
         self.assertEqual(sorted(get_unified_meta_tool_names()), sorted(server.tools.keys()))
+
+    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    def test_unified_bootstrap_service_factories_smoke(self, mock_create):
+        """Unified bootstrap should provide callable MCP++ service factories."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        dummy = DummyServer()
+        mock_create.return_value = dummy
+
+        with patch.dict(os.environ, {"IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1"}, clear=False):
+            server = create_server(name="dummy")
+
+        services = server._unified_services
+        self.assertTrue(callable(services["task_queue_factory"]))
+        self.assertTrue(callable(services["workflow_scheduler_factory"]))
+        self.assertTrue(callable(services["workflow_engine_factory"]))
+        self.assertTrue(callable(services["workflow_dag_executor_factory"]))
+        self.assertTrue(callable(services["peer_registry_factory"]))
+        self.assertTrue(callable(services["peer_discovery_factory"]))
+        self.assertTrue(callable(services["result_cache_factory"]))
+
+        # Instantiate low-risk local services to ensure factories are wired.
+        task_queue = services["task_queue_factory"]()
+        workflow_engine = services["workflow_engine_factory"](max_concurrent_tasks=2)
+        dag_executor = services["workflow_dag_executor_factory"](max_concurrent=2)
+        result_cache = services["result_cache_factory"](default_ttl=5.0)
+
+        self.assertTrue(hasattr(task_queue, "submit"))
+        self.assertTrue(hasattr(workflow_engine, "execute_workflow"))
+        self.assertTrue(hasattr(dag_executor, "execute_workflow"))
+        self.assertTrue(hasattr(result_cache, "get"))
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
     def test_create_server_bootstrap_flag_disabled(self, mock_create):
