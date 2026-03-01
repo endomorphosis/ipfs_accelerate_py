@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import threading
 from typing import Any, Dict, Iterable, Optional
 
 
@@ -129,6 +130,8 @@ def envelope_from_payloads(
     tool: str,
     output_payload: Dict[str, Any],
     decision: str = "allow",
+    decision_justification: str = "",
+    decision_obligations: Optional[Iterable[Dict[str, Any]]] = None,
     proof_cid: str = "",
     policy_cid: str = "",
     correlation_id: str = "",
@@ -152,6 +155,8 @@ def envelope_from_payloads(
         intent_cid=intent_cid,
         policy_cid=policy_cid,
         proofs_checked=[proof_cid] if proof_cid else [],
+        justification=str(decision_justification or ""),
+        obligations=list(decision_obligations or []),
     )
     decision_cid = compute_artifact_cid(decision_payload)
 
@@ -191,7 +196,52 @@ def envelope_from_payloads(
     }
 
 
+class ArtifactStore:
+    """Thread-safe in-memory artifact store keyed by CID.
+
+    The store is intentionally simple for deterministic testability while the
+    broader persistence backend strategy is finalized.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._by_cid: dict[str, dict[str, Any]] = {}
+
+    def put(self, cid: str, payload: dict[str, Any]) -> None:
+        """Persist one artifact payload by content-addressed identifier."""
+        key = str(cid or "").strip()
+        if not key:
+            return
+        with self._lock:
+            self._by_cid[key] = dict(payload)
+
+    def put_many(self, records: dict[str, dict[str, Any]]) -> int:
+        """Persist a mapping of `cid -> payload` and return number written."""
+        count = 0
+        with self._lock:
+            for cid, payload in (records or {}).items():
+                key = str(cid or "").strip()
+                if not key or not isinstance(payload, dict):
+                    continue
+                self._by_cid[key] = dict(payload)
+                count += 1
+        return count
+
+    def get(self, cid: str) -> Optional[dict[str, Any]]:
+        """Return a stored artifact payload by CID, if present."""
+        key = str(cid or "").strip()
+        with self._lock:
+            payload = self._by_cid.get(key)
+            return dict(payload) if isinstance(payload, dict) else None
+
+    def stats(self) -> dict[str, int]:
+        """Return deterministic store statistics."""
+        with self._lock:
+            return {"artifact_count": int(len(self._by_cid))}
+
+
 __all__ = [
+    "ArtifactStore",
     "build_decision",
     "build_event",
     "build_intent",

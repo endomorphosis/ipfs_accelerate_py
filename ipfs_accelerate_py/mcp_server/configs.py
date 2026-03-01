@@ -44,6 +44,7 @@ class UnifiedMCPServerConfig:
     enable_cid_artifact_emission: bool = False
     enable_ucan_validation: bool = False
     enable_policy_evaluation: bool = False
+    enable_risk_frontier_execution: bool = False
     preload_categories: List[str] = field(default_factory=list)
 
     @classmethod
@@ -56,6 +57,7 @@ class UnifiedMCPServerConfig:
         - `IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS`
         - `IPFS_MCP_SERVER_ENABLE_UCAN_VALIDATION`
         - `IPFS_MCP_SERVER_ENABLE_POLICY_EVALUATION`
+        - `IPFS_MCP_SERVER_ENABLE_RISK_FRONTIER_EXECUTION`
         - `IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES`
         """
         return cls(
@@ -64,6 +66,10 @@ class UnifiedMCPServerConfig:
             enable_cid_artifact_emission=env_enabled("IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS", default=False),
             enable_ucan_validation=env_enabled("IPFS_MCP_SERVER_ENABLE_UCAN_VALIDATION", default=False),
             enable_policy_evaluation=env_enabled("IPFS_MCP_SERVER_ENABLE_POLICY_EVALUATION", default=False),
+            enable_risk_frontier_execution=env_enabled(
+                "IPFS_MCP_SERVER_ENABLE_RISK_FRONTIER_EXECUTION",
+                default=False,
+            ),
             preload_categories=parse_preload_categories(
                 os.environ.get("IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES", ""),
                 allowed_preload_categories,

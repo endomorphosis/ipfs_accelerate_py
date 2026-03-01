@@ -24,6 +24,11 @@ from ipfs_accelerate_py.mcp_server import (
 from ipfs_accelerate_py.mcp_server.server import create_server, _parse_preload_categories
 from ipfs_accelerate_py.mcp.server import create_mcp_server
 from ipfs_accelerate_py.mcp_server.exceptions import RuntimeExecutionError
+from ipfs_accelerate_py.mcp_server.mcplusplus.delegation import (
+    compute_delegation_proof_cid,
+    compute_delegation_signature,
+    parse_delegation_chain,
+)
 
 
 class TestUnifiedMCPServerBootstrap(unittest.TestCase):
@@ -79,6 +84,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             {
                 "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
                 "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "true",
+                "IPFS_MCP_SERVER_ENABLE_RISK_FRONTIER_EXECUTION": "1",
                 "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "workflow,p2p",
             },
             clear=False,
@@ -89,6 +95,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
         self.assertTrue(config.enable_unified_bridge)
         self.assertTrue(config.enable_unified_bootstrap)
+        self.assertTrue(config.enable_risk_frontier_execution)
         self.assertEqual(config.preload_categories, ["workflow", "p2p"])
 
     def test_runtime_router_resolves_metadata_runtime(self):
@@ -459,6 +466,196 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             compat = await dispatch("idl", "interfaces_compat", {"interface_cid": first_cid})
             self.assertIn("compatible", compat)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_idl_tools_include_preloaded_ipfs_category_descriptors(self, mock_wrapper):
+        """IDL tools should include descriptors derived from preloaded Wave A categories."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "ipfs",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="idl-preloaded-descriptors")
+
+        async def _run_flow() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await dispatch("idl", "interfaces_list", {})
+            self.assertIsInstance(listed, dict)
+            self.assertGreaterEqual(listed.get("count", 0), 2)
+
+            found_ipfs_descriptor = False
+            for interface_cid in listed.get("interface_cids", []):
+                payload = await dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                descriptor = (payload or {}).get("descriptor") or {}
+                if descriptor.get("name") != "ipfs_tools":
+                    continue
+
+                methods = descriptor.get("methods", [])
+                self.assertTrue(any(m.get("name") == "ipfs/ipfs_files_validate_cid" for m in methods if isinstance(m, dict)))
+
+                compat = await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                self.assertTrue(compat.get("compatible"))
+                found_ipfs_descriptor = True
+                break
+
+            self.assertTrue(found_ipfs_descriptor)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_idl_tools_include_preloaded_workflow_category_descriptors(self, mock_wrapper):
+        """IDL tools should include descriptors for preloaded workflow category tools."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "workflow",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="idl-preloaded-workflow-descriptors")
+
+        async def _run_flow() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await dispatch("idl", "interfaces_list", {})
+            self.assertIsInstance(listed, dict)
+            self.assertGreaterEqual(listed.get("count", 0), 2)
+
+            found_workflow_descriptor = False
+            for interface_cid in listed.get("interface_cids", []):
+                payload = await dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                descriptor = (payload or {}).get("descriptor") or {}
+                if descriptor.get("name") != "workflow_tools":
+                    continue
+
+                methods = descriptor.get("methods", [])
+                self.assertTrue(any(m.get("name") == "workflow/get_workflow_templates" for m in methods if isinstance(m, dict)))
+
+                compat = await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                self.assertTrue(compat.get("compatible"))
+                found_workflow_descriptor = True
+                break
+
+            self.assertTrue(found_workflow_descriptor)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_idl_tools_include_preloaded_p2p_category_descriptors_with_loader_patch(self, mock_wrapper):
+        """IDL tools should include p2p descriptor when p2p preload loader registers tools."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        def _patched_load_p2p_tools(manager):
+            async def _p2p_ping(peer_id: str = ""):
+                return {"ok": True, "peer_id": str(peer_id or "")}
+
+            manager.register_tool(
+                category="p2p",
+                name="p2p_ping",
+                func=_p2p_ping,
+                description="Patched p2p ping for deterministic preload coverage.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"peer_id": {"type": "string", "default": ""}},
+                    "required": [],
+                },
+                runtime="trio",
+                tags=["native", "wave-a", "p2p"],
+            )
+
+        with patch("ipfs_accelerate_py.mcp_server.wave_a_loaders.load_p2p_tools", new=_patched_load_p2p_tools):
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                    "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "p2p",
+                },
+                clear=False,
+            ):
+                server = create_mcp_server(name="idl-preloaded-p2p-descriptors")
+
+        async def _run_flow() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await dispatch("idl", "interfaces_list", {})
+            self.assertIsInstance(listed, dict)
+            self.assertGreaterEqual(listed.get("count", 0), 2)
+
+            found_p2p_descriptor = False
+            for interface_cid in listed.get("interface_cids", []):
+                payload = await dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                descriptor = (payload or {}).get("descriptor") or {}
+                if descriptor.get("name") != "p2p_tools":
+                    continue
+
+                methods = descriptor.get("methods", [])
+                self.assertTrue(any(m.get("name") == "p2p/p2p_ping" for m in methods if isinstance(m, dict)))
+
+                compat = await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                self.assertTrue(compat.get("compatible"))
+                found_p2p_descriptor = True
+                break
+
+            self.assertTrue(found_p2p_descriptor)
 
         anyio.run(_run_flow)
 
@@ -2311,6 +2508,67 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(payloads["decision"]["policy_cid"], "cid-policy")
             self.assertEqual(payloads["event"]["parents"], ["cid-parent-1"])
 
+            artifact_store = response.get("artifact_store") or {}
+            self.assertTrue(artifact_store.get("persisted"))
+            self.assertEqual(int(artifact_store.get("written") or 0), 6)
+
+            event_payload = server._unified_artifact_store.get(artifacts["event_cid"])
+            self.assertIsNotNone(event_payload)
+            self.assertEqual((event_payload or {}).get("intent_cid"), artifacts["intent_cid"])
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_artifact_envelope_default_policy_from_config(self, mock_wrapper):
+        """`tools_dispatch` should emit artifacts by default when config flag enables CID artifacts."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-artifacts-default-policy")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__correlation_id": "corr-default",
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            self.assertIn("artifacts", response)
+            self.assertIn("artifact_payloads", response)
+            self.assertTrue((response.get("artifact_store") or {}).get("persisted"))
+
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
@@ -2431,6 +2689,168 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_ucan_allows_valid_signed_chain(self, mock_wrapper):
+        """`tools_dispatch` should allow execution when signature-required UCAN chain validates."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-ucan-signed-allow")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            unsigned_chain = parse_delegation_chain(
+                [
+                    {
+                        "issuer": "did:user:alice",
+                        "audience": "did:model:planner",
+                        "capabilities": [{"resource": "*", "ability": "invoke"}],
+                    },
+                    {
+                        "issuer": "did:model:planner",
+                        "audience": "did:model:worker",
+                        "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                    },
+                ]
+            )
+            issuer_keys = {
+                "did:user:alice": "pk-alice",
+                "did:model:planner": "pk-planner",
+            }
+            signed_chain = []
+            for d in unsigned_chain:
+                signed_chain.append(
+                    {
+                        "issuer": d.issuer,
+                        "audience": d.audience,
+                        "capabilities": [{"resource": c.resource, "ability": c.ability} for c in d.capabilities],
+                        "proof_cid": compute_delegation_proof_cid(d),
+                        "signature": compute_delegation_signature(delegation=d, issuer_key_hint=issuer_keys.get(d.issuer, "")),
+                    }
+                )
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_ucan": True,
+                    "__ucan_actor": "did:model:worker",
+                    "__ucan_proof_chain": signed_chain,
+                    "__ucan_require_signatures": True,
+                    "__ucan_issuer_public_keys": issuer_keys,
+                },
+            )
+
+            self.assertEqual(response["echo"], "ok")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_ucan_denies_revoked_signed_proof(self, mock_wrapper):
+        """`tools_dispatch` should deny execution when signed UCAN proof is revoked."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-ucan-signed-revoked")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            delegation = parse_delegation_chain(
+                [
+                    {
+                        "issuer": "did:user:alice",
+                        "audience": "did:model:worker",
+                        "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                    }
+                ]
+            )[0]
+            issuer_key = "pk-alice"
+            proof_cid = compute_delegation_proof_cid(delegation)
+            signature = compute_delegation_signature(delegation=delegation, issuer_key_hint=issuer_key)
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_ucan": True,
+                    "__ucan_actor": "did:model:worker",
+                    "__ucan_proof_chain": [
+                        {
+                            "issuer": delegation.issuer,
+                            "audience": delegation.audience,
+                            "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                            "proof_cid": proof_cid,
+                            "signature": signature,
+                        }
+                    ],
+                    "__ucan_require_signatures": True,
+                    "__ucan_issuer_public_keys": {"did:user:alice": issuer_key},
+                    "__ucan_revoked_proof_cids": [proof_cid],
+                },
+            )
+
+            self.assertFalse(response["ok"])
+            self.assertEqual(response["error"], "authorization_denied")
+            self.assertEqual(response["authorization"]["reason"], "revoked_proof_at_hop_0")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_policy_denies(self, mock_wrapper):
         """`tools_dispatch` should deny execution when temporal policy evaluator returns deny."""
 
@@ -2487,6 +2907,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertFalse(response["ok"])
             self.assertEqual(response["error"], "policy_denied")
             self.assertEqual(response["policy"]["decision"], "deny")
+            policy_decision = response.get("policy_decision") or {}
+            self.assertTrue(str(policy_decision.get("decision_cid") or "").startswith("cidv1-sha256-"))
+            self.assertTrue(policy_decision.get("persisted"))
+
+            stored = server._unified_artifact_store.get(policy_decision.get("decision_cid"))
+            self.assertIsNotNone(stored)
+            self.assertEqual((stored or {}).get("decision"), "deny")
 
         anyio.run(_run_flow)
 
@@ -2554,6 +2981,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(response["result"]["echo"], "ok")
             self.assertEqual(response["policy"]["decision"], "allow_with_obligations")
             self.assertEqual(len(response["policy"]["obligations"]), 1)
+            policy_decision = response.get("policy_decision") or {}
+            self.assertTrue(str(policy_decision.get("decision_cid") or "").startswith("cidv1-sha256-"))
+            self.assertTrue(policy_decision.get("persisted"))
+
+            stored = server._unified_artifact_store.get(policy_decision.get("decision_cid"))
+            self.assertIsNotNone(stored)
+            self.assertEqual((stored or {}).get("decision"), "allow_with_obligations")
+            self.assertEqual(len((stored or {}).get("obligations") or []), 1)
 
         anyio.run(_run_flow)
 
@@ -2615,6 +3050,68 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             stored = server._unified_event_dag.get_event(second_event)
             self.assertIsNotNone(stored)
             self.assertEqual(stored["parents"], [first_event])
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_event_dag_snapshot_replay_and_rollback(self, mock_wrapper):
+        """Event DAG snapshots should support deterministic replay/rollback traversal."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-event-dag-snapshot")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            root = await dispatch("smoke", "echo", {"value": "root", "__emit_artifacts": True})
+            root_event = root["artifacts"]["event_cid"]
+
+            leaf = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "leaf",
+                    "__emit_artifacts": True,
+                    "__parent_event_cids": [root_event],
+                },
+            )
+            leaf_event = leaf["artifacts"]["event_cid"]
+
+            snapshot = server._unified_event_dag.export_snapshot()
+            rebuilt = type(server._unified_event_dag).from_snapshot(snapshot)
+
+            replay = rebuilt.replay_from_root(root_event)
+            self.assertEqual(replay, [root_event, leaf_event])
+
+            rollback = rebuilt.rollback_path(leaf_event)
+            self.assertEqual(rollback, [leaf_event, root_event])
 
         anyio.run(_run_flow)
 
@@ -2684,6 +3181,90 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("frontier", allowed)
             self.assertTrue(allowed["frontier"]["enqueued"])
             self.assertGreaterEqual(allowed["frontier"]["stats"]["frontier_size"], 1)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_frontier_execution_binds_to_workflow_scheduler(self, mock_wrapper):
+        """Frontier execution should bind popped items to workflow scheduler when available."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakeWorkflowScheduler:
+            def __init__(self):
+                self.calls = []
+
+            async def submit_workflow(self, workflow_name, tasks, metadata=None):
+                self.calls.append(
+                    {
+                        "workflow_name": workflow_name,
+                        "tasks": tasks,
+                        "metadata": metadata,
+                    }
+                )
+                return {"workflow_id": "wf-risk-1"}
+
+        fake_scheduler = FakeWorkflowScheduler()
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-frontier-workflow-bind")
+
+        # Force deterministic local scheduler binding to avoid optional dependency behavior.
+        server._unified_services["workflow_scheduler_factory"] = lambda **kwargs: fake_scheduler
+        server._unified_services["task_queue_factory"] = lambda **kwargs: None
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__emit_artifacts": True,
+                    "__risk_actor": "did:model:risk-exec",
+                    "__execute_frontier": True,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            frontier = response.get("frontier") or {}
+            execution = frontier.get("execution") or {}
+            self.assertTrue(execution.get("attempted"))
+            self.assertTrue(execution.get("scheduled"))
+            self.assertEqual(execution.get("route"), "workflow_scheduler")
+            self.assertEqual(execution.get("workflow_id"), "wf-risk-1")
+            self.assertEqual(frontier.get("event_cid"), execution.get("event_cid"))
+
+            self.assertEqual(len(fake_scheduler.calls), 1)
+            call = fake_scheduler.calls[0]
+            self.assertEqual(call["workflow_name"], "risk_frontier_dispatch")
+            self.assertEqual(call["tasks"][0]["task_type"], "mcp.frontier.execute")
+            self.assertEqual(call["tasks"][0]["payload"]["event_cid"], response["artifacts"]["event_cid"])
 
         anyio.run(_run_flow)
 

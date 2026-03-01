@@ -60,6 +60,36 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
         self.assertIn("missing_required_capabilities", verdict.reasons)
         self.assertIn("mcp++/profile-z-nonexistent", verdict.requires_missing)
 
+    def test_registry_compatibility_normalizes_versioned_capabilities(self) -> None:
+        registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl@1.0.0"])
+        cid = registry.register_descriptor(
+            build_descriptor(
+                name="version-tolerant",
+                namespace="test.ns",
+                version="1.0.0",
+                methods=[{"name": "x", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                requires=["mcp++/profile-a-idl"],
+            )
+        )
+        verdict = registry.compat(cid)
+        self.assertTrue(verdict.compatible)
+        self.assertEqual(verdict.requires_missing, [])
+
+    def test_registry_compatibility_normalizes_case_and_whitespace(self) -> None:
+        registry = InterfaceDescriptorRegistry(supported_capabilities=["  MCP++/PROFILE-A-IDL  "])
+        cid = registry.register_descriptor(
+            build_descriptor(
+                name="normalized-token",
+                namespace="test.ns",
+                version="1.0.0",
+                methods=[{"name": "x", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                requires=["mcp++/profile-a-idl"],
+            )
+        )
+        verdict = registry.compat(cid)
+        self.assertTrue(verdict.compatible)
+        self.assertEqual(verdict.requires_missing, [])
+
     def test_native_idl_tools_dispatch_flow(self) -> None:
         async def _run() -> None:
             manager = HierarchicalToolManager(runtime_router=RuntimeRouter())
@@ -84,6 +114,53 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
             selected = await manager.dispatch("idl", "interfaces_select", {"task_hint_cid": "", "budget": 1})
             self.assertEqual(selected.get("count"), 1)
             self.assertEqual(len(selected.get("selected_interface_cids", [])), 1)
+
+        anyio.run(_run)
+
+    def test_native_idl_tools_include_loaded_category_descriptors(self) -> None:
+        async def _run() -> None:
+            manager = HierarchicalToolManager(runtime_router=RuntimeRouter())
+
+            async def ipfs_echo(cid: str) -> dict:
+                return {"cid": cid}
+
+            manager.register_tool(
+                category="ipfs",
+                name="ipfs_echo",
+                func=ipfs_echo,
+                description="Echo CID",
+                input_schema={
+                    "type": "object",
+                    "properties": {"cid": {"type": "string"}},
+                    "required": ["cid"],
+                },
+                runtime="fastapi",
+            )
+
+            register_native_idl_tools(
+                manager,
+                supported_capabilities=[
+                    "mcp++/profile-a-idl",
+                    "mcp++/profile-e-mcp-p2p",
+                ],
+            )
+
+            listed = await manager.dispatch("idl", "interfaces_list", {})
+            self.assertGreaterEqual(listed.get("count", 0), 2)
+
+            found_ipfs_descriptor = False
+            for interface_cid in listed.get("interface_cids", []):
+                payload = await manager.dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                descriptor = (payload or {}).get("descriptor") or {}
+                if descriptor.get("name") == "ipfs_tools":
+                    found_ipfs_descriptor = True
+                    methods = descriptor.get("methods", [])
+                    self.assertTrue(any(m.get("name") == "ipfs/ipfs_echo" for m in methods if isinstance(m, dict)))
+                    verdict = await manager.dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                    self.assertTrue(verdict.get("compatible"))
+                    break
+
+            self.assertTrue(found_ipfs_descriptor)
 
         anyio.run(_run)
 

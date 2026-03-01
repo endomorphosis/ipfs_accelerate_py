@@ -6,6 +6,7 @@ from __future__ import annotations
 import unittest
 
 from ipfs_accelerate_py.mcp_server.mcplusplus.artifacts import (
+    ArtifactStore,
     build_decision,
     build_event,
     build_intent,
@@ -64,6 +65,27 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
         self.assertEqual(envelope["receipt"]["decision_cid"], envelope["decision_cid"])
         self.assertEqual(envelope["event"]["receipt_cid"], envelope["receipt_cid"])
         self.assertEqual(envelope["event"]["parents"], ["cid-parent"])
+
+    def test_artifact_store_put_many_and_stats(self) -> None:
+        store = ArtifactStore()
+        written = store.put_many(
+            {
+                "cid-a": {"k": "a"},
+                "cid-b": {"k": "b"},
+            }
+        )
+        self.assertEqual(written, 2)
+        self.assertEqual(store.stats().get("artifact_count"), 2)
+
+    def test_artifact_store_returns_payload_copy(self) -> None:
+        store = ArtifactStore()
+        store.put("cid-x", {"k": "v"})
+        payload = store.get("cid-x")
+        self.assertEqual(payload, {"k": "v"})
+
+        # Ensure callers cannot mutate internal store state via returned object.
+        payload["k"] = "changed"
+        self.assertEqual(store.get("cid-x"), {"k": "v"})
 
 
 if __name__ == "__main__":

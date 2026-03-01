@@ -44,6 +44,20 @@ class _DummyRegistry:
         self.tools = {}
 
 
+class _NegotiatingRegistry:
+    def __init__(self) -> None:
+        self.tools = {}
+        self._unified_supported_profiles = [
+            "mcp++/profile-a-idl",
+            "mcp++/profile-e-mcp-p2p",
+        ]
+        self._unified_profile_negotiation = {
+            "supports_profile_negotiation": True,
+            "mode": "optional_additive",
+            "profiles": list(self._unified_supported_profiles),
+        }
+
+
 class _RejectingRegistry:
     def __init__(self) -> None:
         self.tools = {}
@@ -197,6 +211,72 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         self.assertEqual(limits.get("rate_capacity"), 7)
         self.assertEqual(limits.get("rate_refill_per_sec"), 3.5)
 
+        negotiation = result.get("profile_negotiation", {})
+        self.assertTrue(negotiation.get("supports_profile_negotiation"))
+        self.assertEqual(negotiation.get("mode"), "optional_additive")
+        profiles = negotiation.get("profiles", [])
+        self.assertIsInstance(profiles, list)
+        self.assertIn("mcp++/profile-e-mcp-p2p", profiles)
+        self.assertEqual(result.get("active_profile"), profiles[0])
+
+    def test_initialize_selects_requested_supported_profile(self) -> None:
+        stream = _FakeStream(
+            encode_jsonrpc_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"profile": "mcp++/profile-e-mcp-p2p"},
+                }
+            )
+        )
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_NegotiatingRegistry(),
+                max_frame_bytes=4096,
+            )
+
+        anyio.run(_run)
+
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 1)
+        result = responses[0].get("result", {})
+        self.assertEqual(result.get("active_profile"), "mcp++/profile-e-mcp-p2p")
+        self.assertEqual(
+            (result.get("profile_negotiation") or {}).get("profiles"),
+            ["mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"],
+        )
+
+    def test_initialize_falls_back_when_requested_profile_unsupported(self) -> None:
+        stream = _FakeStream(
+            encode_jsonrpc_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {"profile": "mcp++/profile-z-unknown"},
+                }
+            )
+        )
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_NegotiatingRegistry(),
+                max_frame_bytes=4096,
+            )
+
+        anyio.run(_run)
+
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 1)
+        result = responses[0].get("result", {})
+        self.assertEqual(result.get("active_profile"), "mcp++/profile-a-idl")
+
     def test_handler_tracks_unauthorized_counter(self) -> None:
         request = encode_jsonrpc_frame(
             {
@@ -246,6 +326,78 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         stats = get_mcp_p2p_stats()
         self.assertEqual(stats.get("frame_errors"), 1)
         self.assertEqual(stats.get("internal_errors"), 1)
+        self.assertEqual(stats.get("sessions_started"), 1)
+        self.assertEqual(stats.get("sessions_closed"), 1)
+
+    def test_non_initialize_first_request_is_rejected(self) -> None:
+        stream = _FakeStream(
+            encode_jsonrpc_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 99,
+                    "method": "tools/list",
+                    "params": {},
+                }
+            )
+        )
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_DummyRegistry(),
+                max_frame_bytes=1024 * 1024,
+            )
+
+        anyio.run(_run)
+
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(responses[0].get("id"), 99)
+        self.assertEqual(responses[0].get("error", {}).get("code"), -32000)
+        self.assertEqual(responses[0].get("error", {}).get("message"), "init_required")
+
+        stats = get_mcp_p2p_stats()
+        self.assertEqual(stats.get("initialized_sessions"), 0)
+        self.assertEqual(stats.get("sessions_started"), 1)
+        self.assertEqual(stats.get("sessions_closed"), 1)
+
+    def test_initialize_notification_does_not_initialize_session(self) -> None:
+        init_notification = encode_jsonrpc_frame(
+            {
+                "jsonrpc": "2.0",
+                "method": "initialize",
+                "params": {},
+            }
+        )
+        follow_up_request = encode_jsonrpc_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 5,
+                "method": "tools/list",
+                "params": {},
+            }
+        )
+        stream = _FakeStream(init_notification + follow_up_request)
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_DummyRegistry(),
+                max_frame_bytes=1024 * 1024,
+            )
+
+        anyio.run(_run)
+
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(responses[0].get("id"), 5)
+        self.assertEqual(responses[0].get("error", {}).get("code"), -32000)
+        self.assertEqual(responses[0].get("error", {}).get("message"), "init_required")
+
+        stats = get_mcp_p2p_stats()
+        self.assertEqual(stats.get("initialized_sessions"), 0)
         self.assertEqual(stats.get("sessions_started"), 1)
         self.assertEqual(stats.get("sessions_closed"), 1)
 

@@ -34,9 +34,75 @@ def _make_default_registry(supported_capabilities: Iterable[str]) -> InterfaceDe
     return registry
 
 
+def _capability_requirements_for_category(category: str) -> list[str]:
+    """Return deterministic base capability requirements for a category descriptor."""
+    req = ["mcp++/profile-a-idl"]
+    if category == "p2p":
+        req.append("mcp++/profile-e-mcp-p2p")
+    return req
+
+
+def _register_loaded_category_descriptors(registry: InterfaceDescriptorRegistry, manager: Any) -> int:
+    """Register descriptors for categories already loaded in the manager.
+
+    This intentionally avoids forcing lazy category loaders, and only captures
+    categories currently present in the manager's in-memory registry.
+    """
+
+    categories = getattr(manager, "_categories", None)
+    if not isinstance(categories, dict):
+        return 0
+
+    added = 0
+    for category in sorted(str(k) for k in categories.keys()):
+        if category == "idl":
+            continue
+        tools = categories.get(category)
+        if not isinstance(tools, dict) or not tools:
+            continue
+
+        methods: List[Dict[str, Any]] = []
+        for tool_name in sorted(str(n) for n in tools.keys()):
+            schema: Dict[str, Any] = {}
+            description = ""
+            tool = tools.get(tool_name)
+            if tool is not None:
+                description = str(getattr(tool, "description", "") or "")
+                maybe_schema = getattr(tool, "input_schema", None)
+                if isinstance(maybe_schema, dict):
+                    schema = maybe_schema
+            methods.append(
+                {
+                    "name": f"{category}/{tool_name}",
+                    "input_schema": schema or {"type": "object", "properties": {}, "required": []},
+                    "output_schema": {"type": "object"},
+                    "description": description,
+                }
+            )
+
+        if not methods:
+            continue
+
+        registry.register_descriptor(
+            build_descriptor(
+                name=f"{category}_tools",
+                namespace=f"ipfs_accelerate_py.mcp_server.{category}",
+                version="1.0.0",
+                methods=methods,
+                requires=_capability_requirements_for_category(category),
+                semantic_tags=["idl", "category", category],
+                observability={"trace": True, "provenance": True},
+            )
+        )
+        added += 1
+
+    return added
+
+
 def register_native_idl_tools(manager: Any, *, supported_capabilities: Iterable[str]) -> None:
     """Register `interfaces/*` MCP-IDL tools in the unified manager."""
     registry = _make_default_registry(supported_capabilities=supported_capabilities)
+    _register_loaded_category_descriptors(registry, manager)
 
     # Expose registry for bootstrap/test introspection.
     setattr(manager, "_unified_idl_registry", registry)

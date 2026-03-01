@@ -12,6 +12,36 @@ import json
 from typing import Any, Dict, Iterable, List, Optional
 
 
+def _normalize_capability(value: Any) -> str:
+    """Normalize capability tokens for tolerant compatibility matching.
+
+    Normalization rules are intentionally conservative:
+    - trim whitespace
+    - lowercase
+    - drop optional version suffix after `@`
+    """
+
+    text = str(value or "").strip().lower()
+    if "@" in text:
+        text = text.split("@", 1)[0].strip()
+    return text
+
+
+def _missing_capabilities(requires: Iterable[Any], supported: Iterable[Any]) -> list[str]:
+    """Return required capabilities that are not satisfied by supported set."""
+
+    supported_norm = {_normalize_capability(x) for x in supported if _normalize_capability(x)}
+    missing: list[str] = []
+    for req in requires:
+        req_text = str(req or "").strip()
+        req_norm = _normalize_capability(req_text)
+        if not req_norm:
+            continue
+        if req_norm not in supported_norm:
+            missing.append(req_text)
+    return sorted(missing)
+
+
 def canonicalize_descriptor(descriptor: Dict[str, Any]) -> bytes:
     """Return deterministic canonical bytes for an interface descriptor."""
     return json.dumps(descriptor, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
@@ -120,7 +150,7 @@ class InterfaceDescriptorRegistry:
             )
 
         requires = [str(x) for x in descriptor.get("requires", [])]
-        missing = sorted([req for req in requires if req not in self._supported_capabilities])
+        missing = _missing_capabilities(requires, self._supported_capabilities)
         if missing:
             return CompatibilityVerdict(
                 compatible=False,
@@ -129,7 +159,7 @@ class InterfaceDescriptorRegistry:
                 suggested_alternatives=[
                     cid
                     for cid, payload in self._by_cid.items()
-                    if cid != interface_cid and not set(payload.get("requires", [])).difference(self._supported_capabilities)
+                    if cid != interface_cid and not _missing_capabilities(payload.get("requires", []), self._supported_capabilities)
                 ],
             )
 

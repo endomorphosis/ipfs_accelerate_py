@@ -15,13 +15,21 @@ from .hierarchical_tool_manager import HierarchicalToolManager
 from .runtime_router import RuntimeRouter
 from .wave_a_loaders import configure_wave_a_loaders
 from .tools.idl import load_idl_tools
-from .mcplusplus.artifacts import compute_artifact_cid, envelope_from_payloads
+from .mcplusplus.artifacts import ArtifactStore, build_decision, compute_artifact_cid, envelope_from_payloads
 from .mcplusplus.delegation import validate_raw_delegation_chain
 from .mcplusplus.policy_engine import evaluate_raw_policy
 from .mcplusplus.event_dag import EventDAGStore
 from .mcplusplus.risk_scheduler import RiskScheduler
 
 logger = logging.getLogger(__name__)
+
+
+async def _invoke_maybe_async(func: Any, /, *args: Any, **kwargs: Any) -> Any:
+    """Invoke callable and await it when it returns an awaitable."""
+    result = func(*args, **kwargs)
+    if hasattr(result, "__await__"):
+        return await result
+    return result
 
 
 def get_unified_meta_tool_names() -> list[str]:
@@ -117,6 +125,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     runtime_router = RuntimeRouter(default_runtime="fastapi")
     manager = HierarchicalToolManager(runtime_router=runtime_router)
     event_store = EventDAGStore()
+    artifact_store = ArtifactStore()
     risk_scheduler = RiskScheduler()
     configure_wave_a_loaders(manager)
     manager.register_category_loader(
@@ -124,6 +133,110 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         lambda mgr: load_idl_tools(mgr, supported_capabilities=get_unified_supported_profiles()),
     )
     preloaded_categories = _preload_configured_categories(manager, config.preload_categories)
+
+    async def _bind_frontier_execution(item: Any) -> dict[str, Any]:
+        """Bind a frontier item to workflow/task queue execution adapters."""
+        binding = {
+            "attempted": False,
+            "scheduled": False,
+            "route": "",
+            "workflow_id": "",
+            "task_id": "",
+            "event_cid": "",
+            "error": "",
+        }
+
+        if item is None:
+            binding["error"] = "frontier_empty"
+            return binding
+
+        binding["attempted"] = True
+        binding["event_cid"] = str(getattr(item, "event_cid", "") or "")
+
+        services = getattr(server, "_unified_services", {})
+        task_payload = {
+            "event_cid": str(getattr(item, "event_cid", "") or ""),
+            "actor": str(getattr(item, "actor", "") or "*"),
+            "priority": float(getattr(item, "priority", 0.0) or 0.0),
+            "metadata": dict(getattr(item, "metadata", {}) or {}),
+            "source": "mcpplusplus.risk_frontier",
+        }
+
+        scheduler_factory = services.get("workflow_scheduler_factory") if isinstance(services, dict) else None
+        if callable(scheduler_factory):
+            try:
+                scheduler = scheduler_factory()
+                if scheduler is not None:
+                    submit_fn = None
+                    for method_name in ("submit_workflow", "create_workflow", "submit"):
+                        maybe = getattr(scheduler, method_name, None)
+                        if callable(maybe):
+                            submit_fn = maybe
+                            break
+
+                    if submit_fn is not None:
+                        workflow_result = await _invoke_maybe_async(
+                            submit_fn,
+                            workflow_name="risk_frontier_dispatch",
+                            tasks=[
+                                {
+                                    "task_type": "mcp.frontier.execute",
+                                    "payload": task_payload,
+                                }
+                            ],
+                            metadata={
+                                "event_cid": task_payload["event_cid"],
+                                "risk_priority": task_payload["priority"],
+                            },
+                        )
+
+                        workflow_id = ""
+                        if isinstance(workflow_result, str):
+                            workflow_id = workflow_result
+                        elif isinstance(workflow_result, dict):
+                            workflow_id = str(workflow_result.get("workflow_id") or "")
+
+                        if workflow_id:
+                            binding.update(
+                                {
+                                    "scheduled": True,
+                                    "route": "workflow_scheduler",
+                                    "workflow_id": workflow_id,
+                                }
+                            )
+                            return binding
+            except Exception as exc:
+                binding["error"] = str(exc)
+
+        task_queue_factory = services.get("task_queue_factory") if isinstance(services, dict) else None
+        if callable(task_queue_factory):
+            try:
+                task_queue = task_queue_factory()
+                submit = getattr(task_queue, "submit", None)
+                if callable(submit):
+                    task_id = await _invoke_maybe_async(
+                        submit,
+                        task_type="mcp_frontier_event",
+                        payload=task_payload,
+                        priority=int(round(float(task_payload["priority"]) * 1000.0)),
+                    )
+                    if task_id:
+                        binding.update(
+                            {
+                                "scheduled": True,
+                                "route": "task_queue",
+                                "task_id": str(task_id),
+                                "error": "",
+                            }
+                        )
+                        return binding
+                    binding["error"] = binding["error"] or "task_queue_submit_failed"
+            except Exception as exc:
+                binding["error"] = str(exc)
+
+        if not binding["error"]:
+            binding["error"] = "no_scheduler_or_task_queue"
+        return binding
 
     async def tools_list_categories() -> dict[str, Any]:
         return {"categories": manager.list_categories()}
@@ -146,6 +259,13 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         ucan_proof_chain = payload.pop("__ucan_proof_chain", [])
         if not isinstance(ucan_proof_chain, list):
             ucan_proof_chain = []
+        ucan_require_signatures = bool(payload.pop("__ucan_require_signatures", False))
+        ucan_issuer_public_keys = payload.pop("__ucan_issuer_public_keys", {})
+        if not isinstance(ucan_issuer_public_keys, dict):
+            ucan_issuer_public_keys = {}
+        ucan_revoked_proof_cids = payload.pop("__ucan_revoked_proof_cids", [])
+        if not isinstance(ucan_revoked_proof_cids, list):
+            ucan_revoked_proof_cids = []
         enforce_policy = bool(payload.pop("__enforce_policy", config.enable_policy_evaluation))
         policy_actor = str(payload.pop("__policy_actor", "") or ucan_actor or "*")
         policy_clauses = payload.pop("__policy_clauses", [])
@@ -158,6 +278,8 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         if not isinstance(parent_event_cids, list):
             parent_event_cids = []
         risk_actor = str(payload.pop("__risk_actor", "") or policy_actor or ucan_actor or "*")
+        execute_frontier = bool(payload.pop("__execute_frontier", config.enable_risk_frontier_execution))
+        policy_decision_binding: dict[str, Any] | None = None
 
         if enforce_ucan:
             verdict = validate_raw_delegation_chain(
@@ -165,6 +287,9 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 resource=f"{category}.{tool_name}",
                 ability="invoke",
                 actor=ucan_actor,
+                require_signatures=ucan_require_signatures,
+                issuer_public_keys=ucan_issuer_public_keys,
+                revoked_proof_cids=ucan_revoked_proof_cids,
             )
             if not verdict.allowed:
                 record = risk_scheduler.record_outcome(actor=risk_actor, allowed=False)
@@ -186,12 +311,37 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 action=f"{category}.{tool_name}",
                 resource=policy_resource,
             )
+
+            try:
+                policy_decision_payload = build_decision(
+                    decision=policy_decision.decision,
+                    intent_cid="",
+                    policy_cid=policy_cid,
+                    justification=policy_decision.justification,
+                    obligations=policy_decision.obligations,
+                )
+                policy_decision_cid = compute_artifact_cid(policy_decision_payload)
+                artifact_store.put(policy_decision_cid, policy_decision_payload)
+                policy_decision_binding = {
+                    "decision_cid": policy_decision_cid,
+                    "persisted": True,
+                    "stats": artifact_store.stats(),
+                }
+            except Exception as exc:
+                policy_decision_binding = {
+                    "decision_cid": "",
+                    "persisted": False,
+                    "error": str(exc),
+                    "stats": artifact_store.stats(),
+                }
+
             if policy_decision.decision == "deny":
                 record = risk_scheduler.record_outcome(actor=risk_actor, allowed=False)
                 return {
                     "ok": False,
                     "error": "policy_denied",
                     "policy": policy_decision.to_dict(),
+                    "policy_decision": dict(policy_decision_binding or {}),
                     "risk": record.to_dict(),
                 }
 
@@ -213,6 +363,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 "ok": True,
                 "result": result,
                 "policy": policy_decision.to_dict(),
+                "policy_decision": dict(policy_decision_binding or {}),
                 "risk": record.to_dict(),
             }
 
@@ -232,12 +383,39 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             input_payload=payload,
             tool=f"{category}.{tool_name}",
             output_payload=output_payload,
-            decision="allow",
+            decision=policy_decision.decision if policy_decision is not None else "allow",
+            decision_justification=policy_decision.justification if policy_decision is not None else "",
+            decision_obligations=policy_decision.obligations if policy_decision is not None else [],
             proof_cid=proof_cid,
             policy_cid=policy_cid,
             correlation_id=correlation_id,
             parent_event_cids=parent_event_cids,
         )
+
+        persisted_artifacts_meta: dict[str, Any]
+        try:
+            written = artifact_store.put_many(
+                {
+                    envelope["input_cid"]: envelope["input"],
+                    envelope["intent_cid"]: envelope["intent"],
+                    envelope["decision_cid"]: envelope["decision"],
+                    envelope["output_cid"]: envelope["output"],
+                    envelope["receipt_cid"]: envelope["receipt"],
+                    envelope["event_cid"]: envelope["event"],
+                }
+            )
+            persisted_artifacts_meta = {
+                "persisted": True,
+                "written": int(written),
+                "stats": artifact_store.stats(),
+            }
+        except Exception as exc:
+            persisted_artifacts_meta = {
+                "persisted": False,
+                "written": 0,
+                "error": str(exc),
+                "stats": artifact_store.stats(),
+            }
 
         event_dag_meta: dict[str, Any]
         try:
@@ -271,6 +449,19 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True)
             frontier_item = None
 
+        frontier_execution = {
+            "attempted": False,
+            "scheduled": False,
+            "route": "",
+            "workflow_id": "",
+            "task_id": "",
+            "event_cid": str(envelope["event_cid"]),
+            "error": "",
+        }
+        if execute_frontier:
+            popped = risk_scheduler.pop_next()
+            frontier_execution = await _bind_frontier_execution(popped)
+
         return {
             "ok": True,
             "result": result,
@@ -282,18 +473,25 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 "receipt_cid": envelope["receipt_cid"],
                 "event_cid": envelope["event_cid"],
             },
+            "policy_decision": {
+                "decision_cid": envelope["decision_cid"],
+                "persisted": bool(persisted_artifacts_meta.get("persisted")),
+                "stats": dict((persisted_artifacts_meta.get("stats") or {})),
+            },
             "artifact_payloads": {
                 "intent": envelope["intent"],
                 "decision": envelope["decision"],
                 "receipt": envelope["receipt"],
                 "event": envelope["event"],
             },
+            "artifact_store": persisted_artifacts_meta,
             "event_dag": event_dag_meta,
             "risk": record.to_dict(),
             "frontier": {
                 "enqueued": frontier_item is not None,
                 "priority": round(frontier_item.priority, 5) if frontier_item is not None else None,
                 "event_cid": frontier_item.event_cid if frontier_item is not None else None,
+                "execution": frontier_execution,
                 "stats": risk_scheduler.stats(),
             },
             "policy": policy_decision.to_dict() if policy_decision is not None else None,
@@ -312,6 +510,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_meta_tools", get_unified_meta_tool_names())
     setattr(server, "_unified_preloaded_categories", preloaded_categories)
     setattr(server, "_unified_services", _build_unified_services())
+    setattr(server, "_unified_artifact_store", artifact_store)
     setattr(server, "_unified_event_dag", event_store)
     setattr(server, "_unified_risk_scheduler", risk_scheduler)
     setattr(server, "_unified_supported_profiles", get_unified_supported_profiles())

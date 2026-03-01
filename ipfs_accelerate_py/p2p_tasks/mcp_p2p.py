@@ -43,6 +43,69 @@ _MCP_P2P_STATS: dict[str, int] = {
 }
 
 
+def _resolve_profile_negotiation(registry: Any | None) -> tuple[list[str], dict[str, Any]]:
+    """Resolve profile negotiation metadata from registry or unified defaults."""
+
+    profiles: list[str] = []
+    negotiation: dict[str, Any] = {
+        "supports_profile_negotiation": True,
+        "mode": "optional_additive",
+        "profiles": profiles,
+    }
+
+    if registry is not None:
+        try:
+            raw_profiles = getattr(registry, "_unified_supported_profiles", None)
+            if isinstance(raw_profiles, list):
+                profiles = [str(p) for p in raw_profiles if str(p).strip()]
+        except Exception:
+            profiles = []
+
+        try:
+            raw_negotiation = getattr(registry, "_unified_profile_negotiation", None)
+            if isinstance(raw_negotiation, dict):
+                negotiation = dict(raw_negotiation)
+        except Exception:
+            pass
+
+    if not profiles:
+        # Lazy import to avoid pulling unified server at module import time.
+        try:
+            from ipfs_accelerate_py.mcp_server.server import get_unified_supported_profiles
+
+            raw = get_unified_supported_profiles()
+            if isinstance(raw, list):
+                profiles = [str(p) for p in raw if str(p).strip()]
+        except Exception:
+            profiles = []
+
+    # Normalize negotiation payload and keep it JSON-safe.
+    negotiation.setdefault("supports_profile_negotiation", True)
+    negotiation.setdefault("mode", "optional_additive")
+    negotiation["profiles"] = list(profiles)
+    return profiles, negotiation
+
+
+def _select_profile(params: Any, supported_profiles: list[str]) -> str:
+    """Select an active profile from client initialize params and supported list."""
+
+    if not supported_profiles:
+        return ""
+
+    if isinstance(params, dict):
+        requested = str(params.get("profile") or "").strip()
+        if requested and requested in supported_profiles:
+            return requested
+        requested_many = params.get("profiles")
+        if isinstance(requested_many, list):
+            for candidate in requested_many:
+                text = str(candidate or "").strip()
+                if text and text in supported_profiles:
+                    return text
+
+    return str(supported_profiles[0])
+
+
 def _inc_stat(key: str, amount: int = 1) -> None:
     with _MCP_P2P_STATS_LOCK:
         _MCP_P2P_STATS[key] = int(_MCP_P2P_STATS.get(key, 0)) + int(amount)
@@ -303,6 +366,7 @@ async def handle_mcp_p2p_stream(
             capacity=float(rate_capacity),
             refill_rate_per_sec=float(rate_refill_per_sec),
         )
+        supported_profiles, profile_negotiation = _resolve_profile_negotiation(registry)
 
         initialized = False
         frames_seen = 0
@@ -378,6 +442,8 @@ async def handle_mcp_p2p_stream(
                             "ok": True,
                             "transport": PROTOCOL_MCP_P2P_V1,
                             "server": {"peer_id": str(local_peer_id or "")},
+                            "profile_negotiation": dict(profile_negotiation),
+                            "active_profile": _select_profile(msg.get("params"), supported_profiles),
                             "limits": {
                                 "max_frame_bytes": int(max_frame_bytes),
                                 "max_frames": int(max_frames),

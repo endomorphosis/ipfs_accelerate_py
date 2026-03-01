@@ -15,6 +15,12 @@ from unittest.mock import patch
 import anyio
 
 from ipfs_accelerate_py.mcp.server import create_mcp_server
+from ipfs_accelerate_py.p2p_tasks.mcp_p2p import PROTOCOL_MCP_P2P_V1
+from ipfs_accelerate_py.p2p_tasks.mcp_p2p_client import (
+    MCPP2PClient,
+    open_libp2p_stream_by_multiaddr,
+    trio_libp2p_host_listen,
+)
 
 
 class _DummyServer:
@@ -107,14 +113,38 @@ class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
                     response = await dispatch(
                         "p2p",
                         "p2p_taskqueue_status",
-                        {"remote_multiaddr": multiaddr, "timeout_s": 10.0, "detail": False},
+                        {"remote_multiaddr": multiaddr, "timeout_s": 10.0, "detail": True},
                     )
                     self.assertIsInstance(response, dict)
                     return response
 
-                result = anyio.run(_call_status)
+                result = anyio.run(_call_status, backend="trio")
                 self.assertTrue(result.get("ok"), msg=f"unexpected response: {result}")
                 self.assertIn("peer_id", result)
+
+                before_stats = ((((result.get("detail") or {}).get("transport") or {}).get("mcp_p2p") or {}).get("stats") or {})
+                self.assertIsInstance(before_stats, dict)
+
+                async def _mcp_p2p_initialize() -> None:
+                    async with trio_libp2p_host_listen(listen_multiaddr="/ip4/127.0.0.1/tcp/0") as host:
+                        stream = await open_libp2p_stream_by_multiaddr(
+                            host,
+                            peer_multiaddr=multiaddr,
+                            protocols=[PROTOCOL_MCP_P2P_V1],
+                        )
+                        client = MCPP2PClient(stream=stream, max_frame_bytes=1024 * 1024)
+                        response = await client.initialize({})
+                        self.assertTrue((response.get("result") or {}).get("ok"))
+                        await client.aclose()
+
+                anyio.run(_mcp_p2p_initialize, backend="trio")
+
+                after = anyio.run(_call_status, backend="trio")
+                after_stats = ((((after.get("detail") or {}).get("transport") or {}).get("mcp_p2p") or {}).get("stats") or {})
+                self.assertIsInstance(after_stats, dict)
+                self.assertGreaterEqual(int(after_stats.get("sessions_started") or 0), int(before_stats.get("sessions_started") or 0) + 1)
+                self.assertGreaterEqual(int(after_stats.get("initialized_sessions") or 0), int(before_stats.get("initialized_sessions") or 0) + 1)
+                self.assertGreaterEqual(int(after_stats.get("sessions_closed") or 0), int(before_stats.get("sessions_closed") or 0) + 1)
 
             finally:
                 try:

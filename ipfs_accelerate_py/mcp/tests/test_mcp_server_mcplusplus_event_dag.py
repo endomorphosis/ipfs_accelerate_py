@@ -29,6 +29,41 @@ class TestMCPServerMCPPlusPlusEventDAG(unittest.TestCase):
         with self.assertRaises(ValueError):
             store.add_event("cid-orphan", {"parents": ["cid-missing"]})
 
+    def test_snapshot_roundtrip_and_replay_rollback(self) -> None:
+        store = EventDAGStore()
+        store.add_event("cid-root", {"parents": [], "intent_cid": "i1"})
+        store.add_event("cid-a", {"parents": ["cid-root"], "intent_cid": "i2"})
+        store.add_event("cid-b", {"parents": ["cid-root"], "intent_cid": "i3"})
+        store.add_event("cid-leaf", {"parents": ["cid-a"], "intent_cid": "i4"})
+
+        snapshot = store.export_snapshot()
+        self.assertEqual(snapshot.get("version"), 1)
+        self.assertEqual((snapshot.get("stats") or {}).get("event_count"), 4)
+
+        rebuilt = EventDAGStore.from_snapshot(snapshot)
+        self.assertEqual(rebuilt.stats().get("event_count"), 4)
+        self.assertEqual(rebuilt.get_lineage("cid-leaf"), ["cid-root", "cid-a", "cid-leaf"])
+
+        replay_order = rebuilt.replay_from_root("cid-root")
+        self.assertEqual(replay_order, ["cid-root", "cid-a", "cid-b", "cid-leaf"])
+
+        rollback = rebuilt.rollback_path("cid-leaf")
+        self.assertEqual(rollback, ["cid-leaf", "cid-a", "cid-root"])
+
+    def test_snapshot_rebuild_rejects_unresolved_parents(self) -> None:
+        with self.assertRaises(ValueError):
+            EventDAGStore.from_snapshot(
+                {
+                    "version": 1,
+                    "events": [
+                        {
+                            "event_cid": "cid-leaf",
+                            "payload": {"parents": ["cid-missing"]},
+                        }
+                    ],
+                }
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

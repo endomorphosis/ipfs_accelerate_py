@@ -87,6 +87,92 @@ class EventDAGStore:
             "edge_count": sum(len(node.parents) for node in self._events.values()),
         }
 
+    def export_snapshot(self) -> Dict[str, Any]:
+        """Export a deterministic JSON-serializable snapshot of the DAG."""
+        events: List[Dict[str, Any]] = []
+        for event_cid in sorted(self._events.keys()):
+            node = self._events[event_cid]
+            payload = dict(node.payload)
+            payload.setdefault("parents", list(node.parents))
+            events.append(
+                {
+                    "event_cid": event_cid,
+                    "payload": payload,
+                }
+            )
+
+        return {
+            "version": 1,
+            "events": events,
+            "stats": self.stats(),
+        }
+
+    @classmethod
+    def from_snapshot(cls, snapshot: Dict[str, Any]) -> "EventDAGStore":
+        """Rebuild a store from a deterministic snapshot export."""
+        store = cls()
+        items = (snapshot or {}).get("events", [])
+        if not isinstance(items, list):
+            return store
+
+        pending: List[Dict[str, Any]] = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            event_cid = str(item.get("event_cid") or "").strip()
+            payload = item.get("payload")
+            if not event_cid or not isinstance(payload, dict):
+                continue
+            pending.append({"event_cid": event_cid, "payload": dict(payload)})
+
+        # Deterministically add events after their parents using simple fixed-point passes.
+        remaining = list(sorted(pending, key=lambda x: x["event_cid"]))
+        progress = True
+        while remaining and progress:
+            progress = False
+            next_round: List[Dict[str, Any]] = []
+            for item in remaining:
+                event_cid = item["event_cid"]
+                payload = item["payload"]
+                parents = list(payload.get("parents", []) or [])
+                if any(parent not in store._events for parent in parents):
+                    next_round.append(item)
+                    continue
+                store.add_event(event_cid, payload)
+                progress = True
+            remaining = next_round
+
+        if remaining:
+            unresolved = ",".join(x["event_cid"] for x in remaining)
+            raise ValueError(f"snapshot_unresolved_parents:{unresolved}")
+
+        return store
+
+    def replay_from_root(self, root_event_cid: str) -> List[str]:
+        """Return deterministic replay order from one root through descendants."""
+        root = str(root_event_cid or "").strip()
+        if root not in self._events:
+            return []
+
+        order: List[str] = []
+        queue: List[str] = [root]
+        seen: Set[str] = set()
+        while queue:
+            current = queue.pop(0)
+            if current in seen:
+                continue
+            seen.add(current)
+            order.append(current)
+            children = sorted(self._children.get(current, set()))
+            queue.extend(children)
+        return order
+
+    def rollback_path(self, event_cid: str) -> List[str]:
+        """Return deterministic rollback order from leaf to root lineage."""
+        lineage = self.get_lineage(event_cid)
+        lineage.reverse()
+        return lineage
+
 
 __all__ = [
     "EventDAGStore",

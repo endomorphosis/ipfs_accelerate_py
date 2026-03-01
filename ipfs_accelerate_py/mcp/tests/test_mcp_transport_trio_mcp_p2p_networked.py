@@ -108,6 +108,14 @@ class TestMCPTransportTrioMCPP2PNetworked(unittest.TestCase):
                 self.assertEqual(limits.get("rate_capacity"), 9)
                 self.assertEqual(limits.get("rate_refill_per_sec"), 3.25)
 
+                negotiation = result.get("profile_negotiation", {})
+                self.assertTrue(negotiation.get("supports_profile_negotiation"))
+                self.assertEqual(negotiation.get("mode"), "optional_additive")
+                profiles = negotiation.get("profiles", [])
+                self.assertIsInstance(profiles, list)
+                self.assertIn("mcp++/profile-e-mcp-p2p", profiles)
+                self.assertIn(result.get("active_profile"), profiles)
+
             finally:
                 try:
                     proc.terminate()
