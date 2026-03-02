@@ -21,6 +21,8 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
+from .. import _missing_dependency_stub
+
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.p2p.workflow")
 
 # Import P2P scheduler components with fallback
@@ -35,17 +37,17 @@ try:
 except ImportError as e:
     logger.warning(f"P2P workflow scheduler not available: {e}")
     HAVE_P2P_SCHEDULER = False
-    P2PWorkflowScheduler = None
-    P2PTask = None
-    WorkflowTag = None
-    MerkleClock = None
+    P2PWorkflowScheduler = _missing_dependency_stub("P2PWorkflowScheduler")
+    P2PTask = _missing_dependency_stub("P2PTask")
+    WorkflowTag = _missing_dependency_stub("WorkflowTag")
+    MerkleClock = _missing_dependency_stub("MerkleClock")
 
 
 # Global scheduler instance
-_scheduler_instance: Optional[P2PWorkflowScheduler] = None
+_scheduler_instance: Optional[Any] = None
 
 
-def get_scheduler() -> Optional[P2PWorkflowScheduler]:
+def get_scheduler() -> Optional[Any]:
     """Get or create the global P2P workflow scheduler instance.
     
     Returns:

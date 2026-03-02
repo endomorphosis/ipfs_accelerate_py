@@ -290,3 +290,24 @@ def test_mcplusplus_module_missing_dependency_stub_contract():
 
     with pytest.raises(RuntimeError, match="TopLevelSymbol is unavailable"):
         _ = stub.some_attribute
+
+
+def test_workflow_module_optional_dependency_contract():
+    """Workflow module should expose explicit stubs when scheduler deps are absent."""
+    from ipfs_accelerate_py.mcplusplus_module.p2p import workflow
+
+    if workflow.HAVE_P2P_SCHEDULER:
+        assert workflow.P2PWorkflowScheduler is not None
+        assert workflow.P2PTask is not None
+        assert workflow.WorkflowTag is not None
+        assert workflow.MerkleClock is not None
+        return
+
+    assert workflow.P2PWorkflowScheduler is not None
+    assert workflow.P2PTask is not None
+    assert workflow.WorkflowTag is not None
+    assert workflow.MerkleClock is not None
+    assert not workflow.P2PWorkflowScheduler
+
+    with pytest.raises(RuntimeError, match="P2PWorkflowScheduler is unavailable"):
+        workflow.P2PWorkflowScheduler()
