@@ -228,10 +228,7 @@ class TrioMCPServer:
         logger.info("Registering P2P tools for Trio server")
 
         try:
-            # Use explicit registrars so the adapter path is deterministic and
-            # easy to validate in tests.
-            from ..tools.taskqueue_tools import register_p2p_taskqueue_tools
-            from ..tools.workflow_tools import register_p2p_workflow_tools
+            register_p2p_taskqueue_tools, register_p2p_workflow_tools = self._resolve_p2p_registrars()
 
             # Register tools based on configuration
             if self.config.enable_taskqueue_tools and self.config.enable_workflow_tools:
@@ -251,6 +248,17 @@ class TrioMCPServer:
         except Exception as e:
             logger.error(f"Error registering P2P tools: {e}")
             raise
+
+    def _resolve_p2p_registrars(self):
+        """Resolve P2P registrar callables used by Trio MCP server.
+
+        Kept as a dedicated hook so registration wiring can be validated via
+        targeted unit tests without requiring full runtime setup.
+        """
+        from ..tools.taskqueue_tools import register_p2p_taskqueue_tools
+        from ..tools.workflow_tools import register_p2p_workflow_tools
+
+        return register_p2p_taskqueue_tools, register_p2p_workflow_tools
 
     def _create_fastapi_app(self) -> Any:
         """Create the FastAPI application for ASGI.

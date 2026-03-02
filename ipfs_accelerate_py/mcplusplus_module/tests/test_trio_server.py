@@ -83,6 +83,41 @@ class TestTrioMCPServer:
         server = TrioMCPServer(config=config, name="override-name")
         assert server.config.name == "override-name"
 
+    def test_resolve_p2p_registrars_returns_callables(self):
+        """Resolver should return callable taskqueue/workflow registrars."""
+        server = TrioMCPServer()
+        taskqueue_registrar, workflow_registrar = server._resolve_p2p_registrars()
+        assert callable(taskqueue_registrar)
+        assert callable(workflow_registrar)
+
+    def test_register_p2p_tools_uses_resolved_registrars(self, monkeypatch):
+        """Registration should execute callables returned by resolver hook."""
+        calls = []
+
+        def _register_taskqueue(_mcp):
+            calls.append("taskqueue")
+
+        def _register_workflow(_mcp):
+            calls.append("workflow")
+
+        server = TrioMCPServer(
+            ServerConfig(
+                enable_p2p_tools=True,
+                enable_taskqueue_tools=True,
+                enable_workflow_tools=True,
+            )
+        )
+        server.mcp = Mock()
+
+        monkeypatch.setattr(
+            server,
+            "_resolve_p2p_registrars",
+            lambda: (_register_taskqueue, _register_workflow),
+        )
+
+        server._register_p2p_tools()
+        assert calls == ["taskqueue", "workflow"]
+
     def test_register_p2p_tools_uses_explicit_registrars(self, monkeypatch):
         """Both registrars should be called when both feature flags are enabled."""
         from ipfs_accelerate_py.mcplusplus_module.tools import taskqueue_tools as taskqueue_module
