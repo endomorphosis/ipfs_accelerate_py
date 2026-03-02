@@ -349,6 +349,113 @@ class IPFSAccelerateCLI:
         payload = model_ops.get_model_info(model_id=args.model_id)
         self._print_output(payload, getattr(args, "output_json", False))
         return 0
+
+    def run_models_ipld_document(self, args):
+        """Build HF inference model manager IPLD document."""
+        _load_heavy_imports()
+
+        try:
+            from ipfs_datasets_py.utils.model_manager import build_hf_inference_ipld_document
+        except Exception as e:
+            payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        include_generated_at = not getattr(args, "deterministic", False)
+        doc = build_hf_inference_ipld_document(
+            model_kind=getattr(args, "kind", None),
+            include_generated_at=include_generated_at,
+        )
+        payload = {
+            "status": "success",
+            "source": "hf_inference_model_manager",
+            "deterministic": not include_generated_at,
+            "document": doc,
+        }
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_ipld_cid(self, args):
+        """Compute deterministic CID for HF inference model manager IPLD document."""
+        _load_heavy_imports()
+
+        try:
+            from ipfs_datasets_py.utils.model_manager import get_hf_inference_ipld_cid
+        except Exception as e:
+            payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        cid = get_hf_inference_ipld_cid(
+            model_kind=getattr(args, "kind", None),
+            base=getattr(args, "base", "base32"),
+            codec=getattr(args, "codec", "raw"),
+            mh_type=getattr(args, "mh_type", "sha2-256"),
+        )
+        payload = {
+            "status": "success",
+            "source": "hf_inference_model_manager",
+            "cid": cid,
+            "model_kind": getattr(args, "kind", None),
+            "base": getattr(args, "base", "base32"),
+            "codec": getattr(args, "codec", "raw"),
+            "mh_type": getattr(args, "mh_type", "sha2-256"),
+        }
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_ipld_publish(self, args):
+        """Publish HF inference model manager IPLD document to IPFS."""
+        _load_heavy_imports()
+
+        try:
+            from ipfs_datasets_py.utils.model_manager import publish_hf_inference_ipld_to_ipfs
+        except Exception as e:
+            payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = publish_hf_inference_ipld_to_ipfs(
+            model_kind=getattr(args, "kind", None),
+            pin=not getattr(args, "no_pin", False),
+            backend=getattr(args, "backend", None),
+        )
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_ipld_load(self, args):
+        """Load HF inference model manager IPLD document from IPFS CID."""
+        _load_heavy_imports()
+
+        try:
+            from ipfs_datasets_py.utils.model_manager import load_hf_inference_ipld_from_ipfs
+        except Exception as e:
+            payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        try:
+            doc = load_hf_inference_ipld_from_ipfs(
+                args.cid,
+                backend=getattr(args, "backend", None),
+            )
+        except Exception as e:
+            payload = {
+                "status": "error",
+                "error": str(e),
+                "cid": args.cid,
+            }
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = {
+            "status": "success",
+            "source": "hf_inference_model_manager",
+            "cid": args.cid,
+            "document": doc,
+        }
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
     
     def run_mcp_start(self, args):
         """Start MCP server with integrated dashboard, model manager, and queue monitoring"""
@@ -2138,6 +2245,41 @@ Examples:
         models_details_parser = models_subparsers.add_parser('details', help='Get model details')
         models_details_parser.add_argument('model_id', help='Model identifier')
         models_details_parser.add_argument('--hf-inference', action='store_true', help='Use HF inference model manager records')
+
+        models_ipld_document_parser = models_subparsers.add_parser(
+            'ipld-document',
+            help='Build HF inference model manager IPLD document',
+        )
+        models_ipld_document_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+        models_ipld_document_parser.add_argument(
+            '--deterministic',
+            action='store_true',
+            help='Exclude generated_at timestamp for deterministic output',
+        )
+
+        models_ipld_cid_parser = models_subparsers.add_parser(
+            'ipld-cid',
+            help='Compute deterministic CID for HF inference model manager IPLD document',
+        )
+        models_ipld_cid_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+        models_ipld_cid_parser.add_argument('--base', default='base32', help='CID base encoding')
+        models_ipld_cid_parser.add_argument('--codec', default='raw', help='CID codec')
+        models_ipld_cid_parser.add_argument('--mh-type', default='sha2-256', help='Multihash type')
+
+        models_ipld_publish_parser = models_subparsers.add_parser(
+            'ipld-publish',
+            help='Publish HF inference model manager IPLD document to IPFS',
+        )
+        models_ipld_publish_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+        models_ipld_publish_parser.add_argument('--backend', help='Optional IPFS backend name override')
+        models_ipld_publish_parser.add_argument('--no-pin', action='store_true', help='Do not pin on publish')
+
+        models_ipld_load_parser = models_subparsers.add_parser(
+            'ipld-load',
+            help='Load HF inference model manager IPLD document from IPFS CID',
+        )
+        models_ipld_load_parser.add_argument('cid', help='IPFS CID to load')
+        models_ipld_load_parser.add_argument('--backend', help='Optional IPFS backend name override')
         
         
         # Parse arguments
@@ -2224,6 +2366,14 @@ Examples:
                 return cli.run_models_search(args)
             elif args.models_command == 'details':
                 return cli.run_models_details(args)
+            elif args.models_command == 'ipld-document':
+                return cli.run_models_ipld_document(args)
+            elif args.models_command == 'ipld-cid':
+                return cli.run_models_ipld_cid(args)
+            elif args.models_command == 'ipld-publish':
+                return cli.run_models_ipld_publish(args)
+            elif args.models_command == 'ipld-load':
+                return cli.run_models_ipld_load(args)
             else:
                 models_parser.print_help()
                 return 1

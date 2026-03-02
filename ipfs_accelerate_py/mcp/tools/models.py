@@ -292,6 +292,115 @@ def get_hf_inference_model_metadata_tool(model_id: str) -> Dict[str, Any]:
         }
 
 
+def build_hf_inference_ipld_document_tool(
+    model_kind: Optional[str] = None,
+    include_generated_at: bool = True,
+) -> Dict[str, Any]:
+    """Build HF inference model registry as an IPLD-friendly document."""
+    try:
+        from ipfs_datasets_py.utils.model_manager import build_hf_inference_ipld_document
+
+        document = build_hf_inference_ipld_document(
+            model_kind=model_kind,
+            include_generated_at=include_generated_at,
+        )
+        return {
+            'status': 'success',
+            'source': 'hf_inference_model_manager',
+            'model_kind': model_kind,
+            'include_generated_at': include_generated_at,
+            'document': document,
+        }
+    except Exception as e:
+        logger.error(f"Error building HF inference IPLD document: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'model_kind': model_kind,
+        }
+
+
+def get_hf_inference_ipld_cid_tool(
+    model_kind: Optional[str] = None,
+    base: str = 'base32',
+    codec: str = 'raw',
+    mh_type: str = 'sha2-256',
+) -> Dict[str, Any]:
+    """Compute deterministic CID for HF inference model registry IPLD document."""
+    try:
+        from ipfs_datasets_py.utils.model_manager import get_hf_inference_ipld_cid
+
+        cid = get_hf_inference_ipld_cid(
+            model_kind=model_kind,
+            base=base,
+            codec=codec,
+            mh_type=mh_type,
+        )
+        return {
+            'status': 'success',
+            'source': 'hf_inference_model_manager',
+            'cid': cid,
+            'model_kind': model_kind,
+            'base': base,
+            'codec': codec,
+            'mh_type': mh_type,
+        }
+    except Exception as e:
+        logger.error(f"Error computing HF inference IPLD CID: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'model_kind': model_kind,
+        }
+
+
+def publish_hf_inference_ipld_to_ipfs_tool(
+    model_kind: Optional[str] = None,
+    pin: bool = True,
+    backend: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Publish HF inference model registry IPLD document to IPFS."""
+    try:
+        from ipfs_datasets_py.utils.model_manager import publish_hf_inference_ipld_to_ipfs
+
+        return publish_hf_inference_ipld_to_ipfs(
+            model_kind=model_kind,
+            pin=pin,
+            backend=backend,
+        )
+    except Exception as e:
+        logger.error(f"Error publishing HF inference IPLD document to IPFS: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'model_kind': model_kind,
+        }
+
+
+def load_hf_inference_ipld_from_ipfs_tool(
+    cid: str,
+    backend: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Load and validate HF inference model registry IPLD document from IPFS."""
+    try:
+        from ipfs_datasets_py.utils.model_manager import load_hf_inference_ipld_from_ipfs
+
+        document = load_hf_inference_ipld_from_ipfs(cid, backend=backend)
+        return {
+            'status': 'success',
+            'source': 'hf_inference_model_manager',
+            'cid': cid,
+            'document': document,
+        }
+    except Exception as e:
+        logger.error(f"Error loading HF inference IPLD document from IPFS: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'cid': cid,
+        }
+
+
 # Register model tools with the MCP server
 def register_model_tools(mcp) -> None:
     """Register model management tools with the MCP server"""
@@ -390,6 +499,104 @@ def register_model_tools(mcp) -> None:
                 },
                 execution_context="server",
             )
+
+            mcp.register_tool(
+                name="build_hf_inference_ipld_document",
+                function=build_hf_inference_ipld_document_tool,
+                description="Build HF inference model registry as an IPLD-friendly document",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "model_kind": {
+                            "type": "string",
+                            "enum": ["llm", "embedding"],
+                            "description": "Optional model kind filter"
+                        },
+                        "include_generated_at": {
+                            "type": "boolean",
+                            "description": "Include generated_at timestamp in document",
+                            "default": True
+                        }
+                    },
+                    "required": []
+                },
+                execution_context="server",
+            )
+
+            mcp.register_tool(
+                name="get_hf_inference_ipld_cid",
+                function=get_hf_inference_ipld_cid_tool,
+                description="Compute deterministic CID for HF inference model registry IPLD document",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "model_kind": {
+                            "type": "string",
+                            "enum": ["llm", "embedding"],
+                            "description": "Optional model kind filter"
+                        },
+                        "base": {
+                            "type": "string",
+                            "description": "CID base encoding",
+                            "default": "base32"
+                        },
+                        "codec": {
+                            "type": "string",
+                            "description": "CID codec",
+                            "default": "raw"
+                        },
+                        "mh_type": {
+                            "type": "string",
+                            "description": "Multihash type",
+                            "default": "sha2-256"
+                        }
+                    },
+                    "required": []
+                },
+                execution_context="server",
+            )
+
+            mcp.register_tool(
+                name="publish_hf_inference_ipld_to_ipfs",
+                function=publish_hf_inference_ipld_to_ipfs_tool,
+                description="Publish HF inference model registry IPLD document to IPFS",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "model_kind": {
+                            "type": "string",
+                            "enum": ["llm", "embedding"],
+                            "description": "Optional model kind filter"
+                        },
+                        "pin": {
+                            "type": "boolean",
+                            "description": "Whether to pin published content",
+                            "default": True
+                        },
+                        "backend": {
+                            "type": "string",
+                            "description": "Optional backend name override"
+                        }
+                    },
+                    "required": []
+                },
+                execution_context="server",
+            )
+
+            mcp.register_tool(
+                name="load_hf_inference_ipld_from_ipfs",
+                function=load_hf_inference_ipld_from_ipfs_tool,
+                description="Load HF inference model registry IPLD document from IPFS CID",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "cid": {"type": "string", "description": "IPFS CID"},
+                        "backend": {"type": "string", "description": "Optional backend name override"}
+                    },
+                    "required": ["cid"]
+                },
+                execution_context="server",
+            )
         elif hasattr(mcp, 'tool'):
             # FastMCP decorator style
             @mcp.tool()
@@ -423,6 +630,38 @@ def register_model_tools(mcp) -> None:
             def get_hf_inference_model_metadata(model_id: str) -> Dict[str, Any]:
                 """Get curated HF inference provider metadata for a specific model"""
                 return get_hf_inference_model_metadata_tool(model_id)
+
+            @mcp.tool()
+            def build_hf_inference_ipld_document(
+                model_kind: Optional[str] = None,
+                include_generated_at: bool = True,
+            ) -> Dict[str, Any]:
+                """Build HF inference model registry as an IPLD-friendly document"""
+                return build_hf_inference_ipld_document_tool(model_kind, include_generated_at)
+
+            @mcp.tool()
+            def get_hf_inference_ipld_cid(
+                model_kind: Optional[str] = None,
+                base: str = 'base32',
+                codec: str = 'raw',
+                mh_type: str = 'sha2-256',
+            ) -> Dict[str, Any]:
+                """Compute deterministic CID for HF inference model registry IPLD document"""
+                return get_hf_inference_ipld_cid_tool(model_kind, base, codec, mh_type)
+
+            @mcp.tool()
+            def publish_hf_inference_ipld_to_ipfs(
+                model_kind: Optional[str] = None,
+                pin: bool = True,
+                backend: Optional[str] = None,
+            ) -> Dict[str, Any]:
+                """Publish HF inference model registry IPLD document to IPFS"""
+                return publish_hf_inference_ipld_to_ipfs_tool(model_kind, pin, backend)
+
+            @mcp.tool()
+            def load_hf_inference_ipld_from_ipfs(cid: str, backend: Optional[str] = None) -> Dict[str, Any]:
+                """Load HF inference model registry IPLD document from IPFS CID"""
+                return load_hf_inference_ipld_from_ipfs_tool(cid, backend)
         
         logger.info("Model tools registered successfully")
     except Exception as e:
