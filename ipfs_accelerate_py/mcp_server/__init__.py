@@ -82,6 +82,19 @@ from .interface_descriptor import (
     get_interface_repository,
 )
 from .event_dag import EventDAG
+from .p2p_service_manager import P2PServiceManager, P2PServiceState
+from .p2p_mcp_registry_adapter import (
+    P2PMCPRegistryAdapter,
+    RUNTIME_FASTAPI,
+    RUNTIME_TRIO,
+    RUNTIME_UNKNOWN,
+)
+from .simple_server import (
+    SimpleCallResult,
+    SimpleIPFSDatasetsMCPServer,
+    start_simple_server,
+)
+from .client import IPFSDatasetsMCPClient
 
 __all__ = [
     "create_server",
@@ -149,4 +162,14 @@ __all__ = [
     "InterfaceRepository",
     "get_interface_repository",
     "EventDAG",
+    "P2PServiceState",
+    "P2PServiceManager",
+    "P2PMCPRegistryAdapter",
+    "RUNTIME_FASTAPI",
+    "RUNTIME_TRIO",
+    "RUNTIME_UNKNOWN",
+    "SimpleCallResult",
+    "SimpleIPFSDatasetsMCPServer",
+    "start_simple_server",
+    "IPFSDatasetsMCPClient",
 ]

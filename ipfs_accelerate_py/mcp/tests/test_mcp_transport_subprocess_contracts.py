@@ -78,6 +78,32 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
         self.assertIn("CANONICAL_FASTAPI_RUN 127.0.0.1 8994 /mcp", result.stdout)
 
+    def test_canonical_module_main_contract(self) -> None:
+        """Canonical mcp_server.__main__ facade should delegate to mcp.__main__.main."""
+        code = """
+        from unittest.mock import patch
+        from ipfs_accelerate_py.mcp_server import __main__ as canonical_main
+
+        with patch('ipfs_accelerate_py.mcp.__main__.main', return_value=7):
+            print('MAIN_RETURN', canonical_main.main())
+        """
+        result = self._run_subprocess(code)
+        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertIn("MAIN_RETURN 7", result.stdout)
+
+    def test_canonical_simple_server_start_contract(self) -> None:
+        """Canonical simple_server facade should delegate startup to standalone run_server."""
+        code = """
+        from unittest.mock import patch
+        from ipfs_accelerate_py.mcp_server.simple_server import start_simple_server
+
+        with patch('ipfs_accelerate_py.mcp_server.simple_server.run_server', side_effect=lambda **kwargs: print('SIMPLE_START_CALLED', kwargs)):
+            start_simple_server()
+        """
+        result = self._run_subprocess(code)
+        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertIn("SIMPLE_START_CALLED {}", result.stdout)
+
     def test_unified_bootstrap_trio_dispatch_contract(self) -> None:
         """Unified bootstrap dispatch should invoke trio runtime path in subprocess."""
         code = """
