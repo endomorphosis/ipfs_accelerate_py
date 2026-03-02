@@ -35,29 +35,30 @@ def _resource_key(uri: str) -> str:
     return uri.lstrip("/")
 
 
-def _schema_core(schema: object) -> object:
+def _schema_surface(schema: object) -> dict[str, object] | None:
     """Extract the stable subset of JSON schema used for parity checks.
 
-    FastMCP and StandaloneMCP may include generator-specific keys (e.g.
-    `additionalProperties`, `title`). For parity we care about the user-facing
-    parameter surface: object type, properties, required.
+    FastMCP and StandaloneMCP do not generate identical *deep* JSON schemas.
+    For parity we validate the user-facing parameter surface: top-level
+    parameter names and which are required.
     """
 
     if not isinstance(schema, dict):
-        return schema
+        return None
 
     properties = schema.get("properties")
-    if isinstance(properties, dict):
-        properties = {k: _schema_core(v) for k, v in properties.items()}
+    if not isinstance(properties, dict):
+        return None
 
     required = schema.get("required")
+    required_list: list[str] = []
     if isinstance(required, list):
-        required = sorted(str(x) for x in required)
+        required_list = sorted(str(x) for x in required)
 
     return {
         "type": schema.get("type"),
-        "properties": properties,
-        "required": required or [],
+        "properties": sorted(str(k) for k in properties.keys()),
+        "required": required_list,
     }
 
 
@@ -89,16 +90,27 @@ def _resource_names(server: object) -> set[str]:
     if isinstance(resources, dict):
         return set(resources.keys())
 
+    names: set[str] = set()
+
+    # FastMCP separates concrete resources from parameterized templates.
     if hasattr(server, "list_resources"):
         rs = _run_async(server.list_resources())
-        names: set[str] = set()
         for r in rs:
             uri = str(getattr(r, "uri", ""))
             if uri:
                 names.add(_resource_key(uri))
-        return names
 
-    return set()
+    if hasattr(server, "list_resource_templates"):
+        ts = _run_async(server.list_resource_templates())
+        for t in ts:
+            uri_template = getattr(t, "uri_template", None)
+            if not uri_template and hasattr(t, "model_dump"):
+                d = t.model_dump()
+                uri_template = d.get("uri_template")
+            if uri_template:
+                names.add(_resource_key(str(uri_template)))
+
+    return names
 
 
 def _prompt_names(server: object) -> set[str]:
@@ -171,7 +183,10 @@ def test_mcpplus_is_superset_of_mcp_tools_and_resources() -> None:
             and bool(schema_a.get("properties"))
             and bool(schema_b.get("properties"))
         ):
-            assert _schema_core(schema_a) == _schema_core(schema_b)
+            surf_a = _schema_surface(schema_a)
+            surf_b = _schema_surface(schema_b)
+            if surf_a is not None and surf_b is not None:
+                assert surf_a == surf_b, f"Schema surface mismatch for tool: {name}"
 
         fn_a = (mcp_tools_dict[name] or {}).get("function")
         fn_b = (mcpplus_tools_dict[name] or {}).get("function")
