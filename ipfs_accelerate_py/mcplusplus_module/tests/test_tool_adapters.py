@@ -329,7 +329,18 @@ def test_taskqueue_module_optional_dependency_contract():
 
 def test_trio_module_optional_dependency_contract():
     """Trio package optional exports should use explicit compatibility stubs."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
     from ipfs_accelerate_py.mcplusplus_module import trio as trio_module
+
+    assert trio_module._missing_dependency_stub is mcplusplus_module._missing_dependency_stub
+
+    bridge_symbols = [
+        trio_module.run_in_trio,
+        trio_module.is_trio_context,
+        trio_module.require_trio,
+        trio_module.TrioContext,
+    ]
+    assert all(symbol is not None for symbol in bridge_symbols)
 
     trio_symbols = [
         trio_module.TrioMCPServer,

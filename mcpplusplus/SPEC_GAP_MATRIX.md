@@ -26,6 +26,8 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - `mcplusplus_module.p2p.workflow` now exposes explicit compatibility stubs for optional scheduler symbols (instead of raw `None` exports), with contract coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 - `mcplusplus_module.p2p.taskqueue` now exposes an explicit compatibility stub for optional `RemoteQueue` exports (instead of raw `None`), with contract coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 - `mcplusplus_module.trio` package optional exports now use explicit compatibility stubs (instead of raw `None`), with contract coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
+- `mcplusplus_module.trio` now reuses the shared top-level `_missing_dependency_stub` helper to avoid duplicate fallback implementations.
+- `mcplusplus_module.trio` bridge utility exports now degrade to explicit compatibility stubs when bridge dependencies are unavailable, avoiding early module-import failures.
 - Trio server and tools package now share a single P2P registrar resolver path (`mcplusplus_module.tools._resolve_p2p_registrars`) to avoid duplicated resolver logic.
 
 ## Capability Matrix

@@ -5,32 +5,18 @@ This module provides Trio-first implementations of the Model Context Protocol,
 designed to work natively with Trio's structured concurrency model.
 """
 
-from .bridge import run_in_trio, is_trio_context, require_trio, TrioContext
+from .. import _missing_dependency_stub
 
+try:
+    from .bridge import run_in_trio, is_trio_context, require_trio, TrioContext
+except ImportError as e:
+    import logging
 
-class _MissingDependencyStub:
-    """Compatibility stub for optional symbols unavailable at import time."""
-
-    def __init__(self, symbol_name: str):
-        self._symbol_name = str(symbol_name)
-
-    def __repr__(self) -> str:
-        return f"<Unavailable {self._symbol_name}>"
-
-    def __bool__(self) -> bool:
-        return False
-
-    def __call__(self, *args, **kwargs):
-        _ = args, kwargs
-        raise RuntimeError(f"{self._symbol_name} is unavailable in this environment")
-
-    def __getattr__(self, _name: str):
-        raise RuntimeError(f"{self._symbol_name} is unavailable in this environment")
-
-
-def _missing_dependency_stub(symbol_name: str):
-    """Create a consistent compatibility stub for an optional symbol."""
-    return _MissingDependencyStub(symbol_name)
+    logging.getLogger(__name__).debug(f"Trio bridge utilities not available: {e}")
+    run_in_trio = _missing_dependency_stub("run_in_trio")
+    is_trio_context = _missing_dependency_stub("is_trio_context")
+    require_trio = _missing_dependency_stub("require_trio")
+    TrioContext = _missing_dependency_stub("TrioContext")
 
 # Server and client implementations
 try:
