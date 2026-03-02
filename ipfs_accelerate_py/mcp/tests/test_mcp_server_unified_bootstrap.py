@@ -1243,6 +1243,56 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 or "success" in workflow_list_result
             )
 
+            workflow_create_result = await _dispatch_result(
+                "workflow_tools",
+                "create_workflow",
+                {
+                    "workflow_id": "smoke-created-workflow",
+                    "workflow_definition": {
+                        "name": "smoke-created-workflow",
+                        "steps": [],
+                    },
+                },
+            )
+            self.assertTrue(
+                "workflow_id" in workflow_create_result
+                or "status" in workflow_create_result
+                or "success" in workflow_create_result
+            )
+
+            workflow_run_result = await _dispatch_result(
+                "workflow_tools",
+                "run_workflow",
+                {"workflow_id": "smoke-created-workflow"},
+            )
+            self.assertTrue(
+                "workflow_id" in workflow_run_result
+                or "status" in workflow_run_result
+                or "success" in workflow_run_result
+            )
+
+            workflow_assigned_result = await _dispatch_result(
+                "workflow_tools",
+                "get_assigned_workflows",
+                {},
+            )
+            self.assertTrue(
+                "assigned_workflows" in workflow_assigned_result
+                or "status" in workflow_assigned_result
+                or "success" in workflow_assigned_result
+            )
+
+            workflow_tags_result = await _dispatch_result(
+                "workflow_tools",
+                "get_workflow_tags",
+                {},
+            )
+            self.assertTrue(
+                "tags" in workflow_tags_result
+                or "status" in workflow_tags_result
+                or "success" in workflow_tags_result
+            )
+
             web_scraping_result = await _dispatch_result(
                 "web_scraping_tools",
                 "check_scraper_methods_tool",
