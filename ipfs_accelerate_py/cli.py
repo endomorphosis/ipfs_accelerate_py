@@ -241,6 +241,114 @@ class IPFSAccelerateCLI:
         if self.dashboard_process:
             self.dashboard_process.terminate()
             self.dashboard_process = None
+
+    def _print_output(self, payload: Dict[str, Any], as_json: bool) -> None:
+        if as_json:
+            print(json.dumps(payload, indent=2, default=str))
+        else:
+            print(payload)
+
+    def run_models_list(self, args):
+        """List models via shared ModelOperations or HF Inference metadata manager."""
+        _load_heavy_imports()
+
+        if getattr(args, "hf_inference", False):
+            try:
+                from ipfs_datasets_py.utils.model_manager import list_hf_inference_models
+            except Exception as e:
+                payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+                self._print_output(payload, getattr(args, "output_json", False))
+                return 1
+
+            records = list_hf_inference_models(model_kind=getattr(args, "kind", None))
+            payload = {
+                "status": "success",
+                "source": "hf_inference_model_manager",
+                "models": records,
+                "total": len(records),
+            }
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 0
+
+        if model_ops is None:
+            payload = {"status": "error", "error": "Model operations unavailable"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = model_ops.list_models()
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_search(self, args):
+        """Search models via shared ModelOperations or HF Inference metadata manager."""
+        _load_heavy_imports()
+
+        if getattr(args, "hf_inference", False):
+            try:
+                from ipfs_datasets_py.utils.model_manager import list_hf_inference_models
+            except Exception as e:
+                payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+                self._print_output(payload, getattr(args, "output_json", False))
+                return 1
+
+            query = str(args.query or "").strip().lower()
+            records = list_hf_inference_models(model_kind=getattr(args, "kind", None))
+            if query:
+                records = [
+                    item
+                    for item in records
+                    if query in item.get("model_id", "").lower()
+                    or query in item.get("model_name", "").lower()
+                    or query in str(item.get("pipeline_tag", "")).lower()
+                ]
+            payload = {
+                "status": "success",
+                "source": "hf_inference_model_manager",
+                "query": args.query,
+                "models": records[: int(getattr(args, "limit", 50))],
+                "total": len(records),
+            }
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 0
+
+        if model_ops is None:
+            payload = {"status": "error", "error": "Model operations unavailable"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = model_ops.search_models(query=args.query, limit=int(getattr(args, "limit", 50)))
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
+
+    def run_models_details(self, args):
+        """Get model details via shared ModelOperations or HF Inference metadata manager."""
+        _load_heavy_imports()
+
+        if getattr(args, "hf_inference", False):
+            try:
+                from ipfs_datasets_py.utils.model_manager import get_hf_inference_model_metadata
+            except Exception as e:
+                payload = {"status": "error", "error": f"HF inference model manager unavailable: {e}"}
+                self._print_output(payload, getattr(args, "output_json", False))
+                return 1
+
+            meta = get_hf_inference_model_metadata(args.model_id)
+            if meta is None:
+                payload = {"status": "error", "error": f"Model not found: {args.model_id}", "model_id": args.model_id}
+                self._print_output(payload, getattr(args, "output_json", False))
+                return 1
+            payload = {"status": "success", "source": "hf_inference_model_manager", "model": meta}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 0
+
+        if model_ops is None:
+            payload = {"status": "error", "error": "Model operations unavailable"}
+            self._print_output(payload, getattr(args, "output_json", False))
+            return 1
+
+        payload = model_ops.get_model_info(model_id=args.model_id)
+        self._print_output(payload, getattr(args, "output_json", False))
+        return 0
     
     def run_mcp_start(self, args):
         """Start MCP server with integrated dashboard, model manager, and queue monitoring"""
@@ -2012,6 +2120,24 @@ Examples:
             # Specialized AI commands
             specialized_parser = subparsers.add_parser('specialized', help='Specialized AI tasks (code generation, timeseries, etc.)')
             specialized_parser.add_argument('--ai-help', action='store_true', help='Show detailed AI specialized command help')
+
+        # Model commands
+        models_parser = subparsers.add_parser('models', help='Model manager and model search operations')
+        models_subparsers = models_parser.add_subparsers(dest='models_command', help='Model commands')
+
+        models_list_parser = models_subparsers.add_parser('list', help='List models')
+        models_list_parser.add_argument('--hf-inference', action='store_true', help='Use HF inference model manager records')
+        models_list_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+
+        models_search_parser = models_subparsers.add_parser('search', help='Search models')
+        models_search_parser.add_argument('query', help='Search query')
+        models_search_parser.add_argument('--limit', type=int, default=50, help='Maximum results')
+        models_search_parser.add_argument('--hf-inference', action='store_true', help='Use HF inference model manager records')
+        models_search_parser.add_argument('--kind', choices=['llm', 'embedding'], help='Filter HF inference model kind')
+
+        models_details_parser = models_subparsers.add_parser('details', help='Get model details')
+        models_details_parser.add_argument('model_id', help='Model identifier')
+        models_details_parser.add_argument('--hf-inference', action='store_true', help='Use HF inference model manager records')
         
         
         # Parse arguments
@@ -2089,6 +2215,17 @@ Examples:
                 return cli.run_copilot_sdk_destroy_session(args)
             else:
                 copilot_sdk_parser.print_help()
+                return 1
+
+        elif args.command == 'models':
+            if args.models_command == 'list':
+                return cli.run_models_list(args)
+            elif args.models_command == 'search':
+                return cli.run_models_search(args)
+            elif args.models_command == 'details':
+                return cli.run_models_details(args)
+            else:
+                models_parser.print_help()
                 return 1
         
         # Handle AI inference commands by delegating to AIInferenceCLI

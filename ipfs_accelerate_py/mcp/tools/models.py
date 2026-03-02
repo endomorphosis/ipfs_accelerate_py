@@ -244,6 +244,54 @@ def get_model_stats_tool() -> Dict[str, Any]:
         }
 
 
+def list_hf_inference_models_tool(model_kind: Optional[str] = None) -> Dict[str, Any]:
+    """List curated HF inference provider models from model manager metadata."""
+    try:
+        from ipfs_datasets_py.utils.model_manager import list_hf_inference_models
+
+        records = list_hf_inference_models(model_kind=model_kind)
+        return {
+            'status': 'success',
+            'source': 'hf_inference_model_manager',
+            'models': records,
+            'total': len(records),
+            'model_kind': model_kind,
+        }
+    except Exception as e:
+        logger.error(f"Error listing HF inference models: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'models': [],
+        }
+
+
+def get_hf_inference_model_metadata_tool(model_id: str) -> Dict[str, Any]:
+    """Get a single curated HF inference provider model metadata record."""
+    try:
+        from ipfs_datasets_py.utils.model_manager import get_hf_inference_model_metadata
+
+        model = get_hf_inference_model_metadata(model_id)
+        if model is None:
+            return {
+                'status': 'error',
+                'error': f'Model not found: {model_id}',
+                'model_id': model_id,
+            }
+        return {
+            'status': 'success',
+            'source': 'hf_inference_model_manager',
+            'model': model,
+        }
+    except Exception as e:
+        logger.error(f"Error getting HF inference model metadata: {e}")
+        return {
+            'status': 'error',
+            'error': str(e),
+            'model_id': model_id,
+        }
+
+
 # Register model tools with the MCP server
 def register_model_tools(mcp) -> None:
     """Register model management tools with the MCP server"""
@@ -310,6 +358,38 @@ def register_model_tools(mcp) -> None:
                 },
                 execution_context="server",
             )
+
+            mcp.register_tool(
+                name="list_hf_inference_models",
+                function=list_hf_inference_models_tool,
+                description="List curated HF inference provider models from model manager metadata",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "model_kind": {
+                            "type": "string",
+                            "enum": ["llm", "embedding"],
+                            "description": "Optional model kind filter"
+                        }
+                    },
+                    "required": []
+                },
+                execution_context="server",
+            )
+
+            mcp.register_tool(
+                name="get_hf_inference_model_metadata",
+                function=get_hf_inference_model_metadata_tool,
+                description="Get curated HF inference provider metadata for a specific model",
+                input_schema={
+                    "type": "object",
+                    "properties": {
+                        "model_id": {"type": "string", "description": "HuggingFace model ID"}
+                    },
+                    "required": ["model_id"]
+                },
+                execution_context="server",
+            )
         elif hasattr(mcp, 'tool'):
             # FastMCP decorator style
             @mcp.tool()
@@ -333,6 +413,16 @@ def register_model_tools(mcp) -> None:
             def get_model_stats() -> Dict[str, Any]:
                 """Get statistics about cached models"""
                 return get_model_stats_tool()
+
+            @mcp.tool()
+            def list_hf_inference_models(model_kind: Optional[str] = None) -> Dict[str, Any]:
+                """List curated HF inference provider models from model manager metadata"""
+                return list_hf_inference_models_tool(model_kind)
+
+            @mcp.tool()
+            def get_hf_inference_model_metadata(model_id: str) -> Dict[str, Any]:
+                """Get curated HF inference provider metadata for a specific model"""
+                return get_hf_inference_model_metadata_tool(model_id)
         
         logger.info("Model tools registered successfully")
     except Exception as e:

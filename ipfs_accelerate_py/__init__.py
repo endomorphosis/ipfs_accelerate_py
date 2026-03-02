@@ -118,12 +118,39 @@ if os.environ.get("IPFS_ACCEL_IMPORT_EAGER", "0") == "1":
             def __init__(self, *args, **kwargs):
                 raise NotImplementedError("Model Manager is not available")
 else:
-    model_manager_available = False
+    model_manager_available = True
+
+    def _lazy_import_model_manager():
+        try:
+            from .model_manager import (
+                ModelManager as _RealModelManager,
+                ModelMetadata as _RealModelMetadata,
+                IOSpec as _RealIOSpec,
+                ModelType as _RealModelType,
+                DataType as _RealDataType,
+                create_model_from_huggingface as _create_model_from_huggingface,
+                get_default_model_manager as _real_get_default_model_manager,
+            )
+            return {
+                "ModelManager": _RealModelManager,
+                "ModelMetadata": _RealModelMetadata,
+                "IOSpec": _RealIOSpec,
+                "ModelType": _RealModelType,
+                "DataType": _RealDataType,
+                "create_model_from_huggingface": _create_model_from_huggingface,
+                "get_default_model_manager": _real_get_default_model_manager,
+            }
+        except Exception as e:
+            raise NotImplementedError(f"Model Manager is not available: {e}") from e
+
     def get_default_model_manager(*args, **kwargs):
-        raise NotImplementedError("Model Manager is not imported by default. Set IPFS_ACCEL_IMPORT_EAGER=1 to enable.")
+        exports = _lazy_import_model_manager()
+        return exports["get_default_model_manager"](*args, **kwargs)
+
     class ModelManager:
-        def __init__(self, *args, **kwargs):
-            raise NotImplementedError("Model Manager is not imported by default. Set IPFS_ACCEL_IMPORT_EAGER=1 to enable.")
+        def __new__(cls, *args, **kwargs):
+            exports = _lazy_import_model_manager()
+            return exports["ModelManager"](*args, **kwargs)
 
 _global_instance = None
 
