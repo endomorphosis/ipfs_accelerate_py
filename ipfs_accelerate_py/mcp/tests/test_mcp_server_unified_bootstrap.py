@@ -1293,6 +1293,34 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 or "success" in workflow_tags_result
             )
 
+            workflow_init_p2p_result = await _dispatch_result(
+                "workflow_tools",
+                "initialize_p2p_scheduler",
+                {"peer_id": "smoke-peer", "peers": ["peer-a", "peer-b"]},
+            )
+            self.assertTrue(
+                "status" in workflow_init_p2p_result
+                or "success" in workflow_init_p2p_result
+                or "error" in workflow_init_p2p_result
+            )
+
+            workflow_schedule_p2p_result = await _dispatch_result(
+                "workflow_tools",
+                "schedule_p2p_workflow",
+                {
+                    "workflow_id": "smoke-p2p-workflow",
+                    "name": "Smoke P2P Workflow",
+                    "tags": ["p2p_eligible"],
+                    "priority": 1.0,
+                },
+            )
+            self.assertTrue(
+                "workflow_id" in workflow_schedule_p2p_result
+                or "status" in workflow_schedule_p2p_result
+                or "success" in workflow_schedule_p2p_result
+                or "error" in workflow_schedule_p2p_result
+            )
+
             web_scraping_result = await _dispatch_result(
                 "web_scraping_tools",
                 "check_scraper_methods_tool",

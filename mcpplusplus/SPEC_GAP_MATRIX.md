@@ -37,6 +37,7 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - Unified `workflow_tools` category parity now also includes `pause_workflow` and `list_workflows` native registration and dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`.
 - Unified `workflow_tools` category parity now also includes `create_workflow` and `run_workflow` native registration and dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`.
 - Unified `workflow_tools` category parity now also includes `get_assigned_workflows` and `get_workflow_tags` native registration and dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`.
+- Unified `workflow_tools` category parity now also includes `initialize_p2p_scheduler` and `schedule_p2p_workflow` native registration and dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`.
 
 ## Capability Matrix
 
