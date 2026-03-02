@@ -342,6 +342,11 @@ def test_trio_module_optional_dependency_contract():
     ]
     assert all(symbol is not None for symbol in bridge_symbols)
 
+    # Bridge dependencies may be absent in lightweight environments.
+    if not trio_module.run_in_trio:
+        with pytest.raises(RuntimeError, match="run_in_trio is unavailable"):
+            trio_module.run_in_trio()
+
     trio_symbols = [
         trio_module.TrioMCPServer,
         trio_module.ServerConfig,
