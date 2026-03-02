@@ -26,9 +26,7 @@ import tempfile
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
-from .. import _resolve_storage_wrapper_factory
-
-storage_wrapper = _resolve_storage_wrapper_factory()
+from .. import _create_storage_wrapper
 
 logger = logging.getLogger(__name__)
 
@@ -58,13 +56,7 @@ class P2PPeerRegistry:
             cache_prefix: Prefix for cache keys
             peer_ttl_minutes: How long peer entries are valid
         """
-        # Initialize storage wrapper
-        self.storage = None
-        if storage_wrapper is not None:
-            try:
-                self.storage = storage_wrapper(auto_detect_ci=True)
-            except Exception:
-                self.storage = None
+        self.storage = _create_storage_wrapper(auto_detect_ci=True)
         
         self.repo = repo
         self.repo_owner, self.repo_name = (repo.split("/", 1) + [""])[0:2]

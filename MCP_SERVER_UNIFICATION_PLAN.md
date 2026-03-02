@@ -53,6 +53,199 @@ From current in-repo conformance artifacts:
 
 ## 5. Porting and Merge Workstreams
 
+### 5.0 Comprehensive Port-and-Merge Blueprint (Source -> Canonical)
+
+This section is the concrete migration blueprint for porting
+`ipfs_datasets_py/ipfs_datasets_py/mcp_server` (sometimes referenced as `mcp_serve`)
+into `ipfs_accelerate_py/mcp_server`, while folding in the remaining runtime value from
+`ipfs_accelerate_py/mcplusplus_module`.
+
+#### 5.0.1 Scope Boundaries
+
+1. Canonical runtime destination: `ipfs_accelerate_py/mcp_server/*`.
+2. Source parity baseline: `ipfs_datasets_py/ipfs_datasets_py/mcp_server/*`.
+3. Compatibility-only shim source: `ipfs_accelerate_py/mcplusplus_module/*`.
+4. Spec acceptance source: `ipfs_accelerate_py/mcpplusplus/spec/*`.
+
+#### 5.0.2 Porting Architecture Contract
+
+1. All behavior lands in canonical modules under `ipfs_accelerate_py/mcp_server`.
+2. `mcplusplus_module` may delegate, adapt, or stub, but must not become feature-authoritative.
+3. Any source feature with no canonical analog must first land in canonical runtime, then be wired via shim delegation.
+4. Existing canonical-first resolver patterns remain mandatory for new shim integration points.
+
+#### 5.0.3 Directory-Level Migration Map
+
+| Source (`ipfs_datasets_py/.../mcp_server`) | Canonical Target (`ipfs_accelerate_py/mcp_server`) | Merge Rule | Priority |
+| --- | --- | --- | --- |
+| `server.py`, `runtime_router.py`, `tool_registry.py`, `registration_adapter.py`, `hierarchical_tool_manager.py` | same top-level runtime modules | Reconcile behavior into one dispatch path; remove duplicate decision branches | P0 |
+| `tools/*` (51 categories) | `tools/*` native category modules | Keep category parity and close operation/schema deltas with deterministic tests | P0/P1 |
+| `mcplusplus/*` primitives | `mcplusplus/*` primitives | Ensure dispatch consumption and transport integration, not only primitive existence | P0 |
+| `policy_audit_log.py`, `secrets_vault.py`, `risk_scorer.py` | same top-level modules | Preserve deterministic policy/risk behavior and decision lineage contracts | P0 |
+| `monitoring.py`, `otel_tracing.py`, `prometheus_exporter.py` | same top-level modules | Preserve optional dependency safety and payload stability | P1 |
+| transport entrypoints (`standalone_server.py`, trio/http adapters) | `mcp_server` + `mcp/standalone.py` + `p2p_tasks/*` integration boundary | Keep parity across stdio/http/trio-p2p/mcp+p2p with required CI lanes | P0 |
+
+#### 5.0.4 `mcplusplus_module` Feature Merge Map
+
+| Shim Area (`ipfs_accelerate_py/mcplusplus_module`) | Canonical Ownership Target | Required End State |
+| --- | --- | --- |
+| `tools/*` adapters | `ipfs_accelerate_py/mcp_server/tools/*` | shim tools become thin registrars/delegators only |
+| `p2p/*` bootstrap/peer/workflow/taskqueue helpers | `ipfs_accelerate_py/mcp_server/mcplusplus/*` and `ipfs_accelerate_py/mcp_server/tools/p2p_tools/*` | no unique scheduler/queue/peer behavior remains in shim |
+| `trio/*` server and resolver surfaces | canonical runtime registration and transport helpers | shared resolver path and explicit compatibility stubs |
+| top-level fallback utilities | centralized helper functions | no duplicated optional-dependency/fallback logic across shim subpackages |
+
+#### 5.0.5 Four-Phase Delivery Sequence
+
+1. Phase A: Inventory and mapping lock
+   - Generate operation/schema diff per category (source -> canonical).
+   - Classify each delta: implement now, delegate, or explicitly defer.
+2. Phase B: Canonical feature landing
+   - Implement missing behavior in canonical runtime only.
+   - Add discovery/schema/dispatch/error-envelope tests.
+3. Phase C: Shim convergence
+   - Replace shim logic with canonical-first delegation.
+   - Convert residual fallback branches to shared explicit stubs/helpers.
+4. Phase D: Spec and cutover hardening
+   - Prove chapter-level behavior in `mcpplusplus/spec/*` using deterministic evidence.
+   - Validate rollout and rollback for canonical default runtime.
+
+#### 5.0.6 Per-Feature Acceptance Gate
+
+1. Source operation mapped to canonical implementation or explicit deferred rationale.
+2. `tools_list_tools` and `tools_get_schema` evidence for the migrated operation.
+3. `tools_dispatch` behavioral parity evidence, including negative/error paths.
+4. Conformance artifacts updated:
+   - `mcpplusplus/SPEC_GAP_MATRIX.md`
+   - `mcpplusplus/CONFORMANCE_CHECKLIST.md` (when requirement status changes)
+5. Shim paths (if any) verified as delegation-only for the migrated operation.
+
+#### 5.0.7 Definition of Merge Completion
+
+1. `ipfs_accelerate_py/mcp_server` is feature-authoritative for runtime + tools + MCP++ primitives.
+2. `mcplusplus_module` has no unique runtime behavior and only compatibility delegation/stubs.
+3. Every spec chapter in `mcpplusplus/spec/*` is represented by deterministic execution evidence.
+4. Canonical runtime can be the default path with tested rollback.
+
+#### 5.0.8 Top-Level Runtime Module Delta Triage
+
+Current top-level module delta (source minus canonical) includes:
+
+1. Dispatch/transport/control modules:
+   - `dispatch_pipeline.py`, `fastapi_service.py`, `fastapi_config.py`, `standalone_server.py`, `trio_adapter.py`, `mcp_p2p_transport.py`, `register_p2p_tools.py`, `server_context.py`, `mcp_interfaces.py`.
+2. Spec-adjacent modules:
+   - `ucan_delegation.py`, `temporal_policy.py`, `event_dag.py`, `cid_artifacts.py`, `interface_descriptor.py`.
+3. Operational/auxiliary modules:
+   - `client.py`, `simple_server.py`, `enterprise_api.py`, `grpc_transport.py`, `compliance_checker.py`, `did_key_manager.py`, `investigation_mcp_client.py`, `p2p_service_manager.py`, `p2p_mcp_registry_adapter.py`, `logger.py`, `validators.py`, `nl_ucan_policy.py`, `temporal_deontic_mcp_server.py`.
+
+Decision workflow for each module:
+
+1. `MERGE`: functionality is missing in canonical runtime and must be ported into `ipfs_accelerate_py/mcp_server/*`.
+2. `ADAPT`: functionality already exists in canonical runtime; add compatibility wrapper only.
+3. `FACADE`: keep only as compatibility entrypoint in `ipfs_accelerate_py/mcp/*`.
+4. `DEFER`: document explicit rationale and target phase in `SPEC_GAP_MATRIX`.
+
+Required output artifact for this triage:
+
+1. `module_port_matrix.csv`-style issue table in tracker (module, decision, target file, tests, owner, phase).
+
+#### 5.0.9 Tool Category Consolidation Rules
+
+Observed category state:
+
+1. Source categories: `51`.
+2. Canonical categories: `56`.
+3. Canonical-only alias/organizational categories: `idl`, `ipfs`, `p2p`, `rate_limiting`, `workflow`.
+
+Consolidation rules:
+
+1. Treat source category names as compatibility contracts (`ipfs_tools`, `workflow_tools`, `p2p_tools`, `rate_limiting_tools`).
+2. Canonical alias categories (`ipfs`, `workflow`, `p2p`, `rate_limiting`) may remain for internal organization, but must not break source-compatible discovery/dispatch behavior.
+3. New features land in canonical native categories first, then backfill source-compatible aliases/schemas.
+
+Wave execution order (operation-level parity):
+
+1. Wave P0-A: `ipfs_tools`, `workflow_tools`, `p2p_tools`, `mcplusplus`.
+2. Wave P0-B: `security_tools`, `monitoring_tools`, `auth_tools`, `session_tools`.
+3. Wave P1-C: `dataset_tools`, `embedding_tools`, `vector_tools`, `search_tools`, `storage_tools`.
+4. Wave P1-D: `pdf_tools`, `graph_tools`, `logic_tools`, `web_archive_tools`, long-tail categories.
+
+#### 5.0.10 `mcplusplus_module` Function-Level Merge Plan
+
+This maps known shim functions/surfaces to canonical ownership targets.
+
+| Shim Function/Surface | Current File | Canonical Destination | Merge Action |
+| --- | --- | --- | --- |
+| `_resolve_storage_wrapper_factory` | `ipfs_accelerate_py/mcplusplus_module/__init__.py` | `ipfs_accelerate_py/mcp_server` shared compatibility utility module | Keep single resolver implementation; import from one canonical location |
+| `_missing_dependency_stub` contract | `ipfs_accelerate_py/mcplusplus_module/__init__.py` + subpackages | canonical optional-dependency helper (shared) | Eliminate duplicate stub classes across shim subpackages |
+| `register_p2p_taskqueue_tools` | `ipfs_accelerate_py/mcplusplus_module/tools/taskqueue_tools.py` | `ipfs_accelerate_py/mcp_server/tools/p2p_tools/native_p2p_tools.py` | maintain delegation-only shim; no unique business logic |
+| `register_p2p_workflow_tools` | `ipfs_accelerate_py/mcplusplus_module/tools/workflow_tools.py` | `ipfs_accelerate_py/mcp_server/tools/p2p_workflow_tools/native_p2p_workflow_tools.py` | move scheduler semantics to canonical runtime; keep compatibility names in shim |
+| Trio registrar resolution (`_resolve_p2p_registrars`) | `ipfs_accelerate_py/mcplusplus_module/trio/server.py` and `.../tools/__init__.py` | canonical registration path in `mcp_server` | preserve shared resolver, prohibit duplicate registrar logic |
+| Peer/bootstrap adapters (`SimplePeerBootstrap`, `P2PPeerRegistry`) | `ipfs_accelerate_py/mcplusplus_module/p2p/bootstrap.py`, `.../peer_registry.py` | canonical p2p service integration boundary (`mcp_server` + `p2p_tasks`) | converge on canonical-first service calls and transport-neutral persistence |
+
+Integration acceptance for each row:
+
+1. No shim-exclusive runtime branch remains.
+2. Shim function calls canonical implementation or explicit compatibility stub.
+3. Deterministic coverage exists in `ipfs_accelerate_py/mcplusplus_module/tests/` plus canonical dispatch tests when applicable.
+
+#### 5.0.11 Spec-First Porting Gates (MCP++)
+
+For each spec chapter in `ipfs_accelerate_py/mcpplusplus/spec/*`, porting closes only when both are true:
+
+1. Runtime behavior exists in canonical modules (`ipfs_accelerate_py/mcp_server/*`).
+2. At least one transport-level execution path validates behavior (`stdio`, `http`, or `mcp+p2p` where applicable).
+
+Mandatory chapter evidence bundle:
+
+1. Unit/module test evidence.
+2. Unified bootstrap dispatch evidence.
+3. Matrix updates in `mcpplusplus/SPEC_GAP_MATRIX.md`.
+4. Checklist status consistency in `mcpplusplus/CONFORMANCE_CHECKLIST.md`.
+
+#### 5.0.12 Initial `module_port_matrix` (Execution Baseline)
+
+Use this as the first implementation backlog for source top-level modules that are not yet mirrored in canonical runtime.
+
+| Source Module | Decision | Canonical Target | Phase | Deterministic Evidence |
+| --- | --- | --- | --- | --- |
+| `__main__.py` | `FACADE` | `ipfs_accelerate_py/mcp/__main__.py` and canonical `mcp_server/server.py` startup path | A | startup contract tests |
+| `audit_metrics_bridge.py` | `MERGE` | `ipfs_accelerate_py/mcp_server/monitoring.py` + `policy_audit_log.py` integration hooks | B | observability + policy audit integration tests |
+| `cid_artifacts.py` | `ADAPT` | `ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py` | B | artifact chain tests + unified bootstrap assertions |
+| `client.py` | `FACADE` | `ipfs_accelerate_py/mcp/integration.py` or `p2p_tasks/client.py` | C | process/subprocess client contract tests |
+| `compliance_checker.py` | `DEFER` | conformance tooling backlog (`mcpplusplus/*`) | D | checklist/matrix audit CI task |
+| `did_key_manager.py` | `MERGE` | `ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py` helper module | B | UCAN signature vector tests |
+| `dispatch_pipeline.py` | `MERGE` | `ipfs_accelerate_py/mcp_server/runtime_router.py` + `server.py` dispatch flow | B | unified bootstrap dispatch regression suite |
+| `enterprise_api.py` | `DEFER` | follow-on enterprise profile package | D | deferred rationale in `SPEC_GAP_MATRIX` |
+| `event_dag.py` | `ADAPT` | `ipfs_accelerate_py/mcp_server/mcplusplus/event_dag.py` | B | event DAG lineage/replay tests |
+| `fastapi_config.py` | `MERGE` | new canonical config helper under `ipfs_accelerate_py/mcp_server/` | B | FastAPI startup/config parsing tests |
+| `fastapi_service.py` | `MERGE` | canonical HTTP entrypoint under `ipfs_accelerate_py/mcp_server/` with facade in `mcp/` | B | transport parity HTTP tests |
+| `grpc_transport.py` | `DEFER` | optional transport extension track | D | deferred rationale + no-pass status |
+| `interface_descriptor.py` | `ADAPT` | `ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py` + `tools/idl/*` | B | IDL descriptor/canonicalization tests |
+| `investigation_mcp_client.py` | `DEFER` | investigation-tools enhancement track | D | deferred rationale in matrix |
+| `logger.py` | `ADAPT` | shared logger usage in `mcp_server/*` (no standalone runtime module) | C | import/runtime smoke tests |
+| `mcp_interfaces.py` | `MERGE` | canonical metadata/interfaces helpers (`tool_metadata.py` + IDL tooling) | B | schema/interface exposure tests |
+| `mcp_p2p_transport.py` | `ADAPT` | `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py` + `mcp_server/mcplusplus/p2p_framing.py` | B | MCP+p2p framing/handler tests |
+| `nl_ucan_policy.py` | `DEFER` | policy-language enhancement track on top of policy engine | D | explicit deferred matrix note |
+| `p2p_mcp_registry_adapter.py` | `MERGE` | `ipfs_accelerate_py/p2p_tasks/service.py` integration boundary | B | p2p registry/handler integration tests |
+| `p2p_service_manager.py` | `MERGE` | `ipfs_accelerate_py/p2p_tasks/service.py` | B | process-level transport service tests |
+| `register_p2p_tools.py` | `ADAPT` | canonical tool-loader path (`mcp_server/server.py` + `wave_a_loaders.py`) | C | bootstrap registration idempotency tests |
+| `server_context.py` | `MERGE` | unified services context in `ipfs_accelerate_py/mcp_server/server.py` | B | `_unified_services` consumption tests |
+| `simple_server.py` | `FACADE` | `ipfs_accelerate_py/mcp/standalone.py` | C | standalone startup contract tests |
+| `standalone_server.py` | `FACADE` | `ipfs_accelerate_py/mcp/standalone.py` + canonical runtime wiring | C | subprocess startup parity tests |
+| `temporal_deontic_mcp_server.py` | `ADAPT` | `ipfs_accelerate_py/mcp_server/mcplusplus/policy_engine.py` + dispatch hooks | B | temporal policy decision/obligation tests |
+| `temporal_policy.py` | `ADAPT` | `ipfs_accelerate_py/mcp_server/mcplusplus/policy_engine.py` | B | policy engine unit + bootstrap tests |
+| `trio_adapter.py` | `ADAPT` | `ipfs_accelerate_py/p2p_tasks/*` trio transport path | C | trio networked transport tests |
+| `trio_bridge.py` | `DEFER` | compatibility-only bridge track | D | deferred rationale in matrix |
+| `ucan_delegation.py` | `ADAPT` | `ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py` | B | UCAN execution-time enforcement tests |
+| `validators.py` | `MERGE` | validation helpers in canonical runtime modules (router/tools/policy) | C | invalid-input/error-envelope tests |
+
+Phase ordering for this matrix:
+
+1. Phase A: validate and lock decisions (`MERGE/ADAPT/FACADE/DEFER`) per row.
+2. Phase B: implement all `MERGE` and `ADAPT` rows that affect P0 spec/runtime paths.
+3. Phase C: finalize `FACADE` rows and compatibility entrypoints.
+4. Phase D: document and track `DEFER` rows with explicit rationale and target milestones.
+
 ## W1. Runtime Core and Dispatch Integrity (P0)
 
 Scope:
@@ -439,6 +632,80 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
      - Dry-run validates canonical path as default.
      - Rollback path tested and documented.
    - Depends on: `UNI-001` to `UNI-006`.
+
+### P0/P1 Module-Port Issues (Derived from 5.0.12)
+
+1. `UNI-008` Runtime Pipeline and Context Module Convergence
+    - Scope: Merge source runtime pipeline/context modules into canonical dispatch path.
+    - Target files: `ipfs_accelerate_py/mcp_server/runtime_router.py`, `ipfs_accelerate_py/mcp_server/server.py`, new/merged helpers for `dispatch_pipeline` and `server_context` semantics.
+    - Acceptance:
+       - Source `dispatch_pipeline.py`, `server_context.py`, and `mcp_interfaces.py` behaviors are represented in canonical runtime.
+       - Unified bootstrap tests confirm deterministic routing and context metadata behavior.
+    - Depends on: `UNI-001`.
+
+2. `UNI-009` Canonical HTTP Service Entry Convergence
+    - Scope: Port `fastapi_service.py` and `fastapi_config.py` behavior into canonical runtime, with compatibility facade where required.
+    - Target files: canonical HTTP entry module(s) under `ipfs_accelerate_py/mcp_server/`, facade updates in `ipfs_accelerate_py/mcp/*`, transport tests.
+    - Acceptance:
+       - HTTP startup path is canonical and deterministic.
+       - Transport parity tests validate HTTP lane behavior.
+    - Depends on: `UNI-008`.
+
+3. `UNI-010` MCP+p2p Transport Adapter Consolidation
+    - Scope: Reconcile `mcp_p2p_transport.py`, `trio_adapter.py`, and `register_p2p_tools.py` semantics into canonical transport wiring.
+    - Target files: `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py`, `ipfs_accelerate_py/mcp_server/mcplusplus/p2p_framing.py`, `ipfs_accelerate_py/mcp_server/server.py`.
+    - Acceptance:
+       - No duplicate registration or transport adapter branches.
+       - Existing `mcp+p2p` limit and handshake tests remain green.
+    - Depends on: `UNI-004`, `UNI-006`.
+
+4. `UNI-011` Policy/Delegation Legacy Surface Adaptation
+    - Scope: Adapt source `ucan_delegation.py`, `temporal_policy.py`, and `temporal_deontic_mcp_server.py` surfaces to canonical MCP++ policy/delegation modules.
+    - Target files: `ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py`, `ipfs_accelerate_py/mcp_server/mcplusplus/policy_engine.py`, `ipfs_accelerate_py/mcp_server/server.py`.
+    - Acceptance:
+       - Legacy surface behavior is represented without introducing duplicate runtimes.
+       - UCAN + temporal policy tests pass with stable decision artifacts.
+    - Depends on: `SPEC-204`, `SPEC-205`.
+
+5. `UNI-012` Artifact/IDL/Event Module Adaptation
+    - Scope: Fold source `cid_artifacts.py`, `interface_descriptor.py`, and `event_dag.py` surfaces into canonical MCP++ implementations.
+    - Target files: `ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py`, `ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py`, `ipfs_accelerate_py/mcp_server/mcplusplus/event_dag.py`.
+    - Acceptance:
+       - Source-equivalent interfaces are reachable through canonical APIs.
+       - Artifact, IDL, and Event DAG tests remain deterministic.
+    - Depends on: `SPEC-202`, `SPEC-203`, `SPEC-206`.
+
+6. `UNI-013` P2P Service Manager and Registry Adapter Merge
+    - Scope: Port `p2p_service_manager.py` and `p2p_mcp_registry_adapter.py` semantics into canonical p2p service boundary.
+    - Target files: `ipfs_accelerate_py/p2p_tasks/service.py`, related canonical bootstrap wiring.
+    - Acceptance:
+       - P2P service lifecycle paths are canonical-owned.
+       - Process-level and networked p2p tests validate integration.
+    - Depends on: `UNI-010`.
+
+7. `UNI-014` Legacy Entry Facade Normalization
+    - Scope: Normalize source entry surfaces (`__main__.py`, `simple_server.py`, `standalone_server.py`, `client.py`) as compatibility facades only.
+    - Target files: `ipfs_accelerate_py/mcp/__main__.py`, `ipfs_accelerate_py/mcp/standalone.py`, `ipfs_accelerate_py/mcp/integration.py`.
+    - Acceptance:
+       - Legacy entrypoints route to canonical runtime paths.
+       - Startup and subprocess contract tests remain stable.
+    - Depends on: `UNI-007`.
+
+8. `UNI-015` Validation and Logging Surface Consolidation
+    - Scope: Consolidate `validators.py` and `logger.py` semantics into canonical runtime modules without standalone runtime duplication.
+    - Target files: `ipfs_accelerate_py/mcp_server/runtime_router.py`, `ipfs_accelerate_py/mcp_server/server.py`, category modules that enforce schemas.
+    - Acceptance:
+       - Validation and logging behavior is deterministic and centralized.
+       - Error-envelope and invalid-input tests pass across representative categories.
+    - Depends on: `UNI-008`.
+
+9. `UNI-016` Deferred Source Module Governance
+    - Scope: Track deferred modules (`enterprise_api.py`, `grpc_transport.py`, `nl_ucan_policy.py`, `trio_bridge.py`, `compliance_checker.py`, `investigation_mcp_client.py`) with explicit phase/rationale.
+    - Target files: `mcpplusplus/SPEC_GAP_MATRIX.md`, this plan, optional follow-on backlog docs.
+    - Acceptance:
+       - Each deferred module has rationale, risk, and target milestone.
+       - No deferred module is treated as implicitly complete.
+    - Depends on: none.
 
 ### P1 Issues (Hardening and Breadth)
 

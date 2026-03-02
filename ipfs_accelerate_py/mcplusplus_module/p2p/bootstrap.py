@@ -23,9 +23,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .. import _resolve_storage_wrapper_factory
-
-storage_wrapper = _resolve_storage_wrapper_factory()
+from .. import _create_storage_wrapper
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +50,7 @@ class SimplePeerBootstrap:
             cache_dir: Directory for peer registry (defaults to ~/.cache/p2p_peers)
             peer_ttl_minutes: How long peer entries are valid
         """
-        # Initialize storage wrapper
-        self.storage = None
-        if storage_wrapper is not None:
-            try:
-                self.storage = storage_wrapper(auto_detect_ci=True)
-            except Exception:
-                self.storage = None
+        self.storage = _create_storage_wrapper(auto_detect_ci=True)
         
         if cache_dir is None:
             # Allow overriding for hardened environments (e.g., systemd ProtectHome)

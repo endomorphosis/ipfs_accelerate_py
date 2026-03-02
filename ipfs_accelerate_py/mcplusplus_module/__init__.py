@@ -101,6 +101,17 @@ def _resolve_storage_wrapper_factory() -> Optional[Callable[..., object]]:
             return factory
     return None
 
+
+def _create_storage_wrapper(**kwargs) -> Optional[object]:
+    """Create a storage wrapper instance using the canonical resolver contract."""
+    factory = _resolve_storage_wrapper_factory()
+    if not callable(factory):
+        return None
+    try:
+        return factory(**kwargs)
+    except Exception:
+        return None
+
 # Import key components
 try:
     from .trio import (
@@ -130,6 +141,7 @@ __all__ = [
     "__author__",
     "_missing_dependency_stub",
     "_resolve_storage_wrapper_factory",
+    "_create_storage_wrapper",
     "TrioMCPServer",
     "ServerConfig",
     "create_app",

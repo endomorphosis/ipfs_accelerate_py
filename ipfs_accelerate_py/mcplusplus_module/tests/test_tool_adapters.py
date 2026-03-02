@@ -353,6 +353,35 @@ def test_storage_wrapper_resolver_returns_none_when_unavailable(monkeypatch):
     assert mcplusplus_module._resolve_storage_wrapper_factory() is None
 
 
+def test_create_storage_wrapper_uses_resolved_factory(monkeypatch):
+    """Shared storage helper should instantiate from resolved factory."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+
+    calls = []
+
+    def _factory(**kwargs):
+        calls.append(kwargs)
+        return {"ok": True, **kwargs}
+
+    monkeypatch.setattr(mcplusplus_module, "_resolve_storage_wrapper_factory", lambda: _factory)
+
+    wrapper = mcplusplus_module._create_storage_wrapper(auto_detect_ci=True)
+    assert wrapper == {"ok": True, "auto_detect_ci": True}
+    assert calls == [{"auto_detect_ci": True}]
+
+
+def test_create_storage_wrapper_returns_none_on_factory_error(monkeypatch):
+    """Shared storage helper should return None when factory instantiation fails."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+
+    def _factory(**_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(mcplusplus_module, "_resolve_storage_wrapper_factory", lambda: _factory)
+
+    assert mcplusplus_module._create_storage_wrapper(auto_detect_ci=True) is None
+
+
 def test_workflow_module_optional_dependency_contract():
     """Workflow module should expose explicit stubs when scheduler deps are absent."""
     from ipfs_accelerate_py.mcplusplus_module.p2p import workflow

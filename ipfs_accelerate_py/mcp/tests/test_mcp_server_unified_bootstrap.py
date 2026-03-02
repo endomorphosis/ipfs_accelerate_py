@@ -254,6 +254,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertTrue(getattr(server, "_unified_profile_negotiation", {}).get("supports_profile_negotiation"))
         self.assertEqual(getattr(server, "_unified_preloaded_categories", []), [])
         self.assertIsInstance(getattr(server, "_unified_services", None), dict)
+        self.assertIsNotNone(getattr(server, "_unified_server_context", None))
         self.assertIn("task_queue_factory", server._unified_services)
         self.assertIn("workflow_scheduler_factory", server._unified_services)
         self.assertIn("workflow_engine_factory", server._unified_services)
@@ -261,6 +262,8 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertIn("peer_registry_factory", server._unified_services)
         self.assertIn("peer_discovery_factory", server._unified_services)
         self.assertIn("result_cache_factory", server._unified_services)
+        self.assertIs(server._unified_server_context.services, server._unified_services)
+        self.assertEqual(server._unified_server_context.supported_profiles, get_unified_supported_profiles())
         self.assertIn("tools_list_categories", server.tools)
         self.assertIn("tools_list_tools", server.tools)
         self.assertIn("tools_get_schema", server.tools)
@@ -4853,6 +4856,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 return {"workflow_id": "wf-risk-1"}
 
         fake_scheduler = FakeWorkflowScheduler()
+        factory_calls = {"workflow_scheduler_factory": 0, "task_queue_factory": 0}
         mock_wrapper.return_value = DummyServer()
 
         with patch.dict(
@@ -4866,8 +4870,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             server = create_mcp_server(name="dispatch-frontier-workflow-bind")
 
         # Force deterministic local scheduler binding to avoid optional dependency behavior.
-        server._unified_services["workflow_scheduler_factory"] = lambda **kwargs: fake_scheduler
-        server._unified_services["task_queue_factory"] = lambda **kwargs: None
+        def _workflow_scheduler_factory(**kwargs):
+            _ = kwargs
+            factory_calls["workflow_scheduler_factory"] += 1
+            return fake_scheduler
+
+        def _task_queue_factory(**kwargs):
+            _ = kwargs
+            factory_calls["task_queue_factory"] += 1
+            return None
+
+        server._unified_services["workflow_scheduler_factory"] = _workflow_scheduler_factory
+        server._unified_services["task_queue_factory"] = _task_queue_factory
 
         async def _run_flow() -> None:
             async def echo(value: str):
@@ -4901,6 +4915,8 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(call["workflow_name"], "risk_frontier_dispatch")
             self.assertEqual(call["tasks"][0]["task_type"], "mcp.frontier.execute")
             self.assertEqual(call["tasks"][0]["payload"]["event_cid"], response["artifacts"]["event_cid"])
+            self.assertEqual(factory_calls["workflow_scheduler_factory"], 1)
+            self.assertEqual(factory_calls["task_queue_factory"], 0)
 
         anyio.run(_run_flow)
 
@@ -4937,6 +4953,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 return "task-risk-1"
 
         fake_task_queue = FakeTaskQueue()
+        factory_calls = {"workflow_scheduler_factory": 0, "task_queue_factory": 0}
         mock_wrapper.return_value = DummyServer()
 
         with patch.dict(
@@ -4950,8 +4967,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             server = create_mcp_server(name="dispatch-frontier-task-queue-bind")
 
         # Force deterministic fallback path to task queue adapter.
-        server._unified_services["workflow_scheduler_factory"] = lambda **kwargs: None
-        server._unified_services["task_queue_factory"] = lambda **kwargs: fake_task_queue
+        def _workflow_scheduler_factory(**kwargs):
+            _ = kwargs
+            factory_calls["workflow_scheduler_factory"] += 1
+            return None
+
+        def _task_queue_factory(**kwargs):
+            _ = kwargs
+            factory_calls["task_queue_factory"] += 1
+            return fake_task_queue
+
+        server._unified_services["workflow_scheduler_factory"] = _workflow_scheduler_factory
+        server._unified_services["task_queue_factory"] = _task_queue_factory
 
         async def _run_flow() -> None:
             async def echo(value: str):
@@ -4985,6 +5012,292 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(call["task_type"], "mcp_frontier_event")
             self.assertEqual(call["payload"]["event_cid"], response["artifacts"]["event_cid"])
             self.assertIsInstance(call["priority"], int)
+            self.assertEqual(factory_calls["workflow_scheduler_factory"], 1)
+            self.assertEqual(factory_calls["task_queue_factory"], 1)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_ipfs_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """ipfs_tools should expose source-compatible operations and dispatch envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="ipfs-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("ipfs_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("pin_to_ipfs", names)
+            self.assertIn("get_from_ipfs", names)
+
+            pin_schema = await get_schema("ipfs_tools", "pin_to_ipfs")
+            self.assertEqual(pin_schema.get("name"), "pin_to_ipfs")
+            self.assertEqual(pin_schema.get("category"), "ipfs_tools")
+            self.assertIn("content_source", (pin_schema.get("input_schema") or {}).get("properties", {}))
+
+            get_schema_payload = await get_schema("ipfs_tools", "get_from_ipfs")
+            self.assertEqual(get_schema_payload.get("name"), "get_from_ipfs")
+            self.assertEqual(get_schema_payload.get("category"), "ipfs_tools")
+            self.assertIn("cid", (get_schema_payload.get("input_schema") or {}).get("properties", {}))
+
+            pin_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "ipfs_tools",
+                    "pin_to_ipfs",
+                    {
+                        "content_source": "ipfs-tools-smoke",
+                        "recursive": True,
+                    },
+                )
+            )
+            self.assertTrue("status" in pin_result or "success" in pin_result or "message" in pin_result)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
+        """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="workflow-tools-expanded-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("workflow_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            expected = {
+                "create_template",
+                "get_next_p2p_workflow",
+                "add_p2p_peer",
+                "remove_p2p_peer",
+                "get_p2p_scheduler_status",
+                "calculate_peer_distance",
+                "merge_merkle_clock",
+            }
+            self.assertTrue(expected.issubset(set(names)))
+
+            template_schema = await get_schema("workflow_tools", "create_template")
+            self.assertIn("template", (template_schema.get("input_schema") or {}).get("properties", {}))
+
+            add_peer_schema = await get_schema("workflow_tools", "add_p2p_peer")
+            self.assertIn("peer_id", (add_peer_schema.get("input_schema") or {}).get("properties", {}))
+
+            calls = [
+                ("get_next_p2p_workflow", {}),
+                ("add_p2p_peer", {"peer_id": "peer-a"}),
+                ("remove_p2p_peer", {"peer_id": "peer-a"}),
+                ("get_p2p_scheduler_status", {}),
+                ("calculate_peer_distance", {"hash1": "0f0f", "hash2": "f0f0"}),
+                (
+                    "merge_merkle_clock",
+                    {
+                        "other_peer_id": "peer-a",
+                        "other_counter": 1,
+                        "other_parent_hash": None,
+                    },
+                ),
+            ]
+
+            for tool_name, params in calls:
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("workflow_tools", tool_name, params)
+                )
+                self.assertTrue("status" in result or "success" in result or "error" in result)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_p2p_tools_expanded_parity_operations(self, mock_wrapper):
+        """p2p_tools should expose source-compatible local and remote helper operations."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="p2p-tools-expanded-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("p2p_tools")
+            names = {tool.get("name") for tool in listed.get("tools", [])}
+            expected = {
+                "p2p_cache_has",
+                "p2p_cache_delete",
+                "p2p_task_delete",
+                "p2p_remote_status",
+                "p2p_remote_call_tool",
+                "p2p_remote_cache_get",
+                "p2p_remote_cache_set",
+                "p2p_remote_cache_has",
+                "p2p_remote_cache_delete",
+                "p2p_remote_submit_task",
+            }
+            self.assertTrue(expected.issubset(names))
+
+            remote_status_schema = await get_schema("p2p_tools", "p2p_remote_status")
+            self.assertIn("remote_multiaddr", (remote_status_schema.get("input_schema") or {}).get("properties", {}))
+
+            remote_call_schema = await get_schema("p2p_tools", "p2p_remote_call_tool")
+            self.assertIn("tool_name", (remote_call_schema.get("input_schema") or {}).get("properties", {}))
+
+            calls = [
+                ("p2p_cache_has", {"key": "smoke"}),
+                ("p2p_cache_delete", {"key": "smoke"}),
+                ("p2p_task_delete", {"task_id": "task-1"}),
+                ("p2p_remote_status", {}),
+                ("p2p_remote_call_tool", {"tool_name": "health", "args": {}}),
+                ("p2p_remote_cache_get", {"key": "smoke"}),
+                ("p2p_remote_cache_set", {"key": "smoke", "value": {"ok": True}}),
+                ("p2p_remote_cache_has", {"key": "smoke"}),
+                ("p2p_remote_cache_delete", {"key": "smoke"}),
+                (
+                    "p2p_remote_submit_task",
+                    {"task_type": "smoke", "model_name": "demo", "payload": {}},
+                ),
+            ]
+
+            for tool_name, params in calls:
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("p2p_tools", tool_name, params)
+                )
+                self.assertTrue("ok" in result or "status" in result or "success" in result or "error" in result)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_mcplusplus_tools_engine_status_operations(self, mock_wrapper):
+        """mcplusplus tools should expose engine-backed status helper operations."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="mcplusplus-tools-engine-status")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("mcplusplus")
+            names = {tool.get("name") for tool in listed.get("tools", [])}
+            expected = {
+                "mcplusplus_engine_status",
+                "mcplusplus_list_engines",
+                "mcplusplus_taskqueue_get_status",
+                "mcplusplus_workflow_get_status",
+                "mcplusplus_peer_list",
+            }
+            self.assertTrue(expected.issubset(names))
+
+            calls = [
+                ("mcplusplus_engine_status", {}),
+                ("mcplusplus_list_engines", {}),
+                ("mcplusplus_taskqueue_get_status", {"task_id": "task-1"}),
+                ("mcplusplus_workflow_get_status", {"workflow_id": "wf-1"}),
+                ("mcplusplus_peer_list", {"limit": 5}),
+            ]
+
+            for tool_name, params in calls:
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("mcplusplus", tool_name, params)
+                )
+                self.assertTrue("status" in result or "success" in result or "error" in result)
 
         anyio.run(_run_flow)
 

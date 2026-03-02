@@ -24,6 +24,16 @@ from .tool_metadata import (
 )
 from .tool_registry import ToolRegistry, get_global_registry
 from .wave_a_loaders import configure_wave_a_loaders
+from .dispatch_pipeline import (
+    coerce_dispatch_bool,
+    coerce_dispatch_dict,
+    coerce_dispatch_list,
+    compute_dispatch_intent_cid,
+    normalize_dispatch_parameters,
+)
+from .server_context import UnifiedServerContext
+from .fastapi_config import UnifiedFastAPIConfig
+from .fastapi_service import create_fastapi_app, run_fastapi_server
 from .monitoring import (
     EnhancedMetricsCollector,
     HealthCheckResult,
@@ -53,6 +63,15 @@ __all__ = [
     "configure_wave_a_loaders",
     "ToolRegistry",
     "get_global_registry",
+    "normalize_dispatch_parameters",
+    "coerce_dispatch_bool",
+    "coerce_dispatch_list",
+    "coerce_dispatch_dict",
+    "compute_dispatch_intent_cid",
+    "UnifiedServerContext",
+    "UnifiedFastAPIConfig",
+    "create_fastapi_app",
+    "run_fastapi_server",
     "MetricData",
     "HealthCheckResult",
     "EnhancedMetricsCollector",

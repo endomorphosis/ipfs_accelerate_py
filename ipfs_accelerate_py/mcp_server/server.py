@@ -14,6 +14,14 @@ from typing import Any
 from .configs import UnifiedMCPServerConfig, parse_preload_categories
 from .hierarchical_tool_manager import HierarchicalToolManager
 from .runtime_router import RuntimeRouter
+from .dispatch_pipeline import (
+    coerce_dispatch_bool,
+    coerce_dispatch_dict,
+    coerce_dispatch_list,
+    compute_dispatch_intent_cid,
+    normalize_dispatch_parameters,
+)
+from .server_context import UnifiedServerContext
 from .wave_a_loaders import configure_wave_a_loaders
 from .tools.idl import load_idl_tools
 from .tools.admin_tools import register_native_admin_tools
@@ -584,38 +592,8 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     async def tools_get_schema(category: str, tool_name: str) -> dict[str, Any]:
         return manager.get_tool_schema(category, tool_name)
 
-    def _coerce_dispatch_bool(value: Any, *, field_name: str) -> bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, (int, float)):
-            if value in (0, 1):
-                return bool(value)
-            raise ValueError(f"{field_name} must be boolean-like (0/1)")
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"1", "true", "yes", "on"}:
-                return True
-            if normalized in {"0", "false", "no", "off"}:
-                return False
-            raise ValueError(f"{field_name} must be one of true/false/1/0/yes/no/on/off")
-        raise ValueError(f"{field_name} must be a boolean, boolean-like number, or boolean-like string")
-
-    def _coerce_dispatch_list(value: Any, *, field_name: str) -> list[Any]:
-        if value is None:
-            return []
-        if isinstance(value, list):
-            return value
-        raise ValueError(f"{field_name} must be a list")
-
-    def _coerce_dispatch_dict(value: Any, *, field_name: str) -> dict[str, Any]:
-        if value is None:
-            return {}
-        if isinstance(value, dict):
-            return value
-        raise ValueError(f"{field_name} must be an object/dict")
-
     async def tools_dispatch(category: str, tool_name: str, parameters: dict[str, Any]) -> Any:
-        payload = dict(parameters) if isinstance(parameters, dict) else {}
+        payload = normalize_dispatch_parameters(parameters)
         dispatch_started = time.perf_counter()
 
         def _record_observability(status: str) -> None:
@@ -662,73 +640,67 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 response.update(extra_fields)
             return response
 
-        dispatch_intent_cid = compute_artifact_cid(
-            {
-                "category": category,
-                "tool_name": tool_name,
-                "parameters": payload,
-            }
-        )
+        dispatch_intent_cid = compute_dispatch_intent_cid(category, tool_name, payload)
 
         try:
-            emit_artifacts = _coerce_dispatch_bool(
+            emit_artifacts = coerce_dispatch_bool(
                 payload.pop("__emit_artifacts", config.enable_cid_artifact_emission),
                 field_name="__emit_artifacts",
             )
             proof_cid = str(payload.pop("__proof_cid", "") or "")
             policy_cid = str(payload.pop("__policy_cid", "") or "")
             correlation_id = str(payload.pop("__correlation_id", "") or "")
-            enforce_ucan = _coerce_dispatch_bool(
+            enforce_ucan = coerce_dispatch_bool(
                 payload.pop("__enforce_ucan", config.enable_ucan_validation),
                 field_name="__enforce_ucan",
             )
             ucan_actor = str(payload.pop("__ucan_actor", "") or "")
-            ucan_proof_chain = _coerce_dispatch_list(
+            ucan_proof_chain = coerce_dispatch_list(
                 payload.pop("__ucan_proof_chain", []),
                 field_name="__ucan_proof_chain",
             )
-            ucan_require_signatures = _coerce_dispatch_bool(
+            ucan_require_signatures = coerce_dispatch_bool(
                 payload.pop("__ucan_require_signatures", False),
                 field_name="__ucan_require_signatures",
             )
-            ucan_issuer_public_keys = _coerce_dispatch_dict(
+            ucan_issuer_public_keys = coerce_dispatch_dict(
                 payload.pop("__ucan_issuer_public_keys", {}),
                 field_name="__ucan_issuer_public_keys",
             )
-            ucan_revoked_proof_cids = _coerce_dispatch_list(
+            ucan_revoked_proof_cids = coerce_dispatch_list(
                 payload.pop("__ucan_revoked_proof_cids", []),
                 field_name="__ucan_revoked_proof_cids",
             )
-            ucan_context_cids = _coerce_dispatch_list(
+            ucan_context_cids = coerce_dispatch_list(
                 payload.pop("__ucan_context_cids", []),
                 field_name="__ucan_context_cids",
             )
-            enforce_policy = _coerce_dispatch_bool(
+            enforce_policy = coerce_dispatch_bool(
                 payload.pop("__enforce_policy", config.enable_policy_evaluation),
                 field_name="__enforce_policy",
             )
             policy_actor = str(payload.pop("__policy_actor", "") or ucan_actor or "*")
-            policy_clauses = _coerce_dispatch_list(
+            policy_clauses = coerce_dispatch_list(
                 payload.pop("__policy_clauses", []),
                 field_name="__policy_clauses",
             )
             policy_resource = payload.pop("__policy_resource", None)
             if policy_resource is not None:
                 policy_resource = str(policy_resource)
-            parent_event_cids = _coerce_dispatch_list(
+            parent_event_cids = coerce_dispatch_list(
                 payload.pop("__parent_event_cids", []),
                 field_name="__parent_event_cids",
             )
             risk_actor = str(payload.pop("__risk_actor", "") or policy_actor or ucan_actor or "*")
-            enforce_risk = _coerce_dispatch_bool(
+            enforce_risk = coerce_dispatch_bool(
                 payload.pop("__enforce_risk", config.enable_risk_scoring),
                 field_name="__enforce_risk",
             )
-            raw_risk_policy = _coerce_dispatch_dict(
+            raw_risk_policy = coerce_dispatch_dict(
                 payload.pop("__risk_policy", {}),
                 field_name="__risk_policy",
             )
-            execute_frontier = _coerce_dispatch_bool(
+            execute_frontier = coerce_dispatch_bool(
                 payload.pop("__execute_frontier", config.enable_risk_frontier_execution),
                 field_name="__execute_frontier",
             )
@@ -1084,12 +1056,23 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         }
 
     # Attach migration components for callers that want the unified surface.
+    unified_services = _build_unified_services()
+    unified_context = UnifiedServerContext(
+        runtime_router=runtime_router,
+        tool_manager=manager,
+        services=unified_services,
+        preloaded_categories=list(preloaded_categories),
+        supported_profiles=get_unified_supported_profiles(),
+        bootstrap_enabled=True,
+    )
+
     setattr(server, "_unified_runtime_router", runtime_router)
     setattr(server, "_unified_tool_manager", manager)
     setattr(server, "_unified_bootstrap_enabled", True)
     setattr(server, "_unified_meta_tools", get_unified_meta_tool_names())
     setattr(server, "_unified_preloaded_categories", preloaded_categories)
-    setattr(server, "_unified_services", _build_unified_services())
+    setattr(server, "_unified_services", unified_services)
+    setattr(server, "_unified_server_context", unified_context)
     setattr(server, "_unified_artifact_store", artifact_store)
     setattr(server, "_unified_event_dag", event_store)
     setattr(server, "_unified_risk_scheduler", risk_scheduler)
@@ -1103,14 +1086,14 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_prometheus_status", prometheus_status)
     setattr(server, "_unified_secrets_vault", secrets_vault)
     setattr(server, "_unified_secrets_status", secrets_status)
-    setattr(server, "_unified_supported_profiles", get_unified_supported_profiles())
+    setattr(server, "_unified_supported_profiles", unified_context.supported_profiles)
     setattr(
         server,
         "_unified_profile_negotiation",
         {
             "supports_profile_negotiation": True,
             "mode": "optional_additive",
-            "profiles": get_unified_supported_profiles(),
+            "profiles": unified_context.supported_profiles,
         },
     )
 
