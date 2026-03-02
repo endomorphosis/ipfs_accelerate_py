@@ -20,6 +20,7 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - `mcplusplus_module.tools.taskqueue_tools` and `mcplusplus_module.tools.workflow_tools` now use canonical adapter resolution with dependency-light fallbacks, with resolver branch coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 - `mcplusplus_module.p2p` export surface now uses explicit compatibility stubs for unavailable optional dependencies (instead of raw `None` exports), with stub-contract coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 - `mcplusplus_module` top-level optional exports now use explicit compatibility stubs (instead of raw `None` exports), with stub-contract coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
+- `mcplusplus_module.p2p` now reuses the top-level compatibility-stub helper to avoid duplicated fallback logic while preserving the same runtime contract.
 
 ## Capability Matrix
 

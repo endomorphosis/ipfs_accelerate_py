@@ -5,31 +5,7 @@ while delegating to canonical implementations in
 ``ipfs_accelerate_py.mcp_server.mcplusplus`` where available.
 """
 
-
-class _MissingDependencyStub:
-    """Compatibility stub for optional symbols unavailable at import time."""
-
-    def __init__(self, symbol_name: str):
-        self._symbol_name = str(symbol_name)
-
-    def __repr__(self) -> str:
-        return f"<Unavailable {self._symbol_name}>"
-
-    def __bool__(self) -> bool:
-        # Keeps legacy truthiness checks working like an absent dependency.
-        return False
-
-    def __call__(self, *args, **kwargs):
-        _ = args, kwargs
-        raise RuntimeError(f"{self._symbol_name} is unavailable in this environment")
-
-    def __getattr__(self, _name: str):
-        raise RuntimeError(f"{self._symbol_name} is unavailable in this environment")
-
-
-def _missing_dependency_stub(symbol_name: str):
-    """Create a consistent compatibility stub for an optional symbol."""
-    return _MissingDependencyStub(symbol_name)
+from .. import _missing_dependency_stub
 
 # Task queue compatibility layer (canonical implementation lives under
 # ipfs_accelerate_py.mcp_server.mcplusplus.task_queue).

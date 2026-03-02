@@ -236,7 +236,10 @@ def test_workflow_adapter_resolver_fallback(monkeypatch):
 
 def test_p2p_missing_dependency_stub_contract():
     """P2P compatibility stub should be falsy and raise clear runtime errors."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
     from ipfs_accelerate_py.mcplusplus_module import p2p
+
+    assert p2p._missing_dependency_stub is mcplusplus_module._missing_dependency_stub
 
     stub = p2p._missing_dependency_stub("ExampleSymbol")
     assert not stub
