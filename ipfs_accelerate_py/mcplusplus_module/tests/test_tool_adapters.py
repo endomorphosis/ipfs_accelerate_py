@@ -347,6 +347,14 @@ def test_trio_module_optional_dependency_contract():
         with pytest.raises(RuntimeError, match="run_in_trio is unavailable"):
             trio_module.run_in_trio()
 
+    if not trio_module.require_trio:
+        with pytest.raises(RuntimeError, match="require_trio is unavailable"):
+            trio_module.require_trio()
+
+    if not trio_module.TrioContext:
+        with pytest.raises(RuntimeError, match="TrioContext is unavailable"):
+            trio_module.TrioContext()
+
     trio_symbols = [
         trio_module.TrioMCPServer,
         trio_module.ServerConfig,

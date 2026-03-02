@@ -584,6 +584,36 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     async def tools_get_schema(category: str, tool_name: str) -> dict[str, Any]:
         return manager.get_tool_schema(category, tool_name)
 
+    def _coerce_dispatch_bool(value: Any, *, field_name: str) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            if value in (0, 1):
+                return bool(value)
+            raise ValueError(f"{field_name} must be boolean-like (0/1)")
+        if isinstance(value, str):
+            normalized = value.strip().lower()
+            if normalized in {"1", "true", "yes", "on"}:
+                return True
+            if normalized in {"0", "false", "no", "off"}:
+                return False
+            raise ValueError(f"{field_name} must be one of true/false/1/0/yes/no/on/off")
+        raise ValueError(f"{field_name} must be a boolean, boolean-like number, or boolean-like string")
+
+    def _coerce_dispatch_list(value: Any, *, field_name: str) -> list[Any]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return value
+        raise ValueError(f"{field_name} must be a list")
+
+    def _coerce_dispatch_dict(value: Any, *, field_name: str) -> dict[str, Any]:
+        if value is None:
+            return {}
+        if isinstance(value, dict):
+            return value
+        raise ValueError(f"{field_name} must be an object/dict")
+
     async def tools_dispatch(category: str, tool_name: str, parameters: dict[str, Any]) -> Any:
         payload = dict(parameters) if isinstance(parameters, dict) else {}
         dispatch_started = time.perf_counter()
@@ -612,42 +642,77 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             }
         )
 
-        emit_artifacts = bool(payload.pop("__emit_artifacts", config.enable_cid_artifact_emission))
-        proof_cid = str(payload.pop("__proof_cid", "") or "")
-        policy_cid = str(payload.pop("__policy_cid", "") or "")
-        correlation_id = str(payload.pop("__correlation_id", "") or "")
-        enforce_ucan = bool(payload.pop("__enforce_ucan", config.enable_ucan_validation))
-        ucan_actor = str(payload.pop("__ucan_actor", "") or "")
-        ucan_proof_chain = payload.pop("__ucan_proof_chain", [])
-        if not isinstance(ucan_proof_chain, list):
-            ucan_proof_chain = []
-        ucan_require_signatures = bool(payload.pop("__ucan_require_signatures", False))
-        ucan_issuer_public_keys = payload.pop("__ucan_issuer_public_keys", {})
-        if not isinstance(ucan_issuer_public_keys, dict):
-            ucan_issuer_public_keys = {}
-        ucan_revoked_proof_cids = payload.pop("__ucan_revoked_proof_cids", [])
-        if not isinstance(ucan_revoked_proof_cids, list):
-            ucan_revoked_proof_cids = []
-        ucan_context_cids = payload.pop("__ucan_context_cids", [])
-        if not isinstance(ucan_context_cids, list):
-            ucan_context_cids = []
-        enforce_policy = bool(payload.pop("__enforce_policy", config.enable_policy_evaluation))
-        policy_actor = str(payload.pop("__policy_actor", "") or ucan_actor or "*")
-        policy_clauses = payload.pop("__policy_clauses", [])
-        if not isinstance(policy_clauses, list):
-            policy_clauses = []
-        policy_resource = payload.pop("__policy_resource", None)
-        if policy_resource is not None:
-            policy_resource = str(policy_resource)
-        parent_event_cids = payload.pop("__parent_event_cids", [])
-        if not isinstance(parent_event_cids, list):
-            parent_event_cids = []
-        risk_actor = str(payload.pop("__risk_actor", "") or policy_actor or ucan_actor or "*")
-        enforce_risk = bool(payload.pop("__enforce_risk", config.enable_risk_scoring))
-        raw_risk_policy = payload.pop("__risk_policy", {})
-        if not isinstance(raw_risk_policy, dict):
-            raw_risk_policy = {}
-        execute_frontier = bool(payload.pop("__execute_frontier", config.enable_risk_frontier_execution))
+        try:
+            emit_artifacts = _coerce_dispatch_bool(
+                payload.pop("__emit_artifacts", config.enable_cid_artifact_emission),
+                field_name="__emit_artifacts",
+            )
+            proof_cid = str(payload.pop("__proof_cid", "") or "")
+            policy_cid = str(payload.pop("__policy_cid", "") or "")
+            correlation_id = str(payload.pop("__correlation_id", "") or "")
+            enforce_ucan = _coerce_dispatch_bool(
+                payload.pop("__enforce_ucan", config.enable_ucan_validation),
+                field_name="__enforce_ucan",
+            )
+            ucan_actor = str(payload.pop("__ucan_actor", "") or "")
+            ucan_proof_chain = _coerce_dispatch_list(
+                payload.pop("__ucan_proof_chain", []),
+                field_name="__ucan_proof_chain",
+            )
+            ucan_require_signatures = _coerce_dispatch_bool(
+                payload.pop("__ucan_require_signatures", False),
+                field_name="__ucan_require_signatures",
+            )
+            ucan_issuer_public_keys = _coerce_dispatch_dict(
+                payload.pop("__ucan_issuer_public_keys", {}),
+                field_name="__ucan_issuer_public_keys",
+            )
+            ucan_revoked_proof_cids = _coerce_dispatch_list(
+                payload.pop("__ucan_revoked_proof_cids", []),
+                field_name="__ucan_revoked_proof_cids",
+            )
+            ucan_context_cids = _coerce_dispatch_list(
+                payload.pop("__ucan_context_cids", []),
+                field_name="__ucan_context_cids",
+            )
+            enforce_policy = _coerce_dispatch_bool(
+                payload.pop("__enforce_policy", config.enable_policy_evaluation),
+                field_name="__enforce_policy",
+            )
+            policy_actor = str(payload.pop("__policy_actor", "") or ucan_actor or "*")
+            policy_clauses = _coerce_dispatch_list(
+                payload.pop("__policy_clauses", []),
+                field_name="__policy_clauses",
+            )
+            policy_resource = payload.pop("__policy_resource", None)
+            if policy_resource is not None:
+                policy_resource = str(policy_resource)
+            parent_event_cids = _coerce_dispatch_list(
+                payload.pop("__parent_event_cids", []),
+                field_name="__parent_event_cids",
+            )
+            risk_actor = str(payload.pop("__risk_actor", "") or policy_actor or ucan_actor or "*")
+            enforce_risk = _coerce_dispatch_bool(
+                payload.pop("__enforce_risk", config.enable_risk_scoring),
+                field_name="__enforce_risk",
+            )
+            raw_risk_policy = _coerce_dispatch_dict(
+                payload.pop("__risk_policy", {}),
+                field_name="__risk_policy",
+            )
+            execute_frontier = _coerce_dispatch_bool(
+                payload.pop("__execute_frontier", config.enable_risk_frontier_execution),
+                field_name="__execute_frontier",
+            )
+        except ValueError as exc:
+            _record_observability("error")
+            return {
+                "ok": False,
+                "error": "invalid_dispatch_parameter",
+                "details": str(exc),
+                "intent_cid": dispatch_intent_cid,
+            }
+
         policy_decision_binding: dict[str, Any] | None = None
         risk_assessment = None
 
