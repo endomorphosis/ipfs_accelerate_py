@@ -16,7 +16,9 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             execute_workflow as _execute_workflow,
             get_workflow_status as _get_workflow_status,
             get_workflow_metrics as _get_workflow_metrics,
+            list_workflows as _list_workflows,
             list_templates as _list_templates,
+            pause_workflow as _pause_workflow,
             resume_workflow as _resume_workflow,
             schedule_workflow as _schedule_workflow,
         )
@@ -28,6 +30,8 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             "get_workflow_status": _get_workflow_status,
             "resume_workflow": _resume_workflow,
             "get_workflow_metrics": _get_workflow_metrics,
+            "pause_workflow": _pause_workflow,
+            "list_workflows": _list_workflows,
             "list_templates": _list_templates,
         }
     except Exception:
@@ -112,6 +116,22 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
                 },
             }
 
+        async def _pause_workflow_fallback(workflow_id: str) -> Dict[str, Any]:
+            return {
+                "success": True,
+                "status": "paused",
+                "workflow_id": workflow_id,
+            }
+
+        async def _list_workflows_fallback(
+            include_logs: Optional[bool] = None,
+        ) -> Dict[str, Any]:
+            _ = include_logs
+            return {
+                "status": "success",
+                "workflows": [],
+            }
+
         return {
             "execute_workflow": _execute_fallback,
             "batch_process_datasets": _batch_fallback,
@@ -119,6 +139,8 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             "get_workflow_status": _status_fallback,
             "resume_workflow": _resume_workflow_fallback,
             "get_workflow_metrics": _get_workflow_metrics_fallback,
+            "pause_workflow": _pause_workflow_fallback,
+            "list_workflows": _list_workflows_fallback,
             "list_templates": _list_templates_fallback,
         }
 
@@ -217,6 +239,22 @@ async def get_workflow_metrics(
         include_performance=include_performance,
         time_range=time_range,
     )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def pause_workflow(workflow_id: str) -> Dict[str, Any]:
+    """Pause a running workflow."""
+    result = _API["pause_workflow"](workflow_id=workflow_id)
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def list_workflows(include_logs: Optional[bool] = None) -> Dict[str, Any]:
+    """List available workflows."""
+    result = _API["list_workflows"](include_logs=include_logs)
     if hasattr(result, "__await__"):
         return await result
     return result
@@ -337,6 +375,38 @@ def register_native_workflow_tools_category(manager: Any) -> None:
                 "workflow_id": {"type": ["string", "null"]},
                 "include_performance": {"type": ["boolean", "null"]},
                 "time_range": {"type": ["string", "null"]},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "workflow-tools"],
+    )
+
+    manager.register_tool(
+        category="workflow_tools",
+        name="pause_workflow",
+        func=pause_workflow,
+        description="Pause a running workflow.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string"},
+            },
+            "required": ["workflow_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "workflow-tools"],
+    )
+
+    manager.register_tool(
+        category="workflow_tools",
+        name="list_workflows",
+        func=list_workflows,
+        description="List workflows.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "include_logs": {"type": ["boolean", "null"]},
             },
             "required": [],
         },
