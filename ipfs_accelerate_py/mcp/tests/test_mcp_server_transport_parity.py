@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, patch
 import anyio
 
 from ipfs_accelerate_py.mcp_server.exceptions import RuntimeExecutionError
+from ipfs_accelerate_py.mcp_server.exceptions import RuntimeRoutingError
 from ipfs_accelerate_py.mcp_server.runtime_router import RuntimeRouter
 
 
@@ -76,6 +77,42 @@ class TestMCPServerTransportParity(unittest.TestCase):
             metrics = router.get_metrics()
             self.assertGreaterEqual(metrics["fastapi"]["timeout_count"], 1)
             self.assertGreaterEqual(metrics["fastapi"]["error_count"], 1)
+
+        anyio.run(_run)
+
+    def test_trio_runtime_falls_back_when_bridge_missing_by_default(self) -> None:
+        async def _run() -> None:
+            router = RuntimeRouter(default_runtime="fastapi")
+
+            async def tool(value: str):
+                return {"value": value}
+
+            router.register_tool_runtime("demo.tool", "trio")
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.runtime_router.RuntimeRouter._execute_trio",
+                side_effect=ImportError("missing trio bridge"),
+            ):
+                # Ensure fallback behavior is preserved when strict mode is off.
+                result = await router._execute_fastapi(tool, value="ok")
+
+            self.assertEqual(result, {"value": "ok"})
+
+        anyio.run(_run)
+
+    def test_trio_runtime_can_fail_closed_when_bridge_required(self) -> None:
+        async def _run() -> None:
+            router = RuntimeRouter(default_runtime="fastapi", trio_bridge_required=True)
+
+            async def tool(value: str):
+                return {"value": value}
+
+            router.register_tool_runtime("demo.tool", "trio")
+
+            # Simulate bridge import failure at execution point.
+            with patch.dict("sys.modules", {"ipfs_accelerate_py.mcplusplus_module.trio.bridge": None}):
+                with self.assertRaises(RuntimeRoutingError):
+                    await router._execute_trio(tool, value="ok")
 
         anyio.run(_run)
 

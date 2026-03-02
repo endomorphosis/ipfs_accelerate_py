@@ -90,6 +90,7 @@ class RuntimeRouter:
         self,
         default_runtime: str = RUNTIME_FASTAPI,
         enable_metrics: bool = True,
+        trio_bridge_required: bool = False,
         metadata_registry: Optional[ToolMetadataRegistry] = None,
     ) -> None:
         if default_runtime not in _SUPPORTED_RUNTIMES:
@@ -97,6 +98,7 @@ class RuntimeRouter:
 
         self.default_runtime = default_runtime
         self.enable_metrics = enable_metrics
+        self.trio_bridge_required = bool(trio_bridge_required)
         self._metadata_registry = metadata_registry or get_registry()
         self._tool_runtimes: Dict[str, str] = {}
         self._metrics = {
@@ -223,7 +225,12 @@ class RuntimeRouter:
 
             return await run_in_trio(func, *args, **kwargs)
         except ImportError:
-            # Fallback keeps routing functional in environments without trio extras.
+            if self.trio_bridge_required:
+                raise RuntimeRoutingError(
+                    "Trio bridge unavailable and trio_bridge_required=True"
+                )
+            # Backward-compatible fallback keeps routing functional in environments
+            # without trio extras.
             logger.warning("Trio bridge unavailable; falling back to standard execution")
             return await self._execute_fastapi(func, *args, **kwargs)
 
