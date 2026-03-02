@@ -235,8 +235,9 @@ def register_p2p_taskqueue_tools(mcp: Any) -> None:
         volumes: Optional[Dict[str, Any]] = None,
         remote_multiaddr: str = "",
         remote_peer_id: str = "",
-        **kwargs: Any,
+        extra: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        extras = dict(extra or {})
         return await canonical.p2p_taskqueue_submit_docker_hub(
             image=image,
             command=command,
@@ -245,7 +246,7 @@ def register_p2p_taskqueue_tools(mcp: Any) -> None:
             volumes=volumes,
             remote_multiaddr=remote_multiaddr,
             remote_peer_id=remote_peer_id,
-            **kwargs,
+            **extras,
         )
 
     @mcp.tool()
@@ -260,8 +261,9 @@ def register_p2p_taskqueue_tools(mcp: Any) -> None:
         build_args: Optional[Dict[str, Any]] = None,
         remote_multiaddr: str = "",
         remote_peer_id: str = "",
-        **kwargs: Any,
+        extra: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        extras = dict(extra or {})
         return await canonical.p2p_taskqueue_submit_docker_github(
             repo_url=repo_url,
             branch=branch,
@@ -273,7 +275,7 @@ def register_p2p_taskqueue_tools(mcp: Any) -> None:
             build_args=build_args,
             remote_multiaddr=remote_multiaddr,
             remote_peer_id=remote_peer_id,
-            **kwargs,
+            **extras,
         )
 
     @mcp.tool()

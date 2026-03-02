@@ -22,13 +22,14 @@ import tempfile
 import unittest
 import anyio
 import pytest
+import sys
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timedelta
 
 pytest.importorskip("psutil")
 
 # Import components to test
-from hardware_utilization_monitor import (
+from test.distributed_testing.hardware_utilization_monitor import (
     HardwareUtilizationMonitor,
     MonitoringLevel,
     ResourceUtilization,
@@ -36,11 +37,11 @@ from hardware_utilization_monitor import (
     HardwareAlert
 )
 
-from coordinator_hardware_monitoring_integration import (
+from test.distributed_testing.coordinator_hardware_monitoring_integration import (
     CoordinatorHardwareMonitoringIntegration
 )
 
-from hardware_capability_detector import (
+from test.distributed_testing.hardware_capability_detector import (
     HardwareCapabilityDetector,
     HardwareType,
     HardwareVendor,
@@ -464,7 +465,7 @@ class TestHardwareMonitoringEndToEnd(unittest.TestCase):
             
             # Command to run demo
             cmd = [
-                "python", demo_script,
+                sys.executable, demo_script,
                 "--db-path", db_file.name,
                 "--num-workers", "2",
                 "--num-tasks", "3",

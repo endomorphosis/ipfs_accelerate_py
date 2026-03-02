@@ -107,27 +107,52 @@ except Exception:
             self.workers = {}
 
 # Import hardware monitoring components
-from hardware_utilization_monitor import (
-    HardwareUtilizationMonitor, 
-    MonitoringLevel,
-    ResourceUtilization,
-    TaskResourceUsage,
-    HardwareAlert
-)
+try:
+    from test.distributed_testing.hardware_utilization_monitor import (
+        HardwareUtilizationMonitor,
+        MonitoringLevel,
+        ResourceUtilization,
+        TaskResourceUsage,
+        HardwareAlert,
+    )
+except ModuleNotFoundError:
+    from hardware_utilization_monitor import (
+        HardwareUtilizationMonitor,
+        MonitoringLevel,
+        ResourceUtilization,
+        TaskResourceUsage,
+        HardwareAlert,
+    )
 
-from hardware_capability_detector import (
-    HardwareCapabilityDetector,
-    HardwareType,
-    HardwareVendor,
-    PrecisionType,
-    CapabilityScore,
-    HardwareCapability,
-    WorkerHardwareCapabilities
-)
+try:
+    from test.distributed_testing.hardware_capability_detector import (
+        HardwareCapabilityDetector,
+        HardwareType,
+        HardwareVendor,
+        PrecisionType,
+        CapabilityScore,
+        HardwareCapability,
+        WorkerHardwareCapabilities,
+    )
+except ModuleNotFoundError:
+    from hardware_capability_detector import (
+        HardwareCapabilityDetector,
+        HardwareType,
+        HardwareVendor,
+        PrecisionType,
+        CapabilityScore,
+        HardwareCapability,
+        WorkerHardwareCapabilities,
+    )
 
-from coordinator_hardware_monitoring_integration import (
-    CoordinatorHardwareMonitoringIntegration
-)
+try:
+    from test.distributed_testing.coordinator_hardware_monitoring_integration import (
+        CoordinatorHardwareMonitoringIntegration,
+    )
+except ModuleNotFoundError:
+    from coordinator_hardware_monitoring_integration import (
+        CoordinatorHardwareMonitoringIntegration,
+    )
 
 async def simulate_worker(worker_id: str, coordinator: Coordinator, hardware_capabilities: Dict[str, Any]):
     """

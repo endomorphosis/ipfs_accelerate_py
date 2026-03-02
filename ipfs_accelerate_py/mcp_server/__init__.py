@@ -76,6 +76,12 @@ from .temporal_policy import (
     make_simple_permission_policy,
 )
 from .temporal_deontic_mcp_server import TemporalDeonticMCPServer
+from .cid_artifacts import artifact_cid
+from .interface_descriptor import (
+    InterfaceRepository,
+    get_interface_repository,
+)
+from .event_dag import EventDAG
 
 __all__ = [
     "create_server",
@@ -139,4 +145,8 @@ __all__ = [
     "PolicyEvaluator",
     "make_simple_permission_policy",
     "TemporalDeonticMCPServer",
+    "artifact_cid",
+    "InterfaceRepository",
+    "get_interface_repository",
+    "EventDAG",
 ]

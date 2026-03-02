@@ -21,6 +21,14 @@ def register_all_resources(mcp: Any) -> None:
         mcp: MCP server instance
     """
     logger.debug("Registering all resources with MCP server")
+
+    # Provide StandaloneMCP-like register_resource API when running under FastMCP.
+    try:
+        from ..fastmcp_compat import ensure_register_resource_compat
+
+        ensure_register_resource_compat(mcp)
+    except Exception as e:
+        logger.debug(f"FastMCP resource compatibility shim not applied: {e}")
     
     try:
         # Register model information resources

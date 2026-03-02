@@ -69,15 +69,26 @@ except ImportError:
     _log_optional_dependency("duckdb not available. Metrics storage will be disabled")
 
 # Import hardware capability detector for integration
-from hardware_capability_detector import (
-    HardwareCapabilityDetector,
-    HardwareType,
-    HardwareVendor,
-    PrecisionType,
-    CapabilityScore,
-    HardwareCapability,
-    WorkerHardwareCapabilities
-)
+try:
+    from test.distributed_testing.hardware_capability_detector import (
+        HardwareCapabilityDetector,
+        HardwareType,
+        HardwareVendor,
+        PrecisionType,
+        CapabilityScore,
+        HardwareCapability,
+        WorkerHardwareCapabilities,
+    )
+except ModuleNotFoundError:
+    from hardware_capability_detector import (
+        HardwareCapabilityDetector,
+        HardwareType,
+        HardwareVendor,
+        PrecisionType,
+        CapabilityScore,
+        HardwareCapability,
+        WorkerHardwareCapabilities,
+    )
 
 # Configure logging
 logging.basicConfig(

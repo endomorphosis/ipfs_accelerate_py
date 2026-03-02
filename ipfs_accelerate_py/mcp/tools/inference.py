@@ -85,7 +85,7 @@ def register_tools(mcp):
                       temperature: float = 0.7,
                       endpoint_id: Optional[str] = None,
                       provider: Optional[str] = None,
-                      **kwargs) -> Dict[str, Any]:
+                      extra: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         """
         Run inference on a model
         
@@ -98,13 +98,15 @@ def register_tools(mcp):
             device: Device to run inference on (e.g., "cpu", "cuda:0", "auto")
             max_length: Maximum length for text generation (ignored for embeddings)
             temperature: Temperature for text generation (ignored for embeddings)
-            **kwargs: Additional model-specific parameters
+            extra: Additional model-specific parameters
             
         Returns:
             Dictionary with inference results
         """
         global _ipfs_instance
         start_time = time.time()
+
+        kwargs: Dict[str, Any] = dict(extra or {})
         
         try:
             # First try to use IPFS Accelerate instance if available
@@ -432,7 +434,7 @@ def register_tools(mcp):
         sharding_strategy: str = "auto",
         max_length: int = 1024,
         temperature: float = 0.7,
-        **kwargs
+        extra: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Run distributed inference on a model
@@ -445,7 +447,7 @@ def register_tools(mcp):
             sharding_strategy: Strategy for distributing model ("auto", "tensor_parallel", "pipeline_parallel")
             max_length: Maximum length for text generation
             temperature: Temperature for text generation
-            **kwargs: Additional model-specific parameters
+            extra: Additional model-specific parameters
             
         Returns:
             Dictionary with inference results
@@ -492,7 +494,8 @@ def register_tools(mcp):
                 inference_params["sharding_strategy"] = sharding_strategy
                 
             # Add any additional kwargs
-            inference_params.update(kwargs)
+            if extra:
+                inference_params.update(extra)
             
             # Run distributed inference
             outputs = None

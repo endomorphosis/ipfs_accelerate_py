@@ -34,24 +34,44 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 # Import hardware utilization monitor
-from hardware_utilization_monitor import (
-    HardwareUtilizationMonitor, 
-    MonitoringLevel,
-    ResourceUtilization,
-    TaskResourceUsage,
-    HardwareAlert
-)
+try:
+    from test.distributed_testing.hardware_utilization_monitor import (
+        HardwareUtilizationMonitor,
+        MonitoringLevel,
+        ResourceUtilization,
+        TaskResourceUsage,
+        HardwareAlert,
+    )
+except ModuleNotFoundError:
+    from hardware_utilization_monitor import (
+        HardwareUtilizationMonitor,
+        MonitoringLevel,
+        ResourceUtilization,
+        TaskResourceUsage,
+        HardwareAlert,
+    )
 
 # Import hardware capability detector
-from hardware_capability_detector import (
-    HardwareCapabilityDetector,
-    HardwareType,
-    HardwareVendor,
-    PrecisionType,
-    CapabilityScore,
-    HardwareCapability,
-    WorkerHardwareCapabilities
-)
+try:
+    from test.distributed_testing.hardware_capability_detector import (
+        HardwareCapabilityDetector,
+        HardwareType,
+        HardwareVendor,
+        PrecisionType,
+        CapabilityScore,
+        HardwareCapability,
+        WorkerHardwareCapabilities,
+    )
+except ModuleNotFoundError:
+    from hardware_capability_detector import (
+        HardwareCapabilityDetector,
+        HardwareType,
+        HardwareVendor,
+        PrecisionType,
+        CapabilityScore,
+        HardwareCapability,
+        WorkerHardwareCapabilities,
+    )
 
 # Configure logging
 logging.basicConfig(

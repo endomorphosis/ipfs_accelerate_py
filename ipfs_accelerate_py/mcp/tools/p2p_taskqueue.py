@@ -357,7 +357,7 @@ def register_tools(mcp: Any) -> None:
         volumes: Optional[Dict[str, Any]] = None,
         remote_multiaddr: str = "",
         remote_peer_id: str = "",
-        **kwargs: Any,
+        extra: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Convenience wrapper: submit `docker.execute` for a Docker Hub image."""
 
@@ -373,7 +373,7 @@ def register_tools(mcp: Any) -> None:
                 entrypoint=entrypoint,
                 environment=(environment if isinstance(environment, dict) else None),
                 volumes=(volumes if isinstance(volumes, dict) else None),
-                **kwargs,
+                **(extra or {}),
             )
             return {"ok": True, "task_id": task_id}
         except Exception as exc:
@@ -392,7 +392,7 @@ def register_tools(mcp: Any) -> None:
         build_args: Optional[Dict[str, Any]] = None,
         remote_multiaddr: str = "",
         remote_peer_id: str = "",
-        **kwargs: Any,
+        extra: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Convenience wrapper: submit `docker.github` for a GitHub repo."""
 
@@ -411,7 +411,7 @@ def register_tools(mcp: Any) -> None:
                 entrypoint=entrypoint,
                 environment=(environment if isinstance(environment, dict) else None),
                 build_args=(build_args if isinstance(build_args, dict) else None),
-                **kwargs,
+                **(extra or {}),
             )
             return {"ok": True, "task_id": task_id}
         except Exception as exc:

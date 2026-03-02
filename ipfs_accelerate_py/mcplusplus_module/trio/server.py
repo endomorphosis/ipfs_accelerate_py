@@ -184,6 +184,13 @@ class TrioMCPServer:
 
             # Register default prompts for parity (prompts are optional).
             try:
+                try:
+                    from ipfs_accelerate_py.mcp.fastmcp_compat import ensure_register_prompt_compat
+
+                    ensure_register_prompt_compat(self.mcp)
+                except Exception as e:
+                    logger.debug(f"FastMCP prompt compatibility shim not applied: {e}")
+
                 self.mcp.register_prompt(
                     name="ipfs_help",
                     template="""
