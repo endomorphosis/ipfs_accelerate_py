@@ -203,3 +203,32 @@ def test_register_all_p2p_tools_uses_resolver(monkeypatch):
     tools.register_all_p2p_tools(object())
 
     assert calls == ["taskqueue", "workflow"]
+
+
+def test_taskqueue_adapter_resolver_fallback(monkeypatch):
+    """Taskqueue module resolver should return fallback adapter on import failure."""
+    from ipfs_accelerate_py.mcplusplus_module.tools import taskqueue_tools
+
+    def _fake_import_module(_name: str):
+        raise ImportError("simulated failure")
+
+    monkeypatch.setattr(taskqueue_tools, "import_module", _fake_import_module)
+    adapter = taskqueue_tools._resolve_canonical_p2p_adapter()
+
+    assert hasattr(adapter, "p2p_taskqueue_status")
+    assert hasattr(adapter, "list_peers")
+
+
+def test_workflow_adapter_resolver_fallback(monkeypatch):
+    """Workflow module resolver should return fallback adapter on import failure."""
+    from ipfs_accelerate_py.mcplusplus_module.tools import workflow_tools
+
+    def _fake_import_module(_name: str):
+        raise ImportError("simulated failure")
+
+    monkeypatch.setattr(workflow_tools, "import_module", _fake_import_module)
+    adapter = workflow_tools._resolve_canonical_workflow_adapter()
+
+    assert hasattr(adapter, "get_p2p_scheduler_status")
+    assert hasattr(adapter, "schedule_p2p_workflow")
+    assert hasattr(adapter, "get_next_p2p_workflow")

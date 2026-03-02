@@ -17,6 +17,7 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - Trio MCP++ server wiring: `ipfs_accelerate_py/mcplusplus_module/trio/server.py` now uses explicit taskqueue/workflow registrars (not aggregate helper), with coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_trio_server.py`.
 - Trio MCP++ server resolver now performs canonical-first registrar imports with package-level fallback for resilience, with branch coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_trio_server.py`.
 - `mcplusplus_module.tools` aggregate registration now uses canonical-first registrar resolution with package-level fallback, with coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
+- `mcplusplus_module.tools.taskqueue_tools` and `mcplusplus_module.tools.workflow_tools` now use canonical adapter resolution with dependency-light fallbacks, with resolver branch coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 
 ## Capability Matrix
 

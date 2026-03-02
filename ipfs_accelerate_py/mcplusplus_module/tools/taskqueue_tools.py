@@ -7,12 +7,50 @@ while delegating implementation to canonical native P2P tools in
 
 from __future__ import annotations
 
+from importlib import import_module
 import logging
 from typing import Any, Dict, List, Optional
 
-from ipfs_accelerate_py.mcp_server.tools.p2p import native_p2p_tools as canonical
-
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.tools.taskqueue")
+
+
+class _FallbackP2PAdapter:
+    """Dependency-light fallback used when canonical adapter import fails."""
+
+    @staticmethod
+    async def _unavailable(**_kwargs: Any) -> Dict[str, Any]:
+        return {
+            "ok": False,
+            "error": "canonical_p2p_adapter_unavailable",
+        }
+
+    p2p_taskqueue_status = _unavailable
+    p2p_taskqueue_submit = _unavailable
+    p2p_taskqueue_claim_next = _unavailable
+    p2p_taskqueue_call_tool = _unavailable
+    p2p_taskqueue_list_tasks = _unavailable
+    p2p_taskqueue_get_task = _unavailable
+    p2p_taskqueue_wait_task = _unavailable
+    p2p_taskqueue_complete_task = _unavailable
+    p2p_taskqueue_heartbeat = _unavailable
+    p2p_taskqueue_cache_get = _unavailable
+    p2p_taskqueue_cache_set = _unavailable
+    p2p_taskqueue_submit_docker_hub = _unavailable
+    p2p_taskqueue_submit_docker_github = _unavailable
+    list_peers = _unavailable
+
+
+def _resolve_canonical_p2p_adapter() -> Any:
+    """Resolve canonical P2P adapter module with resilient fallback."""
+    try:
+        module = import_module("ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools")
+        return module
+    except (ImportError, AttributeError) as exc:
+        logger.debug("Falling back to local unavailable adapter: %s", exc)
+        return _FallbackP2PAdapter()
+
+
+canonical = _resolve_canonical_p2p_adapter()
 
 
 def register_p2p_taskqueue_tools(mcp: Any) -> None:

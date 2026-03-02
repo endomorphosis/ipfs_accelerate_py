@@ -7,17 +7,54 @@ core scheduler operations through canonical workflow adapters in
 
 from __future__ import annotations
 
+from importlib import import_module
 import logging
 import time
 from typing import Any, Dict, List
 
-from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import (
-    native_p2p_workflow_tools as canonical,
-)
-
 from ..p2p.workflow import HAVE_P2P_SCHEDULER, MerkleClock, WorkflowTag, get_scheduler
 
 logger = logging.getLogger("ipfs_accelerate_mcp.mcplusplus.tools.workflow")
+
+
+class _FallbackWorkflowAdapter:
+    """Dependency-light fallback for canonical workflow adapter import failures."""
+
+    @staticmethod
+    async def get_p2p_scheduler_status() -> Dict[str, Any]:
+        return {"success": False, "error": "canonical_p2p_workflow_adapter_unavailable"}
+
+    @staticmethod
+    async def schedule_p2p_workflow(**kwargs: Any) -> Dict[str, Any]:
+        workflow_id = str(kwargs.get("workflow_id") or "")
+        return {
+            "success": False,
+            "error": "canonical_p2p_workflow_adapter_unavailable",
+            "workflow_id": workflow_id,
+        }
+
+    @staticmethod
+    async def get_next_p2p_workflow() -> Dict[str, Any]:
+        return {
+            "success": False,
+            "error": "canonical_p2p_workflow_adapter_unavailable",
+            "workflow": None,
+        }
+
+
+def _resolve_canonical_workflow_adapter() -> Any:
+    """Resolve canonical workflow adapter module with resilient fallback."""
+    try:
+        module = import_module(
+            "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools"
+        )
+        return module
+    except (ImportError, AttributeError) as exc:
+        logger.debug("Falling back to local workflow unavailable adapter: %s", exc)
+        return _FallbackWorkflowAdapter()
+
+
+canonical = _resolve_canonical_workflow_adapter()
 
 
 def register_p2p_workflow_tools(mcp: Any) -> None:
