@@ -19,11 +19,13 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             get_workflow_tags as _get_workflow_tags,
             get_workflow_status as _get_workflow_status,
             get_workflow_metrics as _get_workflow_metrics,
+            initialize_p2p_scheduler as _initialize_p2p_scheduler,
             list_workflows as _list_workflows,
             list_templates as _list_templates,
             pause_workflow as _pause_workflow,
             resume_workflow as _resume_workflow,
             run_workflow as _run_workflow,
+            schedule_p2p_workflow as _schedule_p2p_workflow,
             schedule_workflow as _schedule_workflow,
         )
 
@@ -37,10 +39,12 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             "get_workflow_tags": _get_workflow_tags,
             "resume_workflow": _resume_workflow,
             "get_workflow_metrics": _get_workflow_metrics,
+            "initialize_p2p_scheduler": _initialize_p2p_scheduler,
             "pause_workflow": _pause_workflow,
             "list_workflows": _list_workflows,
             "list_templates": _list_templates,
             "run_workflow": _run_workflow,
+            "schedule_p2p_workflow": _schedule_p2p_workflow,
         }
     except Exception:
         logger.warning("Source workflow_tools import unavailable, using fallback workflow-tools functions")
@@ -155,6 +159,17 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
                 "workflow_id": workflow_id,
             }
 
+        async def _initialize_p2p_scheduler_fallback(
+            peer_id: Optional[str] = None,
+            peers: Optional[List[str]] = None,
+        ) -> Dict[str, Any]:
+            return {
+                "success": False,
+                "error": "P2P workflow scheduler not available",
+                "peer_id": peer_id,
+                "peers": peers or [],
+            }
+
         async def _list_workflows_fallback(
             include_logs: Optional[bool] = None,
         ) -> Dict[str, Any]:
@@ -172,6 +187,20 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
                 "error": "Workflow not found",
             }
 
+        async def _schedule_p2p_workflow_fallback(
+            workflow_id: str,
+            name: str,
+            tags: List[str],
+            priority: float = 1.0,
+            metadata: Optional[Dict[str, Any]] = None,
+        ) -> Dict[str, Any]:
+            _ = name, tags, priority, metadata
+            return {
+                "success": False,
+                "error": "P2P workflow scheduler not available",
+                "workflow_id": workflow_id,
+            }
+
         return {
             "execute_workflow": _execute_fallback,
             "batch_process_datasets": _batch_fallback,
@@ -182,10 +211,12 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             "get_workflow_tags": _get_workflow_tags_fallback,
             "resume_workflow": _resume_workflow_fallback,
             "get_workflow_metrics": _get_workflow_metrics_fallback,
+            "initialize_p2p_scheduler": _initialize_p2p_scheduler_fallback,
             "pause_workflow": _pause_workflow_fallback,
             "list_workflows": _list_workflows_fallback,
             "list_templates": _list_templates_fallback,
             "run_workflow": _run_workflow_fallback,
+            "schedule_p2p_workflow": _schedule_p2p_workflow_fallback,
         }
 
 
@@ -318,6 +349,20 @@ async def get_workflow_metrics(
     return result
 
 
+async def initialize_p2p_scheduler(
+    peer_id: Optional[str] = None,
+    peers: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Initialize the P2P workflow scheduler."""
+    result = _API["initialize_p2p_scheduler"](
+        peer_id=peer_id,
+        peers=peers,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
 async def pause_workflow(workflow_id: str) -> Dict[str, Any]:
     """Pause a running workflow."""
     result = _API["pause_workflow"](workflow_id=workflow_id)
@@ -337,6 +382,26 @@ async def list_workflows(include_logs: Optional[bool] = None) -> Dict[str, Any]:
 async def run_workflow(workflow_id: str) -> Dict[str, Any]:
     """Run a registered workflow by ID."""
     result = _API["run_workflow"](workflow_id=workflow_id)
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def schedule_p2p_workflow(
+    workflow_id: str,
+    name: str,
+    tags: List[str],
+    priority: float = 1.0,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Schedule a workflow for P2P execution."""
+    result = _API["schedule_p2p_workflow"](
+        workflow_id=workflow_id,
+        name=name,
+        tags=tags,
+        priority=priority,
+        metadata=metadata,
+    )
     if hasattr(result, "__await__"):
         return await result
     return result
@@ -511,6 +576,26 @@ def register_native_workflow_tools_category(manager: Any) -> None:
 
     manager.register_tool(
         category="workflow_tools",
+        name="initialize_p2p_scheduler",
+        func=initialize_p2p_scheduler,
+        description="Initialize the P2P workflow scheduler.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "peer_id": {"type": ["string", "null"]},
+                "peers": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string"},
+                },
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "workflow-tools"],
+    )
+
+    manager.register_tool(
+        category="workflow_tools",
         name="pause_workflow",
         func=pause_workflow,
         description="Pause a running workflow.",
@@ -552,6 +637,29 @@ def register_native_workflow_tools_category(manager: Any) -> None:
                 "workflow_id": {"type": "string"},
             },
             "required": ["workflow_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "workflow-tools"],
+    )
+
+    manager.register_tool(
+        category="workflow_tools",
+        name="schedule_p2p_workflow",
+        func=schedule_p2p_workflow,
+        description="Schedule a workflow for P2P execution.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string"},
+                "name": {"type": "string"},
+                "tags": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "priority": {"type": "number"},
+                "metadata": {"type": ["object", "null"]},
+            },
+            "required": ["workflow_id", "name", "tags"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "workflow-tools"],
