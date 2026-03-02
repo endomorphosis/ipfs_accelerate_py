@@ -9,6 +9,8 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from .. import _missing_dependency_stub
+
 from ipfs_accelerate_py.mcp_server.mcplusplus.task_queue import (
     HAVE_TASK_QUEUE,
     TaskQueueWrapper,
@@ -18,7 +20,7 @@ from ipfs_accelerate_py.mcp_server.mcplusplus.task_queue import (
 try:
     from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
 except ImportError:  # pragma: no cover - optional dependency
-    RemoteQueue = None  # type: ignore[assignment]
+    RemoteQueue = _missing_dependency_stub("RemoteQueue")
 
 
 class P2PTaskQueue(TaskQueueWrapper):

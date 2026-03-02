@@ -311,3 +311,40 @@ def test_workflow_module_optional_dependency_contract():
 
     with pytest.raises(RuntimeError, match="P2PWorkflowScheduler is unavailable"):
         workflow.P2PWorkflowScheduler()
+
+
+def test_taskqueue_module_optional_dependency_contract():
+    """Taskqueue module should expose explicit stub when RemoteQueue is absent."""
+    from ipfs_accelerate_py.mcplusplus_module.p2p import taskqueue
+
+    assert taskqueue.RemoteQueue is not None
+
+    # Optional dependency may be present in richer environments.
+    if taskqueue.RemoteQueue:
+        return
+
+    with pytest.raises(RuntimeError, match="RemoteQueue is unavailable"):
+        taskqueue.RemoteQueue()
+
+
+def test_trio_module_optional_dependency_contract():
+    """Trio package optional exports should use explicit compatibility stubs."""
+    from ipfs_accelerate_py.mcplusplus_module import trio as trio_module
+
+    trio_symbols = [
+        trio_module.TrioMCPServer,
+        trio_module.ServerConfig,
+        trio_module.create_app,
+        trio_module.TrioMCPClient,
+        trio_module.ClientConfig,
+        trio_module.call_tool,
+    ]
+
+    assert all(symbol is not None for symbol in trio_symbols)
+
+    # In fully provisioned environments symbols are truthy callables/classes.
+    if all(symbol for symbol in trio_symbols):
+        return
+
+    with pytest.raises(RuntimeError, match="TrioMCPServer is unavailable"):
+        trio_module.TrioMCPServer()
