@@ -97,6 +97,21 @@ def ipfs_files_get_file(cid: str, output_path: str) -> Dict[str, Any]:
     }
 
 
+def ipfs_files_cat(cid: str) -> Dict[str, Any]:
+    """Read file content from IPFS by CID using the IPFS files kit.
+
+    This extends the native unified Wave A tool set with direct content
+    retrieval (`ipfs cat` equivalent) while preserving the kit result envelope.
+    """
+    kit = get_ipfs_files_kit()
+    result = kit.cat_file(cid=cid)
+    return {
+        "success": result.success,
+        "data": result.data,
+        "error": result.error,
+    }
+
+
 def register_native_ipfs_tools(manager: Any) -> None:
     """Register native IPFS tools in the unified hierarchical manager."""
     manager.register_tool(
@@ -192,6 +207,22 @@ def register_native_ipfs_tools(manager: Any) -> None:
                 "output_path": {"type": "string"},
             },
             "required": ["cid", "output_path"],
+        },
+        runtime="fastapi",
+        tags=["native", "wave-a", "ipfs"],
+    )
+
+    manager.register_tool(
+        category="ipfs",
+        name="ipfs_files_cat",
+        func=ipfs_files_cat,
+        description="Read file content from IPFS by CID using unified native IPFS tool implementation.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cid": {"type": "string"},
+            },
+            "required": ["cid"],
         },
         runtime="fastapi",
         tags=["native", "wave-a", "ipfs"],

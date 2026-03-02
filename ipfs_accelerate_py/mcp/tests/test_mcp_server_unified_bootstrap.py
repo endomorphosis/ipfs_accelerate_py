@@ -1919,6 +1919,84 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_dispatch)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_native_ipfs_cat_dispatch_via_meta_tools(self, mock_wrapper):
+        """Unified `tools_dispatch` should execute native Wave A IPFS cat implementation."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "ipfs",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="native-ipfs-cat-dispatch")
+
+        class _FakeResult:
+            def __init__(self):
+                self.success = True
+                self.data = {
+                    "cid": "QmCatCid123456789012345678901234567890123456789",
+                    "content": "hello from ipfs",
+                    "size": 15,
+                }
+                self.error = None
+
+        class _FakeKit:
+            def cat_file(self, cid: str):
+                self.last_cid = cid
+                return _FakeResult()
+
+        fake_kit = _FakeKit()
+
+        async def _run_dispatch() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            ipfs_tools = await tools_list("ipfs")
+            ipfs_names = [tool["name"] for tool in ipfs_tools["tools"]]
+            self.assertIn("ipfs_files_cat", ipfs_names)
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.ipfs.native_ipfs_tools.get_ipfs_files_kit",
+                return_value=fake_kit,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "ipfs",
+                        "ipfs_files_cat",
+                        {"cid": "QmCatCid123456789012345678901234567890123456789"},
+                    )
+                )
+
+            self.assertTrue(result["success"])
+            self.assertEqual(result["data"]["content"], "hello from ipfs")
+            self.assertEqual(result["data"]["size"], 15)
+            self.assertEqual(
+                fake_kit.last_cid,
+                "QmCatCid123456789012345678901234567890123456789",
+            )
+
+        anyio.run(_run_dispatch)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_native_workflow_templates_dispatch_via_meta_tools(self, mock_wrapper):
         """Unified `tools_dispatch` should execute native Wave A workflow templates implementation."""
 
