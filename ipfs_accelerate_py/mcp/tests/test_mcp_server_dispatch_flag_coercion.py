@@ -109,6 +109,8 @@ class TestMCPServerDispatchFlagCoercion(unittest.TestCase):
 
             self.assertTrue(response["ok"])
             self.assertEqual(response["result"], {"echo": "ok"})
+            # Backward-compatible passthrough payload fields remain available.
+            self.assertEqual(response["echo"], "ok")
 
         anyio.run(_run_flow)
 

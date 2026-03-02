@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Transport parity tests for unified MCP runtime router."""
 
+import builtins
 import unittest
 from unittest.mock import AsyncMock, patch
 
@@ -89,12 +90,15 @@ class TestMCPServerTransportParity(unittest.TestCase):
 
             router.register_tool_runtime("demo.tool", "trio")
 
-            with patch(
-                "ipfs_accelerate_py.mcp_server.runtime_router.RuntimeRouter._execute_trio",
-                side_effect=ImportError("missing trio bridge"),
-            ):
-                # Ensure fallback behavior is preserved when strict mode is off.
-                result = await router._execute_fastapi(tool, value="ok")
+            original_import = builtins.__import__
+
+            def raising_import(name, globals=None, locals=None, fromlist=(), level=0):
+                if name == "ipfs_accelerate_py.mcplusplus_module.trio.bridge":
+                    raise ImportError("missing trio bridge")
+                return original_import(name, globals, locals, fromlist, level)
+
+            with patch("builtins.__import__", side_effect=raising_import):
+                result = await router._execute_trio(tool, value="ok")
 
             self.assertEqual(result, {"value": "ok"})
 
@@ -109,8 +113,14 @@ class TestMCPServerTransportParity(unittest.TestCase):
 
             router.register_tool_runtime("demo.tool", "trio")
 
-            # Simulate bridge import failure at execution point.
-            with patch.dict("sys.modules", {"ipfs_accelerate_py.mcplusplus_module.trio.bridge": None}):
+            original_import = builtins.__import__
+
+            def raising_import(name, globals=None, locals=None, fromlist=(), level=0):
+                if name == "ipfs_accelerate_py.mcplusplus_module.trio.bridge":
+                    raise ImportError("missing trio bridge")
+                return original_import(name, globals, locals, fromlist, level)
+
+            with patch("builtins.__import__", side_effect=raising_import):
                 with self.assertRaises(RuntimeRoutingError):
                     await router._execute_trio(tool, value="ok")
 

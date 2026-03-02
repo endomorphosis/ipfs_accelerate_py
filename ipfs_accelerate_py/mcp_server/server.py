@@ -634,6 +634,34 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     latency_seconds=latency_seconds,
                 )
                 prometheus_exporter.update()
+
+        def _build_success_response(
+            *,
+            result: Any,
+            risk_record: Any,
+            risk_assessment_obj: Any,
+            policy_obj: Any = None,
+            policy_decision_obj: dict[str, Any] | None = None,
+            passthrough_result_fields: bool = False,
+            extra_fields: dict[str, Any] | None = None,
+        ) -> dict[str, Any]:
+            response: dict[str, Any] = {
+                "ok": True,
+                "result": result,
+                "risk_assessment": risk_assessment_obj.to_dict() if risk_assessment_obj is not None else None,
+                "risk": risk_record.to_dict(),
+                "audit": policy_audit.stats() if policy_audit.enabled else None,
+            }
+            if policy_obj is not None:
+                response["policy"] = policy_obj.to_dict()
+                response["policy_decision"] = dict(policy_decision_obj or {})
+            if passthrough_result_fields and isinstance(result, dict):
+                for key, value in result.items():
+                    response.setdefault(str(key), value)
+            if isinstance(extra_fields, dict) and extra_fields:
+                response.update(extra_fields)
+            return response
+
         dispatch_intent_cid = compute_artifact_cid(
             {
                 "category": category,
@@ -869,35 +897,21 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 extra={"emit_artifacts": False},
             )
             if policy_decision is None:
-                if isinstance(result, dict):
-                    enriched = dict(result)
-                    enriched.setdefault("risk", record.to_dict())
-                    enriched.setdefault(
-                        "risk_assessment",
-                        risk_assessment.to_dict() if risk_assessment is not None else None,
-                    )
-                    if policy_audit.enabled:
-                        enriched.setdefault("audit", policy_audit.stats())
-                    _record_observability("success")
-                    return enriched
                 _record_observability("success")
-                return {
-                    "ok": True,
-                    "result": result,
-                    "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
-                    "risk": record.to_dict(),
-                    "audit": policy_audit.stats() if policy_audit.enabled else None,
-                }
+                return _build_success_response(
+                    result=result,
+                    risk_record=record,
+                    risk_assessment_obj=risk_assessment,
+                    passthrough_result_fields=isinstance(result, dict),
+                )
             _record_observability("success")
-            return {
-                "ok": True,
-                "result": result,
-                "policy": policy_decision.to_dict(),
-                "policy_decision": dict(policy_decision_binding or {}),
-                "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
-                "risk": record.to_dict(),
-                "audit": policy_audit.stats() if policy_audit.enabled else None,
-            }
+            return _build_success_response(
+                result=result,
+                risk_record=record,
+                risk_assessment_obj=risk_assessment,
+                policy_obj=policy_decision,
+                policy_decision_obj=policy_decision_binding,
+            )
 
         # Build immutable artifact references without changing default dispatch
         # shape unless artifact emission is explicitly requested.
@@ -1013,42 +1027,42 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         )
         _record_observability("success")
 
-        return {
-            "ok": True,
-            "result": result,
-            "artifacts": {
-                "input_cid": envelope["input_cid"],
-                "intent_cid": envelope["intent_cid"],
-                "decision_cid": envelope["decision_cid"],
-                "output_cid": envelope["output_cid"],
-                "receipt_cid": envelope["receipt_cid"],
-                "event_cid": envelope["event_cid"],
-            },
-            "policy_decision": {
+        return _build_success_response(
+            result=result,
+            risk_record=record,
+            risk_assessment_obj=risk_assessment,
+            policy_obj=policy_decision,
+            policy_decision_obj={
                 "decision_cid": envelope["decision_cid"],
                 "persisted": bool(persisted_artifacts_meta.get("persisted")),
                 "stats": dict((persisted_artifacts_meta.get("stats") or {})),
             },
-            "artifact_payloads": {
-                "intent": envelope["intent"],
-                "decision": envelope["decision"],
-                "receipt": envelope["receipt"],
-                "event": envelope["event"],
+            extra_fields={
+                "artifacts": {
+                    "input_cid": envelope["input_cid"],
+                    "intent_cid": envelope["intent_cid"],
+                    "decision_cid": envelope["decision_cid"],
+                    "output_cid": envelope["output_cid"],
+                    "receipt_cid": envelope["receipt_cid"],
+                    "event_cid": envelope["event_cid"],
+                },
+                "artifact_payloads": {
+                    "intent": envelope["intent"],
+                    "decision": envelope["decision"],
+                    "receipt": envelope["receipt"],
+                    "event": envelope["event"],
+                },
+                "artifact_store": persisted_artifacts_meta,
+                "event_dag": event_dag_meta,
+                "frontier": {
+                    "enqueued": frontier_item is not None,
+                    "priority": round(frontier_item.priority, 5) if frontier_item is not None else None,
+                    "event_cid": frontier_item.event_cid if frontier_item is not None else None,
+                    "execution": frontier_execution,
+                    "stats": risk_scheduler.stats(),
+                },
             },
-            "artifact_store": persisted_artifacts_meta,
-            "event_dag": event_dag_meta,
-            "risk_assessment": risk_assessment.to_dict() if risk_assessment is not None else None,
-            "risk": record.to_dict(),
-            "frontier": {
-                "enqueued": frontier_item is not None,
-                "priority": round(frontier_item.priority, 5) if frontier_item is not None else None,
-                "event_cid": frontier_item.event_cid if frontier_item is not None else None,
-                "execution": frontier_execution,
-                "stats": risk_scheduler.stats(),
-            },
-            "policy": policy_decision.to_dict() if policy_decision is not None else None,
-            "audit": policy_audit.stats() if policy_audit.enabled else None,
-        }
+        )
 
         # unreachable placeholder to keep static analyzers calm about branch
         # structure; response is returned above.

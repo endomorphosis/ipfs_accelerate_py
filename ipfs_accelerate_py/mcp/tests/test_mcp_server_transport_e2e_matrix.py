@@ -106,6 +106,8 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
             dispatch = server.tools["tools_dispatch"]["function"]
             result = await dispatch("transport", "echo_http", {"value": "ok"})
             self.assertIsInstance(result, dict)
+            self.assertTrue(result.get("ok"))
+            self.assertEqual(result.get("result"), {"mode": "http", "value": "ok"})
             self.assertEqual(result.get("mode"), "http")
             self.assertEqual(result.get("value"), "ok")
 
@@ -129,6 +131,8 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
                 result = await dispatch("transport", "echo_trio", {"value": "ok"})
 
             self.assertIsInstance(result, dict)
+            self.assertTrue(result.get("ok"))
+            self.assertEqual(result.get("result"), {"mode": "trio", "value": "ok"})
             self.assertEqual(result.get("mode"), "trio")
             self.assertEqual(result.get("value"), "ok")
             self.assertEqual(mock_trio.await_count, 1)

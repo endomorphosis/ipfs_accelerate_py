@@ -707,3 +707,574 @@ Run a release-grade dry-run where canonical runtime is default, then verify roll
 ## Verification
 - `python3 -m unittest <cutover/rollback regression modules>`
 ```
+
+## 15. GitHub Issue Templates (Spec Chapters)
+
+### `SPEC-201` Profiles Negotiation Hardening
+
+Title: `SPEC-201: Harden MCP++ profile negotiation and downgrade behavior`
+
+Body:
+
+```markdown
+## Summary
+Harden profile negotiation behavior for additive compatibility, downgrade behavior, and unknown-profile handling.
+
+## Chapter
+- `mcp++-profiles-draft.md`
+
+## Scope
+- Add regression tests for requested supported profile selection.
+- Add tests for unknown/unsupported profile fallbacks.
+- Add capability snapshot tests to prevent accidental profile drift.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/server.py`
+- `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py`
+- `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+
+## Acceptance Criteria
+- [ ] Negotiation behavior remains additive and backward compatible.
+- [ ] Unknown profiles produce deterministic fallback.
+- [ ] Conformance evidence updated.
+
+## Verification
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_unified_bootstrap`
+```
+
+### `SPEC-202` MCP-IDL Stability Corpus
+
+Title: `SPEC-202: Add MCP-IDL canonicalization and compat stability corpus`
+
+Body:
+
+```markdown
+## Summary
+Expand deterministic MCP-IDL descriptor and compatibility tests to lock cross-runtime stability.
+
+## Chapter
+- `mcp-idl.md`
+
+## Scope
+- Add canonicalization stability corpus across representative descriptors.
+- Expand `interfaces/compat` regression cases.
+- Validate descriptor generation coverage for migrated categories.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py`
+- `ipfs_accelerate_py/mcp_server/tools/idl/native_idl_tools.py`
+- `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py`
+
+## Acceptance Criteria
+- [ ] Descriptor CIDs are deterministic for corpus inputs.
+- [ ] Compatibility matching remains stable under case/whitespace/version variants.
+- [ ] Evidence updated in matrix/checklist.
+
+## Verification
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_idl`
+```
+
+### `SPEC-203` Artifact Durability and Replay
+
+Title: `SPEC-203: Harden CID artifact durability and replay integrity`
+
+Body:
+
+```markdown
+## Summary
+Extend CID-native artifact pipeline validation beyond in-memory behavior into durable/replayable paths.
+
+## Chapter
+- `cid-native-artifacts.md`
+
+## Scope
+- Add durable storage backend validation.
+- Add replay/reconstruction tests for artifact chains.
+- Validate artifact emission policy consistency across dispatch modes.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py`
+- `ipfs_accelerate_py/mcp_server/server.py`
+- `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py`
+
+## Acceptance Criteria
+- [ ] Durable artifact retrieval passes deterministic integrity checks.
+- [ ] Replay reconstructs chain correctly.
+- [ ] Emission policy is deterministic across modes.
+
+## Verification
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_artifacts`
+```
+
+### `SPEC-204` UCAN Verification Vector Expansion
+
+Title: `SPEC-204: Expand UCAN verification vectors and deny matrix`
+
+Body:
+
+```markdown
+## Summary
+Broaden UCAN verification coverage for signature formats, caveats, proof linkage, and negative execution-time authorization paths.
+
+## Chapter
+- `ucan-delegation.md`
+
+## Scope
+- Add signature vector cases (`ed25519`, hex variants, `did:key`).
+- Expand caveat and context-CID matrix.
+- Add combined policy+delegation denial interaction tests.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py`
+- `ipfs_accelerate_py/mcp_server/server.py`
+- `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py`
+
+## Acceptance Criteria
+- [ ] Expanded positive and negative UCAN vectors pass deterministically.
+- [ ] Denial behavior is explicit and auditable.
+- [ ] Conformance evidence updated.
+
+## Verification
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_ucan`
+```
+
+### `SPEC-205` Temporal Policy Lifecycle Hardening
+
+Title: `SPEC-205: Harden temporal policy obligations and decision lifecycle`
+
+Body:
+
+```markdown
+## Summary
+Strengthen temporal policy lifecycle semantics for obligations, deadlines, and policy evolution behavior.
+
+## Chapter
+- `temporal-deontic-policy.md`
+
+## Scope
+- Add obligation/deadline progression tests.
+- Add policy version migration tests.
+- Validate decision persistence parity across transport paths.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/mcplusplus/policy_engine.py`
+- `ipfs_accelerate_py/mcp_server/server.py`
+- `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py`
+
+## Acceptance Criteria
+- [ ] Obligation lifecycle behavior is deterministic.
+- [ ] Decision CID persistence remains stable across dispatch modes/transports.
+- [ ] Evidence links updated.
+
+## Verification
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_policy`
+```
+
+### `SPEC-206` Event DAG Scale and Conflict Scenarios
+
+Title: `SPEC-206: Expand Event DAG replay, scale, and conflict coverage`
+
+Body:
+
+```markdown
+## Summary
+Expand Event DAG tests for larger graphs, replay/rollback correctness, and fork/conflict handling behavior.
+
+## Chapter
+- `event-dag-ordering.md`
+
+## Scope
+- Add large DAG fixture traversal tests.
+- Add fork/conflict scenario validation.
+- Validate snapshot export/import compatibility.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/mcplusplus/event_dag.py`
+- `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py`
+
+## Acceptance Criteria
+- [ ] Replay and rollback paths are deterministic for larger graphs.
+- [ ] Conflict behavior is explicit and tested.
+- [ ] Snapshot compatibility preserved.
+
+## Verification
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_event_dag`
+```
+
+### `SPEC-207` Risk Frontier and Consensus Enhancements
+
+Title: `SPEC-207: Harden risk frontier execution and optional consensus signals`
+
+Body:
+
+```markdown
+## Summary
+Strengthen risk frontier execution under load/retry patterns and add optional consensus signal integration tests.
+
+## Chapter
+- `risk-scheduling.md`
+
+## Scope
+- Add load/retry frontier binding tests.
+- Add optional neighborhood consensus signal integration checks.
+- Validate risk lineage consistency with event/artifact links.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/mcplusplus/risk_scheduler.py`
+- `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py`
+
+## Acceptance Criteria
+- [ ] Frontier execution binding deterministic under load/retries.
+- [ ] Consensus signal path remains optional and non-breaking.
+- [ ] Evidence updated in conformance docs.
+
+## Verification
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_risk_scheduler`
+```
+
+### `SPEC-208` mcp+p2p Mixed-Version Interop Matrix
+
+Title: `SPEC-208: Expand mcp+p2p mixed-version and abuse-resistance interop matrix`
+
+Body:
+
+```markdown
+## Summary
+Expand `mcp+p2p` interop and abuse-resistance regression matrix to include mixed-version and advanced edge conditions.
+
+## Chapter
+- `transport-mcp-p2p.md`
+
+## Scope
+- Add mixed-version handshake and call-flow coverage.
+- Expand abuse counters and malformed frame handling assertions.
+- Keep default + libp2p transport lanes stable.
+
+## Target Files
+- `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py`
+- `ipfs_accelerate_py/p2p_tasks/mcp_p2p_client.py`
+- `ipfs_accelerate_py/mcp/tests/test_mcp_transport_*`
+- `.github/workflows/mcp-transport-libp2p.yml`
+
+## Acceptance Criteria
+- [ ] Mixed-version matrix behavior is deterministic.
+- [ ] Abuse-resistance assertions expanded and passing.
+- [ ] CI evidence remains green in required lanes.
+
+## Verification
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_transport_p2p_framing_limits`
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_transport_mcp_p2p_handler_limits`
+- `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_transport_mcp_p2p_client_limits`
+```
+
+## 16. GitHub Issue Templates (P1 Ready)
+
+### `UNI-101` Security Tools Behavior Parity Expansion
+
+Title: `UNI-101: Expand auth/security behavior parity in canonical runtime`
+
+Body:
+
+```markdown
+## Summary
+Expand behavior-level parity in `security_tools` and `auth_tools` beyond baseline parity.
+
+## Scope
+- Add representative source-equivalent operations not yet behavior-complete.
+- Validate schema parity for newly covered operations.
+- Expand deterministic deny/allow behavior tests.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/tools/security_tools/*`
+- `ipfs_accelerate_py/mcp_server/tools/auth_tools/*`
+- `ipfs_accelerate_py/mcp/tests/*security*`
+
+## Acceptance Criteria
+- [ ] Representative missing operations implemented or deferred with rationale.
+- [ ] `tools_get_schema` and dispatch parity tests added.
+- [ ] Evidence links updated in conformance docs.
+
+## Verification
+- `python3 -m unittest <security and auth parity test modules>`
+```
+
+### `UNI-102` Monitoring and Observability Behavior Parity Expansion
+
+Title: `UNI-102: Expand monitoring/alert observability behavior parity`
+
+Body:
+
+```markdown
+## Summary
+Deepen parity for advanced monitoring, diagnostics, and alert operations.
+
+## Scope
+- Expand diagnostic and alerting behavior parity against source.
+- Validate observability payload stability and compatibility.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/tools/monitoring_tools/*`
+- `ipfs_accelerate_py/mcp_server/tools/alert_tools/*`
+- `ipfs_accelerate_py/mcp/tests/*monitor*`
+
+## Acceptance Criteria
+- [ ] Advanced monitoring operations behave deterministically.
+- [ ] Alert/diagnostic schemas and outputs are parity-validated.
+- [ ] Matrix/checklist evidence updated.
+
+## Verification
+- `python3 -m unittest <monitoring and alert parity test modules>`
+```
+
+### `UNI-103` Dataset and Embedding Pipeline Parity Expansion
+
+Title: `UNI-103: Expand dataset and embedding pipeline behavior parity`
+
+Body:
+
+```markdown
+## Summary
+Expand behavior-level parity for dataset and embedding operations, including advanced conversion and endpoint flows.
+
+## Scope
+- Add missing source-equivalent dataset operations.
+- Add missing embedding endpoint/management operations.
+- Validate schema and dispatch behavior parity.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/tools/dataset_tools/*`
+- `ipfs_accelerate_py/mcp_server/tools/embedding_tools/*`
+- `ipfs_accelerate_py/mcp/tests/*dataset*`
+- `ipfs_accelerate_py/mcp/tests/*embedding*`
+
+## Acceptance Criteria
+- [ ] Representative dataset and embedding deltas closed.
+- [ ] Edge-case arguments and error envelopes parity-tested.
+- [ ] Evidence links updated in conformance artifacts.
+
+## Verification
+- `python3 -m unittest <dataset and embedding parity test modules>`
+```
+
+### `UNI-104` Vector/Search/Storage Integration Parity Expansion
+
+Title: `UNI-104: Expand vector-search-storage integration parity`
+
+Body:
+
+```markdown
+## Summary
+Close cross-category behavior gaps for vector, search, and storage orchestration.
+
+## Scope
+- Expand integration behavior parity for index/search/storage workflows.
+- Validate schema compatibility and dispatch invariants across categories.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/tools/vector_tools/*`
+- `ipfs_accelerate_py/mcp_server/tools/search_tools/*`
+- `ipfs_accelerate_py/mcp_server/tools/storage_tools/*`
+- `ipfs_accelerate_py/mcp/tests/*vector*`
+- `ipfs_accelerate_py/mcp/tests/*search*`
+- `ipfs_accelerate_py/mcp/tests/*storage*`
+
+## Acceptance Criteria
+- [ ] Representative integration flows are parity-validated.
+- [ ] Deterministic schema and result contracts are asserted.
+- [ ] Matrix rows/evidence are updated.
+
+## Verification
+- `python3 -m unittest <vector search storage parity test modules>`
+```
+
+### `UNI-105` PDF/Graph/Logic Advanced Surface Parity Expansion
+
+Title: `UNI-105: Expand PDF/Graph/Logic advanced behavior parity`
+
+Body:
+
+```markdown
+## Summary
+Deepen parity for advanced document, graph, and logic operations.
+
+## Scope
+- Add advanced ingestion/query/reasoning behavior parity coverage.
+- Validate schema compatibility and deterministic output behavior.
+
+## Target Files
+- `ipfs_accelerate_py/mcp_server/tools/pdf_tools/*`
+- `ipfs_accelerate_py/mcp_server/tools/graph_tools/*`
+- `ipfs_accelerate_py/mcp_server/tools/logic_tools/*`
+- `ipfs_accelerate_py/mcp/tests/*pdf*`
+- `ipfs_accelerate_py/mcp/tests/*graph*`
+- `ipfs_accelerate_py/mcp/tests/*logic*`
+
+## Acceptance Criteria
+- [ ] Advanced operations implemented or deferred with rationale.
+- [ ] Deterministic behavior and schema parity tests added.
+- [ ] Evidence updated in conformance docs.
+
+## Verification
+- `python3 -m unittest <pdf graph logic parity test modules>`
+```
+
+## 17. Execution Sequence and Gate Mapping
+
+This section defines the practical run order and ties each issue to conformance gates.
+
+### 17.1 Critical Path Order (Recommended)
+
+1. `UNI-001` canonical dispatch service consumption
+2. `UNI-005` shim convergence finalization
+3. `UNI-002` IPFS deep parity
+4. `UNI-003` workflow deep parity
+5. `UNI-004` p2p + mcplusplus deep parity
+6. `UNI-006` transport interop/abuse expansion
+7. `SPEC-201` through `SPEC-208` hardening passes
+8. `UNI-007` cutover dry-run and rollback verification
+9. `UNI-101` through `UNI-105` breadth hardening waves
+
+### 17.2 Issue to Conformance IDs
+
+| Issue | Primary Conformance Targets | Secondary Targets |
+| --- | --- | --- |
+| `UNI-001` | `MCPP-005`, `MCPP-007` | `MCPP-022` |
+| `UNI-002` | `MCPP-012` | `MCPP-007` |
+| `UNI-003` | `MCPP-012` | `MCPP-022` |
+| `UNI-004` | `MCPP-012`, `MCPP-023` | `MCPP-008`, `MCPP-009` |
+| `UNI-005` | `MCPP-001` | `MCPP-013` |
+| `UNI-006` | `MCPP-013`, `MCPP-023` | `MCPP-016` |
+| `UNI-007` | cutover gate (`MCPP-012`, `MCPP-013`, `MCPP-014`, `MCPP-015`) | `MCPP-016`..`MCPP-023` |
+| `UNI-101` | `MCPP-014` | `MCPP-019`, `MCPP-020` |
+| `UNI-102` | `MCPP-015` | `MCPP-013` |
+| `UNI-103` | `MCPP-012` | `MCPP-017` |
+| `UNI-104` | `MCPP-012` | `MCPP-015` |
+| `UNI-105` | `MCPP-012` | `MCPP-017`, `MCPP-020` |
+| `SPEC-201` | `MCPP-016` | `MCPP-013` |
+| `SPEC-202` | `MCPP-017` | `MCPP-012` |
+| `SPEC-203` | `MCPP-018` | `MCPP-021` |
+| `SPEC-204` | `MCPP-019` | `MCPP-014` |
+| `SPEC-205` | `MCPP-020` | `MCPP-014` |
+| `SPEC-206` | `MCPP-021` | `MCPP-018` |
+| `SPEC-207` | `MCPP-022` | `MCPP-023` |
+| `SPEC-208` | `MCPP-023` | `MCPP-013`, `MCPP-016` |
+
+### 17.3 Merge Gating Checklist (Per PR)
+
+1. Implementation links added in PR description.
+2. Deterministic test evidence attached (module-level command outputs).
+3. `mcpplusplus/SPEC_GAP_MATRIX.md` updated if capability status changed.
+4. `mcpplusplus/CONFORMANCE_CHECKLIST.md` updated if requirement status changed.
+5. Transport lane impact assessed (`default` and `libp2p` lanes).
+
+## 18. Operating Cadence (Weekly)
+
+1. Monday: select 1 P0 + 1 spec hardening issue; lock test scope.
+2. Midweek: merge implementation + tests with evidence updates.
+3. Friday: run transport matrix smoke and conformance doc consistency review.
+4. End of week: publish delta summary listing closed issues, moved conformance IDs, and residual risks.
+
+## 19. First 30 Days Kickoff Playbook
+
+This section defines a practical startup sequence for executing the plan immediately.
+
+### 19.1 Day 1-3 (Setup and Baseline Lock)
+
+1. Open issues from templates in this order:
+   - `UNI-001`, `UNI-005`, `UNI-002`, `UNI-003`, `UNI-004`, `UNI-006`, `UNI-007`
+   - `SPEC-201` through `SPEC-208`
+2. Assign initial milestones:
+   - `M1-Convergence`, `M2-DeepParity`, `M3-SpecHardening`, `M4-Cutover`
+3. Freeze baseline references in issue bodies:
+   - target conformance IDs from section 17.2
+   - current matrix/checklist rows used as baseline evidence
+
+### 19.2 Day 4-10 (Critical Path Start)
+
+1. Execute `UNI-001` and `UNI-005` in parallel if staffing permits.
+2. Require every merged PR to include:
+   - test command outputs,
+   - changed conformance references,
+   - risk note if transport or policy paths were touched.
+3. Keep `SPEC-201` and `SPEC-202` in progress as the first chapter-hardening pair.
+
+### 19.3 Day 11-20 (Deep Parity Wave)
+
+1. Execute `UNI-002`, `UNI-003`, and `UNI-004` in sequence.
+2. For each category wave, publish a parity mini-report in PR description:
+   - operations covered,
+   - schemas covered,
+   - deferred items with rationale.
+3. Expand chapter hardening with `SPEC-203` to `SPEC-206`.
+
+### 19.4 Day 21-30 (Transport + Cutover Prep)
+
+1. Execute `UNI-006` to harden transport interop and abuse matrix.
+2. Execute `SPEC-207` and `SPEC-208`.
+3. Run `UNI-007` cutover dry-run checklist:
+   - canonical default startup check,
+   - compatibility facade rollback check,
+   - conformance evidence synchronization check.
+
+## 20. Milestones, Labels, and PR Taxonomy
+
+Use consistent labels and milestone names so issue state is queryable.
+
+### 20.1 Recommended Milestones
+
+1. `M1-Convergence-Hardening`
+2. `M2-Deep-Tool-Parity`
+3. `M3-Spec-Chapter-Hardening`
+4. `M4-Cutover-Rollback-Validation`
+
+### 20.2 Recommended Labels
+
+1. Priority labels:
+   - `priority:p0`
+   - `priority:p1`
+2. Type labels:
+   - `type:parity`
+   - `type:spec`
+   - `type:transport`
+   - `type:security`
+   - `type:observability`
+   - `type:cutover`
+3. Status labels:
+   - `status:blocked`
+   - `status:needs-evidence`
+   - `status:ready-for-review`
+
+### 20.3 PR Title and Evidence Format
+
+PR title format:
+
+1. `[UNI-001] Prove canonical dispatch consumes unified services`
+2. `[SPEC-204] Expand UCAN verification vectors and deny matrix`
+
+PR checklist format:
+
+1. Linked issue ID.
+2. Conformance IDs touched (`MCPP-*`).
+3. Deterministic test commands and outcomes.
+4. Matrix/checklist doc updates completed.
+5. Transport impact assessed.
+
+## 21. Weekly Review Template
+
+Use this template each Friday for project-level status reviews.
+
+1. Closed this week:
+   - issue IDs
+   - conformance IDs moved
+2. In progress:
+   - issue IDs
+   - current blockers
+3. Evidence quality:
+   - missing tests
+   - missing doc updates
+4. Transport/security risk summary:
+   - new risks
+   - mitigations planned
+5. Next week commitments:
+   - exactly 1-2 P0 items
+   - exactly 1 spec hardening item
