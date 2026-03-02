@@ -6,6 +6,7 @@ This module tests the Trio-native MCP server implementation.
 
 import pytest
 import trio
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 from ipfs_accelerate_py.mcplusplus_module.trio import (
@@ -89,6 +90,73 @@ class TestTrioMCPServer:
         taskqueue_registrar, workflow_registrar = server._resolve_p2p_registrars()
         assert callable(taskqueue_registrar)
         assert callable(workflow_registrar)
+
+    def test_resolve_p2p_registrars_prefers_canonical_modules(self, monkeypatch):
+        """Resolver should prefer explicit module imports when available."""
+        from ipfs_accelerate_py.mcplusplus_module.trio import server as server_module
+
+        calls = []
+
+        def _taskqueue(_mcp):
+            return None
+
+        def _workflow(_mcp):
+            return None
+
+        def _fake_import_module(name: str):
+            calls.append(name)
+            if name.endswith("tools.taskqueue_tools"):
+                return SimpleNamespace(register_p2p_taskqueue_tools=_taskqueue)
+            if name.endswith("tools.workflow_tools"):
+                return SimpleNamespace(register_p2p_workflow_tools=_workflow)
+            raise AssertionError(f"Unexpected import: {name}")
+
+        monkeypatch.setattr(server_module, "import_module", _fake_import_module)
+
+        server = TrioMCPServer()
+        taskqueue_registrar, workflow_registrar = server._resolve_p2p_registrars()
+
+        assert taskqueue_registrar is _taskqueue
+        assert workflow_registrar is _workflow
+        assert calls == [
+            "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
+            "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools",
+        ]
+
+    def test_resolve_p2p_registrars_falls_back_to_package(self, monkeypatch):
+        """Resolver should fall back to package-level registrars on import failure."""
+        from ipfs_accelerate_py.mcplusplus_module.trio import server as server_module
+
+        calls = []
+
+        def _taskqueue(_mcp):
+            return None
+
+        def _workflow(_mcp):
+            return None
+
+        def _fake_import_module(name: str):
+            calls.append(name)
+            if name.endswith("tools.taskqueue_tools"):
+                raise ImportError("simulated module import failure")
+            if name.endswith("mcplusplus_module.tools"):
+                return SimpleNamespace(
+                    register_p2p_taskqueue_tools=_taskqueue,
+                    register_p2p_workflow_tools=_workflow,
+                )
+            raise AssertionError(f"Unexpected import: {name}")
+
+        monkeypatch.setattr(server_module, "import_module", _fake_import_module)
+
+        server = TrioMCPServer()
+        taskqueue_registrar, workflow_registrar = server._resolve_p2p_registrars()
+
+        assert taskqueue_registrar is _taskqueue
+        assert workflow_registrar is _workflow
+        assert calls == [
+            "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
+            "ipfs_accelerate_py.mcplusplus_module.tools",
+        ]
 
     def test_register_p2p_tools_uses_resolved_registrars(self, monkeypatch):
         """Registration should execute callables returned by resolver hook."""
