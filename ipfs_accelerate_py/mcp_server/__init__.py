@@ -95,6 +95,8 @@ from .simple_server import (
     start_simple_server,
 )
 from .client import IPFSDatasetsMCPClient
+from .validators import EnhancedParameterValidator, validate_dispatch_inputs, validator
+from .logger import configure_root_logging, get_logger, logger, mcp_logger
 
 __all__ = [
     "create_server",
@@ -172,4 +174,11 @@ __all__ = [
     "SimpleIPFSDatasetsMCPServer",
     "start_simple_server",
     "IPFSDatasetsMCPClient",
+    "EnhancedParameterValidator",
+    "validate_dispatch_inputs",
+    "validator",
+    "configure_root_logging",
+    "get_logger",
+    "logger",
+    "mcp_logger",
 ]

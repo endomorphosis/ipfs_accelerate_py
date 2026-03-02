@@ -7,7 +7,6 @@ package while delegating runtime behavior to the existing
 
 from __future__ import annotations
 
-import logging
 import time
 from typing import Any
 
@@ -87,8 +86,11 @@ from .secrets_vault import SecretsVault
 from .monitoring import EnhancedMetricsCollector, P2PMetricsCollector
 from .otel_tracing import MCPTracer, configure_tracing
 from .prometheus_exporter import PrometheusExporter
+from .logger import get_logger
+from .validators import validate_dispatch_inputs
+from .exceptions import ValidationError
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 async def _invoke_maybe_async(func: Any, /, *args: Any, **kwargs: Any) -> Any:
@@ -593,7 +595,19 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         return manager.get_tool_schema(category, tool_name)
 
     async def tools_dispatch(category: str, tool_name: str, parameters: dict[str, Any]) -> Any:
-        payload = normalize_dispatch_parameters(parameters)
+        try:
+            category, tool_name, payload = validate_dispatch_inputs(
+                category=category,
+                tool_name=tool_name,
+                parameters=parameters,
+            )
+        except (ValueError, ValidationError) as exc:
+            return {
+                "ok": False,
+                "error": "invalid_dispatch_parameter",
+                "details": str(exc),
+            }
+
         dispatch_started = time.perf_counter()
 
         def _record_observability(status: str) -> None:
