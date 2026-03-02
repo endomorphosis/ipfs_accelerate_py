@@ -232,3 +232,18 @@ def test_workflow_adapter_resolver_fallback(monkeypatch):
     assert hasattr(adapter, "get_p2p_scheduler_status")
     assert hasattr(adapter, "schedule_p2p_workflow")
     assert hasattr(adapter, "get_next_p2p_workflow")
+
+
+def test_p2p_missing_dependency_stub_contract():
+    """P2P compatibility stub should be falsy and raise clear runtime errors."""
+    from ipfs_accelerate_py.mcplusplus_module import p2p
+
+    stub = p2p._missing_dependency_stub("ExampleSymbol")
+    assert not stub
+    assert "ExampleSymbol" in repr(stub)
+
+    with pytest.raises(RuntimeError, match="ExampleSymbol is unavailable"):
+        stub()
+
+    with pytest.raises(RuntimeError, match="ExampleSymbol is unavailable"):
+        _ = stub.some_attribute
