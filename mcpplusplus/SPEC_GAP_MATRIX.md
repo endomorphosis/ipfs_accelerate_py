@@ -15,12 +15,15 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - Unified bootstrap tests: 64 in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
 - MCP++ adapter tests: `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py` verifies taskqueue/workflow delegation to canonical `mcp_server` adapters.
 - Trio MCP++ server wiring: `ipfs_accelerate_py/mcplusplus_module/trio/server.py` now uses explicit taskqueue/workflow registrars (not aggregate helper), with coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_trio_server.py`.
-- Trio MCP++ server resolver now performs canonical-first registrar imports with package-level fallback for resilience, with branch coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_trio_server.py`.
+- Trio MCP++ server resolver now delegates to the shared tools-level resolver path, with delegation coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_trio_server.py`.
 - `mcplusplus_module.tools` aggregate registration now uses canonical-first registrar resolution with package-level fallback, with coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
+- Canonical-first resolver branch coverage is centralized in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py` to avoid duplicate fallback-branch assertions in Trio server tests.
+- Shared tools resolver coverage now includes partial explicit-module import failure fallback behavior in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 - `mcplusplus_module.tools.taskqueue_tools` and `mcplusplus_module.tools.workflow_tools` now use canonical adapter resolution with dependency-light fallbacks, with resolver branch coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 - `mcplusplus_module.p2p` export surface now uses explicit compatibility stubs for unavailable optional dependencies (instead of raw `None` exports), with stub-contract coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 - `mcplusplus_module` top-level optional exports now use explicit compatibility stubs (instead of raw `None` exports), with stub-contract coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 - `mcplusplus_module.p2p` now reuses the top-level compatibility-stub helper to avoid duplicated fallback logic while preserving the same runtime contract.
+- Trio server and tools package now share a single P2P registrar resolver path (`mcplusplus_module.tools._resolve_p2p_registrars`) to avoid duplicated resolver logic.
 
 ## Capability Matrix
 

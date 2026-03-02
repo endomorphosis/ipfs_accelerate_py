@@ -187,6 +187,31 @@ def test_tools_resolver_falls_back_to_package_symbols(monkeypatch):
     assert workflow_registrar is tools.register_p2p_workflow_tools
 
 
+def test_tools_resolver_partial_import_failure_uses_package_symbols(monkeypatch):
+    """Any explicit-module import failure should fall back to package symbols."""
+    from ipfs_accelerate_py.mcplusplus_module import tools
+
+    calls = []
+
+    def _fake_import_module(name: str):
+        calls.append(name)
+        if name.endswith("tools.taskqueue_tools"):
+            return SimpleNamespace(register_p2p_taskqueue_tools=lambda _mcp: None)
+        if name.endswith("tools.workflow_tools"):
+            raise ImportError("simulated workflow import failure")
+        raise AssertionError(f"Unexpected import: {name}")
+
+    monkeypatch.setattr(tools, "import_module", _fake_import_module)
+
+    taskqueue_registrar, workflow_registrar = tools._resolve_p2p_registrars()
+    assert taskqueue_registrar is tools.register_p2p_taskqueue_tools
+    assert workflow_registrar is tools.register_p2p_workflow_tools
+    assert calls == [
+        "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
+        "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools",
+    ]
+
+
 def test_register_all_p2p_tools_uses_resolver(monkeypatch):
     """Aggregate registration should call registrar callables from resolver."""
     from ipfs_accelerate_py.mcplusplus_module import tools

@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import logging
 import os
-from importlib import import_module
 from typing import Any, Optional
 from dataclasses import dataclass
 
@@ -256,24 +255,9 @@ class TrioMCPServer:
         Kept as a dedicated hook so registration wiring can be validated via
         targeted unit tests without requiring full runtime setup.
         """
-        try:
-            taskqueue_module = import_module(
-                "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools"
-            )
-            workflow_module = import_module(
-                "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools"
-            )
-            return (
-                taskqueue_module.register_p2p_taskqueue_tools,
-                workflow_module.register_p2p_workflow_tools,
-            )
-        except (ImportError, AttributeError) as exc:
-            logger.debug("Falling back to package-level P2P registrars: %s", exc)
-            tools_module = import_module("ipfs_accelerate_py.mcplusplus_module.tools")
-            return (
-                tools_module.register_p2p_taskqueue_tools,
-                tools_module.register_p2p_workflow_tools,
-            )
+        from .. import tools as tools_module
+
+        return tools_module._resolve_p2p_registrars()
 
     def _create_fastapi_app(self) -> Any:
         """Create the FastAPI application for ASGI.
