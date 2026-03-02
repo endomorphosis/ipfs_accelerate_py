@@ -6,6 +6,7 @@ This module tests the Trio-native MCP server implementation.
 
 import pytest
 import trio
+from unittest.mock import Mock
 
 from ipfs_accelerate_py.mcplusplus_module.trio import (
     TrioMCPServer,
@@ -81,6 +82,50 @@ class TestTrioMCPServer:
         config = ServerConfig(name="config-name")
         server = TrioMCPServer(config=config, name="override-name")
         assert server.config.name == "override-name"
+
+    def test_register_p2p_tools_uses_explicit_registrars(self, monkeypatch):
+        """Both registrars should be called when both feature flags are enabled."""
+        from ipfs_accelerate_py.mcplusplus_module.tools import taskqueue_tools as taskqueue_module
+        from ipfs_accelerate_py.mcplusplus_module.tools import workflow_tools as workflow_module
+
+        calls = []
+
+        def _register_taskqueue(_mcp):
+            calls.append("taskqueue")
+
+        def _register_workflow(_mcp):
+            calls.append("workflow")
+
+        monkeypatch.setattr(taskqueue_module, "register_p2p_taskqueue_tools", _register_taskqueue)
+        monkeypatch.setattr(workflow_module, "register_p2p_workflow_tools", _register_workflow)
+
+        server = TrioMCPServer(ServerConfig(enable_p2p_tools=True, enable_taskqueue_tools=True, enable_workflow_tools=True))
+        server.mcp = Mock()
+
+        server._register_p2p_tools()
+        assert calls == ["taskqueue", "workflow"]
+
+    def test_register_p2p_tools_respects_feature_flags(self, monkeypatch):
+        """Only enabled registrar should be called when one feature flag is disabled."""
+        from ipfs_accelerate_py.mcplusplus_module.tools import taskqueue_tools as taskqueue_module
+        from ipfs_accelerate_py.mcplusplus_module.tools import workflow_tools as workflow_module
+
+        calls = []
+
+        def _register_taskqueue(_mcp):
+            calls.append("taskqueue")
+
+        def _register_workflow(_mcp):
+            calls.append("workflow")
+
+        monkeypatch.setattr(taskqueue_module, "register_p2p_taskqueue_tools", _register_taskqueue)
+        monkeypatch.setattr(workflow_module, "register_p2p_workflow_tools", _register_workflow)
+
+        server = TrioMCPServer(ServerConfig(enable_p2p_tools=True, enable_taskqueue_tools=False, enable_workflow_tools=True))
+        server.mcp = Mock()
+
+        server._register_p2p_tools()
+        assert calls == ["workflow"]
     
     @pytest.mark.trio
     async def test_server_setup(self):

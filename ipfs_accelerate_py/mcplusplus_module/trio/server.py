@@ -228,17 +228,15 @@ class TrioMCPServer:
         logger.info("Registering P2P tools for Trio server")
 
         try:
-            # Import tool registration functions
-            from ..tools import (
-                register_p2p_taskqueue_tools,
-                register_p2p_workflow_tools,
-                register_all_p2p_tools,
-            )
+            # Use explicit registrars so the adapter path is deterministic and
+            # easy to validate in tests.
+            from ..tools.taskqueue_tools import register_p2p_taskqueue_tools
+            from ..tools.workflow_tools import register_p2p_workflow_tools
 
             # Register tools based on configuration
             if self.config.enable_taskqueue_tools and self.config.enable_workflow_tools:
-                # Register all tools at once
-                register_all_p2p_tools(self.mcp)
+                register_p2p_taskqueue_tools(self.mcp)
+                register_p2p_workflow_tools(self.mcp)
                 logger.info("Registered all 20 P2P tools")
             else:
                 # Register selectively
