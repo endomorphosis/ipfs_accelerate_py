@@ -15,6 +15,7 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             batch_process_datasets as _batch_process_datasets,
             execute_workflow as _execute_workflow,
             get_workflow_status as _get_workflow_status,
+            list_templates as _list_templates,
             schedule_workflow as _schedule_workflow,
         )
 
@@ -23,6 +24,7 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             "batch_process_datasets": _batch_process_datasets,
             "schedule_workflow": _schedule_workflow,
             "get_workflow_status": _get_workflow_status,
+            "list_templates": _list_templates,
         }
     except Exception:
         logger.warning("Source workflow_tools import unavailable, using fallback workflow-tools functions")
@@ -77,11 +79,19 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
                 "error": "Workflow not found",
             }
 
+        async def _list_templates_fallback() -> Dict[str, Any]:
+            return {
+                "success": True,
+                "templates": [],
+                "total": 0,
+            }
+
         return {
             "execute_workflow": _execute_fallback,
             "batch_process_datasets": _batch_fallback,
             "schedule_workflow": _schedule_fallback,
             "get_workflow_status": _status_fallback,
+            "list_templates": _list_templates_fallback,
         }
 
 
@@ -147,6 +157,14 @@ async def get_workflow_status(
         execution_id=execution_id,
         include_details=include_details,
     )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def list_templates() -> Dict[str, Any]:
+    """List available workflow templates."""
+    result = _API["list_templates"]()
     if hasattr(result, "__await__"):
         return await result
     return result
@@ -220,6 +238,20 @@ def register_native_workflow_tools_category(manager: Any) -> None:
                 "execution_id": {"type": ["string", "null"]},
                 "include_details": {"type": ["boolean", "null"]},
             },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "workflow-tools"],
+    )
+
+    manager.register_tool(
+        category="workflow_tools",
+        name="list_templates",
+        func=list_templates,
+        description="List available workflow templates.",
+        input_schema={
+            "type": "object",
+            "properties": {},
             "required": [],
         },
         runtime="fastapi",

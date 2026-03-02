@@ -1185,6 +1185,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertTrue("status" in workflow_tools_result or "success" in workflow_tools_result)
 
+            workflow_templates_result = await _dispatch_result(
+                "workflow_tools",
+                "list_templates",
+                {},
+            )
+            self.assertTrue(
+                "templates" in workflow_templates_result
+                or "status" in workflow_templates_result
+                or "success" in workflow_templates_result
+            )
+
             web_scraping_result = await _dispatch_result(
                 "web_scraping_tools",
                 "check_scraper_methods_tool",

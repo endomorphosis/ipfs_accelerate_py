@@ -12,7 +12,7 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - Phase 1 merge note: `ipfs_accelerate_py/mcplusplus_module/tools/taskqueue_tools.py` now delegates registration behavior to canonical native P2P tools in `ipfs_accelerate_py/mcp_server/tools/p2p/native_p2p_tools.py`.
 - Source tool categories: 51
 - Target migrated tool categories: 51 (`admin_tools`, `alert_tools`, `analysis_tools`, `audit_tools`, `auth_tools`, `background_task_tools`, `bespoke_tools`, `cache_tools`, `cli`, `dashboard_tools`, `data_processing_tools`, `dataset_tools`, `development_tools`, `discord_tools`, `email_tools`, `embedding_tools`, `file_converter_tools`, `file_detection_tools`, `finance_data_tools`, `functions`, `geospatial_tools`, `graph_tools`, `index_management_tools`, `investigation_tools`, `ipfs_cluster_tools`, `ipfs_tools`, `legal_dataset_tools`, `legacy_mcp_tools`, `lizardperson_argparse_programs`, `lizardpersons_function_tools`, `logic_tools`, `mcplusplus`, `media_tools`, `medical_research_scrapers`, `monitoring_tools`, `p2p_tools`, `p2p_workflow_tools`, `pdf_tools`, `provenance_tools`, `rate_limiting_tools`, `search_tools`, `security_tools`, `session_tools`, `software_engineering_tools`, `sparse_embedding_tools`, `storage_tools`, `vector_store_tools`, `vector_tools`, `web_archive_tools`, `web_scraping_tools`, `workflow_tools`)
-- Unified bootstrap tests: 75 in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+- Unified bootstrap tests: 76 in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
 - MCP++ adapter tests: `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py` verifies taskqueue/workflow delegation to canonical `mcp_server` adapters.
 - Trio MCP++ server wiring: `ipfs_accelerate_py/mcplusplus_module/trio/server.py` now uses explicit taskqueue/workflow registrars (not aggregate helper), with coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_trio_server.py`.
 - Trio MCP++ server resolver now delegates to the shared tools-level resolver path, with delegation coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_trio_server.py`.
@@ -31,6 +31,8 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - Trio server and tools package now share a single P2P registrar resolver path (`mcplusplus_module.tools._resolve_p2p_registrars`) to avoid duplicated resolver logic.
 - Unified dispatch frontier execution coverage now validates `_unified_services` workflow-scheduler and task-queue factory consumption paths in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`.
 - `mcplusplus_module` now centralizes storage-wrapper resolution in a shared top-level helper consumed by `p2p.bootstrap` and `p2p.peer_registry`, with fallback-order contract coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
+- Unified native IPFS Wave A coverage now includes direct `ipfs_files_cat` dispatch parity in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` with kit-backed content retrieval assertions.
+- Unified `workflow_tools` category parity now includes `list_templates` dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` and native registration in `ipfs_accelerate_py/mcp_server/tools/workflow_tools/native_workflow_tools_category.py`.
 
 ## Capability Matrix
 
