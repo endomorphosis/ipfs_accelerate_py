@@ -6,6 +6,7 @@ legacy tool names while delegating behavior to canonical mcp_server adapters.
 
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any, Dict
 
 import pytest
@@ -139,3 +140,66 @@ async def test_workflow_core_tools_delegate_to_canonical(monkeypatch):
     assert captured["schedule_kwargs"]["workflow_id"] == "wf-1"
     assert captured["schedule_kwargs"]["metadata"] == {"task_id": "task-1"}
     assert next_task["task"] == {"workflow_id": "wf-1"}
+
+
+def test_tools_resolver_prefers_explicit_modules(monkeypatch):
+    """Tools resolver should prefer explicit module imports when available."""
+    from ipfs_accelerate_py.mcplusplus_module import tools
+
+    calls = []
+
+    def _taskqueue(_mcp):
+        return None
+
+    def _workflow(_mcp):
+        return None
+
+    def _fake_import_module(name: str):
+        calls.append(name)
+        if name.endswith("tools.taskqueue_tools"):
+            return SimpleNamespace(register_p2p_taskqueue_tools=_taskqueue)
+        if name.endswith("tools.workflow_tools"):
+            return SimpleNamespace(register_p2p_workflow_tools=_workflow)
+        raise AssertionError(f"Unexpected import: {name}")
+
+    monkeypatch.setattr(tools, "import_module", _fake_import_module)
+
+    taskqueue_registrar, workflow_registrar = tools._resolve_p2p_registrars()
+    assert taskqueue_registrar is _taskqueue
+    assert workflow_registrar is _workflow
+    assert calls == [
+        "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
+        "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools",
+    ]
+
+
+def test_tools_resolver_falls_back_to_package_symbols(monkeypatch):
+    """Tools resolver should return package symbols if imports fail."""
+    from ipfs_accelerate_py.mcplusplus_module import tools
+
+    def _fake_import_module(_name: str):
+        raise ImportError("simulated failure")
+
+    monkeypatch.setattr(tools, "import_module", _fake_import_module)
+
+    taskqueue_registrar, workflow_registrar = tools._resolve_p2p_registrars()
+    assert taskqueue_registrar is tools.register_p2p_taskqueue_tools
+    assert workflow_registrar is tools.register_p2p_workflow_tools
+
+
+def test_register_all_p2p_tools_uses_resolver(monkeypatch):
+    """Aggregate registration should call registrar callables from resolver."""
+    from ipfs_accelerate_py.mcplusplus_module import tools
+
+    calls = []
+
+    def _taskqueue(_mcp):
+        calls.append("taskqueue")
+
+    def _workflow(_mcp):
+        calls.append("workflow")
+
+    monkeypatch.setattr(tools, "_resolve_p2p_registrars", lambda: (_taskqueue, _workflow))
+    tools.register_all_p2p_tools(object())
+
+    assert calls == ["taskqueue", "workflow"]
