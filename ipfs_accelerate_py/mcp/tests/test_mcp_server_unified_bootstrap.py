@@ -615,6 +615,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             dispatch = server.tools["tools_dispatch"]["function"]
             runtime_metrics = server.tools["tools_runtime_metrics"]["function"]
 
+            async def _dispatch_result(category: str, tool: str, params: dict) -> dict:
+                return self._assert_dispatch_success_envelope(
+                    await dispatch(category, tool, params)
+                )
+
             categories = await list_categories()
             self.assertIn("admin_tools", categories["categories"])
             self.assertIn("alert_tools", categories["categories"])
@@ -701,7 +706,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(configured.get("configured_count"), 1)
 
-            check = await dispatch(
+            check = await _dispatch_result(
                 "rate_limiting",
                 "check_rate_limit",
                 {
@@ -711,14 +716,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertTrue(check.get("allowed", False))
 
-            listing = await dispatch(
+            listing = await _dispatch_result(
                 "rate_limiting",
                 "manage_rate_limits",
                 {"action": "list"},
             )
             self.assertGreaterEqual(int(listing.get("total_count", 0)), 1)
 
-            listing_tools = await dispatch(
+            listing_tools = await _dispatch_result(
                 "rate_limiting_tools",
                 "manage_rate_limits",
                 {"action": "list"},
@@ -744,14 +749,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(get_result.get("value"), "smoke-value")
             self.assertTrue(get_result.get("hit", False))
 
-            cli_result = await dispatch(
+            cli_result = await _dispatch_result(
                 "cli",
                 "execute_command",
                 {"command": "echo", "args": ["smoke"]},
             )
             self.assertIn(cli_result.get("status"), ["success", "error"])
 
-            stats_result = await dispatch(
+            stats_result = await _dispatch_result(
                 "cache_tools",
                 "manage_cache",
                 {"operation": "stats", "namespace": "smoke"},
@@ -759,7 +764,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertTrue(stats_result.get("success", False))
             self.assertIn("cache_stats", stats_result)
 
-            created_session = await dispatch(
+            created_session = await _dispatch_result(
                 "session_tools",
                 "create_session",
                 {
@@ -771,7 +776,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             session_id = created_session.get("session_id")
             self.assertIsInstance(session_id, str)
 
-            get_session = await dispatch(
+            get_session = await _dispatch_result(
                 "session_tools",
                 "manage_session_state",
                 {
@@ -782,7 +787,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(get_session.get("status"), "success")
             self.assertEqual(get_session.get("session", {}).get("session_id"), session_id)
 
-            pause_session = await dispatch(
+            pause_session = await _dispatch_result(
                 "session_tools",
                 "manage_session_state",
                 {
@@ -793,7 +798,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(pause_session.get("status"), "success")
             self.assertEqual(pause_session.get("session_status"), "paused")
 
-            search_result = await dispatch(
+            search_result = await _dispatch_result(
                 "search_tools",
                 "semantic_search",
                 {
@@ -805,7 +810,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(search_result.get("query"), "smoke query")
             self.assertGreaterEqual(int(search_result.get("total_found", 0)), 1)
 
-            conversion_result = await dispatch(
+            conversion_result = await _dispatch_result(
                 "data_processing_tools",
                 "convert_format",
                 {
@@ -818,7 +823,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(conversion_result.get("source_format"), "json")
             self.assertEqual(conversion_result.get("target_format"), "json")
 
-            permission_result = await dispatch(
+            permission_result = await _dispatch_result(
                 "security_tools",
                 "check_access_permission",
                 {
@@ -844,7 +849,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(analysis_result.get("status"), "success")
             self.assertEqual(analysis_result.get("data_source"), "mock")
 
-            geospatial_result = await dispatch(
+            geospatial_result = await _dispatch_result(
                 "geospatial_tools",
                 "query_geographic_context",
                 {
@@ -856,14 +861,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(geospatial_result.get("status"), "success")
             self.assertEqual(geospatial_result.get("query"), "find events near London")
 
-            graph_result = await dispatch(
+            graph_result = await _dispatch_result(
                 "graph_tools",
                 "graph_create",
                 {},
             )
             self.assertIn(graph_result.get("status"), ["success", "error"])
 
-            index_status_result = await dispatch(
+            index_status_result = await _dispatch_result(
                 "index_management_tools",
                 "load_index",
                 {
@@ -873,7 +878,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(index_status_result.get("status"), ["success", "error"])
             self.assertEqual(index_status_result.get("action"), "status")
 
-            auth_decode_result = await dispatch(
+            auth_decode_result = await _dispatch_result(
                 "auth_tools",
                 "validate_token",
                 {
@@ -884,14 +889,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(auth_decode_result.get("status"), "success")
             self.assertIn("message", auth_decode_result)
 
-            bespoke_result = await dispatch(
+            bespoke_result = await _dispatch_result(
                 "bespoke_tools",
                 "system_health",
                 {},
             )
             self.assertTrue("success" in bespoke_result or "status" in bespoke_result)
 
-            provenance_result = await dispatch(
+            provenance_result = await _dispatch_result(
                 "provenance_tools",
                 "record_provenance",
                 {
@@ -903,7 +908,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(provenance_result.get("status"), ["success", "error"])
             self.assertEqual(provenance_result.get("dataset_id"), "smoke-dataset")
 
-            admin_result = await dispatch(
+            admin_result = await _dispatch_result(
                 "admin_tools",
                 "manage_endpoints",
                 {
@@ -913,7 +918,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(admin_result.get("status"), "success")
             self.assertEqual(admin_result.get("action"), "list")
 
-            detection_result = await dispatch(
+            detection_result = await _dispatch_result(
                 "file_detection_tools",
                 "detect_file_type",
                 {
@@ -922,7 +927,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertTrue("mime_type" in detection_result or "error" in detection_result)
 
-            storage_result = await dispatch(
+            storage_result = await _dispatch_result(
                 "storage_tools",
                 "manage_collections",
                 {
@@ -932,7 +937,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(storage_result.get("success"), [True, False])
             self.assertEqual(storage_result.get("action"), "list")
 
-            vector_result = await dispatch(
+            vector_result = await _dispatch_result(
                 "vector_store_tools",
                 "vector_index",
                 {
@@ -956,7 +961,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(vector_tools_result.get("status"), "success")
 
-            audit_result = await dispatch(
+            audit_result = await _dispatch_result(
                 "audit_tools",
                 "record_audit_event",
                 {
@@ -968,7 +973,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(audit_result.get("status"), ["success", "error"])
             self.assertEqual(audit_result.get("action"), "smoke.test")
 
-            alert_result = await dispatch(
+            alert_result = await _dispatch_result(
                 "alert_tools",
                 "list_alert_rules",
                 {
@@ -977,7 +982,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn(alert_result.get("status"), ["success", "error"])
 
-            email_result = await dispatch(
+            email_result = await _dispatch_result(
                 "email_tools",
                 "email_test_connection",
                 {
@@ -988,189 +993,189 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn(email_result.get("status"), ["success", "error"])
 
-            finance_result = await dispatch(
+            finance_result = await _dispatch_result(
                 "finance_data_tools",
                 "scrape_stock_data",
                 {"symbols": ["AAPL"], "days": 1},
             )
             self.assertIn(finance_result.get("status"), ["success", "error"])
 
-            file_converter_result = await dispatch(
+            file_converter_result = await _dispatch_result(
                 "file_converter_tools",
                 "file_info_tool",
                 {"input_path": "README.md"},
             )
             self.assertIn(file_converter_result.get("status"), ["success", "error"])
 
-            dashboard_result = await dispatch(
+            dashboard_result = await _dispatch_result(
                 "dashboard_tools",
                 "get_tdfol_metrics",
                 {},
             )
             self.assertIn(dashboard_result.get("status"), ["success", "error"])
 
-            software_engineering_result = await dispatch(
+            software_engineering_result = await _dispatch_result(
                 "software_engineering_tools",
                 "search_repositories",
                 {"query": "smoke", "max_results": 1},
             )
             self.assertIn(software_engineering_result.get("status"), ["success", "error"])
 
-            background_task_result = await dispatch(
+            background_task_result = await _dispatch_result(
                 "background_task_tools",
                 "manage_task_queue",
                 {"action": "get_stats"},
             )
             self.assertIn(background_task_result.get("status"), ["success", "error"])
 
-            dataset_result = await dispatch(
+            dataset_result = await _dispatch_result(
                 "dataset_tools",
                 "load_dataset",
                 {"source": "smoke_source"},
             )
             self.assertIn(dataset_result.get("status"), ["success", "error"])
 
-            development_result = await dispatch(
+            development_result = await _dispatch_result(
                 "development_tools",
                 "vscode_cli_status",
                 {},
             )
             self.assertTrue("success" in development_result or "status" in development_result)
 
-            discord_result = await dispatch(
+            discord_result = await _dispatch_result(
                 "discord_tools",
                 "discord_list_guilds",
                 {},
             )
             self.assertIn(discord_result.get("status"), ["success", "error"])
 
-            embedding_result = await dispatch(
+            embedding_result = await _dispatch_result(
                 "embedding_tools",
                 "generate_embeddings",
                 {"texts": ["smoke embedding input"]},
             )
             self.assertIn(embedding_result.get("status"), ["success", "error"])
 
-            monitoring_result = await dispatch(
+            monitoring_result = await _dispatch_result(
                 "monitoring_tools",
                 "health_check",
                 {},
             )
             self.assertTrue("status" in monitoring_result)
 
-            sparse_embedding_result = await dispatch(
+            sparse_embedding_result = await _dispatch_result(
                 "sparse_embedding_tools",
                 "generate_sparse_embedding",
                 {"text": "smoke sparse embedding input"},
             )
             self.assertTrue("model" in sparse_embedding_result or "status" in sparse_embedding_result)
 
-            ipfs_cluster_result = await dispatch(
+            ipfs_cluster_result = await _dispatch_result(
                 "ipfs_cluster_tools",
                 "manage_ipfs_cluster",
                 {"action": "status"},
             )
             self.assertTrue("status" in ipfs_cluster_result)
 
-            ipfs_tools_result = await dispatch(
+            ipfs_tools_result = await _dispatch_result(
                 "ipfs_tools",
                 "get_from_ipfs",
                 {"cid": "bafybeigdyrzt5examplecid"},
             )
             self.assertIn(ipfs_tools_result.get("status"), ["success", "error"])
 
-            legal_result = await dispatch(
+            legal_result = await _dispatch_result(
                 "legal_dataset_tools",
                 "list_state_jurisdictions",
                 {},
             )
             self.assertIn(legal_result.get("status"), ["success", "error"])
 
-            media_result = await dispatch(
+            media_result = await _dispatch_result(
                 "media_tools",
                 "ytdlp_extract_info",
                 {"url": "https://example.com/media"},
             )
             self.assertIn(media_result.get("status"), ["success", "error"])
 
-            mcplusplus_result = await dispatch(
+            mcplusplus_result = await _dispatch_result(
                 "mcplusplus",
                 "mcplusplus_engine_status",
                 {},
             )
             self.assertIn(mcplusplus_result.get("status"), ["success", "error"])
 
-            medical_research_result = await dispatch(
+            medical_research_result = await _dispatch_result(
                 "medical_research_scrapers",
                 "scrape_pubmed_medical_research",
                 {"query": "smoke"},
             )
             self.assertIn(medical_research_result.get("status"), ["success", "error"])
 
-            legacy_result = await dispatch(
+            legacy_result = await _dispatch_result(
                 "legacy_mcp_tools",
                 "legacy_tools_inventory",
                 {},
             )
             self.assertIn(legacy_result.get("status"), ["success", "error"])
 
-            lizardperson_argparse_result = await dispatch(
+            lizardperson_argparse_result = await _dispatch_result(
                 "lizardperson_argparse_programs",
                 "municipal_bluebook_validator_info",
                 {},
             )
             self.assertIn(lizardperson_argparse_result.get("status"), ["success", "error"])
 
-            lizardpersons_function_result = await dispatch(
+            lizardpersons_function_result = await _dispatch_result(
                 "lizardpersons_function_tools",
                 "get_current_time",
                 {"format_type": "iso"},
             )
             self.assertIn(lizardpersons_function_result.get("status"), ["success", "error"])
 
-            investigation_result = await dispatch(
+            investigation_result = await _dispatch_result(
                 "investigation_tools",
                 "analyze_entities",
                 {"corpus_data": '{"documents": []}'},
             )
             self.assertIn(investigation_result.get("status"), ["success", "error"])
 
-            logic_result = await dispatch(
+            logic_result = await _dispatch_result(
                 "logic_tools",
                 "logic_health",
                 {},
             )
             self.assertTrue("status" in logic_result or "success" in logic_result)
 
-            p2p_workflow_result = await dispatch(
+            p2p_workflow_result = await _dispatch_result(
                 "p2p_workflow_tools",
                 "get_p2p_scheduler_status",
                 {},
             )
             self.assertTrue("status" in p2p_workflow_result or "success" in p2p_workflow_result)
 
-            p2p_tools_result = await dispatch(
+            p2p_tools_result = await _dispatch_result(
                 "p2p_tools",
                 "p2p_service_status",
                 {},
             )
             self.assertTrue("ok" in p2p_tools_result or "status" in p2p_tools_result)
 
-            pdf_tools_result = await dispatch(
+            pdf_tools_result = await _dispatch_result(
                 "pdf_tools",
                 "pdf_query_corpus",
                 {"query": "smoke pdf query"},
             )
             self.assertIn(pdf_tools_result.get("status"), ["success", "error"])
 
-            function_result = await dispatch(
+            function_result = await _dispatch_result(
                 "functions",
                 "execute_python_snippet",
                 {"code": "print('smoke')"},
             )
             self.assertTrue("status" in function_result)
 
-            workflow_tools_result = await dispatch(
+            workflow_tools_result = await _dispatch_result(
                 "workflow_tools",
                 "schedule_workflow",
                 {
@@ -1180,14 +1185,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertTrue("status" in workflow_tools_result or "success" in workflow_tools_result)
 
-            web_scraping_result = await dispatch(
+            web_scraping_result = await _dispatch_result(
                 "web_scraping_tools",
                 "check_scraper_methods_tool",
                 {},
             )
             self.assertIn(web_scraping_result.get("status"), ["success", "error"])
 
-            web_archive_result = await dispatch(
+            web_archive_result = await _dispatch_result(
                 "web_archive_tools",
                 "search_common_crawl",
                 {
@@ -2719,10 +2724,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._wait_task",
                 return_value={"task_id": "t1", "status": "completed"},
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_wait_task",
-                    {"task_id": "t1", "timeout_s": 5.0},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_wait_task",
+                        {"task_id": "t1", "timeout_s": 5.0},
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -2774,10 +2781,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._complete_task",
                 return_value={"ok": True, "task_id": "t1", "status": "completed"},
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_complete_task",
-                    {"task_id": "t1", "status": "completed", "result": {"value": 7}},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_complete_task",
+                        {"task_id": "t1", "status": "completed", "result": {"value": 7}},
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -2829,10 +2838,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._heartbeat",
                 return_value={"ok": True, "heartbeat": "accepted"},
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_heartbeat",
-                    {"peer_id": "peer-1", "clock": {"epoch": 1}},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_heartbeat",
+                        {"peer_id": "peer-1", "clock": {"epoch": 1}},
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -2883,10 +2894,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._cache_get",
                 return_value={"ok": True, "key": "k1", "value": {"n": 1}},
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_cache_get",
-                    {"key": "k1", "timeout_s": 2.0},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_cache_get",
+                        {"key": "k1", "timeout_s": 2.0},
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -2938,10 +2951,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._cache_set",
                 return_value={"ok": True, "key": "k1", "stored": True},
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_cache_set",
-                    {"key": "k1", "value": {"n": 2}, "ttl_s": 30.0, "timeout_s": 2.0},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_cache_set",
+                        {"key": "k1", "value": {"n": 2}, "ttl_s": 30.0, "timeout_s": 2.0},
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -2993,14 +3008,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._submit_docker_hub",
                 return_value="task-123",
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_submit_docker_hub",
-                    {
-                        "image": "alpine:latest",
-                        "command": ["echo", "hi"],
-                        "environment": {"A": "1"},
-                    },
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_submit_docker_hub",
+                        {
+                            "image": "alpine:latest",
+                            "command": ["echo", "hi"],
+                            "environment": {"A": "1"},
+                        },
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -3051,16 +3068,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._submit_docker_github",
                 return_value="task-456",
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_submit_docker_github",
-                    {
-                        "repo_url": "https://github.com/example/repo",
-                        "branch": "main",
-                        "dockerfile_path": "Dockerfile",
-                        "context_path": ".",
-                        "build_args": {"A": "1"},
-                    },
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_submit_docker_github",
+                        {
+                            "repo_url": "https://github.com/example/repo",
+                            "branch": "main",
+                            "dockerfile_path": "Dockerfile",
+                            "context_path": ".",
+                            "build_args": {"A": "1"},
+                        },
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -3111,14 +3130,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._submit_task_with_info",
                 return_value={"task_id": "task-999", "accepted": True},
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_submit",
-                    {
-                        "task_type": "inference",
-                        "model_name": "model-a",
-                        "payload": {"prompt": "hi"},
-                    },
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_submit",
+                        {
+                            "task_type": "inference",
+                            "model_name": "model-a",
+                            "payload": {"prompt": "hi"},
+                        },
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -3170,14 +3191,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._claim_next",
                 return_value={"task_id": "task-claim-1", "status": "claimed"},
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_claim_next",
-                    {
-                        "worker_id": "worker-a",
-                        "supported_task_types": ["inference"],
-                        "peer_id": "peer-a",
-                    },
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_claim_next",
+                        {
+                            "worker_id": "worker-a",
+                            "supported_task_types": ["inference"],
+                            "peer_id": "peer-a",
+                        },
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -3233,10 +3256,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                     "peers": [{"peer_id": "peer-1", "multiaddr": "/ip4/127.0.0.1/tcp/4001"}],
                 },
             ):
-                result = await dispatch(
-                    "p2p",
-                    "list_peers",
-                    {"discover": True, "limit": 10},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "list_peers",
+                        {"discover": True, "limit": 10},
+                    )
                 )
 
             self.assertTrue(result["ok"])
@@ -3288,10 +3313,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._call_tool",
                 return_value={"ok": True, "result": {"pong": True}},
             ):
-                result = await dispatch(
-                    "p2p",
-                    "p2p_taskqueue_call_tool",
-                    {"tool_name": "health_ping", "args": {"x": 1}},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_call_tool",
+                        {"tool_name": "health_ping", "args": {"x": 1}},
+                    )
                 )
 
             self.assertTrue(result["ok"])
