@@ -210,6 +210,21 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
     p.add_argument("--jobs", type=int, default=6)
     p.add_argument("--timeout-s", type=float, default=180.0)
     p.add_argument(
+        "--failover-only",
+        action="store_true",
+        help=(
+            "Only run the session-failover check: submit a task to peer A with peer B's session_id, "
+            "then verify peer A cancels+resubmits locally after the worker-side failover timeout. "
+            "This is intended to be run while peer B is offline/unreachable."
+        ),
+    )
+    p.add_argument(
+        "--failover-wait-s",
+        type=float,
+        default=360.0,
+        help="Max seconds to wait for failover cancel+resubmit to complete (default: 360).",
+    )
+    p.add_argument(
         "--probe-detail",
         action="store_true",
         help="Print verbose peer capabilities (can be very large).",
@@ -240,7 +255,105 @@ async def main_async(argv: Optional[list[str]] = None) -> int:
             )
         except Exception as exc:
             _print_block(f"Peer {peer.name} probe FAILED", {"peer": peer.__dict__, "error": str(exc)})
+            if peer.name == "B" and bool(args.failover_only):
+                _print_block(
+                    "Peer B probe skipped for failover-only",
+                    {
+                        "note": "Continuing because --failover-only is set and peer B is expected to be offline/unreachable.",
+                        "peer_b": peer.__dict__,
+                        "error": str(exc),
+                    },
+                )
+                continue
             return 2
+
+    if bool(args.failover_only):
+        # Submit a task to peer A that requires peer B's session. If peer B can't
+        # drain it, peer A should eventually fail it over locally.
+        chat_id = f"chat-{int(time.time())}-FAILOVER"
+        tid_old = await _submit_llm_task(
+            peer=peer_a,
+            prompt="(smoketest) failover: say OK and echo FAILOVER.",
+            provider=str(args.provider),
+            model_name=str(args.model),
+            session_id=peer_b.session,
+            chat_session_id=chat_id,
+        )
+
+        deadline = _now() + max(10.0, float(args.failover_wait_s))
+        new_tid = ""
+        old_task = None
+        while _now() < deadline:
+            old_task = await _get_task_retry(remote=peer_a.remote(), task_id=tid_old, deadline=min(deadline, _now() + 5.0))
+            if isinstance(old_task, dict) and str(old_task.get("status") or "").lower() == "cancelled":
+                res = old_task.get("result")
+                if isinstance(res, dict):
+                    prog = res.get("progress")
+                    if isinstance(prog, dict):
+                        reason = str(prog.get("cancel_reason") or "")
+                        if "session_failover->" in reason:
+                            new_tid = reason.split("session_failover->", 1)[-1].strip()
+                            break
+            await anyio.sleep(0.25)
+
+        _print_block(
+            "Failover: old task status",
+            {
+                "old_task_id": tid_old,
+                "status": (old_task or {}).get("status") if isinstance(old_task, dict) else None,
+                "result": (old_task or {}).get("result") if isinstance(old_task, dict) else None,
+                "error": (old_task or {}).get("error") if isinstance(old_task, dict) else None,
+                "parsed_new_task_id": new_tid,
+            },
+        )
+
+        if not new_tid:
+            _print_block(
+                "FAIL: Did not observe session failover cancel_reason",
+                {
+                    "hint": (
+                        "Ensure peer A is running a recent worker build and has session failover enabled (default-on) "
+                        "and that peer B is offline/unreachable so it cannot drain the task. "
+                        "Also check that IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S is not too large."
+                    ),
+                    "old_task_id": tid_old,
+                },
+            )
+            return 30
+
+        new_task = await _wait_completed_chatty(remote=peer_a.remote(), task_id=new_tid, timeout_s=float(args.timeout_s))
+        if not isinstance(new_task, dict):
+            _print_block(
+                "FAIL: Failover new task TIMEOUT",
+                {"new_task_id": new_tid, "old_task_id": tid_old, "peer": peer_a.__dict__},
+            )
+            return 31
+
+        ex_peer, ex_worker = _result_executor(new_task)
+        _print_block(
+            "Failover: new task result",
+            {
+                "new_task_id": new_tid,
+                "status": new_task.get("status"),
+                "error": new_task.get("error"),
+                "executor_peer_id": ex_peer,
+                "executor_worker_id": ex_worker,
+                "result_excerpt": _fmt_excerpt(_result_text(new_task)),
+                "result": new_task.get("result"),
+            },
+        )
+
+        if str(new_task.get("status") or "").lower() != "completed":
+            return 32
+        if ex_peer and ex_peer != peer_a.peer_id:
+            _print_block(
+                "FAIL: Failover new task executed on wrong peer",
+                {"expected_peer_id": peer_a.peer_id, "got_peer_id": ex_peer, "new_task_id": new_tid},
+            )
+            return 33
+
+        print("PASS")
+        return 0
 
     # Phase 1: session gating + real Copilot execution on both peers
     chat_id_a = f"chat-{int(time.time())}-A"

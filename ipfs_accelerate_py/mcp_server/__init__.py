@@ -34,6 +34,15 @@ from .dispatch_pipeline import (
 from .server_context import UnifiedServerContext
 from .fastapi_config import UnifiedFastAPIConfig
 from .fastapi_service import create_fastapi_app, run_fastapi_server
+from .standalone_server import run_server as run_standalone_server
+from .mcp_p2p_transport import (
+    PROTOCOL_MCP_P2P_V1,
+    get_mcp_p2p_stats,
+    handle_mcp_p2p_stream,
+    read_u32_framed_json,
+    reset_mcp_p2p_stats,
+    write_u32_framed_json,
+)
 from .monitoring import (
     EnhancedMetricsCollector,
     HealthCheckResult,
@@ -72,6 +81,13 @@ __all__ = [
     "UnifiedFastAPIConfig",
     "create_fastapi_app",
     "run_fastapi_server",
+    "run_standalone_server",
+    "PROTOCOL_MCP_P2P_V1",
+    "get_mcp_p2p_stats",
+    "reset_mcp_p2p_stats",
+    "read_u32_framed_json",
+    "write_u32_framed_json",
+    "handle_mcp_p2p_stream",
     "MetricData",
     "HealthCheckResult",
     "EnhancedMetricsCollector",

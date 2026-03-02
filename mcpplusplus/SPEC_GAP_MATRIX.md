@@ -44,6 +44,8 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - Unified `mcplusplus` category parity now includes engine-backed status helper tools (`mcplusplus_taskqueue_get_status`, `mcplusplus_workflow_get_status`, `mcplusplus_peer_list`) with deterministic dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`.
 - Unified runtime/context convergence now includes canonical `dispatch_pipeline` helpers and attached `_unified_server_context` snapshot state in `ipfs_accelerate_py/mcp_server/server.py`, with deterministic helper coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_dispatch_pipeline.py` and bootstrap context assertions in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`.
 - Canonical HTTP convergence now includes `ipfs_accelerate_py/mcp_server/fastapi_config.py` and `ipfs_accelerate_py/mcp_server/fastapi_service.py` facade entrypoints delegating through integration helpers, with contract coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_fastapi_service.py`.
+- Canonical standalone convergence now includes `ipfs_accelerate_py/mcp_server/standalone_server.py` facade entrypoints for server and FastAPI startup paths, with delegation contract coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_standalone_server.py`.
+- Canonical `mcp+p2p` transport convergence now includes `ipfs_accelerate_py/mcp_server/mcp_p2p_transport.py` facades delegating to `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py`, with deterministic delegation coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcp_p2p_transport.py`.
 
 ## Capability Matrix
 

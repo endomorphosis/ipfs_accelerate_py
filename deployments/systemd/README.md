@@ -231,6 +231,12 @@ sudo chmod 644 /etc/ipfs-accelerate/task-worker.env
 - `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=0`
 - `IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES=0` (use threads instead)
 
+Session failover (default-on):
+
+- If a queued task requires a different `session_id` and the matching session peer can't drain it (offline or too slow), the local worker will resubmit it locally after a conservative delay.
+- Default delay is set in the unit files: `IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240`.
+- To disable entirely: `IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER=0` (and/or `IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER=0`).
+
 3) Restart the unit:
 
 ```bash

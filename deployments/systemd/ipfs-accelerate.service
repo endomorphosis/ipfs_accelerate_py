@@ -95,6 +95,13 @@ Environment=IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=/var/cache/ipfs-accelerate
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE=1
 Environment=IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1
 
+# Session failover: if a queued task requires a different session_id and the
+# matching session peer is unavailable/too slow to drain it, resubmit locally
+# after a conservative delay.
+# - Enabled by default in code (set IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER=0 to disable)
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240
+Environment=IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240
+
 # Updates + pip installs can take longer than systemd's default 90s
 TimeoutStartSec=0
 

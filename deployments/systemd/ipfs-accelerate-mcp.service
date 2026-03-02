@@ -115,6 +115,12 @@ Environment="IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=%h/ipfs_accelerate_py/sta
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE=1"
 Environment="IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1"
 
+# Session failover (conservative): resubmit locally if a queued task requires a
+# different session_id and the matching session peer can't drain it.
+# - Enabled by default in code (set IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER=0 to disable)
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240"
+Environment="IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240"
+
 # NOTE: Avoid auto-updating on every restart; it can be slow and brittle.
 # Run scripts/auto-update.sh manually when you actually want to update.
 ExecStartPre=/bin/mkdir -p %h/ipfs_accelerate_py/state
