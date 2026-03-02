@@ -1196,6 +1196,31 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 or "success" in workflow_templates_result
             )
 
+            workflow_resume_result = await _dispatch_result(
+                "workflow_tools",
+                "resume_workflow",
+                {"workflow_id": "smoke-workflow"},
+            )
+            self.assertTrue(
+                "workflow_id" in workflow_resume_result
+                or "status" in workflow_resume_result
+                or "success" in workflow_resume_result
+            )
+
+            workflow_metrics_result = await _dispatch_result(
+                "workflow_tools",
+                "get_workflow_metrics",
+                {
+                    "workflow_id": "smoke-workflow",
+                    "include_performance": True,
+                },
+            )
+            self.assertTrue(
+                "metrics" in workflow_metrics_result
+                or "status" in workflow_metrics_result
+                or "success" in workflow_metrics_result
+            )
+
             web_scraping_result = await _dispatch_result(
                 "web_scraping_tools",
                 "check_scraper_methods_tool",

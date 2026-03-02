@@ -33,6 +33,7 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - `mcplusplus_module` now centralizes storage-wrapper resolution in a shared top-level helper consumed by `p2p.bootstrap` and `p2p.peer_registry`, with fallback-order contract coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py`.
 - Unified native IPFS Wave A coverage now includes direct `ipfs_files_cat` dispatch parity in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` with kit-backed content retrieval assertions.
 - Unified `workflow_tools` category parity now includes `list_templates` dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` and native registration in `ipfs_accelerate_py/mcp_server/tools/workflow_tools/native_workflow_tools_category.py`.
+- Unified `workflow_tools` category parity now also includes `resume_workflow` and `get_workflow_metrics` native registration and dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`.
 
 ## Capability Matrix
 

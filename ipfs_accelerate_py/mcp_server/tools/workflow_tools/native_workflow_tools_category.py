@@ -15,7 +15,9 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             batch_process_datasets as _batch_process_datasets,
             execute_workflow as _execute_workflow,
             get_workflow_status as _get_workflow_status,
+            get_workflow_metrics as _get_workflow_metrics,
             list_templates as _list_templates,
+            resume_workflow as _resume_workflow,
             schedule_workflow as _schedule_workflow,
         )
 
@@ -24,6 +26,8 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
             "batch_process_datasets": _batch_process_datasets,
             "schedule_workflow": _schedule_workflow,
             "get_workflow_status": _get_workflow_status,
+            "resume_workflow": _resume_workflow,
+            "get_workflow_metrics": _get_workflow_metrics,
             "list_templates": _list_templates,
         }
     except Exception:
@@ -86,11 +90,35 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
                 "total": 0,
             }
 
+        async def _resume_workflow_fallback(workflow_id: str) -> Dict[str, Any]:
+            return {
+                "success": True,
+                "status": "running",
+                "workflow_id": workflow_id,
+            }
+
+        async def _get_workflow_metrics_fallback(
+            workflow_id: Optional[str] = None,
+            include_performance: Optional[bool] = None,
+            time_range: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            return {
+                "status": "success",
+                "metrics": {
+                    "workflow_id": workflow_id,
+                    "status": None,
+                    "time_range": time_range,
+                    "has_performance": bool(include_performance),
+                },
+            }
+
         return {
             "execute_workflow": _execute_fallback,
             "batch_process_datasets": _batch_fallback,
             "schedule_workflow": _schedule_fallback,
             "get_workflow_status": _status_fallback,
+            "resume_workflow": _resume_workflow_fallback,
+            "get_workflow_metrics": _get_workflow_metrics_fallback,
             "list_templates": _list_templates_fallback,
         }
 
@@ -165,6 +193,30 @@ async def get_workflow_status(
 async def list_templates() -> Dict[str, Any]:
     """List available workflow templates."""
     result = _API["list_templates"]()
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def resume_workflow(workflow_id: str) -> Dict[str, Any]:
+    """Resume a paused workflow."""
+    result = _API["resume_workflow"](workflow_id=workflow_id)
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def get_workflow_metrics(
+    workflow_id: Optional[str] = None,
+    include_performance: Optional[bool] = None,
+    time_range: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Return workflow metrics summary."""
+    result = _API["get_workflow_metrics"](
+        workflow_id=workflow_id,
+        include_performance=include_performance,
+        time_range=time_range,
+    )
     if hasattr(result, "__await__"):
         return await result
     return result
@@ -252,6 +304,40 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {},
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "workflow-tools"],
+    )
+
+    manager.register_tool(
+        category="workflow_tools",
+        name="resume_workflow",
+        func=resume_workflow,
+        description="Resume a paused workflow.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": "string"},
+            },
+            "required": ["workflow_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "workflow-tools"],
+    )
+
+    manager.register_tool(
+        category="workflow_tools",
+        name="get_workflow_metrics",
+        func=get_workflow_metrics,
+        description="Return workflow metrics summary.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "workflow_id": {"type": ["string", "null"]},
+                "include_performance": {"type": ["boolean", "null"]},
+                "time_range": {"type": ["string", "null"]},
+            },
             "required": [],
         },
         runtime="fastapi",
