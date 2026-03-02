@@ -43,6 +43,9 @@ EnvironmentFile=-%h/ipfs_accelerate_py/state/mcpplusplus.env
 
 EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
 
+# Optional worker overrides (session tags, autoscale knobs, failover tuning, etc.).
+EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
+
 # If you use `gh auth login` (user-scoped auth), point gh at the service user's
 # config directory. This is especially important when the unit is installed with
 # `deployments/systemd/install.sh --user <you>`.

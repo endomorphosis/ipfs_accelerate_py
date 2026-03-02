@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Optional, Tuple
 
-from ipfs_accelerate_py.p2p_tasks.mcp_p2p import PROTOCOL_MCP_P2P_V1
+from ipfs_accelerate_py.p2p_tasks.mcp_p2p_protocol import PROTOCOL_MCP_P2P_V1
 
 
 def get_mcp_p2p_stats() -> dict[str, int]:

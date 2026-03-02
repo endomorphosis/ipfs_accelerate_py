@@ -5,8 +5,16 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+# Install script patches User/Group/paths when using deployments/systemd/install.sh --user <you>
+User=devel
+Group=devel
+
 # Adjust to your checkout or installed location.
-WorkingDirectory=/opt/ipfs_accelerate_py
+WorkingDirectory=%h/ipfs_accelerate_py
+Environment=VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv
+Environment=PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONPATH=%h/ipfs_accelerate_py
 
 # Load per-host settings (listen port, session tag, caches, etc.)
 EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
@@ -29,34 +37,13 @@ Environment=IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240
 #
 # /etc/ipfs-accelerate/task-worker.env remains optional for per-host overrides
 # (ports, session tags, queue path, max workers, disabling remote autoscale, etc.).
-ExecStart=/opt/ipfs_accelerate_py/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker
+ExecStart=%h/ipfs_accelerate_py/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker
 
 Restart=always
 RestartSec=2
 
 # You almost certainly want a higher limit for model downloads.
 LimitNOFILE=1048576
-
-[Unit]
-Description=IPFS Accelerate Task Worker (LEGACY)
-After=network.target
-
-# NOTE: This unit is intentionally kept as a legacy/manual option.
-# The unified architecture runs orchestration (p2p service, mesh draining,
-# worker scaling) inside the MCP service. Workers are spawned on-demand by
-# the MCP orchestrator and should not be run as a standalone daemon.
-
-[Service]
-Type=simple
-User=%i
-WorkingDirectory=/opt/ipfs-accelerate-py
-Environment=PYTHONUNBUFFERED=1
-EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
-
-# Thin executor only (no p2p service, no mesh, no autoscale).
-ExecStart=/opt/ipfs-accelerate-py/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker --no-p2p-service --no-mesh --no-autoscale
-Restart=always
-RestartSec=5
 
 [Install]
 WantedBy=multi-user.target

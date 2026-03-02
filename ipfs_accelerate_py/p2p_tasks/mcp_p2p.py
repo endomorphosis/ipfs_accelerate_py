@@ -27,8 +27,7 @@ from ipfs_accelerate_py.mcp_server.mcplusplus.p2p_framing import (
     encode_jsonrpc_frame,
 )
 
-
-PROTOCOL_MCP_P2P_V1 = "/mcp+p2p/1.0.0"
+from ipfs_accelerate_py.p2p_tasks.mcp_p2p_protocol import PROTOCOL_MCP_P2P_V1
 
 
 _MCP_P2P_STATS_LOCK = threading.RLock()

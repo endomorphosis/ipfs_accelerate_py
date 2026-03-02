@@ -43,6 +43,13 @@ from .mcp_p2p_transport import (
     reset_mcp_p2p_stats,
     write_u32_framed_json,
 )
+from .trio_adapter import TRIO_AVAILABLE, TrioMCPServerAdapter, TrioServerConfig
+from .register_p2p_tools import (
+    P2P_TOOL_MODULES,
+    discover_p2p_tool_modules,
+    get_p2p_tool_summary,
+    register_p2p_category_loaders,
+)
 from .monitoring import (
     EnhancedMetricsCollector,
     HealthCheckResult,
@@ -88,6 +95,13 @@ __all__ = [
     "read_u32_framed_json",
     "write_u32_framed_json",
     "handle_mcp_p2p_stream",
+    "TRIO_AVAILABLE",
+    "TrioServerConfig",
+    "TrioMCPServerAdapter",
+    "P2P_TOOL_MODULES",
+    "discover_p2p_tool_modules",
+    "register_p2p_category_loaders",
+    "get_p2p_tool_summary",
     "MetricData",
     "HealthCheckResult",
     "EnhancedMetricsCollector",

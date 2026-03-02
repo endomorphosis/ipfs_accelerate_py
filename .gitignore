@@ -32,6 +32,7 @@ wheelhouse/
 model_cache/*
 *_results_*
 *.env*
+!*.env.example
 *_report_*
 *.log
 *_status_*

@@ -20,6 +20,10 @@ Environment=PYTHONPATH=%h/ipfs_accelerate_py
 #   IPFS_ACCELERATE_GITHUB_REPO=owner/repo
 EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
 
+# Optional worker overrides (session tags, autoscale knobs, failover tuning, etc.).
+# Keep this separate from secrets.env so it can be safely world-readable if desired.
+EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
+
 # If you use `gh auth login` (user-scoped auth), point gh at the service user's
 # config directory. This is especially important when the unit is installed with
 # `deployments/systemd/install.sh --user <you>`.

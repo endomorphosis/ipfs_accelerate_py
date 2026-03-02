@@ -52,6 +52,32 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
         self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
         self.assertIn("FASTAPI_RUN_CALLED 127.0.0.1 8992", result.stdout)
 
+    def test_canonical_standalone_run_server_contract(self) -> None:
+        """Canonical standalone facade should delegate to legacy standalone path."""
+        code = """
+        from unittest.mock import patch
+        from ipfs_accelerate_py.mcp_server import standalone_server
+
+        with patch('ipfs_accelerate_py.mcp.standalone.run_server', side_effect=lambda **kwargs: print('CANONICAL_RUN_SERVER', kwargs['host'], kwargs['port'])):
+            standalone_server.run_server(host='127.0.0.1', port=8993, name='demo', description='demo', verbose=False)
+        """
+        result = self._run_subprocess(code)
+        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertIn("CANONICAL_RUN_SERVER 127.0.0.1 8993", result.stdout)
+
+    def test_canonical_standalone_run_fastapi_server_contract(self) -> None:
+        """Canonical standalone FastAPI facade should invoke canonical FastAPI runner."""
+        code = """
+        from unittest.mock import patch
+        from ipfs_accelerate_py.mcp_server import standalone_server
+
+        with patch('ipfs_accelerate_py.mcp_server.standalone_server.run_canonical_fastapi_server', side_effect=lambda cfg: print('CANONICAL_FASTAPI_RUN', cfg.host, cfg.port, cfg.mount_path)):
+            standalone_server.run_fastapi_server(host='127.0.0.1', port=8994, mount_path='/mcp', name='demo', description='demo', verbose=True)
+        """
+        result = self._run_subprocess(code)
+        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertIn("CANONICAL_FASTAPI_RUN 127.0.0.1 8994 /mcp", result.stdout)
+
     def test_unified_bootstrap_trio_dispatch_contract(self) -> None:
         """Unified bootstrap dispatch should invoke trio runtime path in subprocess."""
         code = """
