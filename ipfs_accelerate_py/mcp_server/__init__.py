@@ -60,6 +60,22 @@ from .monitoring import (
 )
 from .otel_tracing import MCPTracer, configure_tracing
 from .prometheus_exporter import PrometheusExporter
+from .ucan_delegation import (
+    Capability,
+    Delegation,
+    DelegationEvaluator,
+    InvocationContext,
+    add_delegation,
+    get_delegation,
+    get_delegation_evaluator,
+)
+from .temporal_policy import (
+    PolicyClause,
+    PolicyEvaluator,
+    PolicyObject,
+    make_simple_permission_policy,
+)
+from .temporal_deontic_mcp_server import TemporalDeonticMCPServer
 
 __all__ = [
     "create_server",
@@ -111,4 +127,16 @@ __all__ = [
     "MCPTracer",
     "configure_tracing",
     "PrometheusExporter",
+    "Capability",
+    "Delegation",
+    "DelegationEvaluator",
+    "InvocationContext",
+    "add_delegation",
+    "get_delegation",
+    "get_delegation_evaluator",
+    "PolicyClause",
+    "PolicyObject",
+    "PolicyEvaluator",
+    "make_simple_permission_policy",
+    "TemporalDeonticMCPServer",
 ]

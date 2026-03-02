@@ -49,6 +49,7 @@ This matrix tracks source-to-target parity for the unified MCP runtime migration
 - Canonical `mcp+p2p` transport convergence now includes `ipfs_accelerate_py/mcp_server/mcp_p2p_transport.py` facades delegating to `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py`, with deterministic delegation coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcp_p2p_transport.py`.
 - Canonical Trio transport convergence now includes `ipfs_accelerate_py/mcp_server/trio_adapter.py` facade lifecycle wrappers (`TRIO_AVAILABLE`, `TrioServerConfig`, `TrioMCPServerAdapter`) with deterministic lifecycle coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_trio_adapter.py`.
 - Canonical P2P registration convergence now includes `ipfs_accelerate_py/mcp_server/register_p2p_tools.py` discovery/registration helpers with deterministic import/delegation coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_register_p2p_tools.py`.
+- Canonical legacy policy/delegation surface adaptation now includes `ipfs_accelerate_py/mcp_server/ucan_delegation.py`, `ipfs_accelerate_py/mcp_server/temporal_policy.py`, and `ipfs_accelerate_py/mcp_server/temporal_deontic_mcp_server.py` compatibility facades delegating to canonical MCP++ engines, with deterministic adapter coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_policy_delegation_legacy_adapters.py`.
 
 ## Capability Matrix
 
