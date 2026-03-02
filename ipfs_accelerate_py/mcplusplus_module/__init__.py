@@ -54,6 +54,9 @@ For more information, see:
 __version__ = "0.1.0"
 __author__ = "endomorphosis"
 
+from importlib import import_module
+from typing import Callable, Optional
+
 
 class _MissingDependencyStub:
     """Compatibility stub for optional symbols unavailable at import time."""
@@ -78,6 +81,25 @@ class _MissingDependencyStub:
 def _missing_dependency_stub(symbol_name: str):
     """Create a consistent compatibility stub for an optional symbol."""
     return _MissingDependencyStub(symbol_name)
+
+
+def _resolve_storage_wrapper_factory() -> Optional[Callable[..., object]]:
+    """Resolve a storage-wrapper factory across historical import locations."""
+    module_candidates = (
+        "ipfs_accelerate_py.common.storage_wrapper",
+        "ipfs_accelerate_py.mcplusplus_module.common.storage_wrapper",
+        "test.common.storage_wrapper",
+    )
+    for module_name in module_candidates:
+        try:
+            module = import_module(module_name)
+        except Exception:
+            continue
+        have_wrapper = bool(getattr(module, "HAVE_STORAGE_WRAPPER", False))
+        factory = getattr(module, "get_storage_wrapper", None)
+        if have_wrapper and callable(factory):
+            return factory
+    return None
 
 # Import key components
 try:
@@ -107,6 +129,7 @@ __all__ = [
     "__version__",
     "__author__",
     "_missing_dependency_stub",
+    "_resolve_storage_wrapper_factory",
     "TrioMCPServer",
     "ServerConfig",
     "create_app",

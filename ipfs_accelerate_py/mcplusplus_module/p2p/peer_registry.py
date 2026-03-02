@@ -26,26 +26,9 @@ import tempfile
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
-try:
-    from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-except ImportError:
-    try:
-        from ..common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-    except ImportError:
-        try:
-            from test.common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER
-        except ImportError:
-            HAVE_STORAGE_WRAPPER = False
+from .. import _resolve_storage_wrapper_factory
 
-if HAVE_STORAGE_WRAPPER:
-    try:
-        _storage = get_storage_wrapper(auto_detect_ci=True)
-    except Exception:
-        _storage = None
-else:
-    _storage = None
-
-storage_wrapper = get_storage_wrapper if HAVE_STORAGE_WRAPPER else None
+storage_wrapper = _resolve_storage_wrapper_factory()
 
 logger = logging.getLogger(__name__)
 

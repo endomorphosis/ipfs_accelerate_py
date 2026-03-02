@@ -1812,10 +1812,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.ipfs.native_ipfs_tools.get_ipfs_files_kit",
                 return_value=fake_kit,
             ):
-                result = await dispatch(
-                    "ipfs",
-                    "ipfs_files_unpin_file",
-                    {"cid": "QmPinnedCid123456789012345678901234567890123456"},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "ipfs",
+                        "ipfs_files_unpin_file",
+                        {"cid": "QmPinnedCid123456789012345678901234567890123456"},
+                    )
                 )
 
             self.assertTrue(result["success"])
@@ -1889,13 +1891,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.ipfs.native_ipfs_tools.get_ipfs_files_kit",
                 return_value=fake_kit,
             ):
-                result = await dispatch(
-                    "ipfs",
-                    "ipfs_files_get_file",
-                    {
-                        "cid": "QmGetCid123456789012345678901234567890123456789",
-                        "output_path": "/tmp/retrieved.txt",
-                    },
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "ipfs",
+                        "ipfs_files_get_file",
+                        {
+                            "cid": "QmGetCid123456789012345678901234567890123456789",
+                            "output_path": "/tmp/retrieved.txt",
+                        },
+                    )
                 )
 
             self.assertTrue(result["success"])
@@ -2001,7 +2005,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
                 return_value=None,
             ):
-                result = await dispatch("workflow", "list_workflows", {})
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("workflow", "list_workflows", {})
+                )
 
             self.assertEqual(result["status"], "error")
             self.assertIn("Workflow manager not available", result["error"])
@@ -2086,7 +2092,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
                 return_value=_FakeManager(),
             ):
-                result = await dispatch("workflow", "get_workflow", {"workflow_id": "wf-1"})
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("workflow", "get_workflow", {"workflow_id": "wf-1"})
+                )
 
             self.assertEqual(result["status"], "success")
             self.assertIn("workflow", result)
@@ -2155,14 +2163,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
                 return_value=fake_manager,
             ):
-                result = await dispatch(
-                    "workflow",
-                    "create_workflow",
-                    {
-                        "name": "Created Workflow",
-                        "description": "created via test",
-                        "tasks": [{"name": "task-a"}],
-                    },
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "workflow",
+                        "create_workflow",
+                        {
+                            "name": "Created Workflow",
+                            "description": "created via test",
+                            "tasks": [{"name": "task-a"}],
+                        },
+                    )
                 )
 
             self.assertEqual(result["status"], "success")
@@ -2232,15 +2242,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
                 return_value=fake_manager,
             ):
-                result = await dispatch(
-                    "workflow",
-                    "update_workflow",
-                    {
-                        "workflow_id": "wf-updated",
-                        "name": "Updated Workflow",
-                        "description": "updated via test",
-                        "tasks": [{"name": "task-b"}],
-                    },
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "workflow",
+                        "update_workflow",
+                        {
+                            "workflow_id": "wf-updated",
+                            "name": "Updated Workflow",
+                            "description": "updated via test",
+                            "tasks": [{"name": "task-b"}],
+                        },
+                    )
                 )
 
             self.assertEqual(result["status"], "success")
@@ -2299,10 +2311,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
                 return_value=fake_manager,
             ):
-                result = await dispatch(
-                    "workflow",
-                    "delete_workflow",
-                    {"workflow_id": "wf-deleted"},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "workflow",
+                        "delete_workflow",
+                        {"workflow_id": "wf-deleted"},
+                    )
                 )
 
             self.assertEqual(result["status"], "success")
@@ -2361,10 +2375,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
                 return_value=fake_manager,
             ):
-                result = await dispatch(
-                    "workflow",
-                    "start_workflow",
-                    {"workflow_id": "wf-started"},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "workflow",
+                        "start_workflow",
+                        {"workflow_id": "wf-started"},
+                    )
                 )
 
             self.assertEqual(result["status"], "success")
@@ -2423,10 +2439,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
                 return_value=fake_manager,
             ):
-                result = await dispatch(
-                    "workflow",
-                    "pause_workflow",
-                    {"workflow_id": "wf-paused"},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "workflow",
+                        "pause_workflow",
+                        {"workflow_id": "wf-paused"},
+                    )
                 )
 
             self.assertEqual(result["status"], "success")
@@ -2485,10 +2503,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
                 return_value=fake_manager,
             ):
-                result = await dispatch(
-                    "workflow",
-                    "stop_workflow",
-                    {"workflow_id": "wf-stopped"},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "workflow",
+                        "stop_workflow",
+                        {"workflow_id": "wf-stopped"},
+                    )
                 )
 
             self.assertEqual(result["status"], "success")
@@ -2541,7 +2561,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._request_status",
                 return_value={"ok": True, "status": "healthy"},
             ):
-                result = await dispatch("p2p", "p2p_taskqueue_status", {})
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("p2p", "p2p_taskqueue_status", {})
+                )
 
             self.assertTrue(result["ok"])
             self.assertEqual(result["status"], "healthy")
@@ -2591,7 +2613,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._list_tasks",
                 return_value=[{"task_id": "t1", "status": "queued"}],
             ):
-                result = await dispatch("p2p", "p2p_taskqueue_list_tasks", {"limit": 5})
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("p2p", "p2p_taskqueue_list_tasks", {"limit": 5})
+                )
 
             self.assertTrue(result["ok"])
             self.assertEqual(len(result["tasks"]), 1)
@@ -2642,7 +2666,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._get_task",
                 return_value={"task_id": "t1", "status": "running"},
             ):
-                result = await dispatch("p2p", "p2p_taskqueue_get_task", {"task_id": "t1"})
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("p2p", "p2p_taskqueue_get_task", {"task_id": "t1"})
+                )
 
             self.assertTrue(result["ok"])
             self.assertEqual(result["task"]["task_id"], "t1")
@@ -4634,6 +4660,90 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(call["workflow_name"], "risk_frontier_dispatch")
             self.assertEqual(call["tasks"][0]["task_type"], "mcp.frontier.execute")
             self.assertEqual(call["tasks"][0]["payload"]["event_cid"], response["artifacts"]["event_cid"])
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_frontier_execution_binds_to_task_queue_fallback(self, mock_wrapper):
+        """Frontier execution should bind popped items to task queue when scheduler is unavailable."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakeTaskQueue:
+            def __init__(self):
+                self.calls = []
+
+            async def submit(self, task_type, payload, priority=0):
+                self.calls.append(
+                    {
+                        "task_type": task_type,
+                        "payload": payload,
+                        "priority": priority,
+                    }
+                )
+                return "task-risk-1"
+
+        fake_task_queue = FakeTaskQueue()
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-frontier-task-queue-bind")
+
+        # Force deterministic fallback path to task queue adapter.
+        server._unified_services["workflow_scheduler_factory"] = lambda **kwargs: None
+        server._unified_services["task_queue_factory"] = lambda **kwargs: fake_task_queue
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__emit_artifacts": True,
+                    "__risk_actor": "did:model:risk-exec-fallback",
+                    "__execute_frontier": True,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            frontier = response.get("frontier") or {}
+            execution = frontier.get("execution") or {}
+            self.assertTrue(execution.get("attempted"))
+            self.assertTrue(execution.get("scheduled"))
+            self.assertEqual(execution.get("route"), "task_queue")
+            self.assertEqual(execution.get("task_id"), "task-risk-1")
+            self.assertEqual(frontier.get("event_cid"), execution.get("event_cid"))
+
+            self.assertEqual(len(fake_task_queue.calls), 1)
+            call = fake_task_queue.calls[0]
+            self.assertEqual(call["task_type"], "mcp_frontier_event")
+            self.assertEqual(call["payload"]["event_cid"], response["artifacts"]["event_cid"])
+            self.assertIsInstance(call["priority"], int)
 
         anyio.run(_run_flow)
 

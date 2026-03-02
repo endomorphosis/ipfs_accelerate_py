@@ -1355,3 +1355,71 @@ gh issue list --repo "$REPO" --search "is:open label:status:blocked" --limit 200
 - `CONFORMANCE_CHECKLIST.md` updated (if requirement status changed):
 - Transport impact assessed (default/libp2p lanes):
 ```
+
+### 22.8 Safe Bulk Issue Creation (Idempotent)
+
+Use this pattern to avoid duplicate issue creation when running backlog setup repeatedly.
+
+```bash
+issue_exists() {
+  local title="$1"
+  gh issue list --repo "$REPO" --search "in:title \"$title\" state:open" --limit 1 --json title \
+    | grep -q '"title"'
+}
+
+create_issue_if_missing() {
+  local title="$1"
+  local body_file="$2"
+  local labels="$3"
+  local milestone="$4"
+
+  if issue_exists "$title"; then
+    echo "[skip] $title"
+    return 0
+  fi
+
+  gh issue create \
+    --repo "$REPO" \
+    --title "$title" \
+    --body-file "$body_file" \
+    --label "$labels" \
+    --milestone "$milestone"
+}
+```
+
+Example usage:
+
+```bash
+create_issue_if_missing \
+  "UNI-001: Prove canonical dispatch consumes _unified_services" \
+  ./tmp/UNI-001.md \
+  "priority:p0,type:parity" \
+  "M1-Convergence-Hardening"
+
+create_issue_if_missing \
+  "SPEC-204: Expand UCAN verification vectors and deny matrix" \
+  ./tmp/SPEC-204.md \
+  "priority:p0,type:spec,type:security" \
+  "M3-Spec-Chapter-Hardening"
+```
+
+### 22.9 Milestone and Label Defaults by Issue Family
+
+1. `UNI-001` to `UNI-005`:
+   - milestone: `M1-Convergence-Hardening`
+   - labels: `priority:p0,type:parity`
+2. `UNI-002` to `UNI-004` (if run as deep parity wave):
+   - milestone: `M2-Deep-Tool-Parity`
+   - labels: `priority:p0,type:parity`
+3. `UNI-006`:
+   - milestone: `M3-Spec-Chapter-Hardening`
+   - labels: `priority:p0,type:transport`
+4. `UNI-007`:
+   - milestone: `M4-Cutover-Rollback-Validation`
+   - labels: `priority:p0,type:cutover`
+5. `SPEC-201` to `SPEC-208`:
+   - milestone: `M3-Spec-Chapter-Hardening`
+   - labels: `priority:p0,type:spec` (+ domain label where needed)
+6. `UNI-101` to `UNI-105`:
+   - milestone: `M2-Deep-Tool-Parity`
+   - labels: `priority:p1,type:parity`

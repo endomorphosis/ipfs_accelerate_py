@@ -292,6 +292,67 @@ def test_mcplusplus_module_missing_dependency_stub_contract():
         _ = stub.some_attribute
 
 
+def test_storage_wrapper_resolver_prefers_primary_module(monkeypatch):
+    """Storage wrapper resolver should prefer the canonical primary module."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+
+    calls = []
+
+    def _factory(**_kwargs):
+        return object()
+
+    def _fake_import_module(name: str):
+        calls.append(name)
+        if name == "ipfs_accelerate_py.common.storage_wrapper":
+            return SimpleNamespace(HAVE_STORAGE_WRAPPER=True, get_storage_wrapper=_factory)
+        raise AssertionError(f"Unexpected import: {name}")
+
+    monkeypatch.setattr(mcplusplus_module, "import_module", _fake_import_module)
+
+    factory = mcplusplus_module._resolve_storage_wrapper_factory()
+    assert factory is _factory
+    assert calls == ["ipfs_accelerate_py.common.storage_wrapper"]
+
+
+def test_storage_wrapper_resolver_fallbacks_to_legacy_module(monkeypatch):
+    """Storage wrapper resolver should fall back when primary import fails."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+
+    calls = []
+
+    def _factory(**_kwargs):
+        return object()
+
+    def _fake_import_module(name: str):
+        calls.append(name)
+        if name == "ipfs_accelerate_py.common.storage_wrapper":
+            raise ImportError("simulated missing primary")
+        if name == "ipfs_accelerate_py.mcplusplus_module.common.storage_wrapper":
+            return SimpleNamespace(HAVE_STORAGE_WRAPPER=True, get_storage_wrapper=_factory)
+        raise AssertionError(f"Unexpected import: {name}")
+
+    monkeypatch.setattr(mcplusplus_module, "import_module", _fake_import_module)
+
+    factory = mcplusplus_module._resolve_storage_wrapper_factory()
+    assert factory is _factory
+    assert calls == [
+        "ipfs_accelerate_py.common.storage_wrapper",
+        "ipfs_accelerate_py.mcplusplus_module.common.storage_wrapper",
+    ]
+
+
+def test_storage_wrapper_resolver_returns_none_when_unavailable(monkeypatch):
+    """Storage wrapper resolver should return None when no module is usable."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+
+    def _fake_import_module(_name: str):
+        raise ImportError("simulated unavailable")
+
+    monkeypatch.setattr(mcplusplus_module, "import_module", _fake_import_module)
+
+    assert mcplusplus_module._resolve_storage_wrapper_factory() is None
+
+
 def test_workflow_module_optional_dependency_contract():
     """Workflow module should expose explicit stubs when scheduler deps are absent."""
     from ipfs_accelerate_py.mcplusplus_module.p2p import workflow
