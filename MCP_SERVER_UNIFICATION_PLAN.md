@@ -1278,3 +1278,80 @@ Use this template each Friday for project-level status reviews.
 5. Next week commitments:
    - exactly 1-2 P0 items
    - exactly 1 spec hardening item
+
+## 22. Execution Appendix (GitHub CLI)
+
+Use these commands to operationalize this plan in GitHub.
+
+### 22.1 Repository Variables
+
+```bash
+export REPO="endomorphosis/ipfs_accelerate_py"
+```
+
+### 22.2 Create Labels (One-Time)
+
+```bash
+gh label create "priority:p0" --repo "$REPO" --color B60205 --description "Critical path"
+gh label create "priority:p1" --repo "$REPO" --color D93F0B --description "Important but non-critical"
+gh label create "type:parity" --repo "$REPO" --color 0E8A16 --description "Source-to-target parity"
+gh label create "type:spec" --repo "$REPO" --color 5319E7 --description "MCP++ spec hardening"
+gh label create "type:transport" --repo "$REPO" --color 1D76DB --description "Transport and protocol behavior"
+gh label create "type:security" --repo "$REPO" --color E99695 --description "Security/policy/auth"
+gh label create "type:observability" --repo "$REPO" --color C2E0C6 --description "Monitoring/tracing/exporters"
+gh label create "type:cutover" --repo "$REPO" --color F9D0C4 --description "Runtime cutover and rollback"
+gh label create "status:blocked" --repo "$REPO" --color 000000 --description "Blocked work"
+gh label create "status:needs-evidence" --repo "$REPO" --color FBCA04 --description "Missing conformance evidence"
+gh label create "status:ready-for-review" --repo "$REPO" --color 006B75 --description "Ready for reviewer"
+```
+
+### 22.3 Create Milestones (One-Time)
+
+```bash
+gh api -X POST "repos/$REPO/milestones" -f title="M1-Convergence-Hardening"
+gh api -X POST "repos/$REPO/milestones" -f title="M2-Deep-Tool-Parity"
+gh api -X POST "repos/$REPO/milestones" -f title="M3-Spec-Chapter-Hardening"
+gh api -X POST "repos/$REPO/milestones" -f title="M4-Cutover-Rollback-Validation"
+```
+
+### 22.4 Create Issues from Templates
+
+For each template section in this file:
+
+1. Copy issue `Title` and markdown `Body`.
+2. Create issue:
+
+```bash
+gh issue create --repo "$REPO" --title "<TITLE>" --body-file <BODY_FILE.md> --label "priority:p0,type:parity"
+```
+
+Suggested label mappings:
+
+1. `UNI-001` to `UNI-007`: `priority:p0` + one of `type:parity|type:transport|type:cutover`.
+2. `SPEC-201` to `SPEC-208`: `priority:p0` + `type:spec` (+ optional `type:transport`/`type:security`).
+3. `UNI-101` to `UNI-105`: `priority:p1` + `type:parity` (+ optional domain label).
+
+### 22.5 Query Active Critical Path
+
+```bash
+gh issue list --repo "$REPO" --search "is:open label:priority:p0" --limit 200
+gh issue list --repo "$REPO" --search "is:open label:type:spec label:priority:p0" --limit 200
+```
+
+### 22.6 Weekly Review Export
+
+```bash
+gh issue list --repo "$REPO" --search "closed:>=2026-01-01" --limit 200 --json number,title,labels,closedAt
+gh issue list --repo "$REPO" --search "is:open label:status:blocked" --limit 200 --json number,title,labels
+```
+
+### 22.7 PR Evidence Checklist (Copy Into PR Description)
+
+```markdown
+- Linked issue ID(s):
+- Conformance IDs touched (`MCPP-*`):
+- Deterministic test command output attached:
+- `SPEC_GAP_MATRIX.md` updated (if capability status changed):
+- `CONFORMANCE_CHECKLIST.md` updated (if requirement status changed):
+- Transport impact assessed (default/libp2p lanes):
+```
