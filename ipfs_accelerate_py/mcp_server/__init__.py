@@ -81,6 +81,7 @@ from .interface_descriptor import (
     InterfaceRepository,
     get_interface_repository,
 )
+from .mcp_interfaces import MCPClientProtocol, MCPServerProtocol, ToolManagerProtocol
 from .event_dag import EventDAG
 from .p2p_service_manager import P2PServiceManager, P2PServiceState
 from .p2p_mcp_registry_adapter import (
@@ -163,6 +164,9 @@ __all__ = [
     "artifact_cid",
     "InterfaceRepository",
     "get_interface_repository",
+    "MCPServerProtocol",
+    "ToolManagerProtocol",
+    "MCPClientProtocol",
     "EventDAG",
     "P2PServiceState",
     "P2PServiceManager",

@@ -1087,6 +1087,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_preloaded_categories", preloaded_categories)
     setattr(server, "_unified_services", unified_services)
     setattr(server, "_unified_server_context", unified_context)
+    setattr(server, "_unified_server_context_snapshot", unified_context.snapshot())
     setattr(server, "_unified_artifact_store", artifact_store)
     setattr(server, "_unified_event_dag", event_store)
     setattr(server, "_unified_risk_scheduler", risk_scheduler)

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Any, Dict, Optional
 
+_VALID_PERMISSION_TYPES = {"read", "write", "delete", "share", "admin", "execute"}
+
 
 def _load_check_access_permission() -> Any:
     """Resolve source check_access_permission tool with compatibility fallback."""
@@ -44,10 +46,48 @@ async def check_access_permission(
     resource_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Check whether a user has access permission to a resource."""
+    normalized_resource_id = str(resource_id or "").strip()
+    normalized_user_id = str(user_id or "").strip()
+    normalized_permission_type = str(permission_type or "read").strip().lower() or "read"
+
+    if not normalized_resource_id:
+        return {
+            "status": "error",
+            "error": "resource_id must be provided",
+            "allowed": False,
+            "user_id": user_id,
+            "resource_id": resource_id,
+            "permission_type": normalized_permission_type,
+            "resource_type": resource_type,
+        }
+    if not normalized_user_id:
+        return {
+            "status": "error",
+            "error": "user_id must be provided",
+            "allowed": False,
+            "user_id": user_id,
+            "resource_id": normalized_resource_id,
+            "permission_type": normalized_permission_type,
+            "resource_type": resource_type,
+        }
+    if normalized_permission_type not in _VALID_PERMISSION_TYPES:
+        return {
+            "status": "error",
+            "error": (
+                "permission_type must be one of: "
+                + ", ".join(sorted(_VALID_PERMISSION_TYPES))
+            ),
+            "allowed": False,
+            "user_id": normalized_user_id,
+            "resource_id": normalized_resource_id,
+            "permission_type": normalized_permission_type,
+            "resource_type": resource_type,
+        }
+
     return await _CHECK_ACCESS_PERMISSION(
-        resource_id=resource_id,
-        user_id=user_id,
-        permission_type=permission_type,
+        resource_id=normalized_resource_id,
+        user_id=normalized_user_id,
+        permission_type=normalized_permission_type,
         resource_type=resource_type,
     )
 
@@ -63,11 +103,15 @@ def register_native_security_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "resource_id": {"type": "string"},
-                "user_id": {"type": ["string", "null"]},
-                "permission_type": {"type": "string"},
+                "user_id": {"type": "string"},
+                "permission_type": {
+                    "type": "string",
+                    "enum": sorted(_VALID_PERMISSION_TYPES),
+                    "default": "read",
+                },
                 "resource_type": {"type": ["string", "null"]},
             },
-            "required": ["resource_id"],
+            "required": ["resource_id", "user_id"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "security"],

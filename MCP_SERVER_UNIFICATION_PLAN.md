@@ -707,6 +707,17 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
        - No deferred module is treated as implicitly complete.
     - Depends on: none.
 
+   Deferred governance ledger (`UNI-016` baseline):
+
+   | Module | Defer Rationale | Primary Risk if Untracked | Target Milestone |
+   | --- | --- | --- | --- |
+   | `enterprise_api.py` | Enterprise profile surface is out of P0 canonical runtime cutover scope and requires separate productization constraints. | Accidental partial implementation in shim paths could create unsupported enterprise contract drift. | Phase D follow-on enterprise profile package kickoff (`UNI-201`, planned). |
+   | `grpc_transport.py` | gRPC transport is optional and not part of mandatory stdio/http/mcp+p2p parity gates. | Unvalidated transport branch could be mistaken for production-ready and bypass transport conformance gates. | Phase D optional transport extension track (`UNI-202`, planned). |
+   | `nl_ucan_policy.py` | Natural-language policy authoring is enhancement work layered on top of already-pass UCAN/policy engines. | Policy expectations may diverge from deterministic policy engine semantics if tracked informally. | Post-`SPEC-204` policy-language enhancement track (`UNI-203`, planned). |
+   | `trio_bridge.py` | Compatibility bridge helpers are legacy adjuncts and not canonical runtime ownership targets. | Duplicate bridge logic may silently reintroduce non-canonical runtime routing paths. | Compatibility bridge audit after transport hardening (`SPEC-208` + `UNI-204`, planned). |
+   | `compliance_checker.py` | Compliance reporting automation belongs to conformance tooling backlog, not runtime execution path. | PASS claims could drift from evidence if checker ownership and status remain implicit. | Conformance automation tranche after current P0 closures (`UNI-205`, planned). |
+   | `investigation_mcp_client.py` | Investigation client is category-specific enhancement, not required for canonical runtime parity baseline. | Investigation workflow expectations may be overstated without explicit milestone and ownership. | Investigation tools enhancement wave after P1 parity breadth (`UNI-206`, planned). |
+
 ### P1 Issues (Hardening and Breadth)
 
 1. `UNI-101` Security Tools Behavior Parity Expansion

@@ -1143,6 +1143,13 @@ _MCP_SERVER_INSTANCE: Optional[MCPServerWrapper] = None
 _MCP_LIKE_INSTANCE: Optional[Any] = None
 
 
+def _env_flag_enabled(name: str) -> bool:
+    try:
+        return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
+    except Exception:
+        return False
+
+
 def set_mcp_like_instance(mcp_like: Any) -> None:
     """Set a global MCP-like instance for in-process tool invocation.
 
@@ -1167,35 +1174,59 @@ def create_mcp_server(
 ) -> MCPServerWrapper:
     """Create a compatibility MCP server wrapper."""
     global _MCP_SERVER_INSTANCE
+    cutover_dry_run_enabled = _env_flag_enabled("IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN")
+    force_legacy_rollback = _env_flag_enabled("IPFS_MCP_FORCE_LEGACY_ROLLBACK")
+    cutover_dry_run_status = {
+        "enabled": bool(cutover_dry_run_enabled),
+        "ok": False,
+        "error": "",
+    }
 
     # Optional migration bridge: route creation through the new unified package
     # when explicitly enabled. The private skip flag prevents recursion.
     if not _skip_unified_bridge:
         try:
-            bridge_enabled = os.environ.get("IPFS_MCP_ENABLE_UNIFIED_BRIDGE", "").strip().lower() in {
-                "1",
-                "true",
-                "yes",
-                "on",
-            }
+            bridge_enabled = _env_flag_enabled("IPFS_MCP_ENABLE_UNIFIED_BRIDGE")
+            if force_legacy_rollback:
+                bridge_enabled = False
             if bridge_enabled:
                 from ipfs_accelerate_py.mcp_server.server import create_server as create_unified_server
 
-                server = create_unified_server(
-                    name=name,
-                    description=description,
-                    accelerate_instance=accelerate_instance,
-                    host=host,
-                    port=port,
-                    mount_path=mount_path,
-                    debug=debug,
-                )
-                _MCP_SERVER_INSTANCE = server
-                try:
-                    set_mcp_like_instance(getattr(server, "mcp", None) or server)
-                except Exception:
-                    pass
-                return server
+                if cutover_dry_run_enabled:
+                    try:
+                        create_unified_server(
+                            name=name,
+                            description=description,
+                            accelerate_instance=accelerate_instance,
+                            host=host,
+                            port=port,
+                            mount_path=mount_path,
+                            debug=debug,
+                        )
+                        cutover_dry_run_status["ok"] = True
+                        logger.info("Unified cutover dry-run validation succeeded; continuing on legacy path")
+                    except Exception as dry_run_exc:
+                        cutover_dry_run_status["error"] = str(dry_run_exc)
+                        logger.warning(
+                            "Unified cutover dry-run validation failed, continuing on legacy path: %s",
+                            dry_run_exc,
+                        )
+                else:
+                    server = create_unified_server(
+                        name=name,
+                        description=description,
+                        accelerate_instance=accelerate_instance,
+                        host=host,
+                        port=port,
+                        mount_path=mount_path,
+                        debug=debug,
+                    )
+                    _MCP_SERVER_INSTANCE = server
+                    try:
+                        set_mcp_like_instance(getattr(server, "mcp", None) or server)
+                    except Exception:
+                        pass
+                    return server
         except Exception as e:
             logger.warning(f"Unified MCP bridge unavailable, falling back to legacy wrapper: {e}")
 
@@ -1215,6 +1246,11 @@ def create_mcp_server(
         set_mcp_like_instance(getattr(server, "mcp", None) or server)
     except Exception:
         pass
+    if cutover_dry_run_enabled:
+        try:
+            setattr(server, "_unified_cutover_dry_run", dict(cutover_dry_run_status))
+        except Exception:
+            pass
     return server
 
 
