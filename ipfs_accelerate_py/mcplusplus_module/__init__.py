@@ -54,6 +54,31 @@ For more information, see:
 __version__ = "0.1.0"
 __author__ = "endomorphosis"
 
+
+class _MissingDependencyStub:
+    """Compatibility stub for optional symbols unavailable at import time."""
+
+    def __init__(self, symbol_name: str):
+        self._symbol_name = str(symbol_name)
+
+    def __repr__(self) -> str:
+        return f"<Unavailable {self._symbol_name}>"
+
+    def __bool__(self) -> bool:
+        return False
+
+    def __call__(self, *args, **kwargs):
+        _ = args, kwargs
+        raise RuntimeError(f"{self._symbol_name} is unavailable in this environment")
+
+    def __getattr__(self, _name: str):
+        raise RuntimeError(f"{self._symbol_name} is unavailable in this environment")
+
+
+def _missing_dependency_stub(symbol_name: str):
+    """Create a consistent compatibility stub for an optional symbol."""
+    return _MissingDependencyStub(symbol_name)
+
 # Import key components
 try:
     from .trio import (
@@ -65,22 +90,23 @@ try:
         call_tool,
     )
 except ImportError:
-    TrioMCPServer = None
-    ServerConfig = None
-    create_app = None
-    TrioMCPClient = None
-    ClientConfig = None
-    call_tool = None
+    TrioMCPServer = _missing_dependency_stub("TrioMCPServer")
+    ServerConfig = _missing_dependency_stub("ServerConfig")
+    create_app = _missing_dependency_stub("create_app")
+    TrioMCPClient = _missing_dependency_stub("TrioMCPClient")
+    ClientConfig = _missing_dependency_stub("ClientConfig")
+    call_tool = _missing_dependency_stub("call_tool")
 
 try:
     from .p2p import P2PTaskQueue, P2PWorkflowScheduler
 except ImportError:
-    P2PTaskQueue = None
-    P2PWorkflowScheduler = None
+    P2PTaskQueue = _missing_dependency_stub("P2PTaskQueue")
+    P2PWorkflowScheduler = _missing_dependency_stub("P2PWorkflowScheduler")
 
 __all__ = [
     "__version__",
     "__author__",
+    "_missing_dependency_stub",
     "TrioMCPServer",
     "ServerConfig",
     "create_app",

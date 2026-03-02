@@ -247,3 +247,18 @@ def test_p2p_missing_dependency_stub_contract():
 
     with pytest.raises(RuntimeError, match="ExampleSymbol is unavailable"):
         _ = stub.some_attribute
+
+
+def test_mcplusplus_module_missing_dependency_stub_contract():
+    """Top-level MCP++ compatibility stub should be falsy and explicit."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+
+    stub = mcplusplus_module._missing_dependency_stub("TopLevelSymbol")
+    assert not stub
+    assert "TopLevelSymbol" in repr(stub)
+
+    with pytest.raises(RuntimeError, match="TopLevelSymbol is unavailable"):
+        stub()
+
+    with pytest.raises(RuntimeError, match="TopLevelSymbol is unavailable"):
+        _ = stub.some_attribute
