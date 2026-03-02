@@ -39,6 +39,14 @@ from ipfs_accelerate_py.mcp_server.mcplusplus.delegation import (
 class TestUnifiedMCPServerBootstrap(unittest.TestCase):
     """Validate core integration points for incremental mcp_server migration."""
 
+    def _assert_dispatch_success_envelope(self, response: dict) -> dict:
+        """Assert canonical success envelope and return the inner result payload."""
+        self.assertIsInstance(response, dict)
+        self.assertTrue(response.get("ok"), response)
+        self.assertIn("result", response)
+        self.assertIsInstance(response["result"], dict)
+        return response["result"]
+
     def test_registry_registers_function_tools(self):
         """ToolRegistry should wrap and index plain functions."""
         registry = ToolRegistry()
@@ -669,23 +677,27 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(schema["name"], "echo")
             self.assertEqual(schema["category"], "smoke")
 
-            result = await dispatch("smoke", "echo", {"value": "ok"})
+            result = self._assert_dispatch_success_envelope(
+                await dispatch("smoke", "echo", {"value": "ok"})
+            )
             self.assertEqual(result["echo"], "ok")
 
-            configured = await dispatch(
-                "rate_limiting",
-                "configure_rate_limits",
-                {
-                    "limits": [
-                        {
-                            "name": "smoke_limit",
-                            "strategy": "token_bucket",
-                            "requests_per_second": 1000,
-                            "burst_capacity": 1000,
-                            "enabled": True,
-                        }
-                    ]
-                },
+            configured = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "rate_limiting",
+                    "configure_rate_limits",
+                    {
+                        "limits": [
+                            {
+                                "name": "smoke_limit",
+                                "strategy": "token_bucket",
+                                "requests_per_second": 1000,
+                                "burst_capacity": 1000,
+                                "enabled": True,
+                            }
+                        ]
+                    },
+                )
             )
             self.assertEqual(configured.get("configured_count"), 1)
 
@@ -713,17 +725,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn("total_count", listing_tools)
 
-            set_result = await dispatch(
-                "cache_tools",
-                "cache_set",
-                {"key": "smoke-key", "value": "smoke-value", "namespace": "smoke"},
+            set_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cache_tools",
+                    "cache_set",
+                    {"key": "smoke-key", "value": "smoke-value", "namespace": "smoke"},
+                )
             )
             self.assertTrue(set_result.get("success", False))
 
-            get_result = await dispatch(
-                "cache_tools",
-                "cache_get",
-                {"key": "smoke-key", "namespace": "smoke"},
+            get_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cache_tools",
+                    "cache_get",
+                    {"key": "smoke-key", "namespace": "smoke"},
+                )
             )
             self.assertEqual(get_result.get("value"), "smoke-value")
             self.assertTrue(get_result.get("hit", False))
@@ -814,14 +830,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(permission_result.get("status"), ["success", "error"])
             self.assertEqual(permission_result.get("resource_id"), "smoke-resource")
 
-            analysis_result = await dispatch(
-                "analysis_tools",
-                "analyze_data_distribution",
-                {
-                    "data_source": "mock",
-                    "analysis_type": "comprehensive",
-                    "data_params": {"n_samples": 20, "n_features": 8},
-                },
+            analysis_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "analysis_tools",
+                    "analyze_data_distribution",
+                    {
+                        "data_source": "mock",
+                        "analysis_type": "comprehensive",
+                        "data_params": {"n_samples": 20, "n_features": 8},
+                    },
+                )
             )
             self.assertEqual(analysis_result.get("status"), "success")
             self.assertEqual(analysis_result.get("data_source"), "mock")
@@ -925,14 +943,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(vector_result.get("action"), "info")
             self.assertEqual(vector_result.get("index_name"), "smoke-index")
 
-            vector_tools_result = await dispatch(
-                "vector_tools",
-                "create_vector_index",
-                {
-                    "vectors": [[0.1, 0.2, 0.3], [0.3, 0.2, 0.1]],
-                    "index_id": "smoke-vector-tools",
-                    "metric": "cosine",
-                },
+            vector_tools_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "create_vector_index",
+                    {
+                        "vectors": [[0.1, 0.2, 0.3], [0.3, 0.2, 0.1]],
+                        "index_id": "smoke-vector-tools",
+                        "metric": "cosine",
+                    },
+                )
             )
             self.assertEqual(vector_tools_result.get("status"), "success")
 
@@ -1226,17 +1246,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         async def _run_flow() -> None:
             dispatch = server.tools["tools_dispatch"]["function"]
 
-            listed = await dispatch("idl", "interfaces_list", {})
+            listed = self._assert_dispatch_success_envelope(
+                await dispatch("idl", "interfaces_list", {})
+            )
             self.assertIsInstance(listed, dict)
             self.assertGreaterEqual(listed.get("count", 0), 1)
             self.assertIn("interface_cids", listed)
 
             first_cid = listed["interface_cids"][0]
-            payload = await dispatch("idl", "interfaces_get", {"interface_cid": first_cid})
+            payload = self._assert_dispatch_success_envelope(
+                await dispatch("idl", "interfaces_get", {"interface_cid": first_cid})
+            )
             self.assertTrue(payload.get("found"))
             self.assertEqual(payload.get("interface_cid"), first_cid)
 
-            compat = await dispatch("idl", "interfaces_compat", {"interface_cid": first_cid})
+            compat = self._assert_dispatch_success_envelope(
+                await dispatch("idl", "interfaces_compat", {"interface_cid": first_cid})
+            )
             self.assertIn("compatible", compat)
 
         anyio.run(_run_flow)
@@ -1275,13 +1301,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         async def _run_flow() -> None:
             dispatch = server.tools["tools_dispatch"]["function"]
 
-            listed = await dispatch("idl", "interfaces_list", {})
+            listed = self._assert_dispatch_success_envelope(
+                await dispatch("idl", "interfaces_list", {})
+            )
             self.assertIsInstance(listed, dict)
             self.assertGreaterEqual(listed.get("count", 0), 2)
 
             found_ipfs_descriptor = False
             for interface_cid in listed.get("interface_cids", []):
-                payload = await dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                payload = self._assert_dispatch_success_envelope(
+                    await dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                )
                 descriptor = (payload or {}).get("descriptor") or {}
                 if descriptor.get("name") != "ipfs_tools":
                     continue
@@ -1289,7 +1319,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 methods = descriptor.get("methods", [])
                 self.assertTrue(any(m.get("name") == "ipfs/ipfs_files_validate_cid" for m in methods if isinstance(m, dict)))
 
-                compat = await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                compat = self._assert_dispatch_success_envelope(
+                    await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                )
                 self.assertTrue(compat.get("compatible"))
                 found_ipfs_descriptor = True
                 break
@@ -1332,13 +1364,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         async def _run_flow() -> None:
             dispatch = server.tools["tools_dispatch"]["function"]
 
-            listed = await dispatch("idl", "interfaces_list", {})
+            listed = self._assert_dispatch_success_envelope(
+                await dispatch("idl", "interfaces_list", {})
+            )
             self.assertIsInstance(listed, dict)
             self.assertGreaterEqual(listed.get("count", 0), 2)
 
             found_workflow_descriptor = False
             for interface_cid in listed.get("interface_cids", []):
-                payload = await dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                payload = self._assert_dispatch_success_envelope(
+                    await dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                )
                 descriptor = (payload or {}).get("descriptor") or {}
                 if descriptor.get("name") != "workflow_tools":
                     continue
@@ -1346,7 +1382,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 methods = descriptor.get("methods", [])
                 self.assertTrue(any(m.get("name") == "workflow/get_workflow_templates" for m in methods if isinstance(m, dict)))
 
-                compat = await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                compat = self._assert_dispatch_success_envelope(
+                    await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                )
                 self.assertTrue(compat.get("compatible"))
                 found_workflow_descriptor = True
                 break
@@ -1408,13 +1446,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         async def _run_flow() -> None:
             dispatch = server.tools["tools_dispatch"]["function"]
 
-            listed = await dispatch("idl", "interfaces_list", {})
+            listed = self._assert_dispatch_success_envelope(
+                await dispatch("idl", "interfaces_list", {})
+            )
             self.assertIsInstance(listed, dict)
             self.assertGreaterEqual(listed.get("count", 0), 2)
 
             found_p2p_descriptor = False
             for interface_cid in listed.get("interface_cids", []):
-                payload = await dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                payload = self._assert_dispatch_success_envelope(
+                    await dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                )
                 descriptor = (payload or {}).get("descriptor") or {}
                 if descriptor.get("name") != "p2p_tools":
                     continue
@@ -1422,7 +1464,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 methods = descriptor.get("methods", [])
                 self.assertTrue(any(m.get("name") == "p2p/p2p_ping" for m in methods if isinstance(m, dict)))
 
-                compat = await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                compat = self._assert_dispatch_success_envelope(
+                    await dispatch("idl", "interfaces_compat", {"interface_cid": interface_cid})
+                )
                 self.assertTrue(compat.get("compatible"))
                 found_p2p_descriptor = True
                 break
@@ -1471,10 +1515,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("ipfs_files_validate_cid", ipfs_names)
 
             # Use an obviously invalid CID to keep test deterministic and offline.
-            result = await dispatch(
-                "ipfs",
-                "ipfs_files_validate_cid",
-                {"cid": "not_a_valid_cid"},
+            result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "ipfs",
+                    "ipfs_files_validate_cid",
+                    {"cid": "not_a_valid_cid"},
+                )
             )
 
             self.assertIn("success", result)
@@ -1541,7 +1587,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.ipfs.native_ipfs_tools.get_ipfs_files_kit",
                 return_value=fake_kit,
             ):
-                result = await dispatch("ipfs", "ipfs_files_list_files", {"path": "/"})
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("ipfs", "ipfs_files_list_files", {"path": "/"})
+                )
 
             self.assertTrue(result["success"])
             self.assertIn("data", result)
@@ -1612,10 +1660,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.ipfs.native_ipfs_tools.get_ipfs_files_kit",
                 return_value=fake_kit,
             ):
-                result = await dispatch(
-                    "ipfs",
-                    "ipfs_files_add_file",
-                    {"path": "/tmp/sample.txt", "pin": False},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "ipfs",
+                        "ipfs_files_add_file",
+                        {"path": "/tmp/sample.txt", "pin": False},
+                    )
                 )
 
             self.assertTrue(result["success"])
@@ -1685,10 +1735,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "ipfs_accelerate_py.mcp_server.tools.ipfs.native_ipfs_tools.get_ipfs_files_kit",
                 return_value=fake_kit,
             ):
-                result = await dispatch(
-                    "ipfs",
-                    "ipfs_files_pin_file",
-                    {"cid": "QmPinnedCid123456789012345678901234567890123456"},
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "ipfs",
+                        "ipfs_files_pin_file",
+                        {"cid": "QmPinnedCid123456789012345678901234567890123456"},
+                    )
                 )
 
             self.assertTrue(result["success"])
@@ -1896,7 +1948,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             workflow_names = [tool["name"] for tool in workflow_tools["tools"]]
             self.assertIn("get_workflow_templates", workflow_names)
 
-            result = await dispatch("workflow", "get_workflow_templates", {})
+            result = self._assert_dispatch_success_envelope(
+                await dispatch("workflow", "get_workflow_templates", {})
+            )
             self.assertEqual(result["status"], "success")
             self.assertIn("templates", result)
             self.assertEqual(result["total"], 4)
