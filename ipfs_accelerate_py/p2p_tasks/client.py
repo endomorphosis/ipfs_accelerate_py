@@ -28,6 +28,7 @@ from __future__ import annotations
 import json
 import functools
 import os
+import sys
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -63,6 +64,23 @@ def _have_libp2p() -> bool:
         return True
     except Exception:
         return False
+
+
+def _dial_debug_enabled() -> bool:
+    return _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_DEBUG_DIAL",
+        compat="IPFS_DATASETS_PY_TASK_P2P_DEBUG_DIAL",
+        default=False,
+    )
+
+
+def _dial_debug(msg: str) -> None:
+    if not _dial_debug_enabled():
+        return
+    try:
+        print(f"p2p_tasks.client dial-debug: {msg}", file=sys.stderr, flush=True)
+    except Exception:
+        pass
 
 
 @dataclass
@@ -643,8 +661,34 @@ async def _try_peer_multiaddr(*, host, peer_multiaddr: str, message: Dict[str, A
 
     peer_multiaddr = _normalize_peer_multiaddr_port(peer_multiaddr)
     peer_info = info_from_p2p_addr(Multiaddr(peer_multiaddr))
-    await host.connect(peer_info)
-    stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
+    peer_text = ""
+    try:
+        peer_text = peer_info.peer_id.pretty() if hasattr(peer_info.peer_id, "pretty") else str(peer_info.peer_id)
+    except Exception:
+        peer_text = str(getattr(peer_info, "peer_id", "") or "")
+
+    op = str(message.get("op") or "").strip()
+    _dial_debug(
+        f"connect begin peer={peer_text} multiaddr={peer_multiaddr} op={op or 'unknown'}"
+    )
+    try:
+        await host.connect(peer_info)
+    except Exception as exc:
+        _dial_debug(
+            f"connect failed peer={peer_text} multiaddr={peer_multiaddr} exc={type(exc).__name__}: {exc}"
+        )
+        raise
+
+    _dial_debug(f"connect ok peer={peer_text} multiaddr={peer_multiaddr}")
+    try:
+        stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
+    except Exception as exc:
+        _dial_debug(
+            f"new_stream failed peer={peer_text} protocol={PROTOCOL_V1} exc={type(exc).__name__}: {exc}"
+        )
+        raise
+
+    _dial_debug(f"new_stream ok peer={peer_text} protocol={PROTOCOL_V1}")
     try:
         return await _request_over_stream(stream=stream, message=message)
     finally:
