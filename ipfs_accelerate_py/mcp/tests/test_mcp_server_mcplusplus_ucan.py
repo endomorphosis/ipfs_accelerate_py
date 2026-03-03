@@ -111,6 +111,23 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
         self.assertEqual(parsed[0].issuer, "did:user:alice")
         self.assertEqual(parsed[0].audience, "did:model:worker")
 
+    def test_parses_token_prf_string_to_proof_cid(self) -> None:
+        payload = {
+            "iss": "did:user:alice",
+            "aud": "did:model:worker",
+            "exp": 4102444800,
+            "prf": "cid-proof-parent-string",
+            "capabilities": [{"with": "smoke.echo", "can": "invoke"}],
+        }
+        payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode("utf-8")).decode("ascii").rstrip("=")
+        token = "e30." + payload_b64 + ".sig"
+
+        parsed = parse_delegation_chain([{"jwt": token}])
+        self.assertEqual(len(parsed), 1)
+        self.assertEqual(parsed[0].proof_cid, "cid-proof-parent-string")
+        self.assertEqual(parsed[0].issuer, "did:user:alice")
+        self.assertEqual(parsed[0].audience, "did:model:worker")
+
     def test_denies_capability_escalation(self) -> None:
         raw_chain = [
             {
@@ -574,6 +591,61 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
                     "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
                     "proof_cid": proof_cid,
                     "signature": signature_hex,
+                }
+            ],
+            resource="smoke.echo",
+            ability="invoke",
+            actor="did:model:worker",
+            require_signatures=True,
+            issuer_public_keys={"did:user:alice": public_b64},
+        )
+        self.assertTrue(result.allowed)
+        self.assertEqual(result.reason, "allowed")
+
+    @unittest.skipUnless(HAVE_CRYPTO_ED25519, "cryptography ed25519 unavailable")
+    def test_allows_valid_chain_with_raw_hex_signature(self) -> None:
+        chain = parse_delegation_chain(
+            [
+                {
+                    "issuer": "did:user:alice",
+                    "audience": "did:model:worker",
+                    "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                }
+            ]
+        )
+
+        private = Ed25519PrivateKey.generate()
+        public = private.public_key().public_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PublicFormat.Raw,
+        )
+        private_bytes = private.private_bytes(
+            encoding=serialization.Encoding.Raw,
+            format=serialization.PrivateFormat.Raw,
+            encryption_algorithm=serialization.NoEncryption(),
+        )
+
+        private_b64 = base64.urlsafe_b64encode(private_bytes).decode("ascii").rstrip("=")
+        public_b64 = base64.urlsafe_b64encode(public).decode("ascii").rstrip("=")
+
+        delegation = chain[0]
+        proof_cid = compute_delegation_proof_cid(delegation)
+        signature = compute_delegation_signature_ed25519(
+            delegation=delegation,
+            private_key_b64=private_b64,
+        )
+        sig_token = signature.split(":", 1)[1]
+        sig_padding = "=" * ((4 - (len(sig_token) % 4)) % 4)
+        signature_raw_hex = base64.urlsafe_b64decode(sig_token + sig_padding).hex()
+
+        result = validate_raw_delegation_chain(
+            raw_chain=[
+                {
+                    "issuer": delegation.issuer,
+                    "audience": delegation.audience,
+                    "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                    "proof_cid": proof_cid,
+                    "signature": signature_raw_hex,
                 }
             ],
             resource="smoke.echo",
