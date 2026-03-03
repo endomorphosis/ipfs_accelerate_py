@@ -359,6 +359,220 @@ async def cleanup_sessions(
         return {"status": "error", "message": f"Session cleanup failed: {exc}"}
 
 
+async def manage_session(
+    action: str = "get",
+    session_id: Optional[str] = None,
+    updates: Optional[Dict[str, Any]] = None,
+    filters: Optional[Dict[str, Any]] = None,
+    cleanup_options: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Source-compatible enhanced session lifecycle management wrapper."""
+    try:
+        normalized_action = str(action or "").strip().lower()
+
+        if normalized_action == "get":
+            if not session_id:
+                return {
+                    "status": "error",
+                    "error": "session_id is required for get action",
+                    "code": "MISSING_SESSION_ID",
+                }
+            if not _is_valid_uuid(str(session_id)):
+                return {
+                    "status": "error",
+                    "error": "Invalid session ID format",
+                    "code": "INVALID_SESSION_ID",
+                }
+            session = await _get_session_manager().get_session(str(session_id))
+            if not session:
+                return {
+                    "status": "error",
+                    "error": "Session not found",
+                    "code": "SESSION_NOT_FOUND",
+                }
+            return {
+                "status": "success",
+                "session": session,
+                "message": "Session retrieved successfully",
+            }
+
+        if normalized_action == "update":
+            if not session_id:
+                return {
+                    "status": "error",
+                    "error": "session_id is required for update action",
+                    "code": "MISSING_SESSION_ID",
+                }
+            if not _is_valid_uuid(str(session_id)):
+                return {
+                    "status": "error",
+                    "error": "Invalid session ID format",
+                    "code": "INVALID_SESSION_ID",
+                }
+            session = await _get_session_manager().update_session(str(session_id), **(updates or {}))
+            if not session:
+                return {
+                    "status": "error",
+                    "error": "Session not found",
+                    "code": "SESSION_NOT_FOUND",
+                }
+            return {
+                "status": "success",
+                "session": session,
+                "message": "Session updated successfully",
+            }
+
+        if normalized_action == "delete":
+            if not session_id:
+                return {
+                    "status": "error",
+                    "error": "session_id is required for delete action",
+                    "code": "MISSING_SESSION_ID",
+                }
+            if not _is_valid_uuid(str(session_id)):
+                return {
+                    "status": "error",
+                    "error": "Invalid session ID format",
+                    "code": "INVALID_SESSION_ID",
+                }
+            deleted = await _get_session_manager().delete_session(str(session_id))
+            if not deleted:
+                return {
+                    "status": "error",
+                    "error": "Session not found",
+                    "code": "SESSION_NOT_FOUND",
+                }
+            return {
+                "status": "success",
+                "session_id": str(session_id),
+                "message": "Session deleted successfully",
+            }
+
+        if normalized_action == "list":
+            sessions = await _get_session_manager().list_sessions(**(filters or {}))
+            return {
+                "status": "success",
+                "sessions": sessions,
+                "count": len(sessions),
+                "message": f"Found {len(sessions)} sessions",
+            }
+
+        if normalized_action == "cleanup":
+            opts = cleanup_options or {}
+            max_age_hours = int(opts.get("max_age_hours", 24) or 24)
+            dry_run = bool(opts.get("dry_run", False))
+            if not dry_run:
+                expired = await _get_session_manager().cleanup_expired_sessions(max_age_hours=max_age_hours)
+            else:
+                expired = []
+            return {
+                "status": "success",
+                "cleaned_up": len(expired),
+                "dry_run": dry_run,
+                "message": f"Cleaned up {len(expired)} expired sessions",
+            }
+
+        return {
+            "status": "error",
+            "error": f"Unknown action: {action}",
+            "code": "UNKNOWN_ACTION",
+            "valid_actions": ["get", "update", "delete", "list", "cleanup"],
+        }
+    except Exception as exc:
+        logger.error("Enhanced session management error: %s", exc)
+        return {
+            "status": "error",
+            "error": "Session management failed",
+            "code": "MANAGEMENT_FAILED",
+            "message": str(exc),
+        }
+
+
+async def get_session_state(
+    session_id: str,
+    include_metrics: bool = True,
+    include_resources: bool = True,
+    include_health: bool = True,
+) -> Dict[str, Any]:
+    """Source-compatible detailed session state wrapper."""
+    try:
+        if not _is_valid_uuid(str(session_id or "")):
+            return {
+                "status": "error",
+                "error": "Invalid session ID format",
+                "code": "INVALID_SESSION_ID",
+            }
+
+        session = await _get_session_manager().get_session(str(session_id))
+        if not session:
+            return {
+                "status": "error",
+                "error": "Session not found",
+                "code": "SESSION_NOT_FOUND",
+            }
+
+        state_data: Dict[str, Any] = {
+            "session_id": str(session_id),
+            "basic_info": {
+                "session_name": session.get("session_name"),
+                "user_id": session.get("user_id"),
+                "session_type": session.get("session_type"),
+                "status": session.get("status"),
+                "created_at": session.get("created_at"),
+                "last_activity": session.get("last_activity"),
+            },
+        }
+
+        if include_metrics:
+            state_data["metrics"] = {
+                "total_requests": session.get("request_count", 0),
+                "successful_requests": session.get("success_count", 0),
+                "failed_requests": session.get("error_count", 0),
+                "average_response_time": session.get("avg_response_time", 0.0),
+                "data_processed_mb": session.get("data_processed_mb", 0.0),
+            }
+
+        if include_resources:
+            state_data["resource_usage"] = {
+                "memory_mb": session.get("memory_mb", 0),
+                "cpu_percent": session.get("cpu_percent", 0.0),
+                "active_connections": session.get("active_connections", 0),
+                "storage_mb": session.get("storage_mb", 0),
+            }
+
+        if include_health:
+            health_status = "healthy"
+            health_issues: list[str] = []
+            if session.get("status") != "active":
+                health_status = "warning"
+                health_issues.append(f"Session status is {session.get('status')}")
+            state_data["health_info"] = {
+                "status": health_status,
+                "issues": health_issues,
+                "last_check": datetime.now().isoformat(),
+                "checks_passed": len(health_issues) == 0,
+            }
+
+        if "metadata" in session:
+            state_data["metadata"] = session["metadata"]
+        if "tags" in session:
+            state_data["tags"] = session["tags"]
+
+        return {
+            "status": "success",
+            "session_state": state_data,
+            "message": "Session state retrieved successfully",
+        }
+    except Exception as exc:
+        logger.error("Session state retrieval error: %s", exc)
+        return {
+            "status": "error",
+            "error": "Session state retrieval failed",
+            "code": "STATE_RETRIEVAL_FAILED",
+            "message": str(exc),
+        }
+
+
 def register_native_session_tools(manager: Any) -> None:
     """Register native session lifecycle tools in unified hierarchical manager."""
     manager.register_tool(
@@ -409,6 +623,45 @@ def register_native_session_tools(manager: Any) -> None:
                 "user_id": {"type": ["string", "null"]},
             },
             "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "session"],
+    )
+
+    manager.register_tool(
+        category="session_tools",
+        name="manage_session",
+        func=manage_session,
+        description="Enhanced lifecycle management for sessions (get/update/delete/list/cleanup).",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "default": "get"},
+                "session_id": {"type": ["string", "null"]},
+                "updates": {"type": ["object", "null"]},
+                "filters": {"type": ["object", "null"]},
+                "cleanup_options": {"type": ["object", "null"]},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "session"],
+    )
+
+    manager.register_tool(
+        category="session_tools",
+        name="get_session_state",
+        func=get_session_state,
+        description="Get detailed session state, metrics, resources, and health.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "session_id": {"type": "string"},
+                "include_metrics": {"type": "boolean", "default": True},
+                "include_resources": {"type": "boolean", "default": True},
+                "include_health": {"type": "boolean", "default": True},
+            },
+            "required": ["session_id"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "session"],

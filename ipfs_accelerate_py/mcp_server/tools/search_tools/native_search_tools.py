@@ -115,14 +115,34 @@ async def semantic_search(
     vector_service: Any = None,
 ) -> Dict[str, Any]:
     """Perform semantic search on vector embeddings."""
-    return await _API["semantic"](
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {
+            "status": "error",
+            "message": "query is required",
+            "query": query,
+        }
+
+    normalized_top_k = int(top_k)
+    if normalized_top_k <= 0:
+        return {
+            "status": "error",
+            "message": "top_k must be a positive integer",
+            "top_k": top_k,
+        }
+
+    result = await _API["semantic"](
         vector_service=vector_service,
-        query=query,
-        model=model,
-        top_k=top_k,
-        collection=collection,
+        query=normalized_query,
+        model=str(model or "sentence-transformers/all-MiniLM-L6-v2"),
+        top_k=normalized_top_k,
+        collection=str(collection or "default"),
         filters=filters or {},
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("query", normalized_query)
+    return payload
 
 
 async def similarity_search(
@@ -133,13 +153,46 @@ async def similarity_search(
     vector_service: Any = None,
 ) -> Dict[str, Any]:
     """Find similar embeddings based on a reference vector."""
-    return await _API["similarity"](
+    if not isinstance(embedding, list) or not embedding:
+        return {
+            "status": "error",
+            "message": "embedding must be a non-empty list of numbers",
+            "embedding": embedding,
+        }
+    if not all(isinstance(x, (int, float)) for x in embedding):
+        return {
+            "status": "error",
+            "message": "embedding must contain only numbers",
+            "embedding": embedding,
+        }
+
+    normalized_top_k = int(top_k)
+    if normalized_top_k <= 0:
+        return {
+            "status": "error",
+            "message": "top_k must be a positive integer",
+            "top_k": top_k,
+        }
+
+    normalized_threshold = float(threshold)
+    if normalized_threshold < 0.0 or normalized_threshold > 1.0:
+        return {
+            "status": "error",
+            "message": "threshold must be between 0.0 and 1.0",
+            "threshold": threshold,
+        }
+
+    result = await _API["similarity"](
         vector_service=vector_service,
         embedding=embedding,
-        top_k=top_k,
-        threshold=threshold,
-        collection=collection,
+        top_k=normalized_top_k,
+        threshold=normalized_threshold,
+        collection=str(collection or "default"),
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("embedding_dimension", len(embedding))
+    return payload
 
 
 async def faceted_search(
@@ -151,14 +204,38 @@ async def faceted_search(
     vector_service: Any = None,
 ) -> Dict[str, Any]:
     """Perform faceted search with metadata filtering."""
-    return await _API["faceted"](
+    normalized_top_k = int(top_k)
+    if normalized_top_k <= 0:
+        return {
+            "status": "error",
+            "message": "top_k must be a positive integer",
+            "top_k": top_k,
+        }
+
+    if facets is not None and not isinstance(facets, dict):
+        return {
+            "status": "error",
+            "message": "facets must be an object when provided",
+            "facets": facets,
+        }
+    if aggregations is not None and not isinstance(aggregations, list):
+        return {
+            "status": "error",
+            "message": "aggregations must be an array when provided",
+            "aggregations": aggregations,
+        }
+
+    result = await _API["faceted"](
         vector_service=vector_service,
-        query=query,
+        query=str(query or ""),
         facets=facets or {},
         aggregations=aggregations or [],
-        top_k=top_k,
-        collection=collection,
+        top_k=normalized_top_k,
+        collection=str(collection or "default"),
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    return payload
 
 
 def register_native_search_tools(manager: Any) -> None:

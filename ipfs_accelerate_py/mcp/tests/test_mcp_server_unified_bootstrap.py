@@ -5326,6 +5326,97 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_session_tools_enhanced_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """session_tools should expose enhanced wrappers with deterministic dispatch contracts."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="session-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("session_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("manage_session", names)
+            self.assertIn("get_session_state", names)
+
+            manage_schema = await get_schema("session_tools", "manage_session")
+            self.assertEqual(manage_schema.get("name"), "manage_session")
+            self.assertEqual(manage_schema.get("category"), "session_tools")
+            self.assertIn("action", (manage_schema.get("input_schema") or {}).get("properties", {}))
+
+            state_schema = await get_schema("session_tools", "get_session_state")
+            self.assertEqual(state_schema.get("name"), "get_session_state")
+            self.assertEqual(state_schema.get("category"), "session_tools")
+            self.assertIn("session_id", (state_schema.get("input_schema") or {}).get("properties", {}))
+
+            created = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "session_tools",
+                    "create_session",
+                    {
+                        "session_name": "session-tools-bootstrap",
+                        "user_id": "bootstrap-user",
+                    },
+                )
+            )
+            self.assertEqual(created.get("status"), "success")
+            session_id = created.get("session_id")
+            self.assertIsInstance(session_id, str)
+
+            managed_get = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "session_tools",
+                    "manage_session",
+                    {
+                        "action": "get",
+                        "session_id": session_id,
+                    },
+                )
+            )
+            self.assertEqual(managed_get.get("status"), "success")
+            self.assertIn("session", managed_get)
+
+            invalid_state = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "session_tools",
+                    "get_session_state",
+                    {
+                        "session_id": "not-a-uuid",
+                    },
+                )
+            )
+            self.assertEqual(invalid_state.get("status"), "error")
+            self.assertEqual(invalid_state.get("code"), "INVALID_SESSION_ID")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 
