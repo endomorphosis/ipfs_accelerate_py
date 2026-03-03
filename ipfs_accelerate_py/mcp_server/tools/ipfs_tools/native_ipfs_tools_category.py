@@ -114,8 +114,7 @@ async def pin_to_ipfs(
         and wrap_with_directory is False
         and hash_algo == "sha2-256"
         and (
-            not content_source.strip()
-            or content_source.lstrip().startswith("{")
+            content_source.lstrip().startswith("{")
             or content_source.lstrip().startswith("[")
             or any(ch.isspace() for ch in content_source)
         )
@@ -169,8 +168,7 @@ async def get_from_ipfs(
         and timeout_seconds == 60
         and gateway is None
         and (
-            not cid.strip()
-            or cid.lstrip().startswith("{")
+            cid.lstrip().startswith("{")
             or cid.lstrip().startswith("[")
             or any(ch.isspace() for ch in cid)
         )
@@ -184,7 +182,7 @@ async def get_from_ipfs(
         result = await get_from_ipfs(
             cid=str(data["cid"]),
             output_path=data.get("output_path"),
-            timeout_seconds=int(data.get("timeout_seconds", 60)),
+            timeout_seconds=data.get("timeout_seconds", 60),
             gateway=data.get("gateway"),
         )
         return _mcp_text_response(result if isinstance(result, dict) else {"status": "success", "result": result})
@@ -193,7 +191,13 @@ async def get_from_ipfs(
     if not normalized_cid:
         return {"status": "error", "message": "'cid' is required."}
 
-    normalized_timeout_seconds = int(timeout_seconds)
+    try:
+        normalized_timeout_seconds = int(timeout_seconds)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "'timeout_seconds' must be an integer greater than 0.",
+        }
     if normalized_timeout_seconds <= 0:
         return {"status": "error", "message": "'timeout_seconds' must be greater than 0."}
 
