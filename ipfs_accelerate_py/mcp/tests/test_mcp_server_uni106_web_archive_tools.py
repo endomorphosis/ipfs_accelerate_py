@@ -9,6 +9,7 @@ import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_tools import (
     archive_to_wayback,
+    extract_dataset_from_cdxj,
     extract_links_from_warc,
     extract_metadata_from_warc,
     extract_text_from_warc,
@@ -36,6 +37,7 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         names = [c["name"] for c in manager.calls]
         self.assertIn("archive_to_wayback", names)
         self.assertIn("extract_text_from_warc", names)
+        self.assertIn("extract_dataset_from_cdxj", names)
         self.assertIn("extract_links_from_warc", names)
         self.assertIn("extract_metadata_from_warc", names)
         self.assertIn("index_warc", names)
@@ -150,6 +152,17 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertEqual(missing_index_path.get("status"), "error")
             self.assertIn("'warc_path' is required", str(missing_index_path.get("error", "")))
 
+            missing_cdxj_path = await extract_dataset_from_cdxj(cdxj_path="")
+            self.assertEqual(missing_cdxj_path.get("status"), "error")
+            self.assertIn("'cdxj_path' is required", str(missing_cdxj_path.get("error", "")))
+
+            invalid_output_format = await extract_dataset_from_cdxj(
+                cdxj_path="/tmp/mock.cdxj",
+                output_format="csv",
+            )
+            self.assertEqual(invalid_output_format.get("status"), "error")
+            self.assertIn("'output_format' must be one of", str(invalid_output_format.get("error", "")))
+
             text_result = await extract_text_from_warc(warc_path="/tmp/mock.warc")
             self.assertIn(text_result.get("status"), ["success", "error"])
             if text_result.get("status") == "error":
@@ -169,6 +182,14 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertIn(index_result.get("status"), ["success", "error"])
             if index_result.get("status") == "error":
                 self.assertIn("error", index_result)
+
+            cdxj_result = await extract_dataset_from_cdxj(
+                cdxj_path="/tmp/mock.cdxj",
+                output_format="dict",
+            )
+            self.assertIn(cdxj_result.get("status"), ["success", "error"])
+            if cdxj_result.get("status") == "error":
+                self.assertIn("error", cdxj_result)
 
         anyio.run(_run)
 

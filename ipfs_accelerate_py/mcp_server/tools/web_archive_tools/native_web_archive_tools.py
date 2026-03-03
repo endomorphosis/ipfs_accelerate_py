@@ -14,6 +14,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.web_archive_tools import (  # type: ignore
             archive_to_wayback as _archive_to_wayback,
             create_warc as _create_warc,
+            extract_dataset_from_cdxj as _extract_dataset_from_cdxj,
             extract_links_from_warc as _extract_links_from_warc,
             extract_metadata_from_warc as _extract_metadata_from_warc,
             extract_text_from_warc as _extract_text_from_warc,
@@ -28,6 +29,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
         return {
             "archive_to_wayback": _archive_to_wayback,
             "create_warc": _create_warc,
+            "extract_dataset_from_cdxj": _extract_dataset_from_cdxj,
             "extract_links_from_warc": _extract_links_from_warc,
             "extract_text_from_warc": _extract_text_from_warc,
             "extract_metadata_from_warc": _extract_metadata_from_warc,
@@ -68,6 +70,18 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "error": "WARC text extraction backend unavailable",
                 "warc_path": warc_path,
                 "records": [],
+            }
+
+        async def _extract_dataset_from_cdxj_fallback(
+            cdxj_path: str,
+            output_format: str = "arrow",
+        ) -> Dict[str, Any]:
+            return {
+                "status": "error",
+                "error": "CDXJ dataset extraction backend unavailable",
+                "cdxj_path": cdxj_path,
+                "format": output_format,
+                "dataset": None,
             }
 
         async def _extract_links_from_warc_fallback(warc_path: str) -> Dict[str, Any]:
@@ -168,6 +182,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
         return {
             "archive_to_wayback": _archive_to_wayback_fallback,
             "create_warc": _create_warc_fallback,
+            "extract_dataset_from_cdxj": _extract_dataset_from_cdxj_fallback,
             "extract_links_from_warc": _extract_links_from_warc_fallback,
             "extract_text_from_warc": _extract_text_from_warc_fallback,
             "extract_metadata_from_warc": _extract_metadata_from_warc_fallback,
@@ -218,6 +233,31 @@ async def extract_text_from_warc(warc_path: str) -> Dict[str, Any]:
         return {"status": "error", "error": "'warc_path' is required."}
 
     result = _API["extract_text_from_warc"](warc_path=normalized_path)
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def extract_dataset_from_cdxj(
+    cdxj_path: str,
+    output_format: str = "arrow",
+) -> Dict[str, Any]:
+    """Extract dataset records from a CDXJ index file."""
+    normalized_path = str(cdxj_path or "").strip()
+    if not normalized_path:
+        return {"status": "error", "error": "'cdxj_path' is required."}
+
+    normalized_output = str(output_format or "arrow").strip().lower() or "arrow"
+    if normalized_output not in {"arrow", "huggingface", "dict"}:
+        return {
+            "status": "error",
+            "error": "'output_format' must be one of: arrow, huggingface, dict.",
+        }
+
+    result = _API["extract_dataset_from_cdxj"](
+        cdxj_path=normalized_path,
+        output_format=normalized_output,
+    )
     if hasattr(result, "__await__"):
         return await result
     return result
@@ -419,6 +459,27 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "warc_path": {"type": "string"},
             },
             "required": ["warc_path"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="extract_dataset_from_cdxj",
+        func=extract_dataset_from_cdxj,
+        description="Extract datasets from a CDXJ index file.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cdxj_path": {"type": "string"},
+                "output_format": {
+                    "type": "string",
+                    "enum": ["arrow", "huggingface", "dict"],
+                    "default": "arrow",
+                },
+            },
+            "required": ["cdxj_path"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],
