@@ -59,7 +59,46 @@ async def record_provenance(
     tags: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Record provenance information for a dataset operation."""
-    return await _API["record_provenance"](
+    normalized_dataset_id = str(dataset_id or "").strip()
+    normalized_operation = str(operation or "").strip()
+    if not normalized_dataset_id:
+        return {
+            "status": "error",
+            "message": "dataset_id is required",
+            "dataset_id": dataset_id,
+        }
+    if not normalized_operation:
+        return {
+            "status": "error",
+            "message": "operation is required",
+            "operation": operation,
+        }
+    if inputs is not None and (not isinstance(inputs, list) or not all(isinstance(item, str) for item in inputs)):
+        return {
+            "status": "error",
+            "message": "inputs must be an array of strings when provided",
+            "inputs": inputs,
+        }
+    if parameters is not None and not isinstance(parameters, dict):
+        return {
+            "status": "error",
+            "message": "parameters must be an object when provided",
+            "parameters": parameters,
+        }
+    if tags is not None and (not isinstance(tags, list) or not all(isinstance(item, str) for item in tags)):
+        return {
+            "status": "error",
+            "message": "tags must be an array of strings when provided",
+            "tags": tags,
+        }
+    if timestamp is not None and not str(timestamp).strip():
+        return {
+            "status": "error",
+            "message": "timestamp must be a non-empty string when provided",
+            "timestamp": timestamp,
+        }
+
+    result = await _API["record_provenance"](
         dataset_id=dataset_id,
         operation=operation,
         inputs=inputs,
@@ -69,6 +108,11 @@ async def record_provenance(
         timestamp=timestamp,
         tags=tags,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("dataset_id", normalized_dataset_id)
+    payload.setdefault("operation", normalized_operation)
+    return payload
 
 
 def register_native_provenance_tools(manager: Any) -> None:
