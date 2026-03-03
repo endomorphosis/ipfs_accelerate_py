@@ -1307,13 +1307,25 @@ async def search_common_crawl(
     output_format: str = "json",
 ) -> Dict[str, Any]:
     """Search Common Crawl index data for a domain."""
+    normalized_domain = str(domain or "").strip()
+    if not normalized_domain:
+        return {"status": "error", "error": "'domain' is required."}
+
+    normalized_limit = int(limit)
+    if normalized_limit <= 0:
+        return {"status": "error", "error": "'limit' must be greater than 0."}
+
+    normalized_output_format = str(output_format or "json").strip().lower() or "json"
+    if normalized_output_format not in {"json", "cdx"}:
+        return {"status": "error", "error": "'output_format' must be one of: json, cdx."}
+
     result = _API["search_common_crawl"](
-        domain=domain,
+        domain=normalized_domain,
         crawl_id=crawl_id,
-        limit=limit,
+        limit=normalized_limit,
         from_timestamp=from_timestamp,
         to_timestamp=to_timestamp,
-        output_format=output_format,
+        output_format=normalized_output_format,
     )
     if hasattr(result, "__await__"):
         return await result

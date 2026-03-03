@@ -52,6 +52,7 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     search_serpstack_images,
     batch_search_serpstack,
     scrape_with_autoscraper,
+    search_common_crawl,
     search_archive_is,
     search_brave,
     search_brave_images,
@@ -140,6 +141,7 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("search_wayback_machine", names)
         self.assertIn("search_archive_is", names)
         self.assertIn("search_common_crawl_advanced", names)
+        self.assertIn("search_common_crawl", names)
         self.assertIn("get_archive_is_content", names)
         self.assertIn("check_archive_status", names)
         self.assertIn("get_wayback_content", names)
@@ -162,6 +164,26 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
     def test_common_crawl_helpers_fallback_shape(self) -> None:
         async def _run() -> None:
+            missing_domain = await search_common_crawl(domain="")
+            self.assertEqual(missing_domain.get("status"), "error")
+            self.assertIn("'domain' is required", str(missing_domain.get("error", "")))
+
+            invalid_limit = await search_common_crawl(domain="example.com", limit=0)
+            self.assertEqual(invalid_limit.get("status"), "error")
+            self.assertIn("'limit' must be greater than 0", str(invalid_limit.get("error", "")))
+
+            invalid_output_format = await search_common_crawl(
+                domain="example.com",
+                output_format="xml",
+            )
+            self.assertEqual(invalid_output_format.get("status"), "error")
+            self.assertIn("'output_format' must be one of", str(invalid_output_format.get("error", "")))
+
+            search_result = await search_common_crawl(domain="example.com", limit=5)
+            self.assertIn(search_result.get("status"), ["success", "error"])
+            if search_result.get("status") == "success":
+                self.assertIn("results", search_result)
+
             content_result = await get_common_crawl_content(
                 url="https://example.com",
                 timestamp="20240101000000",
