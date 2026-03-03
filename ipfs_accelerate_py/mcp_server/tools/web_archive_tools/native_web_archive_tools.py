@@ -23,12 +23,17 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             extract_text_from_warc as _extract_text_from_warc,
             get_archive_is_content as _get_archive_is_content,
             get_common_crawl_content as _get_common_crawl_content,
+            get_ipwb_content as _get_ipwb_content,
             get_wayback_content as _get_wayback_content,
             index_warc as _index_warc,
+            index_warc_to_ipwb as _index_warc_to_ipwb,
             list_common_crawl_indexes as _list_common_crawl_indexes,
             search_archive_is as _search_archive_is,
             search_common_crawl as _search_common_crawl,
+            search_ipwb_archive as _search_ipwb_archive,
             search_wayback_machine as _search_wayback_machine,
+            start_ipwb_replay as _start_ipwb_replay,
+            verify_ipwb_archive as _verify_ipwb_archive,
         )
 
         return {
@@ -44,11 +49,16 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "get_archive_is_content": _get_archive_is_content,
             "search_common_crawl": _search_common_crawl,
             "get_common_crawl_content": _get_common_crawl_content,
+            "get_ipwb_content": _get_ipwb_content,
             "get_wayback_content": _get_wayback_content,
             "index_warc": _index_warc,
+            "index_warc_to_ipwb": _index_warc_to_ipwb,
             "list_common_crawl_indexes": _list_common_crawl_indexes,
             "search_archive_is": _search_archive_is,
+            "search_ipwb_archive": _search_ipwb_archive,
             "search_wayback_machine": _search_wayback_machine,
+            "start_ipwb_replay": _start_ipwb_replay,
+            "verify_ipwb_archive": _verify_ipwb_archive,
         }
     except Exception:
         logger.warning(
@@ -211,6 +221,73 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "url": url,
             }
 
+        async def _index_warc_to_ipwb_fallback(
+            warc_path: str,
+            ipfs_endpoint: Optional[str] = None,
+            encrypt: bool = False,
+            compression: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = ipfs_endpoint, encrypt, compression
+            return {
+                "status": "error",
+                "error": "IPWB indexing backend unavailable",
+                "warc_path": warc_path,
+                "cdxj_path": None,
+            }
+
+        async def _start_ipwb_replay_fallback(
+            cdxj_path: str,
+            port: int = 5000,
+            ipfs_endpoint: Optional[str] = None,
+            proxy_mode: bool = False,
+        ) -> Dict[str, Any]:
+            _ = port, ipfs_endpoint, proxy_mode
+            return {
+                "status": "error",
+                "error": "IPWB replay backend unavailable",
+                "cdxj_path": cdxj_path,
+            }
+
+        async def _search_ipwb_archive_fallback(
+            cdxj_path: str,
+            url_pattern: str,
+            from_timestamp: Optional[str] = None,
+            to_timestamp: Optional[str] = None,
+            limit: int = 100,
+        ) -> Dict[str, Any]:
+            _ = from_timestamp, to_timestamp, limit
+            return {
+                "status": "success",
+                "results": [],
+                "count": 0,
+                "cdxj_file": cdxj_path,
+                "search_params": {"url_pattern": url_pattern},
+                "source": "fallback",
+            }
+
+        async def _get_ipwb_content_fallback(
+            ipfs_hash: str,
+            ipfs_endpoint: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = ipfs_endpoint
+            return {
+                "status": "error",
+                "error": "IPWB content backend unavailable",
+                "ipfs_hash": ipfs_hash,
+            }
+
+        async def _verify_ipwb_archive_fallback(
+            cdxj_path: str,
+            ipfs_endpoint: Optional[str] = None,
+            sample_size: int = 10,
+        ) -> Dict[str, Any]:
+            _ = ipfs_endpoint, sample_size
+            return {
+                "status": "error",
+                "error": "IPWB archive verification backend unavailable",
+                "cdxj_path": cdxj_path,
+            }
+
         async def _search_wayback_machine_fallback(
             url: str,
             from_date: Optional[str] = None,
@@ -254,11 +331,16 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "get_archive_is_content": _get_archive_is_content_fallback,
             "search_common_crawl": _search_common_crawl_fallback,
             "get_common_crawl_content": _get_common_crawl_content_fallback,
+            "get_ipwb_content": _get_ipwb_content_fallback,
             "get_wayback_content": _get_wayback_content_fallback,
             "index_warc": _index_warc_fallback,
+            "index_warc_to_ipwb": _index_warc_to_ipwb_fallback,
             "list_common_crawl_indexes": _list_common_crawl_indexes_fallback,
             "search_archive_is": _search_archive_is_fallback,
+            "search_ipwb_archive": _search_ipwb_archive_fallback,
             "search_wayback_machine": _search_wayback_machine_fallback,
+            "start_ipwb_replay": _start_ipwb_replay_fallback,
+            "verify_ipwb_archive": _verify_ipwb_archive_fallback,
         }
 
 
@@ -425,6 +507,135 @@ async def index_warc(
         warc_path=normalized_path,
         output_path=output_path,
         encryption_key=encryption_key,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def index_warc_to_ipwb(
+    warc_path: str,
+    ipfs_endpoint: Optional[str] = None,
+    encrypt: bool = False,
+    compression: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Index a WARC file for IPWB replay."""
+    normalized_path = str(warc_path or "").strip()
+    if not normalized_path:
+        return {"status": "error", "error": "'warc_path' is required."}
+
+    normalized_compression = None
+    if compression is not None and str(compression).strip() != "":
+        normalized_compression = str(compression).strip().lower()
+        if normalized_compression not in {"gzip", "bz2"}:
+            return {
+                "status": "error",
+                "error": "'compression' must be one of: gzip, bz2, or null.",
+            }
+
+    result = _API["index_warc_to_ipwb"](
+        warc_path=normalized_path,
+        ipfs_endpoint=ipfs_endpoint,
+        encrypt=bool(encrypt),
+        compression=normalized_compression,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def start_ipwb_replay(
+    cdxj_path: str,
+    port: int = 5000,
+    ipfs_endpoint: Optional[str] = None,
+    proxy_mode: bool = False,
+) -> Dict[str, Any]:
+    """Start an IPWB replay endpoint from a CDXJ index."""
+    normalized_path = str(cdxj_path or "").strip()
+    if not normalized_path:
+        return {"status": "error", "error": "'cdxj_path' is required."}
+    normalized_port = int(port)
+    if normalized_port <= 0:
+        return {"status": "error", "error": "'port' must be greater than 0."}
+
+    result = _API["start_ipwb_replay"](
+        cdxj_path=normalized_path,
+        port=normalized_port,
+        ipfs_endpoint=ipfs_endpoint,
+        proxy_mode=bool(proxy_mode),
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_ipwb_archive(
+    cdxj_path: str,
+    url_pattern: str,
+    from_timestamp: Optional[str] = None,
+    to_timestamp: Optional[str] = None,
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """Search an IPWB archive index for URL-pattern matches."""
+    normalized_path = str(cdxj_path or "").strip()
+    if not normalized_path:
+        return {"status": "error", "error": "'cdxj_path' is required."}
+
+    normalized_pattern = str(url_pattern or "").strip()
+    if not normalized_pattern:
+        return {"status": "error", "error": "'url_pattern' is required."}
+
+    normalized_limit = int(limit)
+    if normalized_limit <= 0:
+        return {"status": "error", "error": "'limit' must be greater than 0."}
+
+    result = _API["search_ipwb_archive"](
+        cdxj_path=normalized_path,
+        url_pattern=normalized_pattern,
+        from_timestamp=from_timestamp,
+        to_timestamp=to_timestamp,
+        limit=normalized_limit,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def get_ipwb_content(
+    ipfs_hash: str,
+    ipfs_endpoint: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Retrieve archived content by IPFS hash through IPWB."""
+    normalized_hash = str(ipfs_hash or "").strip()
+    if not normalized_hash:
+        return {"status": "error", "error": "'ipfs_hash' is required."}
+
+    result = _API["get_ipwb_content"](
+        ipfs_hash=normalized_hash,
+        ipfs_endpoint=ipfs_endpoint,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def verify_ipwb_archive(
+    cdxj_path: str,
+    ipfs_endpoint: Optional[str] = None,
+    sample_size: int = 10,
+) -> Dict[str, Any]:
+    """Verify integrity of indexed IPWB archive content."""
+    normalized_path = str(cdxj_path or "").strip()
+    if not normalized_path:
+        return {"status": "error", "error": "'cdxj_path' is required."}
+    normalized_sample_size = int(sample_size)
+    if normalized_sample_size <= 0:
+        return {"status": "error", "error": "'sample_size' must be greater than 0."}
+
+    result = _API["verify_ipwb_archive"](
+        cdxj_path=normalized_path,
+        ipfs_endpoint=ipfs_endpoint,
+        sample_size=normalized_sample_size,
     )
     if hasattr(result, "__await__"):
         return await result
@@ -735,6 +946,99 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "encryption_key": {"type": ["string", "null"]},
             },
             "required": ["warc_path"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="index_warc_to_ipwb",
+        func=index_warc_to_ipwb,
+        description="Index a WARC file into IPWB-compatible metadata.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "warc_path": {"type": "string"},
+                "ipfs_endpoint": {"type": ["string", "null"]},
+                "encrypt": {"type": "boolean", "default": False},
+                "compression": {"type": ["string", "null"], "enum": ["gzip", "bz2", None]},
+            },
+            "required": ["warc_path"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="start_ipwb_replay",
+        func=start_ipwb_replay,
+        description="Start an IPWB replay service for a CDXJ index.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cdxj_path": {"type": "string"},
+                "port": {"type": "integer", "default": 5000, "minimum": 1},
+                "ipfs_endpoint": {"type": ["string", "null"]},
+                "proxy_mode": {"type": "boolean", "default": False},
+            },
+            "required": ["cdxj_path"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_ipwb_archive",
+        func=search_ipwb_archive,
+        description="Search an IPWB archive index by URL pattern.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cdxj_path": {"type": "string"},
+                "url_pattern": {"type": "string"},
+                "from_timestamp": {"type": ["string", "null"]},
+                "to_timestamp": {"type": ["string", "null"]},
+                "limit": {"type": "integer", "default": 100, "minimum": 1},
+            },
+            "required": ["cdxj_path", "url_pattern"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="get_ipwb_content",
+        func=get_ipwb_content,
+        description="Get archived content from IPWB via IPFS hash.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "ipfs_hash": {"type": "string"},
+                "ipfs_endpoint": {"type": ["string", "null"]},
+            },
+            "required": ["ipfs_hash"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="verify_ipwb_archive",
+        func=verify_ipwb_archive,
+        description="Verify indexed IPWB archive integrity with sampled records.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cdxj_path": {"type": "string"},
+                "ipfs_endpoint": {"type": ["string", "null"]},
+                "sample_size": {"type": "integer", "default": 10, "minimum": 1},
+            },
+            "required": ["cdxj_path"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],

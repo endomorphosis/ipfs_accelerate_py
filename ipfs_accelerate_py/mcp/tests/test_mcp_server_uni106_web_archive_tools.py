@@ -18,12 +18,17 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     extract_text_from_warc,
     get_archive_is_content,
     get_common_crawl_content,
+    get_ipwb_content,
     get_wayback_content,
     index_warc,
+    index_warc_to_ipwb,
     list_common_crawl_indexes,
     register_native_web_archive_tools,
     search_archive_is,
+    search_ipwb_archive,
     search_wayback_machine,
+    start_ipwb_replay,
+    verify_ipwb_archive,
 )
 
 
@@ -48,6 +53,11 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("extract_links_from_warc", names)
         self.assertIn("extract_metadata_from_warc", names)
         self.assertIn("index_warc", names)
+        self.assertIn("index_warc_to_ipwb", names)
+        self.assertIn("start_ipwb_replay", names)
+        self.assertIn("search_ipwb_archive", names)
+        self.assertIn("get_ipwb_content", names)
+        self.assertIn("verify_ipwb_archive", names)
         self.assertIn("get_common_crawl_content", names)
         self.assertIn("list_common_crawl_indexes", names)
         self.assertIn("search_wayback_machine", names)
@@ -237,6 +247,86 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             if result.get("status") == "success":
                 self.assertIn("results", result)
                 self.assertIn("success_count", result)
+
+        anyio.run(_run)
+
+    def test_ipwb_wrappers_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_warc_path = await index_warc_to_ipwb(warc_path="")
+            self.assertEqual(missing_warc_path.get("status"), "error")
+            self.assertIn("'warc_path' is required", str(missing_warc_path.get("error", "")))
+
+            invalid_compression = await index_warc_to_ipwb(
+                warc_path="/tmp/mock.warc",
+                compression="zip",
+            )
+            self.assertEqual(invalid_compression.get("status"), "error")
+            self.assertIn("'compression' must be one of", str(invalid_compression.get("error", "")))
+
+            missing_cdxj_replay = await start_ipwb_replay(cdxj_path="", port=5000)
+            self.assertEqual(missing_cdxj_replay.get("status"), "error")
+            self.assertIn("'cdxj_path' is required", str(missing_cdxj_replay.get("error", "")))
+
+            invalid_port = await start_ipwb_replay(cdxj_path="/tmp/mock.cdxj", port=0)
+            self.assertEqual(invalid_port.get("status"), "error")
+            self.assertIn("'port' must be greater than 0", str(invalid_port.get("error", "")))
+
+            missing_cdxj_search = await search_ipwb_archive(cdxj_path="", url_pattern="example")
+            self.assertEqual(missing_cdxj_search.get("status"), "error")
+            self.assertIn("'cdxj_path' is required", str(missing_cdxj_search.get("error", "")))
+
+            missing_pattern = await search_ipwb_archive(cdxj_path="/tmp/mock.cdxj", url_pattern="")
+            self.assertEqual(missing_pattern.get("status"), "error")
+            self.assertIn("'url_pattern' is required", str(missing_pattern.get("error", "")))
+
+            invalid_limit = await search_ipwb_archive(
+                cdxj_path="/tmp/mock.cdxj",
+                url_pattern="example",
+                limit=0,
+            )
+            self.assertEqual(invalid_limit.get("status"), "error")
+            self.assertIn("'limit' must be greater than 0", str(invalid_limit.get("error", "")))
+
+            missing_hash = await get_ipwb_content(ipfs_hash=" ")
+            self.assertEqual(missing_hash.get("status"), "error")
+            self.assertIn("'ipfs_hash' is required", str(missing_hash.get("error", "")))
+
+            missing_cdxj_verify = await verify_ipwb_archive(cdxj_path="")
+            self.assertEqual(missing_cdxj_verify.get("status"), "error")
+            self.assertIn("'cdxj_path' is required", str(missing_cdxj_verify.get("error", "")))
+
+            invalid_sample_size = await verify_ipwb_archive(cdxj_path="/tmp/mock.cdxj", sample_size=0)
+            self.assertEqual(invalid_sample_size.get("status"), "error")
+            self.assertIn("'sample_size' must be greater than 0", str(invalid_sample_size.get("error", "")))
+
+            index_result = await index_warc_to_ipwb(warc_path="/tmp/mock.warc")
+            self.assertIn(index_result.get("status"), ["success", "error"])
+            if index_result.get("status") == "error":
+                self.assertIn("error", index_result)
+
+            replay_result = await start_ipwb_replay(cdxj_path="/tmp/mock.cdxj", port=5000)
+            self.assertIn(replay_result.get("status"), ["success", "error"])
+            if replay_result.get("status") == "error":
+                self.assertIn("error", replay_result)
+
+            search_result = await search_ipwb_archive(
+                cdxj_path="/tmp/mock.cdxj",
+                url_pattern="example",
+                limit=5,
+            )
+            self.assertIn(search_result.get("status"), ["success", "error"])
+            if search_result.get("status") == "success":
+                self.assertIn("results", search_result)
+
+            content_result = await get_ipwb_content(ipfs_hash="QmMockHash123")
+            self.assertIn(content_result.get("status"), ["success", "error"])
+            if content_result.get("status") == "error":
+                self.assertIn("error", content_result)
+
+            verify_result = await verify_ipwb_archive(cdxj_path="/tmp/mock.cdxj", sample_size=5)
+            self.assertIn(verify_result.get("status"), ["success", "error"])
+            if verify_result.get("status") == "error":
+                self.assertIn("error", verify_result)
 
         anyio.run(_run)
 

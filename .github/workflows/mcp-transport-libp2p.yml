@@ -6,17 +6,27 @@ on:
     paths:
       - ".github/workflows/mcp-transport-libp2p.yml"
       - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py"
+      - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_p2p_framing_limits.py"
+      - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py"
+      - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_client_limits.py"
       - "ipfs_accelerate_py/mcp/standalone.py"
       - "ipfs_accelerate_py/mcp/integration.py"
       - "ipfs_accelerate_py/mcp_server/**"
+      - "ipfs_accelerate_py/p2p_tasks/mcp_p2p.py"
+      - "ipfs_accelerate_py/p2p_tasks/mcp_p2p_client.py"
   push:
     branches: [main, develop]
     paths:
       - ".github/workflows/mcp-transport-libp2p.yml"
       - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py"
+      - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_p2p_framing_limits.py"
+      - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py"
+      - "ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_client_limits.py"
       - "ipfs_accelerate_py/mcp/standalone.py"
       - "ipfs_accelerate_py/mcp/integration.py"
       - "ipfs_accelerate_py/mcp_server/**"
+      - "ipfs_accelerate_py/p2p_tasks/mcp_p2p.py"
+      - "ipfs_accelerate_py/p2p_tasks/mcp_p2p_client.py"
   workflow_dispatch:
 
 env:
@@ -60,6 +70,13 @@ jobs:
 
           print("libp2p dependency resolved")
           PY
+
+      - name: Run MCP+p2p framing and abuse conformance suites
+        shell: bash
+        run: |
+          python -m unittest -v ipfs_accelerate_py.mcp.tests.test_mcp_transport_p2p_framing_limits
+          python -m unittest -v ipfs_accelerate_py.mcp.tests.test_mcp_transport_mcp_p2p_handler_limits
+          python -m unittest -v ipfs_accelerate_py.mcp.tests.test_mcp_transport_mcp_p2p_client_limits
 
       - name: Run networked trio-p2p parity test
         shell: bash
