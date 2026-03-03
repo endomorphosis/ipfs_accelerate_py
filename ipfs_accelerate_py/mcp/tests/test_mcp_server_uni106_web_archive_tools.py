@@ -18,6 +18,7 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     index_warc,
     list_common_crawl_indexes,
     register_native_web_archive_tools,
+    search_archive_is,
     search_wayback_machine,
 )
 
@@ -44,6 +45,7 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("get_common_crawl_content", names)
         self.assertIn("list_common_crawl_indexes", names)
         self.assertIn("search_wayback_machine", names)
+        self.assertIn("search_archive_is", names)
         self.assertIn("get_wayback_content", names)
 
     def test_get_common_crawl_content_requires_url(self) -> None:
@@ -101,6 +103,24 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
     def test_search_wayback_machine_fallback_shape(self) -> None:
         async def _run() -> None:
             result = await search_wayback_machine(url="https://example.com", limit=5)
+            self.assertIn(result.get("status"), ["success", "error"])
+            if result.get("status") == "success":
+                self.assertIn("results", result)
+                self.assertIn("count", result)
+
+        anyio.run(_run)
+
+    def test_search_archive_is_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_domain = await search_archive_is(domain="")
+            self.assertEqual(missing_domain.get("status"), "error")
+            self.assertIn("'domain' is required", str(missing_domain.get("error", "")))
+
+            invalid_limit = await search_archive_is(domain="example.com", limit=0)
+            self.assertEqual(invalid_limit.get("status"), "error")
+            self.assertIn("'limit' must be greater than 0", str(invalid_limit.get("error", "")))
+
+            result = await search_archive_is(domain="example.com", limit=5)
             self.assertIn(result.get("status"), ["success", "error"])
             if result.get("status") == "success":
                 self.assertIn("results", result)

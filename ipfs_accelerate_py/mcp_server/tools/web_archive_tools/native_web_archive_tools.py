@@ -22,6 +22,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             get_wayback_content as _get_wayback_content,
             index_warc as _index_warc,
             list_common_crawl_indexes as _list_common_crawl_indexes,
+            search_archive_is as _search_archive_is,
             search_common_crawl as _search_common_crawl,
             search_wayback_machine as _search_wayback_machine,
         )
@@ -38,6 +39,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "get_wayback_content": _get_wayback_content,
             "index_warc": _index_warc,
             "list_common_crawl_indexes": _list_common_crawl_indexes,
+            "search_archive_is": _search_archive_is,
             "search_wayback_machine": _search_wayback_machine,
         }
     except Exception:
@@ -179,6 +181,19 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "source": "fallback",
             }
 
+        async def _search_archive_is_fallback(
+            domain: str,
+            limit: int = 100,
+        ) -> Dict[str, Any]:
+            _ = limit
+            return {
+                "status": "success",
+                "results": [],
+                "count": 0,
+                "domain": domain,
+                "source": "fallback",
+            }
+
         return {
             "archive_to_wayback": _archive_to_wayback_fallback,
             "create_warc": _create_warc_fallback,
@@ -191,6 +206,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "get_wayback_content": _get_wayback_content_fallback,
             "index_warc": _index_warc_fallback,
             "list_common_crawl_indexes": _list_common_crawl_indexes_fallback,
+            "search_archive_is": _search_archive_is_fallback,
             "search_wayback_machine": _search_wayback_machine_fallback,
         }
 
@@ -412,6 +428,27 @@ async def search_wayback_machine(
     return result
 
 
+async def search_archive_is(
+    domain: str,
+    limit: int = 100,
+) -> Dict[str, Any]:
+    """Search Archive.is snapshots for a domain."""
+    normalized_domain = str(domain or "").strip()
+    if not normalized_domain:
+        return {"status": "error", "error": "'domain' is required."}
+    normalized_limit = int(limit)
+    if normalized_limit <= 0:
+        return {"status": "error", "error": "'limit' must be greater than 0."}
+
+    result = _API["search_archive_is"](
+        domain=normalized_domain,
+        limit=normalized_limit,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
 def register_native_web_archive_tools(manager: Any) -> None:
     """Register native web-archive tools category tools in unified manager."""
     manager.register_tool(
@@ -600,6 +637,23 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "output_format": {"type": "string", "enum": ["json", "cdx"], "default": "json"},
             },
             "required": ["url"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_archive_is",
+        func=search_archive_is,
+        description="Search Archive.is snapshots by domain.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "domain": {"type": "string"},
+                "limit": {"type": "integer", "default": 100, "minimum": 1},
+            },
+            "required": ["domain"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],
