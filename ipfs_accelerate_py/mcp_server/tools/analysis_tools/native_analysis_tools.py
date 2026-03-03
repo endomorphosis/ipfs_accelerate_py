@@ -162,14 +162,24 @@ async def cluster_analysis(
 ) -> Dict[str, Any]:
     """Perform clustering analysis on vector data."""
     normalized_algorithm = str(algorithm or "kmeans").strip().lower() or "kmeans"
-    valid_algorithms = {"kmeans", "dbscan", "hierarchical", "gaussian_mixture"}
+    valid_algorithms = {"kmeans", "dbscan", "hierarchical", "gaussian_mixture", "spectral"}
     if normalized_algorithm not in valid_algorithms:
         return {
             "status": "error",
             "message": f"algorithm must be one of: {', '.join(sorted(valid_algorithms))}",
             "algorithm": algorithm,
         }
-    if n_clusters is not None and int(n_clusters) <= 0:
+    normalized_clusters: Optional[int] = None
+    if n_clusters is not None:
+        try:
+            normalized_clusters = int(n_clusters)
+        except (TypeError, ValueError):
+            return {
+                "status": "error",
+                "message": "n_clusters must be a positive integer when provided",
+                "n_clusters": n_clusters,
+            }
+    if normalized_clusters is not None and normalized_clusters <= 0:
         return {
             "status": "error",
             "message": "n_clusters must be a positive integer when provided",
@@ -179,7 +189,7 @@ async def cluster_analysis(
     result = await _API["cluster_analysis"](
         data_source=data_source,
         algorithm=normalized_algorithm,
-        n_clusters=int(n_clusters) if n_clusters is not None else None,
+        n_clusters=normalized_clusters,
         vectors=vectors,
         data_params=data_params,
         clustering_params=clustering_params,
@@ -239,14 +249,21 @@ async def dimensionality_reduction(
 ) -> Dict[str, Any]:
     """Reduce vector dimensionality using selected method."""
     normalized_method = str(method or "pca").strip().lower() or "pca"
-    valid_methods = {"pca", "tsne", "umap", "svd"}
+    valid_methods = {"pca", "tsne", "umap", "random_projection", "truncated_svd"}
     if normalized_method not in valid_methods:
         return {
             "status": "error",
             "message": f"method must be one of: {', '.join(sorted(valid_methods))}",
             "method": method,
         }
-    normalized_components = int(n_components)
+    try:
+        normalized_components = int(n_components)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "n_components must be a positive integer",
+            "n_components": n_components,
+        }
     if normalized_components <= 0:
         return {
             "status": "error",
@@ -300,7 +317,11 @@ def register_native_analysis_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "data_source": {"type": "string"},
-                "algorithm": {"type": "string"},
+                "algorithm": {
+                    "type": "string",
+                    "enum": ["kmeans", "dbscan", "hierarchical", "gaussian_mixture", "spectral"],
+                    "default": "kmeans",
+                },
                 "n_clusters": {"type": ["integer", "null"]},
                 "vectors": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "number"}}},
                 "data_params": {"type": ["object", "null"]},
@@ -343,7 +364,11 @@ def register_native_analysis_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "data_source": {"type": "string"},
-                "method": {"type": "string"},
+                "method": {
+                    "type": "string",
+                    "enum": ["pca", "tsne", "umap", "random_projection", "truncated_svd"],
+                    "default": "pca",
+                },
                 "n_components": {"type": "integer"},
                 "vectors": {"type": ["array", "null"], "items": {"type": "array", "items": {"type": "number"}}},
                 "data_params": {"type": ["object", "null"]},

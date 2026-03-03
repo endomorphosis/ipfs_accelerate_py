@@ -34,6 +34,22 @@ class TestMCPServerUNI114IndexManagementTools(unittest.TestCase):
         self.assertIn("monitor_index_status", names)
         self.assertIn("manage_index_configuration", names)
 
+    def test_register_schema_contracts(self) -> None:
+        manager = _DummyManager()
+        register_native_index_management_tools(manager)
+        by_name = {c["name"]: c for c in manager.calls}
+
+        monitor_schema = by_name["monitor_index_status"]["input_schema"]
+        time_range = monitor_schema["properties"]["time_range"]
+        self.assertEqual(time_range.get("default"), "24h")
+        self.assertIn("7d", time_range.get("enum", []))
+
+        config_schema = by_name["manage_index_configuration"]["input_schema"]
+        optimization = config_schema["properties"]["optimization_level"]
+        self.assertEqual(optimization.get("default"), 1)
+        self.assertEqual(optimization.get("minimum"), 1)
+        self.assertEqual(optimization.get("maximum"), 3)
+
     def test_load_index_rejects_invalid_action(self) -> None:
         async def _run() -> None:
             result = await load_index(action="bad_action")
@@ -50,6 +66,14 @@ class TestMCPServerUNI114IndexManagementTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_manage_shards_rejects_non_integer_num_shards(self) -> None:
+        async def _run() -> None:
+            result = await manage_shards(action="create_shards", num_shards="bad")  # type: ignore[arg-type]
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("positive integer", str(result.get("message", "")))
+
+        anyio.run(_run)
+
     def test_monitor_index_status_rejects_invalid_time_range(self) -> None:
         async def _run() -> None:
             result = await monitor_index_status(time_range="2h")
@@ -61,6 +85,14 @@ class TestMCPServerUNI114IndexManagementTools(unittest.TestCase):
     def test_manage_index_configuration_rejects_invalid_optimization_level(self) -> None:
         async def _run() -> None:
             result = await manage_index_configuration(action="update_config", optimization_level=5)
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("between 1 and 3", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_manage_index_configuration_rejects_non_integer_optimization_level(self) -> None:
+        async def _run() -> None:
+            result = await manage_index_configuration(action="update_config", optimization_level="high")  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("between 1 and 3", str(result.get("message", "")))
 
