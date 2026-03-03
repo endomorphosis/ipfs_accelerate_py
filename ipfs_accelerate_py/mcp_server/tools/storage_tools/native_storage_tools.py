@@ -8,6 +8,10 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 logger = logging.getLogger(__name__)
 
+_VALID_STORAGE_TYPES = {"local", "ipfs", "s3", "google_cloud", "azure", "memory"}
+_VALID_COMPRESSION_TYPES = {"none", "gzip", "lz4", "brotli"}
+_VALID_COLLECTION_ACTIONS = {"create", "get", "list", "delete", "stats"}
+
 
 def _load_storage_api() -> Dict[str, Any]:
     """Resolve source storage APIs with compatibility fallback."""
@@ -129,10 +133,36 @@ async def store_data(
     tags: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Store data in the configured storage backend."""
+    normalized_storage_type = str(storage_type or "memory").strip().lower() or "memory"
+    normalized_compression = str(compression or "none").strip().lower() or "none"
+
+    if normalized_storage_type not in _VALID_STORAGE_TYPES:
+        return {
+            "stored": False,
+            "error": (
+                "Invalid storage type: "
+                f"{normalized_storage_type}. Valid types: {sorted(_VALID_STORAGE_TYPES)}"
+            ),
+            "storage_type": normalized_storage_type,
+            "compression": normalized_compression,
+            "collection": collection,
+        }
+    if normalized_compression not in _VALID_COMPRESSION_TYPES:
+        return {
+            "stored": False,
+            "error": (
+                "Invalid compression type: "
+                f"{normalized_compression}. Valid types: {sorted(_VALID_COMPRESSION_TYPES)}"
+            ),
+            "storage_type": normalized_storage_type,
+            "compression": normalized_compression,
+            "collection": collection,
+        }
+
     return await _API["store_data"](
         data=data,
-        storage_type=storage_type,
-        compression=compression,
+        storage_type=normalized_storage_type,
+        compression=normalized_compression,
         collection=collection,
         metadata=metadata,
         tags=tags,
@@ -145,6 +175,16 @@ async def retrieve_data(
     format_type: str = "json",
 ) -> Dict[str, Any]:
     """Retrieve stored items by ID."""
+    if not item_ids:
+        return {
+            "retrieved_count": 0,
+            "not_found_count": 0,
+            "results": [],
+            "not_found": [],
+            "format": format_type,
+            "include_content": include_content,
+            "error": "At least one item ID must be provided",
+        }
     return await _API["retrieve_data"](
         item_ids=item_ids,
         include_content=include_content,
@@ -160,8 +200,23 @@ async def manage_collections(
     delete_items: bool = False,
 ) -> Dict[str, Any]:
     """Create, list, and manage storage collections."""
+    normalized_action = str(action or "").strip().lower()
+    if normalized_action not in _VALID_COLLECTION_ACTIONS:
+        return {
+            "action": normalized_action,
+            "success": False,
+            "error": f"Unknown action: {action}",
+        }
+
+    if normalized_action in {"create", "get", "delete"} and not collection_name:
+        return {
+            "action": normalized_action,
+            "success": False,
+            "error": f"collection_name required for {normalized_action} action",
+        }
+
     return await _API["manage_collections"](
-        action=action,
+        action=normalized_action,
         collection_name=collection_name,
         description=description,
         metadata=metadata,
@@ -179,9 +234,26 @@ async def query_storage(
     offset: int = 0,
 ) -> Dict[str, Any]:
     """Query stored items with filtering and pagination."""
+    normalized_storage_type = None
+    if storage_type is not None:
+        normalized_storage_type = str(storage_type).strip().lower()
+        if normalized_storage_type not in _VALID_STORAGE_TYPES:
+            return {
+                "query_results": [],
+                "total_found": 0,
+                "total_size_bytes": 0,
+                "storage_distribution": {},
+                "pagination": {
+                    "limit": int(limit),
+                    "offset": int(offset),
+                    "has_more": False,
+                },
+                "error": f"Invalid storage type: {storage_type}",
+            }
+
     return await _API["query_storage"](
         collection=collection,
-        storage_type=storage_type,
+        storage_type=normalized_storage_type,
         tags=tags,
         size_range=size_range,
         date_range=date_range,
@@ -201,8 +273,8 @@ def register_native_storage_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "data": {},
-                "storage_type": {"type": "string"},
-                "compression": {"type": "string"},
+                "storage_type": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "default": "memory"},
+                "compression": {"type": "string", "enum": sorted(_VALID_COMPRESSION_TYPES), "default": "none"},
                 "collection": {"type": "string"},
                 "metadata": {"type": ["object", "null"]},
                 "tags": {"type": ["array", "null"], "items": {"type": "string"}},
@@ -239,7 +311,7 @@ def register_native_storage_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
+                "action": {"type": "string", "enum": sorted(_VALID_COLLECTION_ACTIONS)},
                 "collection_name": {"type": ["string", "null"]},
                 "description": {"type": ["string", "null"]},
                 "metadata": {"type": ["object", "null"]},
@@ -260,7 +332,7 @@ def register_native_storage_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "collection": {"type": ["string", "null"]},
-                "storage_type": {"type": ["string", "null"]},
+                "storage_type": {"type": ["string", "null"], "enum": sorted(_VALID_STORAGE_TYPES) + [None]},
                 "tags": {"type": ["array", "null"], "items": {"type": "string"}},
                 "size_range": {
                     "type": ["array", "null"],

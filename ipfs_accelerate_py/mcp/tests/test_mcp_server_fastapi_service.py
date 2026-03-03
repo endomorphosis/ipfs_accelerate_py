@@ -32,6 +32,34 @@ class TestUnifiedFastAPIConfig(unittest.TestCase):
         self.assertEqual(cfg.description, "demo-desc")
         self.assertTrue(cfg.verbose)
 
+    def test_from_env_parses_legacy_fallback_values(self) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_HOST": "",
+                "IPFS_MCP_PORT": "",
+                "IPFS_MCP_MOUNT_PATH": "",
+                "IPFS_MCP_NAME": "",
+                "IPFS_MCP_DESCRIPTION": "",
+                "IPFS_MCP_VERBOSE": "",
+                "HOST": "10.0.0.4",
+                "PORT": "9911",
+                "MOUNT_PATH": "/legacy-mcp",
+                "APP_NAME": "legacy-app",
+                "APP_DESCRIPTION": "legacy-desc",
+                "DEBUG": "1",
+            },
+            clear=False,
+        ):
+            cfg = UnifiedFastAPIConfig.from_env()
+
+        self.assertEqual(cfg.host, "10.0.0.4")
+        self.assertEqual(cfg.port, 9911)
+        self.assertEqual(cfg.mount_path, "/legacy-mcp")
+        self.assertEqual(cfg.name, "legacy-app")
+        self.assertEqual(cfg.description, "legacy-desc")
+        self.assertTrue(cfg.verbose)
+
 
 class TestUnifiedFastAPIServiceFacade(unittest.TestCase):
     @patch("ipfs_accelerate_py.mcp.integration.create_standalone_app")

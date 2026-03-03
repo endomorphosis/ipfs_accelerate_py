@@ -13,9 +13,11 @@ def _load_dataset_api() -> Dict[str, Any]:
     try:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.dataset_tools import (  # type: ignore
             convert_dataset_format as _convert_dataset_format,
+            legal_text_to_deontic as _legal_text_to_deontic,
             load_dataset as _load_dataset,
             process_dataset as _process_dataset,
             save_dataset as _save_dataset,
+            text_to_fol as _text_to_fol,
         )
 
         return {
@@ -23,6 +25,8 @@ def _load_dataset_api() -> Dict[str, Any]:
             "save_dataset": _save_dataset,
             "process_dataset": _process_dataset,
             "convert_dataset_format": _convert_dataset_format,
+            "text_to_fol": _text_to_fol,
+            "legal_text_to_deontic": _legal_text_to_deontic,
         }
     except Exception:
         logger.warning("Source dataset_tools import unavailable, using fallback dataset functions")
@@ -93,11 +97,63 @@ def _load_dataset_api() -> Dict[str, Any]:
                 "target_format": target_format,
             }
 
+        async def _text_to_fol_fallback(
+            text_input: str | Dict[str, Any],
+            domain_predicates: Optional[List[str]] = None,
+            output_format: str = "json",
+            include_metadata: bool = True,
+            confidence_threshold: float = 0.5,
+        ) -> Dict[str, Any]:
+            normalized_text = str(text_input if not isinstance(text_input, dict) else text_input.get("text", "")).strip()
+            if not normalized_text:
+                return {
+                    "status": "error",
+                    "message": "text_input must be provided",
+                    "fol": None,
+                }
+            return {
+                "status": "success",
+                "output_format": output_format,
+                "fol": f"TEXT({normalized_text[:80]})",
+                "domain_predicates": list(domain_predicates or []),
+                "metadata": {
+                    "include_metadata": bool(include_metadata),
+                    "confidence_threshold": float(confidence_threshold),
+                },
+            }
+
+        async def _legal_text_to_deontic_fallback(
+            text_input: str | Dict[str, Any],
+            jurisdiction: str = "us",
+            document_type: str = "statute",
+            output_format: str = "json",
+            extract_obligations: bool = True,
+            include_exceptions: bool = True,
+        ) -> Dict[str, Any]:
+            normalized_text = str(text_input if not isinstance(text_input, dict) else text_input.get("text", "")).strip()
+            if not normalized_text:
+                return {
+                    "status": "error",
+                    "message": "text_input must be provided",
+                    "deontic": None,
+                }
+            return {
+                "status": "success",
+                "output_format": output_format,
+                "deontic": f"OBLIGATION({normalized_text[:80]})",
+                "jurisdiction": str(jurisdiction or "us"),
+                "document_type": str(document_type or "statute"),
+                "extract_obligations": bool(extract_obligations),
+                "include_exceptions": bool(include_exceptions),
+            }
+
         return {
             "load_dataset": _load_fallback,
             "save_dataset": _save_fallback,
             "process_dataset": _process_fallback,
             "convert_dataset_format": _convert_fallback,
+            "text_to_fol": _text_to_fol_fallback,
+            "legal_text_to_deontic": _legal_text_to_deontic_fallback,
         }
 
 
@@ -162,6 +218,48 @@ async def convert_dataset_format(
         target_format=target_format,
         output_path=output_path,
         options=options,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def text_to_fol(
+    text_input: str | Dict[str, Any],
+    domain_predicates: Optional[List[str]] = None,
+    output_format: str = "json",
+    include_metadata: bool = True,
+    confidence_threshold: float = 0.5,
+) -> Dict[str, Any]:
+    """Convert natural-language text into first-order logic payloads."""
+    result = _API["text_to_fol"](
+        text_input=text_input,
+        domain_predicates=domain_predicates,
+        output_format=output_format,
+        include_metadata=include_metadata,
+        confidence_threshold=confidence_threshold,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def legal_text_to_deontic(
+    text_input: str | Dict[str, Any],
+    jurisdiction: str = "us",
+    document_type: str = "statute",
+    output_format: str = "json",
+    extract_obligations: bool = True,
+    include_exceptions: bool = True,
+) -> Dict[str, Any]:
+    """Convert legal text into deontic-logic payloads."""
+    result = _API["legal_text_to_deontic"](
+        text_input=text_input,
+        jurisdiction=jurisdiction,
+        document_type=document_type,
+        output_format=output_format,
+        extract_obligations=extract_obligations,
+        include_exceptions=include_exceptions,
     )
     if hasattr(result, "__await__"):
         return await result
@@ -245,4 +343,45 @@ def register_native_dataset_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "dataset"],
+    )
+
+    manager.register_tool(
+        category="dataset_tools",
+        name="text_to_fol",
+        func=text_to_fol,
+        description="Convert natural language text into first-order logic expressions.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "text_input": {"type": ["string", "object"]},
+                "domain_predicates": {"type": ["array", "null"], "items": {"type": "string"}},
+                "output_format": {"type": "string", "default": "json"},
+                "include_metadata": {"type": "boolean", "default": True},
+                "confidence_threshold": {"type": "number", "default": 0.5},
+            },
+            "required": ["text_input"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "dataset", "logic"],
+    )
+
+    manager.register_tool(
+        category="dataset_tools",
+        name="legal_text_to_deontic",
+        func=legal_text_to_deontic,
+        description="Convert legal text into deontic logic expressions.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "text_input": {"type": ["string", "object"]},
+                "jurisdiction": {"type": "string", "default": "us"},
+                "document_type": {"type": "string", "default": "statute"},
+                "output_format": {"type": "string", "default": "json"},
+                "extract_obligations": {"type": "boolean", "default": True},
+                "include_exceptions": {"type": "boolean", "default": True},
+            },
+            "required": ["text_input"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "dataset", "logic"],
     )
