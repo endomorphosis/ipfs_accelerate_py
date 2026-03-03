@@ -2969,6 +2969,10 @@ async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, p
 
     for attempt in range(retries + 1):
         attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
+        broad_discovery_override: bool | None = None
+        if attempt > 0 and _retry_lightweight_discovery_enabled():
+            broad_discovery_override = False
+            _retry_metric_inc("submit.retry_lightweight_discovery")
         cooldown_wait_s = _remote_cooldown_wait_s(remote)
         if cooldown_wait_s > 0:
             _retry_metric_inc("submit.cooldown_wait")
@@ -2981,6 +2985,7 @@ async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, p
                     remote=remote,
                     message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
                     dial_timeout_s=attempt_dial_timeout_s,
+                    allow_broad_discovery_override=broad_discovery_override,
                 )
             finally:
                 release_slot()
