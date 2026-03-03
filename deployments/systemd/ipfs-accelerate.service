@@ -49,26 +49,35 @@ Environment=IPFS_ACCELERATE_GITHUB_REPO=endomorphosis/ipfs_accelerate_py
 # TaskQueue P2P RPC service + worker autoscaling are enabled by default by the MCP CLI.
 # Use env overrides only if you need to disable or tune behavior.
 
-# Batching + multi-peer draining
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH=1
+# Batching + multi-peer draining defaults
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MESH_PEER_FANOUT=4
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH=16
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH=16
 
 # DuckDB-backed TaskQueue uses a single-writer lock per DB file.
 # Ensure autoscaling uses threads (single process) to avoid worker child
 # processes contending on the same queue DB.
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES=0
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX=4
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S=2
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S=30
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S=5
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS=10
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=1
 
 # Enable additional HuggingFace task types (beyond text-generation)
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF=1
-# Minimal HF fallback is opt-in for this integrated service.
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF=0
+# Minimal HF fallback is enabled by default for broader task compatibility.
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF=1
 
-# Per-task micro-batch caps (kept disabled by default here)
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX=1
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX=1
+# Per-task micro-batch caps tuned for throughput without overcommitting memory.
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX=4
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX=8
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX=16
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX=16
 
 # Estimator tuning
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_HF_MEM_FRACTION=0.75

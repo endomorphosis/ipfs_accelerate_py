@@ -110,7 +110,28 @@ async def load_index(
     index_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Load and manage vector indices."""
-    return await _API["load_index"](
+    normalized_action = str(action or "").strip().lower()
+    allowed_actions = {"load", "create", "reload", "unload", "status", "optimize"}
+    if normalized_action not in allowed_actions:
+        return {
+            "status": "error",
+            "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
+            "action": action,
+        }
+    if index_config is not None and not isinstance(index_config, dict):
+        return {
+            "status": "error",
+            "message": "index_config must be an object when provided",
+            "index_config": index_config,
+        }
+    if dataset is not None and not str(dataset).strip():
+        return {
+            "status": "error",
+            "message": "dataset must be a non-empty string when provided",
+            "dataset": dataset,
+        }
+
+    result = await _API["load_index"](
         action=action,
         dataset=dataset,
         knn_index=knn_index,
@@ -119,6 +140,10 @@ async def load_index(
         columns=columns,
         index_config=index_config,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("action", normalized_action)
+    return payload
 
 
 async def manage_shards(
@@ -131,15 +156,47 @@ async def manage_shards(
     shard_ids: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Manage index sharding operations."""
-    return await _API["manage_shards"](
+    normalized_action = str(action or "").strip().lower()
+    allowed_actions = {"create_shards", "list_shards", "rebalance", "merge_shards", "status", "distribute"}
+    if normalized_action not in allowed_actions:
+        return {
+            "status": "error",
+            "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
+            "action": action,
+        }
+    normalized_num_shards = int(num_shards)
+    if normalized_num_shards <= 0:
+        return {
+            "status": "error",
+            "message": "num_shards must be a positive integer",
+            "num_shards": num_shards,
+        }
+    if models is not None and (not isinstance(models, list) or not all(isinstance(item, str) for item in models)):
+        return {
+            "status": "error",
+            "message": "models must be an array of strings when provided",
+            "models": models,
+        }
+    if shard_ids is not None and (not isinstance(shard_ids, list) or not all(isinstance(item, str) for item in shard_ids)):
+        return {
+            "status": "error",
+            "message": "shard_ids must be an array of strings when provided",
+            "shard_ids": shard_ids,
+        }
+
+    result = await _API["manage_shards"](
         action=action,
         dataset=dataset,
-        num_shards=num_shards,
+        num_shards=normalized_num_shards,
         shard_size=shard_size,
         sharding_strategy=sharding_strategy,
         models=models,
         shard_ids=shard_ids,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("action", normalized_action)
+    return payload
 
 
 async def monitor_index_status(
@@ -149,12 +206,37 @@ async def monitor_index_status(
     include_details: bool = False,
 ) -> Dict[str, Any]:
     """Monitor index health and performance state."""
-    return await _API["monitor_index_status"](
+    if metrics is not None and (not isinstance(metrics, list) or not all(isinstance(item, str) for item in metrics)):
+        return {
+            "status": "error",
+            "message": "metrics must be an array of strings when provided",
+            "metrics": metrics,
+        }
+    normalized_time_range = str(time_range or "").strip().lower()
+    allowed_time_ranges = {"1h", "6h", "24h", "7d", "30d"}
+    if normalized_time_range not in allowed_time_ranges:
+        return {
+            "status": "error",
+            "message": "time_range must be one of: 1h, 6h, 24h, 7d, 30d",
+            "time_range": time_range,
+        }
+    if not isinstance(include_details, bool):
+        return {
+            "status": "error",
+            "message": "include_details must be a boolean",
+            "include_details": include_details,
+        }
+
+    result = await _API["monitor_index_status"](
         index_id=index_id,
         metrics=metrics,
-        time_range=time_range,
+        time_range=normalized_time_range,
         include_details=include_details,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("time_range", normalized_time_range)
+    return payload
 
 
 async def manage_index_configuration(
@@ -164,12 +246,39 @@ async def manage_index_configuration(
     optimization_level: int = 1,
 ) -> Dict[str, Any]:
     """Manage index configuration and optimization settings."""
-    return await _API["manage_index_configuration"](
+    normalized_action = str(action or "").strip().lower()
+    allowed_actions = {"get_config", "update_config", "optimize_config", "reset_config"}
+    if normalized_action not in allowed_actions:
+        return {
+            "status": "error",
+            "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
+            "action": action,
+        }
+    if config_updates is not None and not isinstance(config_updates, dict):
+        return {
+            "status": "error",
+            "message": "config_updates must be an object when provided",
+            "config_updates": config_updates,
+        }
+    normalized_optimization_level = int(optimization_level)
+    if normalized_optimization_level < 1 or normalized_optimization_level > 3:
+        return {
+            "status": "error",
+            "message": "optimization_level must be between 1 and 3",
+            "optimization_level": optimization_level,
+        }
+
+    result = await _API["manage_index_configuration"](
         action=action,
         index_id=index_id,
         config_updates=config_updates,
-        optimization_level=optimization_level,
+        optimization_level=normalized_optimization_level,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("action", normalized_action)
+    payload.setdefault("optimization_level", normalized_optimization_level)
+    return payload
 
 
 def register_native_index_management_tools(manager: Any) -> None:
