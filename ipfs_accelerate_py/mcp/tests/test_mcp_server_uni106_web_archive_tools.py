@@ -146,6 +146,46 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("check_archive_status", names)
         self.assertIn("get_wayback_content", names)
 
+    def test_register_schema_contracts_for_provider_wrappers(self) -> None:
+        manager = _DummyManager()
+        register_native_web_archive_tools(manager)
+        by_name = {c["name"]: c for c in manager.calls}
+
+        search_common_crawl_schema = by_name["search_common_crawl"]["input_schema"]
+        self.assertEqual(search_common_crawl_schema.get("required"), ["domain"])
+        self.assertEqual(
+            search_common_crawl_schema["properties"]["output_format"].get("enum"),
+            ["json", "cdx"],
+        )
+
+        search_github_repositories_schema = by_name["search_github_repositories"]["input_schema"]
+        self.assertEqual(search_github_repositories_schema.get("required"), ["query"])
+        self.assertEqual(
+            search_github_repositories_schema["properties"]["order"].get("enum"),
+            ["asc", "desc"],
+        )
+
+        batch_search_huggingface_schema = by_name["batch_search_huggingface"]["input_schema"]
+        self.assertEqual(batch_search_huggingface_schema.get("required"), ["queries"])
+        self.assertEqual(
+            batch_search_huggingface_schema["properties"]["search_type"].get("enum"),
+            ["models", "datasets", "spaces"],
+        )
+
+        unified_search_schema = by_name["unified_search"]["input_schema"]
+        self.assertEqual(unified_search_schema.get("required"), ["query"])
+        self.assertEqual(
+            unified_search_schema["properties"]["mode"].get("enum"),
+            ["max_throughput", "balanced", "max_quality", "low_cost"],
+        )
+
+        unified_fetch_schema = by_name["unified_fetch"]["input_schema"]
+        self.assertEqual(unified_fetch_schema.get("required"), ["url"])
+        self.assertEqual(
+            unified_fetch_schema["properties"]["mode"].get("default"),
+            "balanced",
+        )
+
     def test_get_common_crawl_content_requires_url(self) -> None:
         async def _run() -> None:
             result = await get_common_crawl_content(url=" ", timestamp="20240101000000")

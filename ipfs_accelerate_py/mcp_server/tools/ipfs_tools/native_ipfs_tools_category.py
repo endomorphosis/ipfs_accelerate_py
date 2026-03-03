@@ -65,11 +65,21 @@ async def pin_to_ipfs(
     hash_algo: str = "sha2-256",
 ) -> Dict[str, Any]:
     """Pin file/directory/content to IPFS."""
+    if isinstance(content_source, str):
+        normalized_source = content_source.strip()
+        if not normalized_source:
+            return {"status": "error", "message": "'content_source' must be a non-empty string or object."}
+        content_source = normalized_source
+    elif not isinstance(content_source, dict):
+        return {"status": "error", "message": "'content_source' must be a string or object."}
+
+    normalized_hash_algo = str(hash_algo or "sha2-256").strip() or "sha2-256"
+
     result = _API["pin_to_ipfs"](
         content_source=content_source,
-        recursive=recursive,
-        wrap_with_directory=wrap_with_directory,
-        hash_algo=hash_algo,
+        recursive=bool(recursive),
+        wrap_with_directory=bool(wrap_with_directory),
+        hash_algo=normalized_hash_algo,
     )
     if hasattr(result, "__await__"):
         return await result
@@ -83,11 +93,27 @@ async def get_from_ipfs(
     gateway: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Retrieve content from IPFS by CID."""
+    normalized_cid = str(cid or "").strip()
+    if not normalized_cid:
+        return {"status": "error", "message": "'cid' is required."}
+
+    normalized_timeout_seconds = int(timeout_seconds)
+    if normalized_timeout_seconds <= 0:
+        return {"status": "error", "message": "'timeout_seconds' must be greater than 0."}
+
+    normalized_output_path = str(output_path).strip() if output_path is not None else None
+    if output_path is not None and not normalized_output_path:
+        return {"status": "error", "message": "'output_path' must be a non-empty string when provided."}
+
+    normalized_gateway = str(gateway).strip() if gateway is not None else None
+    if gateway is not None and not normalized_gateway:
+        return {"status": "error", "message": "'gateway' must be a non-empty string when provided."}
+
     result = _API["get_from_ipfs"](
-        cid=cid,
-        output_path=output_path,
-        timeout_seconds=timeout_seconds,
-        gateway=gateway,
+        cid=normalized_cid,
+        output_path=normalized_output_path,
+        timeout_seconds=normalized_timeout_seconds,
+        gateway=normalized_gateway,
     )
     if hasattr(result, "__await__"):
         return await result
@@ -105,9 +131,9 @@ def register_native_ipfs_tools_category(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "content_source": {"type": ["string", "object"]},
-                "recursive": {"type": "boolean"},
-                "wrap_with_directory": {"type": "boolean"},
-                "hash_algo": {"type": "string"},
+                "recursive": {"type": "boolean", "default": True},
+                "wrap_with_directory": {"type": "boolean", "default": False},
+                "hash_algo": {"type": "string", "default": "sha2-256"},
             },
             "required": ["content_source"],
         },
@@ -125,7 +151,7 @@ def register_native_ipfs_tools_category(manager: Any) -> None:
             "properties": {
                 "cid": {"type": "string"},
                 "output_path": {"type": ["string", "null"]},
-                "timeout_seconds": {"type": "integer"},
+                "timeout_seconds": {"type": "integer", "default": 60, "minimum": 1},
                 "gateway": {"type": ["string", "null"]},
             },
             "required": ["cid"],

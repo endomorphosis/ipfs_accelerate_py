@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+"""UNI-002 ipfs_tools parity tests."""
+
+from __future__ import annotations
+
+import unittest
+
+import anyio
+
+from ipfs_accelerate_py.mcp_server.tools.ipfs_tools.native_ipfs_tools_category import (
+    get_from_ipfs,
+    pin_to_ipfs,
+    register_native_ipfs_tools_category,
+)
+
+
+class _DummyManager:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def register_tool(self, **kwargs) -> None:
+        self.calls.append(kwargs)
+
+
+class TestMCPServerUNI002IPFSTools(unittest.TestCase):
+    def test_register_includes_ipfs_tools(self) -> None:
+        manager = _DummyManager()
+        register_native_ipfs_tools_category(manager)
+        names = [c["name"] for c in manager.calls]
+        self.assertIn("pin_to_ipfs", names)
+        self.assertIn("get_from_ipfs", names)
+
+    def test_register_schema_contracts(self) -> None:
+        manager = _DummyManager()
+        register_native_ipfs_tools_category(manager)
+        by_name = {c["name"]: c for c in manager.calls}
+
+        pin_schema = by_name["pin_to_ipfs"]["input_schema"]
+        self.assertEqual(pin_schema.get("required"), ["content_source"])
+        self.assertEqual(pin_schema["properties"]["hash_algo"].get("default"), "sha2-256")
+
+        get_schema = by_name["get_from_ipfs"]["input_schema"]
+        self.assertEqual(get_schema.get("required"), ["cid"])
+        self.assertEqual(get_schema["properties"]["timeout_seconds"].get("minimum"), 1)
+
+    def test_pin_to_ipfs_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_source = await pin_to_ipfs(content_source="")
+            self.assertEqual(missing_source.get("status"), "error")
+            self.assertIn("'content_source'", str(missing_source.get("message", "")))
+
+            invalid_source_type = await pin_to_ipfs(content_source=123)  # type: ignore[arg-type]
+            self.assertEqual(invalid_source_type.get("status"), "error")
+            self.assertIn("'content_source'", str(invalid_source_type.get("message", "")))
+
+            string_source = await pin_to_ipfs(content_source="/tmp/demo.txt")
+            self.assertIn(string_source.get("status"), ["success", "error"])
+
+            object_source = await pin_to_ipfs(content_source={"data": "hello"})
+            self.assertIn(object_source.get("status"), ["success", "error"])
+
+        anyio.run(_run)
+
+    def test_get_from_ipfs_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_cid = await get_from_ipfs(cid="")
+            self.assertEqual(missing_cid.get("status"), "error")
+            self.assertIn("'cid' is required", str(missing_cid.get("message", "")))
+
+            invalid_timeout = await get_from_ipfs(cid="QmDemoHash", timeout_seconds=0)
+            self.assertEqual(invalid_timeout.get("status"), "error")
+            self.assertIn("'timeout_seconds'", str(invalid_timeout.get("message", "")))
+
+            invalid_output = await get_from_ipfs(cid="QmDemoHash", output_path="   ")
+            self.assertEqual(invalid_output.get("status"), "error")
+            self.assertIn("'output_path'", str(invalid_output.get("message", "")))
+
+            invalid_gateway = await get_from_ipfs(cid="QmDemoHash", gateway="  ")
+            self.assertEqual(invalid_gateway.get("status"), "error")
+            self.assertIn("'gateway'", str(invalid_gateway.get("message", "")))
+
+            result = await get_from_ipfs(cid="QmDemoHash", timeout_seconds=5)
+            self.assertIn(result.get("status"), ["success", "error"])
+
+        anyio.run(_run)
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -2888,10 +2888,10 @@ def register_native_web_archive_tools(manager: Any) -> None:
             "properties": {
                 "domain": {"type": "string"},
                 "crawl_id": {"type": ["string", "null"]},
-                "limit": {"type": "integer"},
+                "limit": {"type": "integer", "default": 100, "minimum": 1},
                 "from_timestamp": {"type": ["string", "null"]},
                 "to_timestamp": {"type": ["string", "null"]},
-                "output_format": {"type": "string"},
+                "output_format": {"type": "string", "enum": ["json", "cdx"], "default": "json"},
             },
             "required": ["domain"],
         },
