@@ -45,8 +45,25 @@ async def write_u32_framed_json(
     return await _write(stream, obj, max_frame_bytes=max_frame_bytes)
 
 
-async def handle_mcp_p2p_stream(stream: Any, *, registry: Any | None = None, peer_id: str = "") -> None:
-    """Handle one mcp+p2p stream session using canonical transport bridge."""
+async def handle_mcp_p2p_stream(
+    stream: Any,
+    *,
+    registry: Any | None = None,
+    peer_id: str = "",
+    local_peer_id: str = "",
+    max_frame_bytes: int = 1024 * 1024,
+) -> None:
+    """Handle one mcp+p2p stream session using canonical transport bridge.
+
+    Supports both `peer_id` and `local_peer_id` aliases for compatibility,
+    and forwards max-frame limit controls to the canonical backend handler.
+    """
     from ipfs_accelerate_py.p2p_tasks.mcp_p2p import handle_mcp_p2p_stream as _handle
 
-    await _handle(stream, registry=registry, peer_id=peer_id)
+    resolved_local_peer_id = str(local_peer_id or peer_id or "")
+    await _handle(
+        stream,
+        local_peer_id=resolved_local_peer_id,
+        registry=registry,
+        max_frame_bytes=int(max_frame_bytes),
+    )

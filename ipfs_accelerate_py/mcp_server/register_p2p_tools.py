@@ -15,9 +15,9 @@ P2P_TOOL_MODULES: tuple[tuple[str, str], ...] = (
 )
 
 
-def discover_p2p_tool_modules() -> list[dict[str, str]]:
-    """Return discovery records for canonical P2P module registration specs."""
-    records: list[dict[str, str]] = []
+def _resolve_p2p_registrars() -> list[dict[str, Any]]:
+    """Resolve P2P registrar modules once for discovery/registration paths."""
+    records: list[dict[str, Any]] = []
     for module_path, registrar_name in P2P_TOOL_MODULES:
         try:
             module = importlib.import_module(module_path)
@@ -28,6 +28,7 @@ def discover_p2p_tool_modules() -> list[dict[str, str]]:
                     "module": module_path,
                     "registrar": registrar_name,
                     "status": status,
+                    "callable": registrar if callable(registrar) else None,
                 }
             )
         except Exception as exc:
@@ -37,9 +38,23 @@ def discover_p2p_tool_modules() -> list[dict[str, str]]:
                     "registrar": registrar_name,
                     "status": "import_error",
                     "error": str(exc),
+                    "callable": None,
                 }
             )
     return records
+
+
+def discover_p2p_tool_modules() -> list[dict[str, str]]:
+    """Return discovery records for canonical P2P module registration specs."""
+    records = _resolve_p2p_registrars()
+    return [
+        {
+            key: value
+            for key, value in record.items()
+            if key in {"module", "registrar", "status", "error"} and value is not None
+        }
+        for record in records
+    ]
 
 
 def register_p2p_category_loaders(manager: Any) -> dict[str, int]:
@@ -47,13 +62,12 @@ def register_p2p_category_loaders(manager: Any) -> dict[str, int]:
     loaded = 0
     failed = 0
 
-    for record in discover_p2p_tool_modules():
+    for record in _resolve_p2p_registrars():
         if record.get("status") != "available":
             failed += 1
             continue
 
-        module = importlib.import_module(record["module"])
-        registrar = getattr(module, record["registrar"], None)
+        registrar = record.get("callable")
         if not callable(registrar):
             failed += 1
             continue

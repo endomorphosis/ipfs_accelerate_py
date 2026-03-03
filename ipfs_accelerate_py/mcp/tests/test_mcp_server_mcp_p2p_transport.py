@@ -48,8 +48,35 @@ class TestMCPP2PTransportFacade(unittest.TestCase):
                 new=AsyncMock(return_value=None),
             ) as mock_handle:
                 registry = object()
-                await mcp_p2p_transport.handle_mcp_p2p_stream(stream, registry=registry, peer_id="peer-1")
-                mock_handle.assert_awaited_once_with(stream, registry=registry, peer_id="peer-1")
+                await mcp_p2p_transport.handle_mcp_p2p_stream(
+                    stream,
+                    registry=registry,
+                    peer_id="peer-1",
+                    max_frame_bytes=4096,
+                )
+                mock_handle.assert_awaited_once_with(
+                    stream,
+                    local_peer_id="peer-1",
+                    registry=registry,
+                    max_frame_bytes=4096,
+                )
+
+            with patch(
+                "ipfs_accelerate_py.p2p_tasks.mcp_p2p.handle_mcp_p2p_stream",
+                new=AsyncMock(return_value=None),
+            ) as mock_handle:
+                await mcp_p2p_transport.handle_mcp_p2p_stream(
+                    stream,
+                    registry=registry,
+                    peer_id="peer-1",
+                    local_peer_id="peer-2",
+                )
+                mock_handle.assert_awaited_once_with(
+                    stream,
+                    local_peer_id="peer-2",
+                    registry=registry,
+                    max_frame_bytes=1024 * 1024,
+                )
 
         anyio.run(_run)
 
