@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -79,16 +80,40 @@ async def record_provenance(
             "message": "inputs must be an array of strings when provided",
             "inputs": inputs,
         }
+    if isinstance(inputs, list) and any(not str(item).strip() for item in inputs):
+        return {
+            "status": "error",
+            "message": "inputs cannot contain empty strings",
+            "inputs": inputs,
+        }
     if parameters is not None and not isinstance(parameters, dict):
         return {
             "status": "error",
             "message": "parameters must be an object when provided",
             "parameters": parameters,
         }
+    if description is not None and not str(description).strip():
+        return {
+            "status": "error",
+            "message": "description must be a non-empty string when provided",
+            "description": description,
+        }
+    if agent_id is not None and not str(agent_id).strip():
+        return {
+            "status": "error",
+            "message": "agent_id must be a non-empty string when provided",
+            "agent_id": agent_id,
+        }
     if tags is not None and (not isinstance(tags, list) or not all(isinstance(item, str) for item in tags)):
         return {
             "status": "error",
             "message": "tags must be an array of strings when provided",
+            "tags": tags,
+        }
+    if isinstance(tags, list) and any(not str(item).strip() for item in tags):
+        return {
+            "status": "error",
+            "message": "tags cannot contain empty strings",
             "tags": tags,
         }
     if timestamp is not None and not str(timestamp).strip():
@@ -97,15 +122,26 @@ async def record_provenance(
             "message": "timestamp must be a non-empty string when provided",
             "timestamp": timestamp,
         }
+    normalized_timestamp: Optional[str] = None
+    if timestamp is not None:
+        normalized_timestamp = str(timestamp).strip()
+        try:
+            datetime.fromisoformat(normalized_timestamp.replace("Z", "+00:00"))
+        except ValueError:
+            return {
+                "status": "error",
+                "message": "timestamp must be a valid ISO-8601 string when provided",
+                "timestamp": timestamp,
+            }
 
     result = await _API["record_provenance"](
-        dataset_id=dataset_id,
-        operation=operation,
+        dataset_id=normalized_dataset_id,
+        operation=normalized_operation,
         inputs=inputs,
         parameters=parameters,
         description=description,
         agent_id=agent_id,
-        timestamp=timestamp,
+        timestamp=normalized_timestamp,
         tags=tags,
     )
     payload = dict(result or {})
@@ -131,7 +167,7 @@ def register_native_provenance_tools(manager: Any) -> None:
                 "parameters": {"type": ["object", "null"]},
                 "description": {"type": ["string", "null"]},
                 "agent_id": {"type": ["string", "null"]},
-                "timestamp": {"type": ["string", "null"]},
+                "timestamp": {"type": ["string", "null"], "format": "date-time"},
                 "tags": {"type": ["array", "null"], "items": {"type": "string"}},
             },
             "required": ["dataset_id", "operation"],

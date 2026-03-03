@@ -28,6 +28,15 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
         names = [c["name"] for c in manager.calls]
         self.assertIn("record_provenance", names)
 
+    def test_register_schema_contract(self) -> None:
+        manager = _DummyManager()
+        register_native_provenance_tools(manager)
+        by_name = {c["name"]: c for c in manager.calls}
+
+        schema = by_name["record_provenance"]["input_schema"]
+        timestamp = schema["properties"]["timestamp"]
+        self.assertEqual(timestamp.get("format"), "date-time")
+
     def test_record_provenance_rejects_missing_dataset_id(self) -> None:
         async def _run() -> None:
             result = await record_provenance(dataset_id="", operation="transform")
@@ -57,6 +66,30 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
             result = await record_provenance(dataset_id="dataset-1", operation="transform", parameters=["bad"])  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("must be an object", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_record_provenance_rejects_invalid_timestamp(self) -> None:
+        async def _run() -> None:
+            result = await record_provenance(
+                dataset_id="dataset-1",
+                operation="transform",
+                timestamp="not-a-timestamp",
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("valid ISO-8601", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_record_provenance_rejects_empty_tag(self) -> None:
+        async def _run() -> None:
+            result = await record_provenance(
+                dataset_id="dataset-1",
+                operation="transform",
+                tags=["ok", " "],
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("cannot contain empty strings", str(result.get("message", "")))
 
         anyio.run(_run)
 

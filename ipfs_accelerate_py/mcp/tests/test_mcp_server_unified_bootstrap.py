@@ -5745,6 +5745,163 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_provenance_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """provenance_tools should expose source-compatible operations with deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="provenance-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("provenance_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("record_provenance", names)
+
+            schema = await get_schema("provenance_tools", "record_provenance")
+            self.assertEqual(schema.get("name"), "record_provenance")
+            schema_props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((schema_props.get("timestamp") or {}).get("format"), "date-time")
+
+            invalid_timestamp = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "provenance_tools",
+                    "record_provenance",
+                    {
+                        "dataset_id": "dataset-1",
+                        "operation": "transform",
+                        "timestamp": "not-a-timestamp",
+                    },
+                )
+            )
+            self.assertEqual(invalid_timestamp.get("status"), "error")
+            self.assertIn("valid ISO-8601", str(invalid_timestamp.get("message", "")))
+
+            valid_record = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "provenance_tools",
+                    "record_provenance",
+                    {
+                        "dataset_id": "dataset-1",
+                        "operation": "transform",
+                        "timestamp": "2026-03-03T12:00:00Z",
+                    },
+                )
+            )
+            self.assertIn(valid_record.get("status"), ["success", "error"])
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_admin_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """admin_tools should expose source-compatible operations with deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="admin-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("admin_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("manage_endpoints", names)
+            self.assertIn("system_maintenance", names)
+            self.assertIn("configure_system", names)
+
+            endpoint_schema = await get_schema("admin_tools", "manage_endpoints")
+            props = (endpoint_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("list", (props.get("action") or {}).get("enum", []))
+            self.assertEqual((props.get("ctx_length") or {}).get("minimum"), 1)
+
+            invalid_action = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "manage_endpoints",
+                    {
+                        "action": "bad",
+                    },
+                )
+            )
+            self.assertEqual(invalid_action.get("status"), "error")
+            self.assertIn("must be one of", str(invalid_action.get("message", "")))
+
+            status_alias = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "system_maintenance",
+                    {
+                        "operation": "status",
+                    },
+                )
+            )
+            self.assertIn(status_alias.get("status"), ["success", "error"])
+
+            invalid_settings = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "configure_system",
+                    {
+                        "action": "update",
+                        "settings": ["bad"],
+                    },
+                )
+            )
+            self.assertEqual(invalid_settings.get("status"), "error")
+            self.assertIn("must be an object", str(invalid_settings.get("message", "")))
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 

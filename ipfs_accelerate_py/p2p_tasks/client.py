@@ -63,10 +63,16 @@ Environment:
     - maximum remote cooldown-state entries retained in-process (default: 2048)
 - IPFS_DATASETS_PY_TASK_P2P_REMOTE_STATE_STALE_S / IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_STATE_STALE_S
     - seconds after which idle remote cooldown-state entries may be pruned (default: 600)
+- IPFS_DATASETS_PY_TASK_P2P_EXPLICIT_ADDR_COOLDOWN_BASE_MS / IPFS_ACCELERATE_PY_TASK_P2P_EXPLICIT_ADDR_COOLDOWN_BASE_MS
+    - adaptive cooldown base in milliseconds for stale explicit multiaddrs after transport failures (default: 250)
+- IPFS_DATASETS_PY_TASK_P2P_EXPLICIT_ADDR_COOLDOWN_MAX_MS / IPFS_ACCELERATE_PY_TASK_P2P_EXPLICIT_ADDR_COOLDOWN_MAX_MS
+    - cap for stale explicit multiaddr cooldown in milliseconds (default: 5000)
 - IPFS_DATASETS_PY_TASK_P2P_CACHE_MAX_KEYS / IPFS_ACCELERATE_PY_TASK_P2P_CACHE_MAX_KEYS
     - maximum discovered multiaddr cache entries retained in-process (default: 1024)
 - IPFS_DATASETS_PY_TASK_P2P_CACHE_STALE_S / IPFS_ACCELERATE_PY_TASK_P2P_CACHE_STALE_S
     - seconds after which idle discovered multiaddr cache entries are pruned (default: 1800)
+- IPFS_DATASETS_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY / IPFS_ACCELERATE_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY
+    - when enabled, retry attempts use lightweight dialing (cache + announce) and skip broad discovery fanout (default: 1)
 """
 
 from __future__ import annotations
@@ -351,6 +357,26 @@ def _remote_state_stale_s() -> float:
         return 600.0
 
 
+def _explicit_addr_cooldown_base_ms() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_EXPLICIT_ADDR_COOLDOWN_BASE_MS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_EXPLICIT_ADDR_COOLDOWN_BASE_MS", "250")
+        return max(10, int(str(raw).strip()))
+    except Exception:
+        return 250
+
+
+def _explicit_addr_cooldown_max_ms() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_EXPLICIT_ADDR_COOLDOWN_MAX_MS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_EXPLICIT_ADDR_COOLDOWN_MAX_MS", "5000")
+        return max(50, int(str(raw).strip()))
+    except Exception:
+        return 5000
+
+
 def _cache_state_max_keys() -> int:
     try:
         raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_MAX_KEYS")
@@ -371,6 +397,14 @@ def _cache_state_stale_s() -> float:
         return 1800.0
 
 
+def _retry_lightweight_discovery_enabled() -> bool:
+    return _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY",
+        compat="IPFS_DATASETS_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY",
+        default=True,
+    )
+
+
 def _retry_delay_s(*, attempt: int, base_ms: int) -> float:
     base = max(10, int(base_ms))
     return ((base * (2**max(0, int(attempt)))) + random.randint(0, base)) / 1000.0
@@ -383,6 +417,11 @@ _P2P_REMOTE_COOLDOWN_UNTIL_TS: dict[str, float] = {}
 _P2P_REMOTE_COOLDOWN_FAILURE_STREAK: dict[str, int] = {}
 _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS: dict[str, float] = {}
 _P2P_REMOTE_COOLDOWN_MUTATIONS: int = 0
+_P2P_EXPLICIT_ADDR_COOLDOWN_LOCK = threading.Lock()
+_P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS: dict[str, float] = {}
+_P2P_EXPLICIT_ADDR_COOLDOWN_STREAK: dict[str, int] = {}
+_P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS: dict[str, float] = {}
+_P2P_EXPLICIT_ADDR_COOLDOWN_MUTATIONS: int = 0
 _P2P_DIAL_SEM_LOCK = threading.Lock()
 _P2P_DIAL_SEM: threading.BoundedSemaphore | None = None
 _P2P_DIAL_SEM_SIZE: int = 0
@@ -519,6 +558,85 @@ def _prune_remote_state_locked(now: float) -> None:
         _retry_metric_inc("remote_state.pruned", len(oldest))
 
 
+def _prune_explicit_addr_state_locked(now: float) -> None:
+    """Prune stale/excess explicit-address cooldown state. Caller must hold lock."""
+    max_keys = _remote_state_max_keys()
+    stale_s = _remote_state_stale_s()
+
+    if not _P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS:
+        return
+
+    stale_cutoff = float(now) - float(stale_s)
+    stale_keys = [
+        k
+        for (k, ts) in _P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS.items()
+        if float(ts) < stale_cutoff and float(_P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS.get(k, 0.0) or 0.0) <= float(now)
+    ]
+    if stale_keys:
+        for key in stale_keys:
+            _P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS.pop(key, None)
+            _P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS.pop(key, None)
+            _P2P_EXPLICIT_ADDR_COOLDOWN_STREAK.pop(key, None)
+        _retry_metric_inc("explicit_addr_state.pruned", len(stale_keys))
+
+    n = len(_P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS)
+    if n <= int(max_keys):
+        return
+
+    overflow = n - int(max_keys)
+    oldest = sorted(_P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS.items(), key=lambda kv: float(kv[1]))[:overflow]
+    if oldest:
+        for key, _ in oldest:
+            _P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS.pop(key, None)
+            _P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS.pop(key, None)
+            _P2P_EXPLICIT_ADDR_COOLDOWN_STREAK.pop(key, None)
+        _retry_metric_inc("explicit_addr_state.pruned", len(oldest))
+
+
+def _explicit_addr_cooldown_wait_s(peer_multiaddr: str) -> float:
+    key = str(peer_multiaddr or "").strip()
+    if not key:
+        return 0.0
+    now = time.monotonic()
+    with _P2P_EXPLICIT_ADDR_COOLDOWN_LOCK:
+        until_ts = float(_P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS.get(key, 0.0) or 0.0)
+    if until_ts <= now:
+        return 0.0
+    return max(0.0, until_ts - now)
+
+
+def _explicit_addr_cooldown_mark_failure(peer_multiaddr: str) -> None:
+    global _P2P_EXPLICIT_ADDR_COOLDOWN_MUTATIONS
+    key = str(peer_multiaddr or "").strip()
+    if not key:
+        return
+    base_ms = _explicit_addr_cooldown_base_ms()
+    max_ms = max(_explicit_addr_cooldown_max_ms(), base_ms)
+    now = time.monotonic()
+    with _P2P_EXPLICIT_ADDR_COOLDOWN_LOCK:
+        streak = int(_P2P_EXPLICIT_ADDR_COOLDOWN_STREAK.get(key, 0)) + 1
+        _P2P_EXPLICIT_ADDR_COOLDOWN_STREAK[key] = streak
+        delay_ms = min(max_ms, base_ms * (2 ** max(0, streak - 1)))
+        jitter_ms = random.randint(0, max(1, base_ms // 2))
+        _P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS[key] = float(now) + ((delay_ms + jitter_ms) / 1000.0)
+        _P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS[key] = float(now)
+        _P2P_EXPLICIT_ADDR_COOLDOWN_MUTATIONS = int(_P2P_EXPLICIT_ADDR_COOLDOWN_MUTATIONS) + 1
+        if (
+            len(_P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS) > _remote_state_max_keys()
+        ) or (_P2P_EXPLICIT_ADDR_COOLDOWN_MUTATIONS % 64 == 0):
+            _prune_explicit_addr_state_locked(float(now))
+
+
+def _explicit_addr_cooldown_mark_success(peer_multiaddr: str) -> None:
+    key = str(peer_multiaddr or "").strip()
+    if not key:
+        return
+    with _P2P_EXPLICIT_ADDR_COOLDOWN_LOCK:
+        _P2P_EXPLICIT_ADDR_COOLDOWN_LAST_TOUCH_TS.pop(key, None)
+        _P2P_EXPLICIT_ADDR_COOLDOWN_STREAK.pop(key, None)
+        _P2P_EXPLICIT_ADDR_COOLDOWN_UNTIL_TS.pop(key, None)
+
+
 def _remote_cooldown_mark_failure(remote: Any) -> None:
     global _P2P_REMOTE_COOLDOWN_MUTATIONS
     key = _remote_cooldown_key(remote)
@@ -603,6 +721,10 @@ async def _dial_and_request_with_retries(
     max_retries = max(0, int(retries))
     for attempt in range(max_retries + 1):
         attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
+        broad_discovery_override: bool | None = None
+        if attempt > 0 and _retry_lightweight_discovery_enabled():
+            broad_discovery_override = False
+            _retry_metric_inc(f"{op_label}.retry_lightweight_discovery")
         cooldown_wait_s = _remote_cooldown_wait_s(remote)
         if cooldown_wait_s > 0:
             _retry_metric_inc(f"{op_label}.cooldown_wait")
@@ -617,6 +739,7 @@ async def _dial_and_request_with_retries(
                     remote=remote,
                     message=message,
                     dial_timeout_s=attempt_dial_timeout_s,
+                    allow_broad_discovery_override=broad_discovery_override,
                 )
             finally:
                 release_slot()
@@ -1360,10 +1483,23 @@ async def _dial_via_announce_file(
         except Exception:
             pass
 
+    announce_wait_s = _explicit_addr_cooldown_wait_s(ma)
+    if announce_wait_s > 0:
+        _retry_metric_inc("dial.announce_cooldown_skip")
+        return None
+
     try:
         resp = await _try_peer_multiaddr(host=host, peer_multiaddr=ma, message=message)
-        return resp if isinstance(resp, dict) else None
+        if isinstance(resp, dict):
+            _explicit_addr_cooldown_mark_success(ma)
+            pid = _multiaddr_peer_id(ma)
+            if pid:
+                _cache_set_multiaddr(pid, ma)
+            return resp
+        return None
     except Exception:
+        _retry_metric_inc("dial.announce_failed")
+        _explicit_addr_cooldown_mark_failure(ma)
         return None
 
 
@@ -1671,6 +1807,7 @@ async def _dial_and_request(
     remote: RemoteQueue,
     message: Dict[str, Any],
     dial_timeout_s: float = 20.0,
+    allow_broad_discovery_override: bool | None = None,
 ) -> Dict[str, Any]:
     if not _have_libp2p():
         raise RuntimeError("libp2p is not installed")
@@ -1697,28 +1834,61 @@ async def _dial_and_request(
             await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
             with anyio.fail_after(float(dial_timeout_s)):
-                if (remote.multiaddr or "").strip():
-                    resp = await _try_peer_multiaddr(
-                        host=host,
-                        peer_multiaddr=remote.multiaddr,
-                        message=message,
-                    )  # type: ignore[assignment]
-                else:
-                    require_peer_id = (remote.peer_id or "").strip()
+                require_peer_id = (remote.peer_id or "").strip()
+                explicit_multiaddr = (remote.multiaddr or "").strip()
 
+                if explicit_multiaddr:
+                    # Prefer explicit address first, but do not hard-fail this
+                    # attempt if the address is stale or transport/security
+                    # negotiation fails under load.
+                    explicit_wait_s = _explicit_addr_cooldown_wait_s(explicit_multiaddr)
+                    if explicit_wait_s > 0:
+                        _retry_metric_inc("dial.explicit_multiaddr_cooldown_skip")
+                        _dial_debug(
+                            "explicit multiaddr cooldown skip; falling back to discovery paths "
+                            f"peer_id={require_peer_id or '<none>'} wait_s={explicit_wait_s:.3f}"
+                        )
+                        resp = None
+                    else:
+                        try:
+                            resp = await _try_peer_multiaddr(
+                                host=host,
+                                peer_multiaddr=explicit_multiaddr,
+                                message=message,
+                            )  # type: ignore[assignment]
+                            if isinstance(resp, dict):
+                                _explicit_addr_cooldown_mark_success(explicit_multiaddr)
+                        except Exception as exc:
+                            _retry_metric_inc("dial.explicit_multiaddr_failed")
+                            _explicit_addr_cooldown_mark_failure(explicit_multiaddr)
+                            _dial_debug(
+                                "explicit multiaddr dial failed; falling back to discovery paths "
+                                f"peer_id={require_peer_id or '<none>'} err={type(exc).__name__}: {exc}"
+                            )
+                            resp = None
+
+                # Whether we started with explicit multiaddr or not, attempt
+                # peer-id based paths when no response has been obtained.
+                if not isinstance(resp, dict):
                     # If we've recently discovered this peer via mDNS/DHT/etc in this
                     # process, try the cached multiaddr first to avoid rediscovery
                     # races during submit/wait loops.
                     if require_peer_id:
                         cached_ma = _cache_get_multiaddr(require_peer_id)
                         if cached_ma:
-                            try:
-                                resp = await _try_peer_multiaddr(host=host, peer_multiaddr=cached_ma, message=message)
-                                if isinstance(resp, dict):
-                                    return resp
-                            except Exception:
-                                pass
-                            _cache_del_multiaddr(require_peer_id)
+                            cached_wait_s = _explicit_addr_cooldown_wait_s(cached_ma)
+                            if cached_wait_s > 0:
+                                _retry_metric_inc("dial.cache_multiaddr_cooldown_skip")
+                            else:
+                                try:
+                                    resp = await _try_peer_multiaddr(host=host, peer_multiaddr=cached_ma, message=message)
+                                    if isinstance(resp, dict):
+                                        _explicit_addr_cooldown_mark_success(cached_ma)
+                                        return resp
+                                except Exception:
+                                    _retry_metric_inc("dial.cache_multiaddr_failed")
+                                    _explicit_addr_cooldown_mark_failure(cached_ma)
+                                _cache_del_multiaddr(require_peer_id)
 
                     # Zero-config: if a local service is running, it writes an
                     # announce file in XDG cache; dial it first.
@@ -1726,20 +1896,39 @@ async def _dial_and_request(
                     if isinstance(ann, dict):
                         resp = ann
                     else:
-                        # Then try cross-subnet mechanisms, and finally LAN mDNS.
-                        boot = await _dial_via_bootstrap(host=host, message=message)
-                        if isinstance(boot, dict):
-                            resp = boot
-                        else:
-                            rv = await _dial_via_rendezvous(host=host, message=message, require_peer_id=require_peer_id)
-                            if isinstance(rv, dict):
-                                resp = rv
+                        # Broad discovery fallback can be expensive under high
+                        # throughput. For explicit multiaddr targets, keep
+                        # fallback lightweight by default (cache + announce)
+                        # unless explicitly enabled.
+                        allow_broad_discovery = True
+                        if explicit_multiaddr:
+                            allow_broad_discovery = _env_bool(
+                                primary="IPFS_ACCELERATE_PY_TASK_P2P_EXPLICIT_DISCOVERY_FALLBACK",
+                                compat="IPFS_DATASETS_PY_TASK_P2P_EXPLICIT_DISCOVERY_FALLBACK",
+                                default=False,
+                            )
+                        if allow_broad_discovery_override is not None:
+                            allow_broad_discovery = bool(allow_broad_discovery) and bool(allow_broad_discovery_override)
+
+                        if allow_broad_discovery:
+                            # Then try cross-subnet mechanisms, and finally LAN mDNS.
+                            boot = await _dial_via_bootstrap(host=host, message=message)
+                            if isinstance(boot, dict):
+                                resp = boot
                             else:
-                                dht = await _dial_via_dht(host=host, message=message, require_peer_id=require_peer_id)
-                                if isinstance(dht, dict):
-                                    resp = dht
+                                rv = await _dial_via_rendezvous(host=host, message=message, require_peer_id=require_peer_id)
+                                if isinstance(rv, dict):
+                                    resp = rv
                                 else:
-                                    resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
+                                    dht = await _dial_via_dht(host=host, message=message, require_peer_id=require_peer_id)
+                                    if isinstance(dht, dict):
+                                        resp = dht
+                                    else:
+                                        resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
+                        else:
+                            _retry_metric_inc("dial.broad_discovery_skipped")
+                            if explicit_multiaddr:
+                                _retry_metric_inc("dial.explicit_discovery_skipped")
     except BaseExceptionGroup as exc:
         # Under high concurrency, background_trio_service teardown can raise
         # grouped transport errors after a successful request/response cycle.
@@ -2756,6 +2945,23 @@ def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail
 async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> str:
     import anyio
 
+    def _is_retryable_submit_runtime_error(exc: RuntimeError) -> bool:
+        text = str(exc or "").strip().lower()
+        if not text:
+            return False
+        transient_markers = (
+            "discovery_timeout",
+            "p2p request failed: no response",
+            "unable to connect",
+            "failed to upgrade security",
+            "failed to negotiate the secure protocol",
+            "handshake",
+            "timeout",
+            "stream",
+            "swarmexception",
+        )
+        return any(marker in text for marker in transient_markers)
+
     retries = _submit_retry_attempts()
     base_ms = _submit_retry_base_ms()
     dial_timeout_s = _submit_dial_timeout_s()
@@ -2797,8 +3003,11 @@ async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, p
             )
             await anyio.sleep(delay_s)
         except RuntimeError as exc:
-            # Preserve behavior for non-retryable submit failures.
-            if "submit failed:" in str(exc):
+            # Retry transport-like submit errors (e.g. discovery timeout,
+            # no-response handshake churn), but preserve immediate failure for
+            # clearly non-retryable submit responses.
+            retryable_runtime = _is_retryable_submit_runtime_error(exc)
+            if ("submit failed:" in str(exc)) and (not retryable_runtime):
                 raise
             last_exc = exc
             _remote_cooldown_mark_failure(remote)

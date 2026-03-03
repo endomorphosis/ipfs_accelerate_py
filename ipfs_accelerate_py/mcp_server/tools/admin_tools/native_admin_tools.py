@@ -99,12 +99,58 @@ async def manage_endpoints(
     ctx_length: Optional[int] = 512,
 ) -> Dict[str, Any]:
     """Manage endpoint records for embedding/model services."""
+    normalized_action = str(action or "").strip().lower()
+    allowed_actions = {"add", "update", "remove", "list"}
+    if normalized_action not in allowed_actions:
+        return {
+            "status": "error",
+            "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
+            "action": action,
+        }
+    if normalized_action == "add" and (not str(model or "").strip() or not str(endpoint or "").strip() or not str(endpoint_type or "").strip()):
+        return {
+            "status": "error",
+            "message": "model, endpoint, and endpoint_type are required for add action",
+            "action": normalized_action,
+        }
+    if normalized_action in {"update", "remove"} and not str(model or "").strip():
+        return {
+            "status": "error",
+            "message": "model is required for update/remove actions",
+            "action": normalized_action,
+        }
+    if endpoint_type is not None:
+        normalized_endpoint_type = str(endpoint_type).strip().lower()
+        valid_endpoint_types = {"local", "http", "https", "openai", "azure", "sagemaker"}
+        if normalized_endpoint_type not in valid_endpoint_types:
+            return {
+                "status": "error",
+                "message": "endpoint_type must be one of: azure, http, https, local, openai, sagemaker",
+                "endpoint_type": endpoint_type,
+            }
+    normalized_ctx_length: Optional[int] = None
+    if ctx_length is not None:
+        try:
+            normalized_ctx_length = int(ctx_length)
+        except (TypeError, ValueError):
+            return {
+                "status": "error",
+                "message": "ctx_length must be a positive integer when provided",
+                "ctx_length": ctx_length,
+            }
+        if normalized_ctx_length <= 0:
+            return {
+                "status": "error",
+                "message": "ctx_length must be a positive integer when provided",
+                "ctx_length": ctx_length,
+            }
+
     return await _API["manage_endpoints"](
-        action=action,
+        action=normalized_action,
         model=model,
         endpoint=endpoint,
         endpoint_type=endpoint_type,
-        ctx_length=ctx_length,
+        ctx_length=normalized_ctx_length,
     )
 
 
@@ -115,11 +161,29 @@ async def system_maintenance(
     action: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Perform maintenance operations like health-check and cleanup."""
+    normalized_operation = str(operation or action or "health_check").strip().lower()
+    alias_map = {"status": "health_check", "health": "health_check"}
+    normalized_operation = alias_map.get(normalized_operation, normalized_operation)
+    allowed_operations = {"health_check", "cleanup", "restart", "backup"}
+    if normalized_operation not in allowed_operations:
+        return {
+            "status": "error",
+            "message": f"operation must be one of: {', '.join(sorted(allowed_operations))}",
+            "operation": operation,
+            "action": action,
+        }
+    if not isinstance(force, bool):
+        return {
+            "status": "error",
+            "message": "force must be a boolean",
+            "force": force,
+        }
+
     return await _API["system_maintenance"](
-        operation=operation,
+        operation=normalized_operation,
         target=target,
         force=force,
-        action=action,
+        action=normalized_operation,
     )
 
 
@@ -130,8 +194,35 @@ async def configure_system(
     validate_only: bool = False,
 ) -> Dict[str, Any]:
     """Get or update system configuration settings."""
+    normalized_action = str(action or "").strip().lower()
+    allowed_actions = {"get", "set", "update", "configure"}
+    if normalized_action not in allowed_actions:
+        return {
+            "status": "error",
+            "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
+            "action": action,
+        }
+    if normalized_action in {"set", "update", "configure"} and settings is not None and not isinstance(settings, dict):
+        return {
+            "status": "error",
+            "message": "settings must be an object when provided",
+            "settings": settings,
+        }
+    if config_key is not None and not str(config_key).strip():
+        return {
+            "status": "error",
+            "message": "config_key must be a non-empty string when provided",
+            "config_key": config_key,
+        }
+    if not isinstance(validate_only, bool):
+        return {
+            "status": "error",
+            "message": "validate_only must be a boolean",
+            "validate_only": validate_only,
+        }
+
     return await _API["configure_system"](
-        action=action,
+        action=normalized_action,
         config_key=config_key,
         settings=settings,
         validate_only=validate_only,
@@ -148,11 +239,11 @@ def register_native_admin_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
+                "action": {"type": "string", "enum": ["add", "update", "remove", "list"]},
                 "model": {"type": ["string", "null"]},
                 "endpoint": {"type": ["string", "null"]},
-                "endpoint_type": {"type": ["string", "null"]},
-                "ctx_length": {"type": ["integer", "null"]},
+                "endpoint_type": {"type": ["string", "null"], "enum": ["local", "http", "https", "openai", "azure", "sagemaker", None]},
+                "ctx_length": {"type": ["integer", "null"], "minimum": 1, "default": 512},
             },
             "required": ["action"],
         },
@@ -168,10 +259,10 @@ def register_native_admin_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "operation": {"type": ["string", "null"]},
+                "operation": {"type": ["string", "null"], "enum": ["health_check", "cleanup", "restart", "backup", "status", "health", None]},
                 "target": {"type": ["string", "null"]},
-                "force": {"type": "boolean"},
-                "action": {"type": ["string", "null"]},
+                "force": {"type": "boolean", "default": False},
+                "action": {"type": ["string", "null"], "enum": ["health_check", "cleanup", "restart", "backup", "status", "health", None]},
             },
             "required": [],
         },
@@ -187,10 +278,10 @@ def register_native_admin_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
+                "action": {"type": "string", "enum": ["get", "set", "update", "configure"]},
                 "config_key": {"type": ["string", "null"]},
                 "settings": {"type": ["object", "null"]},
-                "validate_only": {"type": "boolean"},
+                "validate_only": {"type": "boolean", "default": False},
             },
             "required": ["action"],
         },
