@@ -9,6 +9,7 @@ import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.graph_tools.native_graph_tools import (
     graph_add_relationship,
+    graph_query_cypher,
     register_native_graph_tools,
 )
 
@@ -27,6 +28,7 @@ class TestMCPServerUNI105GraphTools(unittest.TestCase):
         register_native_graph_tools(manager)
         names = [c["name"] for c in manager.calls]
         self.assertIn("graph_add_relationship", names)
+        self.assertIn("graph_query_cypher", names)
 
     def test_graph_add_relationship_rejects_missing_required_fields(self) -> None:
         async def _run() -> None:
@@ -47,6 +49,24 @@ class TestMCPServerUNI105GraphTools(unittest.TestCase):
             self.assertEqual(result.get("source_id"), "alice")
             self.assertEqual(result.get("target_id"), "bob")
             self.assertEqual(result.get("relationship_type"), "KNOWS")
+
+        anyio.run(_run)
+
+    def test_graph_query_cypher_rejects_missing_query(self) -> None:
+        async def _run() -> None:
+            result = await graph_query_cypher(query="   ")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("query must be provided", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_graph_query_cypher_fallback_shape(self) -> None:
+        async def _run() -> None:
+            result = await graph_query_cypher(query="MATCH (n) RETURN n LIMIT 1")
+            self.assertIn(result.get("status"), ["success", "error"])
+            self.assertIn("query", result)
+            if result.get("status") == "error":
+                self.assertIn("message", result)
 
         anyio.run(_run)
 

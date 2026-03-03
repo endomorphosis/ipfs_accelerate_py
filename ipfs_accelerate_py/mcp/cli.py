@@ -48,6 +48,17 @@ def _default_task_p2p_announce_file() -> str:
         return str(Path(os.getcwd()) / "state" / "p2p" / "task_p2p_announce.json")
 
 
+def _default_autoscale_max() -> int:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX")
+    if raw is not None and str(raw).strip():
+        try:
+            return max(1, int(float(str(raw).strip())))
+        except Exception:
+            return 4
+    cpu_n = os.cpu_count() or 4
+    return max(4, min(16, int(cpu_n) * 2))
+
+
 def main():
     """Main entry point for the MCP server CLI."""
     parser = argparse.ArgumentParser(
@@ -131,8 +142,8 @@ def main():
     parser.add_argument(
         "--p2p-autoscale-max",
         type=int,
-        default=int(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX", "4")),
-        help="Maximum autoscaled worker count (default: 4)",
+        default=_default_autoscale_max(),
+        help="Maximum autoscaled worker count (default: env or cpu-based, capped at 16)",
     )
     parser.add_argument(
         "--p2p-autoscale-idle-s",
@@ -354,6 +365,17 @@ def main():
         if args.p2p_task_worker:
             os.environ.setdefault("IPFS_ACCELERATE_PY_MCP_P2P_TASK_WORKER", "1")
             os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER", "1")
+
+            # Enable HF-backed task support and throughput-oriented batching by default.
+            # Operators can still override any of these via environment variables.
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF", "1")
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF", "1")
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH", "16")
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH", "8")
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX", "4")
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX", "8")
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX", "16")
+            os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX", "16")
 
             # Base worker id used as a prefix by the orchestrator for spawned workers.
             os.environ.setdefault("IPFS_ACCELERATE_PY_TASK_WORKER_ID", str(args.p2p_worker_id))

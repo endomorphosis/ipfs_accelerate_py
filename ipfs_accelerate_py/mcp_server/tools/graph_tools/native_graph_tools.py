@@ -15,12 +15,14 @@ def _load_graph_tools_api() -> Dict[str, Any]:
             graph_add_entity as _graph_add_entity,
             graph_add_relationship as _graph_add_relationship,
             graph_create as _graph_create,
+            graph_query_cypher as _graph_query_cypher,
         )
 
         return {
             "graph_create": _graph_create,
             "graph_add_entity": _graph_add_entity,
             "graph_add_relationship": _graph_add_relationship,
+            "graph_query_cypher": _graph_query_cypher,
         }
     except Exception:
         logger.warning("Source graph_tools import unavailable, using fallback graph-tools functions")
@@ -62,10 +64,24 @@ def _load_graph_tools_api() -> Dict[str, Any]:
                 "relationship_type": relationship_type,
             }
 
+        async def _query_cypher_fallback(
+            query: str,
+            parameters: Optional[Dict[str, Any]] = None,
+            driver_url: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = parameters, driver_url
+            return {
+                "status": "error",
+                "message": "graph backend unavailable",
+                "query": query,
+                "results": [],
+            }
+
         return {
             "graph_create": _create_fallback,
             "graph_add_entity": _add_entity_fallback,
             "graph_add_relationship": _add_relationship_fallback,
+            "graph_query_cypher": _query_cypher_fallback,
         }
 
 
@@ -131,6 +147,30 @@ async def graph_add_relationship(
     return result
 
 
+async def graph_query_cypher(
+    query: str,
+    parameters: Optional[Dict[str, Any]] = None,
+    driver_url: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Execute a Cypher query against the configured graph backend."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {
+            "status": "error",
+            "message": "query must be provided",
+            "query": query,
+        }
+
+    result = _API["graph_query_cypher"](
+        query=normalized_query,
+        parameters=parameters,
+        driver_url=driver_url,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
 def register_native_graph_tools(manager: Any) -> None:
     """Register native graph-tools category tools in unified manager."""
     manager.register_tool(
@@ -183,6 +223,24 @@ def register_native_graph_tools(manager: Any) -> None:
                 "driver_url": {"type": ["string", "null"]},
             },
             "required": ["source_id", "target_id", "relationship_type"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "graph-tools"],
+    )
+
+    manager.register_tool(
+        category="graph_tools",
+        name="graph_query_cypher",
+        func=graph_query_cypher,
+        description="Execute a Cypher query against the graph backend.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "parameters": {"type": ["object", "null"]},
+                "driver_url": {"type": ["string", "null"]},
+            },
+            "required": ["query"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "graph-tools"],

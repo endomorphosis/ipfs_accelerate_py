@@ -11,6 +11,7 @@ from ipfs_accelerate_py.mcp_server.tools.logic_tools.native_logic_tools import (
     register_native_logic_tools,
     tdfol_convert,
     tdfol_parse,
+    tdfol_prove,
 )
 
 
@@ -29,6 +30,7 @@ class TestMCPServerUNI105LogicTools(unittest.TestCase):
         names = [c["name"] for c in manager.calls]
         self.assertIn("tdfol_parse", names)
         self.assertIn("tdfol_convert", names)
+        self.assertIn("tdfol_prove", names)
 
     def test_tdfol_parse_rejects_missing_text(self) -> None:
         async def _run() -> None:
@@ -72,6 +74,27 @@ class TestMCPServerUNI105LogicTools(unittest.TestCase):
                 if "source_format" in result or "target_format" in result:
                     self.assertIn("source_format", result)
                     self.assertIn("target_format", result)
+
+        anyio.run(_run)
+
+    def test_tdfol_prove_rejects_missing_formula(self) -> None:
+        async def _run() -> None:
+            result = await tdfol_prove(formula="  ")
+            self.assertEqual(result.get("success"), False)
+            self.assertIn("'formula' is required", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_tdfol_prove_fallback_shape(self) -> None:
+        async def _run() -> None:
+            result = await tdfol_prove(
+                formula="forall x (Human(x) -> Mortal(x))",
+                axioms=["Human(socrates)"],
+            )
+            self.assertIn(result.get("success"), [True, False])
+            if result.get("success") is False:
+                self.assertIn("error", result)
+                self.assertIn("formula", result)
 
         anyio.run(_run)
 

@@ -21,12 +21,16 @@ def _load_logic_tools_api() -> Dict[str, Any]:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.logic_tools.tdfol_convert_tool import (  # type: ignore
             tdfol_convert as _tdfol_convert,
         )
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.logic_tools.tdfol_prove_tool import (  # type: ignore
+            tdfol_prove as _tdfol_prove,
+        )
 
         return {
             "logic_capabilities": _logic_capabilities,
             "logic_health": _logic_health,
             "tdfol_parse": _tdfol_parse,
             "tdfol_convert": _tdfol_convert,
+            "tdfol_prove": _tdfol_prove,
         }
     except Exception:
         logger.warning("Source logic_tools import unavailable, using fallback logic functions")
@@ -81,11 +85,33 @@ def _load_logic_tools_api() -> Dict[str, Any]:
                 "target_format": target_format,
             }
 
+        async def _tdfol_prove_fallback(
+            formula: str,
+            axioms: list[str] | None = None,
+            strategy: str = "auto",
+            timeout_ms: int = 5000,
+            max_depth: int = 10,
+            include_proof_steps: bool = True,
+        ) -> Dict[str, Any]:
+            if not str(formula or "").strip():
+                return {
+                    "success": False,
+                    "error": "'formula' is required.",
+                }
+            _ = axioms, strategy, timeout_ms, max_depth, include_proof_steps
+            return {
+                "success": False,
+                "error": "tdfol_prove: LogicProcessor not available.",
+                "proved": False,
+                "formula": formula,
+            }
+
         return {
             "logic_capabilities": _logic_capabilities_fallback,
             "logic_health": _logic_health_fallback,
             "tdfol_parse": _tdfol_parse_fallback,
             "tdfol_convert": _tdfol_convert_fallback,
+            "tdfol_prove": _tdfol_prove_fallback,
         }
 
 
@@ -154,6 +180,40 @@ async def tdfol_convert(
     return result
 
 
+async def tdfol_prove(
+    formula: str,
+    axioms: list[str] | None = None,
+    strategy: str = "auto",
+    timeout_ms: int = 5000,
+    max_depth: int = 10,
+    include_proof_steps: bool = True,
+) -> Dict[str, Any]:
+    """Prove a TDFOL formula with deterministic fallback envelopes."""
+    normalized_formula = str(formula or "").strip()
+    if not normalized_formula:
+        return {
+            "success": False,
+            "error": "'formula' is required.",
+        }
+
+    result = _API["tdfol_prove"](
+        formula=normalized_formula,
+        axioms=axioms,
+        strategy=str(strategy or "auto"),
+        timeout_ms=int(timeout_ms),
+        max_depth=int(max_depth),
+        include_proof_steps=bool(include_proof_steps),
+    )
+    if hasattr(result, "__await__"):
+        result = await result
+
+    if isinstance(result, dict) and result.get("success") is False and "formula" not in result:
+        result = dict(result)
+        result["formula"] = normalized_formula
+
+    return result
+
+
 def register_native_logic_tools(manager: Any) -> None:
     """Register native logic-tools category tools in unified manager."""
     manager.register_tool(
@@ -205,6 +265,27 @@ def register_native_logic_tools(manager: Any) -> None:
                 "formula": {"type": "string"},
                 "source_format": {"type": "string", "default": "tdfol"},
                 "target_format": {"type": "string", "default": "fol"},
+            },
+            "required": ["formula"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "logic-tools"],
+    )
+
+    manager.register_tool(
+        category="logic_tools",
+        name="tdfol_prove",
+        func=tdfol_prove,
+        description="Attempt to prove a TDFOL formula with optional axioms.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "formula": {"type": "string"},
+                "axioms": {"type": ["array", "null"], "items": {"type": "string"}},
+                "strategy": {"type": "string", "default": "auto"},
+                "timeout_ms": {"type": "integer", "default": 5000},
+                "max_depth": {"type": "integer", "default": 10},
+                "include_proof_steps": {"type": "boolean", "default": True},
             },
             "required": ["formula"],
         },

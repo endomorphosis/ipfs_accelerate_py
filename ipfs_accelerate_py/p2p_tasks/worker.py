@@ -99,7 +99,8 @@ def _minimal_hf_enabled() -> bool:
     if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_LLM")):
         return True
     # General-purpose minimal HF inference for non-textgen tasks.
-    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF")):
+    # Default to enabled for task workers; callers can opt out with 0/false.
+    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF", "1")):
         return True
     return False
 
@@ -2008,7 +2009,9 @@ def _compute_supported_task_types(
         can_textgen = bool(ok)
     if can_textgen:
         base_defaults.extend(["text-generation", "text_generation", "generation"])
-    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF")):
+    # Default to advertising HF-backed text/embedding task types.
+    # Set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF=0 to opt out.
+    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF", "1")):
         base_defaults.extend(
             [
                 "text2text-generation",
@@ -3322,9 +3325,9 @@ def run_worker(
         # Batch-claim when enabled (reduces RPC overhead; enables micro-batching).
         try:
             batch_raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_CLAIM_BATCH")
-            batch_n = int(float(batch_raw)) if batch_raw is not None else 1
+            batch_n = int(float(batch_raw)) if batch_raw is not None else 8
         except Exception:
-            batch_n = 1
+            batch_n = 8
         batch_n = max(1, min(int(batch_n), 64))
 
         for i in range(min(int(fanout_n), len(peers))):
@@ -3531,7 +3534,7 @@ def run_worker(
                 _complete_local_task(task_id=tid, ok=ok, result=res, error=err)
 
         # text-generation batching (minimal HF only)
-        tb_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX"), default=1)
+        tb_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX"), default=4)
         tb_limit = 64 if tb_cap <= 0 else max(1, min(int(tb_cap), 64))
         can_textgen_batch = (
             ttype0 in {"text-generation", "text_generation", "generation"}
@@ -3582,7 +3585,7 @@ def run_worker(
                     return list(batch_tasks[used:])
 
         # text2text-generation batching (minimal HF only)
-        t2t_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX"), default=1)
+        t2t_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX"), default=8)
         t2t_limit = 64 if t2t_cap <= 0 else max(1, min(int(t2t_cap), 64))
         can_t2t_batch = (
             ttype0 in {"text2text-generation", "text2text_generation"}
@@ -3629,7 +3632,7 @@ def run_worker(
                     return list(batch_tasks[used:])
 
         # text-classification batching (minimal HF only)
-        cls_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX"), default=1)
+        cls_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX"), default=16)
         cls_limit = 64 if cls_cap <= 0 else max(1, min(int(cls_cap), 64))
         can_cls_batch = (
             ttype0 in {"text-classification", "text_classification"}
@@ -3670,7 +3673,7 @@ def run_worker(
                     return list(batch_tasks[used:])
 
         # embedding batching (minimal HF only)
-        emb_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX"), default=1)
+        emb_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX"), default=16)
         emb_limit = 64 if emb_cap <= 0 else max(1, min(int(emb_cap), 64))
         can_emb_batch = (
             ttype0 in {"embedding", "embeddings", "text-embedding", "text_embedding"}
@@ -3715,7 +3718,7 @@ def run_worker(
         return list(batch_tasks)
 
     # Local batch-claim (homogeneous) to enable micro-batching.
-    local_claim_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH"), default=1)
+    local_claim_cap = _parse_batch_cap(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH"), default=16)
     try:
         local_claim_n = int(local_claim_cap) if int(local_claim_cap) > 0 else 1
     except Exception:
@@ -4530,14 +4533,14 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Spawn autoscaled workers as threads instead of child processes",
     )
 
-    # Default behavior: thin executor.
-    # Orchestration (p2p service, mesh draining, scaling) is owned by the MCP+p2p server.
+    # Default behavior: autoscale-enabled worker with remote backlog awareness.
+    # Use --no-autoscale/--no-autoscale-remote to force single-worker local-only execution.
     parser.set_defaults(
         p2p_service=False,
         mesh=False,
-        autoscale=False,
-        autoscale_remote=False,
-        autoscale_mesh_children=False,
+        autoscale=True,
+        autoscale_remote=True,
+        autoscale_mesh_children=True,
         autoscale_processes=False,
     )
 
