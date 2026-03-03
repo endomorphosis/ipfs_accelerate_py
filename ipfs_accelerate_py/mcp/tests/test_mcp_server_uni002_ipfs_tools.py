@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+import json
 
 import anyio
 
@@ -73,6 +74,10 @@ class TestMCPServerUNI002IPFSTools(unittest.TestCase):
             self.assertEqual(invalid_timeout.get("status"), "error")
             self.assertIn("'timeout_seconds'", str(invalid_timeout.get("message", "")))
 
+            invalid_timeout_type = await get_from_ipfs(cid="QmDemoHash", timeout_seconds="bad")  # type: ignore[arg-type]
+            self.assertEqual(invalid_timeout_type.get("status"), "error")
+            self.assertIn("must be an integer", str(invalid_timeout_type.get("message", "")))
+
             invalid_output = await get_from_ipfs(cid="QmDemoHash", output_path="   ")
             self.assertEqual(invalid_output.get("status"), "error")
             self.assertIn("'output_path'", str(invalid_output.get("message", "")))
@@ -116,6 +121,69 @@ class TestMCPServerUNI002IPFSTools(unittest.TestCase):
             self.assertEqual(captured.get("cid"), "QmDemoHash")
             self.assertEqual(captured.get("timeout_seconds"), 15)
             self.assertEqual(captured.get("gateway"), "https://ipfs.io")
+
+        anyio.run(_run)
+
+    def test_pin_to_ipfs_accepts_json_string_entrypoint(self) -> None:
+        async def _run() -> None:
+            payload = json.dumps(
+                {
+                    "content_source": "/tmp/demo.txt",
+                    "recursive": True,
+                    "wrap_with_directory": False,
+                    "hash_algo": "sha2-256",
+                }
+            )
+            result = await pin_to_ipfs(content_source=payload)
+            self.assertIn("content", result)
+            self.assertIsInstance(result["content"], list)
+            self.assertEqual(result["content"][0].get("type"), "text")
+            parsed = json.loads(result["content"][0].get("text", "{}"))
+            self.assertIn(parsed.get("status"), ["success", "error"])
+
+        anyio.run(_run)
+
+    def test_get_from_ipfs_json_string_missing_cid_validation(self) -> None:
+        async def _run() -> None:
+            payload = json.dumps({"output_path": "/tmp/out.txt"})
+            result = await get_from_ipfs(cid=payload)
+            self.assertIn("content", result)
+            parsed = json.loads(result["content"][0].get("text", "{}"))
+            self.assertEqual(parsed.get("status"), "error")
+            self.assertIn("Missing required field: cid", str(parsed.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_get_from_ipfs_json_string_invalid_timeout_validation(self) -> None:
+        async def _run() -> None:
+            payload = json.dumps({"cid": "QmDemoHash", "timeout_seconds": "bad"})
+            result = await get_from_ipfs(cid=payload)
+            self.assertIn("content", result)
+            parsed = json.loads(result["content"][0].get("text", "{}"))
+            self.assertEqual(parsed.get("status"), "error")
+            self.assertIn("must be an integer", str(parsed.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_pin_to_ipfs_json_string_invalid_json_validation(self) -> None:
+        async def _run() -> None:
+            result = await pin_to_ipfs(content_source="{not-json")
+            self.assertIn("content", result)
+            parsed = json.loads(result["content"][0].get("text", "{}"))
+            self.assertEqual(parsed.get("status"), "error")
+            self.assertEqual(parsed.get("error_type"), "validation")
+            self.assertIn("Invalid JSON", str(parsed.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_get_from_ipfs_json_string_non_object_validation(self) -> None:
+        async def _run() -> None:
+            result = await get_from_ipfs(cid='["not-an-object"]')
+            self.assertIn("content", result)
+            parsed = json.loads(result["content"][0].get("text", "{}"))
+            self.assertEqual(parsed.get("status"), "error")
+            self.assertEqual(parsed.get("error_type"), "validation")
+            self.assertIn("must be an object", str(parsed.get("error", "")))
 
         anyio.run(_run)
 

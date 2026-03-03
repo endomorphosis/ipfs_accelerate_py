@@ -5250,7 +5250,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             get_schema_payload = await get_schema("ipfs_tools", "get_from_ipfs")
             self.assertEqual(get_schema_payload.get("name"), "get_from_ipfs")
             self.assertEqual(get_schema_payload.get("category"), "ipfs_tools")
-            self.assertIn("cid", (get_schema_payload.get("input_schema") or {}).get("properties", {}))
+            get_schema_input = get_schema_payload.get("input_schema") or {}
+            get_schema_props = get_schema_input.get("properties", {})
+            self.assertIn("cid", get_schema_props)
+            self.assertEqual((get_schema_props.get("timeout_seconds") or {}).get("minimum"), 1)
 
             pin_result = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -5263,6 +5266,62 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertTrue("status" in pin_result or "success" in pin_result or "message" in pin_result)
+
+            invalid_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "ipfs_tools",
+                    "get_from_ipfs",
+                    {
+                        "cid": "QmDemoHash",
+                        "timeout_seconds": "bad",
+                    },
+                )
+            )
+            self.assertEqual(invalid_timeout.get("status"), "error")
+            self.assertIn("must be an integer", str(invalid_timeout.get("message", "")))
+
+            invalid_gateway = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "ipfs_tools",
+                    "get_from_ipfs",
+                    {
+                        "cid": "QmDemoHash",
+                        "gateway": "ipfs://localhost:8080",
+                    },
+                )
+            )
+            self.assertEqual(invalid_gateway.get("status"), "error")
+            self.assertIn("must start with", str(invalid_gateway.get("message", "")))
+
+            json_entrypoint_missing_cid = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "ipfs_tools",
+                    "get_from_ipfs",
+                    {
+                        "cid": json.dumps({"output_path": "/tmp/no-cid"}),
+                    },
+                )
+            )
+            self.assertIn("content", json_entrypoint_missing_cid)
+            parsed_missing_cid = json.loads(
+                ((json_entrypoint_missing_cid.get("content") or [{}])[0]).get("text", "{}")
+            )
+            self.assertEqual(parsed_missing_cid.get("status"), "error")
+            self.assertIn("Missing required field: cid", str(parsed_missing_cid.get("error", "")))
+
+            json_entrypoint_invalid = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "ipfs_tools",
+                    "pin_to_ipfs",
+                    {
+                        "content_source": "{not-json",
+                    },
+                )
+            )
+            self.assertIn("content", json_entrypoint_invalid)
+            parsed_invalid = json.loads(((json_entrypoint_invalid.get("content") or [{}])[0]).get("text", "{}"))
+            self.assertEqual(parsed_invalid.get("status"), "error")
+            self.assertEqual(parsed_invalid.get("error_type"), "validation")
 
         anyio.run(_run_flow)
 
