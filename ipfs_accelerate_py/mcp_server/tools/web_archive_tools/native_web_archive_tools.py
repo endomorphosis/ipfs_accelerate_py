@@ -22,18 +22,22 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             extract_links_from_warc as _extract_links_from_warc,
             extract_metadata_from_warc as _extract_metadata_from_warc,
             extract_text_from_warc as _extract_text_from_warc,
+            fetch_warc_record_advanced as _fetch_warc_record_advanced,
             get_archive_is_content as _get_archive_is_content,
+            get_common_crawl_collection_info_advanced as _get_common_crawl_collection_info_advanced,
             get_common_crawl_content as _get_common_crawl_content,
             get_ipwb_content as _get_ipwb_content,
             get_wayback_content as _get_wayback_content,
             index_warc as _index_warc,
             index_warc_to_ipwb as _index_warc_to_ipwb,
             list_common_crawl_indexes as _list_common_crawl_indexes,
+            list_common_crawl_collections_advanced as _list_common_crawl_collections_advanced,
             list_autoscraper_models as _list_autoscraper_models,
             optimize_autoscraper_model as _optimize_autoscraper_model,
             scrape_with_autoscraper as _scrape_with_autoscraper,
             search_archive_is as _search_archive_is,
             search_common_crawl as _search_common_crawl,
+            search_common_crawl_advanced as _search_common_crawl_advanced,
             search_ipwb_archive as _search_ipwb_archive,
             search_wayback_machine as _search_wayback_machine,
             start_ipwb_replay as _start_ipwb_replay,
@@ -53,14 +57,18 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "extract_links_from_warc": _extract_links_from_warc,
             "extract_text_from_warc": _extract_text_from_warc,
             "extract_metadata_from_warc": _extract_metadata_from_warc,
+            "fetch_warc_record_advanced": _fetch_warc_record_advanced,
             "get_archive_is_content": _get_archive_is_content,
+            "get_common_crawl_collection_info_advanced": _get_common_crawl_collection_info_advanced,
             "search_common_crawl": _search_common_crawl,
+            "search_common_crawl_advanced": _search_common_crawl_advanced,
             "get_common_crawl_content": _get_common_crawl_content,
             "get_ipwb_content": _get_ipwb_content,
             "get_wayback_content": _get_wayback_content,
             "index_warc": _index_warc,
             "index_warc_to_ipwb": _index_warc_to_ipwb,
             "list_common_crawl_indexes": _list_common_crawl_indexes,
+            "list_common_crawl_collections_advanced": _list_common_crawl_collections_advanced,
             "list_autoscraper_models": _list_autoscraper_models,
             "optimize_autoscraper_model": _optimize_autoscraper_model,
             "scrape_with_autoscraper": _scrape_with_autoscraper,
@@ -210,6 +218,55 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "results": [],
                 "count": 0,
                 "crawl_info": {"source": "fallback", "domain": domain},
+            }
+
+        async def _search_common_crawl_advanced_fallback(
+            domain: str,
+            max_matches: int = 100,
+            collection: Optional[str] = None,
+            master_db_path: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = max_matches, collection, master_db_path
+            return {
+                "status": "success",
+                "results": [],
+                "count": 0,
+                "domain": domain,
+                "engine": "fallback",
+            }
+
+        async def _fetch_warc_record_advanced_fallback(
+            warc_filename: str,
+            warc_offset: int,
+            warc_length: int,
+            decode_content: bool = True,
+        ) -> Dict[str, Any]:
+            _ = warc_offset, warc_length, decode_content
+            return {
+                "status": "error",
+                "error": "Common Crawl advanced WARC fetch backend unavailable",
+                "warc_info": {
+                    "filename": warc_filename,
+                    "offset": 0,
+                    "length": 0,
+                },
+            }
+
+        async def _list_common_crawl_collections_advanced_fallback() -> Dict[str, Any]:
+            return {
+                "status": "success",
+                "collections": [],
+                "count": 0,
+                "engine": "fallback",
+            }
+
+        async def _get_common_crawl_collection_info_advanced_fallback(
+            collection: str,
+        ) -> Dict[str, Any]:
+            return {
+                "status": "error",
+                "error": "Common Crawl advanced collection-info backend unavailable",
+                "collection": collection,
             }
 
         async def _get_common_crawl_content_fallback(
@@ -405,14 +462,18 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "extract_links_from_warc": _extract_links_from_warc_fallback,
             "extract_text_from_warc": _extract_text_from_warc_fallback,
             "extract_metadata_from_warc": _extract_metadata_from_warc_fallback,
+            "fetch_warc_record_advanced": _fetch_warc_record_advanced_fallback,
             "get_archive_is_content": _get_archive_is_content_fallback,
+            "get_common_crawl_collection_info_advanced": _get_common_crawl_collection_info_advanced_fallback,
             "search_common_crawl": _search_common_crawl_fallback,
+            "search_common_crawl_advanced": _search_common_crawl_advanced_fallback,
             "get_common_crawl_content": _get_common_crawl_content_fallback,
             "get_ipwb_content": _get_ipwb_content_fallback,
             "get_wayback_content": _get_wayback_content_fallback,
             "index_warc": _index_warc_fallback,
             "index_warc_to_ipwb": _index_warc_to_ipwb_fallback,
             "list_common_crawl_indexes": _list_common_crawl_indexes_fallback,
+            "list_common_crawl_collections_advanced": _list_common_crawl_collections_advanced_fallback,
             "list_autoscraper_models": _list_autoscraper_models_fallback,
             "optimize_autoscraper_model": _optimize_autoscraper_model_fallback,
             "scrape_with_autoscraper": _scrape_with_autoscraper_fallback,
@@ -744,6 +805,62 @@ async def search_common_crawl(
     return result
 
 
+async def search_common_crawl_advanced(
+    domain: str,
+    max_matches: int = 100,
+    collection: Optional[str] = None,
+    master_db_path: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search Common Crawl using advanced search-engine surfaces."""
+    normalized_domain = str(domain or "").strip()
+    if not normalized_domain:
+        return {"status": "error", "error": "'domain' is required."}
+
+    normalized_max_matches = int(max_matches)
+    if normalized_max_matches <= 0:
+        return {"status": "error", "error": "'max_matches' must be greater than 0."}
+
+    result = _API["search_common_crawl_advanced"](
+        domain=normalized_domain,
+        max_matches=normalized_max_matches,
+        collection=collection,
+        master_db_path=master_db_path,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def fetch_warc_record_advanced(
+    warc_filename: str,
+    warc_offset: int,
+    warc_length: int,
+    decode_content: bool = True,
+) -> Dict[str, Any]:
+    """Fetch a single WARC record via advanced Common Crawl APIs."""
+    normalized_filename = str(warc_filename or "").strip()
+    if not normalized_filename:
+        return {"status": "error", "error": "'warc_filename' is required."}
+
+    normalized_offset = int(warc_offset)
+    if normalized_offset < 0:
+        return {"status": "error", "error": "'warc_offset' must be >= 0."}
+
+    normalized_length = int(warc_length)
+    if normalized_length <= 0:
+        return {"status": "error", "error": "'warc_length' must be greater than 0."}
+
+    result = _API["fetch_warc_record_advanced"](
+        warc_filename=normalized_filename,
+        warc_offset=normalized_offset,
+        warc_length=normalized_length,
+        decode_content=bool(decode_content),
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
 async def get_common_crawl_content(
     url: str,
     timestamp: str,
@@ -770,6 +887,28 @@ async def get_common_crawl_content(
 async def list_common_crawl_indexes() -> Dict[str, Any]:
     """List available Common Crawl index datasets."""
     result = _API["list_common_crawl_indexes"]()
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def list_common_crawl_collections_advanced() -> Dict[str, Any]:
+    """List available collections from advanced Common Crawl integration."""
+    result = _API["list_common_crawl_collections_advanced"]()
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def get_common_crawl_collection_info_advanced(collection: str) -> Dict[str, Any]:
+    """Get metadata for a specific Common Crawl collection."""
+    normalized_collection = str(collection or "").strip()
+    if not normalized_collection:
+        return {"status": "error", "error": "'collection' is required."}
+
+    result = _API["get_common_crawl_collection_info_advanced"](
+        collection=normalized_collection,
+    )
     if hasattr(result, "__await__"):
         return await result
     return result
@@ -1289,6 +1428,44 @@ def register_native_web_archive_tools(manager: Any) -> None:
 
     manager.register_tool(
         category="web_archive_tools",
+        name="search_common_crawl_advanced",
+        func=search_common_crawl_advanced,
+        description="Search Common Crawl with advanced index-engine capabilities.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "domain": {"type": "string"},
+                "max_matches": {"type": "integer", "default": 100, "minimum": 1},
+                "collection": {"type": ["string", "null"]},
+                "master_db_path": {"type": ["string", "null"]},
+            },
+            "required": ["domain"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="fetch_warc_record_advanced",
+        func=fetch_warc_record_advanced,
+        description="Fetch a WARC record by filename/offset/length via advanced APIs.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "warc_filename": {"type": "string"},
+                "warc_offset": {"type": "integer", "minimum": 0},
+                "warc_length": {"type": "integer", "minimum": 1},
+                "decode_content": {"type": "boolean", "default": True},
+            },
+            "required": ["warc_filename", "warc_offset", "warc_length"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
         name="get_common_crawl_content",
         func=get_common_crawl_content,
         description="Fetch archived content for a specific URL/timestamp from Common Crawl.",
@@ -1311,6 +1488,32 @@ def register_native_web_archive_tools(manager: Any) -> None:
         func=list_common_crawl_indexes,
         description="List available Common Crawl index datasets.",
         input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="list_common_crawl_collections_advanced",
+        func=list_common_crawl_collections_advanced,
+        description="List Common Crawl collections from advanced integration.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="get_common_crawl_collection_info_advanced",
+        func=get_common_crawl_collection_info_advanced,
+        description="Get metadata for a specific Common Crawl collection.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "collection": {"type": "string"},
+            },
+            "required": ["collection"],
+        },
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],
     )

@@ -120,6 +120,107 @@ async def search_vector_index(
     return result
 
 
+async def orchestrate_vector_search_storage(
+    vectors: List[List[float]],
+    query_vector: List[float],
+    *,
+    index_id: Optional[str] = None,
+    metric: str = "cosine",
+    top_k: int = 5,
+    persist_audit: bool = False,
+    audit_collection: str = "vector-search-audit",
+) -> Dict[str, Any]:
+    """Run a representative vector/search/storage integration flow.
+
+    Flow:
+    1) create vector index
+    2) search that index
+    3) optionally persist an audit record via storage tools
+    """
+    if not vectors:
+        return {
+            "status": "error",
+            "error": "vectors must be a non-empty list",
+        }
+    if not query_vector:
+        return {
+            "status": "error",
+            "error": "query_vector must be provided",
+        }
+
+    created = await create_vector_index(
+        vectors=vectors,
+        dimension=len(vectors[0]) if vectors and vectors[0] else None,
+        metric=metric,
+        index_id=index_id,
+    )
+    resolved_index_id = str(created.get("index_id") or index_id or "")
+
+    searched = await search_vector_index(
+        index_id=resolved_index_id,
+        query_vector=query_vector,
+        top_k=max(1, int(top_k)),
+        include_metadata=True,
+        include_distances=True,
+    )
+
+    from ipfs_accelerate_py.mcp_server.tools.search_tools.native_search_tools import similarity_search
+
+    search_tools_result = await similarity_search(
+        embedding=list(query_vector),
+        top_k=max(1, int(top_k)),
+        threshold=0.0,
+        collection=resolved_index_id or "default",
+    )
+
+    search_results = searched.get("results") if isinstance(searched, dict) else []
+    result_count = len(search_results or [])
+
+    storage_receipt: Dict[str, Any] = {
+        "stored": False,
+        "collection": audit_collection,
+    }
+    if persist_audit:
+        from ipfs_accelerate_py.mcp_server.tools.storage_tools.native_storage_tools import store_data
+
+        audit_payload = {
+            "index_id": resolved_index_id,
+            "metric": metric,
+            "top_k": max(1, int(top_k)),
+            "result_count": result_count,
+        }
+        persisted = await store_data(
+            data=audit_payload,
+            storage_type="memory",
+            compression="none",
+            collection=str(audit_collection or "vector-search-audit"),
+            metadata={"source": "orchestrate_vector_search_storage"},
+            tags=["vector", "search", "storage", "integration"],
+        )
+        storage_receipt = {
+            "stored": bool(persisted.get("stored")),
+            "collection": str(persisted.get("collection") or audit_collection),
+            "item_id": persisted.get("item_id"),
+        }
+
+    return {
+        "status": "success",
+        "index_id": resolved_index_id,
+        "metric": metric,
+        "top_k": max(1, int(top_k)),
+        "search": {
+            "result_count": result_count,
+            "results": search_results or [],
+        },
+        "search_tools_similarity": {
+            "total_found": int(search_tools_result.get("total_found") or 0),
+            "results": list(search_tools_result.get("results") or []),
+            "collection": str(search_tools_result.get("collection") or (resolved_index_id or "default")),
+        },
+        "storage": storage_receipt,
+    }
+
+
 def register_native_vector_tools(manager: Any) -> None:
     """Register native vector-tools category tools in unified manager."""
     manager.register_tool(
@@ -162,4 +263,26 @@ def register_native_vector_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "vector-tools"],
+    )
+
+    manager.register_tool(
+        category="vector_tools",
+        name="orchestrate_vector_search_storage",
+        func=orchestrate_vector_search_storage,
+        description="Run representative vector index/search flow with optional storage audit persistence.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "vectors": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
+                "query_vector": {"type": "array", "items": {"type": "number"}},
+                "index_id": {"type": ["string", "null"]},
+                "metric": {"type": "string"},
+                "top_k": {"type": "integer", "minimum": 1},
+                "persist_audit": {"type": "boolean"},
+                "audit_collection": {"type": "string"},
+            },
+            "required": ["vectors", "query_vector"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "vector-tools", "integration"],
     )

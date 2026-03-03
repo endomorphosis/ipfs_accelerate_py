@@ -18,18 +18,22 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     extract_links_from_warc,
     extract_metadata_from_warc,
     extract_text_from_warc,
+    fetch_warc_record_advanced,
     get_archive_is_content,
+    get_common_crawl_collection_info_advanced,
     get_common_crawl_content,
     get_ipwb_content,
     get_wayback_content,
     index_warc,
     index_warc_to_ipwb,
     list_common_crawl_indexes,
+    list_common_crawl_collections_advanced,
     list_autoscraper_models,
     optimize_autoscraper_model,
     register_native_web_archive_tools,
     scrape_with_autoscraper,
     search_archive_is,
+    search_common_crawl_advanced,
     search_ipwb_archive,
     search_wayback_machine,
     start_ipwb_replay,
@@ -57,6 +61,7 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("extract_dataset_from_cdxj", names)
         self.assertIn("extract_links_from_warc", names)
         self.assertIn("extract_metadata_from_warc", names)
+        self.assertIn("fetch_warc_record_advanced", names)
         self.assertIn("index_warc", names)
         self.assertIn("index_warc_to_ipwb", names)
         self.assertIn("start_ipwb_replay", names)
@@ -65,6 +70,8 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("verify_ipwb_archive", names)
         self.assertIn("get_common_crawl_content", names)
         self.assertIn("list_common_crawl_indexes", names)
+        self.assertIn("list_common_crawl_collections_advanced", names)
+        self.assertIn("get_common_crawl_collection_info_advanced", names)
         self.assertIn("list_autoscraper_models", names)
         self.assertIn("create_autoscraper_model", names)
         self.assertIn("scrape_with_autoscraper", names)
@@ -72,6 +79,7 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("batch_scrape_with_autoscraper", names)
         self.assertIn("search_wayback_machine", names)
         self.assertIn("search_archive_is", names)
+        self.assertIn("search_common_crawl_advanced", names)
         self.assertIn("get_archive_is_content", names)
         self.assertIn("check_archive_status", names)
         self.assertIn("get_wayback_content", names)
@@ -106,6 +114,71 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertIn(indexes_result.get("status"), ["success", "error"])
             if indexes_result.get("status") == "success":
                 self.assertIn("indexes", indexes_result)
+
+            advanced_missing_domain = await search_common_crawl_advanced(domain="")
+            self.assertEqual(advanced_missing_domain.get("status"), "error")
+            self.assertIn("'domain' is required", str(advanced_missing_domain.get("error", "")))
+
+            advanced_invalid_max = await search_common_crawl_advanced(
+                domain="example.com",
+                max_matches=0,
+            )
+            self.assertEqual(advanced_invalid_max.get("status"), "error")
+            self.assertIn("'max_matches' must be greater than 0", str(advanced_invalid_max.get("error", "")))
+
+            advanced_search_result = await search_common_crawl_advanced(domain="example.com", max_matches=5)
+            self.assertIn(advanced_search_result.get("status"), ["success", "error"])
+            if advanced_search_result.get("status") == "success":
+                self.assertIn("results", advanced_search_result)
+
+            missing_warc_filename = await fetch_warc_record_advanced(
+                warc_filename="",
+                warc_offset=0,
+                warc_length=100,
+            )
+            self.assertEqual(missing_warc_filename.get("status"), "error")
+            self.assertIn("'warc_filename' is required", str(missing_warc_filename.get("error", "")))
+
+            invalid_warc_offset = await fetch_warc_record_advanced(
+                warc_filename="sample.warc.gz",
+                warc_offset=-1,
+                warc_length=100,
+            )
+            self.assertEqual(invalid_warc_offset.get("status"), "error")
+            self.assertIn("'warc_offset' must be >= 0", str(invalid_warc_offset.get("error", "")))
+
+            invalid_warc_length = await fetch_warc_record_advanced(
+                warc_filename="sample.warc.gz",
+                warc_offset=0,
+                warc_length=0,
+            )
+            self.assertEqual(invalid_warc_length.get("status"), "error")
+            self.assertIn("'warc_length' must be greater than 0", str(invalid_warc_length.get("error", "")))
+
+            warc_fetch_result = await fetch_warc_record_advanced(
+                warc_filename="sample.warc.gz",
+                warc_offset=0,
+                warc_length=100,
+            )
+            self.assertIn(warc_fetch_result.get("status"), ["success", "error"])
+            if warc_fetch_result.get("status") == "error":
+                self.assertIn("error", warc_fetch_result)
+
+            collections_result = await list_common_crawl_collections_advanced()
+            self.assertIn(collections_result.get("status"), ["success", "error"])
+            if collections_result.get("status") == "success":
+                self.assertIn("collections", collections_result)
+
+            missing_collection = await get_common_crawl_collection_info_advanced(collection="")
+            self.assertEqual(missing_collection.get("status"), "error")
+            self.assertIn("'collection' is required", str(missing_collection.get("error", "")))
+
+            collection_info_result = await get_common_crawl_collection_info_advanced(
+                collection="CC-MAIN-2024-10"
+            )
+            self.assertIn(collection_info_result.get("status"), ["success", "error"])
+            if collection_info_result.get("status") == "error":
+                self.assertIn("error", collection_info_result)
 
         anyio.run(_run)
 
