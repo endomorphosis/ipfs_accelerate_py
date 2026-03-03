@@ -95,18 +95,79 @@ async def chunk_text(
     max_chunks: int = 100,
 ) -> Dict[str, Any]:
     """Split text into chunks using configured strategy."""
-    return await _API["chunk_text"](
+    normalized_text = str(text or "")
+    if not normalized_text.strip():
+        return {
+            "status": "error",
+            "message": "text is required",
+            "text": text,
+        }
+
+    normalized_chunk_size = int(chunk_size)
+    normalized_overlap = int(overlap)
+    normalized_max_chunks = int(max_chunks)
+    if normalized_chunk_size <= 0:
+        return {
+            "status": "error",
+            "message": "chunk_size must be a positive integer",
+            "chunk_size": chunk_size,
+        }
+    if normalized_overlap < 0:
+        return {
+            "status": "error",
+            "message": "overlap must be a non-negative integer",
+            "overlap": overlap,
+        }
+    if normalized_overlap >= normalized_chunk_size:
+        return {
+            "status": "error",
+            "message": "overlap must be smaller than chunk_size",
+            "overlap": overlap,
+            "chunk_size": chunk_size,
+        }
+    if normalized_max_chunks <= 0:
+        return {
+            "status": "error",
+            "message": "max_chunks must be a positive integer",
+            "max_chunks": max_chunks,
+        }
+
+    result = await _API["chunk_text"](
         text=text,
         strategy=strategy,
-        chunk_size=chunk_size,
-        overlap=overlap,
-        max_chunks=max_chunks,
+        chunk_size=normalized_chunk_size,
+        overlap=normalized_overlap,
+        max_chunks=normalized_max_chunks,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    return payload
 
 
 async def transform_data(data: Any, transformation: str, **parameters: Any) -> Dict[str, Any]:
     """Apply a named transformation to input data."""
-    return await _API["transform_data"](data=data, transformation=transformation, **parameters)
+    normalized_transformation = str(transformation or "").strip()
+    if not normalized_transformation:
+        return {
+            "status": "error",
+            "message": "transformation is required",
+            "transformation": transformation,
+        }
+    if data is None:
+        return {
+            "status": "error",
+            "message": "data is required",
+            "data": data,
+        }
+
+    result = await _API["transform_data"](
+        data=data,
+        transformation=normalized_transformation,
+        **parameters,
+    )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    return payload
 
 
 async def convert_format(
@@ -116,12 +177,31 @@ async def convert_format(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Convert data between supported formats."""
-    return await _API["convert_format"](
+    normalized_source = str(source_format or "").strip()
+    normalized_target = str(target_format or "").strip()
+    if data is None:
+        return {
+            "status": "error",
+            "message": "data is required",
+            "data": data,
+        }
+    if not normalized_source or not normalized_target:
+        return {
+            "status": "error",
+            "message": "source_format and target_format are required",
+            "source_format": source_format,
+            "target_format": target_format,
+        }
+
+    result = await _API["convert_format"](
         data=data,
-        source_format=source_format,
-        target_format=target_format,
+        source_format=normalized_source,
+        target_format=normalized_target,
         options=options,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success" if payload.get("status") != "error" else "error")
+    return payload
 
 
 async def validate_data(
@@ -131,12 +211,41 @@ async def validate_data(
     rules: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Validate input data with requested strategy."""
-    return await _API["validate_data"](
+    normalized_type = str(validation_type or "").strip()
+    if data is None:
+        return {
+            "status": "error",
+            "message": "data is required",
+            "data": data,
+        }
+    if not normalized_type:
+        return {
+            "status": "error",
+            "message": "validation_type is required",
+            "validation_type": validation_type,
+        }
+    if schema is not None and not isinstance(schema, dict):
+        return {
+            "status": "error",
+            "message": "schema must be an object when provided",
+            "schema": schema,
+        }
+    if rules is not None and not isinstance(rules, list):
+        return {
+            "status": "error",
+            "message": "rules must be an array when provided",
+            "rules": rules,
+        }
+
+    result = await _API["validate_data"](
         data=data,
-        validation_type=validation_type,
+        validation_type=normalized_type,
         schema=schema,
         rules=rules,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    return payload
 
 
 def register_native_data_processing_tools(manager: Any) -> None:

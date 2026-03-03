@@ -117,6 +117,16 @@ async def authenticate_user(
     password: str,
 ) -> Dict[str, Any]:
     """Authenticate user credentials and return access token."""
+    normalized_username = str(username or "").strip()
+    if not normalized_username:
+        return {"status": "error", "message": "Username is required and must be a string"}
+    if len(normalized_username) > 50:
+        return {"status": "error", "message": "Username must be 50 characters or less"}
+
+    normalized_password = str(password or "")
+    if not normalized_password:
+        return {"status": "error", "message": "Password is required and must be a string"}
+
     return await _API["authenticate_user"](username=username, password=password)
 
 
@@ -126,16 +136,46 @@ async def validate_token(
     action: str = "validate",
 ) -> Dict[str, Any]:
     """Validate, refresh, or decode an access token."""
+    normalized_token = str(token or "").strip()
+    if not normalized_token:
+        return {
+            "status": "error",
+            "valid": False,
+            "message": "Token is required and must be a string",
+        }
+
+    valid_permissions = {"read", "write", "delete", "manage"}
+    normalized_permission: Optional[str] = None
+    if required_permission is not None:
+        normalized_permission = str(required_permission).strip().lower()
+        if normalized_permission not in valid_permissions:
+            return {
+                "status": "error",
+                "valid": False,
+                "message": "Invalid required_permission. Must be one of: read, write, delete, manage",
+            }
+
+    normalized_action = str(action or "validate").strip().lower() or "validate"
+    if normalized_action not in {"validate", "refresh", "decode"}:
+        return {
+            "status": "error",
+            "valid": False,
+            "message": "Invalid action. Must be one of: validate, refresh, decode",
+        }
+
     return await _API["validate_token"](
-        token=token,
-        required_permission=required_permission,
-        action=action,
+        token=normalized_token,
+        required_permission=normalized_permission,
+        action=normalized_action,
     )
 
 
 async def get_user_info(token: str) -> Dict[str, Any]:
     """Get authenticated user information from token."""
-    return await _API["get_user_info"](token=token)
+    normalized_token = str(token or "").strip()
+    if not normalized_token:
+        return {"status": "error", "message": "Token is required and must be a string"}
+    return await _API["get_user_info"](token=normalized_token)
 
 
 def register_native_auth_tools(manager: Any) -> None:
@@ -166,8 +206,15 @@ def register_native_auth_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "token": {"type": "string"},
-                "required_permission": {"type": ["string", "null"]},
-                "action": {"type": "string"},
+                "required_permission": {
+                    "type": ["string", "null"],
+                    "enum": ["read", "write", "delete", "manage", None],
+                },
+                "action": {
+                    "type": "string",
+                    "enum": ["validate", "refresh", "decode"],
+                    "default": "validate",
+                },
             },
             "required": ["token"],
         },

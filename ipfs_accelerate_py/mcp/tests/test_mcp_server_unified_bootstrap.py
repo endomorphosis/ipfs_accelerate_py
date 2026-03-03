@@ -5417,6 +5417,81 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_auth_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """auth_tools should expose source-compatible operations with deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="auth-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("auth_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("authenticate_user", names)
+            self.assertIn("validate_token", names)
+            self.assertIn("get_user_info", names)
+
+            validate_schema = await get_schema("auth_tools", "validate_token")
+            self.assertEqual(validate_schema.get("name"), "validate_token")
+            schema_props = (validate_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((schema_props.get("action") or {}).get("default"), "validate")
+            self.assertIn("decode", (schema_props.get("action") or {}).get("enum", []))
+
+            invalid_action = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "auth_tools",
+                    "validate_token",
+                    {
+                        "token": "dummy-token",
+                        "action": "bad",
+                    },
+                )
+            )
+            self.assertEqual(invalid_action.get("status"), "error")
+            self.assertEqual(invalid_action.get("valid"), False)
+
+            decode_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "auth_tools",
+                    "validate_token",
+                    {
+                        "token": "dummy-token",
+                        "action": "decode",
+                    },
+                )
+            )
+            self.assertIn(decode_result.get("status"), ["success", "error"])
+            self.assertIn("message", decode_result)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 
