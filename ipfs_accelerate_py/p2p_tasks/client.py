@@ -21,6 +21,52 @@ Environment:
     - unset: read default XDG cache announce file(s)
     - set to a path: read announce JSON from that path
     - set to 0/false/no: disable announce-file dialing
+- IPFS_DATASETS_PY_TASK_P2P_SUBMIT_RETRIES / IPFS_ACCELERATE_PY_TASK_P2P_SUBMIT_RETRIES
+    - retry attempts for transient submit transport failures (default: 2)
+- IPFS_DATASETS_PY_TASK_P2P_SUBMIT_RETRY_BASE_MS / IPFS_ACCELERATE_PY_TASK_P2P_SUBMIT_RETRY_BASE_MS
+    - exponential backoff base in milliseconds for submit retries (default: 50)
+- IPFS_DATASETS_PY_TASK_P2P_SUBMIT_DIAL_TIMEOUT_S / IPFS_ACCELERATE_PY_TASK_P2P_SUBMIT_DIAL_TIMEOUT_S
+    - per-attempt dial timeout for submit requests in seconds (default: 8.0)
+- IPFS_DATASETS_PY_TASK_P2P_STATUS_RETRIES / IPFS_ACCELERATE_PY_TASK_P2P_STATUS_RETRIES
+    - retry attempts for transient status transport failures (default: 2)
+- IPFS_DATASETS_PY_TASK_P2P_STATUS_RETRY_BASE_MS / IPFS_ACCELERATE_PY_TASK_P2P_STATUS_RETRY_BASE_MS
+    - exponential backoff base in milliseconds for status retries (default: 50)
+- IPFS_DATASETS_PY_TASK_P2P_STATUS_DIAL_TIMEOUT_S / IPFS_ACCELERATE_PY_TASK_P2P_STATUS_DIAL_TIMEOUT_S
+    - per-attempt dial timeout for status requests in seconds (default: 8.0)
+- IPFS_DATASETS_PY_TASK_P2P_WAIT_RETRIES / IPFS_ACCELERATE_PY_TASK_P2P_WAIT_RETRIES
+    - retry attempts for transient wait transport failures (default: 2)
+- IPFS_DATASETS_PY_TASK_P2P_WAIT_RETRY_BASE_MS / IPFS_ACCELERATE_PY_TASK_P2P_WAIT_RETRY_BASE_MS
+    - exponential backoff base in milliseconds for wait retries (default: 100)
+- IPFS_DATASETS_PY_TASK_P2P_RPC_RETRIES / IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRIES
+    - retry attempts for short control/cache/tool RPC transport failures (default: 2)
+- IPFS_DATASETS_PY_TASK_P2P_RPC_RETRY_BASE_MS / IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRY_BASE_MS
+    - exponential backoff base in milliseconds for short RPC retries (default: 50)
+- IPFS_DATASETS_PY_TASK_P2P_RPC_DIAL_TIMEOUT_S / IPFS_ACCELERATE_PY_TASK_P2P_RPC_DIAL_TIMEOUT_S
+    - per-attempt dial timeout for short control/cache/tool RPCs in seconds (default: 8.0)
+- IPFS_DATASETS_PY_TASK_P2P_REMOTE_COOLDOWN_BASE_MS / IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_COOLDOWN_BASE_MS
+    - adaptive per-remote cooldown base in milliseconds after retryable transport failures (default: 25)
+- IPFS_DATASETS_PY_TASK_P2P_REMOTE_COOLDOWN_MAX_MS / IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_COOLDOWN_MAX_MS
+    - cap for adaptive per-remote cooldown in milliseconds (default: 1000)
+- IPFS_DATASETS_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_SCALE / IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_SCALE
+    - multiplicative dial-timeout scale applied per retry attempt (default: 1.25)
+- IPFS_DATASETS_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_MAX_S / IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_MAX_S
+    - cap in seconds for scaled retry dial timeouts (default: 30.0)
+- IPFS_DATASETS_PY_TASK_P2P_MAX_CONCURRENT_DIALS / IPFS_ACCELERATE_PY_TASK_P2P_MAX_CONCURRENT_DIALS
+    - process-level limit for concurrent dial attempts across submit/status/short RPC retries (default: 32)
+- IPFS_DATASETS_PY_TASK_P2P_DIAL_SLOT_TIMEOUT_S / IPFS_ACCELERATE_PY_TASK_P2P_DIAL_SLOT_TIMEOUT_S
+    - maximum seconds to wait for a dial slot before failing the attempt (default: 10.0)
+- IPFS_DATASETS_PY_TASK_P2P_MAX_CONCURRENT_WAIT_DIALS / IPFS_ACCELERATE_PY_TASK_P2P_MAX_CONCURRENT_WAIT_DIALS
+    - process-level limit for concurrent dial attempts for long-poll `wait` requests (default: 128)
+- IPFS_DATASETS_PY_TASK_P2P_WAIT_DIAL_SLOT_TIMEOUT_S / IPFS_ACCELERATE_PY_TASK_P2P_WAIT_DIAL_SLOT_TIMEOUT_S
+    - maximum seconds to wait for a long-poll `wait` dial slot before failing the attempt (default: 30.0)
+- IPFS_DATASETS_PY_TASK_P2P_REMOTE_STATE_MAX_KEYS / IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_STATE_MAX_KEYS
+    - maximum remote cooldown-state entries retained in-process (default: 2048)
+- IPFS_DATASETS_PY_TASK_P2P_REMOTE_STATE_STALE_S / IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_STATE_STALE_S
+    - seconds after which idle remote cooldown-state entries may be pruned (default: 600)
+- IPFS_DATASETS_PY_TASK_P2P_CACHE_MAX_KEYS / IPFS_ACCELERATE_PY_TASK_P2P_CACHE_MAX_KEYS
+    - maximum discovered multiaddr cache entries retained in-process (default: 1024)
+- IPFS_DATASETS_PY_TASK_P2P_CACHE_STALE_S / IPFS_ACCELERATE_PY_TASK_P2P_CACHE_STALE_S
+    - seconds after which idle discovered multiaddr cache entries are pruned (default: 1800)
 """
 
 from __future__ import annotations
@@ -28,7 +74,10 @@ from __future__ import annotations
 import json
 import functools
 import os
+import random
 import sys
+import threading
+import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
@@ -83,6 +132,528 @@ def _dial_debug(msg: str) -> None:
         pass
 
 
+def _submit_retry_attempts() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SUBMIT_RETRIES")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_SUBMIT_RETRIES", "2")
+        return max(0, int(str(raw).strip()))
+    except Exception:
+        return 2
+
+
+def _submit_retry_base_ms() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SUBMIT_RETRY_BASE_MS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_SUBMIT_RETRY_BASE_MS", "50")
+        return max(10, int(str(raw).strip()))
+    except Exception:
+        return 50
+
+
+def _submit_dial_timeout_s() -> float:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SUBMIT_DIAL_TIMEOUT_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_SUBMIT_DIAL_TIMEOUT_S", "8.0")
+        return max(1.0, float(str(raw).strip()))
+    except Exception:
+        return 8.0
+
+
+def _status_retry_attempts() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_STATUS_RETRIES")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_STATUS_RETRIES", "2")
+        return max(0, int(str(raw).strip()))
+    except Exception:
+        return 2
+
+
+def _status_retry_base_ms() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_STATUS_RETRY_BASE_MS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_STATUS_RETRY_BASE_MS", "50")
+        return max(10, int(str(raw).strip()))
+    except Exception:
+        return 50
+
+
+def _status_dial_timeout_s() -> float:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_STATUS_DIAL_TIMEOUT_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_STATUS_DIAL_TIMEOUT_S", "8.0")
+        return max(1.0, float(str(raw).strip()))
+    except Exception:
+        return 8.0
+
+
+def _wait_retry_attempts() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_WAIT_RETRIES")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_WAIT_RETRIES", "2")
+        return max(0, int(str(raw).strip()))
+    except Exception:
+        return 2
+
+
+def _wait_retry_base_ms() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_WAIT_RETRY_BASE_MS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_WAIT_RETRY_BASE_MS", "100")
+        return max(10, int(str(raw).strip()))
+    except Exception:
+        return 100
+
+
+def _rpc_retry_attempts() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRIES")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_RPC_RETRIES", "2")
+        return max(0, int(str(raw).strip()))
+    except Exception:
+        return 2
+
+
+def _rpc_retry_base_ms() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRY_BASE_MS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_RPC_RETRY_BASE_MS", "50")
+        return max(10, int(str(raw).strip()))
+    except Exception:
+        return 50
+
+
+def _rpc_dial_timeout_s() -> float:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RPC_DIAL_TIMEOUT_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_RPC_DIAL_TIMEOUT_S", "8.0")
+        return max(1.0, float(str(raw).strip()))
+    except Exception:
+        return 8.0
+
+
+def _remote_cooldown_base_ms() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_COOLDOWN_BASE_MS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_COOLDOWN_BASE_MS", "25")
+        return max(10, int(str(raw).strip()))
+    except Exception:
+        return 25
+
+
+def _remote_cooldown_max_ms() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_COOLDOWN_MAX_MS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_COOLDOWN_MAX_MS", "1000")
+        return max(50, int(str(raw).strip()))
+    except Exception:
+        return 1000
+
+
+def _retry_dial_timeout_scale() -> float:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_SCALE")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_SCALE", "1.25")
+        return max(1.0, float(str(raw).strip()))
+    except Exception:
+        return 1.25
+
+
+def _retry_dial_timeout_max_s() -> float:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_MAX_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_MAX_S", "30.0")
+        return max(1.0, float(str(raw).strip()))
+    except Exception:
+        return 30.0
+
+
+def _dial_timeout_for_attempt(*, base_timeout_s: float, attempt: int) -> float:
+    base = max(1.0, float(base_timeout_s))
+    scale = _retry_dial_timeout_scale()
+    cap = _retry_dial_timeout_max_s()
+    if attempt <= 0 or scale <= 1.0:
+        return min(base, cap)
+    return min(cap, base * (scale ** int(attempt)))
+
+
+def _max_concurrent_dials() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_CONCURRENT_DIALS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MAX_CONCURRENT_DIALS", "32")
+        return max(1, int(str(raw).strip()))
+    except Exception:
+        return 32
+
+
+def _dial_slot_timeout_s() -> float:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DIAL_SLOT_TIMEOUT_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DIAL_SLOT_TIMEOUT_S", "10.0")
+        return max(0.1, float(str(raw).strip()))
+    except Exception:
+        return 10.0
+
+
+def _wait_dial_slot_timeout_s() -> float:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_WAIT_DIAL_SLOT_TIMEOUT_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_WAIT_DIAL_SLOT_TIMEOUT_S", "30.0")
+        return max(0.1, float(str(raw).strip()))
+    except Exception:
+        return 30.0
+
+
+def _max_concurrent_wait_dials() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MAX_CONCURRENT_WAIT_DIALS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MAX_CONCURRENT_WAIT_DIALS", "128")
+        return max(1, int(str(raw).strip()))
+    except Exception:
+        return 128
+
+
+def _remote_state_max_keys() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_STATE_MAX_KEYS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_STATE_MAX_KEYS", "2048")
+        return max(64, int(str(raw).strip()))
+    except Exception:
+        return 2048
+
+
+def _remote_state_stale_s() -> float:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_STATE_STALE_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_REMOTE_STATE_STALE_S", "600")
+        return max(30.0, float(str(raw).strip()))
+    except Exception:
+        return 600.0
+
+
+def _cache_state_max_keys() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_MAX_KEYS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_CACHE_MAX_KEYS", "1024")
+        return max(64, int(str(raw).strip()))
+    except Exception:
+        return 1024
+
+
+def _cache_state_stale_s() -> float:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_CACHE_STALE_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_CACHE_STALE_S", "1800")
+        return max(30.0, float(str(raw).strip()))
+    except Exception:
+        return 1800.0
+
+
+def _retry_delay_s(*, attempt: int, base_ms: int) -> float:
+    base = max(10, int(base_ms))
+    return ((base * (2**max(0, int(attempt)))) + random.randint(0, base)) / 1000.0
+
+
+_P2P_RETRY_METRICS_LOCK = threading.Lock()
+_P2P_RETRY_METRICS: dict[str, int] = {}
+_P2P_REMOTE_COOLDOWN_LOCK = threading.Lock()
+_P2P_REMOTE_COOLDOWN_UNTIL_TS: dict[str, float] = {}
+_P2P_REMOTE_COOLDOWN_FAILURE_STREAK: dict[str, int] = {}
+_P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS: dict[str, float] = {}
+_P2P_REMOTE_COOLDOWN_MUTATIONS: int = 0
+_P2P_DIAL_SEM_LOCK = threading.Lock()
+_P2P_DIAL_SEM: threading.BoundedSemaphore | None = None
+_P2P_DIAL_SEM_SIZE: int = 0
+_P2P_WAIT_DIAL_SEM_LOCK = threading.Lock()
+_P2P_WAIT_DIAL_SEM: threading.BoundedSemaphore | None = None
+_P2P_WAIT_DIAL_SEM_SIZE: int = 0
+_DISCOVERED_MULTIADDR_LOCK = threading.Lock()
+_DISCOVERED_MULTIADDR_TOUCH_TS: dict[str, float] = {}
+_DISCOVERED_MULTIADDR_MUTATIONS: int = 0
+
+
+def _retry_metric_inc(key: str, amount: int = 1) -> None:
+    try:
+        metric = str(key or "").strip()
+        if not metric:
+            return
+        delta = int(amount)
+        if delta <= 0:
+            return
+        with _P2P_RETRY_METRICS_LOCK:
+            _P2P_RETRY_METRICS[metric] = int(_P2P_RETRY_METRICS.get(metric, 0)) + delta
+    except Exception:
+        pass
+
+
+def get_p2p_retry_metrics() -> Dict[str, int]:
+    """Return a snapshot of in-process retry counters by operation label."""
+    with _P2P_RETRY_METRICS_LOCK:
+        return {str(k): int(v) for k, v in _P2P_RETRY_METRICS.items()}
+
+
+def reset_p2p_retry_metrics() -> None:
+    """Reset in-process retry counters."""
+    with _P2P_RETRY_METRICS_LOCK:
+        _P2P_RETRY_METRICS.clear()
+
+
+def _is_retryable_transport_error(exc: BaseException) -> bool:
+    if isinstance(exc, BaseExceptionGroup):
+        return True
+    name = type(exc).__name__
+    if name in {"TimeoutError", "OSError", "ConnectionError"}:
+        return True
+    msg = str(exc or "").lower()
+    markers = (
+        "p2p request failed",
+        "failed to negotiate the secure protocol",
+        "handshake",
+        "failed to upgrade security",
+        "connect",
+        "stream",
+    )
+    return any(m in msg for m in markers)
+
+
+def _exception_group_contains_timeout(exc: BaseException) -> bool:
+    """Return True when an exception group tree contains a TimeoutError."""
+    if isinstance(exc, TimeoutError):
+        return True
+    if isinstance(exc, BaseExceptionGroup):
+        for inner in exc.exceptions:
+            try:
+                if _exception_group_contains_timeout(inner):
+                    return True
+            except Exception:
+                continue
+    return False
+
+
+def _exception_group_contains_dial_slot_timeout(exc: BaseException) -> bool:
+    """Return True when an exception group tree includes dial-slot timeout text."""
+    msg = str(exc or "").lower()
+    if "dial slot timeout" in msg:
+        return True
+    if isinstance(exc, BaseExceptionGroup):
+        for inner in exc.exceptions:
+            try:
+                if _exception_group_contains_dial_slot_timeout(inner):
+                    return True
+            except Exception:
+                continue
+    return False
+
+
+def _remote_cooldown_key(remote: Any) -> str:
+    pid = str(getattr(remote, "peer_id", "") or "").strip()
+    ma = str(getattr(remote, "multiaddr", "") or "").strip()
+    if pid and ma:
+        return f"{pid}::{ma}"
+    return pid or ma or "<unknown>"
+
+
+def _remote_cooldown_wait_s(remote: Any) -> float:
+    key = _remote_cooldown_key(remote)
+    now = time.monotonic()
+    with _P2P_REMOTE_COOLDOWN_LOCK:
+        until_ts = float(_P2P_REMOTE_COOLDOWN_UNTIL_TS.get(key, 0.0) or 0.0)
+    if until_ts <= now:
+        return 0.0
+    return max(0.0, until_ts - now)
+
+
+def _prune_remote_state_locked(now: float) -> None:
+    """Prune stale/excess remote cooldown state. Caller must hold lock."""
+    max_keys = _remote_state_max_keys()
+    stale_s = _remote_state_stale_s()
+
+    if not _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS:
+        return
+
+    stale_cutoff = float(now) - float(stale_s)
+    stale_keys = [
+        k for (k, ts) in _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.items()
+        if float(ts) < stale_cutoff and float(_P2P_REMOTE_COOLDOWN_UNTIL_TS.get(k, 0.0) or 0.0) <= float(now)
+    ]
+    if stale_keys:
+        for key in stale_keys:
+            _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.pop(key, None)
+            _P2P_REMOTE_COOLDOWN_UNTIL_TS.pop(key, None)
+            _P2P_REMOTE_COOLDOWN_FAILURE_STREAK.pop(key, None)
+        _retry_metric_inc("remote_state.pruned", len(stale_keys))
+
+    n = len(_P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS)
+    if n <= int(max_keys):
+        return
+
+    overflow = n - int(max_keys)
+    oldest = sorted(_P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.items(), key=lambda kv: float(kv[1]))[:overflow]
+    if oldest:
+        for key, _ in oldest:
+            _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.pop(key, None)
+            _P2P_REMOTE_COOLDOWN_UNTIL_TS.pop(key, None)
+            _P2P_REMOTE_COOLDOWN_FAILURE_STREAK.pop(key, None)
+        _retry_metric_inc("remote_state.pruned", len(oldest))
+
+
+def _remote_cooldown_mark_failure(remote: Any) -> None:
+    global _P2P_REMOTE_COOLDOWN_MUTATIONS
+    key = _remote_cooldown_key(remote)
+    base_ms = _remote_cooldown_base_ms()
+    max_ms = max(_remote_cooldown_max_ms(), base_ms)
+    now = time.monotonic()
+    with _P2P_REMOTE_COOLDOWN_LOCK:
+        streak = int(_P2P_REMOTE_COOLDOWN_FAILURE_STREAK.get(key, 0)) + 1
+        _P2P_REMOTE_COOLDOWN_FAILURE_STREAK[key] = streak
+        delay_ms = min(max_ms, base_ms * (2 ** max(0, streak - 1)))
+        jitter_ms = random.randint(0, max(1, base_ms // 2))
+        _P2P_REMOTE_COOLDOWN_UNTIL_TS[key] = float(now) + ((delay_ms + jitter_ms) / 1000.0)
+        _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS[key] = float(now)
+        _P2P_REMOTE_COOLDOWN_MUTATIONS = int(_P2P_REMOTE_COOLDOWN_MUTATIONS) + 1
+        if (len(_P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS) > _remote_state_max_keys()) or (_P2P_REMOTE_COOLDOWN_MUTATIONS % 64 == 0):
+            _prune_remote_state_locked(float(now))
+
+
+def _remote_cooldown_mark_success(remote: Any) -> None:
+    key = _remote_cooldown_key(remote)
+    with _P2P_REMOTE_COOLDOWN_LOCK:
+        _P2P_REMOTE_COOLDOWN_LAST_TOUCH_TS.pop(key, None)
+        _P2P_REMOTE_COOLDOWN_FAILURE_STREAK.pop(key, None)
+        _P2P_REMOTE_COOLDOWN_UNTIL_TS.pop(key, None)
+
+
+def _get_dial_semaphore() -> threading.BoundedSemaphore:
+    global _P2P_DIAL_SEM, _P2P_DIAL_SEM_SIZE
+    size = _max_concurrent_dials()
+    with _P2P_DIAL_SEM_LOCK:
+        if _P2P_DIAL_SEM is None or int(_P2P_DIAL_SEM_SIZE) != int(size):
+            _P2P_DIAL_SEM = threading.BoundedSemaphore(value=int(size))
+            _P2P_DIAL_SEM_SIZE = int(size)
+        return _P2P_DIAL_SEM
+
+
+def _get_wait_dial_semaphore() -> threading.BoundedSemaphore:
+    global _P2P_WAIT_DIAL_SEM, _P2P_WAIT_DIAL_SEM_SIZE
+    size = _max_concurrent_wait_dials()
+    with _P2P_WAIT_DIAL_SEM_LOCK:
+        if _P2P_WAIT_DIAL_SEM is None or int(_P2P_WAIT_DIAL_SEM_SIZE) != int(size):
+            _P2P_WAIT_DIAL_SEM = threading.BoundedSemaphore(value=int(size))
+            _P2P_WAIT_DIAL_SEM_SIZE = int(size)
+        return _P2P_WAIT_DIAL_SEM
+
+
+async def _acquire_dial_slot(*, op_label: str) -> Any:
+    import anyio
+
+    is_wait = str(op_label) == "wait"
+    sem = _get_wait_dial_semaphore() if is_wait else _get_dial_semaphore()
+    timeout_s = _wait_dial_slot_timeout_s() if is_wait else _dial_slot_timeout_s()
+    t0 = time.monotonic()
+    acquired = await anyio.to_thread.run_sync(lambda: sem.acquire(timeout=timeout_s))
+    if not acquired:
+        _retry_metric_inc(f"{op_label}.dial_slot_timeout")
+        raise TimeoutError(f"dial slot timeout after {timeout_s:.3f}s for {op_label}")
+    waited_s = max(0.0, time.monotonic() - t0)
+    if waited_s > 0.001:
+        _retry_metric_inc(f"{op_label}.dial_slot_wait")
+
+    def _release() -> None:
+        try:
+            sem.release()
+        except Exception:
+            pass
+
+    return _release
+
+
+async def _dial_and_request_with_retries(
+    *,
+    remote: RemoteQueue,
+    message: Dict[str, Any],
+    retries: int,
+    retry_base_ms: int,
+    dial_timeout_s: float,
+    op_label: str,
+) -> Dict[str, Any]:
+    import anyio
+
+    max_retries = max(0, int(retries))
+    for attempt in range(max_retries + 1):
+        attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
+        cooldown_wait_s = _remote_cooldown_wait_s(remote)
+        if cooldown_wait_s > 0:
+            _retry_metric_inc(f"{op_label}.cooldown_wait")
+            _dial_debug(
+                f"{op_label} cooldown wait before attempt={attempt + 1}/{max_retries + 1} wait_s={cooldown_wait_s:.3f}"
+            )
+            await anyio.sleep(cooldown_wait_s)
+        try:
+            release_slot = await _acquire_dial_slot(op_label=op_label)
+            try:
+                resp = await _dial_and_request(
+                    remote=remote,
+                    message=message,
+                    dial_timeout_s=attempt_dial_timeout_s,
+                )
+            finally:
+                release_slot()
+            _remote_cooldown_mark_success(remote)
+            if attempt > 0:
+                _retry_metric_inc(f"{op_label}.recovered")
+            return resp
+        except BaseExceptionGroup as exc:
+            retryable = _is_retryable_transport_error(exc)
+            if retryable:
+                _remote_cooldown_mark_failure(remote)
+            if attempt >= max_retries or not retryable:
+                _retry_metric_inc(f"{op_label}.failed")
+                raise
+            delay_s = _retry_delay_s(attempt=attempt, base_ms=retry_base_ms)
+            _retry_metric_inc(f"{op_label}.retry")
+            _dial_debug(
+                f"{op_label} retry after BaseExceptionGroup attempt={attempt + 1}/{max_retries + 1} delay_s={delay_s:.3f}"
+            )
+            await anyio.sleep(delay_s)
+        except Exception as exc:
+            retryable = _is_retryable_transport_error(exc)
+            if retryable:
+                _remote_cooldown_mark_failure(remote)
+            if attempt >= max_retries or not retryable:
+                _retry_metric_inc(f"{op_label}.failed")
+                raise
+            delay_s = _retry_delay_s(attempt=attempt, base_ms=retry_base_ms)
+            _retry_metric_inc(f"{op_label}.retry")
+            _dial_debug(
+                f"{op_label} retry after {type(exc).__name__} attempt={attempt + 1}/{max_retries + 1} delay_s={delay_s:.3f}"
+            )
+            await anyio.sleep(delay_s)
+
+    raise RuntimeError(f"{op_label} failed after retries")
+
+
 @dataclass
 class RemoteQueue:
     peer_id: str = ""
@@ -98,24 +669,77 @@ class RemoteQueue:
 _DISCOVERED_MULTIADDR_CACHE: dict[str, str] = {}
 
 
+def _cache_prune_locked(now: float) -> None:
+    """Prune stale/excess discovered multiaddr cache entries. Caller holds lock."""
+    max_keys = _cache_state_max_keys()
+    stale_s = _cache_state_stale_s()
+
+    if not _DISCOVERED_MULTIADDR_TOUCH_TS:
+        return
+
+    stale_cutoff = float(now) - float(stale_s)
+    stale_keys = [k for (k, ts) in _DISCOVERED_MULTIADDR_TOUCH_TS.items() if float(ts) < stale_cutoff]
+    if stale_keys:
+        for key in stale_keys:
+            _DISCOVERED_MULTIADDR_TOUCH_TS.pop(key, None)
+            _DISCOVERED_MULTIADDR_CACHE.pop(key, None)
+        _retry_metric_inc("cache.pruned", len(stale_keys))
+
+    n = len(_DISCOVERED_MULTIADDR_TOUCH_TS)
+    if n <= int(max_keys):
+        return
+
+    overflow = n - int(max_keys)
+    oldest = sorted(_DISCOVERED_MULTIADDR_TOUCH_TS.items(), key=lambda kv: float(kv[1]))[:overflow]
+    if oldest:
+        for key, _ in oldest:
+            _DISCOVERED_MULTIADDR_TOUCH_TS.pop(key, None)
+            _DISCOVERED_MULTIADDR_CACHE.pop(key, None)
+        _retry_metric_inc("cache.pruned", len(oldest))
+
+
 def _cache_get_multiaddr(peer_id: str) -> str:
     try:
-        return str(_DISCOVERED_MULTIADDR_CACHE.get(str(peer_id).strip()) or "")
+        pid = str(peer_id).strip()
+        if not pid:
+            return ""
+        now = time.monotonic()
+        with _DISCOVERED_MULTIADDR_LOCK:
+            ts = float(_DISCOVERED_MULTIADDR_TOUCH_TS.get(pid, 0.0) or 0.0)
+            if ts > 0.0 and (float(now) - ts) > _cache_state_stale_s():
+                _DISCOVERED_MULTIADDR_TOUCH_TS.pop(pid, None)
+                _DISCOVERED_MULTIADDR_CACHE.pop(pid, None)
+                _retry_metric_inc("cache.expired")
+                return ""
+            ma = str(_DISCOVERED_MULTIADDR_CACHE.get(pid) or "")
+            if ma:
+                _DISCOVERED_MULTIADDR_TOUCH_TS[pid] = float(now)
+            return ma
     except Exception:
         return ""
 
 
 def _cache_set_multiaddr(peer_id: str, multiaddr: str) -> None:
+    global _DISCOVERED_MULTIADDR_MUTATIONS
     pid = str(peer_id or "").strip()
     ma = str(multiaddr or "").strip()
     if not pid or not ma:
         return
-    _DISCOVERED_MULTIADDR_CACHE[pid] = ma
+    now = time.monotonic()
+    with _DISCOVERED_MULTIADDR_LOCK:
+        _DISCOVERED_MULTIADDR_CACHE[pid] = ma
+        _DISCOVERED_MULTIADDR_TOUCH_TS[pid] = float(now)
+        _DISCOVERED_MULTIADDR_MUTATIONS = int(_DISCOVERED_MULTIADDR_MUTATIONS) + 1
+        if (len(_DISCOVERED_MULTIADDR_TOUCH_TS) > _cache_state_max_keys()) or (_DISCOVERED_MULTIADDR_MUTATIONS % 64 == 0):
+            _cache_prune_locked(float(now))
 
 
 def _cache_del_multiaddr(peer_id: str) -> None:
     try:
-        _DISCOVERED_MULTIADDR_CACHE.pop(str(peer_id).strip(), None)
+        pid = str(peer_id).strip()
+        with _DISCOVERED_MULTIADDR_LOCK:
+            _DISCOVERED_MULTIADDR_CACHE.pop(pid, None)
+            _DISCOVERED_MULTIADDR_TOUCH_TS.pop(pid, None)
     except Exception:
         pass
 
@@ -1067,60 +1691,70 @@ async def _dial_and_request(
     host_obj = new_host()
     host = await host_obj if inspect.isawaitable(host_obj) else host_obj
 
-    resp: Dict[str, Any]
-    async with background_trio_service(host.get_network()):
-        await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
+    resp: Optional[Dict[str, Any]] = None
+    try:
+        async with background_trio_service(host.get_network()):
+            await host.get_network().listen(Multiaddr(f"/ip4/{_client_listen_host()}/tcp/0"))
 
-        with anyio.fail_after(float(dial_timeout_s)):
-            if (remote.multiaddr or "").strip():
-                resp = await _try_peer_multiaddr(
-                    host=host,
-                    peer_multiaddr=remote.multiaddr,
-                    message=message,
-                )  # type: ignore[assignment]
-            else:
-                require_peer_id = (remote.peer_id or "").strip()
-
-                # If we've recently discovered this peer via mDNS/DHT/etc in this
-                # process, try the cached multiaddr first to avoid rediscovery
-                # races during submit/wait loops.
-                if require_peer_id:
-                    cached_ma = _cache_get_multiaddr(require_peer_id)
-                    if cached_ma:
-                        try:
-                            resp = await _try_peer_multiaddr(host=host, peer_multiaddr=cached_ma, message=message)
-                            if isinstance(resp, dict):
-                                return resp
-                        except Exception:
-                            pass
-                        _cache_del_multiaddr(require_peer_id)
-
-                # Zero-config: if a local service is running, it writes an
-                # announce file in XDG cache; dial it first.
-                ann = await _dial_via_announce_file(host=host, message=message, require_peer_id=require_peer_id)
-                if isinstance(ann, dict):
-                    resp = ann
+            with anyio.fail_after(float(dial_timeout_s)):
+                if (remote.multiaddr or "").strip():
+                    resp = await _try_peer_multiaddr(
+                        host=host,
+                        peer_multiaddr=remote.multiaddr,
+                        message=message,
+                    )  # type: ignore[assignment]
                 else:
-                    # Then try cross-subnet mechanisms, and finally LAN mDNS.
-                    boot = await _dial_via_bootstrap(host=host, message=message)
-                    if isinstance(boot, dict):
-                        resp = boot
+                    require_peer_id = (remote.peer_id or "").strip()
+
+                    # If we've recently discovered this peer via mDNS/DHT/etc in this
+                    # process, try the cached multiaddr first to avoid rediscovery
+                    # races during submit/wait loops.
+                    if require_peer_id:
+                        cached_ma = _cache_get_multiaddr(require_peer_id)
+                        if cached_ma:
+                            try:
+                                resp = await _try_peer_multiaddr(host=host, peer_multiaddr=cached_ma, message=message)
+                                if isinstance(resp, dict):
+                                    return resp
+                            except Exception:
+                                pass
+                            _cache_del_multiaddr(require_peer_id)
+
+                    # Zero-config: if a local service is running, it writes an
+                    # announce file in XDG cache; dial it first.
+                    ann = await _dial_via_announce_file(host=host, message=message, require_peer_id=require_peer_id)
+                    if isinstance(ann, dict):
+                        resp = ann
                     else:
-                        rv = await _dial_via_rendezvous(host=host, message=message, require_peer_id=require_peer_id)
-                        if isinstance(rv, dict):
-                            resp = rv
+                        # Then try cross-subnet mechanisms, and finally LAN mDNS.
+                        boot = await _dial_via_bootstrap(host=host, message=message)
+                        if isinstance(boot, dict):
+                            resp = boot
                         else:
-                            dht = await _dial_via_dht(host=host, message=message, require_peer_id=require_peer_id)
-                            if isinstance(dht, dict):
-                                resp = dht
+                            rv = await _dial_via_rendezvous(host=host, message=message, require_peer_id=require_peer_id)
+                            if isinstance(rv, dict):
+                                resp = rv
                             else:
-                                resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
+                                dht = await _dial_via_dht(host=host, message=message, require_peer_id=require_peer_id)
+                                if isinstance(dht, dict):
+                                    resp = dht
+                                else:
+                                    resp = await _dial_via_mdns(host=host, message=message, require_peer_id=require_peer_id)
+    except BaseExceptionGroup as exc:
+        # Under high concurrency, background_trio_service teardown can raise
+        # grouped transport errors after a successful request/response cycle.
+        if isinstance(resp, dict):
+            _dial_debug(f"background service teardown raised {type(exc).__name__}; preserving successful response")
+        else:
+            raise
 
     try:
         await host.close()
     except Exception:
         pass
 
+    if not isinstance(resp, dict):
+        raise RuntimeError("p2p request failed: no response")
     return resp
 
 
@@ -2120,13 +2754,79 @@ def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail
 
 
 async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> str:
-    resp = await _dial_and_request(
-        remote=remote,
-        message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
-    )
-    if not resp.get("ok"):
-        raise RuntimeError(f"submit failed: {resp}")
-    return str(resp.get("task_id"))
+    import anyio
+
+    retries = _submit_retry_attempts()
+    base_ms = _submit_retry_base_ms()
+    dial_timeout_s = _submit_dial_timeout_s()
+    last_exc: BaseException | None = None
+
+    for attempt in range(retries + 1):
+        attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
+        cooldown_wait_s = _remote_cooldown_wait_s(remote)
+        if cooldown_wait_s > 0:
+            _retry_metric_inc("submit.cooldown_wait")
+            _dial_debug(f"submit cooldown wait before attempt={attempt + 1}/{retries + 1} wait_s={cooldown_wait_s:.3f}")
+            await anyio.sleep(cooldown_wait_s)
+        try:
+            release_slot = await _acquire_dial_slot(op_label="submit")
+            try:
+                resp = await _dial_and_request(
+                    remote=remote,
+                    message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
+                    dial_timeout_s=attempt_dial_timeout_s,
+                )
+            finally:
+                release_slot()
+            _remote_cooldown_mark_success(remote)
+            if not resp.get("ok"):
+                raise RuntimeError(f"submit failed: {resp}")
+            if attempt > 0:
+                _retry_metric_inc("submit.recovered")
+            return str(resp.get("task_id"))
+        except BaseExceptionGroup as exc:
+            last_exc = exc
+            _remote_cooldown_mark_failure(remote)
+            if attempt >= retries:
+                _retry_metric_inc("submit.failed")
+                raise
+            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+            _retry_metric_inc("submit.retry")
+            _dial_debug(
+                f"submit retry after BaseExceptionGroup attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
+            )
+            await anyio.sleep(delay_s)
+        except RuntimeError as exc:
+            # Preserve behavior for non-retryable submit failures.
+            if "submit failed:" in str(exc):
+                raise
+            last_exc = exc
+            _remote_cooldown_mark_failure(remote)
+            if attempt >= retries:
+                _retry_metric_inc("submit.failed")
+                raise
+            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+            _retry_metric_inc("submit.retry")
+            _dial_debug(
+                f"submit retry after RuntimeError attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
+            )
+            await anyio.sleep(delay_s)
+        except Exception as exc:
+            last_exc = exc
+            _remote_cooldown_mark_failure(remote)
+            if attempt >= retries:
+                _retry_metric_inc("submit.failed")
+                raise
+            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+            _retry_metric_inc("submit.retry")
+            _dial_debug(
+                f"submit retry after {type(exc).__name__} attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
+            )
+            await anyio.sleep(delay_s)
+
+    if last_exc is not None:
+        raise RuntimeError(f"submit failed after retries: {last_exc}")
+    raise RuntimeError("submit failed after retries")
 
 
 def _maybe_str_dict(value: Any) -> Dict[str, str]:
@@ -2319,9 +3019,13 @@ async def submit_task_with_info(
     model_name: str,
     payload: Dict[str, Any],
 ) -> Dict[str, str]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
+        retries=_submit_retry_attempts(),
+        retry_base_ms=_submit_retry_base_ms(),
+        dial_timeout_s=_submit_dial_timeout_s(),
+        op_label="submit_with_info",
     )
     if not resp.get("ok"):
         raise RuntimeError(f"submit failed: {resp}")
@@ -2352,7 +3056,7 @@ async def claim_next(
     peer_id: str | None = None,
     clock: Dict[str, Any] | None = None,
 ) -> Optional[Dict[str, Any]]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={
             "op": "claim",
@@ -2362,6 +3066,10 @@ async def claim_next(
             "peer_id": str(peer_id) if peer_id else "",
             "clock": clock,
         },
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=_rpc_dial_timeout_s(),
+        op_label="claim",
     )
     if not resp.get("ok"):
         raise RuntimeError(f"claim failed: {resp}")
@@ -2380,7 +3088,7 @@ async def claim_many(
     peer_id: str | None = None,
     clock: Dict[str, Any] | None = None,
 ) -> list[Dict[str, Any]]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={
             "op": "claim_many",
@@ -2392,6 +3100,10 @@ async def claim_many(
             "peer_id": str(peer_id) if peer_id else "",
             "clock": clock,
         },
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=_rpc_dial_timeout_s(),
+        op_label="claim_many",
     )
     if not resp.get("ok"):
         raise RuntimeError(f"claim_many failed: {resp}")
@@ -2452,9 +3164,13 @@ def claim_many_sync(
 
 
 async def heartbeat(*, remote: RemoteQueue, peer_id: str, clock: Dict[str, Any] | None = None) -> Dict[str, Any]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "peer.heartbeat", "peer_id": str(peer_id), "clock": clock},
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=_rpc_dial_timeout_s(),
+        op_label="heartbeat",
     )
     if not resp.get("ok"):
         raise RuntimeError(f"heartbeat failed: {resp}")
@@ -2477,9 +3193,13 @@ async def list_tasks(
     limit: int = 50,
     task_types: list[str] | None = None,
 ) -> Dict[str, Any]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "list", "status": status, "limit": int(limit), "task_types": list(task_types or [])},
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=_rpc_dial_timeout_s(),
+        op_label="list",
     )
     if not resp.get("ok"):
         raise RuntimeError(f"list failed: {resp}")
@@ -2509,7 +3229,7 @@ async def complete_task(
     result: Dict[str, Any] | None = None,
     error: str | None = None,
 ) -> Dict[str, Any]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={
             "op": "complete",
@@ -2518,6 +3238,10 @@ async def complete_task(
             "result": result,
             "error": error,
         },
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=_rpc_dial_timeout_s(),
+        op_label="complete",
     )
     if not resp.get("ok"):
         raise RuntimeError(f"complete failed: {resp}")
@@ -2531,7 +3255,7 @@ async def release_task(
     worker_id: str,
     reason: str | None = None,
 ) -> Dict[str, Any]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={
             "op": "release",
@@ -2539,6 +3263,10 @@ async def release_task(
             "worker_id": str(worker_id),
             "reason": str(reason) if reason else "",
         },
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=_rpc_dial_timeout_s(),
+        op_label="release",
     )
     if not resp.get("ok"):
         raise RuntimeError(f"release failed: {resp}")
@@ -2577,7 +3305,14 @@ def complete_task_sync(
 
 
 async def get_task(*, remote: RemoteQueue, task_id: str) -> Optional[Dict[str, Any]]:
-    resp = await _dial_and_request(remote=remote, message={"op": "get", "task_id": task_id})
+    resp = await _dial_and_request_with_retries(
+        remote=remote,
+        message={"op": "get", "task_id": task_id},
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=_rpc_dial_timeout_s(),
+        op_label="get",
+    )
     if not resp.get("ok"):
         raise RuntimeError(f"get failed: {resp}")
     task = resp.get("task")
@@ -2587,28 +3322,90 @@ async def get_task(*, remote: RemoteQueue, task_id: str) -> Optional[Dict[str, A
 async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.0) -> Optional[Dict[str, Any]]:
     import anyio
 
+    retries = _wait_retry_attempts()
+    base_ms = _wait_retry_base_ms()
+
     # `wait` is a long-poll RPC: the peer may keep the stream open until the
     # task completes or until its own timeout fires.
     dial_timeout_s = max(20.0, float(timeout_s) + 15.0)
 
-    try:
-        resp = await _dial_and_request(
-            remote=remote,
-            message={"op": "wait", "task_id": task_id, "timeout_s": float(timeout_s)},
-            dial_timeout_s=dial_timeout_s,
-        )
-    except TimeoutError:
-        return None
-    except BaseExceptionGroup as eg:
-        # trio/anyio may wrap cancellations/timeouts in an ExceptionGroup.
-        if any(isinstance(e, TimeoutError) for e in eg.exceptions):
+    for attempt in range(retries + 1):
+        attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
+        cooldown_wait_s = _remote_cooldown_wait_s(remote)
+        if cooldown_wait_s > 0:
+            _retry_metric_inc("wait.cooldown_wait")
+            _dial_debug(f"wait cooldown wait before attempt={attempt + 1}/{retries + 1} wait_s={cooldown_wait_s:.3f}")
+            await anyio.sleep(cooldown_wait_s)
+        try:
+            release_slot = await _acquire_dial_slot(op_label="wait")
+            try:
+                resp = await _dial_and_request(
+                    remote=remote,
+                    message={"op": "wait", "task_id": task_id, "timeout_s": float(timeout_s)},
+                    dial_timeout_s=attempt_dial_timeout_s,
+                )
+            finally:
+                release_slot()
+            _remote_cooldown_mark_success(remote)
+            if not resp.get("ok"):
+                raise RuntimeError(f"wait failed: {resp}")
+            task = resp.get("task")
+            if attempt > 0:
+                _retry_metric_inc("wait.recovered")
+            return task if isinstance(task, dict) else None
+        except TimeoutError as exc:
+            # Distinguish queueing contention from normal long-poll timeouts:
+            # dial-slot timeout should retry, while wait long-poll timeout
+            # still maps to "task not ready yet" -> None.
+            msg = str(exc or "").lower()
+            if "dial slot timeout" in msg:
+                if attempt >= retries:
+                    _retry_metric_inc("wait.failed")
+                    raise
+                delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+                _retry_metric_inc("wait.retry")
+                _dial_debug(
+                    f"wait retry after dial slot timeout attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
+                )
+                await anyio.sleep(delay_s)
+                continue
             return None
-        raise
-
-    if not resp.get("ok"):
-        raise RuntimeError(f"wait failed: {resp}")
-    task = resp.get("task")
-    return task if isinstance(task, dict) else None
+        except BaseExceptionGroup as eg:
+            # trio/anyio may wrap cancellations/timeouts in an ExceptionGroup.
+            if _exception_group_contains_dial_slot_timeout(eg):
+                if attempt >= retries:
+                    _retry_metric_inc("wait.failed")
+                    raise
+                delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+                _retry_metric_inc("wait.retry")
+                _dial_debug(
+                    f"wait retry after grouped dial slot timeout attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
+                )
+                await anyio.sleep(delay_s)
+                continue
+            if _exception_group_contains_timeout(eg):
+                return None
+            _remote_cooldown_mark_failure(remote)
+            if attempt >= retries:
+                _retry_metric_inc("wait.failed")
+                raise
+            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+            _retry_metric_inc("wait.retry")
+            _dial_debug(f"wait retry after BaseExceptionGroup attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}")
+            await anyio.sleep(delay_s)
+        except Exception as exc:
+            retryable = _is_retryable_transport_error(exc)
+            if retryable:
+                _remote_cooldown_mark_failure(remote)
+            if attempt >= retries or not retryable:
+                if attempt >= retries:
+                    _retry_metric_inc("wait.failed")
+                raise
+            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+            _retry_metric_inc("wait.retry")
+            _dial_debug(f"wait retry after {type(exc).__name__} attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}")
+            await anyio.sleep(delay_s)
+    return None
 
 
 async def get_capabilities(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
@@ -2620,17 +3417,74 @@ async def get_capabilities(*, remote: RemoteQueue, timeout_s: float = 10.0, deta
 
 
 async def request_status(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
-    resp = await _dial_and_request(
-        remote=remote,
-        message={"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)},
-    )
-    return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+    import anyio
+
+    retries = _status_retry_attempts()
+    base_ms = _status_retry_base_ms()
+    dial_timeout_s = _status_dial_timeout_s()
+
+    for attempt in range(retries + 1):
+        attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
+        cooldown_wait_s = _remote_cooldown_wait_s(remote)
+        if cooldown_wait_s > 0:
+            _retry_metric_inc("status.cooldown_wait")
+            _dial_debug(f"status cooldown wait before attempt={attempt + 1}/{retries + 1} wait_s={cooldown_wait_s:.3f}")
+            await anyio.sleep(cooldown_wait_s)
+        try:
+            release_slot = await _acquire_dial_slot(op_label="status")
+            try:
+                resp = await _dial_and_request(
+                    remote=remote,
+                    message={"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)},
+                    dial_timeout_s=attempt_dial_timeout_s,
+                )
+            finally:
+                release_slot()
+            _remote_cooldown_mark_success(remote)
+            if attempt > 0:
+                _retry_metric_inc("status.recovered")
+            return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+        except BaseExceptionGroup as exc:
+            retryable = _is_retryable_transport_error(exc)
+            if retryable:
+                _remote_cooldown_mark_failure(remote)
+            if attempt >= retries or not retryable:
+                if attempt >= retries:
+                    _retry_metric_inc("status.failed")
+                raise
+            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+            _retry_metric_inc("status.retry")
+            _dial_debug(
+                f"status retry after BaseExceptionGroup attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
+            )
+            await anyio.sleep(delay_s)
+        except Exception as exc:
+            retryable = _is_retryable_transport_error(exc)
+            if retryable:
+                _remote_cooldown_mark_failure(remote)
+            if attempt >= retries or not retryable:
+                if attempt >= retries:
+                    _retry_metric_inc("status.failed")
+                raise
+            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+            _retry_metric_inc("status.retry")
+            _dial_debug(f"status retry after {type(exc).__name__} attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}")
+            await anyio.sleep(delay_s)
+
+    return {"ok": False, "error": "status_failed_after_retries"}
 
 async def cancel_task(*, remote: RemoteQueue, task_id: str, reason: str | None = None) -> Dict[str, Any]:
     message: Dict[str, Any] = {"op": "cancel", "task_id": str(task_id)}
     if isinstance(reason, str) and reason.strip():
         message["reason"] = reason.strip()
-    resp = await _dial_and_request(remote=remote, message=message)
+    resp = await _dial_and_request_with_retries(
+        remote=remote,
+        message=message,
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=_rpc_dial_timeout_s(),
+        op_label="cancel",
+    )
     return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
 
 
@@ -2681,7 +3535,7 @@ async def call_tool(
     args: Dict[str, Any] | None = None,
     timeout_s: float = 30.0,
 ) -> Dict[str, Any]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={
             "op": "call_tool",
@@ -2689,6 +3543,10 @@ async def call_tool(
             "args": (args if isinstance(args, dict) else {}),
             "timeout_s": float(timeout_s),
         },
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=max(_rpc_dial_timeout_s(), float(timeout_s) + 5.0),
+        op_label="call_tool",
     )
     if not isinstance(resp, dict):
         return {"ok": False, "tool": str(tool_name), "error": "invalid_response"}
@@ -2715,9 +3573,13 @@ def call_tool_sync(
 
 
 async def cache_get(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) -> Dict[str, Any]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "cache.get", "key": str(key), "timeout_s": float(timeout_s)},
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=max(_rpc_dial_timeout_s(), float(timeout_s) + 2.0),
+        op_label="cache_get",
     )
     if not isinstance(resp, dict):
         return {"ok": False, "error": "invalid_response"}
@@ -2738,9 +3600,13 @@ def cache_get_sync(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) ->
 
 
 async def cache_has(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) -> Dict[str, Any]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "cache.has", "key": str(key), "timeout_s": float(timeout_s)},
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=max(_rpc_dial_timeout_s(), float(timeout_s) + 2.0),
+        op_label="cache_has",
     )
     if not isinstance(resp, dict):
         return {"ok": False, "error": "invalid_response"}
@@ -2780,7 +3646,14 @@ async def cache_set(
         except Exception:
             pass
 
-    resp = await _dial_and_request(remote=remote, message=message)
+    resp = await _dial_and_request_with_retries(
+        remote=remote,
+        message=message,
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=max(_rpc_dial_timeout_s(), float(timeout_s) + 2.0),
+        op_label="cache_set",
+    )
     if not isinstance(resp, dict):
         return {"ok": False, "error": "invalid_response"}
     return resp
@@ -2813,9 +3686,13 @@ def cache_set_sync(
 
 
 async def cache_delete(*, remote: RemoteQueue, key: str, timeout_s: float = 10.0) -> Dict[str, Any]:
-    resp = await _dial_and_request(
+    resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "cache.delete", "key": str(key), "timeout_s": float(timeout_s)},
+        retries=_rpc_retry_attempts(),
+        retry_base_ms=_rpc_retry_base_ms(),
+        dial_timeout_s=max(_rpc_dial_timeout_s(), float(timeout_s) + 2.0),
+        op_label="cache_delete",
     )
     if not isinstance(resp, dict):
         return {"ok": False, "error": "invalid_response"}

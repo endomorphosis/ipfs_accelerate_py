@@ -105,6 +105,30 @@ def _minimal_hf_enabled() -> bool:
     return False
 
 
+def _embedding_diagnostics_enabled() -> bool:
+    """Enable verbose embedding-path diagnostics from worker handlers."""
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_DIAGNOSTICS")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_EMBED_DIAGNOSTICS")
+        or ""
+    )
+    return _truthy(raw)
+
+
+def _require_accelerate_infer_for_embedding() -> bool:
+    """Require accelerate_instance.infer for embedding tasks.
+
+    When enabled, worker fails embedding tasks instead of silently falling back
+    to minimal HF execution when the accelerate path is unavailable or errors.
+    """
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_REQUIRE_ACCELERATE_INFER")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_REQUIRE_ACCELERATE_INFER")
+        or ""
+    )
+    return _truthy(raw)
+
+
 _HF_TEXTGEN_LOCK = threading.RLock()
 _HF_TEXTGEN_PIPELINE: object | None = None
 _HF_TEXTGEN_MODEL_ID: str | None = None
@@ -869,6 +893,20 @@ def _hf_get_embed_components(*, requested_model: str) -> tuple[object, object]:
         return (_HF_EMBED_TOKENIZER, _HF_EMBED_MODEL)
 
 
+def _hf_current_embed_runtime_info() -> dict[str, str]:
+    """Return best-effort runtime info for the current minimal HF embed model."""
+    with _HF_EMBED_LOCK:
+        model_id = str(_HF_EMBED_MODEL_ID or "")
+        model_obj = _HF_EMBED_MODEL
+    device = "cpu"
+    if model_obj is not None:
+        try:
+            device = str(_hf_model_primary_input_device(model_obj) or "cpu")
+        except Exception:
+            device = "cpu"
+    return {"model": model_id, "device": device}
+
+
 def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, temperature: float) -> str:
     """Minimal local text-generation without importing ipfs_accelerate_py core."""
 
@@ -1461,6 +1499,10 @@ def _run_text2text_generation(task: Dict[str, Any], *, accelerate_instance: obje
 def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
     model_name = str(task.get("model_name") or "")
     payload = task.get("payload") or {}
+    diagnostics = _embedding_diagnostics_enabled()
+    require_accel = _require_accelerate_infer_for_embedding()
+    accel_path_available = False
+    accel_path_error: str | None = None
 
     if accelerate_instance is not None and isinstance(payload, dict):
         try:
@@ -1469,6 +1511,7 @@ def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None =
 
             infer = getattr(accelerate_instance, "infer", None)
             if callable(infer):
+                accel_path_available = True
                 endpoint_hint = payload.get("endpoint")
                 endpoint_type_hint = payload.get("endpoint_type")
                 data = dict(payload)
@@ -1483,9 +1526,30 @@ def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None =
                 accel_result = anyio.run(_do_infer, backend="trio")
                 if isinstance(accel_result, BaseException):
                     raise accel_result
-                return {"result": accel_result}
-        except Exception:
-            pass
+                if diagnostics:
+                    print(
+                        "[worker:embedding] backend=accelerate_infer "
+                        f"model={model_name or '<auto>'} "
+                        f"endpoint_type={endpoint_type_hint or ''}"
+                    )
+                return {
+                    "result": accel_result,
+                    "embedding_backend": "accelerate_infer",
+                    "embedding_model": str(model_name or ""),
+                    "embedding_device": str(endpoint_type_hint or ""),
+                }
+        except Exception as exc:
+            accel_path_error = f"{type(exc).__name__}: {exc}"
+            if diagnostics:
+                print(
+                    "[worker:embedding] backend=accelerate_infer error="
+                    f"{accel_path_error}"
+                )
+
+    if require_accel and not accel_path_available:
+        raise RuntimeError("embedding requires accelerate_instance.infer (strict mode enabled)")
+    if require_accel and accel_path_error:
+        raise RuntimeError(f"embedding accelerate infer failed (strict mode): {accel_path_error}")
 
     if not _minimal_hf_enabled():
         raise RuntimeError("embedding requires accelerate_instance or minimal HF enabled")
@@ -1493,7 +1557,23 @@ def _run_embedding(task: Dict[str, Any], *, accelerate_instance: object | None =
     text = _extract_hf_input_text(payload)
     vecs, _used = _hf_embed_batch_auto([str(text or "")], model_name=(model_name or None), requested_batch_max=1)
     emb = vecs[0] if vecs else []
-    return {"embedding": emb, "dim": int(len(emb))}
+    info = _hf_current_embed_runtime_info()
+    if diagnostics:
+        print(
+            "[worker:embedding] backend=minimal_hf "
+            f"model={info.get('model') or model_name or '<auto>'} "
+            f"device={info.get('device') or 'cpu'}"
+        )
+    out: Dict[str, Any] = {
+        "embedding": emb,
+        "dim": int(len(emb)),
+        "embedding_backend": "minimal_hf",
+        "embedding_model": str(info.get("model") or model_name or ""),
+        "embedding_device": str(info.get("device") or "cpu"),
+    }
+    if accel_path_error:
+        out["embedding_accelerate_error"] = str(accel_path_error)
+    return out
 
 
 def _run_text_classification(task: Dict[str, Any], *, accelerate_instance: object | None = None) -> Dict[str, Any]:
