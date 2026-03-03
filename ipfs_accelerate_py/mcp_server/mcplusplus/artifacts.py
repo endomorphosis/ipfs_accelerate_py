@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 import threading
 from typing import Any, Dict, Iterable, Optional
 
@@ -238,6 +239,52 @@ class ArtifactStore:
         """Return deterministic store statistics."""
         with self._lock:
             return {"artifact_count": int(len(self._by_cid))}
+
+    def export_records(self) -> dict[str, dict[str, Any]]:
+        """Return deterministic deep-copy export of all records by sorted CID."""
+        with self._lock:
+            return {cid: dict(self._by_cid[cid]) for cid in sorted(self._by_cid.keys())}
+
+    def import_records(self, records: dict[str, dict[str, Any]], *, clear: bool = False) -> int:
+        """Import records from mapping and return number written."""
+        count = 0
+        with self._lock:
+            if clear:
+                self._by_cid.clear()
+            for cid, payload in (records or {}).items():
+                key = str(cid or "").strip()
+                if not key or not isinstance(payload, dict):
+                    continue
+                self._by_cid[key] = dict(payload)
+                count += 1
+        return count
+
+    def save_json(self, file_path: str) -> int:
+        """Persist all records to a deterministic JSON file and return count."""
+        target = Path(str(file_path)).expanduser()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        records = self.export_records()
+        target.write_text(
+            json.dumps(records, sort_keys=True, separators=(",", ":"), ensure_ascii=True),
+            encoding="utf-8",
+        )
+        return len(records)
+
+    @classmethod
+    def load_json(cls, file_path: str) -> "ArtifactStore":
+        """Load records from a JSON file into a new ArtifactStore instance."""
+        store = cls()
+        source = Path(str(file_path)).expanduser()
+        if not source.exists():
+            return store
+        raw = source.read_text(encoding="utf-8")
+        try:
+            parsed = json.loads(raw)
+        except Exception:
+            return store
+        if isinstance(parsed, dict):
+            store.import_records(parsed, clear=True)
+        return store
 
 
 __all__ = [

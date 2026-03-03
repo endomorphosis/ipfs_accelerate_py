@@ -8,7 +8,9 @@ import unittest
 import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_tools import (
+    archive_to_archive_is,
     archive_to_wayback,
+    batch_archive_to_archive_is,
     check_archive_status,
     extract_dataset_from_cdxj,
     extract_links_from_warc,
@@ -39,6 +41,8 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         register_native_web_archive_tools(manager)
         names = [c["name"] for c in manager.calls]
         self.assertIn("archive_to_wayback", names)
+        self.assertIn("archive_to_archive_is", names)
+        self.assertIn("batch_archive_to_archive_is", names)
         self.assertIn("extract_text_from_warc", names)
         self.assertIn("extract_dataset_from_cdxj", names)
         self.assertIn("extract_links_from_warc", names)
@@ -177,6 +181,62 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertIn(result.get("status"), ["success", "error"])
             if result.get("status") == "error":
                 self.assertIn("error", result)
+
+        anyio.run(_run)
+
+    def test_archive_to_archive_is_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_url = await archive_to_archive_is(url="")
+            self.assertEqual(missing_url.get("status"), "error")
+            self.assertIn("'url' is required", str(missing_url.get("error", "")))
+
+            invalid_timeout = await archive_to_archive_is(url="https://example.com", timeout=0)
+            self.assertEqual(invalid_timeout.get("status"), "error")
+            self.assertIn("'timeout' must be greater than 0", str(invalid_timeout.get("error", "")))
+
+            result = await archive_to_archive_is(url="https://example.com", wait_for_completion=False)
+            self.assertIn(result.get("status"), ["success", "pending", "error", "timeout"])
+            if result.get("status") == "error":
+                self.assertIn("error", result)
+
+        anyio.run(_run)
+
+    def test_batch_archive_to_archive_is_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_urls = await batch_archive_to_archive_is(urls=[])
+            self.assertEqual(missing_urls.get("status"), "error")
+            self.assertIn("'urls' must be a non-empty list", str(missing_urls.get("error", "")))
+
+            empty_urls = await batch_archive_to_archive_is(urls=[" "])
+            self.assertEqual(empty_urls.get("status"), "error")
+            self.assertIn("'urls' must contain at least one non-empty URL", str(empty_urls.get("error", "")))
+
+            invalid_delay = await batch_archive_to_archive_is(
+                urls=["https://example.com"],
+                delay_seconds=-1,
+            )
+            self.assertEqual(invalid_delay.get("status"), "error")
+            self.assertIn("'delay_seconds' must be >= 0", str(invalid_delay.get("error", "")))
+
+            invalid_max_concurrent = await batch_archive_to_archive_is(
+                urls=["https://example.com"],
+                max_concurrent=0,
+            )
+            self.assertEqual(invalid_max_concurrent.get("status"), "error")
+            self.assertIn(
+                "'max_concurrent' must be greater than 0",
+                str(invalid_max_concurrent.get("error", "")),
+            )
+
+            result = await batch_archive_to_archive_is(
+                urls=["https://example.com", "https://example.org"],
+                delay_seconds=0,
+                max_concurrent=1,
+            )
+            self.assertIn(result.get("status"), ["success", "error"])
+            if result.get("status") == "success":
+                self.assertIn("results", result)
+                self.assertIn("success_count", result)
 
         anyio.run(_run)
 

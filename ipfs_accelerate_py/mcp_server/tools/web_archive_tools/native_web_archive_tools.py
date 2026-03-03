@@ -12,7 +12,9 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
     """Resolve source web-archive APIs with compatibility fallback."""
     try:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.web_archive_tools import (  # type: ignore
+            archive_to_archive_is as _archive_to_archive_is,
             archive_to_wayback as _archive_to_wayback,
+            batch_archive_to_archive_is as _batch_archive_to_archive_is,
             check_archive_status as _check_archive_status,
             create_warc as _create_warc,
             extract_dataset_from_cdxj as _extract_dataset_from_cdxj,
@@ -30,7 +32,9 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
         )
 
         return {
+            "archive_to_archive_is": _archive_to_archive_is,
             "archive_to_wayback": _archive_to_wayback,
+            "batch_archive_to_archive_is": _batch_archive_to_archive_is,
             "check_archive_status": _check_archive_status,
             "create_warc": _create_warc,
             "extract_dataset_from_cdxj": _extract_dataset_from_cdxj,
@@ -63,11 +67,36 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "details": {"url": url, "fallback": True},
             }
 
+        async def _archive_to_archive_is_fallback(
+            url: str,
+            wait_for_completion: bool = True,
+            timeout: int = 300,
+        ) -> Dict[str, Any]:
+            _ = wait_for_completion, timeout
+            return {
+                "status": "error",
+                "error": "Archive.is submission backend unavailable",
+                "url": url,
+            }
+
         async def _archive_to_wayback_fallback(url: str) -> Dict[str, Any]:
             return {
                 "status": "error",
                 "error": "Wayback archive backend unavailable",
                 "url": url,
+            }
+
+        async def _batch_archive_to_archive_is_fallback(
+            urls: list[str],
+            delay_seconds: float = 2.0,
+            max_concurrent: int = 3,
+        ) -> Dict[str, Any]:
+            _ = delay_seconds, max_concurrent
+            return {
+                "status": "error",
+                "error": "Archive.is batch submission backend unavailable",
+                "urls": urls,
+                "results": {},
             }
 
         async def _get_archive_is_content_fallback(archive_url: str) -> Dict[str, Any]:
@@ -213,7 +242,9 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             }
 
         return {
+            "archive_to_archive_is": _archive_to_archive_is_fallback,
             "archive_to_wayback": _archive_to_wayback_fallback,
+            "batch_archive_to_archive_is": _batch_archive_to_archive_is_fallback,
             "check_archive_status": _check_archive_status_fallback,
             "create_warc": _create_warc_fallback,
             "extract_dataset_from_cdxj": _extract_dataset_from_cdxj_fallback,
@@ -257,6 +288,63 @@ async def archive_to_wayback(url: str) -> Dict[str, Any]:
         return {"status": "error", "error": "'url' is required."}
 
     result = _API["archive_to_wayback"](url=normalized_url)
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def archive_to_archive_is(
+    url: str,
+    wait_for_completion: bool = True,
+    timeout: int = 300,
+) -> Dict[str, Any]:
+    """Submit a URL for archival to Archive.is."""
+    normalized_url = str(url or "").strip()
+    if not normalized_url:
+        return {"status": "error", "error": "'url' is required."}
+    normalized_timeout = int(timeout)
+    if normalized_timeout <= 0:
+        return {"status": "error", "error": "'timeout' must be greater than 0."}
+
+    result = _API["archive_to_archive_is"](
+        url=normalized_url,
+        wait_for_completion=bool(wait_for_completion),
+        timeout=normalized_timeout,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def batch_archive_to_archive_is(
+    urls: list[str],
+    delay_seconds: float = 2.0,
+    max_concurrent: int = 3,
+) -> Dict[str, Any]:
+    """Batch submit URLs for archival to Archive.is."""
+    if not isinstance(urls, list) or not urls:
+        return {"status": "error", "error": "'urls' must be a non-empty list."}
+
+    normalized_urls = [str(url).strip() for url in urls if str(url).strip()]
+    if not normalized_urls:
+        return {
+            "status": "error",
+            "error": "'urls' must contain at least one non-empty URL.",
+        }
+
+    normalized_delay = float(delay_seconds)
+    if normalized_delay < 0:
+        return {"status": "error", "error": "'delay_seconds' must be >= 0."}
+
+    normalized_max_concurrent = int(max_concurrent)
+    if normalized_max_concurrent <= 0:
+        return {"status": "error", "error": "'max_concurrent' must be greater than 0."}
+
+    result = _API["batch_archive_to_archive_is"](
+        urls=normalized_urls,
+        delay_seconds=normalized_delay,
+        max_concurrent=normalized_max_concurrent,
+    )
     if hasattr(result, "__await__"):
         return await result
     return result
@@ -524,6 +612,42 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "url": {"type": "string"},
             },
             "required": ["url"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="archive_to_archive_is",
+        func=archive_to_archive_is,
+        description="Submit a URL to Archive.is for archival.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "wait_for_completion": {"type": "boolean", "default": True},
+                "timeout": {"type": "integer", "default": 300, "minimum": 1},
+            },
+            "required": ["url"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="batch_archive_to_archive_is",
+        func=batch_archive_to_archive_is,
+        description="Submit multiple URLs to Archive.is in a batch.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "urls": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "delay_seconds": {"type": "number", "default": 2.0, "minimum": 0},
+                "max_concurrent": {"type": "integer", "default": 3, "minimum": 1},
+            },
+            "required": ["urls"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],
