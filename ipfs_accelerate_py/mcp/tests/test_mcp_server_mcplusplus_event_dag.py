@@ -64,6 +64,62 @@ class TestMCPServerMCPPlusPlusEventDAG(unittest.TestCase):
                 }
             )
 
+    def test_rejects_conflicting_duplicate_event_payload(self) -> None:
+        store = EventDAGStore()
+        store.add_event("cid-root", {"parents": [], "intent_cid": "i1"})
+
+        # Idempotent duplicate is allowed.
+        store.add_event("cid-root", {"parents": [], "intent_cid": "i1"})
+
+        # Conflicting duplicate for same CID must be rejected explicitly.
+        with self.assertRaises(ValueError):
+            store.add_event("cid-root", {"parents": [], "intent_cid": "i2"})
+
+    def test_large_dag_replay_and_rollback_are_deterministic(self) -> None:
+        store = EventDAGStore()
+        store.add_event("cid-root", {"parents": [], "intent_cid": "root"})
+
+        # Build a deterministic layered DAG:
+        # layer 1: 10 children of root
+        # layer 2: each layer-1 node has two children
+        # layer 3: each layer-2 node has one child
+        layer1 = []
+        for i in range(10):
+            cid = f"cid-l1-{i:02d}"
+            store.add_event(cid, {"parents": ["cid-root"], "intent_cid": cid})
+            layer1.append(cid)
+
+        layer2 = []
+        for parent in layer1:
+            for branch in ("a", "b"):
+                cid = f"cid-l2-{parent}-{branch}"
+                store.add_event(cid, {"parents": [parent], "intent_cid": cid})
+                layer2.append(cid)
+
+        layer3 = []
+        for parent in layer2:
+            cid = f"cid-l3-{parent}"
+            store.add_event(cid, {"parents": [parent], "intent_cid": cid})
+            layer3.append(cid)
+
+        replay_first = store.replay_from_root("cid-root")
+        replay_second = store.replay_from_root("cid-root")
+        self.assertEqual(replay_first, replay_second)
+        self.assertEqual(len(replay_first), 1 + len(layer1) + len(layer2) + len(layer3))
+        self.assertEqual(replay_first[0], "cid-root")
+
+        leaf = sorted(layer3)[-1]
+        rollback_first = store.rollback_path(leaf)
+        rollback_second = store.rollback_path(leaf)
+        self.assertEqual(rollback_first, rollback_second)
+        self.assertEqual(rollback_first[0], leaf)
+        self.assertEqual(rollback_first[-1], "cid-root")
+
+        snapshot = store.export_snapshot()
+        rebuilt = EventDAGStore.from_snapshot(snapshot)
+        self.assertEqual(rebuilt.replay_from_root("cid-root"), replay_first)
+        self.assertEqual(rebuilt.rollback_path(leaf), rollback_first)
+
 
 if __name__ == "__main__":
     unittest.main()

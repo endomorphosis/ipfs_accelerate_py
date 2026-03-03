@@ -30,9 +30,23 @@ class EventDAGStore:
         """Insert event after validating parent references.
 
         Raises:
-            ValueError: if any declared parent is missing.
+            ValueError: if any declared parent is missing, or if an existing
+                event CID is re-used with conflicting content.
         """
         parents = list(payload.get("parents", []) or [])
+
+        existing = self._events.get(event_cid)
+        if existing is not None:
+            incoming_payload = dict(payload)
+            incoming_payload.setdefault("parents", list(parents))
+
+            existing_payload = dict(existing.payload)
+            existing_payload.setdefault("parents", list(existing.parents))
+
+            if incoming_payload == existing_payload and list(parents) == list(existing.parents):
+                return existing
+            raise ValueError(f"conflicting_event:{event_cid}")
+
         for parent in parents:
             if parent not in self._events:
                 raise ValueError(f"missing_parent:{parent}")
