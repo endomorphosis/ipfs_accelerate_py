@@ -11,8 +11,11 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     archive_to_archive_is,
     archive_to_wayback,
     batch_archive_to_archive_is,
+    batch_search_brave,
+    batch_search_google,
     batch_scrape_with_autoscraper,
     check_archive_status,
+    clear_brave_cache,
     create_autoscraper_model,
     extract_dataset_from_cdxj,
     extract_links_from_warc,
@@ -20,6 +23,7 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     extract_text_from_warc,
     fetch_warc_record_advanced,
     get_archive_is_content,
+    get_brave_cache_stats,
     get_common_crawl_collection_info_advanced,
     get_common_crawl_content,
     get_ipwb_content,
@@ -33,7 +37,12 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     register_native_web_archive_tools,
     scrape_with_autoscraper,
     search_archive_is,
+    search_brave,
+    search_brave_images,
+    search_brave_news,
     search_common_crawl_advanced,
+    search_google,
+    search_google_images,
     search_ipwb_archive,
     search_wayback_machine,
     start_ipwb_replay,
@@ -57,6 +66,15 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("archive_to_wayback", names)
         self.assertIn("archive_to_archive_is", names)
         self.assertIn("batch_archive_to_archive_is", names)
+        self.assertIn("search_brave", names)
+        self.assertIn("search_brave_news", names)
+        self.assertIn("search_brave_images", names)
+        self.assertIn("batch_search_brave", names)
+        self.assertIn("get_brave_cache_stats", names)
+        self.assertIn("clear_brave_cache", names)
+        self.assertIn("search_google", names)
+        self.assertIn("search_google_images", names)
+        self.assertIn("batch_search_google", names)
         self.assertIn("extract_text_from_warc", names)
         self.assertIn("extract_dataset_from_cdxj", names)
         self.assertIn("extract_links_from_warc", names)
@@ -332,6 +350,93 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertIn(batch_result.get("status"), ["success", "error"])
             if batch_result.get("status") == "error":
                 self.assertIn("error", batch_result)
+
+        anyio.run(_run)
+
+    def test_brave_google_provider_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_brave_query = await search_brave(query="")
+            self.assertEqual(missing_brave_query.get("status"), "error")
+            self.assertIn("'query' is required", str(missing_brave_query.get("error", "")))
+
+            invalid_brave_count = await search_brave(query="cats", count=0)
+            self.assertEqual(invalid_brave_count.get("status"), "error")
+            self.assertIn("'count' must be greater than 0", str(invalid_brave_count.get("error", "")))
+
+            invalid_brave_offset = await search_brave(query="cats", offset=-1)
+            self.assertEqual(invalid_brave_offset.get("status"), "error")
+            self.assertIn("'offset' must be >= 0", str(invalid_brave_offset.get("error", "")))
+
+            invalid_brave_safesearch = await search_brave(query="cats", safesearch="bad")
+            self.assertEqual(invalid_brave_safesearch.get("status"), "error")
+            self.assertIn("'safesearch' must be one of", str(invalid_brave_safesearch.get("error", "")))
+
+            invalid_brave_freshness = await search_brave(query="cats", freshness="pz")
+            self.assertEqual(invalid_brave_freshness.get("status"), "error")
+            self.assertIn("'freshness' must be one of", str(invalid_brave_freshness.get("error", "")))
+
+            brave_result = await search_brave(query="cats", count=3)
+            self.assertIn(brave_result.get("status"), ["success", "error"])
+
+            brave_news_result = await search_brave_news(query="cats")
+            self.assertIn(brave_news_result.get("status"), ["success", "error"])
+
+            brave_images_result = await search_brave_images(query="cats")
+            self.assertIn(brave_images_result.get("status"), ["success", "error"])
+
+            missing_brave_batch_queries = await batch_search_brave(queries=[])
+            self.assertEqual(missing_brave_batch_queries.get("status"), "error")
+            self.assertIn("'queries' must be a non-empty list", str(missing_brave_batch_queries.get("error", "")))
+
+            invalid_brave_batch_delay = await batch_search_brave(queries=["cats"], delay_seconds=-1)
+            self.assertEqual(invalid_brave_batch_delay.get("status"), "error")
+            self.assertIn("'delay_seconds' must be >= 0", str(invalid_brave_batch_delay.get("error", "")))
+
+            brave_batch_result = await batch_search_brave(queries=["cats", "dogs"], count=2, delay_seconds=0)
+            self.assertIn(brave_batch_result.get("status"), ["success", "error"])
+
+            brave_cache_stats = await get_brave_cache_stats()
+            self.assertIn(brave_cache_stats.get("status"), ["success", "error", "unavailable"])
+
+            brave_cache_clear = await clear_brave_cache()
+            self.assertIn(brave_cache_clear.get("status"), ["success", "error", "unavailable"])
+
+            missing_google_query = await search_google(query="")
+            self.assertEqual(missing_google_query.get("status"), "error")
+            self.assertIn("'query' is required", str(missing_google_query.get("error", "")))
+
+            invalid_google_num = await search_google(query="cats", num=0)
+            self.assertEqual(invalid_google_num.get("status"), "error")
+            self.assertIn("'num' must be greater than 0", str(invalid_google_num.get("error", "")))
+
+            invalid_google_start = await search_google(query="cats", start=0)
+            self.assertEqual(invalid_google_start.get("status"), "error")
+            self.assertIn("'start' must be greater than 0", str(invalid_google_start.get("error", "")))
+
+            invalid_google_safe = await search_google(query="cats", safe="bad")
+            self.assertEqual(invalid_google_safe.get("status"), "error")
+            self.assertIn("'safe' must be one of", str(invalid_google_safe.get("error", "")))
+
+            invalid_google_type = await search_google(query="cats", search_type="video")
+            self.assertEqual(invalid_google_type.get("status"), "error")
+            self.assertIn("'search_type' must be 'image' or null", str(invalid_google_type.get("error", "")))
+
+            google_result = await search_google(query="cats", num=3)
+            self.assertIn(google_result.get("status"), ["success", "error"])
+
+            google_images_result = await search_google_images(query="cats", num=3)
+            self.assertIn(google_images_result.get("status"), ["success", "error"])
+
+            missing_google_batch_queries = await batch_search_google(queries=[])
+            self.assertEqual(missing_google_batch_queries.get("status"), "error")
+            self.assertIn("'queries' must be a non-empty list", str(missing_google_batch_queries.get("error", "")))
+
+            invalid_google_batch_delay = await batch_search_google(queries=["cats"], delay_seconds=-1)
+            self.assertEqual(invalid_google_batch_delay.get("status"), "error")
+            self.assertIn("'delay_seconds' must be >= 0", str(invalid_google_batch_delay.get("error", "")))
+
+            google_batch_result = await batch_search_google(queries=["cats", "dogs"], num=2, delay_seconds=0)
+            self.assertIn(google_batch_result.get("status"), ["success", "error"])
 
         anyio.run(_run)
 

@@ -14,8 +14,11 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.web_archive_tools import (  # type: ignore
             archive_to_archive_is as _archive_to_archive_is,
             archive_to_wayback as _archive_to_wayback,
+            batch_search_brave as _batch_search_brave,
+            batch_search_google as _batch_search_google,
             batch_archive_to_archive_is as _batch_archive_to_archive_is,
             check_archive_status as _check_archive_status,
+            clear_brave_cache as _clear_brave_cache,
             create_warc as _create_warc,
             create_autoscraper_model as _create_autoscraper_model,
             extract_dataset_from_cdxj as _extract_dataset_from_cdxj,
@@ -24,6 +27,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             extract_text_from_warc as _extract_text_from_warc,
             fetch_warc_record_advanced as _fetch_warc_record_advanced,
             get_archive_is_content as _get_archive_is_content,
+            get_brave_cache_stats as _get_brave_cache_stats,
             get_common_crawl_collection_info_advanced as _get_common_crawl_collection_info_advanced,
             get_common_crawl_content as _get_common_crawl_content,
             get_ipwb_content as _get_ipwb_content,
@@ -36,8 +40,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             optimize_autoscraper_model as _optimize_autoscraper_model,
             scrape_with_autoscraper as _scrape_with_autoscraper,
             search_archive_is as _search_archive_is,
+            search_brave as _search_brave,
+            search_brave_images as _search_brave_images,
+            search_brave_news as _search_brave_news,
             search_common_crawl as _search_common_crawl,
             search_common_crawl_advanced as _search_common_crawl_advanced,
+            search_google as _search_google,
+            search_google_images as _search_google_images,
             search_ipwb_archive as _search_ipwb_archive,
             search_wayback_machine as _search_wayback_machine,
             start_ipwb_replay as _start_ipwb_replay,
@@ -49,8 +58,11 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "archive_to_archive_is": _archive_to_archive_is,
             "archive_to_wayback": _archive_to_wayback,
             "batch_archive_to_archive_is": _batch_archive_to_archive_is,
+            "batch_search_brave": _batch_search_brave,
+            "batch_search_google": _batch_search_google,
             "batch_scrape_with_autoscraper": _batch_scrape_with_autoscraper,
             "check_archive_status": _check_archive_status,
+            "clear_brave_cache": _clear_brave_cache,
             "create_warc": _create_warc,
             "create_autoscraper_model": _create_autoscraper_model,
             "extract_dataset_from_cdxj": _extract_dataset_from_cdxj,
@@ -59,6 +71,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "extract_metadata_from_warc": _extract_metadata_from_warc,
             "fetch_warc_record_advanced": _fetch_warc_record_advanced,
             "get_archive_is_content": _get_archive_is_content,
+            "get_brave_cache_stats": _get_brave_cache_stats,
             "get_common_crawl_collection_info_advanced": _get_common_crawl_collection_info_advanced,
             "search_common_crawl": _search_common_crawl,
             "search_common_crawl_advanced": _search_common_crawl_advanced,
@@ -73,6 +86,11 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "optimize_autoscraper_model": _optimize_autoscraper_model,
             "scrape_with_autoscraper": _scrape_with_autoscraper,
             "search_archive_is": _search_archive_is,
+            "search_brave": _search_brave,
+            "search_brave_images": _search_brave_images,
+            "search_brave_news": _search_brave_news,
+            "search_google": _search_google,
+            "search_google_images": _search_google_images,
             "search_ipwb_archive": _search_ipwb_archive,
             "search_wayback_machine": _search_wayback_machine,
             "start_ipwb_replay": _start_ipwb_replay,
@@ -125,6 +143,165 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "error": "Archive.is batch submission backend unavailable",
                 "urls": urls,
                 "results": {},
+            }
+
+        async def _search_brave_fallback(
+            query: str,
+            api_key: Optional[str] = None,
+            count: int = 10,
+            offset: int = 0,
+            search_lang: str = "en",
+            country: str = "US",
+            safesearch: str = "moderate",
+            freshness: Optional[str] = None,
+            text_decorations: bool = True,
+            spellcheck: bool = True,
+            result_filter: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = (
+                api_key,
+                count,
+                offset,
+                search_lang,
+                country,
+                safesearch,
+                freshness,
+                text_decorations,
+                spellcheck,
+                result_filter,
+            )
+            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+
+        async def _search_brave_news_fallback(
+            query: str,
+            api_key: Optional[str] = None,
+            count: int = 10,
+            offset: int = 0,
+            search_lang: str = "en",
+            country: str = "US",
+            safesearch: str = "moderate",
+            freshness: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            return await _search_brave_fallback(
+                query=query,
+                api_key=api_key,
+                count=count,
+                offset=offset,
+                search_lang=search_lang,
+                country=country,
+                safesearch=safesearch,
+                freshness=freshness,
+                result_filter="news",
+            )
+
+        async def _search_brave_images_fallback(
+            query: str,
+            api_key: Optional[str] = None,
+            count: int = 10,
+            offset: int = 0,
+            search_lang: str = "en",
+            country: str = "US",
+            safesearch: str = "moderate",
+        ) -> Dict[str, Any]:
+            return await _search_brave_fallback(
+                query=query,
+                api_key=api_key,
+                count=count,
+                offset=offset,
+                search_lang=search_lang,
+                country=country,
+                safesearch=safesearch,
+            )
+
+        async def _batch_search_brave_fallback(
+            queries: list[str],
+            api_key: Optional[str] = None,
+            count: int = 10,
+            delay_seconds: float = 1.0,
+        ) -> Dict[str, Any]:
+            _ = api_key, count, delay_seconds
+            return {
+                "status": "success",
+                "results": {q: {"status": "success", "results": []} for q in queries},
+                "total_queries": len(queries),
+                "success_count": len(queries),
+                "error_count": 0,
+                "source": "fallback",
+            }
+
+        async def _get_brave_cache_stats_fallback() -> Dict[str, Any]:
+            return {"status": "unavailable", "message": "Brave cache backend unavailable"}
+
+        async def _clear_brave_cache_fallback() -> Dict[str, Any]:
+            return {"status": "unavailable", "message": "Brave cache backend unavailable"}
+
+        async def _search_google_fallback(
+            query: str,
+            api_key: Optional[str] = None,
+            search_engine_id: Optional[str] = None,
+            num: int = 10,
+            start: int = 1,
+            search_type: Optional[str] = None,
+            file_type: Optional[str] = None,
+            site_search: Optional[str] = None,
+            date_restrict: Optional[str] = None,
+            safe: str = "medium",
+            lr: Optional[str] = None,
+            gl: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = (
+                api_key,
+                search_engine_id,
+                num,
+                start,
+                search_type,
+                file_type,
+                site_search,
+                date_restrict,
+                safe,
+                lr,
+                gl,
+            )
+            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+
+        async def _search_google_images_fallback(
+            query: str,
+            api_key: Optional[str] = None,
+            search_engine_id: Optional[str] = None,
+            num: int = 10,
+            start: int = 1,
+            img_size: Optional[str] = None,
+            img_type: Optional[str] = None,
+            img_color_type: Optional[str] = None,
+            img_dominant_color: Optional[str] = None,
+            safe: str = "medium",
+        ) -> Dict[str, Any]:
+            _ = img_size, img_type, img_color_type, img_dominant_color
+            return await _search_google_fallback(
+                query=query,
+                api_key=api_key,
+                search_engine_id=search_engine_id,
+                num=num,
+                start=start,
+                search_type="image",
+                safe=safe,
+            )
+
+        async def _batch_search_google_fallback(
+            queries: list[str],
+            api_key: Optional[str] = None,
+            search_engine_id: Optional[str] = None,
+            num: int = 10,
+            delay_seconds: float = 0.5,
+        ) -> Dict[str, Any]:
+            _ = api_key, search_engine_id, num, delay_seconds
+            return {
+                "status": "success",
+                "results": {q: {"status": "success", "results": []} for q in queries},
+                "total_queries": len(queries),
+                "success_count": len(queries),
+                "error_count": 0,
+                "source": "fallback",
             }
 
         async def _create_autoscraper_model_fallback(
@@ -454,8 +631,11 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "archive_to_archive_is": _archive_to_archive_is_fallback,
             "archive_to_wayback": _archive_to_wayback_fallback,
             "batch_archive_to_archive_is": _batch_archive_to_archive_is_fallback,
+            "batch_search_brave": _batch_search_brave_fallback,
+            "batch_search_google": _batch_search_google_fallback,
             "batch_scrape_with_autoscraper": _batch_scrape_with_autoscraper_fallback,
             "check_archive_status": _check_archive_status_fallback,
+            "clear_brave_cache": _clear_brave_cache_fallback,
             "create_warc": _create_warc_fallback,
             "create_autoscraper_model": _create_autoscraper_model_fallback,
             "extract_dataset_from_cdxj": _extract_dataset_from_cdxj_fallback,
@@ -464,6 +644,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "extract_metadata_from_warc": _extract_metadata_from_warc_fallback,
             "fetch_warc_record_advanced": _fetch_warc_record_advanced_fallback,
             "get_archive_is_content": _get_archive_is_content_fallback,
+            "get_brave_cache_stats": _get_brave_cache_stats_fallback,
             "get_common_crawl_collection_info_advanced": _get_common_crawl_collection_info_advanced_fallback,
             "search_common_crawl": _search_common_crawl_fallback,
             "search_common_crawl_advanced": _search_common_crawl_advanced_fallback,
@@ -478,6 +659,11 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "optimize_autoscraper_model": _optimize_autoscraper_model_fallback,
             "scrape_with_autoscraper": _scrape_with_autoscraper_fallback,
             "search_archive_is": _search_archive_is_fallback,
+            "search_brave": _search_brave_fallback,
+            "search_brave_images": _search_brave_images_fallback,
+            "search_brave_news": _search_brave_news_fallback,
+            "search_google": _search_google_fallback,
+            "search_google_images": _search_google_images_fallback,
             "search_ipwb_archive": _search_ipwb_archive_fallback,
             "search_wayback_machine": _search_wayback_machine_fallback,
             "start_ipwb_replay": _start_ipwb_replay_fallback,
@@ -1050,6 +1236,270 @@ async def batch_scrape_with_autoscraper(
         output_format=normalized_output,
         batch_size=normalized_batch_size,
         delay_seconds=normalized_delay,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_brave(
+    query: str,
+    api_key: Optional[str] = None,
+    count: int = 10,
+    offset: int = 0,
+    search_lang: str = "en",
+    country: str = "US",
+    safesearch: str = "moderate",
+    freshness: Optional[str] = None,
+    text_decorations: bool = True,
+    spellcheck: bool = True,
+    result_filter: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search the web via Brave provider."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    normalized_count = int(count)
+    if normalized_count <= 0:
+        return {"status": "error", "error": "'count' must be greater than 0."}
+    normalized_offset = int(offset)
+    if normalized_offset < 0:
+        return {"status": "error", "error": "'offset' must be >= 0."}
+    normalized_safe = str(safesearch or "moderate").strip().lower() or "moderate"
+    if normalized_safe not in {"off", "moderate", "strict"}:
+        return {"status": "error", "error": "'safesearch' must be one of: off, moderate, strict."}
+    normalized_freshness = str(freshness).strip().lower() if freshness is not None else None
+    if normalized_freshness and normalized_freshness not in {"pd", "pw", "pm", "py"}:
+        return {"status": "error", "error": "'freshness' must be one of: pd, pw, pm, py, or null."}
+
+    result = _API["search_brave"](
+        query=normalized_query,
+        api_key=api_key,
+        count=normalized_count,
+        offset=normalized_offset,
+        search_lang=search_lang,
+        country=country,
+        safesearch=normalized_safe,
+        freshness=normalized_freshness,
+        text_decorations=bool(text_decorations),
+        spellcheck=bool(spellcheck),
+        result_filter=result_filter,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_brave_news(
+    query: str,
+    api_key: Optional[str] = None,
+    count: int = 10,
+    offset: int = 0,
+    search_lang: str = "en",
+    country: str = "US",
+    safesearch: str = "moderate",
+    freshness: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search news via Brave provider."""
+    return await search_brave(
+        query=query,
+        api_key=api_key,
+        count=count,
+        offset=offset,
+        search_lang=search_lang,
+        country=country,
+        safesearch=safesearch,
+        freshness=freshness,
+        result_filter="news",
+    )
+
+
+async def search_brave_images(
+    query: str,
+    api_key: Optional[str] = None,
+    count: int = 10,
+    offset: int = 0,
+    search_lang: str = "en",
+    country: str = "US",
+    safesearch: str = "moderate",
+) -> Dict[str, Any]:
+    """Search images via Brave provider."""
+    result = _API["search_brave_images"](
+        query=str(query or "").strip(),
+        api_key=api_key,
+        count=int(count),
+        offset=int(offset),
+        search_lang=search_lang,
+        country=country,
+        safesearch=str(safesearch or "moderate").strip().lower() or "moderate",
+    )
+    if str(query or "").strip() == "":
+        return {"status": "error", "error": "'query' is required."}
+    if int(count) <= 0:
+        return {"status": "error", "error": "'count' must be greater than 0."}
+    if int(offset) < 0:
+        return {"status": "error", "error": "'offset' must be >= 0."}
+    if str(safesearch or "moderate").strip().lower() not in {"off", "moderate", "strict"}:
+        return {"status": "error", "error": "'safesearch' must be one of: off, moderate, strict."}
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def batch_search_brave(
+    queries: list[str],
+    api_key: Optional[str] = None,
+    count: int = 10,
+    delay_seconds: float = 1.0,
+) -> Dict[str, Any]:
+    """Run batch Brave queries."""
+    if not isinstance(queries, list) or not queries:
+        return {"status": "error", "error": "'queries' must be a non-empty list."}
+    normalized_queries = [str(q).strip() for q in queries if str(q).strip()]
+    if not normalized_queries:
+        return {"status": "error", "error": "'queries' must contain at least one non-empty query."}
+    if int(count) <= 0:
+        return {"status": "error", "error": "'count' must be greater than 0."}
+    if float(delay_seconds) < 0:
+        return {"status": "error", "error": "'delay_seconds' must be >= 0."}
+
+    result = _API["batch_search_brave"](
+        queries=normalized_queries,
+        api_key=api_key,
+        count=int(count),
+        delay_seconds=float(delay_seconds),
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def get_brave_cache_stats() -> Dict[str, Any]:
+    """Return Brave provider cache stats."""
+    result = _API["get_brave_cache_stats"]()
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def clear_brave_cache() -> Dict[str, Any]:
+    """Clear Brave provider cache."""
+    result = _API["clear_brave_cache"]()
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_google(
+    query: str,
+    api_key: Optional[str] = None,
+    search_engine_id: Optional[str] = None,
+    num: int = 10,
+    start: int = 1,
+    search_type: Optional[str] = None,
+    file_type: Optional[str] = None,
+    site_search: Optional[str] = None,
+    date_restrict: Optional[str] = None,
+    safe: str = "medium",
+    lr: Optional[str] = None,
+    gl: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search via Google provider."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    if int(num) <= 0:
+        return {"status": "error", "error": "'num' must be greater than 0."}
+    if int(start) <= 0:
+        return {"status": "error", "error": "'start' must be greater than 0."}
+    normalized_safe = str(safe or "medium").strip().lower() or "medium"
+    if normalized_safe not in {"off", "medium", "high"}:
+        return {"status": "error", "error": "'safe' must be one of: off, medium, high."}
+    normalized_search_type = str(search_type).strip().lower() if search_type is not None else None
+    if normalized_search_type and normalized_search_type not in {"image"}:
+        return {"status": "error", "error": "'search_type' must be 'image' or null."}
+
+    result = _API["search_google"](
+        query=normalized_query,
+        api_key=api_key,
+        search_engine_id=search_engine_id,
+        num=int(num),
+        start=int(start),
+        search_type=normalized_search_type,
+        file_type=file_type,
+        site_search=site_search,
+        date_restrict=date_restrict,
+        safe=normalized_safe,
+        lr=lr,
+        gl=gl,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_google_images(
+    query: str,
+    api_key: Optional[str] = None,
+    search_engine_id: Optional[str] = None,
+    num: int = 10,
+    start: int = 1,
+    img_size: Optional[str] = None,
+    img_type: Optional[str] = None,
+    img_color_type: Optional[str] = None,
+    img_dominant_color: Optional[str] = None,
+    safe: str = "medium",
+) -> Dict[str, Any]:
+    """Search images via Google provider."""
+    result = _API["search_google_images"](
+        query=str(query or "").strip(),
+        api_key=api_key,
+        search_engine_id=search_engine_id,
+        num=int(num),
+        start=int(start),
+        img_size=img_size,
+        img_type=img_type,
+        img_color_type=img_color_type,
+        img_dominant_color=img_dominant_color,
+        safe=str(safe or "medium").strip().lower() or "medium",
+    )
+    if str(query or "").strip() == "":
+        return {"status": "error", "error": "'query' is required."}
+    if int(num) <= 0:
+        return {"status": "error", "error": "'num' must be greater than 0."}
+    if int(start) <= 0:
+        return {"status": "error", "error": "'start' must be greater than 0."}
+    if str(safe or "medium").strip().lower() not in {"off", "medium", "high"}:
+        return {"status": "error", "error": "'safe' must be one of: off, medium, high."}
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def batch_search_google(
+    queries: list[str],
+    api_key: Optional[str] = None,
+    search_engine_id: Optional[str] = None,
+    num: int = 10,
+    delay_seconds: float = 0.5,
+) -> Dict[str, Any]:
+    """Run batch Google queries."""
+    if not isinstance(queries, list) or not queries:
+        return {"status": "error", "error": "'queries' must be a non-empty list."}
+    normalized_queries = [str(q).strip() for q in queries if str(q).strip()]
+    if not normalized_queries:
+        return {"status": "error", "error": "'queries' must contain at least one non-empty query."}
+    if int(num) <= 0:
+        return {"status": "error", "error": "'num' must be greater than 0."}
+    if float(delay_seconds) < 0:
+        return {"status": "error", "error": "'delay_seconds' must be >= 0."}
+
+    result = _API["batch_search_google"](
+        queries=normalized_queries,
+        api_key=api_key,
+        search_engine_id=search_engine_id,
+        num=int(num),
+        delay_seconds=float(delay_seconds),
     )
     if hasattr(result, "__await__"):
         return await result
@@ -1702,6 +2152,188 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "closest": {"type": "boolean", "default": True},
             },
             "required": ["url"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_brave",
+        func=search_brave,
+        description="Search web results using Brave provider.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_key": {"type": ["string", "null"]},
+                "count": {"type": "integer", "default": 10, "minimum": 1},
+                "offset": {"type": "integer", "default": 0, "minimum": 0},
+                "search_lang": {"type": "string", "default": "en"},
+                "country": {"type": "string", "default": "US"},
+                "safesearch": {"type": "string", "enum": ["off", "moderate", "strict"], "default": "moderate"},
+                "freshness": {"type": ["string", "null"], "enum": ["pd", "pw", "pm", "py", None]},
+                "text_decorations": {"type": "boolean", "default": True},
+                "spellcheck": {"type": "boolean", "default": True},
+                "result_filter": {"type": ["string", "null"]},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_brave_news",
+        func=search_brave_news,
+        description="Search news results using Brave provider.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_key": {"type": ["string", "null"]},
+                "count": {"type": "integer", "default": 10, "minimum": 1},
+                "offset": {"type": "integer", "default": 0, "minimum": 0},
+                "search_lang": {"type": "string", "default": "en"},
+                "country": {"type": "string", "default": "US"},
+                "safesearch": {"type": "string", "enum": ["off", "moderate", "strict"], "default": "moderate"},
+                "freshness": {"type": ["string", "null"], "enum": ["pd", "pw", "pm", "py", None]},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_brave_images",
+        func=search_brave_images,
+        description="Search image results using Brave provider.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_key": {"type": ["string", "null"]},
+                "count": {"type": "integer", "default": 10, "minimum": 1},
+                "offset": {"type": "integer", "default": 0, "minimum": 0},
+                "search_lang": {"type": "string", "default": "en"},
+                "country": {"type": "string", "default": "US"},
+                "safesearch": {"type": "string", "enum": ["off", "moderate", "strict"], "default": "moderate"},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="batch_search_brave",
+        func=batch_search_brave,
+        description="Run batch web queries using Brave provider.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "api_key": {"type": ["string", "null"]},
+                "count": {"type": "integer", "default": 10, "minimum": 1},
+                "delay_seconds": {"type": "number", "default": 1.0, "minimum": 0},
+            },
+            "required": ["queries"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="get_brave_cache_stats",
+        func=get_brave_cache_stats,
+        description="Get Brave provider cache statistics.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="clear_brave_cache",
+        func=clear_brave_cache,
+        description="Clear Brave provider cache entries.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_google",
+        func=search_google,
+        description="Search web results using Google provider.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_key": {"type": ["string", "null"]},
+                "search_engine_id": {"type": ["string", "null"]},
+                "num": {"type": "integer", "default": 10, "minimum": 1},
+                "start": {"type": "integer", "default": 1, "minimum": 1},
+                "search_type": {"type": ["string", "null"], "enum": ["image", None]},
+                "file_type": {"type": ["string", "null"]},
+                "site_search": {"type": ["string", "null"]},
+                "date_restrict": {"type": ["string", "null"]},
+                "safe": {"type": "string", "enum": ["off", "medium", "high"], "default": "medium"},
+                "lr": {"type": ["string", "null"]},
+                "gl": {"type": ["string", "null"]},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_google_images",
+        func=search_google_images,
+        description="Search image results using Google provider.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_key": {"type": ["string", "null"]},
+                "search_engine_id": {"type": ["string", "null"]},
+                "num": {"type": "integer", "default": 10, "minimum": 1},
+                "start": {"type": "integer", "default": 1, "minimum": 1},
+                "img_size": {"type": ["string", "null"]},
+                "img_type": {"type": ["string", "null"]},
+                "img_color_type": {"type": ["string", "null"]},
+                "img_dominant_color": {"type": ["string", "null"]},
+                "safe": {"type": "string", "enum": ["off", "medium", "high"], "default": "medium"},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="batch_search_google",
+        func=batch_search_google,
+        description="Run batch web queries using Google provider.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "api_key": {"type": ["string", "null"]},
+                "search_engine_id": {"type": ["string", "null"]},
+                "num": {"type": "integer", "default": 10, "minimum": 1},
+                "delay_seconds": {"type": "number", "default": 0.5, "minimum": 0},
+            },
+            "required": ["queries"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],
