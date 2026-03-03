@@ -23,7 +23,9 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     index_warc,
     index_warc_to_ipwb,
     list_common_crawl_indexes,
+    list_autoscraper_models,
     register_native_web_archive_tools,
+    scrape_with_autoscraper,
     search_archive_is,
     search_ipwb_archive,
     search_wayback_machine,
@@ -60,6 +62,8 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("verify_ipwb_archive", names)
         self.assertIn("get_common_crawl_content", names)
         self.assertIn("list_common_crawl_indexes", names)
+        self.assertIn("list_autoscraper_models", names)
+        self.assertIn("scrape_with_autoscraper", names)
         self.assertIn("search_wayback_machine", names)
         self.assertIn("search_archive_is", names)
         self.assertIn("get_archive_is_content", names)
@@ -96,6 +100,45 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertIn(indexes_result.get("status"), ["success", "error"])
             if indexes_result.get("status") == "success":
                 self.assertIn("indexes", indexes_result)
+
+        anyio.run(_run)
+
+    def test_autoscraper_helpers_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            models_result = await list_autoscraper_models()
+            self.assertIn(models_result.get("status"), ["success", "error"])
+            if models_result.get("status") == "success":
+                self.assertIn("models", models_result)
+
+            missing_model_path = await scrape_with_autoscraper(model_path="", target_urls=["https://example.com"])
+            self.assertEqual(missing_model_path.get("status"), "error")
+            self.assertIn("'model_path' is required", str(missing_model_path.get("error", "")))
+
+            missing_target_urls = await scrape_with_autoscraper(
+                model_path="/tmp/mock.pkl",
+                target_urls=[],
+            )
+            self.assertEqual(missing_target_urls.get("status"), "error")
+            self.assertIn("'target_urls' must be a non-empty list", str(missing_target_urls.get("error", "")))
+
+            empty_target_urls = await scrape_with_autoscraper(
+                model_path="/tmp/mock.pkl",
+                target_urls=[" "],
+            )
+            self.assertEqual(empty_target_urls.get("status"), "error")
+            self.assertIn(
+                "'target_urls' must contain at least one non-empty URL",
+                str(empty_target_urls.get("error", "")),
+            )
+
+            scrape_result = await scrape_with_autoscraper(
+                model_path="/tmp/mock.pkl",
+                target_urls=["https://example.com"],
+                grouped=True,
+            )
+            self.assertIn(scrape_result.get("status"), ["success", "error"])
+            if scrape_result.get("status") == "error":
+                self.assertIn("error", scrape_result)
 
         anyio.run(_run)
 

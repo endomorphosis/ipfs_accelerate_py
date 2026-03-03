@@ -28,6 +28,8 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             index_warc as _index_warc,
             index_warc_to_ipwb as _index_warc_to_ipwb,
             list_common_crawl_indexes as _list_common_crawl_indexes,
+            list_autoscraper_models as _list_autoscraper_models,
+            scrape_with_autoscraper as _scrape_with_autoscraper,
             search_archive_is as _search_archive_is,
             search_common_crawl as _search_common_crawl,
             search_ipwb_archive as _search_ipwb_archive,
@@ -54,6 +56,8 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "index_warc": _index_warc,
             "index_warc_to_ipwb": _index_warc_to_ipwb,
             "list_common_crawl_indexes": _list_common_crawl_indexes,
+            "list_autoscraper_models": _list_autoscraper_models,
+            "scrape_with_autoscraper": _scrape_with_autoscraper,
             "search_archive_is": _search_archive_is,
             "search_ipwb_archive": _search_ipwb_archive,
             "search_wayback_machine": _search_wayback_machine,
@@ -209,6 +213,28 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "source": "fallback",
             }
 
+        async def _list_autoscraper_models_fallback() -> Dict[str, Any]:
+            return {
+                "status": "success",
+                "models": [],
+                "count": 0,
+                "source": "fallback",
+            }
+
+        async def _scrape_with_autoscraper_fallback(
+            model_path: str,
+            target_urls: list[str],
+            grouped: bool = False,
+        ) -> Dict[str, Any]:
+            _ = grouped
+            return {
+                "status": "error",
+                "error": "AutoScraper scrape backend unavailable",
+                "model_path": model_path,
+                "target_urls": target_urls,
+                "results": {},
+            }
+
         async def _get_wayback_content_fallback(
             url: str,
             timestamp: Optional[str] = None,
@@ -336,6 +362,8 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "index_warc": _index_warc_fallback,
             "index_warc_to_ipwb": _index_warc_to_ipwb_fallback,
             "list_common_crawl_indexes": _list_common_crawl_indexes_fallback,
+            "list_autoscraper_models": _list_autoscraper_models_fallback,
+            "scrape_with_autoscraper": _scrape_with_autoscraper_fallback,
             "search_archive_is": _search_archive_is_fallback,
             "search_ipwb_archive": _search_ipwb_archive_fallback,
             "search_wayback_machine": _search_wayback_machine_fallback,
@@ -690,6 +718,44 @@ async def get_common_crawl_content(
 async def list_common_crawl_indexes() -> Dict[str, Any]:
     """List available Common Crawl index datasets."""
     result = _API["list_common_crawl_indexes"]()
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def list_autoscraper_models() -> Dict[str, Any]:
+    """List available AutoScraper model artifacts."""
+    result = _API["list_autoscraper_models"]()
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def scrape_with_autoscraper(
+    model_path: str,
+    target_urls: list[str],
+    grouped: bool = False,
+) -> Dict[str, Any]:
+    """Scrape target URLs with a trained AutoScraper model."""
+    normalized_model_path = str(model_path or "").strip()
+    if not normalized_model_path:
+        return {"status": "error", "error": "'model_path' is required."}
+
+    if not isinstance(target_urls, list) or not target_urls:
+        return {"status": "error", "error": "'target_urls' must be a non-empty list."}
+
+    normalized_urls = [str(url).strip() for url in target_urls if str(url).strip()]
+    if not normalized_urls:
+        return {
+            "status": "error",
+            "error": "'target_urls' must contain at least one non-empty URL.",
+        }
+
+    result = _API["scrape_with_autoscraper"](
+        model_path=normalized_model_path,
+        target_urls=normalized_urls,
+        grouped=bool(grouped),
+    )
     if hasattr(result, "__await__"):
         return await result
     return result
@@ -1089,6 +1155,34 @@ def register_native_web_archive_tools(manager: Any) -> None:
         func=list_common_crawl_indexes,
         description="List available Common Crawl index datasets.",
         input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="list_autoscraper_models",
+        func=list_autoscraper_models,
+        description="List trained AutoScraper models available to the runtime.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="scrape_with_autoscraper",
+        func=scrape_with_autoscraper,
+        description="Scrape one or more URLs with a trained AutoScraper model.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model_path": {"type": "string"},
+                "target_urls": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "grouped": {"type": "boolean", "default": False},
+            },
+            "required": ["model_path", "target_urls"],
+        },
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],
     )

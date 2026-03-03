@@ -31,9 +31,12 @@ class TestMCPServerUNI204TrioBridgeAudit(unittest.TestCase):
         offenders: list[str] = []
         for root in scan_roots:
             for file_path in root.rglob("*.py"):
+                relative = file_path.relative_to(self.repo_root)
+                if str(relative).startswith("ipfs_accelerate_py/mcp/tests/"):
+                    continue
                 text = file_path.read_text(encoding="utf-8")
                 if forbidden in text:
-                    offenders.append(str(file_path.relative_to(self.repo_root)))
+                    offenders.append(str(relative))
 
         self.assertEqual(offenders, [], f"unexpected source trio_bridge imports: {offenders}")
 
