@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import json
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
@@ -127,6 +128,56 @@ class _FallbackCacheManager:
             records.append({"key": key, "namespace": ns, "value": value, "metadata": self.metadata.get(cache_key, {})})
         return {"success": True, "keys": records, "count": len(records)}
 
+    def optimize(
+        self,
+        strategy: str = "lru",
+        max_size_mb: Optional[int] = None,
+        max_age_hours: Optional[int] = None,
+        namespace: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        _ = max_size_mb, max_age_hours
+        return {
+            "success": True,
+            "strategy": strategy,
+            "keys_evicted": 0,
+            "evicted_keys": [],
+            "namespace": namespace,
+            "timestamp": datetime.now().isoformat(),
+        }
+
+    def cache_embeddings(
+        self,
+        text: str,
+        embeddings: list[float],
+        model: str = "default",
+        ttl: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        cache_key = f"{model}:{str(abs(hash(text)))[:16]}"
+        return self.set(
+            key=cache_key,
+            value={"text": text, "embeddings": embeddings, "model": model},
+            ttl=ttl or 86400,
+            namespace="embeddings",
+        )
+
+    def get_cached_embeddings(self, text: str, model: str = "default") -> Dict[str, Any]:
+        cache_key = f"{model}:{str(abs(hash(text)))[:16]}"
+        result = self.get(key=cache_key, namespace="embeddings")
+        if result.get("hit"):
+            value = result.get("value", {})
+            return {
+                "success": True,
+                "cache_hit": True,
+                "embeddings": value.get("embeddings"),
+                "model": model,
+            }
+        return {
+            "success": True,
+            "cache_hit": False,
+            "reason": result.get("reason", "not_found"),
+            "model": model,
+        }
+
 
 _CACHE_MANAGER: Optional[Any] = None
 
@@ -246,6 +297,94 @@ async def manage_cache(
     }
 
 
+async def optimize_cache(
+    cache_type: Optional[str] = None,
+    strategy: str = "lru",
+    max_size_mb: Optional[int] = None,
+    max_age_hours: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Optimize cache entries using a source-compatible optimization contract."""
+    manager = _get_cache_manager()
+    namespace = str(cache_type) if cache_type and str(cache_type) != "default" else None
+
+    result = manager.optimize(
+        strategy=str(strategy or "lru"),
+        max_size_mb=max_size_mb,
+        max_age_hours=max_age_hours,
+        namespace=namespace,
+    )
+    payload = dict(result or {})
+    payload.setdefault("status", "success" if payload.get("success", True) else "error")
+    payload.setdefault("optimization_strategy", str(strategy or "lru"))
+    if max_size_mb is not None:
+        payload["max_size_mb"] = max_size_mb
+    if max_age_hours is not None:
+        payload["max_age_hours"] = max_age_hours
+    return payload
+
+
+async def cache_embeddings(
+    text: str,
+    embeddings: list[float] | str,
+    model: str = "default",
+    ttl: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Cache embeddings for text with source-compatible inputs and envelope."""
+    normalized_text = str(text or "").strip()
+    if not normalized_text:
+        return {"success": False, "status": "error", "error": "text is required"}
+
+    parsed_embeddings: list[float]
+    if isinstance(embeddings, str):
+        try:
+            decoded = json.loads(embeddings)
+        except Exception as exc:
+            return {
+                "success": False,
+                "status": "error",
+                "error": f"invalid embeddings JSON: {exc}",
+            }
+        if not isinstance(decoded, list):
+            return {
+                "success": False,
+                "status": "error",
+                "error": "embeddings must decode to a list",
+            }
+        parsed_embeddings = decoded
+    else:
+        parsed_embeddings = embeddings
+
+    result = _get_cache_manager().cache_embeddings(
+        text=normalized_text,
+        embeddings=parsed_embeddings,
+        model=str(model or "default"),
+        ttl=ttl,
+    )
+    payload = dict(result or {})
+    payload.setdefault("status", "success" if payload.get("success", True) else "error")
+    payload.setdefault("cache_operation", "set")
+    return payload
+
+
+async def get_cached_embeddings(text: str, model: str = "default") -> Dict[str, Any]:
+    """Return cached embeddings using source-compatible hit/miss envelope."""
+    normalized_text = str(text or "").strip()
+    if not normalized_text:
+        return {"success": False, "status": "error", "error": "text is required"}
+
+    result = _get_cache_manager().get_cached_embeddings(
+        text=normalized_text,
+        model=str(model or "default"),
+    )
+    payload = dict(result or {})
+    payload.setdefault("success", True)
+    if payload.get("success") is False:
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "found" if payload.get("cache_hit") else "not_found")
+    return payload
+
+
 def register_native_cache_tools(manager: Any) -> None:
     """Register native cache tools in unified hierarchical manager."""
     manager.register_tool(
@@ -350,6 +489,61 @@ def register_native_cache_tools(manager: Any) -> None:
                 "cache_type": {"type": ["string", "null"]},
             },
             "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "cache"],
+    )
+
+    manager.register_tool(
+        category="cache_tools",
+        name="optimize_cache",
+        func=optimize_cache,
+        description="Optimize cache according to strategy and optional size/age constraints.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "cache_type": {"type": ["string", "null"]},
+                "strategy": {"type": "string", "default": "lru"},
+                "max_size_mb": {"type": ["integer", "null"]},
+                "max_age_hours": {"type": ["integer", "null"]},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "cache"],
+    )
+
+    manager.register_tool(
+        category="cache_tools",
+        name="cache_embeddings",
+        func=cache_embeddings,
+        description="Cache embeddings for text input.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "embeddings": {"oneOf": [{"type": "array", "items": {"type": "number"}}, {"type": "string"}]},
+                "model": {"type": "string", "default": "default"},
+                "ttl": {"type": ["integer", "null"]},
+            },
+            "required": ["text", "embeddings"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "cache"],
+    )
+
+    manager.register_tool(
+        category="cache_tools",
+        name="get_cached_embeddings",
+        func=get_cached_embeddings,
+        description="Retrieve cached embeddings for text input.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "text": {"type": "string"},
+                "model": {"type": "string", "default": "default"},
+            },
+            "required": ["text"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "cache"],

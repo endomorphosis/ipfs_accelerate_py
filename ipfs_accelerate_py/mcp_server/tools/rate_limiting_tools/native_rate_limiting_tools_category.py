@@ -57,10 +57,40 @@ def _load_rate_limiting_tools_api() -> Dict[str, Any]:
             limit_name: Optional[str] = None,
             new_config: Optional[Dict[str, Any]] = None,
         ) -> Dict[str, Any]:
-            _ = limit_name, new_config
-            if action == "list":
+            normalized_action = str(action or "").strip().lower()
+            if normalized_action == "list":
                 return {"action": "list", "limits": [], "total_count": 0}
-            return {"action": action, "status": "success"}
+            if normalized_action in {"enable", "disable", "delete"}:
+                if not str(limit_name or "").strip():
+                    return {"error": f"limit_name required for {normalized_action} action"}
+                return {
+                    "action": normalized_action,
+                    "limit_name": str(limit_name),
+                    "status": "success",
+                }
+            if normalized_action == "update":
+                if not str(limit_name or "").strip() or not isinstance(new_config, dict):
+                    return {"error": "limit_name and new_config required for update action"}
+                return {
+                    "action": "update",
+                    "limit_name": str(limit_name),
+                    "updated_config": dict(new_config),
+                    "status": "success",
+                }
+            if normalized_action == "stats":
+                return {
+                    "total_requests": 0,
+                    "allowed_requests": 0,
+                    "denied_requests": 0,
+                    "limit_name": limit_name,
+                }
+            if normalized_action == "reset":
+                return {
+                    "status": "success",
+                    "action": "reset",
+                    "limit_name": limit_name,
+                }
+            return {"error": f"Unknown action: {action}"}
 
         return {
             "configure_rate_limits": _configure_fallback,
@@ -78,14 +108,25 @@ async def configure_rate_limits(
     backup_current: bool = True,
 ) -> Dict[str, Any]:
     """Configure rate-limiting rules."""
+    if not isinstance(limits, list):
+        return {
+            "configured_count": 0,
+            "configured_limits": [],
+            "errors": ["limits must be a list"],
+            "status": "error",
+        }
+
     result = _API["configure_rate_limits"](
         limits=limits,
         apply_immediately=apply_immediately,
         backup_current=backup_current,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        result = await result
+    payload = dict(result or {})
+    if "status" not in payload:
+        payload["status"] = "error" if payload.get("errors") else "success"
+    return payload
 
 
 async def check_rate_limit(
@@ -94,14 +135,28 @@ async def check_rate_limit(
     request_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Check whether a request is within a named rate limit."""
+    normalized_limit_name = str(limit_name or "").strip()
+    if not normalized_limit_name:
+        return {
+            "allowed": False,
+            "limit_name": limit_name,
+            "identifier": str(identifier or "default"),
+            "error": "limit_name is required",
+            "status": "error",
+        }
+
     result = _API["check_rate_limit"](
-        limit_name=limit_name,
-        identifier=identifier,
+        limit_name=normalized_limit_name,
+        identifier=str(identifier or "default"),
         request_metadata=request_metadata,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        result = await result
+    payload = dict(result or {})
+    payload.setdefault("status", "success" if payload.get("allowed", True) else "error")
+    payload.setdefault("limit_name", normalized_limit_name)
+    payload.setdefault("identifier", str(identifier or "default"))
+    return payload
 
 
 async def manage_rate_limits(
@@ -110,14 +165,42 @@ async def manage_rate_limits(
     new_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Manage rate-limiting configuration and statistics."""
+    normalized_action = str(action or "").strip().lower()
+    if not normalized_action:
+        return {
+            "error": "action is required",
+            "valid_actions": ["list", "enable", "disable", "delete", "update", "stats", "reset"],
+        }
+
+    valid_actions = {"list", "enable", "disable", "delete", "update", "stats", "reset"}
+    if normalized_action not in valid_actions:
+        return {
+            "error": f"Unknown action: {action}",
+            "valid_actions": ["list", "enable", "disable", "delete", "update", "stats", "reset"],
+        }
+
+    if normalized_action in {"enable", "disable", "delete"} and not str(limit_name or "").strip():
+        return {"error": f"limit_name required for {normalized_action} action"}
+
+    if normalized_action == "update" and (
+        not str(limit_name or "").strip() or not isinstance(new_config, dict)
+    ):
+        return {"error": "limit_name and new_config required for update action"}
+
     result = _API["manage_rate_limits"](
-        action=action,
+        action=normalized_action,
         limit_name=limit_name,
         new_config=new_config,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        result = await result
+    payload = dict(result or {})
+    payload.setdefault("action", normalized_action)
+    if "error" in payload:
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "success")
+    return payload
 
 
 def register_native_rate_limiting_tools_category(manager: Any) -> None:

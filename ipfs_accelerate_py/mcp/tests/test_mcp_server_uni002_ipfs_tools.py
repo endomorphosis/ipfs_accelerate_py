@@ -7,6 +7,8 @@ import unittest
 
 import anyio
 
+import ipfs_accelerate_py.mcp_server.tools.ipfs_tools.native_ipfs_tools_category as native_ipfs_tools
+
 from ipfs_accelerate_py.mcp_server.tools.ipfs_tools.native_ipfs_tools_category import (
     get_from_ipfs,
     pin_to_ipfs,
@@ -79,8 +81,41 @@ class TestMCPServerUNI002IPFSTools(unittest.TestCase):
             self.assertEqual(invalid_gateway.get("status"), "error")
             self.assertIn("'gateway'", str(invalid_gateway.get("message", "")))
 
+            invalid_gateway_scheme = await get_from_ipfs(
+                cid="QmDemoHash",
+                gateway="ipfs://localhost:8080",
+            )
+            self.assertEqual(invalid_gateway_scheme.get("status"), "error")
+            self.assertIn("must start with", str(invalid_gateway_scheme.get("message", "")))
+
             result = await get_from_ipfs(cid="QmDemoHash", timeout_seconds=5)
             self.assertIn(result.get("status"), ["success", "error"])
+
+        anyio.run(_run)
+
+    def test_get_from_ipfs_gateway_normalization_passthrough(self) -> None:
+        async def _run() -> None:
+            original_get = native_ipfs_tools._API["get_from_ipfs"]
+            captured: dict = {}
+
+            async def _fake_get_from_ipfs(**kwargs):
+                captured.update(kwargs)
+                return {"status": "success", "cid": kwargs.get("cid")}
+
+            native_ipfs_tools._API["get_from_ipfs"] = _fake_get_from_ipfs
+            try:
+                result = await get_from_ipfs(
+                    cid="QmDemoHash",
+                    gateway="https://ipfs.io/",
+                    timeout_seconds=15,
+                )
+            finally:
+                native_ipfs_tools._API["get_from_ipfs"] = original_get
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(captured.get("cid"), "QmDemoHash")
+            self.assertEqual(captured.get("timeout_seconds"), 15)
+            self.assertEqual(captured.get("gateway"), "https://ipfs.io")
 
         anyio.run(_run)
 
