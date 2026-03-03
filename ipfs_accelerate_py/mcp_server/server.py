@@ -663,6 +663,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             )
             proof_cid = str(payload.pop("__proof_cid", "") or "")
             policy_cid = str(payload.pop("__policy_cid", "") or "")
+            policy_version = str(payload.pop("__policy_version", "") or "")
             correlation_id = str(payload.pop("__correlation_id", "") or "")
             enforce_ucan = coerce_dispatch_bool(
                 payload.pop("__enforce_ucan", config.enable_ucan_validation),
@@ -818,6 +819,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     policy_cid=policy_cid,
                     justification=policy_decision.justification,
                     obligations=policy_decision.obligations,
+                    policy_version=policy_version,
                 )
                 policy_decision_cid = compute_artifact_cid(policy_decision_payload)
                 artifact_store.put(policy_decision_cid, policy_decision_payload)
@@ -1013,16 +1015,20 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
         )
         _record_observability("success")
 
+        policy_decision_response = {
+            "decision_cid": envelope["decision_cid"],
+            "persisted": bool(persisted_artifacts_meta.get("persisted")),
+            "stats": dict((persisted_artifacts_meta.get("stats") or {})),
+        }
+        if policy_decision is not None and policy_decision_binding is not None:
+            policy_decision_response = dict(policy_decision_binding)
+
         return _build_success_response(
             result=result,
             risk_record=record,
             risk_assessment_obj=risk_assessment,
             policy_obj=policy_decision,
-            policy_decision_obj={
-                "decision_cid": envelope["decision_cid"],
-                "persisted": bool(persisted_artifacts_meta.get("persisted")),
-                "stats": dict((persisted_artifacts_meta.get("stats") or {})),
-            },
+            policy_decision_obj=policy_decision_response,
             extra_fields={
                 "artifacts": {
                     "input_cid": envelope["input_cid"],

@@ -4530,6 +4530,90 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_policy_decision_cid_stable_across_emit_modes_and_versions(self, mock_wrapper):
+        """Policy decision CID should remain stable across artifact emit modes and change deterministically when policy version changes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-policy-version-cids")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            base_payload = {
+                "value": "ok",
+                "__enforce_policy": True,
+                "__policy_actor": "did:model:worker",
+                "__policy_version": "v1",
+                "__policy_clauses": [
+                    {
+                        "clause_type": "permission",
+                        "actor": "did:model:worker",
+                        "action": "smoke.echo",
+                    },
+                    {
+                        "clause_type": "obligation",
+                        "actor": "did:model:worker",
+                        "action": "smoke.echo",
+                        "obligation_deadline": "2030-01-01T00:00:00Z",
+                        "metadata": {"migration": "phase-a"},
+                    },
+                ],
+            }
+
+            response_no_emit = await dispatch("smoke", "echo", dict(base_payload, **{"__emit_artifacts": False}))
+            response_emit = await dispatch("smoke", "echo", dict(base_payload, **{"__emit_artifacts": True}))
+
+            cid_no_emit = str((response_no_emit.get("policy_decision") or {}).get("decision_cid") or "")
+            cid_emit = str((response_emit.get("policy_decision") or {}).get("decision_cid") or "")
+            self.assertTrue(cid_no_emit.startswith("cidv1-sha256-"))
+            self.assertEqual(cid_no_emit, cid_emit)
+
+            stored_v1 = server._unified_artifact_store.get(cid_no_emit) or {}
+            self.assertEqual(stored_v1.get("policy_version"), "v1")
+            self.assertEqual(stored_v1.get("decision"), "allow_with_obligations")
+
+            response_v2 = await dispatch(
+                "smoke",
+                "echo",
+                dict(base_payload, **{"__policy_version": "v2", "__emit_artifacts": False}),
+            )
+            cid_v2 = str((response_v2.get("policy_decision") or {}).get("decision_cid") or "")
+            self.assertTrue(cid_v2.startswith("cidv1-sha256-"))
+            self.assertNotEqual(cid_no_emit, cid_v2)
+
+            stored_v2 = server._unified_artifact_store.get(cid_v2) or {}
+            self.assertEqual(stored_v2.get("policy_version"), "v2")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_risk_gating_denies_high_risk(self, mock_wrapper):
         """`tools_dispatch` should deny execution when risk scoring exceeds threshold."""
 
