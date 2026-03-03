@@ -17,6 +17,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             batch_archive_to_archive_is as _batch_archive_to_archive_is,
             check_archive_status as _check_archive_status,
             create_warc as _create_warc,
+            create_autoscraper_model as _create_autoscraper_model,
             extract_dataset_from_cdxj as _extract_dataset_from_cdxj,
             extract_links_from_warc as _extract_links_from_warc,
             extract_metadata_from_warc as _extract_metadata_from_warc,
@@ -29,6 +30,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             index_warc_to_ipwb as _index_warc_to_ipwb,
             list_common_crawl_indexes as _list_common_crawl_indexes,
             list_autoscraper_models as _list_autoscraper_models,
+            optimize_autoscraper_model as _optimize_autoscraper_model,
             scrape_with_autoscraper as _scrape_with_autoscraper,
             search_archive_is as _search_archive_is,
             search_common_crawl as _search_common_crawl,
@@ -36,14 +38,17 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             search_wayback_machine as _search_wayback_machine,
             start_ipwb_replay as _start_ipwb_replay,
             verify_ipwb_archive as _verify_ipwb_archive,
+            batch_scrape_with_autoscraper as _batch_scrape_with_autoscraper,
         )
 
         return {
             "archive_to_archive_is": _archive_to_archive_is,
             "archive_to_wayback": _archive_to_wayback,
             "batch_archive_to_archive_is": _batch_archive_to_archive_is,
+            "batch_scrape_with_autoscraper": _batch_scrape_with_autoscraper,
             "check_archive_status": _check_archive_status,
             "create_warc": _create_warc,
+            "create_autoscraper_model": _create_autoscraper_model,
             "extract_dataset_from_cdxj": _extract_dataset_from_cdxj,
             "extract_links_from_warc": _extract_links_from_warc,
             "extract_text_from_warc": _extract_text_from_warc,
@@ -57,6 +62,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "index_warc_to_ipwb": _index_warc_to_ipwb,
             "list_common_crawl_indexes": _list_common_crawl_indexes,
             "list_autoscraper_models": _list_autoscraper_models,
+            "optimize_autoscraper_model": _optimize_autoscraper_model,
             "scrape_with_autoscraper": _scrape_with_autoscraper,
             "search_archive_is": _search_archive_is,
             "search_ipwb_archive": _search_ipwb_archive,
@@ -111,6 +117,20 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "error": "Archive.is batch submission backend unavailable",
                 "urls": urls,
                 "results": {},
+            }
+
+        async def _create_autoscraper_model_fallback(
+            sample_url: str,
+            wanted_data: list[str | dict[str, str]],
+            model_name: str,
+            wanted_dict: Optional[dict[str, list[str]]] = None,
+        ) -> Dict[str, Any]:
+            _ = wanted_data, wanted_dict
+            return {
+                "status": "error",
+                "error": "AutoScraper model training backend unavailable",
+                "sample_url": sample_url,
+                "model_name": model_name,
             }
 
         async def _get_archive_is_content_fallback(archive_url: str) -> Dict[str, Any]:
@@ -235,6 +255,35 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "results": {},
             }
 
+        async def _optimize_autoscraper_model_fallback(
+            model_path: str,
+            new_sample_urls: list[str],
+            new_wanted_data: Optional[list[str | dict[str, str]]] = None,
+            update_existing: bool = True,
+        ) -> Dict[str, Any]:
+            _ = new_wanted_data, update_existing
+            return {
+                "status": "error",
+                "error": "AutoScraper model optimization backend unavailable",
+                "model_path": model_path,
+                "new_sample_urls": new_sample_urls,
+            }
+
+        async def _batch_scrape_with_autoscraper_fallback(
+            model_path: str,
+            urls_file: str,
+            output_format: str = "json",
+            batch_size: int = 50,
+            delay_seconds: float = 1.0,
+        ) -> Dict[str, Any]:
+            _ = output_format, batch_size, delay_seconds
+            return {
+                "status": "error",
+                "error": "AutoScraper batch scrape backend unavailable",
+                "model_path": model_path,
+                "urls_file": urls_file,
+            }
+
         async def _get_wayback_content_fallback(
             url: str,
             timestamp: Optional[str] = None,
@@ -348,8 +397,10 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "archive_to_archive_is": _archive_to_archive_is_fallback,
             "archive_to_wayback": _archive_to_wayback_fallback,
             "batch_archive_to_archive_is": _batch_archive_to_archive_is_fallback,
+            "batch_scrape_with_autoscraper": _batch_scrape_with_autoscraper_fallback,
             "check_archive_status": _check_archive_status_fallback,
             "create_warc": _create_warc_fallback,
+            "create_autoscraper_model": _create_autoscraper_model_fallback,
             "extract_dataset_from_cdxj": _extract_dataset_from_cdxj_fallback,
             "extract_links_from_warc": _extract_links_from_warc_fallback,
             "extract_text_from_warc": _extract_text_from_warc_fallback,
@@ -363,6 +414,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "index_warc_to_ipwb": _index_warc_to_ipwb_fallback,
             "list_common_crawl_indexes": _list_common_crawl_indexes_fallback,
             "list_autoscraper_models": _list_autoscraper_models_fallback,
+            "optimize_autoscraper_model": _optimize_autoscraper_model_fallback,
             "scrape_with_autoscraper": _scrape_with_autoscraper_fallback,
             "search_archive_is": _search_archive_is_fallback,
             "search_ipwb_archive": _search_ipwb_archive_fallback,
@@ -731,6 +783,35 @@ async def list_autoscraper_models() -> Dict[str, Any]:
     return result
 
 
+async def create_autoscraper_model(
+    sample_url: str,
+    wanted_data: list[str | dict[str, str]],
+    model_name: str,
+    wanted_dict: Optional[dict[str, list[str]]] = None,
+) -> Dict[str, Any]:
+    """Train and persist an AutoScraper model from sample data."""
+    normalized_sample_url = str(sample_url or "").strip()
+    if not normalized_sample_url:
+        return {"status": "error", "error": "'sample_url' is required."}
+
+    normalized_model_name = str(model_name or "").strip()
+    if not normalized_model_name:
+        return {"status": "error", "error": "'model_name' is required."}
+
+    if not isinstance(wanted_data, list) or not wanted_data:
+        return {"status": "error", "error": "'wanted_data' must be a non-empty list."}
+
+    result = _API["create_autoscraper_model"](
+        sample_url=normalized_sample_url,
+        wanted_data=wanted_data,
+        model_name=normalized_model_name,
+        wanted_dict=wanted_dict,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
 async def scrape_with_autoscraper(
     model_path: str,
     target_urls: list[str],
@@ -755,6 +836,81 @@ async def scrape_with_autoscraper(
         model_path=normalized_model_path,
         target_urls=normalized_urls,
         grouped=bool(grouped),
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def optimize_autoscraper_model(
+    model_path: str,
+    new_sample_urls: list[str],
+    new_wanted_data: Optional[list[str | dict[str, str]]] = None,
+    update_existing: bool = True,
+) -> Dict[str, Any]:
+    """Optimize an existing AutoScraper model with additional samples."""
+    normalized_model_path = str(model_path or "").strip()
+    if not normalized_model_path:
+        return {"status": "error", "error": "'model_path' is required."}
+
+    if not isinstance(new_sample_urls, list) or not new_sample_urls:
+        return {"status": "error", "error": "'new_sample_urls' must be a non-empty list."}
+
+    normalized_urls = [str(url).strip() for url in new_sample_urls if str(url).strip()]
+    if not normalized_urls:
+        return {
+            "status": "error",
+            "error": "'new_sample_urls' must contain at least one non-empty URL.",
+        }
+
+    result = _API["optimize_autoscraper_model"](
+        model_path=normalized_model_path,
+        new_sample_urls=normalized_urls,
+        new_wanted_data=new_wanted_data,
+        update_existing=bool(update_existing),
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def batch_scrape_with_autoscraper(
+    model_path: str,
+    urls_file: str,
+    output_format: str = "json",
+    batch_size: int = 50,
+    delay_seconds: float = 1.0,
+) -> Dict[str, Any]:
+    """Run batch scraping against URL list file using AutoScraper."""
+    normalized_model_path = str(model_path or "").strip()
+    if not normalized_model_path:
+        return {"status": "error", "error": "'model_path' is required."}
+
+    normalized_urls_file = str(urls_file or "").strip()
+    if not normalized_urls_file:
+        return {"status": "error", "error": "'urls_file' is required."}
+
+    normalized_output = str(output_format or "json").strip().lower() or "json"
+    if normalized_output not in {"json", "csv", "jsonl"}:
+        return {
+            "status": "error",
+            "error": "'output_format' must be one of: json, csv, jsonl.",
+        }
+
+    normalized_batch_size = int(batch_size)
+    if normalized_batch_size <= 0:
+        return {"status": "error", "error": "'batch_size' must be greater than 0."}
+
+    normalized_delay = float(delay_seconds)
+    if normalized_delay < 0:
+        return {"status": "error", "error": "'delay_seconds' must be >= 0."}
+
+    result = _API["batch_scrape_with_autoscraper"](
+        model_path=normalized_model_path,
+        urls_file=normalized_urls_file,
+        output_format=normalized_output,
+        batch_size=normalized_batch_size,
+        delay_seconds=normalized_delay,
     )
     if hasattr(result, "__await__"):
         return await result
@@ -1171,6 +1327,29 @@ def register_native_web_archive_tools(manager: Any) -> None:
 
     manager.register_tool(
         category="web_archive_tools",
+        name="create_autoscraper_model",
+        func=create_autoscraper_model,
+        description="Create and save a trained AutoScraper model from sample data.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "sample_url": {"type": "string"},
+                "wanted_data": {
+                    "type": "array",
+                    "items": {"type": ["string", "object"]},
+                    "minItems": 1,
+                },
+                "model_name": {"type": "string"},
+                "wanted_dict": {"type": ["object", "null"]},
+            },
+            "required": ["sample_url", "wanted_data", "model_name"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
         name="scrape_with_autoscraper",
         func=scrape_with_autoscraper,
         description="Scrape one or more URLs with a trained AutoScraper model.",
@@ -1182,6 +1361,56 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "grouped": {"type": "boolean", "default": False},
             },
             "required": ["model_path", "target_urls"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="optimize_autoscraper_model",
+        func=optimize_autoscraper_model,
+        description="Optimize an existing AutoScraper model with additional samples.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model_path": {"type": "string"},
+                "new_sample_urls": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "minItems": 1,
+                },
+                "new_wanted_data": {
+                    "type": ["array", "null"],
+                    "items": {"type": ["string", "object"]},
+                },
+                "update_existing": {"type": "boolean", "default": True},
+            },
+            "required": ["model_path", "new_sample_urls"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="batch_scrape_with_autoscraper",
+        func=batch_scrape_with_autoscraper,
+        description="Run batch AutoScraper extraction using a URL input file.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model_path": {"type": "string"},
+                "urls_file": {"type": "string"},
+                "output_format": {
+                    "type": "string",
+                    "enum": ["json", "csv", "jsonl"],
+                    "default": "json",
+                },
+                "batch_size": {"type": "integer", "default": 50, "minimum": 1},
+                "delay_seconds": {"type": "number", "default": 1.0, "minimum": 0},
+            },
+            "required": ["model_path", "urls_file"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],

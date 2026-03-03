@@ -11,7 +11,9 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     archive_to_archive_is,
     archive_to_wayback,
     batch_archive_to_archive_is,
+    batch_scrape_with_autoscraper,
     check_archive_status,
+    create_autoscraper_model,
     extract_dataset_from_cdxj,
     extract_links_from_warc,
     extract_metadata_from_warc,
@@ -24,6 +26,7 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     index_warc_to_ipwb,
     list_common_crawl_indexes,
     list_autoscraper_models,
+    optimize_autoscraper_model,
     register_native_web_archive_tools,
     scrape_with_autoscraper,
     search_archive_is,
@@ -63,7 +66,10 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("get_common_crawl_content", names)
         self.assertIn("list_common_crawl_indexes", names)
         self.assertIn("list_autoscraper_models", names)
+        self.assertIn("create_autoscraper_model", names)
         self.assertIn("scrape_with_autoscraper", names)
+        self.assertIn("optimize_autoscraper_model", names)
+        self.assertIn("batch_scrape_with_autoscraper", names)
         self.assertIn("search_wayback_machine", names)
         self.assertIn("search_archive_is", names)
         self.assertIn("get_archive_is_content", names)
@@ -139,6 +145,120 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertIn(scrape_result.get("status"), ["success", "error"])
             if scrape_result.get("status") == "error":
                 self.assertIn("error", scrape_result)
+
+            missing_sample_url = await create_autoscraper_model(
+                sample_url="",
+                wanted_data=["item"],
+                model_name="model1",
+            )
+            self.assertEqual(missing_sample_url.get("status"), "error")
+            self.assertIn("'sample_url' is required", str(missing_sample_url.get("error", "")))
+
+            missing_model_name = await create_autoscraper_model(
+                sample_url="https://example.com",
+                wanted_data=["item"],
+                model_name=" ",
+            )
+            self.assertEqual(missing_model_name.get("status"), "error")
+            self.assertIn("'model_name' is required", str(missing_model_name.get("error", "")))
+
+            missing_wanted_data = await create_autoscraper_model(
+                sample_url="https://example.com",
+                wanted_data=[],
+                model_name="model1",
+            )
+            self.assertEqual(missing_wanted_data.get("status"), "error")
+            self.assertIn("'wanted_data' must be a non-empty list", str(missing_wanted_data.get("error", "")))
+
+            create_result = await create_autoscraper_model(
+                sample_url="https://example.com",
+                wanted_data=["item"],
+                model_name="model1",
+            )
+            self.assertIn(create_result.get("status"), ["success", "error"])
+            if create_result.get("status") == "error":
+                self.assertIn("error", create_result)
+
+            missing_opt_path = await optimize_autoscraper_model(
+                model_path="",
+                new_sample_urls=["https://example.com"],
+            )
+            self.assertEqual(missing_opt_path.get("status"), "error")
+            self.assertIn("'model_path' is required", str(missing_opt_path.get("error", "")))
+
+            missing_opt_urls = await optimize_autoscraper_model(
+                model_path="/tmp/mock.pkl",
+                new_sample_urls=[],
+            )
+            self.assertEqual(missing_opt_urls.get("status"), "error")
+            self.assertIn("'new_sample_urls' must be a non-empty list", str(missing_opt_urls.get("error", "")))
+
+            empty_opt_urls = await optimize_autoscraper_model(
+                model_path="/tmp/mock.pkl",
+                new_sample_urls=[" "],
+            )
+            self.assertEqual(empty_opt_urls.get("status"), "error")
+            self.assertIn(
+                "'new_sample_urls' must contain at least one non-empty URL",
+                str(empty_opt_urls.get("error", "")),
+            )
+
+            optimize_result = await optimize_autoscraper_model(
+                model_path="/tmp/mock.pkl",
+                new_sample_urls=["https://example.com"],
+            )
+            self.assertIn(optimize_result.get("status"), ["success", "error"])
+            if optimize_result.get("status") == "error":
+                self.assertIn("error", optimize_result)
+
+            missing_batch_path = await batch_scrape_with_autoscraper(
+                model_path="",
+                urls_file="/tmp/urls.txt",
+            )
+            self.assertEqual(missing_batch_path.get("status"), "error")
+            self.assertIn("'model_path' is required", str(missing_batch_path.get("error", "")))
+
+            missing_urls_file = await batch_scrape_with_autoscraper(
+                model_path="/tmp/mock.pkl",
+                urls_file="",
+            )
+            self.assertEqual(missing_urls_file.get("status"), "error")
+            self.assertIn("'urls_file' is required", str(missing_urls_file.get("error", "")))
+
+            invalid_output = await batch_scrape_with_autoscraper(
+                model_path="/tmp/mock.pkl",
+                urls_file="/tmp/urls.txt",
+                output_format="xml",
+            )
+            self.assertEqual(invalid_output.get("status"), "error")
+            self.assertIn("'output_format' must be one of", str(invalid_output.get("error", "")))
+
+            invalid_batch_size = await batch_scrape_with_autoscraper(
+                model_path="/tmp/mock.pkl",
+                urls_file="/tmp/urls.txt",
+                batch_size=0,
+            )
+            self.assertEqual(invalid_batch_size.get("status"), "error")
+            self.assertIn("'batch_size' must be greater than 0", str(invalid_batch_size.get("error", "")))
+
+            invalid_delay = await batch_scrape_with_autoscraper(
+                model_path="/tmp/mock.pkl",
+                urls_file="/tmp/urls.txt",
+                delay_seconds=-1,
+            )
+            self.assertEqual(invalid_delay.get("status"), "error")
+            self.assertIn("'delay_seconds' must be >= 0", str(invalid_delay.get("error", "")))
+
+            batch_result = await batch_scrape_with_autoscraper(
+                model_path="/tmp/mock.pkl",
+                urls_file="/tmp/urls.txt",
+                output_format="json",
+                batch_size=10,
+                delay_seconds=0,
+            )
+            self.assertIn(batch_result.get("status"), ["success", "error"])
+            if batch_result.get("status") == "error":
+                self.assertIn("error", batch_result)
 
         anyio.run(_run)
 
