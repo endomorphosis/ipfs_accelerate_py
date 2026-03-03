@@ -50,6 +50,17 @@ class TestMCPServerUNI112AnalysisTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_cluster_analysis_accepts_source_algorithm_and_rejects_bad_cluster_type(self) -> None:
+        async def _run() -> None:
+            spectral_result = await cluster_analysis(algorithm="spectral")
+            self.assertIn(spectral_result.get("status"), ["success", "error"])
+
+            bad_clusters = await cluster_analysis(algorithm="kmeans", n_clusters="bad")  # type: ignore[arg-type]
+            self.assertEqual(bad_clusters.get("status"), "error")
+            self.assertIn("n_clusters must be a positive integer", str(bad_clusters.get("message", "")))
+
+        anyio.run(_run)
+
     def test_quality_assessment_rejects_non_array_metrics(self) -> None:
         async def _run() -> None:
             result = await quality_assessment(metrics="accuracy")  # type: ignore[arg-type]
@@ -72,6 +83,17 @@ class TestMCPServerUNI112AnalysisTools(unittest.TestCase):
             self.assertIn(result.get("status"), ["success", "error"])
             if result.get("status") == "success":
                 self.assertIn("reduced_dimensions", result)
+
+        anyio.run(_run)
+
+    def test_dimensionality_reduction_accepts_source_method_and_rejects_bad_type(self) -> None:
+        async def _run() -> None:
+            source_method = await dimensionality_reduction(method="truncated_svd", n_components=2)
+            self.assertIn(source_method.get("status"), ["success", "error"])
+
+            bad_components = await dimensionality_reduction(method="pca", n_components="bad")  # type: ignore[arg-type]
+            self.assertEqual(bad_components.get("status"), "error")
+            self.assertIn("n_components must be a positive integer", str(bad_components.get("message", "")))
 
         anyio.run(_run)
 
