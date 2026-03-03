@@ -5583,6 +5583,168 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_geospatial_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """geospatial_tools should expose source-compatible operations with deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="geospatial-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("geospatial_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("extract_geographic_entities", names)
+            self.assertIn("map_spatiotemporal_events", names)
+            self.assertIn("query_geographic_context", names)
+
+            map_schema = await get_schema("geospatial_tools", "map_spatiotemporal_events")
+            self.assertEqual(map_schema.get("name"), "map_spatiotemporal_events")
+            schema_props = (map_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((schema_props.get("temporal_resolution") or {}).get("default"), "day")
+            self.assertIn("year", (schema_props.get("temporal_resolution") or {}).get("enum", []))
+
+            invalid_resolution = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "geospatial_tools",
+                    "map_spatiotemporal_events",
+                    {
+                        "corpus_data": "sample",
+                        "temporal_resolution": "quarter",
+                    },
+                )
+            )
+            self.assertEqual(invalid_resolution.get("status"), "error")
+            self.assertIn("must be one of", str(invalid_resolution.get("message", "")))
+
+            valid_query = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "geospatial_tools",
+                    "query_geographic_context",
+                    {
+                        "query": "city",
+                        "corpus_data": "sample",
+                        "radius_km": 25,
+                    },
+                )
+            )
+            self.assertIn(valid_query.get("status"), ["success", "error"])
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_index_management_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """index_management_tools should expose source-compatible operations with deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="index-management-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("index_management_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("load_index", names)
+            self.assertIn("manage_shards", names)
+            self.assertIn("monitor_index_status", names)
+            self.assertIn("manage_index_configuration", names)
+
+            monitor_schema = await get_schema("index_management_tools", "monitor_index_status")
+            self.assertEqual(monitor_schema.get("name"), "monitor_index_status")
+            schema_props = (monitor_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((schema_props.get("time_range") or {}).get("default"), "24h")
+            self.assertIn("30d", (schema_props.get("time_range") or {}).get("enum", []))
+
+            invalid_shards = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "index_management_tools",
+                    "manage_shards",
+                    {
+                        "action": "create_shards",
+                        "num_shards": "bad",
+                    },
+                )
+            )
+            self.assertEqual(invalid_shards.get("status"), "error")
+            self.assertIn("positive integer", str(invalid_shards.get("message", "")))
+
+            invalid_time_range = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "index_management_tools",
+                    "monitor_index_status",
+                    {
+                        "time_range": "2h",
+                    },
+                )
+            )
+            self.assertEqual(invalid_time_range.get("status"), "error")
+            self.assertIn("must be one of", str(invalid_time_range.get("message", "")))
+
+            valid_manage = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "index_management_tools",
+                    "manage_index_configuration",
+                    {
+                        "action": "get_config",
+                        "optimization_level": 1,
+                    },
+                )
+            )
+            self.assertIn(valid_manage.get("status"), ["success", "error"])
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 

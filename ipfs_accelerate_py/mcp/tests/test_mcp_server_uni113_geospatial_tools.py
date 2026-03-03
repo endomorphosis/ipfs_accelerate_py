@@ -32,6 +32,22 @@ class TestMCPServerUNI113GeospatialTools(unittest.TestCase):
         self.assertIn("map_spatiotemporal_events", names)
         self.assertIn("query_geographic_context", names)
 
+    def test_register_schema_contracts(self) -> None:
+        manager = _DummyManager()
+        register_native_geospatial_tools(manager)
+        by_name = {c["name"]: c for c in manager.calls}
+
+        extract_schema = by_name["extract_geographic_entities"]["input_schema"]
+        threshold = extract_schema["properties"]["confidence_threshold"]
+        self.assertEqual(threshold.get("default"), 0.7)
+        self.assertEqual(threshold.get("minimum"), 0.0)
+        self.assertEqual(threshold.get("maximum"), 1.0)
+
+        map_schema = by_name["map_spatiotemporal_events"]["input_schema"]
+        resolution = map_schema["properties"]["temporal_resolution"]
+        self.assertEqual(resolution.get("default"), "day")
+        self.assertIn("month", resolution.get("enum", []))
+
     def test_extract_geographic_entities_rejects_invalid_threshold(self) -> None:
         async def _run() -> None:
             result = await extract_geographic_entities(corpus_data="sample", confidence_threshold=2.0)
@@ -70,6 +86,18 @@ class TestMCPServerUNI113GeospatialTools(unittest.TestCase):
             self.assertIn(result.get("status"), ["success", "error"])
             if result.get("status") == "success":
                 self.assertIn("clusters", result)
+
+        anyio.run(_run)
+
+    def test_query_geographic_context_rejects_non_boolean_flags(self) -> None:
+        async def _run() -> None:
+            result = await query_geographic_context(
+                query="city",
+                corpus_data="sample",
+                include_related_entities="yes",  # type: ignore[arg-type]
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("must be a boolean", str(result.get("message", "")))
 
         anyio.run(_run)
 

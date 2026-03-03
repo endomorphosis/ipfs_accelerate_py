@@ -164,7 +164,14 @@ async def manage_shards(
             "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
             "action": action,
         }
-    normalized_num_shards = int(num_shards)
+    try:
+        normalized_num_shards = int(num_shards)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "num_shards must be a positive integer",
+            "num_shards": num_shards,
+        }
     if normalized_num_shards <= 0:
         return {
             "status": "error",
@@ -260,7 +267,14 @@ async def manage_index_configuration(
             "message": "config_updates must be an object when provided",
             "config_updates": config_updates,
         }
-    normalized_optimization_level = int(optimization_level)
+    try:
+        normalized_optimization_level = int(optimization_level)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "optimization_level must be between 1 and 3",
+            "optimization_level": optimization_level,
+        }
     if normalized_optimization_level < 1 or normalized_optimization_level > 3:
         return {
             "status": "error",
@@ -291,12 +305,15 @@ def register_native_index_management_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
+                "action": {
+                    "type": "string",
+                    "enum": ["load", "create", "reload", "unload", "status", "optimize"],
+                },
                 "dataset": {"type": ["string", "null"]},
                 "knn_index": {"type": ["string", "null"]},
-                "dataset_split": {"type": "string"},
-                "knn_index_split": {"type": "string"},
-                "columns": {"type": "string"},
+                "dataset_split": {"type": "string", "default": "train"},
+                "knn_index_split": {"type": "string", "default": "train"},
+                "columns": {"type": "string", "default": "text"},
                 "index_config": {"type": ["object", "null"]},
             },
             "required": ["action"],
@@ -313,11 +330,14 @@ def register_native_index_management_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
+                "action": {
+                    "type": "string",
+                    "enum": ["create_shards", "list_shards", "rebalance", "merge_shards", "status", "distribute"],
+                },
                 "dataset": {"type": ["string", "null"]},
-                "num_shards": {"type": "integer"},
-                "shard_size": {"type": "string"},
-                "sharding_strategy": {"type": "string"},
+                "num_shards": {"type": "integer", "minimum": 1, "default": 4},
+                "shard_size": {"type": "string", "default": "auto"},
+                "sharding_strategy": {"type": "string", "default": "clustering"},
                 "models": {"type": ["array", "null"], "items": {"type": "string"}},
                 "shard_ids": {"type": ["array", "null"], "items": {"type": "string"}},
             },
@@ -337,8 +357,8 @@ def register_native_index_management_tools(manager: Any) -> None:
             "properties": {
                 "index_id": {"type": ["string", "null"]},
                 "metrics": {"type": ["array", "null"], "items": {"type": "string"}},
-                "time_range": {"type": "string"},
-                "include_details": {"type": "boolean"},
+                "time_range": {"type": "string", "enum": ["1h", "6h", "24h", "7d", "30d"], "default": "24h"},
+                "include_details": {"type": "boolean", "default": False},
             },
             "required": [],
         },
@@ -354,10 +374,13 @@ def register_native_index_management_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
+                "action": {
+                    "type": "string",
+                    "enum": ["get_config", "update_config", "optimize_config", "reset_config"],
+                },
                 "index_id": {"type": ["string", "null"]},
                 "config_updates": {"type": ["object", "null"]},
-                "optimization_level": {"type": "integer"},
+                "optimization_level": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1},
             },
             "required": ["action"],
         },
