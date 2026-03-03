@@ -22,6 +22,7 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     extract_metadata_from_warc,
     extract_text_from_warc,
     fetch_warc_record_advanced,
+    get_huggingface_model_info,
     get_archive_is_content,
     get_brave_cache_stats,
     get_common_crawl_collection_info_advanced,
@@ -35,6 +36,21 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     list_autoscraper_models,
     optimize_autoscraper_model,
     register_native_web_archive_tools,
+    search_github_code,
+    search_github_issues,
+    search_github_repositories,
+    search_github_users,
+    batch_search_github,
+    search_huggingface_datasets,
+    search_huggingface_models,
+    search_huggingface_spaces,
+    batch_search_huggingface,
+    search_openverse_audio,
+    search_openverse_images,
+    batch_search_openverse,
+    search_serpstack,
+    search_serpstack_images,
+    batch_search_serpstack,
     scrape_with_autoscraper,
     search_archive_is,
     search_brave,
@@ -75,6 +91,22 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("search_google", names)
         self.assertIn("search_google_images", names)
         self.assertIn("batch_search_google", names)
+        self.assertIn("search_github_repositories", names)
+        self.assertIn("search_github_code", names)
+        self.assertIn("search_github_users", names)
+        self.assertIn("search_github_issues", names)
+        self.assertIn("batch_search_github", names)
+        self.assertIn("search_huggingface_models", names)
+        self.assertIn("search_huggingface_datasets", names)
+        self.assertIn("search_huggingface_spaces", names)
+        self.assertIn("get_huggingface_model_info", names)
+        self.assertIn("batch_search_huggingface", names)
+        self.assertIn("search_openverse_images", names)
+        self.assertIn("search_openverse_audio", names)
+        self.assertIn("batch_search_openverse", names)
+        self.assertIn("search_serpstack", names)
+        self.assertIn("search_serpstack_images", names)
+        self.assertIn("batch_search_serpstack", names)
         self.assertIn("extract_text_from_warc", names)
         self.assertIn("extract_dataset_from_cdxj", names)
         self.assertIn("extract_links_from_warc", names)
@@ -456,6 +488,106 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             )
             self.assertEqual(invalid_format.get("status"), "error")
             self.assertIn("'output_format' must be one of", str(invalid_format.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_provider_suite_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_github_query = await search_github_repositories(query="")
+            self.assertEqual(missing_github_query.get("status"), "error")
+            self.assertIn("'query' is required", str(missing_github_query.get("error", "")))
+
+            invalid_github_sort = await search_github_repositories(query="ipfs", sort="bad")
+            self.assertEqual(invalid_github_sort.get("status"), "error")
+            self.assertIn("'sort' must be one of", str(invalid_github_sort.get("error", "")))
+
+            github_repo_result = await search_github_repositories(query="ipfs", per_page=2)
+            self.assertIn(github_repo_result.get("status"), ["success", "error"])
+
+            invalid_github_code_sort = await search_github_code(query="ipfs", sort="stars")
+            self.assertEqual(invalid_github_code_sort.get("status"), "error")
+            self.assertIn("'sort' must be 'indexed' or null", str(invalid_github_code_sort.get("error", "")))
+
+            github_code_result = await search_github_code(query="def add", per_page=2)
+            self.assertIn(github_code_result.get("status"), ["success", "error"])
+
+            github_users_result = await search_github_users(query="barberb", per_page=2)
+            self.assertIn(github_users_result.get("status"), ["success", "error"])
+
+            github_issues_result = await search_github_issues(query="repo:octocat/Hello-World is:issue", per_page=2)
+            self.assertIn(github_issues_result.get("status"), ["success", "error"])
+
+            invalid_github_batch_type = await batch_search_github(queries=["ipfs"], search_type="bad")
+            self.assertEqual(invalid_github_batch_type.get("status"), "error")
+            self.assertIn("'search_type' must be one of", str(invalid_github_batch_type.get("error", "")))
+
+            github_batch_result = await batch_search_github(queries=["ipfs", "mcp"], per_page=2, delay_seconds=0)
+            self.assertIn(github_batch_result.get("status"), ["success", "error"])
+
+            invalid_hf_sort = await search_huggingface_models(sort="bad")
+            self.assertEqual(invalid_hf_sort.get("status"), "error")
+            self.assertIn("'sort' must be one of", str(invalid_hf_sort.get("error", "")))
+
+            hf_models_result = await search_huggingface_models(query="bert", limit=2)
+            self.assertIn(hf_models_result.get("status"), ["success", "error"])
+
+            hf_datasets_result = await search_huggingface_datasets(query="squad", limit=2)
+            self.assertIn(hf_datasets_result.get("status"), ["success", "error"])
+
+            hf_spaces_result = await search_huggingface_spaces(query="chat", limit=2)
+            self.assertIn(hf_spaces_result.get("status"), ["success", "error"])
+
+            missing_hf_model_id = await get_huggingface_model_info(model_id="")
+            self.assertEqual(missing_hf_model_id.get("status"), "error")
+            self.assertIn("'model_id' is required", str(missing_hf_model_id.get("error", "")))
+
+            hf_model_info = await get_huggingface_model_info(model_id="bert-base-uncased")
+            self.assertIn(hf_model_info.get("status"), ["success", "error"])
+
+            invalid_hf_batch_type = await batch_search_huggingface(queries=["bert"], search_type="bad")
+            self.assertEqual(invalid_hf_batch_type.get("status"), "error")
+            self.assertIn("'search_type' must be one of", str(invalid_hf_batch_type.get("error", "")))
+
+            hf_batch_result = await batch_search_huggingface(queries=["bert", "gpt"], limit=2, delay_seconds=0)
+            self.assertIn(hf_batch_result.get("status"), ["success", "error"])
+
+            missing_openverse_query = await search_openverse_images(query="")
+            self.assertEqual(missing_openverse_query.get("status"), "error")
+            self.assertIn("'query' is required", str(missing_openverse_query.get("error", "")))
+
+            openverse_images_result = await search_openverse_images(query="cat", page_size=2)
+            self.assertIn(openverse_images_result.get("status"), ["success", "error"])
+
+            openverse_audio_result = await search_openverse_audio(query="music", page_size=2)
+            self.assertIn(openverse_audio_result.get("status"), ["success", "error"])
+
+            invalid_openverse_batch_type = await batch_search_openverse(queries=["cat"], search_type="video")
+            self.assertEqual(invalid_openverse_batch_type.get("status"), "error")
+            self.assertIn("'search_type' must be one of", str(invalid_openverse_batch_type.get("error", "")))
+
+            openverse_batch_result = await batch_search_openverse(queries=["cat", "dog"], page_size=2, delay_seconds=0)
+            self.assertIn(openverse_batch_result.get("status"), ["success", "error"])
+
+            missing_serp_query = await search_serpstack(query="")
+            self.assertEqual(missing_serp_query.get("status"), "error")
+            self.assertIn("'query' is required", str(missing_serp_query.get("error", "")))
+
+            invalid_serp_engine = await search_serpstack(query="ipfs", engine="duckduckgo")
+            self.assertEqual(invalid_serp_engine.get("status"), "error")
+            self.assertIn("'engine' must be one of", str(invalid_serp_engine.get("error", "")))
+
+            serp_result = await search_serpstack(query="ipfs", num=2)
+            self.assertIn(serp_result.get("status"), ["success", "error"])
+
+            serp_images_result = await search_serpstack_images(query="ipfs", num=2)
+            self.assertIn(serp_images_result.get("status"), ["success", "error"])
+
+            invalid_serp_batch_delay = await batch_search_serpstack(queries=["ipfs"], delay_seconds=-1)
+            self.assertEqual(invalid_serp_batch_delay.get("status"), "error")
+            self.assertIn("'delay_seconds' must be >= 0", str(invalid_serp_batch_delay.get("error", "")))
+
+            serp_batch_result = await batch_search_serpstack(queries=["ipfs", "mcp"], num=2, delay_seconds=0)
+            self.assertIn(serp_batch_result.get("status"), ["success", "error"])
 
         anyio.run(_run)
 

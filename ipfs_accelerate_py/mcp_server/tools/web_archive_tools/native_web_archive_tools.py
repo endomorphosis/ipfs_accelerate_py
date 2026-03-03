@@ -15,7 +15,11 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             archive_to_archive_is as _archive_to_archive_is,
             archive_to_wayback as _archive_to_wayback,
             batch_search_brave as _batch_search_brave,
+            batch_search_github as _batch_search_github,
             batch_search_google as _batch_search_google,
+            batch_search_huggingface as _batch_search_huggingface,
+            batch_search_openverse as _batch_search_openverse,
+            batch_search_serpstack as _batch_search_serpstack,
             batch_archive_to_archive_is as _batch_archive_to_archive_is,
             check_archive_status as _check_archive_status,
             clear_brave_cache as _clear_brave_cache,
@@ -30,6 +34,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             get_brave_cache_stats as _get_brave_cache_stats,
             get_common_crawl_collection_info_advanced as _get_common_crawl_collection_info_advanced,
             get_common_crawl_content as _get_common_crawl_content,
+            get_huggingface_model_info as _get_huggingface_model_info,
             get_ipwb_content as _get_ipwb_content,
             get_wayback_content as _get_wayback_content,
             index_warc as _index_warc,
@@ -45,11 +50,27 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             search_brave_news as _search_brave_news,
             search_common_crawl as _search_common_crawl,
             search_common_crawl_advanced as _search_common_crawl_advanced,
+            search_github_code as _search_github_code,
+            search_github_issues as _search_github_issues,
+            search_github_repositories as _search_github_repositories,
+            search_github_users as _search_github_users,
             search_google as _search_google,
             search_google_images as _search_google_images,
+            search_huggingface_datasets as _search_huggingface_datasets,
+            search_huggingface_models as _search_huggingface_models,
+            search_huggingface_spaces as _search_huggingface_spaces,
             search_ipwb_archive as _search_ipwb_archive,
+            search_openverse_audio as _search_openverse_audio,
+            search_openverse_images as _search_openverse_images,
+            search_serpstack as _search_serpstack,
+            search_serpstack_images as _search_serpstack_images,
             search_wayback_machine as _search_wayback_machine,
             start_ipwb_replay as _start_ipwb_replay,
+            unified_agentic_discover_and_fetch as _unified_agentic_discover_and_fetch,
+            unified_fetch as _unified_fetch,
+            unified_health as _unified_health,
+            unified_search as _unified_search,
+            unified_search_and_fetch as _unified_search_and_fetch,
             verify_ipwb_archive as _verify_ipwb_archive,
             batch_scrape_with_autoscraper as _batch_scrape_with_autoscraper,
         )
@@ -59,7 +80,11 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "archive_to_wayback": _archive_to_wayback,
             "batch_archive_to_archive_is": _batch_archive_to_archive_is,
             "batch_search_brave": _batch_search_brave,
+            "batch_search_github": _batch_search_github,
             "batch_search_google": _batch_search_google,
+            "batch_search_huggingface": _batch_search_huggingface,
+            "batch_search_openverse": _batch_search_openverse,
+            "batch_search_serpstack": _batch_search_serpstack,
             "batch_scrape_with_autoscraper": _batch_scrape_with_autoscraper,
             "check_archive_status": _check_archive_status,
             "clear_brave_cache": _clear_brave_cache,
@@ -73,6 +98,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "get_archive_is_content": _get_archive_is_content,
             "get_brave_cache_stats": _get_brave_cache_stats,
             "get_common_crawl_collection_info_advanced": _get_common_crawl_collection_info_advanced,
+            "get_huggingface_model_info": _get_huggingface_model_info,
             "search_common_crawl": _search_common_crawl,
             "search_common_crawl_advanced": _search_common_crawl_advanced,
             "get_common_crawl_content": _get_common_crawl_content,
@@ -89,11 +115,27 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "search_brave": _search_brave,
             "search_brave_images": _search_brave_images,
             "search_brave_news": _search_brave_news,
+            "search_github_code": _search_github_code,
+            "search_github_issues": _search_github_issues,
+            "search_github_repositories": _search_github_repositories,
+            "search_github_users": _search_github_users,
             "search_google": _search_google,
             "search_google_images": _search_google_images,
+            "search_huggingface_datasets": _search_huggingface_datasets,
+            "search_huggingface_models": _search_huggingface_models,
+            "search_huggingface_spaces": _search_huggingface_spaces,
             "search_ipwb_archive": _search_ipwb_archive,
+            "search_openverse_audio": _search_openverse_audio,
+            "search_openverse_images": _search_openverse_images,
+            "search_serpstack": _search_serpstack,
+            "search_serpstack_images": _search_serpstack_images,
             "search_wayback_machine": _search_wayback_machine,
             "start_ipwb_replay": _start_ipwb_replay,
+            "unified_agentic_discover_and_fetch": _unified_agentic_discover_and_fetch,
+            "unified_fetch": _unified_fetch,
+            "unified_health": _unified_health,
+            "unified_search": _unified_search,
+            "unified_search_and_fetch": _unified_search_and_fetch,
             "verify_ipwb_archive": _verify_ipwb_archive,
         }
     except Exception:
@@ -301,6 +343,272 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "total_queries": len(queries),
                 "success_count": len(queries),
                 "error_count": 0,
+                "source": "fallback",
+            }
+
+        async def _search_github_repositories_fallback(
+            query: str,
+            api_token: Optional[str] = None,
+            sort: Optional[str] = None,
+            order: str = "desc",
+            per_page: int = 30,
+            page: int = 1,
+        ) -> Dict[str, Any]:
+            _ = api_token, sort, order, per_page, page
+            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+
+        async def _search_github_code_fallback(
+            query: str,
+            api_token: Optional[str] = None,
+            sort: Optional[str] = None,
+            order: str = "desc",
+            per_page: int = 30,
+            page: int = 1,
+        ) -> Dict[str, Any]:
+            _ = api_token, sort, order, per_page, page
+            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+
+        async def _search_github_users_fallback(
+            query: str,
+            api_token: Optional[str] = None,
+            sort: Optional[str] = None,
+            order: str = "desc",
+            per_page: int = 30,
+            page: int = 1,
+        ) -> Dict[str, Any]:
+            _ = api_token, sort, order, per_page, page
+            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+
+        async def _search_github_issues_fallback(
+            query: str,
+            api_token: Optional[str] = None,
+            sort: Optional[str] = None,
+            order: str = "desc",
+            per_page: int = 30,
+            page: int = 1,
+        ) -> Dict[str, Any]:
+            _ = api_token, sort, order, per_page, page
+            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+
+        async def _batch_search_github_fallback(
+            queries: list[str],
+            search_type: str = "repositories",
+            api_token: Optional[str] = None,
+            per_page: int = 30,
+            delay_seconds: float = 2.0,
+        ) -> Dict[str, Any]:
+            _ = search_type, api_token, per_page, delay_seconds
+            return {
+                "status": "success",
+                "results": {q: {"status": "success", "results": []} for q in queries},
+                "total_queries": len(queries),
+                "success_count": len(queries),
+                "error_count": 0,
+                "source": "fallback",
+            }
+
+        async def _search_huggingface_models_fallback(
+            query: Optional[str] = None,
+            api_token: Optional[str] = None,
+            filter_task: Optional[str] = None,
+            filter_library: Optional[str] = None,
+            filter_language: Optional[str] = None,
+            sort: str = "downloads",
+            direction: int = -1,
+            limit: int = 20,
+        ) -> Dict[str, Any]:
+            _ = api_token, filter_task, filter_library, filter_language, sort, direction, limit
+            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+
+        async def _search_huggingface_datasets_fallback(
+            query: Optional[str] = None,
+            api_token: Optional[str] = None,
+            filter_task: Optional[str] = None,
+            filter_language: Optional[str] = None,
+            filter_size: Optional[str] = None,
+            sort: str = "downloads",
+            direction: int = -1,
+            limit: int = 20,
+        ) -> Dict[str, Any]:
+            _ = api_token, filter_task, filter_language, filter_size, sort, direction, limit
+            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+
+        async def _search_huggingface_spaces_fallback(
+            query: Optional[str] = None,
+            api_token: Optional[str] = None,
+            filter_sdk: Optional[str] = None,
+            sort: str = "likes",
+            direction: int = -1,
+            limit: int = 20,
+        ) -> Dict[str, Any]:
+            _ = api_token, filter_sdk, sort, direction, limit
+            return {"status": "success", "results": [], "total_count": 0, "query": query, "source": "fallback"}
+
+        async def _get_huggingface_model_info_fallback(
+            model_id: str,
+            api_token: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = api_token
+            return {"status": "error", "error": "HuggingFace model info backend unavailable", "model_id": model_id}
+
+        async def _batch_search_huggingface_fallback(
+            queries: list[str],
+            search_type: str = "models",
+            api_token: Optional[str] = None,
+            limit: int = 20,
+            delay_seconds: float = 0.5,
+        ) -> Dict[str, Any]:
+            _ = search_type, api_token, limit, delay_seconds
+            return {
+                "status": "success",
+                "results": {q: {"status": "success", "results": []} for q in queries},
+                "total_queries": len(queries),
+                "success_count": len(queries),
+                "error_count": 0,
+                "source": "fallback",
+            }
+
+        async def _search_openverse_images_fallback(
+            query: str,
+            api_key: Optional[str] = None,
+            page: int = 1,
+            page_size: int = 20,
+            license_type: Optional[str] = None,
+            source: Optional[str] = None,
+            creator: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = api_key, page, page_size, license_type, source, creator
+            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+
+        async def _search_openverse_audio_fallback(
+            query: str,
+            api_key: Optional[str] = None,
+            page: int = 1,
+            page_size: int = 20,
+            license_type: Optional[str] = None,
+            source: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = api_key, page, page_size, license_type, source
+            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+
+        async def _batch_search_openverse_fallback(
+            queries: list[str],
+            search_type: str = "images",
+            api_key: Optional[str] = None,
+            page_size: int = 20,
+            delay_seconds: float = 0.5,
+        ) -> Dict[str, Any]:
+            _ = search_type, api_key, page_size, delay_seconds
+            return {
+                "status": "success",
+                "results": {q: {"status": "success", "results": []} for q in queries},
+                "total_queries": len(queries),
+                "success_count": len(queries),
+                "error_count": 0,
+                "source": "fallback",
+            }
+
+        async def _search_serpstack_fallback(
+            query: str,
+            api_key: Optional[str] = None,
+            engine: str = "google",
+            num: int = 10,
+            page: int = 1,
+            location: Optional[str] = None,
+            device: Optional[str] = None,
+            lang: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = api_key, engine, num, page, location, device, lang
+            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+
+        async def _search_serpstack_images_fallback(
+            query: str,
+            api_key: Optional[str] = None,
+            engine: str = "google",
+            num: int = 10,
+            location: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = api_key, engine, num, location
+            return {"status": "success", "results": [], "query": query, "total_results": 0, "source": "fallback"}
+
+        async def _batch_search_serpstack_fallback(
+            queries: list[str],
+            api_key: Optional[str] = None,
+            engine: str = "google",
+            num: int = 10,
+            delay_seconds: float = 1.0,
+        ) -> Dict[str, Any]:
+            _ = api_key, engine, num, delay_seconds
+            return {
+                "status": "success",
+                "results": {q: {"status": "success", "results": []} for q in queries},
+                "total_queries": len(queries),
+                "success_count": len(queries),
+                "error_count": 0,
+                "source": "fallback",
+            }
+
+        async def _unified_search_fallback(
+            query: str,
+            max_results: int = 20,
+            mode: str = "max_throughput",
+            provider_allowlist: Optional[list[str]] = None,
+            provider_denylist: Optional[list[str]] = None,
+            offset: int = 0,
+            domain: str = "general",
+        ) -> Dict[str, Any]:
+            _ = max_results, mode, provider_allowlist, provider_denylist, offset, domain
+            return {"status": "success", "data": {"results": [], "query": query, "source": "fallback"}}
+
+        async def _unified_fetch_fallback(
+            url: str,
+            mode: str = "balanced",
+            domain: str = "general",
+        ) -> Dict[str, Any]:
+            _ = mode, domain
+            return {"status": "success", "data": {"url": url, "content": None, "source": "fallback"}}
+
+        async def _unified_search_and_fetch_fallback(
+            query: str,
+            max_results: int = 20,
+            max_documents: int = 5,
+            mode: str = "max_throughput",
+            provider_allowlist: Optional[list[str]] = None,
+            domain: str = "general",
+        ) -> Dict[str, Any]:
+            _ = max_results, max_documents, mode, provider_allowlist, domain
+            return {
+                "status": "success",
+                "query": query,
+                "search_results": [],
+                "fetched_documents": [],
+                "source": "fallback",
+            }
+
+        async def _unified_health_fallback() -> Dict[str, Any]:
+            return {
+                "status": "success",
+                "data": {
+                    "healthy": False,
+                    "providers": {},
+                    "source": "fallback",
+                },
+            }
+
+        async def _unified_agentic_discover_and_fetch_fallback(
+            seed_urls: list[str],
+            target_terms: list[str],
+            max_hops: int = 2,
+            max_pages: int = 10,
+            mode: str = "balanced",
+        ) -> Dict[str, Any]:
+            _ = max_hops, max_pages, mode
+            return {
+                "status": "success",
+                "seed_urls": seed_urls,
+                "target_terms": target_terms,
+                "discovered_pages": [],
+                "fetched_documents": [],
                 "source": "fallback",
             }
 
@@ -632,7 +940,11 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "archive_to_wayback": _archive_to_wayback_fallback,
             "batch_archive_to_archive_is": _batch_archive_to_archive_is_fallback,
             "batch_search_brave": _batch_search_brave_fallback,
+            "batch_search_github": _batch_search_github_fallback,
             "batch_search_google": _batch_search_google_fallback,
+            "batch_search_huggingface": _batch_search_huggingface_fallback,
+            "batch_search_openverse": _batch_search_openverse_fallback,
+            "batch_search_serpstack": _batch_search_serpstack_fallback,
             "batch_scrape_with_autoscraper": _batch_scrape_with_autoscraper_fallback,
             "check_archive_status": _check_archive_status_fallback,
             "clear_brave_cache": _clear_brave_cache_fallback,
@@ -646,6 +958,7 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "get_archive_is_content": _get_archive_is_content_fallback,
             "get_brave_cache_stats": _get_brave_cache_stats_fallback,
             "get_common_crawl_collection_info_advanced": _get_common_crawl_collection_info_advanced_fallback,
+            "get_huggingface_model_info": _get_huggingface_model_info_fallback,
             "search_common_crawl": _search_common_crawl_fallback,
             "search_common_crawl_advanced": _search_common_crawl_advanced_fallback,
             "get_common_crawl_content": _get_common_crawl_content_fallback,
@@ -662,11 +975,27 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
             "search_brave": _search_brave_fallback,
             "search_brave_images": _search_brave_images_fallback,
             "search_brave_news": _search_brave_news_fallback,
+            "search_github_code": _search_github_code_fallback,
+            "search_github_issues": _search_github_issues_fallback,
+            "search_github_repositories": _search_github_repositories_fallback,
+            "search_github_users": _search_github_users_fallback,
             "search_google": _search_google_fallback,
             "search_google_images": _search_google_images_fallback,
+            "search_huggingface_datasets": _search_huggingface_datasets_fallback,
+            "search_huggingface_models": _search_huggingface_models_fallback,
+            "search_huggingface_spaces": _search_huggingface_spaces_fallback,
             "search_ipwb_archive": _search_ipwb_archive_fallback,
+            "search_openverse_audio": _search_openverse_audio_fallback,
+            "search_openverse_images": _search_openverse_images_fallback,
+            "search_serpstack": _search_serpstack_fallback,
+            "search_serpstack_images": _search_serpstack_images_fallback,
             "search_wayback_machine": _search_wayback_machine_fallback,
             "start_ipwb_replay": _start_ipwb_replay_fallback,
+            "unified_agentic_discover_and_fetch": _unified_agentic_discover_and_fetch_fallback,
+            "unified_fetch": _unified_fetch_fallback,
+            "unified_health": _unified_health_fallback,
+            "unified_search": _unified_search_fallback,
+            "unified_search_and_fetch": _unified_search_and_fetch_fallback,
             "verify_ipwb_archive": _verify_ipwb_archive_fallback,
         }
 
@@ -1506,6 +1835,688 @@ async def batch_search_google(
     return result
 
 
+async def search_github_repositories(
+    query: str,
+    api_token: Optional[str] = None,
+    sort: Optional[str] = None,
+    order: str = "desc",
+    per_page: int = 30,
+    page: int = 1,
+) -> Dict[str, Any]:
+    """Search GitHub repositories via provider wrapper."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    normalized_order = str(order or "desc").strip().lower() or "desc"
+    if normalized_order not in {"asc", "desc"}:
+        return {"status": "error", "error": "'order' must be one of: asc, desc."}
+    if sort is not None and str(sort).strip() not in {"stars", "forks", "help-wanted-issues", "updated"}:
+        return {"status": "error", "error": "'sort' must be one of: stars, forks, help-wanted-issues, updated, or null."}
+    normalized_per_page = int(per_page)
+    if normalized_per_page <= 0:
+        return {"status": "error", "error": "'per_page' must be greater than 0."}
+    normalized_page = int(page)
+    if normalized_page <= 0:
+        return {"status": "error", "error": "'page' must be greater than 0."}
+
+    result = _API["search_github_repositories"](
+        query=normalized_query,
+        api_token=api_token,
+        sort=str(sort).strip() if sort is not None else None,
+        order=normalized_order,
+        per_page=normalized_per_page,
+        page=normalized_page,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_github_code(
+    query: str,
+    api_token: Optional[str] = None,
+    sort: Optional[str] = None,
+    order: str = "desc",
+    per_page: int = 30,
+    page: int = 1,
+) -> Dict[str, Any]:
+    """Search GitHub code via provider wrapper."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    normalized_order = str(order or "desc").strip().lower() or "desc"
+    if normalized_order not in {"asc", "desc"}:
+        return {"status": "error", "error": "'order' must be one of: asc, desc."}
+    if sort is not None and str(sort).strip() not in {"indexed"}:
+        return {"status": "error", "error": "'sort' must be 'indexed' or null."}
+    normalized_per_page = int(per_page)
+    if normalized_per_page <= 0:
+        return {"status": "error", "error": "'per_page' must be greater than 0."}
+    normalized_page = int(page)
+    if normalized_page <= 0:
+        return {"status": "error", "error": "'page' must be greater than 0."}
+
+    result = _API["search_github_code"](
+        query=normalized_query,
+        api_token=api_token,
+        sort=str(sort).strip() if sort is not None else None,
+        order=normalized_order,
+        per_page=normalized_per_page,
+        page=normalized_page,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_github_users(
+    query: str,
+    api_token: Optional[str] = None,
+    sort: Optional[str] = None,
+    order: str = "desc",
+    per_page: int = 30,
+    page: int = 1,
+) -> Dict[str, Any]:
+    """Search GitHub users via provider wrapper."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    normalized_order = str(order or "desc").strip().lower() or "desc"
+    if normalized_order not in {"asc", "desc"}:
+        return {"status": "error", "error": "'order' must be one of: asc, desc."}
+    if sort is not None and str(sort).strip() not in {"followers", "repositories", "joined"}:
+        return {"status": "error", "error": "'sort' must be one of: followers, repositories, joined, or null."}
+    normalized_per_page = int(per_page)
+    if normalized_per_page <= 0:
+        return {"status": "error", "error": "'per_page' must be greater than 0."}
+    normalized_page = int(page)
+    if normalized_page <= 0:
+        return {"status": "error", "error": "'page' must be greater than 0."}
+
+    result = _API["search_github_users"](
+        query=normalized_query,
+        api_token=api_token,
+        sort=str(sort).strip() if sort is not None else None,
+        order=normalized_order,
+        per_page=normalized_per_page,
+        page=normalized_page,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_github_issues(
+    query: str,
+    api_token: Optional[str] = None,
+    sort: Optional[str] = None,
+    order: str = "desc",
+    per_page: int = 30,
+    page: int = 1,
+) -> Dict[str, Any]:
+    """Search GitHub issues and pull requests via provider wrapper."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    normalized_order = str(order or "desc").strip().lower() or "desc"
+    if normalized_order not in {"asc", "desc"}:
+        return {"status": "error", "error": "'order' must be one of: asc, desc."}
+    if sort is not None and str(sort).strip() not in {"comments", "reactions", "created", "updated"}:
+        return {"status": "error", "error": "'sort' must be one of: comments, reactions, created, updated, or null."}
+    normalized_per_page = int(per_page)
+    if normalized_per_page <= 0:
+        return {"status": "error", "error": "'per_page' must be greater than 0."}
+    normalized_page = int(page)
+    if normalized_page <= 0:
+        return {"status": "error", "error": "'page' must be greater than 0."}
+
+    result = _API["search_github_issues"](
+        query=normalized_query,
+        api_token=api_token,
+        sort=str(sort).strip() if sort is not None else None,
+        order=normalized_order,
+        per_page=normalized_per_page,
+        page=normalized_page,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def batch_search_github(
+    queries: list[str],
+    search_type: str = "repositories",
+    api_token: Optional[str] = None,
+    per_page: int = 30,
+    delay_seconds: float = 2.0,
+) -> Dict[str, Any]:
+    """Run batch GitHub provider searches."""
+    if not isinstance(queries, list) or not queries:
+        return {"status": "error", "error": "'queries' must be a non-empty list."}
+    normalized_queries = [str(q).strip() for q in queries if str(q).strip()]
+    if not normalized_queries:
+        return {"status": "error", "error": "'queries' must contain at least one non-empty query."}
+    normalized_type = str(search_type or "repositories").strip().lower() or "repositories"
+    if normalized_type not in {"repositories", "code", "users", "issues"}:
+        return {"status": "error", "error": "'search_type' must be one of: repositories, code, users, issues."}
+    if int(per_page) <= 0:
+        return {"status": "error", "error": "'per_page' must be greater than 0."}
+    if float(delay_seconds) < 0:
+        return {"status": "error", "error": "'delay_seconds' must be >= 0."}
+
+    result = _API["batch_search_github"](
+        queries=normalized_queries,
+        search_type=normalized_type,
+        api_token=api_token,
+        per_page=int(per_page),
+        delay_seconds=float(delay_seconds),
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_huggingface_models(
+    query: Optional[str] = None,
+    api_token: Optional[str] = None,
+    filter_task: Optional[str] = None,
+    filter_library: Optional[str] = None,
+    filter_language: Optional[str] = None,
+    sort: str = "downloads",
+    direction: int = -1,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    """Search HuggingFace models via provider wrapper."""
+    normalized_sort = str(sort or "downloads").strip().lower() or "downloads"
+    if normalized_sort not in {"downloads", "created", "updated", "likes"}:
+        return {"status": "error", "error": "'sort' must be one of: downloads, created, updated, likes."}
+    normalized_direction = int(direction)
+    if normalized_direction not in {-1, 1}:
+        return {"status": "error", "error": "'direction' must be -1 or 1."}
+    normalized_limit = int(limit)
+    if normalized_limit <= 0:
+        return {"status": "error", "error": "'limit' must be greater than 0."}
+
+    result = _API["search_huggingface_models"](
+        query=str(query).strip() if query is not None else None,
+        api_token=api_token,
+        filter_task=filter_task,
+        filter_library=filter_library,
+        filter_language=filter_language,
+        sort=normalized_sort,
+        direction=normalized_direction,
+        limit=normalized_limit,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_huggingface_datasets(
+    query: Optional[str] = None,
+    api_token: Optional[str] = None,
+    filter_task: Optional[str] = None,
+    filter_language: Optional[str] = None,
+    filter_size: Optional[str] = None,
+    sort: str = "downloads",
+    direction: int = -1,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    """Search HuggingFace datasets via provider wrapper."""
+    normalized_sort = str(sort or "downloads").strip().lower() or "downloads"
+    if normalized_sort not in {"downloads", "created", "updated", "likes"}:
+        return {"status": "error", "error": "'sort' must be one of: downloads, created, updated, likes."}
+    normalized_direction = int(direction)
+    if normalized_direction not in {-1, 1}:
+        return {"status": "error", "error": "'direction' must be -1 or 1."}
+    normalized_limit = int(limit)
+    if normalized_limit <= 0:
+        return {"status": "error", "error": "'limit' must be greater than 0."}
+
+    result = _API["search_huggingface_datasets"](
+        query=str(query).strip() if query is not None else None,
+        api_token=api_token,
+        filter_task=filter_task,
+        filter_language=filter_language,
+        filter_size=filter_size,
+        sort=normalized_sort,
+        direction=normalized_direction,
+        limit=normalized_limit,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_huggingface_spaces(
+    query: Optional[str] = None,
+    api_token: Optional[str] = None,
+    filter_sdk: Optional[str] = None,
+    sort: str = "likes",
+    direction: int = -1,
+    limit: int = 20,
+) -> Dict[str, Any]:
+    """Search HuggingFace spaces via provider wrapper."""
+    normalized_sort = str(sort or "likes").strip().lower() or "likes"
+    if normalized_sort not in {"created", "updated", "likes"}:
+        return {"status": "error", "error": "'sort' must be one of: created, updated, likes."}
+    normalized_direction = int(direction)
+    if normalized_direction not in {-1, 1}:
+        return {"status": "error", "error": "'direction' must be -1 or 1."}
+    normalized_limit = int(limit)
+    if normalized_limit <= 0:
+        return {"status": "error", "error": "'limit' must be greater than 0."}
+
+    result = _API["search_huggingface_spaces"](
+        query=str(query).strip() if query is not None else None,
+        api_token=api_token,
+        filter_sdk=filter_sdk,
+        sort=normalized_sort,
+        direction=normalized_direction,
+        limit=normalized_limit,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def get_huggingface_model_info(
+    model_id: str,
+    api_token: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Get details for a HuggingFace model."""
+    normalized_model_id = str(model_id or "").strip()
+    if not normalized_model_id:
+        return {"status": "error", "error": "'model_id' is required."}
+
+    result = _API["get_huggingface_model_info"](
+        model_id=normalized_model_id,
+        api_token=api_token,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def batch_search_huggingface(
+    queries: list[str],
+    search_type: str = "models",
+    api_token: Optional[str] = None,
+    limit: int = 20,
+    delay_seconds: float = 0.5,
+) -> Dict[str, Any]:
+    """Run batch HuggingFace provider searches."""
+    if not isinstance(queries, list) or not queries:
+        return {"status": "error", "error": "'queries' must be a non-empty list."}
+    normalized_queries = [str(q).strip() for q in queries if str(q).strip()]
+    if not normalized_queries:
+        return {"status": "error", "error": "'queries' must contain at least one non-empty query."}
+    normalized_type = str(search_type or "models").strip().lower() or "models"
+    if normalized_type not in {"models", "datasets", "spaces"}:
+        return {"status": "error", "error": "'search_type' must be one of: models, datasets, spaces."}
+    if int(limit) <= 0:
+        return {"status": "error", "error": "'limit' must be greater than 0."}
+    if float(delay_seconds) < 0:
+        return {"status": "error", "error": "'delay_seconds' must be >= 0."}
+
+    result = _API["batch_search_huggingface"](
+        queries=normalized_queries,
+        search_type=normalized_type,
+        api_token=api_token,
+        limit=int(limit),
+        delay_seconds=float(delay_seconds),
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_openverse_images(
+    query: str,
+    api_key: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    license_type: Optional[str] = None,
+    source: Optional[str] = None,
+    creator: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search OpenVerse images via provider wrapper."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    if int(page) <= 0:
+        return {"status": "error", "error": "'page' must be greater than 0."}
+    normalized_page_size = int(page_size)
+    if normalized_page_size <= 0 or normalized_page_size > 100:
+        return {"status": "error", "error": "'page_size' must be between 1 and 100."}
+
+    result = _API["search_openverse_images"](
+        query=normalized_query,
+        api_key=api_key,
+        page=int(page),
+        page_size=normalized_page_size,
+        license_type=license_type,
+        source=source,
+        creator=creator,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_openverse_audio(
+    query: str,
+    api_key: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
+    license_type: Optional[str] = None,
+    source: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search OpenVerse audio via provider wrapper."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    if int(page) <= 0:
+        return {"status": "error", "error": "'page' must be greater than 0."}
+    normalized_page_size = int(page_size)
+    if normalized_page_size <= 0 or normalized_page_size > 100:
+        return {"status": "error", "error": "'page_size' must be between 1 and 100."}
+
+    result = _API["search_openverse_audio"](
+        query=normalized_query,
+        api_key=api_key,
+        page=int(page),
+        page_size=normalized_page_size,
+        license_type=license_type,
+        source=source,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def batch_search_openverse(
+    queries: list[str],
+    search_type: str = "images",
+    api_key: Optional[str] = None,
+    page_size: int = 20,
+    delay_seconds: float = 0.5,
+) -> Dict[str, Any]:
+    """Run batch OpenVerse provider searches."""
+    if not isinstance(queries, list) or not queries:
+        return {"status": "error", "error": "'queries' must be a non-empty list."}
+    normalized_queries = [str(q).strip() for q in queries if str(q).strip()]
+    if not normalized_queries:
+        return {"status": "error", "error": "'queries' must contain at least one non-empty query."}
+    normalized_type = str(search_type or "images").strip().lower() or "images"
+    if normalized_type not in {"images", "audio"}:
+        return {"status": "error", "error": "'search_type' must be one of: images, audio."}
+    normalized_page_size = int(page_size)
+    if normalized_page_size <= 0 or normalized_page_size > 100:
+        return {"status": "error", "error": "'page_size' must be between 1 and 100."}
+    if float(delay_seconds) < 0:
+        return {"status": "error", "error": "'delay_seconds' must be >= 0."}
+
+    result = _API["batch_search_openverse"](
+        queries=normalized_queries,
+        search_type=normalized_type,
+        api_key=api_key,
+        page_size=normalized_page_size,
+        delay_seconds=float(delay_seconds),
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_serpstack(
+    query: str,
+    api_key: Optional[str] = None,
+    engine: str = "google",
+    num: int = 10,
+    page: int = 1,
+    location: Optional[str] = None,
+    device: Optional[str] = None,
+    lang: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search SerpStack provider web results."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    normalized_engine = str(engine or "google").strip().lower() or "google"
+    if normalized_engine not in {"google", "bing", "yandex", "yahoo", "baidu"}:
+        return {"status": "error", "error": "'engine' must be one of: google, bing, yandex, yahoo, baidu."}
+    normalized_num = int(num)
+    if normalized_num <= 0 or normalized_num > 100:
+        return {"status": "error", "error": "'num' must be between 1 and 100."}
+    if int(page) <= 0:
+        return {"status": "error", "error": "'page' must be greater than 0."}
+
+    result = _API["search_serpstack"](
+        query=normalized_query,
+        api_key=api_key,
+        engine=normalized_engine,
+        num=normalized_num,
+        page=int(page),
+        location=location,
+        device=device,
+        lang=lang,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def search_serpstack_images(
+    query: str,
+    api_key: Optional[str] = None,
+    engine: str = "google",
+    num: int = 10,
+    location: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Search SerpStack provider image results."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    normalized_engine = str(engine or "google").strip().lower() or "google"
+    if normalized_engine not in {"google", "bing", "yandex", "yahoo", "baidu"}:
+        return {"status": "error", "error": "'engine' must be one of: google, bing, yandex, yahoo, baidu."}
+    normalized_num = int(num)
+    if normalized_num <= 0 or normalized_num > 100:
+        return {"status": "error", "error": "'num' must be between 1 and 100."}
+
+    result = _API["search_serpstack_images"](
+        query=normalized_query,
+        api_key=api_key,
+        engine=normalized_engine,
+        num=normalized_num,
+        location=location,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def batch_search_serpstack(
+    queries: list[str],
+    api_key: Optional[str] = None,
+    engine: str = "google",
+    num: int = 10,
+    delay_seconds: float = 1.0,
+) -> Dict[str, Any]:
+    """Run batch SerpStack provider searches."""
+    if not isinstance(queries, list) or not queries:
+        return {"status": "error", "error": "'queries' must be a non-empty list."}
+    normalized_queries = [str(q).strip() for q in queries if str(q).strip()]
+    if not normalized_queries:
+        return {"status": "error", "error": "'queries' must contain at least one non-empty query."}
+    normalized_engine = str(engine or "google").strip().lower() or "google"
+    if normalized_engine not in {"google", "bing", "yandex", "yahoo", "baidu"}:
+        return {"status": "error", "error": "'engine' must be one of: google, bing, yandex, yahoo, baidu."}
+    normalized_num = int(num)
+    if normalized_num <= 0 or normalized_num > 100:
+        return {"status": "error", "error": "'num' must be between 1 and 100."}
+    if float(delay_seconds) < 0:
+        return {"status": "error", "error": "'delay_seconds' must be >= 0."}
+
+    result = _API["batch_search_serpstack"](
+        queries=normalized_queries,
+        api_key=api_key,
+        engine=normalized_engine,
+        num=normalized_num,
+        delay_seconds=float(delay_seconds),
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def unified_search(
+    query: str,
+    max_results: int = 20,
+    mode: str = "max_throughput",
+    provider_allowlist: Optional[list[str]] = None,
+    provider_denylist: Optional[list[str]] = None,
+    offset: int = 0,
+    domain: str = "general",
+) -> Dict[str, Any]:
+    """Run unified multi-provider search."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    normalized_max_results = int(max_results)
+    if normalized_max_results <= 0:
+        return {"status": "error", "error": "'max_results' must be greater than 0."}
+    normalized_mode = str(mode or "max_throughput").strip().lower() or "max_throughput"
+    if normalized_mode not in {"max_throughput", "balanced", "max_quality", "low_cost"}:
+        return {"status": "error", "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost."}
+    normalized_offset = int(offset)
+    if normalized_offset < 0:
+        return {"status": "error", "error": "'offset' must be >= 0."}
+
+    result = _API["unified_search"](
+        query=normalized_query,
+        max_results=normalized_max_results,
+        mode=normalized_mode,
+        provider_allowlist=provider_allowlist,
+        provider_denylist=provider_denylist,
+        offset=normalized_offset,
+        domain=str(domain or "general").strip() or "general",
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def unified_fetch(
+    url: str,
+    mode: str = "balanced",
+    domain: str = "general",
+) -> Dict[str, Any]:
+    """Fetch content from a URL with unified provider selection."""
+    normalized_url = str(url or "").strip()
+    if not normalized_url:
+        return {"status": "error", "error": "'url' is required."}
+    normalized_mode = str(mode or "balanced").strip().lower() or "balanced"
+    if normalized_mode not in {"max_throughput", "balanced", "max_quality", "low_cost"}:
+        return {"status": "error", "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost."}
+
+    result = _API["unified_fetch"](
+        url=normalized_url,
+        mode=normalized_mode,
+        domain=str(domain or "general").strip() or "general",
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def unified_search_and_fetch(
+    query: str,
+    max_results: int = 20,
+    max_documents: int = 5,
+    mode: str = "max_throughput",
+    provider_allowlist: Optional[list[str]] = None,
+    domain: str = "general",
+) -> Dict[str, Any]:
+    """Search and fetch top document candidates with unified API."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return {"status": "error", "error": "'query' is required."}
+    normalized_max_results = int(max_results)
+    if normalized_max_results <= 0:
+        return {"status": "error", "error": "'max_results' must be greater than 0."}
+    normalized_max_documents = int(max_documents)
+    if normalized_max_documents <= 0:
+        return {"status": "error", "error": "'max_documents' must be greater than 0."}
+    normalized_mode = str(mode or "max_throughput").strip().lower() or "max_throughput"
+    if normalized_mode not in {"max_throughput", "balanced", "max_quality", "low_cost"}:
+        return {"status": "error", "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost."}
+
+    result = _API["unified_search_and_fetch"](
+        query=normalized_query,
+        max_results=normalized_max_results,
+        max_documents=normalized_max_documents,
+        mode=normalized_mode,
+        provider_allowlist=provider_allowlist,
+        domain=str(domain or "general").strip() or "general",
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def unified_health() -> Dict[str, Any]:
+    """Return unified provider health snapshot."""
+    result = _API["unified_health"]()
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def unified_agentic_discover_and_fetch(
+    seed_urls: list[str],
+    target_terms: list[str],
+    max_hops: int = 2,
+    max_pages: int = 10,
+    mode: str = "balanced",
+) -> Dict[str, Any]:
+    """Agentic discovery + fetch using unified provider orchestration."""
+    if not isinstance(seed_urls, list) or not seed_urls:
+        return {"status": "error", "error": "'seed_urls' must be a non-empty list."}
+    normalized_seed_urls = [str(u).strip() for u in seed_urls if str(u).strip()]
+    if not normalized_seed_urls:
+        return {"status": "error", "error": "'seed_urls' must contain at least one non-empty URL."}
+
+    if not isinstance(target_terms, list) or not target_terms:
+        return {"status": "error", "error": "'target_terms' must be a non-empty list."}
+    normalized_target_terms = [str(t).strip() for t in target_terms if str(t).strip()]
+    if not normalized_target_terms:
+        return {"status": "error", "error": "'target_terms' must contain at least one non-empty term."}
+
+    normalized_max_hops = int(max_hops)
+    if normalized_max_hops <= 0:
+        return {"status": "error", "error": "'max_hops' must be greater than 0."}
+    normalized_max_pages = int(max_pages)
+    if normalized_max_pages <= 0:
+        return {"status": "error", "error": "'max_pages' must be greater than 0."}
+
+    normalized_mode = str(mode or "balanced").strip().lower() or "balanced"
+    if normalized_mode not in {"max_throughput", "balanced", "max_quality", "low_cost"}:
+        return {"status": "error", "error": "'mode' must be one of: max_throughput, balanced, max_quality, low_cost."}
+
+    result = _API["unified_agentic_discover_and_fetch"](
+        seed_urls=normalized_seed_urls,
+        target_terms=normalized_target_terms,
+        max_hops=normalized_max_hops,
+        max_pages=normalized_max_pages,
+        mode=normalized_mode,
+    )
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
 async def get_wayback_content(
     url: str,
     timestamp: Optional[str] = None,
@@ -2332,6 +3343,343 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "search_engine_id": {"type": ["string", "null"]},
                 "num": {"type": "integer", "default": 10, "minimum": 1},
                 "delay_seconds": {"type": "number", "default": 0.5, "minimum": 0},
+            },
+            "required": ["queries"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_github_repositories",
+        func=search_github_repositories,
+        description="Search GitHub repositories using provider API.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_token": {"type": ["string", "null"]},
+                "sort": {
+                    "type": ["string", "null"],
+                    "enum": ["stars", "forks", "help-wanted-issues", "updated", None],
+                },
+                "order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
+                "per_page": {"type": "integer", "default": 30, "minimum": 1},
+                "page": {"type": "integer", "default": 1, "minimum": 1},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_github_code",
+        func=search_github_code,
+        description="Search GitHub code results using provider API.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_token": {"type": ["string", "null"]},
+                "sort": {"type": ["string", "null"], "enum": ["indexed", None]},
+                "order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
+                "per_page": {"type": "integer", "default": 30, "minimum": 1},
+                "page": {"type": "integer", "default": 1, "minimum": 1},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_github_users",
+        func=search_github_users,
+        description="Search GitHub users using provider API.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_token": {"type": ["string", "null"]},
+                "sort": {"type": ["string", "null"], "enum": ["followers", "repositories", "joined", None]},
+                "order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
+                "per_page": {"type": "integer", "default": 30, "minimum": 1},
+                "page": {"type": "integer", "default": 1, "minimum": 1},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_github_issues",
+        func=search_github_issues,
+        description="Search GitHub issues and pull requests using provider API.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_token": {"type": ["string", "null"]},
+                "sort": {"type": ["string", "null"], "enum": ["comments", "reactions", "created", "updated", None]},
+                "order": {"type": "string", "enum": ["asc", "desc"], "default": "desc"},
+                "per_page": {"type": "integer", "default": 30, "minimum": 1},
+                "page": {"type": "integer", "default": 1, "minimum": 1},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="batch_search_github",
+        func=batch_search_github,
+        description="Run batch GitHub provider searches.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "search_type": {"type": "string", "enum": ["repositories", "code", "users", "issues"], "default": "repositories"},
+                "api_token": {"type": ["string", "null"]},
+                "per_page": {"type": "integer", "default": 30, "minimum": 1},
+                "delay_seconds": {"type": "number", "default": 2.0, "minimum": 0},
+            },
+            "required": ["queries"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_huggingface_models",
+        func=search_huggingface_models,
+        description="Search HuggingFace model hub results.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": ["string", "null"]},
+                "api_token": {"type": ["string", "null"]},
+                "filter_task": {"type": ["string", "null"]},
+                "filter_library": {"type": ["string", "null"]},
+                "filter_language": {"type": ["string", "null"]},
+                "sort": {"type": "string", "enum": ["downloads", "created", "updated", "likes"], "default": "downloads"},
+                "direction": {"type": "integer", "enum": [-1, 1], "default": -1},
+                "limit": {"type": "integer", "default": 20, "minimum": 1},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_huggingface_datasets",
+        func=search_huggingface_datasets,
+        description="Search HuggingFace dataset hub results.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": ["string", "null"]},
+                "api_token": {"type": ["string", "null"]},
+                "filter_task": {"type": ["string", "null"]},
+                "filter_language": {"type": ["string", "null"]},
+                "filter_size": {"type": ["string", "null"]},
+                "sort": {"type": "string", "enum": ["downloads", "created", "updated", "likes"], "default": "downloads"},
+                "direction": {"type": "integer", "enum": [-1, 1], "default": -1},
+                "limit": {"type": "integer", "default": 20, "minimum": 1},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_huggingface_spaces",
+        func=search_huggingface_spaces,
+        description="Search HuggingFace space hub results.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": ["string", "null"]},
+                "api_token": {"type": ["string", "null"]},
+                "filter_sdk": {"type": ["string", "null"]},
+                "sort": {"type": "string", "enum": ["created", "updated", "likes"], "default": "likes"},
+                "direction": {"type": "integer", "enum": [-1, 1], "default": -1},
+                "limit": {"type": "integer", "default": 20, "minimum": 1},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="get_huggingface_model_info",
+        func=get_huggingface_model_info,
+        description="Get HuggingFace model details by model ID.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "model_id": {"type": "string"},
+                "api_token": {"type": ["string", "null"]},
+            },
+            "required": ["model_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="batch_search_huggingface",
+        func=batch_search_huggingface,
+        description="Run batch HuggingFace provider searches.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "search_type": {"type": "string", "enum": ["models", "datasets", "spaces"], "default": "models"},
+                "api_token": {"type": ["string", "null"]},
+                "limit": {"type": "integer", "default": 20, "minimum": 1},
+                "delay_seconds": {"type": "number", "default": 0.5, "minimum": 0},
+            },
+            "required": ["queries"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_openverse_images",
+        func=search_openverse_images,
+        description="Search OpenVerse image results.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_key": {"type": ["string", "null"]},
+                "page": {"type": "integer", "default": 1, "minimum": 1},
+                "page_size": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+                "license_type": {"type": ["string", "null"]},
+                "source": {"type": ["string", "null"]},
+                "creator": {"type": ["string", "null"]},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_openverse_audio",
+        func=search_openverse_audio,
+        description="Search OpenVerse audio results.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_key": {"type": ["string", "null"]},
+                "page": {"type": "integer", "default": 1, "minimum": 1},
+                "page_size": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+                "license_type": {"type": ["string", "null"]},
+                "source": {"type": ["string", "null"]},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="batch_search_openverse",
+        func=batch_search_openverse,
+        description="Run batch OpenVerse provider searches.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "search_type": {"type": "string", "enum": ["images", "audio"], "default": "images"},
+                "api_key": {"type": ["string", "null"]},
+                "page_size": {"type": "integer", "default": 20, "minimum": 1, "maximum": 100},
+                "delay_seconds": {"type": "number", "default": 0.5, "minimum": 0},
+            },
+            "required": ["queries"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_serpstack",
+        func=search_serpstack,
+        description="Search SerpStack web results.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_key": {"type": ["string", "null"]},
+                "engine": {"type": "string", "enum": ["google", "bing", "yandex", "yahoo", "baidu"], "default": "google"},
+                "num": {"type": "integer", "default": 10, "minimum": 1, "maximum": 100},
+                "page": {"type": "integer", "default": 1, "minimum": 1},
+                "location": {"type": ["string", "null"]},
+                "device": {"type": ["string", "null"]},
+                "lang": {"type": ["string", "null"]},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="search_serpstack_images",
+        func=search_serpstack_images,
+        description="Search SerpStack image results.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "api_key": {"type": ["string", "null"]},
+                "engine": {"type": "string", "enum": ["google", "bing", "yandex", "yahoo", "baidu"], "default": "google"},
+                "num": {"type": "integer", "default": 10, "minimum": 1, "maximum": 100},
+                "location": {"type": ["string", "null"]},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="batch_search_serpstack",
+        func=batch_search_serpstack,
+        description="Run batch SerpStack provider searches.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "api_key": {"type": ["string", "null"]},
+                "engine": {"type": "string", "enum": ["google", "bing", "yandex", "yahoo", "baidu"], "default": "google"},
+                "num": {"type": "integer", "default": 10, "minimum": 1, "maximum": 100},
+                "delay_seconds": {"type": "number", "default": 1.0, "minimum": 0},
             },
             "required": ["queries"],
         },
