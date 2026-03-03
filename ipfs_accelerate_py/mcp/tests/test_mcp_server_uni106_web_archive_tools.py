@@ -9,10 +9,12 @@ import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_tools import (
     archive_to_wayback,
+    check_archive_status,
     extract_dataset_from_cdxj,
     extract_links_from_warc,
     extract_metadata_from_warc,
     extract_text_from_warc,
+    get_archive_is_content,
     get_common_crawl_content,
     get_wayback_content,
     index_warc,
@@ -46,6 +48,8 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("list_common_crawl_indexes", names)
         self.assertIn("search_wayback_machine", names)
         self.assertIn("search_archive_is", names)
+        self.assertIn("get_archive_is_content", names)
+        self.assertIn("check_archive_status", names)
         self.assertIn("get_wayback_content", names)
 
     def test_get_common_crawl_content_requires_url(self) -> None:
@@ -125,6 +129,28 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             if result.get("status") == "success":
                 self.assertIn("results", result)
                 self.assertIn("count", result)
+
+        anyio.run(_run)
+
+    def test_archive_is_content_and_status_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_archive_url = await get_archive_is_content(archive_url="")
+            self.assertEqual(missing_archive_url.get("status"), "error")
+            self.assertIn("'archive_url' is required", str(missing_archive_url.get("error", "")))
+
+            missing_submission_id = await check_archive_status(submission_id=" ")
+            self.assertEqual(missing_submission_id.get("status"), "error")
+            self.assertIn("'submission_id' is required", str(missing_submission_id.get("error", "")))
+
+            content_result = await get_archive_is_content(archive_url="https://archive.is/abc123")
+            self.assertIn(content_result.get("status"), ["success", "error"])
+            if content_result.get("status") == "error":
+                self.assertIn("error", content_result)
+
+            status_result = await check_archive_status(submission_id="abc123")
+            self.assertIn(status_result.get("status"), ["success", "pending", "error"])
+            if status_result.get("status") == "error":
+                self.assertIn("error", status_result)
 
         anyio.run(_run)
 

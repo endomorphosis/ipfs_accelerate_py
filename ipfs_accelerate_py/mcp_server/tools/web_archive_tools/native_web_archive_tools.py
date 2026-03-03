@@ -13,11 +13,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
     try:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.web_archive_tools import (  # type: ignore
             archive_to_wayback as _archive_to_wayback,
+            check_archive_status as _check_archive_status,
             create_warc as _create_warc,
             extract_dataset_from_cdxj as _extract_dataset_from_cdxj,
             extract_links_from_warc as _extract_links_from_warc,
             extract_metadata_from_warc as _extract_metadata_from_warc,
             extract_text_from_warc as _extract_text_from_warc,
+            get_archive_is_content as _get_archive_is_content,
             get_common_crawl_content as _get_common_crawl_content,
             get_wayback_content as _get_wayback_content,
             index_warc as _index_warc,
@@ -29,11 +31,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
 
         return {
             "archive_to_wayback": _archive_to_wayback,
+            "check_archive_status": _check_archive_status,
             "create_warc": _create_warc,
             "extract_dataset_from_cdxj": _extract_dataset_from_cdxj,
             "extract_links_from_warc": _extract_links_from_warc,
             "extract_text_from_warc": _extract_text_from_warc,
             "extract_metadata_from_warc": _extract_metadata_from_warc,
+            "get_archive_is_content": _get_archive_is_content,
             "search_common_crawl": _search_common_crawl,
             "get_common_crawl_content": _get_common_crawl_content,
             "get_wayback_content": _get_wayback_content,
@@ -64,6 +68,20 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
                 "status": "error",
                 "error": "Wayback archive backend unavailable",
                 "url": url,
+            }
+
+        async def _get_archive_is_content_fallback(archive_url: str) -> Dict[str, Any]:
+            return {
+                "status": "error",
+                "error": "Archive.is content backend unavailable",
+                "archive_url": archive_url,
+            }
+
+        async def _check_archive_status_fallback(submission_id: str) -> Dict[str, Any]:
+            return {
+                "status": "error",
+                "error": "Archive.is status backend unavailable",
+                "submission_id": submission_id,
             }
 
         async def _extract_text_from_warc_fallback(warc_path: str) -> Dict[str, Any]:
@@ -196,11 +214,13 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
 
         return {
             "archive_to_wayback": _archive_to_wayback_fallback,
+            "check_archive_status": _check_archive_status_fallback,
             "create_warc": _create_warc_fallback,
             "extract_dataset_from_cdxj": _extract_dataset_from_cdxj_fallback,
             "extract_links_from_warc": _extract_links_from_warc_fallback,
             "extract_text_from_warc": _extract_text_from_warc_fallback,
             "extract_metadata_from_warc": _extract_metadata_from_warc_fallback,
+            "get_archive_is_content": _get_archive_is_content_fallback,
             "search_common_crawl": _search_common_crawl_fallback,
             "get_common_crawl_content": _get_common_crawl_content_fallback,
             "get_wayback_content": _get_wayback_content_fallback,
@@ -449,6 +469,30 @@ async def search_archive_is(
     return result
 
 
+async def get_archive_is_content(archive_url: str) -> Dict[str, Any]:
+    """Get content from an Archive.is URL."""
+    normalized_archive_url = str(archive_url or "").strip()
+    if not normalized_archive_url:
+        return {"status": "error", "error": "'archive_url' is required."}
+
+    result = _API["get_archive_is_content"](archive_url=normalized_archive_url)
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
+async def check_archive_status(submission_id: str) -> Dict[str, Any]:
+    """Check status for an Archive.is archival submission."""
+    normalized_submission_id = str(submission_id or "").strip()
+    if not normalized_submission_id:
+        return {"status": "error", "error": "'submission_id' is required."}
+
+    result = _API["check_archive_status"](submission_id=normalized_submission_id)
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
 def register_native_web_archive_tools(manager: Any) -> None:
     """Register native web-archive tools category tools in unified manager."""
     manager.register_tool(
@@ -654,6 +698,38 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "limit": {"type": "integer", "default": 100, "minimum": 1},
             },
             "required": ["domain"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="get_archive_is_content",
+        func=get_archive_is_content,
+        description="Retrieve archived content from an Archive.is URL.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "archive_url": {"type": "string"},
+            },
+            "required": ["archive_url"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="check_archive_status",
+        func=check_archive_status,
+        description="Check status of an Archive.is submission by ID.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "submission_id": {"type": "string"},
+            },
+            "required": ["submission_id"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],
