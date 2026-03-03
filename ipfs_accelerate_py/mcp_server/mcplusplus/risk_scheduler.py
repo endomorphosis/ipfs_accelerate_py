@@ -48,10 +48,13 @@ class FrontierItem:
     """Prioritization frontier item for risk-adjusted scheduling."""
 
     priority: float
+    sequence: int
     event_cid: str = field(compare=False)
     actor: str = field(compare=False)
     expected_value: float = field(compare=False, default=0.5)
     dependency_ready: bool = field(compare=False, default=True)
+    retry_count: int = field(compare=False, default=0)
+    consensus_signal: Dict[str, Any] = field(compare=False, default_factory=dict)
     metadata: Dict[str, Any] = field(compare=False, default_factory=dict)
 
 
@@ -61,6 +64,7 @@ class RiskScheduler:
     def __init__(self) -> None:
         self._records: Dict[str, RiskRecord] = {}
         self._frontier: List[FrontierItem] = []
+        self._sequence: int = 0
 
     def _get_record(self, actor: str) -> RiskRecord:
         key = actor or "*"
@@ -106,6 +110,9 @@ class RiskScheduler:
         actor: str,
         expected_value: float,
         dependency_ready: bool,
+        retry_count: int = 0,
+        consensus_signal: Optional[Dict[str, Any]] = None,
+        enable_consensus_signal: bool = False,
         metadata: Optional[Dict[str, Any]] = None,
     ) -> FrontierItem:
         """Push event onto risk-adjusted scheduling frontier.
@@ -116,14 +123,35 @@ class RiskScheduler:
         risk_penalty = record.score
         readiness_penalty = 0.0 if dependency_ready else 1.0
         value_bonus = max(0.0, min(1.0, expected_value))
-        priority = risk_penalty + readiness_penalty + (1.0 - value_bonus)
+        retry_penalty = min(0.50, max(0, int(retry_count)) * 0.05)
+
+        consensus_adjustment = 0.0
+        signal = dict(consensus_signal or {})
+        if enable_consensus_signal and signal:
+            confidence_raw = signal.get("confidence", 0.0)
+            try:
+                confidence = max(0.0, min(1.0, float(confidence_raw)))
+            except (TypeError, ValueError):
+                confidence = 0.0
+            # Higher consensus confidence should slightly prioritize execution.
+            consensus_adjustment -= 0.20 * confidence
+            # Disputed consensus should be non-breaking and simply penalize priority.
+            if bool(signal.get("disputed", False)):
+                consensus_adjustment += 0.20
+
+        priority = risk_penalty + readiness_penalty + (1.0 - value_bonus) + retry_penalty + consensus_adjustment
+
+        self._sequence += 1
 
         item = FrontierItem(
             priority=priority,
+            sequence=self._sequence,
             event_cid=event_cid,
             actor=actor,
             expected_value=value_bonus,
             dependency_ready=dependency_ready,
+            retry_count=max(0, int(retry_count)),
+            consensus_signal=signal,
             metadata=dict(metadata or {}),
         )
         heapq.heappush(self._frontier, item)
