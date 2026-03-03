@@ -101,11 +101,42 @@ async def extract_geographic_entities(
     include_coordinates: bool = True,
 ) -> Dict[str, Any]:
     """Extract geographic entities from corpus data."""
-    return _API["extract_geographic_entities"](
+    normalized_corpus = str(corpus_data or "")
+    if not normalized_corpus.strip():
+        return {
+            "status": "error",
+            "message": "corpus_data is required",
+            "corpus_data": corpus_data,
+        }
+    try:
+        normalized_threshold = float(confidence_threshold)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "confidence_threshold must be numeric",
+            "confidence_threshold": confidence_threshold,
+        }
+    if normalized_threshold < 0.0 or normalized_threshold > 1.0:
+        return {
+            "status": "error",
+            "message": "confidence_threshold must be between 0 and 1",
+            "confidence_threshold": confidence_threshold,
+        }
+    if not isinstance(include_coordinates, bool):
+        return {
+            "status": "error",
+            "message": "include_coordinates must be a boolean",
+            "include_coordinates": include_coordinates,
+        }
+
+    result = _API["extract_geographic_entities"](
         corpus_data=corpus_data,
-        confidence_threshold=confidence_threshold,
+        confidence_threshold=normalized_threshold,
         include_coordinates=include_coordinates,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    return payload
 
 
 async def map_spatiotemporal_events(
@@ -115,12 +146,52 @@ async def map_spatiotemporal_events(
     temporal_resolution: str = "day",
 ) -> Dict[str, Any]:
     """Map events with spatial-temporal clustering analysis."""
-    return _API["map_spatiotemporal_events"](
+    normalized_corpus = str(corpus_data or "")
+    if not normalized_corpus.strip():
+        return {
+            "status": "error",
+            "message": "corpus_data is required",
+            "corpus_data": corpus_data,
+        }
+    if time_range is not None and not isinstance(time_range, dict):
+        return {
+            "status": "error",
+            "message": "time_range must be an object when provided",
+            "time_range": time_range,
+        }
+    try:
+        normalized_distance = float(clustering_distance)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "clustering_distance must be numeric",
+            "clustering_distance": clustering_distance,
+        }
+    if normalized_distance <= 0:
+        return {
+            "status": "error",
+            "message": "clustering_distance must be positive",
+            "clustering_distance": clustering_distance,
+        }
+
+    normalized_resolution = str(temporal_resolution or "").strip().lower()
+    allowed_resolutions = {"hour", "day", "week", "month", "year"}
+    if normalized_resolution not in allowed_resolutions:
+        return {
+            "status": "error",
+            "message": "temporal_resolution must be one of: hour, day, week, month, year",
+            "temporal_resolution": temporal_resolution,
+        }
+
+    result = _API["map_spatiotemporal_events"](
         corpus_data=corpus_data,
         time_range=time_range,
-        clustering_distance=clustering_distance,
-        temporal_resolution=temporal_resolution,
+        clustering_distance=normalized_distance,
+        temporal_resolution=normalized_resolution,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    return payload
 
 
 async def query_geographic_context(
@@ -132,14 +203,64 @@ async def query_geographic_context(
     temporal_context: bool = True,
 ) -> Dict[str, Any]:
     """Perform natural language geographic queries."""
-    return _API["query_geographic_context"](
+    normalized_query = str(query or "")
+    normalized_corpus = str(corpus_data or "")
+    if not normalized_query.strip():
+        return {
+            "status": "error",
+            "message": "query is required",
+            "query": query,
+        }
+    if not normalized_corpus.strip():
+        return {
+            "status": "error",
+            "message": "corpus_data is required",
+            "corpus_data": corpus_data,
+        }
+    try:
+        normalized_radius = float(radius_km)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "radius_km must be numeric",
+            "radius_km": radius_km,
+        }
+    if normalized_radius <= 0:
+        return {
+            "status": "error",
+            "message": "radius_km must be positive",
+            "radius_km": radius_km,
+        }
+    if center_location is not None and not str(center_location).strip():
+        return {
+            "status": "error",
+            "message": "center_location must be a non-empty string when provided",
+            "center_location": center_location,
+        }
+    if not isinstance(include_related_entities, bool):
+        return {
+            "status": "error",
+            "message": "include_related_entities must be a boolean",
+            "include_related_entities": include_related_entities,
+        }
+    if not isinstance(temporal_context, bool):
+        return {
+            "status": "error",
+            "message": "temporal_context must be a boolean",
+            "temporal_context": temporal_context,
+        }
+
+    result = _API["query_geographic_context"](
         query=query,
         corpus_data=corpus_data,
-        radius_km=radius_km,
+        radius_km=normalized_radius,
         center_location=center_location,
         include_related_entities=include_related_entities,
         temporal_context=temporal_context,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    return payload
 
 
 def register_native_geospatial_tools(manager: Any) -> None:

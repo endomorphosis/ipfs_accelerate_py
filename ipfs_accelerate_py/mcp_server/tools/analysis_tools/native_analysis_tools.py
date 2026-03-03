@@ -121,13 +121,35 @@ async def analyze_data_distribution(
     visualization_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Analyze statistical distribution of embedding vectors."""
-    return await _API["analyze_data_distribution"](
-        data_source=data_source,
-        analysis_type=analysis_type,
+    normalized_source = str(data_source or "mock").strip() or "mock"
+    normalized_analysis_type = str(analysis_type or "comprehensive").strip() or "comprehensive"
+    if vectors is not None:
+        if not isinstance(vectors, list):
+            return {
+                "status": "error",
+                "message": "vectors must be an array of numeric arrays when provided",
+                "vectors": vectors,
+            }
+        for row in vectors:
+            if not isinstance(row, list) or not all(isinstance(value, (int, float)) for value in row):
+                return {
+                    "status": "error",
+                    "message": "vectors must be an array of numeric arrays when provided",
+                    "vectors": vectors,
+                }
+
+    result = await _API["analyze_data_distribution"](
+        data_source=normalized_source,
+        analysis_type=normalized_analysis_type,
         vectors=vectors,
         data_params=data_params,
         visualization_config=visualization_config,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("data_source", normalized_source)
+    payload.setdefault("analysis_type", normalized_analysis_type)
+    return payload
 
 
 async def cluster_analysis(
@@ -139,14 +161,33 @@ async def cluster_analysis(
     clustering_params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Perform clustering analysis on vector data."""
-    return await _API["cluster_analysis"](
+    normalized_algorithm = str(algorithm or "kmeans").strip().lower() or "kmeans"
+    valid_algorithms = {"kmeans", "dbscan", "hierarchical", "gaussian_mixture"}
+    if normalized_algorithm not in valid_algorithms:
+        return {
+            "status": "error",
+            "message": f"algorithm must be one of: {', '.join(sorted(valid_algorithms))}",
+            "algorithm": algorithm,
+        }
+    if n_clusters is not None and int(n_clusters) <= 0:
+        return {
+            "status": "error",
+            "message": "n_clusters must be a positive integer when provided",
+            "n_clusters": n_clusters,
+        }
+
+    result = await _API["cluster_analysis"](
         data_source=data_source,
-        algorithm=algorithm,
-        n_clusters=n_clusters,
+        algorithm=normalized_algorithm,
+        n_clusters=int(n_clusters) if n_clusters is not None else None,
         vectors=vectors,
         data_params=data_params,
         clustering_params=clustering_params,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("algorithm", normalized_algorithm)
+    return payload
 
 
 async def quality_assessment(
@@ -159,15 +200,33 @@ async def quality_assessment(
     outlier_detection: bool = True,
 ) -> Dict[str, Any]:
     """Assess quality of embeddings and vector data."""
-    return await _API["quality_assessment"](
+    normalized_assessment_type = str(assessment_type or "comprehensive").strip() or "comprehensive"
+    if metrics is not None and not isinstance(metrics, list):
+        return {
+            "status": "error",
+            "message": "metrics must be an array of strings when provided",
+            "metrics": metrics,
+        }
+    if isinstance(metrics, list) and not all(isinstance(item, str) for item in metrics):
+        return {
+            "status": "error",
+            "message": "metrics must be an array of strings when provided",
+            "metrics": metrics,
+        }
+
+    result = await _API["quality_assessment"](
         data_source=data_source,
-        assessment_type=assessment_type,
+        assessment_type=normalized_assessment_type,
         metrics=metrics,
         data=data,
         embeddings=embeddings,
         data_params=data_params,
         outlier_detection=outlier_detection,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("assessment_type", normalized_assessment_type)
+    return payload
 
 
 async def dimensionality_reduction(
@@ -179,14 +238,35 @@ async def dimensionality_reduction(
     method_params: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Reduce vector dimensionality using selected method."""
-    return await _API["dimensionality_reduction"](
+    normalized_method = str(method or "pca").strip().lower() or "pca"
+    valid_methods = {"pca", "tsne", "umap", "svd"}
+    if normalized_method not in valid_methods:
+        return {
+            "status": "error",
+            "message": f"method must be one of: {', '.join(sorted(valid_methods))}",
+            "method": method,
+        }
+    normalized_components = int(n_components)
+    if normalized_components <= 0:
+        return {
+            "status": "error",
+            "message": "n_components must be a positive integer",
+            "n_components": n_components,
+        }
+
+    result = await _API["dimensionality_reduction"](
         data_source=data_source,
-        method=method,
-        n_components=n_components,
+        method=normalized_method,
+        n_components=normalized_components,
         vectors=vectors,
         data_params=data_params,
         method_params=method_params,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("method", normalized_method)
+    payload.setdefault("reduced_dimensions", normalized_components)
+    return payload
 
 
 def register_native_analysis_tools(manager: Any) -> None:
