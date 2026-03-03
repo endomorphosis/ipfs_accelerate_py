@@ -34,6 +34,15 @@ def _expected_session_tag() -> str:
     return str(os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_SESSION") or "").strip()
 
 
+def _mesh_filter_peers_by_session() -> bool:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_MESH_FILTER_PEERS_BY_SESSION")
+    if raw is None:
+        return False
+    return _truthy(str(raw))
+
+
 def _env_int(name: str, default: int) -> int:
     raw = os.environ.get(name)
     try:
@@ -147,6 +156,7 @@ class TaskOrchestrator:
             return
 
         expected_session = _expected_session_tag()
+        filter_peer_session = _mesh_filter_peers_by_session()
 
         def _loop() -> None:
             try:
@@ -174,7 +184,7 @@ class TaskOrchestrator:
                     if not pid or not ma:
                         continue
 
-                    if expected_session:
+                    if expected_session and filter_peer_session:
                         try:
                             resp = request_status_sync(
                                 remote=rq,

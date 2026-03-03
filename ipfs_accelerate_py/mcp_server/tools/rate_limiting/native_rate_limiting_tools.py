@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 from datetime import datetime
+from dataclasses import dataclass
+from enum import Enum
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -11,30 +13,101 @@ logger = logging.getLogger(__name__)
 
 def _load_rate_limiter_api() -> Dict[str, Any]:
     """Resolve rate limiting engine from source package with compatibility fallback."""
-    try:
-        from ipfs_datasets_py.rate_limiting.rate_limiting_engine import (  # type: ignore
-            RateLimitConfig,
-            RateLimitStrategy,
-            get_default_rate_limiter,
-        )
+    candidates = [
+        "ipfs_datasets_py.rate_limiting.rate_limiting_engine",
+        "ipfs_datasets_py.ipfs_datasets_py.rate_limiting.rate_limiting_engine",
+    ]
 
-        return {
-            "RateLimitConfig": RateLimitConfig,
-            "RateLimitStrategy": RateLimitStrategy,
-            "get_default_rate_limiter": get_default_rate_limiter,
-        }
-    except Exception:
-        from ipfs_datasets_py.ipfs_datasets_py.rate_limiting.rate_limiting_engine import (  # type: ignore
-            RateLimitConfig,
-            RateLimitStrategy,
-            get_default_rate_limiter,
-        )
+    for mod_name in candidates:
+        try:
+            mod = __import__(mod_name, fromlist=["RateLimitConfig", "RateLimitStrategy", "get_default_rate_limiter"])
+            return {
+                "RateLimitConfig": getattr(mod, "RateLimitConfig"),
+                "RateLimitStrategy": getattr(mod, "RateLimitStrategy"),
+                "get_default_rate_limiter": getattr(mod, "get_default_rate_limiter"),
+            }
+        except Exception:
+            continue
 
-        return {
-            "RateLimitConfig": RateLimitConfig,
-            "RateLimitStrategy": RateLimitStrategy,
-            "get_default_rate_limiter": get_default_rate_limiter,
-        }
+    logger.warning("Rate limiting engine unavailable; using in-process fallback implementation")
+
+    class RateLimitStrategy(Enum):
+        token_bucket = "token_bucket"
+
+    @dataclass
+    class RateLimitConfig:
+        name: str
+        strategy: RateLimitStrategy = RateLimitStrategy.token_bucket
+        requests_per_second: float = 10.0
+        burst_capacity: int = 20
+        window_size_seconds: int = 60
+        enabled: bool = True
+        penalties: Dict[str, Any] | None = None
+
+    class _FallbackLimiter:
+        def __init__(self) -> None:
+            self.limits: Dict[str, RateLimitConfig] = {}
+            self.global_stats: Dict[str, Any] = {"active_limits": 0}
+
+        def configure_limit(self, cfg: RateLimitConfig) -> Dict[str, Any]:
+            self.limits[str(cfg.name)] = cfg
+            self.global_stats["active_limits"] = len(self.limits)
+            return {
+                "name": str(cfg.name),
+                "strategy": str(getattr(cfg.strategy, "value", cfg.strategy)),
+                "requests_per_second": float(cfg.requests_per_second),
+                "burst_capacity": int(cfg.burst_capacity),
+                "enabled": bool(cfg.enabled),
+            }
+
+        def check_rate_limit(self, name: str, identifier: str) -> Dict[str, Any]:
+            cfg = self.limits.get(str(name))
+            if cfg is not None and not bool(cfg.enabled):
+                return {"allowed": True, "reason": "limit_disabled", "remaining": None, "retry_after_s": 0}
+            return {"allowed": True, "reason": "fallback_allow", "remaining": None, "retry_after_s": 0}
+
+        def get_stats(self, name: str | None = None) -> Dict[str, Any]:
+            if name:
+                cfg = self.limits.get(str(name))
+                if cfg is None:
+                    return {"error": f"Rate limit '{name}' not found"}
+                return {
+                    "name": str(name),
+                    "strategy": str(getattr(cfg.strategy, "value", cfg.strategy)),
+                    "requests_per_second": float(cfg.requests_per_second),
+                    "burst_capacity": int(cfg.burst_capacity),
+                    "enabled": bool(cfg.enabled),
+                }
+            return {
+                "active_limits": len(self.limits),
+                "limits": {
+                    k: {
+                        "strategy": str(getattr(v.strategy, "value", v.strategy)),
+                        "requests_per_second": float(v.requests_per_second),
+                        "burst_capacity": int(v.burst_capacity),
+                        "enabled": bool(v.enabled),
+                    }
+                    for k, v in self.limits.items()
+                },
+            }
+
+        def reset_limits(self, name: str | None = None) -> Dict[str, Any]:
+            if name:
+                if str(name) not in self.limits:
+                    return {"error": f"Rate limit '{name}' not found"}
+                return {"reset": True, "limit_name": str(name)}
+            return {"reset": True, "limit_name": None}
+
+    _fallback_singleton = _FallbackLimiter()
+
+    def get_default_rate_limiter() -> _FallbackLimiter:
+        return _fallback_singleton
+
+    return {
+        "RateLimitConfig": RateLimitConfig,
+        "RateLimitStrategy": RateLimitStrategy,
+        "get_default_rate_limiter": get_default_rate_limiter,
+    }
 
 
 _engine_api = _load_rate_limiter_api()

@@ -18,7 +18,7 @@ Environment="VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv"
 Environment="IPFS_ACCELERATE_REPO_DIR=%h/ipfs_accelerate_py"
 Environment="MCP_HOST=0.0.0.0"
 # Use a distinct MCP port so this unit can run alongside ipfs-accelerate.service
-Environment="MCP_PORT=9001"
+Environment="MCP_PORT=9002"
 
 # Serve MCP++ over HTTPS (TLS) on MCP_PORT.
 # Set the following vars in /etc/ipfs-accelerate/secrets.env (recommended):

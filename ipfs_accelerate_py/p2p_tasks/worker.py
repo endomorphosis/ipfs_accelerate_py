@@ -1992,10 +1992,27 @@ def _compute_supported_task_types(
     supported_task_types: Optional[list[str]],
     accelerate_instance: object | None,
 ) -> list[str]:
+    alias_groups: list[set[str]] = [
+        {"embedding", "embeddings", "text-embedding", "text_embedding", "text_embeddings"},
+        {"text2text-generation", "text2text_generation", "text2text"},
+        {"text-classification", "text_classification"},
+        {"hf.pipeline", "hf_pipeline"},
+        {"llm.generate", "llm_generate"},
+        {"tool.call", "tool"},
+    ]
+
+    def _expand_aliases(values: list[str]) -> list[str]:
+        base = [str(x).strip() for x in (values or []) if str(x).strip()]
+        out = set(base)
+        for group in alias_groups:
+            if out.intersection(group):
+                out.update(group)
+        return [x for x in base if x in out] + [x for x in sorted(out) if x not in set(base)]
+
     # If explicitly provided, respect it.
     if isinstance(supported_task_types, list) and supported_task_types:
         out = [str(x).strip() for x in supported_task_types if str(x).strip()]
-        return out
+        return _expand_aliases(out)
 
     # Default: include handler aliases we can run locally.
     # NOTE: text-generation requires either an accelerate instance (preferred)
@@ -2038,6 +2055,8 @@ def _compute_supported_task_types(
     # wants an exact allowlist).
     if (not _task_types_overridden_via_env()) and _accelerate_supports_tool_call(accelerate_instance):
         out.extend(["tool.call", "tool"])
+
+    out = _expand_aliases(out)
 
     # Deduplicate while keeping order.
     seen: set[str] = set()
