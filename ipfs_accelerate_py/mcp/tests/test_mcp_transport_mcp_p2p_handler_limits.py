@@ -58,6 +58,22 @@ class _NegotiatingRegistry:
         }
 
 
+class _MalformedNegotiationRegistry:
+    def __init__(self) -> None:
+        self.tools = {}
+        self._unified_supported_profiles = [
+            "mcp++/profile-a-idl",
+            "",
+            "mcp++/profile-a-idl",
+            "mcp++/profile-e-mcp-p2p",
+        ]
+        self._unified_profile_negotiation = {
+            "supports_profile_negotiation": "false",
+            "mode": "   ",
+            "profiles": ["mcp++/profile-z-ignored"],
+        }
+
+
 class _RejectingRegistry:
     def __init__(self) -> None:
         self.tools = {}
@@ -358,6 +374,46 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         self.assertEqual(len(responses), 1)
         result = responses[0].get("result", {})
         self.assertEqual(result.get("active_profile"), "mcp++/profile-a-idl")
+
+    def test_initialize_normalizes_negotiation_payload_and_profile_list(self) -> None:
+        stream = _FakeStream(
+            encode_jsonrpc_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "profiles": [
+                            "mcp++/profile-z-unknown",
+                            {"invalid": "candidate"},
+                            "",
+                        ]
+                    },
+                }
+            )
+        )
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_MalformedNegotiationRegistry(),
+                max_frame_bytes=4096,
+            )
+
+        anyio.run(_run)
+
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 1)
+        result = responses[0].get("result", {})
+        self.assertEqual(result.get("active_profile"), "mcp++/profile-a-idl")
+        negotiation = result.get("profile_negotiation", {})
+        self.assertFalse(negotiation.get("supports_profile_negotiation"))
+        self.assertEqual(negotiation.get("mode"), "optional_additive")
+        self.assertEqual(
+            negotiation.get("profiles"),
+            ["mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"],
+        )
 
     def test_handler_tracks_unauthorized_counter(self) -> None:
         request = encode_jsonrpc_frame(

@@ -272,6 +272,41 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertEqual(sorted(get_unified_meta_tool_names()), sorted(server.tools.keys()))
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    def test_unified_supported_profiles_are_attached_as_snapshots(self, mock_create):
+        """Attached profile metadata should not mutate canonical defaults/context snapshots."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        dummy = DummyServer()
+        mock_create.return_value = dummy
+
+        expected_profiles = get_unified_supported_profiles()
+
+        with patch.dict(os.environ, {"IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1"}, clear=False):
+            server = create_server(name="dummy")
+
+        server._unified_supported_profiles.append("mcp++/profile-z-drift")
+        server._unified_profile_negotiation["profiles"].append("mcp++/profile-z-drift")
+
+        self.assertEqual(get_unified_supported_profiles(), expected_profiles)
+        self.assertEqual(server._unified_server_context.supported_profiles, expected_profiles)
+        self.assertEqual(
+            server._unified_server_context_snapshot.get("supported_profiles"),
+            expected_profiles,
+        )
+
+    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
     def test_unified_bootstrap_service_factories_smoke(self, mock_create):
         """Unified bootstrap should provide callable MCP++ service factories."""
 

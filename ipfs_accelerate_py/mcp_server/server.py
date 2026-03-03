@@ -1101,14 +1101,14 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_prometheus_status", prometheus_status)
     setattr(server, "_unified_secrets_vault", secrets_vault)
     setattr(server, "_unified_secrets_status", secrets_status)
-    setattr(server, "_unified_supported_profiles", unified_context.supported_profiles)
+    setattr(server, "_unified_supported_profiles", list(unified_context.supported_profiles))
     setattr(
         server,
         "_unified_profile_negotiation",
         {
             "supports_profile_negotiation": True,
             "mode": "optional_additive",
-            "profiles": unified_context.supported_profiles,
+            "profiles": list(unified_context.supported_profiles),
         },
     )
 

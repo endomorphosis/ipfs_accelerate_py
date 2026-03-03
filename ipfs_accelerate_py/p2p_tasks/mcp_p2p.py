@@ -42,46 +42,70 @@ _MCP_P2P_STATS: dict[str, int] = {
 }
 
 
+def _coerce_bool(value: Any, *, default: bool = True) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    text = str(value or "").strip().lower()
+    if text in {"1", "true", "yes", "on"}:
+        return True
+    if text in {"0", "false", "no", "off", ""}:
+        return False
+    return bool(default)
+
+
+def _normalize_profiles(raw_profiles: Any) -> list[str]:
+    profiles: list[str] = []
+    seen: set[str] = set()
+    if not isinstance(raw_profiles, (list, tuple)):
+        return profiles
+    for candidate in raw_profiles:
+        text = str(candidate or "").strip()
+        if not text or text in seen:
+            continue
+        seen.add(text)
+        profiles.append(text)
+    return profiles
+
+
+def _normalize_profile_negotiation(raw_negotiation: Any, profiles: list[str]) -> dict[str, Any]:
+    payload = dict(raw_negotiation) if isinstance(raw_negotiation, dict) else {}
+    mode = str(payload.get("mode") or "").strip() or "optional_additive"
+    return {
+        "supports_profile_negotiation": _coerce_bool(payload.get("supports_profile_negotiation", True), default=True),
+        "mode": mode,
+        "profiles": list(profiles),
+    }
+
+
 def _resolve_profile_negotiation(registry: Any | None) -> tuple[list[str], dict[str, Any]]:
     """Resolve profile negotiation metadata from registry or unified defaults."""
 
     profiles: list[str] = []
-    negotiation: dict[str, Any] = {
-        "supports_profile_negotiation": True,
-        "mode": "optional_additive",
-        "profiles": profiles,
-    }
+    raw_negotiation: Any = None
 
     if registry is not None:
         try:
-            raw_profiles = getattr(registry, "_unified_supported_profiles", None)
-            if isinstance(raw_profiles, list):
-                profiles = [str(p) for p in raw_profiles if str(p).strip()]
+            profiles = _normalize_profiles(getattr(registry, "_unified_supported_profiles", None))
         except Exception:
             profiles = []
 
         try:
             raw_negotiation = getattr(registry, "_unified_profile_negotiation", None)
-            if isinstance(raw_negotiation, dict):
-                negotiation = dict(raw_negotiation)
         except Exception:
-            pass
+            raw_negotiation = None
 
     if not profiles:
         # Lazy import to avoid pulling unified server at module import time.
         try:
             from ipfs_accelerate_py.mcp_server.server import get_unified_supported_profiles
 
-            raw = get_unified_supported_profiles()
-            if isinstance(raw, list):
-                profiles = [str(p) for p in raw if str(p).strip()]
+            profiles = _normalize_profiles(get_unified_supported_profiles())
         except Exception:
             profiles = []
 
-    # Normalize negotiation payload and keep it JSON-safe.
-    negotiation.setdefault("supports_profile_negotiation", True)
-    negotiation.setdefault("mode", "optional_additive")
-    negotiation["profiles"] = list(profiles)
+    negotiation = _normalize_profile_negotiation(raw_negotiation, profiles)
     return profiles, negotiation
 
 
