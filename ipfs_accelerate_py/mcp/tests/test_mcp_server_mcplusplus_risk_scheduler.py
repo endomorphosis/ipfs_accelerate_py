@@ -54,6 +54,106 @@ class TestMCPServerMCPPlusPlusRiskScheduler(unittest.TestCase):
         self.assertEqual(first.event_cid, "cid-b")
         self.assertEqual(second.event_cid, "cid-a")
 
+    def test_frontier_deterministic_fifo_ties_under_load(self) -> None:
+        scheduler = RiskScheduler()
+
+        expected_order = []
+        for index in range(50):
+            event_cid = f"cid-{index:03d}"
+            expected_order.append(event_cid)
+            scheduler.enqueue_frontier(
+                event_cid=event_cid,
+                actor="actor-x",
+                expected_value=0.8,
+                dependency_ready=True,
+            )
+
+        popped = []
+        while scheduler.frontier_size() > 0:
+            next_item = scheduler.pop_next()
+            self.assertIsNotNone(next_item)
+            popped.append(next_item.event_cid)
+
+        self.assertEqual(popped, expected_order)
+
+    def test_frontier_retry_penalty_deprioritizes_retries(self) -> None:
+        scheduler = RiskScheduler()
+
+        scheduler.enqueue_frontier(
+            event_cid="cid-retry",
+            actor="actor-a",
+            expected_value=0.9,
+            dependency_ready=True,
+            retry_count=3,
+        )
+        scheduler.enqueue_frontier(
+            event_cid="cid-fresh",
+            actor="actor-a",
+            expected_value=0.9,
+            dependency_ready=True,
+            retry_count=0,
+        )
+
+        first = scheduler.pop_next()
+        second = scheduler.pop_next()
+        self.assertIsNotNone(first)
+        self.assertIsNotNone(second)
+        self.assertEqual(first.event_cid, "cid-fresh")
+        self.assertEqual(second.event_cid, "cid-retry")
+
+    def test_consensus_signal_is_optional_and_non_breaking(self) -> None:
+        scheduler = RiskScheduler()
+
+        baseline = scheduler.enqueue_frontier(
+            event_cid="cid-baseline",
+            actor="actor-a",
+            expected_value=0.7,
+            dependency_ready=True,
+        )
+        without_signal = scheduler.enqueue_frontier(
+            event_cid="cid-no-consensus",
+            actor="actor-a",
+            expected_value=0.7,
+            dependency_ready=True,
+            consensus_signal={"confidence": 0.0, "disputed": True},
+            enable_consensus_signal=False,
+        )
+        with_signal = scheduler.enqueue_frontier(
+            event_cid="cid-with-consensus",
+            actor="actor-a",
+            expected_value=0.7,
+            dependency_ready=True,
+            consensus_signal={"confidence": 0.0, "disputed": True},
+            enable_consensus_signal=True,
+        )
+
+        self.assertEqual(without_signal.priority, baseline.priority)
+        self.assertGreater(with_signal.priority, without_signal.priority)
+
+    def test_consensus_signal_confidence_can_prioritize(self) -> None:
+        scheduler = RiskScheduler()
+
+        scheduler.enqueue_frontier(
+            event_cid="cid-low-confidence",
+            actor="actor-a",
+            expected_value=0.6,
+            dependency_ready=True,
+            consensus_signal={"confidence": 0.0},
+            enable_consensus_signal=True,
+        )
+        scheduler.enqueue_frontier(
+            event_cid="cid-high-confidence",
+            actor="actor-a",
+            expected_value=0.6,
+            dependency_ready=True,
+            consensus_signal={"confidence": 1.0},
+            enable_consensus_signal=True,
+        )
+
+        first = scheduler.pop_next()
+        self.assertIsNotNone(first)
+        self.assertEqual(first.event_cid, "cid-high-confidence")
+
 
 if __name__ == "__main__":
     unittest.main()
