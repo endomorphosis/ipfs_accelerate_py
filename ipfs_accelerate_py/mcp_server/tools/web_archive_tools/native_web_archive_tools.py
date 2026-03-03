@@ -3686,3 +3686,110 @@ def register_native_web_archive_tools(manager: Any) -> None:
         runtime="fastapi",
         tags=["native", "mcpp", "web-archive"],
     )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="unified_search",
+        func=unified_search,
+        description="Run unified multi-provider search orchestration.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "max_results": {"type": "integer", "default": 20, "minimum": 1},
+                "mode": {
+                    "type": "string",
+                    "enum": ["max_throughput", "balanced", "max_quality", "low_cost"],
+                    "default": "max_throughput",
+                },
+                "provider_allowlist": {"type": ["array", "null"], "items": {"type": "string"}},
+                "provider_denylist": {"type": ["array", "null"], "items": {"type": "string"}},
+                "offset": {"type": "integer", "default": 0, "minimum": 0},
+                "domain": {"type": "string", "default": "general"},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="unified_fetch",
+        func=unified_fetch,
+        description="Fetch URL content through unified provider orchestration.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "url": {"type": "string"},
+                "mode": {
+                    "type": "string",
+                    "enum": ["max_throughput", "balanced", "max_quality", "low_cost"],
+                    "default": "balanced",
+                },
+                "domain": {"type": "string", "default": "general"},
+            },
+            "required": ["url"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="unified_search_and_fetch",
+        func=unified_search_and_fetch,
+        description="Run unified search and fetch top document candidates.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string"},
+                "max_results": {"type": "integer", "default": 20, "minimum": 1},
+                "max_documents": {"type": "integer", "default": 5, "minimum": 1},
+                "mode": {
+                    "type": "string",
+                    "enum": ["max_throughput", "balanced", "max_quality", "low_cost"],
+                    "default": "max_throughput",
+                },
+                "provider_allowlist": {"type": ["array", "null"], "items": {"type": "string"}},
+                "domain": {"type": "string", "default": "general"},
+            },
+            "required": ["query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="unified_health",
+        func=unified_health,
+        description="Get unified web-archiving API health snapshot.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )
+
+    manager.register_tool(
+        category="web_archive_tools",
+        name="unified_agentic_discover_and_fetch",
+        func=unified_agentic_discover_and_fetch,
+        description="Agentic discover-and-fetch workflow using unified provider orchestration.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "seed_urls": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "target_terms": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "max_hops": {"type": "integer", "default": 2, "minimum": 1},
+                "max_pages": {"type": "integer", "default": 10, "minimum": 1},
+                "mode": {
+                    "type": "string",
+                    "enum": ["max_throughput", "balanced", "max_quality", "low_cost"],
+                    "default": "balanced",
+                },
+            },
+            "required": ["seed_urls", "target_terms"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "web-archive"],
+    )

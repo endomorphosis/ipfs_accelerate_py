@@ -62,6 +62,11 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     search_ipwb_archive,
     search_wayback_machine,
     start_ipwb_replay,
+    unified_agentic_discover_and_fetch,
+    unified_fetch,
+    unified_health,
+    unified_search,
+    unified_search_and_fetch,
     verify_ipwb_archive,
 )
 
@@ -107,6 +112,11 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
         self.assertIn("search_serpstack", names)
         self.assertIn("search_serpstack_images", names)
         self.assertIn("batch_search_serpstack", names)
+        self.assertIn("unified_search", names)
+        self.assertIn("unified_fetch", names)
+        self.assertIn("unified_search_and_fetch", names)
+        self.assertIn("unified_health", names)
+        self.assertIn("unified_agentic_discover_and_fetch", names)
         self.assertIn("extract_text_from_warc", names)
         self.assertIn("extract_dataset_from_cdxj", names)
         self.assertIn("extract_links_from_warc", names)
@@ -588,6 +598,78 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
 
             serp_batch_result = await batch_search_serpstack(queries=["ipfs", "mcp"], num=2, delay_seconds=0)
             self.assertIn(serp_batch_result.get("status"), ["success", "error"])
+
+        anyio.run(_run)
+
+    def test_unified_api_helpers_validation_and_shape(self) -> None:
+        async def _run() -> None:
+            missing_unified_query = await unified_search(query="")
+            self.assertEqual(missing_unified_query.get("status"), "error")
+            self.assertIn("'query' is required", str(missing_unified_query.get("error", "")))
+
+            invalid_unified_mode = await unified_search(query="ipfs", mode="bad")
+            self.assertEqual(invalid_unified_mode.get("status"), "error")
+            self.assertIn("'mode' must be one of", str(invalid_unified_mode.get("error", "")))
+
+            invalid_unified_offset = await unified_search(query="ipfs", offset=-1)
+            self.assertEqual(invalid_unified_offset.get("status"), "error")
+            self.assertIn("'offset' must be >= 0", str(invalid_unified_offset.get("error", "")))
+
+            unified_search_result = await unified_search(query="ipfs", max_results=3)
+            self.assertIn(unified_search_result.get("status"), ["success", "error"])
+
+            missing_unified_fetch_url = await unified_fetch(url="")
+            self.assertEqual(missing_unified_fetch_url.get("status"), "error")
+            self.assertIn("'url' is required", str(missing_unified_fetch_url.get("error", "")))
+
+            invalid_unified_fetch_mode = await unified_fetch(url="https://example.com", mode="bad")
+            self.assertEqual(invalid_unified_fetch_mode.get("status"), "error")
+            self.assertIn("'mode' must be one of", str(invalid_unified_fetch_mode.get("error", "")))
+
+            unified_fetch_result = await unified_fetch(url="https://example.com", mode="balanced")
+            self.assertIn(unified_fetch_result.get("status"), ["success", "error"])
+
+            missing_unified_saf_query = await unified_search_and_fetch(query="")
+            self.assertEqual(missing_unified_saf_query.get("status"), "error")
+            self.assertIn("'query' is required", str(missing_unified_saf_query.get("error", "")))
+
+            invalid_unified_max_docs = await unified_search_and_fetch(query="ipfs", max_documents=0)
+            self.assertEqual(invalid_unified_max_docs.get("status"), "error")
+            self.assertIn("'max_documents' must be greater than 0", str(invalid_unified_max_docs.get("error", "")))
+
+            unified_saf_result = await unified_search_and_fetch(query="ipfs", max_results=3, max_documents=2)
+            self.assertIn(unified_saf_result.get("status"), ["success", "error"])
+
+            unified_health_result = await unified_health()
+            self.assertIn(unified_health_result.get("status"), ["success", "error"])
+
+            missing_seed_urls = await unified_agentic_discover_and_fetch(seed_urls=[], target_terms=["ipfs"])
+            self.assertEqual(missing_seed_urls.get("status"), "error")
+            self.assertIn("'seed_urls' must be a non-empty list", str(missing_seed_urls.get("error", "")))
+
+            missing_target_terms = await unified_agentic_discover_and_fetch(
+                seed_urls=["https://example.com"],
+                target_terms=[],
+            )
+            self.assertEqual(missing_target_terms.get("status"), "error")
+            self.assertIn("'target_terms' must be a non-empty list", str(missing_target_terms.get("error", "")))
+
+            invalid_agentic_mode = await unified_agentic_discover_and_fetch(
+                seed_urls=["https://example.com"],
+                target_terms=["ipfs"],
+                mode="bad",
+            )
+            self.assertEqual(invalid_agentic_mode.get("status"), "error")
+            self.assertIn("'mode' must be one of", str(invalid_agentic_mode.get("error", "")))
+
+            unified_agentic_result = await unified_agentic_discover_and_fetch(
+                seed_urls=["https://example.com"],
+                target_terms=["ipfs"],
+                max_hops=1,
+                max_pages=2,
+                mode="balanced",
+            )
+            self.assertIn(unified_agentic_result.get("status"), ["success", "error"])
 
         anyio.run(_run)
 
