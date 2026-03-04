@@ -16,9 +16,10 @@ def _pick_free_port() -> int:
 
 def _have_local_gpt2() -> bool:
     try:
-        from transformers import AutoTokenizer
+        from transformers import AutoModelForCausalLM, AutoTokenizer
 
         AutoTokenizer.from_pretrained("gpt2", local_files_only=True)
+        AutoModelForCausalLM.from_pretrained("gpt2", local_files_only=True)
         return True
     except Exception:
         return False
@@ -153,23 +154,8 @@ def test_p2p_call_tool_runs_gpt2_inference_over_libp2p() -> None:
                     },
                     timeout_s=300.0,
                 )
-            except BaseExceptionGroup as exc:
-                err = str(exc).lower()
-                if ("timeout" in err) or ("no response" in err):
-                    pytest.skip(f"gpt2 inference unavailable in this environment: {err}")
+            except BaseException:
                 raise
-            except TimeoutError as exc:
-                pytest.skip(f"gpt2 inference unavailable in this environment: {exc}")
-            except RuntimeError as exc:
-                err = str(exc).lower()
-                if "no response" in err:
-                    pytest.skip(f"gpt2 inference unavailable in this environment: {err}")
-                raise
-
-            if not bool(resp.get("ok")):
-                err = str(resp.get("error") or "").lower()
-                if ("timeout" in err) or ("no response" in err):
-                    pytest.skip(f"gpt2 inference unavailable in this environment: {err}")
 
             assert isinstance(resp, dict)
             assert resp.get("ok") is True

@@ -804,6 +804,7 @@ async def _dial_and_request_with_retries(
     retry_base_ms: int,
     dial_timeout_s: float,
     op_label: str,
+    min_attempt_dial_timeout_s: Optional[float] = None,
     should_retry_response: Optional[Callable[[Dict[str, Any]], bool]] = None,
 ) -> Dict[str, Any]:
     import anyio
@@ -811,6 +812,11 @@ async def _dial_and_request_with_retries(
     max_retries = max(0, int(retries))
     for attempt in range(max_retries + 1):
         attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
+        if min_attempt_dial_timeout_s is not None:
+            try:
+                attempt_dial_timeout_s = max(float(attempt_dial_timeout_s), float(min_attempt_dial_timeout_s))
+            except Exception:
+                pass
         broad_discovery_override: bool | None = None
         # Use lightweight dialing for early attempts to reduce network fanout
         # under sustained request rates, then allow broad discovery on the last
@@ -4185,6 +4191,7 @@ async def call_tool(
     args: Dict[str, Any] | None = None,
     timeout_s: float = 30.0,
 ) -> Dict[str, Any]:
+    effective_timeout_s = max(_rpc_dial_timeout_s(), float(timeout_s) + 5.0)
     resp = await _dial_and_request_with_retries(
         remote=remote,
         message={
@@ -4195,7 +4202,8 @@ async def call_tool(
         },
         retries=_rpc_retry_attempts(),
         retry_base_ms=_rpc_retry_base_ms(),
-        dial_timeout_s=max(_rpc_dial_timeout_s(), float(timeout_s) + 5.0),
+        dial_timeout_s=effective_timeout_s,
+        min_attempt_dial_timeout_s=effective_timeout_s,
         op_label="call_tool",
     )
     if not isinstance(resp, dict):

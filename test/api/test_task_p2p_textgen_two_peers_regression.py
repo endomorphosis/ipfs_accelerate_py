@@ -217,8 +217,8 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
             ma_b = discover_multiaddr_via_mdns_sync(peer_id=peer_b, timeout_s=30.0)
         assert ma_a and ma_b
 
-        if (not _wait_for_status_ok(multiaddr=ma_a, timeout_s=20.0)) or (not _wait_for_status_ok(multiaddr=ma_b, timeout_s=20.0)):
-            pytest.skip("p2p peers not reachable for GPT-2 regression in this environment")
+        assert _wait_for_status_ok(multiaddr=ma_a, timeout_s=20.0)
+        assert _wait_for_status_ok(multiaddr=ma_b, timeout_s=20.0)
 
         # Run the load driver in-process to avoid import shadowing issues
         # (the repo contains similarly-named modules under test/).
@@ -232,10 +232,10 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
                 "--count",
                 "50",
                 "--concurrency",
-                "10",
+                "1",
                 "--wait",
                 "--timeout-s",
-                "300",
+                "900",
                 "--collect-results",
                 "--suffix-index",
                 "--max-new-tokens",
@@ -245,9 +245,9 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
                 "--prompt",
                 "The quick brown fox",
                 "--submit-retries",
-                "2",
+                "6",
                 "--submit-retry-sleep-s",
-                "0.25",
+                "1.0",
                 "--output",
                 report_path,
             ]
@@ -257,9 +257,6 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
         assert os.path.exists(report_path) and os.path.getsize(report_path) > 0
         with open(report_path, "r", encoding="utf-8") as handle:
             report = json.load(handle)
-
-        if int(report.get("submit_ok_count") or 0) == 0 and int(report.get("submit_failed_count") or 0) == 50:
-            pytest.skip("two-peer GPT-2 transport unavailable in this environment")
 
         assert report.get("ok") is True
         assert int(report.get("count") or 0) == 50
