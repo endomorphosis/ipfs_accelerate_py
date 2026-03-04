@@ -274,7 +274,7 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
         import anyio
 
         with contextlib.redirect_stdout(sys.stderr):
-            from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_task, submit_task, wait_task
+            from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_task, request_status, submit_task, wait_task
 
         targets = await _build_remote_targets(args)
         remotes = [RemoteQueue(peer_id=pid, multiaddr=ma) for (pid, ma) in targets]
@@ -293,6 +293,44 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
         if args.endpoint_type:
             payload_base["endpoint_type"] = str(args.endpoint_type)
 
+        async def _resolve_sticky_worker(remote: Any) -> str:
+            """Best-effort map remote peer -> worker_id for sticky routing."""
+            remote_pid = str(getattr(remote, "peer_id", "") or "").strip()
+            for attempt in range(3):
+                try:
+                    status = await request_status(remote=remote, timeout_s=5.0, detail=True)
+                except Exception:
+                    status = None
+                if isinstance(status, dict) and bool(status.get("ok")):
+                    scheduler = status.get("scheduler")
+                    if isinstance(scheduler, dict):
+                        known_workers = scheduler.get("known_workers")
+                        if isinstance(known_workers, list):
+                            candidates: list[str] = []
+                            for row in known_workers:
+                                if not isinstance(row, dict):
+                                    continue
+                                wid = str(row.get("worker_id") or "").strip()
+                                if not wid:
+                                    continue
+                                supported = row.get("supported_task_types")
+                                supported_types = [str(t).strip() for t in supported] if isinstance(supported, list) else []
+                                if supported_types and str(task_type) not in supported_types:
+                                    continue
+                                peer_id = str(row.get("peer_id") or "").strip()
+                                transport_peer_id = str(row.get("transport_peer_id") or "").strip()
+                                if remote_pid and (peer_id == remote_pid or transport_peer_id == remote_pid):
+                                    candidates.append(wid)
+                            if candidates:
+                                return str(candidates[0])
+                if attempt < 2:
+                    await anyio.sleep(0.2)
+            return ""
+
+        sticky_workers: list[str] = [""] * len(remotes)
+        for idx, remote in enumerate(remotes):
+            sticky_workers[idx] = await _resolve_sticky_worker(remote)
+
         submitted: list[Dict[str, Any]] = []
         submit_failures: list[Dict[str, Any]] = []
         submit_lock = anyio.Lock()
@@ -304,6 +342,9 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
             target_index = i % len(remotes)
             remote = remotes[target_index]
             payload = dict(payload_base)
+            sticky_worker_id = str(sticky_workers[target_index] or "").strip()
+            if sticky_worker_id:
+                payload["sticky_worker_id"] = sticky_worker_id
             if args.suffix_index:
                 payload["prompt"] = f"{prompt} [{i}]"
             async with sem:
