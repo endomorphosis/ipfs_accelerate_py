@@ -7252,6 +7252,86 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_p2p_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """p2p_tools should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="p2p-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("p2p_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("p2p_cache_get", names)
+            self.assertIn("p2p_remote_call_tool", names)
+
+            schema = await get_schema("p2p_tools", "p2p_service_status")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("peers_limit") or {}).get("minimum"), 1)
+
+            invalid_key = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "p2p_tools",
+                    "p2p_cache_get",
+                    {
+                        "key": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_key.get("status"), "error")
+            invalid_key_text = (
+                str(invalid_key.get("message", ""))
+                + " "
+                + str(invalid_key.get("error", ""))
+            )
+            self.assertIn("key must be a non-empty string", invalid_key_text)
+
+            invalid_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "p2p_tools",
+                    "p2p_remote_status",
+                    {
+                        "timeout_s": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_timeout.get("status"), "error")
+            invalid_timeout_text = (
+                str(invalid_timeout.get("message", ""))
+                + " "
+                + str(invalid_timeout.get("error", ""))
+            )
+            self.assertIn("timeout_s must be a number > 0", invalid_timeout_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 
