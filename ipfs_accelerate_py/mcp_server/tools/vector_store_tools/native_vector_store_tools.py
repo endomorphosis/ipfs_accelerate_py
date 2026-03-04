@@ -88,17 +88,64 @@ def _load_vector_store_api() -> Dict[str, Any]:
 _API = _load_vector_store_api()
 
 
+def _normalize_payload(result: Any) -> Dict[str, Any]:
+    """Normalize backend output into deterministic status envelopes."""
+    if isinstance(result, dict):
+        payload = dict(result)
+        if payload.get("error"):
+            payload.setdefault("status", "error")
+        else:
+            payload.setdefault("status", "success")
+        return payload
+    return {"status": "success", "result": result}
+
+
 async def vector_index(
     action: str,
     index_name: str,
     config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create, update, delete, or inspect vector indexes."""
-    return await _API["vector_index"](
-        action=action,
-        index_name=index_name,
-        config=config,
-    )
+    normalized_action = str(action or "").strip().lower()
+    if normalized_action not in {"create", "update", "delete", "info"}:
+        return {
+            "status": "error",
+            "message": "action must be one of: create, update, delete, info",
+            "action": action,
+        }
+
+    normalized_index_name = str(index_name or "").strip()
+    if not normalized_index_name:
+        return {
+            "status": "error",
+            "message": "index_name must be provided",
+            "index_name": index_name,
+        }
+    if config is not None and not isinstance(config, dict):
+        return {
+            "status": "error",
+            "message": "config must be an object when provided",
+            "config": config,
+        }
+
+    try:
+        result = await _API["vector_index"](
+            action=normalized_action,
+            index_name=normalized_index_name,
+            config=config,
+        )
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "action": normalized_action,
+            "index_name": normalized_index_name,
+        }
+
+    payload = _normalize_payload(result)
+    payload.setdefault("action", normalized_action)
+    payload.setdefault("index_name", normalized_index_name)
+    return payload
 
 
 async def vector_retrieval(
@@ -108,12 +155,54 @@ async def vector_retrieval(
     limit: int = 100,
 ) -> Dict[str, Any]:
     """Retrieve vectors by collection, IDs, and metadata filters."""
-    return await _API["vector_retrieval"](
-        collection=collection,
-        ids=ids,
-        filters=filters,
-        limit=limit,
-    )
+    normalized_collection = str(collection or "default").strip() or "default"
+    if ids is not None:
+        if not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
+            return {
+                "status": "error",
+                "message": "ids must be an array of strings when provided",
+                "ids": ids,
+            }
+        if any(not str(item).strip() for item in ids):
+            return {
+                "status": "error",
+                "message": "ids cannot contain empty strings",
+                "ids": ids,
+            }
+    if filters is not None and not isinstance(filters, dict):
+        return {
+            "status": "error",
+            "message": "filters must be an object when provided",
+            "filters": filters,
+        }
+    if not isinstance(limit, int) or limit < 1:
+        return {
+            "status": "error",
+            "message": "limit must be an integer >= 1",
+            "limit": limit,
+        }
+
+    try:
+        result = await _API["vector_retrieval"](
+            collection=normalized_collection,
+            ids=ids,
+            filters=filters,
+            limit=limit,
+        )
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "collection": normalized_collection,
+            "ids": ids or [],
+            "limit": limit,
+        }
+
+    payload = _normalize_payload(result)
+    payload.setdefault("collection", normalized_collection)
+    payload.setdefault("ids", ids or [])
+    payload.setdefault("limit", limit)
+    return payload
 
 
 async def vector_metadata(
@@ -123,12 +212,62 @@ async def vector_metadata(
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Manage vector metadata get/update/delete operations."""
-    return await _API["vector_metadata"](
-        action=action,
-        collection=collection,
-        ids=ids,
-        metadata=metadata,
-    )
+    normalized_action = str(action or "").strip().lower()
+    if normalized_action not in {"get", "update", "delete"}:
+        return {
+            "status": "error",
+            "message": "action must be one of: get, update, delete",
+            "action": action,
+        }
+
+    normalized_collection = str(collection or "default").strip() or "default"
+    if ids is not None:
+        if not isinstance(ids, list) or not all(isinstance(item, str) for item in ids):
+            return {
+                "status": "error",
+                "message": "ids must be an array of strings when provided",
+                "ids": ids,
+            }
+        if any(not str(item).strip() for item in ids):
+            return {
+                "status": "error",
+                "message": "ids cannot contain empty strings",
+                "ids": ids,
+            }
+    if metadata is not None and not isinstance(metadata, dict):
+        return {
+            "status": "error",
+            "message": "metadata must be an object when provided",
+            "metadata": metadata,
+        }
+    if normalized_action == "update" and metadata is None:
+        return {
+            "status": "error",
+            "message": "metadata is required for update action",
+            "action": normalized_action,
+        }
+
+    try:
+        result = await _API["vector_metadata"](
+            action=normalized_action,
+            collection=normalized_collection,
+            ids=ids,
+            metadata=metadata,
+        )
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "action": normalized_action,
+            "collection": normalized_collection,
+            "ids": ids or [],
+        }
+
+    payload = _normalize_payload(result)
+    payload.setdefault("action", normalized_action)
+    payload.setdefault("collection", normalized_collection)
+    payload.setdefault("ids", ids or [])
+    return payload
 
 
 def register_native_vector_store_tools(manager: Any) -> None:
@@ -141,8 +280,11 @@ def register_native_vector_store_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
-                "index_name": {"type": "string"},
+                "action": {
+                    "type": "string",
+                    "enum": ["create", "update", "delete", "info"],
+                },
+                "index_name": {"type": "string", "minLength": 1},
                 "config": {"type": ["object", "null"]},
             },
             "required": ["action", "index_name"],
@@ -159,10 +301,10 @@ def register_native_vector_store_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "collection": {"type": "string"},
-                "ids": {"type": ["array", "null"], "items": {"type": "string"}},
+                "collection": {"type": "string", "default": "default", "minLength": 1},
+                "ids": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
                 "filters": {"type": ["object", "null"]},
-                "limit": {"type": "integer"},
+                "limit": {"type": "integer", "minimum": 1, "default": 100},
             },
             "required": [],
         },
@@ -178,9 +320,9 @@ def register_native_vector_store_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
-                "collection": {"type": "string"},
-                "ids": {"type": ["array", "null"], "items": {"type": "string"}},
+                "action": {"type": "string", "enum": ["get", "update", "delete"]},
+                "collection": {"type": "string", "default": "default", "minLength": 1},
+                "ids": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
                 "metadata": {"type": ["object", "null"]},
             },
             "required": ["action"],

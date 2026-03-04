@@ -407,6 +407,21 @@ def _retry_lightweight_discovery_enabled() -> bool:
     )
 
 
+def _prefer_lightweight_first_enabled() -> bool:
+    """Prefer lightweight dialing for early attempts in retry loops.
+
+    High-throughput submit/wait patterns can otherwise trigger broad discovery
+    fanout (bootstrap/rendezvous/dht/mdns) on every first attempt, which adds
+    latency and dial pressure. Keep broad discovery as a late fallback.
+    """
+
+    return _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_PREFER_LIGHTWEIGHT_FIRST",
+        compat="IPFS_DATASETS_PY_TASK_P2P_PREFER_LIGHTWEIGHT_FIRST",
+        default=True,
+    )
+
+
 def _retry_delay_max_ms() -> int:
     try:
         raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DELAY_MAX_MS")
@@ -415,6 +430,28 @@ def _retry_delay_max_ms() -> int:
         return max(10, int(str(raw).strip()))
     except Exception:
         return 5000
+
+
+def _cooldown_failfast_enabled() -> bool:
+    """Whether retry loops should fast-fail remotes in cooldown windows."""
+
+    return _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_COOLDOWN_FAILFAST",
+        compat="IPFS_DATASETS_PY_TASK_P2P_COOLDOWN_FAILFAST",
+        default=True,
+    )
+
+
+def _cooldown_failfast_threshold_s() -> float:
+    """Minimum cooldown wait to trigger fast-fail behavior (seconds)."""
+
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_COOLDOWN_FAILFAST_THRESHOLD_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_COOLDOWN_FAILFAST_THRESHOLD_S", "0.25")
+        return max(0.0, float(str(raw).strip()))
+    except Exception:
+        return 0.25
 
 
 def _retry_delay_s(*, attempt: int, base_ms: int) -> float:
@@ -772,11 +809,40 @@ async def _dial_and_request_with_retries(
     for attempt in range(max_retries + 1):
         attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
         broad_discovery_override: bool | None = None
-        if attempt > 0 and _retry_lightweight_discovery_enabled():
+        # Use lightweight dialing for early attempts to reduce network fanout
+        # under sustained request rates, then allow broad discovery on the last
+        # attempt as a recovery path.
+        prefer_lightweight_first = _prefer_lightweight_first_enabled()
+        if prefer_lightweight_first and attempt < max_retries:
+            broad_discovery_override = False
+            if attempt == 0:
+                _retry_metric_inc(f"{op_label}.lightweight_first")
+            else:
+                _retry_metric_inc(f"{op_label}.retry_lightweight_discovery")
+        elif attempt > 0 and _retry_lightweight_discovery_enabled():
             broad_discovery_override = False
             _retry_metric_inc(f"{op_label}.retry_lightweight_discovery")
         cooldown_wait_s = _remote_cooldown_wait_s(remote)
         if cooldown_wait_s > 0:
+            failfast_threshold_s = _cooldown_failfast_threshold_s()
+            if (
+                _cooldown_failfast_enabled()
+                and cooldown_wait_s >= failfast_threshold_s
+                and attempt < max_retries
+            ):
+                # Under high concurrency, sleeping for full cooldown on each
+                # call can stall worker throughput. Fast-fail this attempt so
+                # callers with multi-remote logic can fail over immediately.
+                _retry_metric_inc(f"{op_label}.cooldown_fast_fail")
+                quick_delay_s = min(0.2, _retry_delay_s(attempt=attempt, base_ms=retry_base_ms))
+                _dial_debug(
+                    f"{op_label} cooldown fast-fail attempt={attempt + 1}/{max_retries + 1} "
+                    f"cooldown_wait_s={cooldown_wait_s:.3f} quick_delay_s={quick_delay_s:.3f}"
+                )
+                if quick_delay_s > 0:
+                    await anyio.sleep(quick_delay_s)
+                continue
+
             _retry_metric_inc(f"{op_label}.cooldown_wait")
             _dial_debug(
                 f"{op_label} cooldown wait before attempt={attempt + 1}/{max_retries + 1} wait_s={cooldown_wait_s:.3f}"

@@ -49,6 +49,9 @@ async def check_access_permission(
     normalized_resource_id = str(resource_id or "").strip()
     normalized_user_id = str(user_id or "").strip()
     normalized_permission_type = str(permission_type or "read").strip().lower() or "read"
+    normalized_resource_type = (
+        None if resource_type is None else str(resource_type).strip()
+    )
 
     if not normalized_resource_id:
         return {
@@ -83,13 +86,54 @@ async def check_access_permission(
             "permission_type": normalized_permission_type,
             "resource_type": resource_type,
         }
+    if resource_type is not None and not normalized_resource_type:
+        return {
+            "status": "error",
+            "error": "resource_type must be a non-empty string when provided",
+            "allowed": False,
+            "user_id": normalized_user_id,
+            "resource_id": normalized_resource_id,
+            "permission_type": normalized_permission_type,
+            "resource_type": resource_type,
+        }
 
-    return await _CHECK_ACCESS_PERMISSION(
-        resource_id=normalized_resource_id,
-        user_id=normalized_user_id,
-        permission_type=normalized_permission_type,
-        resource_type=resource_type,
-    )
+    try:
+        result = await _CHECK_ACCESS_PERMISSION(
+            resource_id=normalized_resource_id,
+            user_id=normalized_user_id,
+            permission_type=normalized_permission_type,
+            resource_type=normalized_resource_type,
+        )
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "allowed": False,
+            "user_id": normalized_user_id,
+            "resource_id": normalized_resource_id,
+            "permission_type": normalized_permission_type,
+            "resource_type": normalized_resource_type,
+        }
+
+    if isinstance(result, dict):
+        normalized = dict(result)
+        normalized.setdefault("status", "success")
+        normalized.setdefault("allowed", False)
+        normalized.setdefault("user_id", normalized_user_id)
+        normalized.setdefault("resource_id", normalized_resource_id)
+        normalized.setdefault("permission_type", normalized_permission_type)
+        normalized.setdefault("resource_type", normalized_resource_type)
+        return normalized
+
+    return {
+        "status": "success",
+        "allowed": False,
+        "result": result,
+        "user_id": normalized_user_id,
+        "resource_id": normalized_resource_id,
+        "permission_type": normalized_permission_type,
+        "resource_type": normalized_resource_type,
+    }
 
 
 def register_native_security_tools(manager: Any) -> None:
@@ -102,14 +146,19 @@ def register_native_security_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "resource_id": {"type": "string"},
-                "user_id": {"type": "string"},
+                "resource_id": {"type": "string", "minLength": 1},
+                "user_id": {"type": "string", "minLength": 1},
                 "permission_type": {
                     "type": "string",
                     "enum": sorted(_VALID_PERMISSION_TYPES),
                     "default": "read",
                 },
-                "resource_type": {"type": ["string", "null"]},
+                "resource_type": {
+                    "anyOf": [
+                        {"type": "string", "minLength": 1},
+                        {"type": "null"},
+                    ]
+                },
             },
             "required": ["resource_id", "user_id"],
         },

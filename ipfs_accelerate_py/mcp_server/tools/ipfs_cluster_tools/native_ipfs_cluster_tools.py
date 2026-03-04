@@ -63,6 +63,16 @@ def _load_ipfs_cluster_api() -> Dict[str, Any]:
 _API = _load_ipfs_cluster_api()
 
 
+def _normalize_payload(result: Any) -> Dict[str, Any]:
+    """Normalize backend output to deterministic status envelope."""
+    payload = dict(result or {})
+    if "error" in payload and payload.get("error"):
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "success")
+    return payload
+
+
 async def manage_ipfs_cluster(
     action: str,
     node_id: Optional[str] = None,
@@ -72,17 +82,75 @@ async def manage_ipfs_cluster(
     filters: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Execute IPFS cluster-management operations."""
+    normalized_action = str(action or "").strip().lower()
+    valid_actions = {
+        "status",
+        "add_node",
+        "remove_node",
+        "pin_content",
+        "unpin_content",
+        "list_pins",
+        "sync",
+        "health_check",
+        "rebalance",
+        "backup_state",
+    }
+    if normalized_action not in valid_actions:
+        return {
+            "status": "error",
+            "message": "action must be one of: status, add_node, remove_node, pin_content, unpin_content, list_pins, sync, health_check, rebalance, backup_state",
+            "action": action,
+        }
+
+    normalized_node_id = str(node_id).strip() if node_id is not None else None
+    if normalized_action == "remove_node" and not normalized_node_id:
+        return {
+            "status": "error",
+            "message": "node_id is required for remove_node action",
+            "node_id": node_id,
+        }
+
+    normalized_cid = str(cid).strip() if cid is not None else None
+    if normalized_action in {"pin_content", "unpin_content"} and not normalized_cid:
+        return {
+            "status": "error",
+            "message": f"cid is required for {normalized_action} action",
+            "cid": cid,
+        }
+
+    if not isinstance(replication_factor, int) or replication_factor < 1:
+        return {
+            "status": "error",
+            "message": "replication_factor must be an integer >= 1",
+            "replication_factor": replication_factor,
+        }
+    if cluster_config is not None and not isinstance(cluster_config, dict):
+        return {
+            "status": "error",
+            "message": "cluster_config must be an object when provided",
+            "cluster_config": cluster_config,
+        }
+    if filters is not None and not isinstance(filters, dict):
+        return {
+            "status": "error",
+            "message": "filters must be an object when provided",
+            "filters": filters,
+        }
+
     result = _API["manage_ipfs_cluster"](
-        action=action,
-        node_id=node_id,
-        cid=cid,
+        action=normalized_action,
+        node_id=normalized_node_id,
+        cid=normalized_cid,
         replication_factor=replication_factor,
         cluster_config=cluster_config,
         filters=filters,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("action", normalized_action)
+    return payload
 
 
 async def manage_ipfs_content(
@@ -94,17 +162,64 @@ async def manage_ipfs_content(
     content_type: str = "text/plain",
 ) -> Dict[str, Any]:
     """Execute IPFS content operations such as upload, download, and verification."""
+    normalized_action = str(action or "").strip().lower()
+    valid_actions = {"upload", "download", "get_metadata", "verify_integrity", "list_content"}
+    if normalized_action not in valid_actions:
+        return {
+            "status": "error",
+            "message": "action must be one of: upload, download, get_metadata, verify_integrity, list_content",
+            "action": action,
+        }
+
+    normalized_cid = str(cid).strip() if cid is not None else None
+    if normalized_action in {"download", "get_metadata", "verify_integrity"} and not normalized_cid:
+        return {
+            "status": "error",
+            "message": f"cid is required for {normalized_action} action",
+            "cid": cid,
+        }
+
+    normalized_content = str(content).strip() if content is not None else None
+    if normalized_action == "upload" and not normalized_content:
+        return {
+            "status": "error",
+            "message": "content is required for upload action",
+            "content": content,
+        }
+    if metadata is not None and not isinstance(metadata, dict):
+        return {
+            "status": "error",
+            "message": "metadata must be an object when provided",
+            "metadata": metadata,
+        }
+    if not isinstance(pin, bool):
+        return {
+            "status": "error",
+            "message": "pin must be a boolean",
+            "pin": pin,
+        }
+    normalized_content_type = str(content_type or "").strip()
+    if not normalized_content_type:
+        return {
+            "status": "error",
+            "message": "content_type must be a non-empty string",
+            "content_type": content_type,
+        }
+
     result = _API["manage_ipfs_content"](
-        action=action,
-        cid=cid,
-        content=content,
+        action=normalized_action,
+        cid=normalized_cid,
+        content=normalized_content,
         metadata=metadata,
         pin=pin,
-        content_type=content_type,
+        content_type=normalized_content_type,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("action", normalized_action)
+    return payload
 
 
 def register_native_ipfs_cluster_tools(manager: Any) -> None:
@@ -117,10 +232,24 @@ def register_native_ipfs_cluster_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
+                "action": {
+                    "type": "string",
+                    "enum": [
+                        "status",
+                        "add_node",
+                        "remove_node",
+                        "pin_content",
+                        "unpin_content",
+                        "list_pins",
+                        "sync",
+                        "health_check",
+                        "rebalance",
+                        "backup_state",
+                    ],
+                },
                 "node_id": {"type": ["string", "null"]},
                 "cid": {"type": ["string", "null"]},
-                "replication_factor": {"type": "integer"},
+                "replication_factor": {"type": "integer", "minimum": 1, "default": 3},
                 "cluster_config": {"type": ["object", "null"]},
                 "filters": {"type": ["object", "null"]},
             },
@@ -138,12 +267,15 @@ def register_native_ipfs_cluster_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
+                "action": {
+                    "type": "string",
+                    "enum": ["upload", "download", "get_metadata", "verify_integrity", "list_content"],
+                },
                 "cid": {"type": ["string", "null"]},
                 "content": {"type": ["string", "null"]},
                 "metadata": {"type": ["object", "null"]},
-                "pin": {"type": "boolean"},
-                "content_type": {"type": "string"},
+                "pin": {"type": "boolean", "default": True},
+                "content_type": {"type": "string", "default": "text/plain"},
             },
             "required": ["action"],
         },
