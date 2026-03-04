@@ -6774,6 +6774,76 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_function_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """functions should expose source-compatible schema and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="function-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("functions")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("execute_python_snippet", names)
+
+            schema = await get_schema("functions", "execute_python_snippet")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("timeout_seconds") or {}).get("minimum"), 1)
+
+            invalid_code = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "functions",
+                    "execute_python_snippet",
+                    {
+                        "code": " ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_code.get("status"), "error")
+            self.assertIn("code must be a non-empty string", str(invalid_code.get("message", "")))
+
+            invalid_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "functions",
+                    "execute_python_snippet",
+                    {
+                        "code": "print('ok')",
+                        "timeout_seconds": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_timeout.get("status"), "error")
+            self.assertIn("timeout_seconds must be an integer >= 1", str(invalid_timeout.get("message", "")))
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 

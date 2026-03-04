@@ -64,20 +64,94 @@ def _load_discord_tools_api() -> Dict[str, Any]:
 _API = _load_discord_tools_api()
 
 
+def _normalize_payload(result: Any) -> Dict[str, Any]:
+    """Normalize backend output into deterministic status envelopes."""
+    if isinstance(result, dict):
+        payload = dict(result)
+        if payload.get("error"):
+            payload.setdefault("status", "error")
+        else:
+            payload.setdefault("status", "success")
+        return payload
+    return {"status": "success", "result": result}
+
+
 async def discord_list_guilds(token: Optional[str] = None) -> Dict[str, Any]:
     """List available Discord guilds for the configured token."""
-    result = _API["discord_list_guilds"](token=token)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_token = None if token is None else str(token).strip()
+    if token is not None and not normalized_token:
+        return {
+            "status": "error",
+            "error": "token must be a non-empty string when provided",
+            "token": token,
+        }
+
+    try:
+        result = _API["discord_list_guilds"](token=normalized_token)
+        if hasattr(result, "__await__"):
+            payload = _normalize_payload(await result)
+        else:
+            payload = _normalize_payload(result)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "guilds": [],
+            "count": 0,
+            "tool": "discord_list_guilds",
+        }
+
+    payload.setdefault("tool", "discord_list_guilds")
+    payload.setdefault("guilds", [])
+    payload.setdefault("count", len(payload.get("guilds", [])) if isinstance(payload.get("guilds", []), list) else 0)
+    return payload
 
 
 async def discord_list_channels(guild_id: str, token: Optional[str] = None) -> Dict[str, Any]:
     """List channels in a Discord guild."""
-    result = _API["discord_list_channels"](guild_id=guild_id, token=token)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_guild_id = str(guild_id or "").strip()
+    if not normalized_guild_id:
+        return {
+            "status": "error",
+            "error": "guild_id is required",
+            "guild_id": guild_id,
+            "channels": [],
+            "count": 0,
+            "tool": "discord_list_channels",
+        }
+
+    normalized_token = None if token is None else str(token).strip()
+    if token is not None and not normalized_token:
+        return {
+            "status": "error",
+            "error": "token must be a non-empty string when provided",
+            "guild_id": normalized_guild_id,
+            "channels": [],
+            "count": 0,
+            "tool": "discord_list_channels",
+        }
+
+    try:
+        result = _API["discord_list_channels"](guild_id=normalized_guild_id, token=normalized_token)
+        if hasattr(result, "__await__"):
+            payload = _normalize_payload(await result)
+        else:
+            payload = _normalize_payload(result)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "guild_id": normalized_guild_id,
+            "channels": [],
+            "count": 0,
+            "tool": "discord_list_channels",
+        }
+
+    payload.setdefault("tool", "discord_list_channels")
+    payload.setdefault("guild_id", normalized_guild_id)
+    payload.setdefault("channels", [])
+    payload.setdefault("count", len(payload.get("channels", [])) if isinstance(payload.get("channels", []), list) else 0)
+    return payload
 
 
 def register_native_discord_tools(manager: Any) -> None:
@@ -90,7 +164,12 @@ def register_native_discord_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "token": {"type": ["string", "null"]},
+                "token": {
+                    "anyOf": [
+                        {"type": "string", "minLength": 1},
+                        {"type": "null"},
+                    ]
+                },
             },
             "required": [],
         },
@@ -106,8 +185,13 @@ def register_native_discord_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "guild_id": {"type": "string"},
-                "token": {"type": ["string", "null"]},
+                "guild_id": {"type": "string", "minLength": 1},
+                "token": {
+                    "anyOf": [
+                        {"type": "string", "minLength": 1},
+                        {"type": "null"},
+                    ]
+                },
             },
             "required": ["guild_id"],
         },

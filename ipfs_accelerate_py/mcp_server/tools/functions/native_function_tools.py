@@ -45,20 +45,63 @@ def _load_function_api() -> Dict[str, Any]:
 _API = _load_function_api()
 
 
+def _normalize_payload(result: Any) -> Dict[str, Any]:
+    """Normalize backend output into deterministic status envelope."""
+    if isinstance(result, dict):
+        payload = dict(result)
+        if payload.get("error"):
+            payload.setdefault("status", "error")
+        else:
+            payload.setdefault("status", "success")
+        return payload
+    return {"status": "success", "result": result}
+
+
 async def execute_python_snippet(
     code: str,
     timeout_seconds: int = 30,
     context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Execute a Python snippet using source function tools with safe fallback."""
-    result = _API["execute_python_snippet"](
-        code=code,
-        timeout_seconds=timeout_seconds,
-        context=context,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_code = str(code or "")
+    if not normalized_code.strip():
+        return {
+            "status": "error",
+            "message": "code must be a non-empty string",
+            "code": code,
+        }
+    if not isinstance(timeout_seconds, int) or timeout_seconds < 1:
+        return {
+            "status": "error",
+            "message": "timeout_seconds must be an integer >= 1",
+            "timeout_seconds": timeout_seconds,
+        }
+    if context is not None and not isinstance(context, dict):
+        return {
+            "status": "error",
+            "message": "context must be an object when provided",
+            "context": context,
+        }
+
+    try:
+        result = _API["execute_python_snippet"](
+            code=normalized_code,
+            timeout_seconds=timeout_seconds,
+            context=context,
+        )
+        if hasattr(result, "__await__"):
+            payload = _normalize_payload(await result)
+        else:
+            payload = _normalize_payload(result)
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "timeout_seconds": timeout_seconds,
+        }
+
+    payload.setdefault("timeout_seconds", timeout_seconds)
+    return payload
 
 
 def register_native_function_tools(manager: Any) -> None:
@@ -72,7 +115,7 @@ def register_native_function_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "code": {"type": "string"},
-                "timeout_seconds": {"type": "integer"},
+                "timeout_seconds": {"type": "integer", "minimum": 1, "default": 30},
                 "context": {"type": ["object", "null"]},
             },
             "required": ["code"],

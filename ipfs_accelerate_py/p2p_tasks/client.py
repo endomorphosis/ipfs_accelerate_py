@@ -482,6 +482,9 @@ _P2P_DIAL_SEM_SIZE: int = 0
 _P2P_WAIT_DIAL_SEM_LOCK = threading.Lock()
 _P2P_WAIT_DIAL_SEM: threading.BoundedSemaphore | None = None
 _P2P_WAIT_DIAL_SEM_SIZE: int = 0
+_P2P_LAST_SUCCESS_PEER_LOCK = threading.Lock()
+_P2P_LAST_SUCCESS_PEER_ID: str = ""
+_P2P_LAST_SUCCESS_PEER_TS: float = 0.0
 _DISCOVERED_MULTIADDR_LOCK = threading.Lock()
 _DISCOVERED_MULTIADDR_TOUCH_TS: dict[str, float] = {}
 _DISCOVERED_MULTIADDR_MUTATIONS: int = 0
@@ -1038,6 +1041,39 @@ def _mdns_allow_loopback() -> bool:
     )
 
 
+def _mdns_max_attempts_per_poll() -> int:
+    """Maximum number of mDNS peers to dial per discovery poll iteration."""
+
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS_MAX_ATTEMPTS_PER_POLL")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS_MAX_ATTEMPTS_PER_POLL", "4")
+        return max(1, int(str(raw).strip()))
+    except Exception:
+        return 4
+
+
+def _mark_last_success_peer(peer_id: str) -> None:
+    pid = str(peer_id or "").strip()
+    if not pid:
+        return
+    with _P2P_LAST_SUCCESS_PEER_LOCK:
+        global _P2P_LAST_SUCCESS_PEER_ID, _P2P_LAST_SUCCESS_PEER_TS
+        _P2P_LAST_SUCCESS_PEER_ID = pid
+        _P2P_LAST_SUCCESS_PEER_TS = float(time.monotonic())
+
+
+def _get_last_success_peer(*, max_age_s: float = 300.0) -> str:
+    with _P2P_LAST_SUCCESS_PEER_LOCK:
+        pid = str(_P2P_LAST_SUCCESS_PEER_ID or "").strip()
+        if not pid:
+            return ""
+        age_s = float(time.monotonic()) - float(_P2P_LAST_SUCCESS_PEER_TS)
+        if age_s > max(1.0, float(max_age_s)):
+            return ""
+        return pid
+
+
 def _pick_best_peer_multiaddr_text(addrs: object, peer_id: str) -> str:
     """Pick the best dial target from a peerstore address set.
 
@@ -1591,11 +1627,17 @@ async def _dial_via_bootstrap(*, host, message: Dict[str, Any]) -> Optional[Dict
     if not _bootstrap_dial_enabled():
         return None
     for addr in _parse_bootstrap_peers():
+        wait_s = _explicit_addr_cooldown_wait_s(addr)
+        if wait_s > 0:
+            _retry_metric_inc("dial.bootstrap_cooldown_skip")
+            continue
         try:
             resp = await _try_peer_multiaddr(host=host, peer_multiaddr=addr, message=message)
             if isinstance(resp, dict):
+                _explicit_addr_cooldown_mark_success(addr)
                 return resp
         except Exception:
+            _explicit_addr_cooldown_mark_failure(addr)
             continue
     return None
 
@@ -1674,10 +1716,25 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
     try:
         deadline = anyio.current_time() + max(0.1, discover_timeout_s)
         attempted: set[str] = set()
+        max_attempts_per_poll = _mdns_max_attempts_per_poll()
 
         while anyio.current_time() < deadline:
             discovered_peer_ids = list(mdns.listener.discovered_services.values())
+            preferred_peer_id = "" if require_peer_id else _get_last_success_peer(max_age_s=300.0)
+            if preferred_peer_id:
+                discovered_peer_ids = sorted(
+                    discovered_peer_ids,
+                    key=lambda pid: 0
+                    if ((pid.pretty() if hasattr(pid, "pretty") else str(pid)) == preferred_peer_id)
+                    else 1,
+                )
+
+            attempts_this_poll = 0
             for pid in discovered_peer_ids:
+                if attempts_this_poll >= max_attempts_per_poll:
+                    _retry_metric_inc("dial.mdns_attempt_limit")
+                    break
+
                 pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid)
 
                 if pid_text in attempted:
@@ -1705,11 +1762,19 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
                     continue
 
                 peer_info = PeerInfo(peer_id=pid, addrs=dial_addrs)
+                remote_ref = RemoteQueue(peer_id=pid_text, multiaddr=(dial_ma or ""))
+                remote_wait_s = _remote_cooldown_wait_s(remote_ref)
+                if remote_wait_s > 0:
+                    _retry_metric_inc("dial.mdns_cooldown_skip")
+                    continue
+                attempts_this_poll += 1
                 try:
                     await host.connect(peer_info)
                     stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
                     try:
                         resp = await _request_over_stream(stream=stream, message=message)
+                        _remote_cooldown_mark_success(remote_ref)
+                        _mark_last_success_peer(pid_text)
                         if dial_ma:
                             _cache_set_multiaddr(pid_text, dial_ma)
                         return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
@@ -1719,6 +1784,7 @@ async def _dial_via_mdns(*, host, message: Dict[str, Any], require_peer_id: str 
                         except Exception:
                             pass
                 except Exception:
+                    _remote_cooldown_mark_failure(remote_ref)
                     continue
 
             await anyio.sleep(0.1)
