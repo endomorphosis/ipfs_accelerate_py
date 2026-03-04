@@ -51,20 +51,56 @@ def _load_bespoke_tools_api() -> Dict[str, Any]:
 _API = _load_bespoke_tools_api()
 
 
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic dict envelopes."""
+    if isinstance(payload, dict):
+        return payload
+    if payload is None:
+        return {}
+    return {"result": payload}
+
+
+def _error_result(message: str, **context: Any) -> Dict[str, Any]:
+    """Build consistent validation/error envelope for wrapper edge failures."""
+    envelope: Dict[str, Any] = {
+        "status": "error",
+        "success": False,
+        "error": message,
+    }
+    envelope.update(context)
+    return envelope
+
+
 async def system_health() -> Dict[str, Any]:
     """Return system health metrics for MCP runtime smoke workflows."""
-    result = _API["system_health"]()
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        result = _API["system_health"]()
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc))
 
 
 async def cache_stats(namespace: Optional[str] = None) -> Dict[str, Any]:
     """Return cache statistics for optional namespace scope."""
-    result = _API["cache_stats"](namespace=namespace)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if namespace is not None and (not isinstance(namespace, str) or not namespace.strip()):
+        return _error_result("namespace must be null or a non-empty string", namespace=namespace)
+
+    clean_namespace = namespace.strip() if isinstance(namespace, str) else None
+
+    try:
+        result = _API["cache_stats"](namespace=clean_namespace)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("namespace", clean_namespace)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), namespace=clean_namespace)
 
 
 def register_native_bespoke_tools(manager: Any) -> None:
@@ -87,7 +123,7 @@ def register_native_bespoke_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "namespace": {"type": ["string", "null"]},
+                "namespace": {"type": ["string", "null"], "minLength": 1},
             },
             "required": [],
         },

@@ -60,20 +60,57 @@ def _load_finance_data_tools_api() -> Dict[str, Any]:
 _API = _load_finance_data_tools_api()
 
 
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic dict envelopes."""
+    if isinstance(payload, dict):
+        return payload
+    if payload is None:
+        return {}
+    return {"result": payload}
+
+
+def _error_result(message: str, **context: Any) -> Dict[str, Any]:
+    """Build consistent validation/error envelope for wrapper edge failures."""
+    envelope: Dict[str, Any] = {
+        "status": "error",
+        "success": False,
+        "error": message,
+    }
+    envelope.update(context)
+    return envelope
+
+
 async def scrape_stock_data(
     symbols: List[str],
     days: int = 5,
     include_volume: bool = True,
 ) -> Dict[str, Any]:
     """Scrape stock market data for a list of symbols."""
-    result = _API["scrape_stock_data"](
-        symbols=symbols,
-        days=days,
-        include_volume=include_volume,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(symbols, list) or not symbols or not all(
+        isinstance(symbol, str) and symbol.strip() for symbol in symbols
+    ):
+        return _error_result("symbols must be a non-empty list of non-empty strings", symbols=symbols)
+    if not isinstance(days, int) or days < 1:
+        return _error_result("days must be an integer >= 1", days=days)
+    if not isinstance(include_volume, bool):
+        return _error_result("include_volume must be a boolean", include_volume=include_volume)
+
+    clean_symbols = [symbol.strip().upper() for symbol in symbols]
+    try:
+        result = _API["scrape_stock_data"](
+            symbols=clean_symbols,
+            days=days,
+            include_volume=include_volume,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("symbols", clean_symbols)
+        envelope.setdefault("days", days)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), symbols=clean_symbols, days=days)
 
 
 async def scrape_financial_news(
@@ -82,14 +119,31 @@ async def scrape_financial_news(
     include_content: bool = True,
 ) -> Dict[str, Any]:
     """Scrape financial news articles for one or more topics."""
-    result = _API["scrape_financial_news"](
-        topics=topics,
-        max_articles=max_articles,
-        include_content=include_content,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(topics, list) or not topics or not all(
+        isinstance(topic, str) and topic.strip() for topic in topics
+    ):
+        return _error_result("topics must be a non-empty list of non-empty strings", topics=topics)
+    if not isinstance(max_articles, int) or max_articles < 1:
+        return _error_result("max_articles must be an integer >= 1", max_articles=max_articles)
+    if not isinstance(include_content, bool):
+        return _error_result("include_content must be a boolean", include_content=include_content)
+
+    clean_topics = [topic.strip() for topic in topics]
+    try:
+        result = _API["scrape_financial_news"](
+            topics=clean_topics,
+            max_articles=max_articles,
+            include_content=include_content,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("topics", clean_topics)
+        envelope.setdefault("max_articles", max_articles)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), topics=clean_topics, max_articles=max_articles)
 
 
 def register_native_finance_data_tools(manager: Any) -> None:
@@ -102,9 +156,13 @@ def register_native_finance_data_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "symbols": {"type": "array", "items": {"type": "string"}},
-                "days": {"type": "integer"},
-                "include_volume": {"type": "boolean"},
+                "symbols": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                },
+                "days": {"type": "integer", "minimum": 1, "default": 5},
+                "include_volume": {"type": "boolean", "default": True},
             },
             "required": ["symbols"],
         },
@@ -120,9 +178,13 @@ def register_native_finance_data_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "topics": {"type": "array", "items": {"type": "string"}},
-                "max_articles": {"type": "integer"},
-                "include_content": {"type": "boolean"},
+                "topics": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                },
+                "max_articles": {"type": "integer", "minimum": 1, "default": 3},
+                "include_content": {"type": "boolean", "default": True},
             },
             "required": ["topics"],
         },

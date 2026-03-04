@@ -7332,6 +7332,484 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_finance_data_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """finance_data_tools should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="finance-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("finance_data_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("scrape_stock_data", names)
+            self.assertIn("scrape_financial_news", names)
+
+            schema = await get_schema("finance_data_tools", "scrape_stock_data")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("symbols") or {}).get("minItems"), 1)
+            self.assertEqual(((props.get("symbols") or {}).get("items") or {}).get("minLength"), 1)
+            self.assertEqual((props.get("days") or {}).get("minimum"), 1)
+
+            invalid_symbols = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "finance_data_tools",
+                    "scrape_stock_data",
+                    {
+                        "symbols": [],
+                    },
+                )
+            )
+            self.assertEqual(invalid_symbols.get("status"), "error")
+            invalid_symbols_text = (
+                str(invalid_symbols.get("message", ""))
+                + " "
+                + str(invalid_symbols.get("error", ""))
+            )
+            self.assertIn("symbols must be a non-empty list", invalid_symbols_text)
+
+            invalid_max_articles = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "finance_data_tools",
+                    "scrape_financial_news",
+                    {
+                        "topics": ["markets"],
+                        "max_articles": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_max_articles.get("status"), "error")
+            invalid_max_articles_text = (
+                str(invalid_max_articles.get("message", ""))
+                + " "
+                + str(invalid_max_articles.get("error", ""))
+            )
+            self.assertIn("max_articles must be an integer >= 1", invalid_max_articles_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_legal_dataset_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """legal_dataset_tools should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="legal-dataset-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("legal_dataset_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("list_state_jurisdictions", names)
+            self.assertIn("scrape_state_laws", names)
+
+            schema = await get_schema("legal_dataset_tools", "scrape_state_laws")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("rate_limit_delay") or {}).get("minimum"), 0)
+            self.assertEqual((props.get("min_full_text_chars") or {}).get("minimum"), 1)
+            self.assertEqual(
+                (props.get("output_format") or {}).get("enum"),
+                ["json", "csv", "parquet"],
+            )
+
+            invalid_output_format = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "legal_dataset_tools",
+                    "scrape_state_laws",
+                    {
+                        "output_format": "xml",
+                    },
+                )
+            )
+            self.assertEqual(invalid_output_format.get("status"), "error")
+            invalid_output_format_text = (
+                str(invalid_output_format.get("message", ""))
+                + " "
+                + str(invalid_output_format.get("error", ""))
+            )
+            self.assertIn("output_format must be one of", invalid_output_format_text)
+
+            invalid_chars = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "legal_dataset_tools",
+                    "scrape_state_laws",
+                    {
+                        "output_format": "json",
+                        "min_full_text_chars": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_chars.get("status"), "error")
+            invalid_chars_text = (
+                str(invalid_chars.get("message", ""))
+                + " "
+                + str(invalid_chars.get("error", ""))
+            )
+            self.assertIn("min_full_text_chars must be an integer >= 1", invalid_chars_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_investigation_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """investigation_tools should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="investigation-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("investigation_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("analyze_entities", names)
+            self.assertIn("map_relationships", names)
+
+            schema = await get_schema("investigation_tools", "analyze_entities")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("analysis_type") or {}).get("minLength"), 1)
+            self.assertEqual((props.get("confidence_threshold") or {}).get("minimum"), 0)
+            self.assertEqual((props.get("confidence_threshold") or {}).get("maximum"), 1)
+
+            invalid_confidence = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "investigation_tools",
+                    "analyze_entities",
+                    {
+                        "corpus_data": '{"documents": []}',
+                        "confidence_threshold": 1.2,
+                    },
+                )
+            )
+            self.assertEqual(invalid_confidence.get("status"), "error")
+            invalid_confidence_text = (
+                str(invalid_confidence.get("message", ""))
+                + " "
+                + str(invalid_confidence.get("error", ""))
+            )
+            self.assertIn("confidence_threshold must be a number between 0 and 1", invalid_confidence_text)
+
+            invalid_depth = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "investigation_tools",
+                    "map_relationships",
+                    {
+                        "corpus_data": '{"documents": []}',
+                        "max_depth": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_depth.get("status"), "error")
+            invalid_depth_text = (
+                str(invalid_depth.get("message", ""))
+                + " "
+                + str(invalid_depth.get("error", ""))
+            )
+            self.assertIn("max_depth must be an integer >= 1", invalid_depth_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_software_engineering_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """software_engineering_tools should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="software-engineering-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("software_engineering_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("scrape_repository", names)
+            self.assertIn("search_repositories", names)
+
+            schema = await get_schema("software_engineering_tools", "scrape_repository")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("max_items") or {}).get("minimum"), 1)
+
+            invalid_url = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "software_engineering_tools",
+                    "scrape_repository",
+                    {
+                        "repository_url": "https://example.com/repo",
+                    },
+                )
+            )
+            self.assertEqual(invalid_url.get("status"), "error")
+            invalid_url_text = (
+                str(invalid_url.get("message", ""))
+                + " "
+                + str(invalid_url.get("error", ""))
+            )
+            self.assertIn("repository_url must start with", invalid_url_text)
+
+            invalid_max_results = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "software_engineering_tools",
+                    "search_repositories",
+                    {
+                        "query": "smoke",
+                        "max_results": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_max_results.get("status"), "error")
+            invalid_max_results_text = (
+                str(invalid_max_results.get("message", ""))
+                + " "
+                + str(invalid_max_results.get("error", ""))
+            )
+            self.assertIn("max_results must be an integer >= 1", invalid_max_results_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_bespoke_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """bespoke_tools should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="bespoke-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("bespoke_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("system_health", names)
+            self.assertIn("cache_stats", names)
+
+            schema = await get_schema("bespoke_tools", "cache_stats")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("namespace") or {}).get("minLength"), 1)
+
+            invalid_namespace = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "bespoke_tools",
+                    "cache_stats",
+                    {
+                        "namespace": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_namespace.get("status"), "error")
+            invalid_namespace_text = (
+                str(invalid_namespace.get("message", ""))
+                + " "
+                + str(invalid_namespace.get("error", ""))
+            )
+            self.assertIn("namespace must be null or a non-empty string", invalid_namespace_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_cli_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """cli should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="cli-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("cli")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("execute_command", names)
+
+            schema = await get_schema("cli", "execute_command")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("command") or {}).get("minLength"), 1)
+            self.assertEqual((props.get("timeout_seconds") or {}).get("minimum"), 1)
+
+            invalid_command = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cli",
+                    "execute_command",
+                    {
+                        "command": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_command.get("status"), "error")
+            invalid_command_text = (
+                str(invalid_command.get("message", ""))
+                + " "
+                + str(invalid_command.get("error", ""))
+            )
+            self.assertIn("command must be a non-empty string", invalid_command_text)
+
+            invalid_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cli",
+                    "execute_command",
+                    {
+                        "command": "echo",
+                        "timeout_seconds": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_timeout.get("status"), "error")
+            invalid_timeout_text = (
+                str(invalid_timeout.get("message", ""))
+                + " "
+                + str(invalid_timeout.get("error", ""))
+            )
+            self.assertIn("timeout_seconds must be an integer >= 1", invalid_timeout_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 

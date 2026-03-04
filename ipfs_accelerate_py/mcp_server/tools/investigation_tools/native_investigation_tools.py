@@ -65,6 +65,26 @@ def _load_investigation_tools_api() -> Dict[str, Any]:
 _API = _load_investigation_tools_api()
 
 
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic dict envelopes."""
+    if isinstance(payload, dict):
+        return payload
+    if payload is None:
+        return {}
+    return {"result": payload}
+
+
+def _error_result(message: str, **context: Any) -> Dict[str, Any]:
+    """Build consistent validation/error envelope for wrapper edge failures."""
+    envelope: Dict[str, Any] = {
+        "status": "error",
+        "success": False,
+        "error": message,
+    }
+    envelope.update(context)
+    return envelope
+
+
 async def analyze_entities(
     corpus_data: str,
     analysis_type: str = "comprehensive",
@@ -73,16 +93,47 @@ async def analyze_entities(
     user_context: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Analyze entities in corpus data for investigation workflows."""
-    result = _API["analyze_entities"](
-        corpus_data=corpus_data,
-        analysis_type=analysis_type,
-        entity_types=entity_types,
-        confidence_threshold=confidence_threshold,
-        user_context=user_context,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(corpus_data, str) or not corpus_data.strip():
+        return _error_result("corpus_data must be a non-empty string", corpus_data=corpus_data)
+    if not isinstance(analysis_type, str) or not analysis_type.strip():
+        return _error_result("analysis_type must be a non-empty string", analysis_type=analysis_type)
+    if entity_types is not None and (
+        not isinstance(entity_types, list)
+        or not all(isinstance(item, str) and item.strip() for item in entity_types)
+    ):
+        return _error_result(
+            "entity_types must be null or a list of non-empty strings",
+            entity_types=entity_types,
+        )
+    if not isinstance(confidence_threshold, (int, float)) or confidence_threshold < 0 or confidence_threshold > 1:
+        return _error_result(
+            "confidence_threshold must be a number between 0 and 1",
+            confidence_threshold=confidence_threshold,
+        )
+    if user_context is not None and (not isinstance(user_context, str) or not user_context.strip()):
+        return _error_result("user_context must be null or a non-empty string", user_context=user_context)
+
+    clean_entity_types = [item.strip() for item in entity_types] if entity_types is not None else None
+    clean_user_context = user_context.strip() if isinstance(user_context, str) else None
+    clean_analysis_type = analysis_type.strip()
+    clean_corpus_data = corpus_data.strip()
+
+    try:
+        result = _API["analyze_entities"](
+            corpus_data=clean_corpus_data,
+            analysis_type=clean_analysis_type,
+            entity_types=clean_entity_types,
+            confidence_threshold=float(confidence_threshold),
+            user_context=clean_user_context,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("analysis_type", clean_analysis_type)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), analysis_type=clean_analysis_type)
 
 
 async def map_relationships(
@@ -93,16 +144,45 @@ async def map_relationships(
     focus_entity: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Map relationships between entities in investigation corpus data."""
-    result = _API["map_relationships"](
-        corpus_data=corpus_data,
-        relationship_types=relationship_types,
-        min_strength=min_strength,
-        max_depth=max_depth,
-        focus_entity=focus_entity,
+    if not isinstance(corpus_data, str) or not corpus_data.strip():
+        return _error_result("corpus_data must be a non-empty string", corpus_data=corpus_data)
+    if relationship_types is not None and (
+        not isinstance(relationship_types, list)
+        or not all(isinstance(item, str) and item.strip() for item in relationship_types)
+    ):
+        return _error_result(
+            "relationship_types must be null or a list of non-empty strings",
+            relationship_types=relationship_types,
+        )
+    if not isinstance(min_strength, (int, float)) or min_strength < 0 or min_strength > 1:
+        return _error_result("min_strength must be a number between 0 and 1", min_strength=min_strength)
+    if not isinstance(max_depth, int) or max_depth < 1:
+        return _error_result("max_depth must be an integer >= 1", max_depth=max_depth)
+    if focus_entity is not None and (not isinstance(focus_entity, str) or not focus_entity.strip()):
+        return _error_result("focus_entity must be null or a non-empty string", focus_entity=focus_entity)
+
+    clean_relationship_types = (
+        [item.strip() for item in relationship_types] if relationship_types is not None else None
     )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    clean_focus_entity = focus_entity.strip() if isinstance(focus_entity, str) else None
+    clean_corpus_data = corpus_data.strip()
+
+    try:
+        result = _API["map_relationships"](
+            corpus_data=clean_corpus_data,
+            relationship_types=clean_relationship_types,
+            min_strength=float(min_strength),
+            max_depth=max_depth,
+            focus_entity=clean_focus_entity,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("max_depth", max_depth)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), max_depth=max_depth)
 
 
 def register_native_investigation_tools(manager: Any) -> None:
@@ -116,9 +196,9 @@ def register_native_investigation_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "corpus_data": {"type": "string"},
-                "analysis_type": {"type": "string"},
+                "analysis_type": {"type": "string", "minLength": 1, "default": "comprehensive"},
                 "entity_types": {"type": ["array", "null"], "items": {"type": "string"}},
-                "confidence_threshold": {"type": "number"},
+                "confidence_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.85},
                 "user_context": {"type": ["string", "null"]},
             },
             "required": ["corpus_data"],
@@ -137,8 +217,8 @@ def register_native_investigation_tools(manager: Any) -> None:
             "properties": {
                 "corpus_data": {"type": "string"},
                 "relationship_types": {"type": ["array", "null"], "items": {"type": "string"}},
-                "min_strength": {"type": "number"},
-                "max_depth": {"type": "integer"},
+                "min_strength": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.5},
+                "max_depth": {"type": "integer", "minimum": 1, "default": 3},
                 "focus_entity": {"type": ["string", "null"]},
             },
             "required": ["corpus_data"],
