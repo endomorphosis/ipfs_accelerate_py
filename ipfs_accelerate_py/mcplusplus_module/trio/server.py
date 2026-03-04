@@ -184,6 +184,9 @@ class TrioMCPServer:
 
             # Register default prompts for parity (prompts are optional).
             try:
+                if self.mcp is None:
+                    raise RuntimeError("MCP server not initialized")
+
                 try:
                     from ipfs_accelerate_py.mcp.fastmcp_compat import ensure_register_prompt_compat
 
@@ -273,13 +276,18 @@ class TrioMCPServer:
             FastAPI application instance
         """
         try:
+            if self.mcp is None:
+                raise RuntimeError("MCP server not initialized")
+
+            mcp = self.mcp
+
             from fastapi import FastAPI
             from fastapi.middleware.cors import CORSMiddleware
 
             # Create FastAPI app
-            if hasattr(self.mcp, "create_fastapi_app"):
+            if hasattr(mcp, "create_fastapi_app"):
                 # FastMCP provides this method
-                app = self.mcp.create_fastapi_app(
+                app = mcp.create_fastapi_app(
                     title="IPFS Accelerate MCP++ API (Trio)",
                     description="Trio-native MCP server with P2P capabilities",
                     version="0.1.0",

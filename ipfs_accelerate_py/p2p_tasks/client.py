@@ -1053,6 +1053,30 @@ def _mdns_max_attempts_per_poll() -> int:
         return 4
 
 
+def _rendezvous_max_attempts() -> int:
+    """Maximum rendezvous peer dial attempts per discovery pass."""
+
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS_MAX_ATTEMPTS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS_MAX_ATTEMPTS", "6")
+        return max(1, int(str(raw).strip()))
+    except Exception:
+        return 6
+
+
+def _dht_max_provider_attempts() -> int:
+    """Maximum DHT provider peer dial attempts per discovery pass."""
+
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_DHT_MAX_PROVIDER_ATTEMPTS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_DHT_MAX_PROVIDER_ATTEMPTS", "8")
+        return max(1, int(str(raw).strip()))
+    except Exception:
+        return 8
+
+
 def _mark_last_success_peer(peer_id: str) -> None:
     pid = str(peer_id or "").strip()
     if not pid:
@@ -1840,18 +1864,39 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
                 found = discover(ns)
                 peers = list(found or [])
 
+            max_attempts = _rendezvous_max_attempts()
+            attempts = 0
             for peer_info in list(peers or []):
                 try:
+                    if attempts >= max_attempts:
+                        _retry_metric_inc("dial.rendezvous_attempt_limit")
+                        break
                     pid = getattr(peer_info, "peer_id", None)
                     pid_text = pid.pretty() if hasattr(pid, "pretty") else str(pid or "")
                     if require_peer_id and pid_text != require_peer_id:
                         continue
                     if exclude_peer_id and pid_text and pid_text == exclude_peer_id:
                         continue
+
+                    dial_ma = ""
+                    try:
+                        addrs = getattr(peer_info, "addrs", None)
+                        dial_ma = _pick_best_peer_multiaddr_text(addrs, pid_text)
+                    except Exception:
+                        dial_ma = ""
+                    remote_ref = RemoteQueue(peer_id=pid_text, multiaddr=dial_ma)
+                    remote_wait_s = _remote_cooldown_wait_s(remote_ref)
+                    if remote_wait_s > 0:
+                        _retry_metric_inc("dial.rendezvous_cooldown_skip")
+                        continue
+
+                    attempts += 1
                     await host.connect(peer_info)
                     stream = await host.new_stream(peer_info.peer_id, [PROTOCOL_V1])
                     try:
                         resp = await _request_over_stream(stream=stream, message=message)
+                        _remote_cooldown_mark_success(remote_ref)
+                        _mark_last_success_peer(pid_text)
                         return resp if isinstance(resp, dict) else None
                     finally:
                         try:
@@ -1859,6 +1904,10 @@ async def _dial_via_rendezvous(*, host, message: Dict[str, Any], require_peer_id
                         except Exception:
                             pass
                 except Exception:
+                    try:
+                        _remote_cooldown_mark_failure(RemoteQueue(peer_id=pid_text, multiaddr=""))
+                    except Exception:
+                        pass
                     continue
         except Exception:
             continue
@@ -1967,10 +2016,18 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                     if not peer_info:
                         continue
                     try:
+                        remote_ref = RemoteQueue(peer_id=str(require_peer_id or "").strip(), multiaddr="")
+                        remote_wait_s = _remote_cooldown_wait_s(remote_ref)
+                        if remote_wait_s > 0:
+                            _retry_metric_inc("dial.dht_find_peer_cooldown_skip")
+                            continue
                         resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
                         if isinstance(resp, dict):
+                            _remote_cooldown_mark_success(remote_ref)
+                            _mark_last_success_peer(str(require_peer_id or "").strip())
                             return resp
                     except Exception:
+                        _remote_cooldown_mark_failure(remote_ref)
                         continue
                     continue
 
@@ -1985,8 +2042,13 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                         except Exception:
                             continue
 
+                max_provider_attempts = _dht_max_provider_attempts()
+                provider_attempts = 0
                 for peer_info in list(providers or []):
                     try:
+                        if provider_attempts >= max_provider_attempts:
+                            _retry_metric_inc("dial.dht_provider_attempt_limit")
+                            break
                         pid_text = ""
                         try:
                             pid = getattr(peer_info, "peer_id", None)
@@ -1995,10 +2057,30 @@ async def _dial_via_dht(*, host, message: Dict[str, Any], require_peer_id: str =
                             pid_text = ""
                         if exclude_peer_id and pid_text and pid_text == exclude_peer_id:
                             continue
+
+                        dial_ma = ""
+                        try:
+                            addrs = getattr(peer_info, "addrs", None)
+                            dial_ma = _pick_best_peer_multiaddr_text(addrs, pid_text)
+                        except Exception:
+                            dial_ma = ""
+                        remote_ref = RemoteQueue(peer_id=pid_text, multiaddr=dial_ma)
+                        remote_wait_s = _remote_cooldown_wait_s(remote_ref)
+                        if remote_wait_s > 0:
+                            _retry_metric_inc("dial.dht_provider_cooldown_skip")
+                            continue
+
+                        provider_attempts += 1
                         resp = await _try_peer_info(host=host, peer_info=peer_info, message=message)
                         if isinstance(resp, dict):
+                            _remote_cooldown_mark_success(remote_ref)
+                            _mark_last_success_peer(pid_text)
                             return resp
                     except Exception:
+                        try:
+                            _remote_cooldown_mark_failure(RemoteQueue(peer_id=pid_text, multiaddr=""))
+                        except Exception:
+                            pass
                         continue
         except Exception:
             continue
@@ -3682,9 +3764,43 @@ async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.
     dial_timeout_s = max(20.0, float(timeout_s) + 15.0)
 
     for attempt in range(retries + 1):
-        attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
+        # `wait` is a long-poll operation: keep per-attempt dial timeout at
+        # least the long-poll window so global retry timeout caps for short RPCs
+        # do not truncate wait calls (which causes false timeouts under load).
+        attempt_dial_timeout_s = max(
+            float(dial_timeout_s),
+            _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt),
+        )
+        broad_discovery_override: bool | None = None
+        # Keep wait retries consistent with short RPCs by preferring
+        # lightweight dialing until the final fallback attempt.
+        prefer_lightweight_first = _prefer_lightweight_first_enabled()
+        if prefer_lightweight_first and attempt < retries:
+            broad_discovery_override = False
+            if attempt == 0:
+                _retry_metric_inc("wait.lightweight_first")
+            else:
+                _retry_metric_inc("wait.retry_lightweight_discovery")
+        elif attempt > 0 and _retry_lightweight_discovery_enabled():
+            broad_discovery_override = False
+            _retry_metric_inc("wait.retry_lightweight_discovery")
         cooldown_wait_s = _remote_cooldown_wait_s(remote)
         if cooldown_wait_s > 0:
+            failfast_threshold_s = _cooldown_failfast_threshold_s()
+            if (
+                _cooldown_failfast_enabled()
+                and cooldown_wait_s >= failfast_threshold_s
+                and attempt < retries
+            ):
+                _retry_metric_inc("wait.cooldown_fast_fail")
+                quick_delay_s = min(0.2, _retry_delay_s(attempt=attempt, base_ms=base_ms))
+                _dial_debug(
+                    f"wait cooldown fast-fail attempt={attempt + 1}/{retries + 1} "
+                    f"cooldown_wait_s={cooldown_wait_s:.3f} quick_delay_s={quick_delay_s:.3f}"
+                )
+                if quick_delay_s > 0:
+                    await anyio.sleep(quick_delay_s)
+                continue
             _retry_metric_inc("wait.cooldown_wait")
             _dial_debug(f"wait cooldown wait before attempt={attempt + 1}/{retries + 1} wait_s={cooldown_wait_s:.3f}")
             await anyio.sleep(cooldown_wait_s)
@@ -3695,12 +3811,26 @@ async def wait_task(*, remote: RemoteQueue, task_id: str, timeout_s: float = 60.
                     remote=remote,
                     message={"op": "wait", "task_id": task_id, "timeout_s": float(timeout_s)},
                     dial_timeout_s=attempt_dial_timeout_s,
+                    allow_broad_discovery_override=broad_discovery_override,
                 )
             finally:
                 release_slot()
-            _remote_cooldown_mark_success(remote)
             if not resp.get("ok"):
+                if _is_retryable_response_error(resp):
+                    _remote_cooldown_mark_failure(remote)
+                    if attempt >= retries:
+                        _retry_metric_inc("wait.failed")
+                        raise RuntimeError(f"wait failed: {resp}")
+                    delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
+                    _retry_metric_inc("wait.retry")
+                    _retry_metric_inc("wait.retry_response")
+                    _dial_debug(
+                        f"wait retry after retryable response attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
+                    )
+                    await anyio.sleep(delay_s)
+                    continue
                 raise RuntimeError(f"wait failed: {resp}")
+            _remote_cooldown_mark_success(remote)
             task = resp.get("task")
             if attempt > 0:
                 _retry_metric_inc("wait.recovered")

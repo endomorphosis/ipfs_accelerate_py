@@ -7007,6 +7007,251 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_development_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """development_tools should expose source-compatible schema and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="development-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("development_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("codebase_search", names)
+            self.assertIn("vscode_cli_status", names)
+
+            schema = await get_schema("development_tools", "codebase_search")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("context") or {}).get("minimum"), 0)
+            self.assertIn("json", (props.get("format") or {}).get("enum", []))
+
+            invalid_pattern = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "development_tools",
+                    "codebase_search",
+                    {
+                        "pattern": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_pattern.get("status"), "error")
+            invalid_pattern_text = (
+                str(invalid_pattern.get("message", ""))
+                + " "
+                + str(invalid_pattern.get("error", ""))
+            )
+            self.assertIn("pattern is required", invalid_pattern_text)
+
+            invalid_context = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "development_tools",
+                    "codebase_search",
+                    {
+                        "pattern": "foo",
+                        "context": -1,
+                    },
+                )
+            )
+            self.assertEqual(invalid_context.get("status"), "error")
+            invalid_context_text = (
+                str(invalid_context.get("message", ""))
+                + " "
+                + str(invalid_context.get("error", ""))
+            )
+            self.assertIn("context must be an integer >= 0", invalid_context_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_media_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """media_tools should expose source-compatible schema and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="media-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("media_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("ffmpeg_analyze", names)
+            self.assertIn("ytdlp_extract_info", names)
+
+            schema = await get_schema("media_tools", "ytdlp_extract_info")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("url") or {}).get("minLength"), 1)
+
+            invalid_input = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "media_tools",
+                    "ffmpeg_analyze",
+                    {
+                        "input_file": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_input.get("status"), "error")
+            invalid_input_text = (
+                str(invalid_input.get("message", ""))
+                + " "
+                + str(invalid_input.get("error", ""))
+            )
+            self.assertIn("input_file must be a non-empty string or object", invalid_input_text)
+
+            invalid_url = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "media_tools",
+                    "ytdlp_extract_info",
+                    {
+                        "url": "example.com/video",
+                    },
+                )
+            )
+            self.assertEqual(invalid_url.get("status"), "error")
+            invalid_url_text = (
+                str(invalid_url.get("message", ""))
+                + " "
+                + str(invalid_url.get("error", ""))
+            )
+            self.assertIn("url must start with http:// or https://", invalid_url_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_workflow_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """workflow_tools should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="workflow-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("workflow_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("resume_workflow", names)
+            self.assertIn("merge_merkle_clock", names)
+
+            schema = await get_schema("workflow_tools", "schedule_p2p_workflow")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("workflow_id") or {}).get("minLength"), 1)
+            self.assertEqual((props.get("tags") or {}).get("minItems"), 1)
+            self.assertEqual((props.get("priority") or {}).get("minimum"), 0)
+
+            invalid_workflow_id = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow_tools",
+                    "resume_workflow",
+                    {
+                        "workflow_id": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_workflow_id.get("status"), "error")
+            invalid_workflow_id_text = (
+                str(invalid_workflow_id.get("message", ""))
+                + " "
+                + str(invalid_workflow_id.get("error", ""))
+            )
+            self.assertIn("workflow_id must be a non-empty string", invalid_workflow_id_text)
+
+            invalid_counter = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow_tools",
+                    "merge_merkle_clock",
+                    {
+                        "other_peer_id": "peer-a",
+                        "other_counter": -1,
+                    },
+                )
+            )
+            self.assertEqual(invalid_counter.get("status"), "error")
+            invalid_counter_text = (
+                str(invalid_counter.get("message", ""))
+                + " "
+                + str(invalid_counter.get("error", ""))
+            )
+            self.assertIn("other_counter must be an integer >= 0", invalid_counter_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 

@@ -2,6 +2,7 @@
 """Unit tests for unified MCP++ peer primitives."""
 
 import unittest
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import anyio
@@ -52,7 +53,7 @@ class TestPeerPrimitives(unittest.TestCase):
 
     def test_discovery_manager_capability_filter(self) -> None:
         async def _run() -> None:
-            manager = PeerDiscoveryManager(registry=_FakeRegistry())
+            manager = PeerDiscoveryManager(registry=cast(object, _FakeRegistry()))
             peers = await manager.discover_peers(capability_filter=["compute"])
             self.assertEqual(len(peers), 1)
             self.assertEqual(peers[0].peer_id, "peer-a")

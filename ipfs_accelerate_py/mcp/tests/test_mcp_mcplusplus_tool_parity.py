@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import inspect
 import asyncio
+from typing import cast
 from urllib.parse import urlparse
 
 
@@ -120,7 +121,12 @@ def _prompt_names(server: object) -> set[str]:
 
     if hasattr(server, "list_prompts"):
         ps = _run_async(server.list_prompts())
-        return {getattr(p, "name", None) for p in ps if getattr(p, "name", None)}
+        names: set[str] = set()
+        for p in ps:
+            name = getattr(p, "name", None)
+            if isinstance(name, str) and name:
+                names.add(name)
+        return names
 
     return set()
 
@@ -247,7 +253,8 @@ def test_run_in_trio_from_asyncio_context_smoke() -> None:
 
     async def main() -> tuple[int, int, int, str]:
         outer_tid = threading.get_ident()
-        result, inner_tid, lib = await run_in_trio(trio_nursery_smoke, 21)
+        trio_result = await run_in_trio(trio_nursery_smoke, 21)
+        result, inner_tid, lib = cast(tuple[int, int, str], trio_result)
         return result, outer_tid, inner_tid, lib
 
     result, outer_tid, inner_tid, lib = anyio.run(main, backend="asyncio")
@@ -272,7 +279,8 @@ def test_run_in_trio_inside_trio_context_smoke() -> None:
 
     async def main() -> tuple[int, int, str]:
         outer_tid = threading.get_ident()
-        inner_tid, lib = await run_in_trio(check_thread_and_lib)
+        trio_result = await run_in_trio(check_thread_and_lib)
+        inner_tid, lib = cast(tuple[int, str], trio_result)
         return outer_tid, inner_tid, lib
 
     outer_tid, inner_tid, lib = anyio.run(main, backend="trio")

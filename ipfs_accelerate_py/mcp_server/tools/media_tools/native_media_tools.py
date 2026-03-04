@@ -55,12 +55,55 @@ def _load_media_tools_api() -> Dict[str, Any]:
 _API = _load_media_tools_api()
 
 
+def _normalize_payload(result: Any) -> Dict[str, Any]:
+    """Normalize backend output into deterministic status envelopes."""
+    if isinstance(result, dict):
+        payload = dict(result)
+        if payload.get("error"):
+            payload.setdefault("status", "error")
+        else:
+            payload.setdefault("status", "success")
+        return payload
+    return {"status": "success", "result": result}
+
+
 async def ffmpeg_analyze(input_file: Union[str, Dict[str, Any]]) -> Dict[str, Any]:
     """Analyze media metadata using FFmpeg-backed wrappers."""
-    result = _API["ffmpeg_analyze"](input_file=input_file)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_input: Union[str, Dict[str, Any]]
+    if isinstance(input_file, str):
+        normalized = input_file.strip()
+        if not normalized:
+            return {
+                "status": "error",
+                "error": "input_file must be a non-empty string or object",
+            }
+        normalized_input = normalized
+    elif isinstance(input_file, dict):
+        if not input_file:
+            return {
+                "status": "error",
+                "error": "input_file object must not be empty",
+            }
+        normalized_input = input_file
+    else:
+        return {
+            "status": "error",
+            "error": "input_file must be a non-empty string or object",
+        }
+
+    try:
+        result = _API["ffmpeg_analyze"](input_file=normalized_input)
+        resolved = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "input_file": normalized_input,
+        }
+
+    payload = _normalize_payload(resolved)
+    payload.setdefault("input_file", normalized_input)
+    return payload
 
 
 async def ytdlp_extract_info(
@@ -69,14 +112,48 @@ async def ytdlp_extract_info(
     no_warnings: bool = True,
 ) -> Dict[str, Any]:
     """Extract media metadata using yt-dlp-backed wrappers."""
-    result = _API["ytdlp_extract_info"](
-        url=url,
-        flat_playlist=flat_playlist,
-        no_warnings=no_warnings,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_url = str(url or "").strip()
+    if not normalized_url:
+        return {
+            "status": "error",
+            "error": "url is required",
+        }
+    if not (normalized_url.startswith("http://") or normalized_url.startswith("https://")):
+        return {
+            "status": "error",
+            "error": "url must start with http:// or https://",
+            "url": normalized_url,
+        }
+    if not isinstance(flat_playlist, bool):
+        return {
+            "status": "error",
+            "error": "flat_playlist must be a boolean",
+            "url": normalized_url,
+        }
+    if not isinstance(no_warnings, bool):
+        return {
+            "status": "error",
+            "error": "no_warnings must be a boolean",
+            "url": normalized_url,
+        }
+
+    try:
+        result = _API["ytdlp_extract_info"](
+            url=normalized_url,
+            flat_playlist=flat_playlist,
+            no_warnings=no_warnings,
+        )
+        resolved = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": str(exc),
+            "url": normalized_url,
+        }
+
+    payload = _normalize_payload(resolved)
+    payload.setdefault("url", normalized_url)
+    return payload
 
 
 def register_native_media_tools(manager: Any) -> None:
@@ -91,8 +168,8 @@ def register_native_media_tools(manager: Any) -> None:
             "properties": {
                 "input_file": {
                     "oneOf": [
-                        {"type": "string"},
-                        {"type": "object"},
+                        {"type": "string", "minLength": 1},
+                        {"type": "object", "minProperties": 1},
                     ]
                 }
             },
@@ -110,9 +187,9 @@ def register_native_media_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "url": {"type": "string"},
-                "flat_playlist": {"type": "boolean"},
-                "no_warnings": {"type": "boolean"},
+                "url": {"type": "string", "minLength": 1},
+                "flat_playlist": {"type": "boolean", "default": False},
+                "no_warnings": {"type": "boolean", "default": True},
             },
             "required": ["url"],
         },

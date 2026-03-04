@@ -11,12 +11,13 @@ import anyio
 logger = logging.getLogger(__name__)
 
 try:
-    from ipfs_accelerate_py.mcplusplus_module.p2p.peer_registry import P2PPeerRegistry as _PeerRegistry
+    from ipfs_accelerate_py.mcplusplus_module.p2p.peer_registry import P2PPeerRegistry as _PeerRegistryImpl
 
     HAVE_PEER_REGISTRY = True
+    _PeerRegistry: Any = _PeerRegistryImpl
 except ImportError:
     HAVE_PEER_REGISTRY = False
-    _PeerRegistry = None  # type: ignore[assignment]
+    _PeerRegistry = None
 
 
 class PeerRegistryWrapper:
@@ -59,9 +60,10 @@ class PeerRegistryWrapper:
             peers = [p for p in result if isinstance(p, dict)]
             return peers[: int(max_peers)]
         if isinstance(result, dict):
-            peers = result.get("peers")
-            if isinstance(peers, list):
-                return [p for p in peers if isinstance(p, dict)][: int(max_peers)]
+            peers_obj = result.get("peers")
+            if isinstance(peers_obj, list):
+                peers = [p for p in peers_obj if isinstance(p, dict)]
+                return peers[: int(max_peers)]
         return []
 
     async def connect_to_peer(self, peer_id: str, multiaddr: str) -> bool:

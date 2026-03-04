@@ -71,7 +71,7 @@ def reset_scheduler() -> None:
     if not HAVE_WORKFLOW_SCHEDULER:
         return
     try:
-        if _reset_scheduler:
+        if _reset_scheduler is not None:
             _reset_scheduler()
     except Exception as exc:
         logger.error("Failed to reset workflow scheduler: %s", exc)

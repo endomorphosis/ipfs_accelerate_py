@@ -13,14 +13,20 @@ import traceback
 from typing import Dict, List, Any, Optional, Union
 
 # Try to import numpy
+np: Any
 try:
-    import numpy as np
+    import numpy as _np
+
+    np = _np
     HAVE_NUMPY = True
 except ImportError:
     HAVE_NUMPY = False
     np = None
 
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.inference")
+
+# Lazily populated runtime singleton used by inference helpers.
+_ipfs_instance: Optional[Any] = None
 
 # Try to import datasets integration for inference logging
 try:

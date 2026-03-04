@@ -300,6 +300,26 @@ def _load_workflow_tools_api() -> Dict[str, Any]:
 _API = _load_workflow_tools_api()
 
 
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize tool results to deterministic dictionary envelopes."""
+    if isinstance(payload, dict):
+        return payload
+    if payload is None:
+        return {}
+    return {"result": payload}
+
+
+def _error_result(message: str, **context: Any) -> Dict[str, Any]:
+    """Build consistent validation/error envelope for wrapper edge failures."""
+    envelope: Dict[str, Any] = {
+        "status": "error",
+        "success": False,
+        "error": message,
+    }
+    envelope.update(context)
+    return envelope
+
+
 async def execute_workflow(
     workflow_definition: Optional[Dict[str, Any]] = None,
     workflow_id: Optional[str] = None,
@@ -350,10 +370,22 @@ async def create_workflow(
 
 async def create_template(template: Dict[str, Any]) -> Dict[str, Any]:
     """Create a reusable workflow template."""
-    result = _API["create_template"](template=template)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        if not isinstance(template, dict) or not template:
+            return _error_result(
+                "template must be a non-empty object",
+                template=template,
+            )
+        result = _API["create_template"](template=template)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("success", True)
+        envelope.setdefault("template", template)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), template=template)
 
 
 async def schedule_workflow(
@@ -412,10 +444,20 @@ async def list_templates() -> Dict[str, Any]:
 
 async def resume_workflow(workflow_id: str) -> Dict[str, Any]:
     """Resume a paused workflow."""
-    result = _API["resume_workflow"](workflow_id=workflow_id)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        if not isinstance(workflow_id, str) or not workflow_id.strip():
+            return _error_result("workflow_id must be a non-empty string", workflow_id=workflow_id)
+        workflow_id = workflow_id.strip()
+        result = _API["resume_workflow"](workflow_id=workflow_id)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("success", True)
+        envelope.setdefault("workflow_id", workflow_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), workflow_id=workflow_id)
 
 
 async def get_workflow_metrics(
@@ -450,10 +492,20 @@ async def initialize_p2p_scheduler(
 
 async def pause_workflow(workflow_id: str) -> Dict[str, Any]:
     """Pause a running workflow."""
-    result = _API["pause_workflow"](workflow_id=workflow_id)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        if not isinstance(workflow_id, str) or not workflow_id.strip():
+            return _error_result("workflow_id must be a non-empty string", workflow_id=workflow_id)
+        workflow_id = workflow_id.strip()
+        result = _API["pause_workflow"](workflow_id=workflow_id)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("success", True)
+        envelope.setdefault("workflow_id", workflow_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), workflow_id=workflow_id)
 
 
 async def list_workflows(include_logs: Optional[bool] = None) -> Dict[str, Any]:
@@ -466,10 +518,20 @@ async def list_workflows(include_logs: Optional[bool] = None) -> Dict[str, Any]:
 
 async def run_workflow(workflow_id: str) -> Dict[str, Any]:
     """Run a registered workflow by ID."""
-    result = _API["run_workflow"](workflow_id=workflow_id)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        if not isinstance(workflow_id, str) or not workflow_id.strip():
+            return _error_result("workflow_id must be a non-empty string", workflow_id=workflow_id)
+        workflow_id = workflow_id.strip()
+        result = _API["run_workflow"](workflow_id=workflow_id)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("success", True)
+        envelope.setdefault("workflow_id", workflow_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), workflow_id=workflow_id)
 
 
 async def schedule_p2p_workflow(
@@ -480,16 +542,54 @@ async def schedule_p2p_workflow(
     metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Schedule a workflow for P2P execution."""
-    result = _API["schedule_p2p_workflow"](
-        workflow_id=workflow_id,
-        name=name,
-        tags=tags,
-        priority=priority,
-        metadata=metadata,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        if not isinstance(workflow_id, str) or not workflow_id.strip():
+            return _error_result("workflow_id must be a non-empty string", workflow_id=workflow_id)
+        if not isinstance(name, str) or not name.strip():
+            return _error_result("name must be a non-empty string", name=name, workflow_id=workflow_id)
+        if not isinstance(tags, list) or not tags or not all(
+            isinstance(tag, str) and tag.strip() for tag in tags
+        ):
+            return _error_result(
+                "tags must be a non-empty list of non-empty strings",
+                tags=tags,
+                workflow_id=workflow_id,
+            )
+        if not isinstance(priority, (int, float)) or priority < 0:
+            return _error_result(
+                "priority must be a number >= 0",
+                priority=priority,
+                workflow_id=workflow_id,
+            )
+        if metadata is not None and not isinstance(metadata, dict):
+            return _error_result(
+                "metadata must be an object when provided",
+                metadata=metadata,
+                workflow_id=workflow_id,
+            )
+
+        workflow_id = workflow_id.strip()
+        name = name.strip()
+        clean_tags = [tag.strip() for tag in tags]
+
+        result = _API["schedule_p2p_workflow"](
+            workflow_id=workflow_id,
+            name=name,
+            tags=clean_tags,
+            priority=float(priority),
+            metadata=metadata,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("success", True)
+        envelope.setdefault("workflow_id", workflow_id)
+        envelope.setdefault("name", name)
+        envelope.setdefault("tags", clean_tags)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), workflow_id=workflow_id, name=name)
 
 
 async def get_next_p2p_workflow() -> Dict[str, Any]:
@@ -502,18 +602,38 @@ async def get_next_p2p_workflow() -> Dict[str, Any]:
 
 async def add_p2p_peer(peer_id: str) -> Dict[str, Any]:
     """Add a peer to the P2P scheduler membership."""
-    result = _API["add_p2p_peer"](peer_id=peer_id)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        if not isinstance(peer_id, str) or not peer_id.strip():
+            return _error_result("peer_id must be a non-empty string", peer_id=peer_id)
+        peer_id = peer_id.strip()
+        result = _API["add_p2p_peer"](peer_id=peer_id)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("success", True)
+        envelope.setdefault("peer_id", peer_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), peer_id=peer_id)
 
 
 async def remove_p2p_peer(peer_id: str) -> Dict[str, Any]:
     """Remove a peer from P2P scheduler membership."""
-    result = _API["remove_p2p_peer"](peer_id=peer_id)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        if not isinstance(peer_id, str) or not peer_id.strip():
+            return _error_result("peer_id must be a non-empty string", peer_id=peer_id)
+        peer_id = peer_id.strip()
+        result = _API["remove_p2p_peer"](peer_id=peer_id)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("success", True)
+        envelope.setdefault("peer_id", peer_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), peer_id=peer_id)
 
 
 async def get_p2p_scheduler_status() -> Dict[str, Any]:
@@ -526,10 +646,24 @@ async def get_p2p_scheduler_status() -> Dict[str, Any]:
 
 async def calculate_peer_distance(hash1: str, hash2: str) -> Dict[str, Any]:
     """Calculate peer-distance/hamming-distance between two hashes."""
-    result = _API["calculate_peer_distance"](hash1=hash1, hash2=hash2)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        if not isinstance(hash1, str) or not hash1.strip():
+            return _error_result("hash1 must be a non-empty string", hash1=hash1, hash2=hash2)
+        if not isinstance(hash2, str) or not hash2.strip():
+            return _error_result("hash2 must be a non-empty string", hash1=hash1, hash2=hash2)
+        hash1 = hash1.strip()
+        hash2 = hash2.strip()
+        result = _API["calculate_peer_distance"](hash1=hash1, hash2=hash2)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("success", True)
+        envelope.setdefault("hash1", hash1)
+        envelope.setdefault("hash2", hash2)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), hash1=hash1, hash2=hash2)
 
 
 async def merge_merkle_clock(
@@ -539,15 +673,57 @@ async def merge_merkle_clock(
     other_timestamp: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Merge remote peer merkle-clock state into local scheduler state."""
-    result = _API["merge_merkle_clock"](
-        other_peer_id=other_peer_id,
-        other_counter=other_counter,
-        other_parent_hash=other_parent_hash,
-        other_timestamp=other_timestamp,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        if not isinstance(other_peer_id, str) or not other_peer_id.strip():
+            return _error_result(
+                "other_peer_id must be a non-empty string",
+                other_peer_id=other_peer_id,
+                other_counter=other_counter,
+            )
+        if not isinstance(other_counter, int) or other_counter < 0:
+            return _error_result(
+                "other_counter must be an integer >= 0",
+                other_peer_id=other_peer_id,
+                other_counter=other_counter,
+            )
+        if other_parent_hash is not None and (
+            not isinstance(other_parent_hash, str) or not other_parent_hash.strip()
+        ):
+            return _error_result(
+                "other_parent_hash must be a non-empty string when provided",
+                other_parent_hash=other_parent_hash,
+                other_peer_id=other_peer_id,
+            )
+        if other_timestamp is not None and not isinstance(other_timestamp, (int, float)):
+            return _error_result(
+                "other_timestamp must be a number when provided",
+                other_timestamp=other_timestamp,
+                other_peer_id=other_peer_id,
+            )
+
+        other_peer_id = other_peer_id.strip()
+        parent_hash = other_parent_hash.strip() if isinstance(other_parent_hash, str) else other_parent_hash
+
+        result = _API["merge_merkle_clock"](
+            other_peer_id=other_peer_id,
+            other_counter=other_counter,
+            other_parent_hash=parent_hash,
+            other_timestamp=float(other_timestamp) if isinstance(other_timestamp, (int, float)) else None,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("success", True)
+        envelope.setdefault("other_peer_id", other_peer_id)
+        envelope.setdefault("other_counter", other_counter)
+        return envelope
+    except Exception as exc:
+        return _error_result(
+            str(exc),
+            other_peer_id=other_peer_id,
+            other_counter=other_counter,
+        )
 
 
 def register_native_workflow_tools_category(manager: Any) -> None:
@@ -614,7 +790,7 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "template": {"type": "object"},
+                "template": {"type": "object", "minProperties": 1},
             },
             "required": ["template"],
         },
@@ -707,7 +883,7 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
             },
             "required": ["workflow_id"],
         },
@@ -761,7 +937,7 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
             },
             "required": ["workflow_id"],
         },
@@ -793,7 +969,7 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
             },
             "required": ["workflow_id"],
         },
@@ -809,13 +985,14 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
-                "name": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
+                "name": {"type": "string", "minLength": 1},
                 "tags": {
                     "type": "array",
                     "items": {"type": "string"},
+                    "minItems": 1,
                 },
-                "priority": {"type": "number"},
+                "priority": {"type": "number", "minimum": 0, "default": 1.0},
                 "metadata": {"type": ["object", "null"]},
             },
             "required": ["workflow_id", "name", "tags"],
@@ -846,7 +1023,7 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "peer_id": {"type": "string"},
+                "peer_id": {"type": "string", "minLength": 1},
             },
             "required": ["peer_id"],
         },
@@ -862,7 +1039,7 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "peer_id": {"type": "string"},
+                "peer_id": {"type": "string", "minLength": 1},
             },
             "required": ["peer_id"],
         },
@@ -892,8 +1069,8 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "hash1": {"type": "string"},
-                "hash2": {"type": "string"},
+                "hash1": {"type": "string", "minLength": 1},
+                "hash2": {"type": "string", "minLength": 1},
             },
             "required": ["hash1", "hash2"],
         },
@@ -909,8 +1086,8 @@ def register_native_workflow_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "other_peer_id": {"type": "string"},
-                "other_counter": {"type": "integer"},
+                "other_peer_id": {"type": "string", "minLength": 1},
+                "other_counter": {"type": "integer", "minimum": 0},
                 "other_parent_hash": {"type": ["string", "null"]},
                 "other_timestamp": {"type": ["number", "null"]},
             },

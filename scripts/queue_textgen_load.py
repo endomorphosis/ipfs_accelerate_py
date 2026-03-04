@@ -274,7 +274,7 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
         import anyio
 
         with contextlib.redirect_stdout(sys.stderr):
-            from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, submit_task, wait_task
+            from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue, get_task, submit_task, wait_task
 
         targets = await _build_remote_targets(args)
         remotes = [RemoteQueue(peer_id=pid, multiaddr=ma) for (pid, ma) in targets]
@@ -373,7 +373,12 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
             return out
 
         # Wait for completion (best-effort) with bounded concurrency.
-        wait_sem = anyio.Semaphore(concurrency)
+        # Long-poll `wait` calls are heavier than submit RPCs; keep a separate
+        # fanout cap to avoid overloading peers when many waits run at once.
+        wait_concurrency = int(getattr(args, "wait_concurrency", 0) or 0)
+        if wait_concurrency <= 0:
+            wait_concurrency = max(1, min(int(concurrency), 4))
+        wait_sem = anyio.Semaphore(wait_concurrency)
         results_lock = anyio.Lock()
         completed = 0
         failed = 0
@@ -398,6 +403,26 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
                         "status": "failed",
                         "error": f"wait_exception: {type(e).__name__}: {e}",
                     }
+
+                # Under high-throughput load, wait can occasionally return
+                # None or a non-terminal running snapshot near boundary
+                # conditions. Probe get_task for a short grace window before
+                # final classification to reduce false negatives.
+                non_terminal = {"running", "queued", "claimed", "assigned"}
+                if task is None or str(task.get("status") or "") in non_terminal:
+                    grace_s = min(max(2.0, float(args.timeout_s) * 0.10), 30.0)
+                    probe_deadline = time.monotonic() + grace_s
+                    while time.monotonic() < probe_deadline:
+                        try:
+                            probe = await get_task(remote=remote, task_id=task_id)
+                        except Exception:
+                            probe = None
+                        if isinstance(probe, dict):
+                            task = probe
+                            st_probe = str(probe.get("status") or "")
+                            if st_probe == "completed" or st_probe in {"failed", "cancelled", "error"}:
+                                break
+                        await anyio.sleep(0.35)
             dt = float(time.time() - t0)
             async with results_lock:
                 if task is None:
@@ -538,6 +563,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Base sleep between submit retries (default: 0.35s).",
     )
     parser.add_argument("--wait", action="store_true", help="Wait for completion")
+    parser.add_argument(
+        "--wait-concurrency",
+        type=int,
+        default=0,
+        help="Concurrent wait RPCs (default: auto=min(concurrency,4); 0=auto).",
+    )
     parser.add_argument("--timeout-s", type=float, default=120.0, help="Per-task wait timeout")
     parser.add_argument(
         "--collect-results",

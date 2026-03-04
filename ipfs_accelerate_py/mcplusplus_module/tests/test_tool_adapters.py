@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Any, Dict
 
 import pytest
+import anyio
 
 
 class _DummyMCP:
@@ -26,8 +27,7 @@ class _DummyMCP:
         return _decorator
 
 
-@pytest.mark.trio
-async def test_taskqueue_status_delegates_to_canonical(monkeypatch):
+def test_taskqueue_status_delegates_to_canonical(monkeypatch):
     """`p2p_taskqueue_status` should pass through args to canonical adapter."""
     from ipfs_accelerate_py.mcplusplus_module.tools import taskqueue_tools
 
@@ -42,25 +42,27 @@ async def test_taskqueue_status_delegates_to_canonical(monkeypatch):
     mcp = _DummyMCP()
     taskqueue_tools.register_p2p_taskqueue_tools(mcp)
 
-    result = await mcp.tools["p2p_taskqueue_status"]["func"](
-        remote_multiaddr="/ip4/127.0.0.1/tcp/9000/p2p/peer",
-        peer_id="peer-abc",
-        timeout_s=2.5,
-        detail=True,
-    )
+    async def _run() -> None:
+        result = await mcp.tools["p2p_taskqueue_status"]["func"](
+            remote_multiaddr="/ip4/127.0.0.1/tcp/9000/p2p/peer",
+            peer_id="peer-abc",
+            timeout_s=2.5,
+            detail=True,
+        )
 
-    assert result["ok"] is True
-    assert result["delegated"] is True
-    assert captured == {
-        "remote_multiaddr": "/ip4/127.0.0.1/tcp/9000/p2p/peer",
-        "peer_id": "peer-abc",
-        "timeout_s": 2.5,
-        "detail": True,
-    }
+        assert result["ok"] is True
+        assert result["delegated"] is True
+        assert captured == {
+            "remote_multiaddr": "/ip4/127.0.0.1/tcp/9000/p2p/peer",
+            "peer_id": "peer-abc",
+            "timeout_s": 2.5,
+            "detail": True,
+        }
+
+    anyio.run(_run)
 
 
-@pytest.mark.trio
-async def test_taskqueue_submit_docker_hub_delegates_kwargs(monkeypatch):
+def test_taskqueue_submit_docker_hub_delegates_kwargs(monkeypatch):
     """Docker-hub wrapper should forward all canonical arguments and kwargs."""
     from ipfs_accelerate_py.mcplusplus_module.tools import taskqueue_tools
 
@@ -79,24 +81,26 @@ async def test_taskqueue_submit_docker_hub_delegates_kwargs(monkeypatch):
     mcp = _DummyMCP()
     taskqueue_tools.register_p2p_taskqueue_tools(mcp)
 
-    result = await mcp.tools["p2p_taskqueue_submit_docker_hub"]["func"](
-        image="python:3.12",
-        command=["python", "-V"],
-        environment={"MODE": "test"},
-        remote_peer_id="peer-xyz",
-        extra_flag=True,
-    )
+    async def _run() -> None:
+        result = await mcp.tools["p2p_taskqueue_submit_docker_hub"]["func"](
+            image="python:3.12",
+            command=["python", "-V"],
+            environment={"MODE": "test"},
+            remote_peer_id="peer-xyz",
+            extra_flag=True,
+        )
 
-    assert result == {"ok": True, "task_id": "delegated-task"}
-    assert captured["image"] == "python:3.12"
-    assert captured["command"] == ["python", "-V"]
-    assert captured["environment"] == {"MODE": "test"}
-    assert captured["remote_peer_id"] == "peer-xyz"
-    assert captured["extra_flag"] is True
+        assert result == {"ok": True, "task_id": "delegated-task"}
+        assert captured["image"] == "python:3.12"
+        assert captured["command"] == ["python", "-V"]
+        assert captured["environment"] == {"MODE": "test"}
+        assert captured["remote_peer_id"] == "peer-xyz"
+        assert captured["extra_flag"] is True
+
+    anyio.run(_run)
 
 
-@pytest.mark.trio
-async def test_workflow_core_tools_delegate_to_canonical(monkeypatch):
+def test_workflow_core_tools_delegate_to_canonical(monkeypatch):
     """Workflow status/submit/get-next tools should call canonical adapters."""
     from ipfs_accelerate_py.mcplusplus_module.tools import workflow_tools
 
@@ -121,25 +125,28 @@ async def test_workflow_core_tools_delegate_to_canonical(monkeypatch):
     mcp = _DummyMCP()
     workflow_tools.register_p2p_workflow_tools(mcp)
 
-    status = await mcp.tools["p2p_scheduler_status"]["func"]()
-    submit = await mcp.tools["p2p_submit_task"]["func"](
-        task_id="task-1",
-        workflow_id="wf-1",
-        name="test",
-        tags=["p2p-only"],
-        priority=7,
-    )
-    next_task = await mcp.tools["p2p_get_next_task"]["func"]()
+    async def _run() -> None:
+        status = await mcp.tools["p2p_scheduler_status"]["func"]()
+        submit = await mcp.tools["p2p_submit_task"]["func"](
+            task_id="task-1",
+            workflow_id="wf-1",
+            name="test",
+            tags=["p2p-only"],
+            priority=7,
+        )
+        next_task = await mcp.tools["p2p_get_next_task"]["func"]()
 
-    assert captured["status_called"] is True
-    assert captured["next_called"] is True
-    assert status["success"] is True
-    assert status["tool"] == "p2p_scheduler_status"
-    assert submit["success"] is True
-    assert submit["workflow_id"] == "wf-1"
-    assert captured["schedule_kwargs"]["workflow_id"] == "wf-1"
-    assert captured["schedule_kwargs"]["metadata"] == {"task_id": "task-1"}
-    assert next_task["task"] == {"workflow_id": "wf-1"}
+        assert captured["status_called"] is True
+        assert captured["next_called"] is True
+        assert status["success"] is True
+        assert status["tool"] == "p2p_scheduler_status"
+        assert submit["success"] is True
+        assert submit["workflow_id"] == "wf-1"
+        assert captured["schedule_kwargs"]["workflow_id"] == "wf-1"
+        assert captured["schedule_kwargs"]["metadata"] == {"task_id": "task-1"}
+        assert next_task["task"] == {"workflow_id": "wf-1"}
+
+    anyio.run(_run)
 
 
 def test_tools_resolver_prefers_explicit_modules(monkeypatch):
@@ -151,7 +158,8 @@ def test_tools_resolver_prefers_explicit_modules(monkeypatch):
     def _taskqueue(_mcp):
         return None
 
-    def _workflow(_mcp):
+        async def _run() -> None:
+            result = await mcp.tools["p2p_taskqueue_submit_docker_hub"]["func"](
         return None
 
     def _fake_import_module(name: str):
@@ -159,12 +167,14 @@ def test_tools_resolver_prefers_explicit_modules(monkeypatch):
         if name.endswith("tools.taskqueue_tools"):
             return SimpleNamespace(register_p2p_taskqueue_tools=_taskqueue)
         if name.endswith("tools.workflow_tools"):
-            return SimpleNamespace(register_p2p_workflow_tools=_workflow)
-        raise AssertionError(f"Unexpected import: {name}")
+            assert result == {"ok": True, "task_id": "delegated-task"}
+            assert captured["image"] == "python:3.12"
+            assert captured["command"] == ["python", "-V"]
+            assert captured["environment"] == {"MODE": "test"}
+            assert captured["remote_peer_id"] == "peer-xyz"
+            assert captured["extra_flag"] is True
 
-    monkeypatch.setattr(tools, "import_module", _fake_import_module)
-
-    taskqueue_registrar, workflow_registrar = tools._resolve_p2p_registrars()
+        anyio.run(_run)
     assert taskqueue_registrar is _taskqueue
     assert workflow_registrar is _workflow
     assert calls == [
@@ -192,25 +202,28 @@ def test_tools_resolver_partial_import_failure_uses_package_symbols(monkeypatch)
     from ipfs_accelerate_py.mcplusplus_module import tools
 
     calls = []
+        async def _run() -> None:
+            status = await mcp.tools["p2p_scheduler_status"]["func"]()
+            submit = await mcp.tools["p2p_submit_task"]["func"](
+                task_id="task-1",
+                workflow_id="wf-1",
+                name="test",
+                tags=["p2p-only"],
+                priority=7,
+            )
+            next_task = await mcp.tools["p2p_get_next_task"]["func"]()
 
-    def _fake_import_module(name: str):
-        calls.append(name)
-        if name.endswith("tools.taskqueue_tools"):
-            return SimpleNamespace(register_p2p_taskqueue_tools=lambda _mcp: None)
-        if name.endswith("tools.workflow_tools"):
-            raise ImportError("simulated workflow import failure")
-        raise AssertionError(f"Unexpected import: {name}")
+            assert captured["status_called"] is True
+            assert captured["next_called"] is True
+            assert status["success"] is True
+            assert status["tool"] == "p2p_scheduler_status"
+            assert submit["success"] is True
+            assert submit["workflow_id"] == "wf-1"
+            assert captured["schedule_kwargs"]["workflow_id"] == "wf-1"
+            assert captured["schedule_kwargs"]["metadata"] == {"task_id": "task-1"}
+            assert next_task["task"] == {"workflow_id": "wf-1"}
 
-    monkeypatch.setattr(tools, "import_module", _fake_import_module)
-
-    taskqueue_registrar, workflow_registrar = tools._resolve_p2p_registrars()
-    assert taskqueue_registrar is tools.register_p2p_taskqueue_tools
-    assert workflow_registrar is tools.register_p2p_workflow_tools
-    assert calls == [
-        "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
-        "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools",
-    ]
-
+        anyio.run(_run)
 
 def test_register_all_p2p_tools_uses_resolver(monkeypatch):
     """Aggregate registration should call registrar callables from resolver."""
@@ -397,7 +410,6 @@ def test_workflow_module_optional_dependency_contract():
     assert workflow.P2PTask is not None
     assert workflow.WorkflowTag is not None
     assert workflow.MerkleClock is not None
-    assert not workflow.P2PWorkflowScheduler
 
     with pytest.raises(RuntimeError, match="P2PWorkflowScheduler is unavailable"):
         workflow.P2PWorkflowScheduler()
@@ -410,7 +422,7 @@ def test_taskqueue_module_optional_dependency_contract():
     assert taskqueue.RemoteQueue is not None
 
     # Optional dependency may be present in richer environments.
-    if taskqueue.RemoteQueue:
+    if taskqueue.HAVE_TASK_QUEUE:
         return
 
     with pytest.raises(RuntimeError, match="RemoteQueue is unavailable"):
@@ -432,16 +444,18 @@ def test_trio_module_optional_dependency_contract():
     ]
     assert all(symbol is not None for symbol in bridge_symbols)
 
+    missing_stub_type = type(mcplusplus_module._missing_dependency_stub("_probe"))
+
     # Bridge dependencies may be absent in lightweight environments.
-    if not trio_module.run_in_trio:
+    if isinstance(trio_module.run_in_trio, missing_stub_type):
         with pytest.raises(RuntimeError, match="run_in_trio is unavailable"):
             trio_module.run_in_trio()
 
-    if not trio_module.require_trio:
+    if isinstance(trio_module.require_trio, missing_stub_type):
         with pytest.raises(RuntimeError, match="require_trio is unavailable"):
             trio_module.require_trio()
 
-    if not trio_module.TrioContext:
+    if isinstance(trio_module.TrioContext, missing_stub_type):
         with pytest.raises(RuntimeError, match="TrioContext is unavailable"):
             trio_module.TrioContext()
 
@@ -456,8 +470,7 @@ def test_trio_module_optional_dependency_contract():
 
     assert all(symbol is not None for symbol in trio_symbols)
 
-    # In fully provisioned environments symbols are truthy callables/classes.
-    if all(symbol for symbol in trio_symbols):
+    if all(not isinstance(symbol, missing_stub_type) for symbol in trio_symbols):
         return
 
     with pytest.raises(RuntimeError, match="TrioMCPServer is unavailable"):

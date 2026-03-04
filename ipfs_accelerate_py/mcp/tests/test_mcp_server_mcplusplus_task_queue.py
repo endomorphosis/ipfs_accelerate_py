@@ -42,7 +42,8 @@ class TestTaskQueueWrapper(unittest.TestCase):
                 self.assertEqual(task_id, "task-123")
                 mock_remote.assert_called_once_with(peer_id="peer-z", multiaddr="/ip4/1.2.3.4/tcp/9999")
                 self.assertEqual(mock_submit.await_count, 1)
-                called = mock_submit.await_args.kwargs
+                self.assertIsNotNone(mock_submit.await_args)
+                called = mock_submit.await_args.kwargs  # type: ignore[union-attr]
                 self.assertEqual(called["remote"], "REMOTE")
                 self.assertEqual(called["task_type"], "inference")
                 self.assertEqual(called["model_name"], "default")
@@ -90,17 +91,23 @@ class TestTaskQueueWrapper(unittest.TestCase):
 
                 status = await queue.get_status("task-9")
                 self.assertEqual(status, {"task_id": "task-9", "status": "pending"})
-                self.assertEqual(mock_get.await_args.kwargs["task_id"], "task-9")
+                get_args = mock_get.await_args
+                assert get_args is not None
+                self.assertEqual(get_args.kwargs["task_id"], "task-9")
 
                 self.assertTrue(await queue.cancel("task-9", reason="no-longer-needed"))
-                self.assertEqual(mock_cancel.await_args.kwargs["task_id"], "task-9")
-                self.assertEqual(mock_cancel.await_args.kwargs["reason"], "no-longer-needed")
+                cancel_args = mock_cancel.await_args
+                assert cancel_args is not None
+                self.assertEqual(cancel_args.kwargs["task_id"], "task-9")
+                self.assertEqual(cancel_args.kwargs["reason"], "no-longer-needed")
 
                 tasks = await queue.list(status="pending", limit=5, task_types=["inference", "embedding"])
                 self.assertEqual(tasks, [{"task_id": "task-9"}])
-                self.assertEqual(mock_list.await_args.kwargs["status"], "pending")
-                self.assertEqual(mock_list.await_args.kwargs["limit"], 5)
-                self.assertEqual(mock_list.await_args.kwargs["task_types"], ["inference", "embedding"])
+                list_args = mock_list.await_args
+                assert list_args is not None
+                self.assertEqual(list_args.kwargs["status"], "pending")
+                self.assertEqual(list_args.kwargs["limit"], 5)
+                self.assertEqual(list_args.kwargs["task_types"], ["inference", "embedding"])
 
         anyio.run(_run)
 

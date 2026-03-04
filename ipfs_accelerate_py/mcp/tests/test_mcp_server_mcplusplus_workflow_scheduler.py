@@ -10,7 +10,7 @@ from ipfs_accelerate_py.mcp_server.mcplusplus import workflow_scheduler as ws
 
 
 class _Context:
-    workflow_scheduler = None
+    workflow_scheduler: object | None = None
 
 
 class TestWorkflowSchedulerWrapper(unittest.TestCase):
