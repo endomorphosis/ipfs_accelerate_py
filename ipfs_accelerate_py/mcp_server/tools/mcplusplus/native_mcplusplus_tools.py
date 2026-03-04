@@ -30,6 +30,16 @@ def _load_mcplusplus_api() -> Dict[str, Any]:
 _API = _load_mcplusplus_api()
 
 
+def _error_result(message: str, engine: str = "", method: str = "") -> Dict[str, Any]:
+    return {
+        "status": "error",
+        "available": bool(_API),
+        "engine": engine,
+        "method": method,
+        "error": message,
+    }
+
+
 async def _invoke_engine_method(engine_name: str, method_name: str, **kwargs: Any) -> Dict[str, Any]:
     """Invoke an engine method with graceful fallback when unavailable."""
     cls = _API.get(engine_name)
@@ -123,10 +133,29 @@ async def mcplusplus_taskqueue_get_status(
     include_metrics: bool = False,
 ) -> Dict[str, Any]:
     """Get task status via MCP++ TaskQueueEngine adapter."""
+    if not isinstance(task_id, str) or not task_id.strip():
+        return _error_result(
+            "task_id must be a non-empty string",
+            engine="TaskQueueEngine",
+            method="get_status",
+        )
+    if not isinstance(include_logs, bool):
+        return _error_result(
+            "include_logs must be a boolean",
+            engine="TaskQueueEngine",
+            method="get_status",
+        )
+    if not isinstance(include_metrics, bool):
+        return _error_result(
+            "include_metrics must be a boolean",
+            engine="TaskQueueEngine",
+            method="get_status",
+        )
+
     return await _invoke_engine_method(
         "TaskQueueEngine",
         "get_status",
-        task_id=task_id,
+        task_id=task_id.strip(),
         include_logs=include_logs,
         include_metrics=include_metrics,
     )
@@ -138,10 +167,29 @@ async def mcplusplus_workflow_get_status(
     include_metrics: bool = False,
 ) -> Dict[str, Any]:
     """Get workflow status via MCP++ WorkflowEngine adapter."""
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        return _error_result(
+            "workflow_id must be a non-empty string",
+            engine="WorkflowEngine",
+            method="get_status",
+        )
+    if not isinstance(include_steps, bool):
+        return _error_result(
+            "include_steps must be a boolean",
+            engine="WorkflowEngine",
+            method="get_status",
+        )
+    if not isinstance(include_metrics, bool):
+        return _error_result(
+            "include_metrics must be a boolean",
+            engine="WorkflowEngine",
+            method="get_status",
+        )
+
     return await _invoke_engine_method(
         "WorkflowEngine",
         "get_status",
-        workflow_id=workflow_id,
+        workflow_id=workflow_id.strip(),
         include_steps=include_steps,
         include_metrics=include_metrics,
     )
@@ -152,10 +200,25 @@ async def mcplusplus_peer_list(
     limit: int = 50,
 ) -> Dict[str, Any]:
     """List peers via MCP++ PeerEngine adapter."""
+    if status_filter is not None and not isinstance(status_filter, str):
+        return _error_result(
+            "status_filter must be a string",
+            engine="PeerEngine",
+            method="list_peers",
+        )
+    if not isinstance(limit, int) or limit < 1:
+        return _error_result(
+            "limit must be an integer >= 1",
+            engine="PeerEngine",
+            method="list_peers",
+        )
+
+    normalized_status_filter = (status_filter or "").strip()
+
     return await _invoke_engine_method(
         "PeerEngine",
         "list_peers",
-        status_filter=(status_filter or None),
+        status_filter=(normalized_status_filter or None),
         limit=limit,
     )
 
@@ -190,9 +253,9 @@ def register_native_mcplusplus_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "task_id": {"type": "string"},
-                "include_logs": {"type": "boolean"},
-                "include_metrics": {"type": "boolean"},
+                "task_id": {"type": "string", "minLength": 1},
+                "include_logs": {"type": "boolean", "default": False},
+                "include_metrics": {"type": "boolean", "default": False},
             },
             "required": ["task_id"],
         },
@@ -208,9 +271,9 @@ def register_native_mcplusplus_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
-                "include_steps": {"type": "boolean"},
-                "include_metrics": {"type": "boolean"},
+                "workflow_id": {"type": "string", "minLength": 1},
+                "include_steps": {"type": "boolean", "default": True},
+                "include_metrics": {"type": "boolean", "default": False},
             },
             "required": ["workflow_id"],
         },
@@ -227,7 +290,7 @@ def register_native_mcplusplus_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "status_filter": {"type": "string"},
-                "limit": {"type": "integer"},
+                "limit": {"type": "integer", "minimum": 1, "default": 50},
             },
             "required": [],
         },

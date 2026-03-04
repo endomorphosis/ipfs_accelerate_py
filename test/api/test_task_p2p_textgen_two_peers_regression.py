@@ -74,6 +74,11 @@ def _run_textgen_worker_with_service(
     announce_file: str,
     worker_id: str,
 ) -> None:
+    # Force CPU-only execution for deterministic behavior across test hosts.
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    os.environ["IPFS_ACCELERATE_PY_LLM_DEVICE"] = "cpu"
+    os.environ["IPFS_ACCELERATE_PY_DEFAULT_DEVICE"] = "cpu"
+
     # Deterministic local-only behavior.
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_HOST"] = str(listen_host)
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_LISTEN_PORT"] = str(int(listen_port))
@@ -190,6 +195,9 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
         os.environ["STORAGE_FORCE_LOCAL"] = "1"
         os.environ["TRANSFORMERS_PATCH_DISABLE"] = "1"
         os.environ["IPFS_ACCEL_SKIP_CORE"] = "1"
+        os.environ["CUDA_VISIBLE_DEVICES"] = ""
+        os.environ["IPFS_ACCELERATE_PY_LLM_DEVICE"] = "cpu"
+        os.environ["IPFS_ACCELERATE_PY_DEFAULT_DEVICE"] = "cpu"
 
         # Force the client to dial via mDNS discovery (no announce-file dialing).
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE"] = "0"

@@ -24,15 +24,42 @@ def _load_legacy_api() -> Dict[str, Any]:
 _API = _load_legacy_api()
 
 
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic dict envelopes."""
+    if isinstance(payload, dict):
+        return payload
+    if payload is None:
+        return {}
+    return {"result": payload}
+
+
+def _error_result(message: str, **context: Any) -> Dict[str, Any]:
+    """Build consistent validation/error envelope for wrapper edge failures."""
+    envelope: Dict[str, Any] = {
+        "status": "error",
+        "success": False,
+        "error": message,
+    }
+    envelope.update(context)
+    return envelope
+
+
 async def legacy_tools_inventory() -> Dict[str, Any]:
     """Return inventory metadata for deprecated legacy MCP tools."""
-    tools = _API.get("TEMPORAL_DEONTIC_LOGIC_TOOLS", [])
-    return {
-        "status": "success",
-        "deprecated": True,
-        "temporal_deontic_tool_count": len(tools) if isinstance(tools, list) else 0,
-        "fallback": not bool(_API),
-    }
+    try:
+        tools = _API.get("TEMPORAL_DEONTIC_LOGIC_TOOLS", [])
+        envelope = _normalize_payload(
+            {
+                "deprecated": True,
+                "temporal_deontic_tool_count": len(tools) if isinstance(tools, list) else 0,
+                "fallback": not bool(_API),
+            }
+        )
+        envelope.setdefault("status", "success")
+        envelope.setdefault("deprecated", True)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), deprecated=True)
 
 
 def register_native_legacy_mcp_tools(manager: Any) -> None:

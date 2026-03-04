@@ -7810,6 +7810,288 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_medical_research_scrapers_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """medical_research_scrapers should expose schema contracts and deterministic envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="medical-research-scrapers-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("medical_research_scrapers")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("scrape_pubmed_medical_research", names)
+            self.assertIn("scrape_clinical_trials", names)
+
+            schema = await get_schema("medical_research_scrapers", "scrape_pubmed_medical_research")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("query") or {}).get("minLength"), 1)
+            self.assertEqual((props.get("max_results") or {}).get("minimum"), 1)
+
+            invalid_query = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "medical_research_scrapers",
+                    "scrape_pubmed_medical_research",
+                    {
+                        "query": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_query.get("status"), "error")
+            invalid_query_text = (
+                str(invalid_query.get("message", ""))
+                + " "
+                + str(invalid_query.get("error", ""))
+            )
+            self.assertIn("query must be a non-empty string", invalid_query_text)
+
+            invalid_max = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "medical_research_scrapers",
+                    "scrape_clinical_trials",
+                    {
+                        "query": "diabetes",
+                        "max_results": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_max.get("status"), "error")
+            invalid_max_text = (
+                str(invalid_max.get("message", ""))
+                + " "
+                + str(invalid_max.get("error", ""))
+            )
+            self.assertIn("max_results must be an integer >= 1", invalid_max_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_lizardpersons_function_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """lizardpersons_function_tools should expose schema contracts and deterministic envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="lizardpersons-function-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("lizardpersons_function_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("get_current_time", names)
+
+            schema = await get_schema("lizardpersons_function_tools", "get_current_time")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(
+                (props.get("format_type") or {}).get("enum"),
+                ["iso", "human", "timestamp"],
+            )
+
+            invalid_format = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "lizardpersons_function_tools",
+                    "get_current_time",
+                    {
+                        "format_type": "custom",
+                    },
+                )
+            )
+            self.assertEqual(invalid_format.get("status"), "error")
+            invalid_format_text = (
+                str(invalid_format.get("message", ""))
+                + " "
+                + str(invalid_format.get("error", ""))
+            )
+            self.assertIn("format_type must be one of", invalid_format_text)
+
+            invalid_flag = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "lizardpersons_function_tools",
+                    "get_current_time",
+                    {
+                        "format_type": "iso",
+                        "check_if_within_working_hours": "yes",
+                    },
+                )
+            )
+            self.assertEqual(invalid_flag.get("status"), "error")
+            invalid_flag_text = (
+                str(invalid_flag.get("message", ""))
+                + " "
+                + str(invalid_flag.get("error", ""))
+            )
+            self.assertIn("check_if_within_working_hours must be a boolean", invalid_flag_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_legacy_mcp_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """legacy_mcp_tools should expose schema contracts and deterministic envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="legacy-mcp-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("legacy_mcp_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("legacy_tools_inventory", names)
+
+            schema = await get_schema("legacy_mcp_tools", "legacy_tools_inventory")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(props, {})
+
+            dispatched = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "legacy_mcp_tools",
+                    "legacy_tools_inventory",
+                    {},
+                )
+            )
+            self.assertIn(dispatched.get("status"), ["success", "error"])
+            self.assertIs(dispatched.get("deprecated"), True)
+            self.assertIn("temporal_deontic_tool_count", dispatched)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_lizardperson_argparse_programs_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """lizardperson_argparse_programs should expose schema contracts and deterministic envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="lizardperson-argparse-programs-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("lizardperson_argparse_programs")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("municipal_bluebook_validator_info", names)
+
+            schema = await get_schema(
+                "lizardperson_argparse_programs",
+                "municipal_bluebook_validator_info",
+            )
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(props, {})
+
+            dispatched = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "lizardperson_argparse_programs",
+                    "municipal_bluebook_validator_info",
+                    {},
+                )
+            )
+            self.assertIn(dispatched.get("status"), ["success", "error"])
+            self.assertEqual(
+                dispatched.get("entrypoint"),
+                "municipal_bluebook_citation_validator.main",
+            )
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 
@@ -8000,6 +8282,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
         async def _run_flow() -> None:
             tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
             dispatch = server.tools["tools_dispatch"]["function"]
 
             listed = await tools_list("mcplusplus")
@@ -8012,6 +8295,40 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "mcplusplus_peer_list",
             }
             self.assertTrue(expected.issubset(names))
+
+            task_schema = await get_schema("mcplusplus", "mcplusplus_taskqueue_get_status")
+            task_props = (task_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((task_props.get("task_id") or {}).get("minLength"), 1)
+
+            peer_schema = await get_schema("mcplusplus", "mcplusplus_peer_list")
+            peer_props = (peer_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((peer_props.get("limit") or {}).get("minimum"), 1)
+
+            invalid_task = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "mcplusplus",
+                    "mcplusplus_taskqueue_get_status",
+                    {"task_id": "   "},
+                )
+            )
+            self.assertEqual(invalid_task.get("status"), "error")
+            self.assertIn(
+                "task_id must be a non-empty string",
+                str(invalid_task.get("error", "")),
+            )
+
+            invalid_limit = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "mcplusplus",
+                    "mcplusplus_peer_list",
+                    {"limit": 0},
+                )
+            )
+            self.assertEqual(invalid_limit.get("status"), "error")
+            self.assertIn(
+                "limit must be an integer >= 1",
+                str(invalid_limit.get("error", "")),
+            )
 
             calls = [
                 ("mcplusplus_engine_status", {}),

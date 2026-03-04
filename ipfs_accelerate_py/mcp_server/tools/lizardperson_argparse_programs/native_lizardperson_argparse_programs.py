@@ -26,14 +26,22 @@ def _load_lizardperson_argparse_api() -> Dict[str, Any]:
 _API = _load_lizardperson_argparse_api()
 
 
+def _error_result(message: str) -> Dict[str, Any]:
+    return {"status": "error", "error": message, "entrypoint": "municipal_bluebook_citation_validator.main"}
+
+
 async def municipal_bluebook_validator_info() -> Dict[str, Any]:
     """Return metadata about the municipal Bluebook citation validator CLI entrypoint."""
-    return {
-        "status": "success",
-        "entrypoint": "municipal_bluebook_citation_validator.main",
-        "callable": callable(_API.get("validator_main")),
-        "fallback": not bool(_API),
-    }
+    try:
+        return {
+            "status": "success",
+            "entrypoint": "municipal_bluebook_citation_validator.main",
+            "callable": callable(_API.get("validator_main")),
+            "fallback": not bool(_API),
+        }
+    except Exception as exc:
+        logger.error("municipal_bluebook_validator_info failed: %s", exc)
+        return _error_result(str(exc))
 
 
 def register_native_lizardperson_argparse_programs(manager: Any) -> None:

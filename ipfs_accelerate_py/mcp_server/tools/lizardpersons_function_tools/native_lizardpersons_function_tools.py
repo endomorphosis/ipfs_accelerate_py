@@ -40,22 +40,58 @@ def _load_lizardpersons_function_api() -> Dict[str, Any]:
 _API = _load_lizardpersons_function_api()
 
 
+def _error_result(message: str, **context: Any) -> Dict[str, Any]:
+    """Build consistent validation/error envelope for wrapper edge failures."""
+    envelope: Dict[str, Any] = {
+        "status": "error",
+        "success": False,
+        "error": message,
+    }
+    envelope.update(context)
+    return envelope
+
+
 async def get_current_time(
     format_type: str = "iso",
     check_if_within_working_hours: bool = False,
 ) -> Dict[str, Any]:
     """Get current time via lizardperson function-tool compatibility shim."""
-    result = _API["get_current_time"](
-        format_type=format_type,
-        check_if_within_working_hours=check_if_within_working_hours,
-    )
-    if hasattr(result, "__await__"):
-        result = await result
-    return {
-        "status": "success",
-        "value": result,
-        "fallback": _API["get_current_time"].__name__.endswith("fallback"),
-    }
+    allowed_formats = {"iso", "human", "timestamp"}
+    if not isinstance(format_type, str) or not format_type.strip():
+        return _error_result("format_type must be a non-empty string", format_type=format_type)
+    if format_type.strip() not in allowed_formats:
+        return _error_result(
+            "format_type must be one of: iso, human, timestamp",
+            format_type=format_type,
+        )
+    if not isinstance(check_if_within_working_hours, bool):
+        return _error_result(
+            "check_if_within_working_hours must be a boolean",
+            check_if_within_working_hours=check_if_within_working_hours,
+        )
+
+    clean_format_type = format_type.strip()
+
+    try:
+        result = _API["get_current_time"](
+            format_type=clean_format_type,
+            check_if_within_working_hours=check_if_within_working_hours,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        return {
+            "status": "success",
+            "value": result,
+            "format_type": clean_format_type,
+            "check_if_within_working_hours": check_if_within_working_hours,
+            "fallback": _API["get_current_time"].__name__.endswith("fallback"),
+        }
+    except Exception as exc:
+        return _error_result(
+            str(exc),
+            format_type=clean_format_type,
+            check_if_within_working_hours=check_if_within_working_hours,
+        )
 
 
 def register_native_lizardpersons_function_tools(manager: Any) -> None:
@@ -68,8 +104,12 @@ def register_native_lizardpersons_function_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "format_type": {"type": "string"},
-                "check_if_within_working_hours": {"type": "boolean"},
+                "format_type": {
+                    "type": "string",
+                    "enum": ["iso", "human", "timestamp"],
+                    "default": "iso",
+                },
+                "check_if_within_working_hours": {"type": "boolean", "default": False},
             },
             "required": [],
         },
