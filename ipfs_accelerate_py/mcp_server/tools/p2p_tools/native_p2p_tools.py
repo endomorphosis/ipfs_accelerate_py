@@ -119,6 +119,26 @@ def _load_p2p_tools_api() -> Dict[str, Any]:
 _API = _load_p2p_tools_api()
 
 
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads into deterministic dictionary envelopes."""
+    if isinstance(payload, dict):
+        return payload
+    if payload is None:
+        return {}
+    return {"result": payload}
+
+
+def _error_result(message: str, **context: Any) -> Dict[str, Any]:
+    """Build consistent validation/error envelope for wrapper edge failures."""
+    envelope: Dict[str, Any] = {
+        "status": "error",
+        "success": False,
+        "error": message,
+    }
+    envelope.update(context)
+    return envelope
+
+
 async def p2p_service_status(include_peers: bool = True, peers_limit: int = 50) -> Dict[str, Any]:
     """Return local P2P service status and peers."""
     result = _API["p2p_service_status"](include_peers=include_peers, peers_limit=peers_limit)
@@ -129,58 +149,128 @@ async def p2p_service_status(include_peers: bool = True, peers_limit: int = 50) 
 
 async def p2p_cache_get(key: str) -> Dict[str, Any]:
     """Get a value from local P2P shared cache."""
-    result = _API["p2p_cache_get"](key=key)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(key, str) or not key.strip():
+        return _error_result("key must be a non-empty string", key=key)
+    key = key.strip()
+    try:
+        result = _API["p2p_cache_get"](key=key)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("key", key)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), key=key)
 
 
 async def p2p_cache_has(key: str) -> Dict[str, Any]:
     """Check if a key exists in local P2P shared cache."""
-    result = _API["p2p_cache_has"](key=key)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(key, str) or not key.strip():
+        return _error_result("key must be a non-empty string", key=key)
+    key = key.strip()
+    try:
+        result = _API["p2p_cache_has"](key=key)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("key", key)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), key=key)
 
 
 async def p2p_cache_set(key: str, value: Any, ttl_s: Optional[float] = None) -> Dict[str, Any]:
     """Set a value in local P2P shared cache."""
-    result = _API["p2p_cache_set"](key=key, value=value, ttl_s=ttl_s)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(key, str) or not key.strip():
+        return _error_result("key must be a non-empty string", key=key)
+    if ttl_s is not None and (not isinstance(ttl_s, (int, float)) or float(ttl_s) <= 0):
+        return _error_result("ttl_s must be a number > 0 when provided", key=key, ttl_s=ttl_s)
+    key = key.strip()
+    try:
+        result = _API["p2p_cache_set"](key=key, value=value, ttl_s=float(ttl_s) if ttl_s is not None else None)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("key", key)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), key=key)
 
 
 async def p2p_cache_delete(key: str) -> Dict[str, Any]:
     """Delete a key from local P2P shared cache."""
-    result = _API["p2p_cache_delete"](key=key)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(key, str) or not key.strip():
+        return _error_result("key must be a non-empty string", key=key)
+    key = key.strip()
+    try:
+        result = _API["p2p_cache_delete"](key=key)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("key", key)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), key=key)
 
 
 async def p2p_task_submit(task_type: str, payload: Dict[str, Any], model_name: str = "") -> Dict[str, Any]:
     """Submit a task to local P2P task queue."""
-    result = _API["p2p_task_submit"](task_type=task_type, payload=payload, model_name=model_name)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(task_type, str) or not task_type.strip():
+        return _error_result("task_type must be a non-empty string", task_type=task_type)
+    if not isinstance(payload, dict):
+        return _error_result("payload must be an object", payload=payload)
+    if not isinstance(model_name, str):
+        return _error_result("model_name must be a string", model_name=model_name)
+    task_type = task_type.strip()
+    model_name = model_name.strip()
+    try:
+        result = _API["p2p_task_submit"](task_type=task_type, payload=payload, model_name=model_name)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("task_type", task_type)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), task_type=task_type)
 
 
 async def p2p_task_get(task_id: str) -> Dict[str, Any]:
     """Get task status from local P2P task queue."""
-    result = _API["p2p_task_get"](task_id=task_id)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(task_id, str) or not task_id.strip():
+        return _error_result("task_id must be a non-empty string", task_id=task_id)
+    task_id = task_id.strip()
+    try:
+        result = _API["p2p_task_get"](task_id=task_id)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("task_id", task_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), task_id=task_id)
 
 
 async def p2p_task_delete(task_id: str) -> Dict[str, Any]:
     """Delete task from local P2P task queue."""
-    result = _API["p2p_task_delete"](task_id=task_id)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(task_id, str) or not task_id.strip():
+        return _error_result("task_id must be a non-empty string", task_id=task_id)
+    task_id = task_id.strip()
+    try:
+        result = _API["p2p_task_delete"](task_id=task_id)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("task_id", task_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), task_id=task_id)
 
 
 async def p2p_remote_status(
@@ -190,15 +280,28 @@ async def p2p_remote_status(
     detail: bool = False,
 ) -> Dict[str, Any]:
     """Get status from remote P2P peer."""
-    result = _API["p2p_remote_status"](
-        remote_multiaddr=remote_multiaddr,
-        peer_id=peer_id,
-        timeout_s=timeout_s,
-        detail=detail,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(remote_multiaddr, str):
+        return _error_result("remote_multiaddr must be a string", remote_multiaddr=remote_multiaddr)
+    if not isinstance(peer_id, str):
+        return _error_result("peer_id must be a string", peer_id=peer_id)
+    if not isinstance(timeout_s, (int, float)) or float(timeout_s) <= 0:
+        return _error_result("timeout_s must be a number > 0", timeout_s=timeout_s)
+    if not isinstance(detail, bool):
+        return _error_result("detail must be a boolean", detail=detail)
+    try:
+        result = _API["p2p_remote_status"](
+            remote_multiaddr=remote_multiaddr.strip(),
+            peer_id=peer_id.strip(),
+            timeout_s=float(timeout_s),
+            detail=detail,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), peer_id=peer_id, remote_multiaddr=remote_multiaddr)
 
 
 async def p2p_remote_call_tool(
@@ -209,16 +312,33 @@ async def p2p_remote_call_tool(
     timeout_s: float = 30.0,
 ) -> Dict[str, Any]:
     """Call MCP tool on remote P2P peer."""
-    result = _API["p2p_remote_call_tool"](
-        tool_name=tool_name,
-        args=args,
-        remote_multiaddr=remote_multiaddr,
-        remote_peer_id=remote_peer_id,
-        timeout_s=timeout_s,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(tool_name, str) or not tool_name.strip():
+        return _error_result("tool_name must be a non-empty string", tool_name=tool_name)
+    if args is not None and not isinstance(args, dict):
+        return _error_result("args must be an object when provided", args=args, tool_name=tool_name)
+    if not isinstance(remote_multiaddr, str):
+        return _error_result("remote_multiaddr must be a string", remote_multiaddr=remote_multiaddr)
+    if not isinstance(remote_peer_id, str):
+        return _error_result("remote_peer_id must be a string", remote_peer_id=remote_peer_id)
+    if not isinstance(timeout_s, (int, float)) or float(timeout_s) <= 0:
+        return _error_result("timeout_s must be a number > 0", timeout_s=timeout_s)
+    tool_name = tool_name.strip()
+    try:
+        result = _API["p2p_remote_call_tool"](
+            tool_name=tool_name,
+            args=args if isinstance(args, dict) else None,
+            remote_multiaddr=remote_multiaddr.strip(),
+            remote_peer_id=remote_peer_id.strip(),
+            timeout_s=float(timeout_s),
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        envelope.setdefault("tool_name", tool_name)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), tool_name=tool_name)
 
 
 async def p2p_remote_cache_get(
@@ -325,8 +445,8 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "include_peers": {"type": "boolean"},
-                "peers_limit": {"type": "integer"},
+                "include_peers": {"type": "boolean", "default": True},
+                "peers_limit": {"type": "integer", "minimum": 1, "default": 50},
             },
             "required": [],
         },
@@ -341,7 +461,7 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         description="Get a value from local P2P cache.",
         input_schema={
             "type": "object",
-            "properties": {"key": {"type": "string"}},
+            "properties": {"key": {"type": "string", "minLength": 1}},
             "required": ["key"],
         },
         runtime="fastapi",
@@ -355,7 +475,7 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         description="Check if local P2P cache contains a key.",
         input_schema={
             "type": "object",
-            "properties": {"key": {"type": "string"}},
+            "properties": {"key": {"type": "string", "minLength": 1}},
             "required": ["key"],
         },
         runtime="fastapi",
@@ -370,9 +490,9 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "key": {"type": "string"},
+                "key": {"type": "string", "minLength": 1},
                 "value": {},
-                "ttl_s": {"type": ["number", "null"]},
+                "ttl_s": {"type": ["number", "null"], "exclusiveMinimum": 0},
             },
             "required": ["key", "value"],
         },
@@ -387,7 +507,7 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         description="Delete a key from local P2P cache.",
         input_schema={
             "type": "object",
-            "properties": {"key": {"type": "string"}},
+            "properties": {"key": {"type": "string", "minLength": 1}},
             "required": ["key"],
         },
         runtime="fastapi",
@@ -402,9 +522,9 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "task_type": {"type": "string"},
+                "task_type": {"type": "string", "minLength": 1},
                 "payload": {"type": "object"},
-                "model_name": {"type": "string"},
+                "model_name": {"type": "string", "default": ""},
             },
             "required": ["task_type", "payload"],
         },
@@ -419,7 +539,7 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         description="Get task status from local P2P task queue.",
         input_schema={
             "type": "object",
-            "properties": {"task_id": {"type": "string"}},
+            "properties": {"task_id": {"type": "string", "minLength": 1}},
             "required": ["task_id"],
         },
         runtime="fastapi",
@@ -433,7 +553,7 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         description="Delete task from local P2P task queue.",
         input_schema={
             "type": "object",
-            "properties": {"task_id": {"type": "string"}},
+            "properties": {"task_id": {"type": "string", "minLength": 1}},
             "required": ["task_id"],
         },
         runtime="fastapi",
@@ -450,8 +570,8 @@ def register_native_p2p_tools_category(manager: Any) -> None:
             "properties": {
                 "remote_multiaddr": {"type": "string"},
                 "peer_id": {"type": "string"},
-                "timeout_s": {"type": "number"},
-                "detail": {"type": "boolean"},
+                "timeout_s": {"type": "number", "exclusiveMinimum": 0, "default": 10.0},
+                "detail": {"type": "boolean", "default": False},
             },
             "required": [],
         },
@@ -467,11 +587,11 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "tool_name": {"type": "string"},
+                "tool_name": {"type": "string", "minLength": 1},
                 "args": {"type": ["object", "null"]},
                 "remote_multiaddr": {"type": "string"},
                 "remote_peer_id": {"type": "string"},
-                "timeout_s": {"type": "number"},
+                "timeout_s": {"type": "number", "exclusiveMinimum": 0, "default": 30.0},
             },
             "required": ["tool_name"],
         },
