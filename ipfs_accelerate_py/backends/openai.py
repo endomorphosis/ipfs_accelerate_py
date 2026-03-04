@@ -1,12 +1,15 @@
 import json
 import os
 import re
+from typing import Any, Callable, Optional
 
 import requests
 
 
+get_llm_cache: Optional[Callable[..., Any]]
 try:
-	from ipfs_accelerate_py.common.llm_cache import get_llm_cache
+	from ipfs_accelerate_py.common.llm_cache import get_llm_cache as _get_llm_cache
+	get_llm_cache = _get_llm_cache
 except Exception:  # pragma: no cover
 	get_llm_cache = None
 

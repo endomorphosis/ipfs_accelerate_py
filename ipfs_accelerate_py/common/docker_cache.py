@@ -13,27 +13,32 @@ from .base_cache import BaseAPICache
 
 logger = logging.getLogger(__name__)
 
+ProvenanceLogger: Any = None
+DatasetsManager: Any = None
+
 # Try to import datasets integration for Docker operation tracking
 try:
     from ..datasets_integration import (
         is_datasets_available,
-        ProvenanceLogger,
-        DatasetsManager
+        ProvenanceLogger as _ProvenanceLogger,
+        DatasetsManager as _DatasetsManager,
     )
+    ProvenanceLogger = _ProvenanceLogger
+    DatasetsManager = _DatasetsManager
     HAVE_DATASETS_INTEGRATION = True
 except ImportError:
     try:
         from datasets_integration import (
             is_datasets_available,
-            ProvenanceLogger,
-            DatasetsManager
+            ProvenanceLogger as _ProvenanceLogger,
+            DatasetsManager as _DatasetsManager,
         )
+        ProvenanceLogger = _ProvenanceLogger
+        DatasetsManager = _DatasetsManager
         HAVE_DATASETS_INTEGRATION = True
     except ImportError:
         HAVE_DATASETS_INTEGRATION = False
         is_datasets_available = lambda: False
-        ProvenanceLogger = None
-        DatasetsManager = None
 
 
 class DockerAPICache(BaseAPICache):
@@ -123,7 +128,7 @@ class DockerAPICache(BaseAPICache):
     
     def get_default_ttl_for_operation(self, operation: str) -> int:
         """Get operation-specific TTL."""
-        return self.DEFAULT_TTLS.get(operation, self.default_ttl)
+        return int(self.DEFAULT_TTLS.get(operation) or self.default_ttl)
 
 
 # Global Docker API cache instance

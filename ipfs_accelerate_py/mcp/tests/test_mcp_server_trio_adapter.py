@@ -49,6 +49,7 @@ class TestTrioAdapterFacade(unittest.TestCase):
 
             server = adapter.server
             self.assertIsNotNone(server)
+            assert server is not None
             await adapter.stop()
             self.assertFalse(adapter.running)
             self.assertTrue(server.stopped)

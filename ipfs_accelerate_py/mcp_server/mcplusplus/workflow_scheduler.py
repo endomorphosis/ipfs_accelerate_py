@@ -3,24 +3,31 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Optional
+from typing import Any, Callable, Optional
 
 logger = logging.getLogger(__name__)
+
+P2PWorkflowScheduler: Any = None
+_get_scheduler: Optional[Callable[[], Any]] = None
+_reset_scheduler: Optional[Callable[[], None]] = None
 
 try:
     from ipfs_accelerate_py.mcplusplus_module.p2p.workflow import (
         HAVE_P2P_SCHEDULER,
-        P2PWorkflowScheduler,
-        get_scheduler as _get_scheduler,
-        reset_scheduler as _reset_scheduler,
+        P2PWorkflowScheduler as _P2PWorkflowSchedulerImpl,
+        get_scheduler as _get_scheduler_impl,
+        reset_scheduler as _reset_scheduler_impl,
     )
 
     HAVE_WORKFLOW_SCHEDULER = bool(HAVE_P2P_SCHEDULER)
+    P2PWorkflowScheduler = _P2PWorkflowSchedulerImpl
+    _get_scheduler = _get_scheduler_impl
+    _reset_scheduler = _reset_scheduler_impl
 except ImportError:
     HAVE_WORKFLOW_SCHEDULER = False
-    P2PWorkflowScheduler = None  # type: ignore[assignment]
-    _get_scheduler = None  # type: ignore[assignment]
-    _reset_scheduler = None  # type: ignore[assignment]
+    P2PWorkflowScheduler = None
+    _get_scheduler = None
+    _reset_scheduler = None
 
 
 def create_workflow_scheduler(
@@ -42,7 +49,7 @@ def create_workflow_scheduler(
         return None
 
     try:
-        scheduler = _get_scheduler() if _get_scheduler else None
+        scheduler = _get_scheduler() if _get_scheduler is not None else None
         if context is not None and scheduler is not None:
             setattr(context, "workflow_scheduler", scheduler)
         return scheduler
@@ -60,7 +67,7 @@ def get_scheduler(context: Optional[Any] = None) -> Optional[Any]:
         return None
 
     try:
-        return _get_scheduler() if _get_scheduler else None
+        return _get_scheduler() if _get_scheduler is not None else None
     except Exception as exc:
         logger.error("Failed to get workflow scheduler: %s", exc)
         return None

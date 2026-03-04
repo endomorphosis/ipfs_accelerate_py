@@ -87,7 +87,7 @@ def test_taskqueue_submit_docker_hub_delegates_kwargs(monkeypatch):
             command=["python", "-V"],
             environment={"MODE": "test"},
             remote_peer_id="peer-xyz",
-            extra_flag=True,
+            extra={"extra_flag": True},
         )
 
         assert result == {"ok": True, "task_id": "delegated-task"}

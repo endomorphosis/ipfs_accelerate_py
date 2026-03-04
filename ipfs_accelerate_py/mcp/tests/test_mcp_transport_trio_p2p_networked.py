@@ -10,6 +10,7 @@ import sys
 import tempfile
 import time
 import unittest
+from typing import Any, cast
 from unittest.mock import patch
 
 import anyio
@@ -109,7 +110,8 @@ class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
                         server = create_mcp_server(name="trio-p2p-networked")
 
                 async def _call_status() -> dict:
-                    dispatch = server.tools["tools_dispatch"]["function"]
+                    tools = cast(dict[str, dict[str, Any]], server.tools)
+                    dispatch = tools["tools_dispatch"]["function"]
                     response = await dispatch(
                         "p2p",
                         "p2p_taskqueue_status",

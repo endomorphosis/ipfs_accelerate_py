@@ -3,6 +3,7 @@
 
 import os
 import unittest
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import anyio
@@ -14,8 +15,11 @@ from ipfs_accelerate_py.p2p_tasks.mcp_p2p import handle_mcp_p2p_stream
 
 class _DummyServer:
     def __init__(self):
-        self.tools = {}
-        self.mcp = None
+        self.tools: dict[str, dict[str, Any]] = {}
+        self.mcp: Any = None
+        # Assigned by unified bootstrap during create_mcp_server().
+        self._unified_tool_manager: Any = None
+        self._unified_runtime_router: Any = None
 
     def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
         self.tools[name] = {
