@@ -93,6 +93,16 @@ def _load_web_scraping_api() -> Dict[str, Any]:
 _API = _load_web_scraping_api()
 
 
+def _normalize_payload(result: Any) -> Dict[str, Any]:
+    """Normalize backend result to deterministic envelope."""
+    payload = dict(result or {})
+    if "error" in payload and payload.get("error"):
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "success")
+    return payload
+
+
 async def scrape_url_tool(
     url: str,
     method: Optional[str] = None,
@@ -103,9 +113,60 @@ async def scrape_url_tool(
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Scrape a single URL with optional method hint and fallback behavior."""
+    normalized_url = str(url or "").strip()
+    if not normalized_url:
+        return {
+            "status": "error",
+            "message": "url is required",
+            "url": url,
+        }
+
+    normalized_method = str(method).strip().lower() if method is not None else None
+    valid_methods = {
+        "playwright",
+        "beautifulsoup",
+        "wayback_machine",
+        "common_crawl",
+        "archive_is",
+        "ipwb",
+        "newspaper",
+        "readability",
+        "requests_only",
+    }
+    if normalized_method is not None and normalized_method not in valid_methods:
+        return {
+            "status": "error",
+            "message": "method must be one of: playwright, beautifulsoup, wayback_machine, common_crawl, archive_is, ipwb, newspaper, readability, requests_only when provided",
+            "method": method,
+        }
+    if not isinstance(timeout, int) or timeout < 1:
+        return {
+            "status": "error",
+            "message": "timeout must be an integer >= 1",
+            "timeout": timeout,
+        }
+    if not isinstance(extract_links, bool):
+        return {
+            "status": "error",
+            "message": "extract_links must be a boolean",
+            "extract_links": extract_links,
+        }
+    if not isinstance(extract_text, bool):
+        return {
+            "status": "error",
+            "message": "extract_text must be a boolean",
+            "extract_text": extract_text,
+        }
+    if not isinstance(fallback_enabled, bool):
+        return {
+            "status": "error",
+            "message": "fallback_enabled must be a boolean",
+            "fallback_enabled": fallback_enabled,
+        }
+
     result = _API["scrape_url_tool"](
-        url=url,
-        method=method,
+        url=normalized_url,
+        method=normalized_method,
         timeout=timeout,
         extract_links=extract_links,
         extract_text=extract_text,
@@ -113,8 +174,13 @@ async def scrape_url_tool(
         **kwargs,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("url", normalized_url)
+    if normalized_method is not None:
+        payload.setdefault("method", normalized_method)
+    return payload
 
 
 async def scrape_multiple_urls_tool(
@@ -128,9 +194,78 @@ async def scrape_multiple_urls_tool(
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Scrape multiple URLs concurrently with fallback behavior."""
+    if not isinstance(urls, list) or not urls:
+        return {
+            "status": "error",
+            "message": "urls must be a non-empty array of strings",
+            "urls": urls,
+        }
+    if not all(isinstance(item, str) for item in urls):
+        return {
+            "status": "error",
+            "message": "urls must be a non-empty array of strings",
+            "urls": urls,
+        }
+    normalized_urls = [str(item).strip() for item in urls]
+    if any(not item for item in normalized_urls):
+        return {
+            "status": "error",
+            "message": "urls cannot contain empty strings",
+            "urls": urls,
+        }
+
+    normalized_method = str(method).strip().lower() if method is not None else None
+    valid_methods = {
+        "playwright",
+        "beautifulsoup",
+        "wayback_machine",
+        "common_crawl",
+        "archive_is",
+        "ipwb",
+        "newspaper",
+        "readability",
+        "requests_only",
+    }
+    if normalized_method is not None and normalized_method not in valid_methods:
+        return {
+            "status": "error",
+            "message": "method must be one of: playwright, beautifulsoup, wayback_machine, common_crawl, archive_is, ipwb, newspaper, readability, requests_only when provided",
+            "method": method,
+        }
+    if not isinstance(timeout, int) or timeout < 1:
+        return {
+            "status": "error",
+            "message": "timeout must be an integer >= 1",
+            "timeout": timeout,
+        }
+    if not isinstance(max_concurrent, int) or max_concurrent < 1:
+        return {
+            "status": "error",
+            "message": "max_concurrent must be an integer >= 1",
+            "max_concurrent": max_concurrent,
+        }
+    if not isinstance(extract_links, bool):
+        return {
+            "status": "error",
+            "message": "extract_links must be a boolean",
+            "extract_links": extract_links,
+        }
+    if not isinstance(extract_text, bool):
+        return {
+            "status": "error",
+            "message": "extract_text must be a boolean",
+            "extract_text": extract_text,
+        }
+    if not isinstance(fallback_enabled, bool):
+        return {
+            "status": "error",
+            "message": "fallback_enabled must be a boolean",
+            "fallback_enabled": fallback_enabled,
+        }
+
     result = _API["scrape_multiple_urls_tool"](
-        urls=urls,
-        method=method,
+        urls=normalized_urls,
+        method=normalized_method,
         timeout=timeout,
         max_concurrent=max_concurrent,
         extract_links=extract_links,
@@ -139,16 +274,21 @@ async def scrape_multiple_urls_tool(
         **kwargs,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("total_urls", len(normalized_urls))
+    if normalized_method is not None:
+        payload.setdefault("method", normalized_method)
+    return payload
 
 
 async def check_scraper_methods_tool() -> Dict[str, Any]:
     """Return available web-scraping methods and recommended installs."""
     result = _API["check_scraper_methods_tool"]()
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        return _normalize_payload(await result)
+    return _normalize_payload(result)
 
 
 def register_native_web_scraping_tools(manager: Any) -> None:
@@ -162,11 +302,26 @@ def register_native_web_scraping_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "url": {"type": "string"},
-                "method": {"type": ["string", "null"]},
-                "timeout": {"type": "integer"},
-                "extract_links": {"type": "boolean"},
-                "extract_text": {"type": "boolean"},
-                "fallback_enabled": {"type": "boolean"},
+                "method": {
+                    "type": ["string", "null"],
+                    "enum": [
+                        "playwright",
+                        "beautifulsoup",
+                        "wayback_machine",
+                        "common_crawl",
+                        "archive_is",
+                        "ipwb",
+                        "newspaper",
+                        "readability",
+                        "requests_only",
+                        None,
+                    ],
+                    "default": None,
+                },
+                "timeout": {"type": "integer", "minimum": 1, "default": 30},
+                "extract_links": {"type": "boolean", "default": True},
+                "extract_text": {"type": "boolean", "default": True},
+                "fallback_enabled": {"type": "boolean", "default": True},
             },
             "required": ["url"],
         },
@@ -182,13 +337,28 @@ def register_native_web_scraping_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "urls": {"type": "array", "items": {"type": "string"}},
-                "method": {"type": ["string", "null"]},
-                "timeout": {"type": "integer"},
-                "max_concurrent": {"type": "integer"},
-                "extract_links": {"type": "boolean"},
-                "extract_text": {"type": "boolean"},
-                "fallback_enabled": {"type": "boolean"},
+                "urls": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                "method": {
+                    "type": ["string", "null"],
+                    "enum": [
+                        "playwright",
+                        "beautifulsoup",
+                        "wayback_machine",
+                        "common_crawl",
+                        "archive_is",
+                        "ipwb",
+                        "newspaper",
+                        "readability",
+                        "requests_only",
+                        None,
+                    ],
+                    "default": None,
+                },
+                "timeout": {"type": "integer", "minimum": 1, "default": 30},
+                "max_concurrent": {"type": "integer", "minimum": 1, "default": 5},
+                "extract_links": {"type": "boolean", "default": True},
+                "extract_text": {"type": "boolean", "default": True},
+                "fallback_enabled": {"type": "boolean", "default": True},
             },
             "required": ["urls"],
         },
