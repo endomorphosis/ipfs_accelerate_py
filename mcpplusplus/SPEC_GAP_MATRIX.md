@@ -1,5 +1,7 @@
 # MCP++ Spec Gap Matrix
 
+<!-- markdownlint-disable MD013 -->
+
 This matrix tracks source-to-target parity for the unified MCP runtime migration.
 
 ## Snapshot

@@ -1,5 +1,7 @@
 # MCP++ Spec Baseline
 
+<!-- markdownlint-disable MD013 -->
+
 This directory is the source of truth for MCP++ conformance in this workspace.
 
 ## Scope

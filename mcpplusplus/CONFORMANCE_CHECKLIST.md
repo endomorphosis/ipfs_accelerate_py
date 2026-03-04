@@ -1,5 +1,7 @@
 # MCP++ Conformance Checklist
 
+<!-- markdownlint-disable MD013 -->
+
 This checklist tracks conformance of the canonical runtime in `ipfs_accelerate_py/mcp_server`.
 
 | ID | Requirement | Status | Evidence | Notes |
