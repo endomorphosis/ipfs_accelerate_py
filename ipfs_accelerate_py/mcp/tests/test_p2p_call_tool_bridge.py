@@ -52,8 +52,10 @@ def test_p2p_call_tool_dispatches_to_mcp_registry() -> None:
 
         # Create MCP server instance (registers tools + sets global instance).
         from ipfs_accelerate_py.mcp.server import create_mcp_server
+        from ipfs_accelerate_py.tool_manifest import tool_execution_context
 
         _server = create_mcp_server(accelerate_instance=None)
+        assert tool_execution_context(_server.mcp, tool_name="run_inference") == "server"
 
         # Start p2p service in-process.
         from ipfs_accelerate_py.p2p_tasks.runtime import TaskQueueP2PServiceRuntime

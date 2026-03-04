@@ -612,11 +612,13 @@ def register_tools(mcp):
     tools_dict = getattr(mcp, "tools", None)
     if isinstance(tools_dict, dict):
         server_tools = {
+            # Keep run_inference on the server path so MCP+p2p call_tool can
+            # return directly even when no worker pool is active.
+            "run_inference",
             "get_model_list",
             "get_distributed_capabilities",
         }
         worker_tools = {
-            "run_inference",
             "download_model",
             "run_distributed_inference",
         }

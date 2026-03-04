@@ -7,19 +7,29 @@ from typing import Any, Dict
 from ipfs_accelerate_py.kit.ipfs_files_kit import get_ipfs_files_kit
 
 
+def _error_result(message: str) -> Dict[str, Any]:
+    return {"success": False, "data": None, "error": message}
+
+
 def ipfs_files_validate_cid(cid: str) -> Dict[str, Any]:
     """Validate CID format using the IPFS files kit.
 
     This is a native unified-tool implementation (not legacy registration capture)
     used in the Wave A migration path.
     """
+    if not isinstance(cid, str) or not cid.strip():
+        return _error_result("cid must be a non-empty string")
+
     kit = get_ipfs_files_kit()
-    result = kit.validate_cid(cid=cid)
-    return {
-        "success": result.success,
-        "data": result.data,
-        "error": result.error,
-    }
+    try:
+        result = kit.validate_cid(cid=cid.strip())
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error,
+        }
+    except Exception as exc:
+        return _error_result(str(exc))
 
 
 def ipfs_files_list_files(path: str = "/") -> Dict[str, Any]:
@@ -28,13 +38,19 @@ def ipfs_files_list_files(path: str = "/") -> Dict[str, Any]:
     This uses the same native unified-tool migration path as CID validation,
     while preserving the kit result envelope for callers.
     """
+    if not isinstance(path, str) or not path.strip():
+        return _error_result("path must be a non-empty string")
+
     kit = get_ipfs_files_kit()
-    result = kit.list_files(path=path)
-    return {
-        "success": result.success,
-        "data": result.data,
-        "error": result.error,
-    }
+    try:
+        result = kit.list_files(path=path)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error,
+        }
+    except Exception as exc:
+        return _error_result(str(exc))
 
 
 def ipfs_files_add_file(path: str, pin: bool = True) -> Dict[str, Any]:
@@ -43,13 +59,21 @@ def ipfs_files_add_file(path: str, pin: bool = True) -> Dict[str, Any]:
     This provides a native unified write/path operation in the Wave A migration
     path while preserving the kit result envelope for callers.
     """
+    if not isinstance(path, str) or not path.strip():
+        return _error_result("path must be a non-empty string")
+    if not isinstance(pin, bool):
+        return _error_result("pin must be a boolean")
+
     kit = get_ipfs_files_kit()
-    result = kit.add_file(path=path, pin=pin)
-    return {
-        "success": result.success,
-        "data": result.data,
-        "error": result.error,
-    }
+    try:
+        result = kit.add_file(path=path, pin=pin)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error,
+        }
+    except Exception as exc:
+        return _error_result(str(exc))
 
 
 def ipfs_files_pin_file(cid: str) -> Dict[str, Any]:
@@ -58,13 +82,19 @@ def ipfs_files_pin_file(cid: str) -> Dict[str, Any]:
     This extends the native unified Wave A tool set with a pinning operation
     while preserving the kit result envelope for callers.
     """
+    if not isinstance(cid, str) or not cid.strip():
+        return _error_result("cid must be a non-empty string")
+
     kit = get_ipfs_files_kit()
-    result = kit.pin_file(cid=cid)
-    return {
-        "success": result.success,
-        "data": result.data,
-        "error": result.error,
-    }
+    try:
+        result = kit.pin_file(cid=cid.strip())
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error,
+        }
+    except Exception as exc:
+        return _error_result(str(exc))
 
 
 def ipfs_files_unpin_file(cid: str) -> Dict[str, Any]:
@@ -73,13 +103,19 @@ def ipfs_files_unpin_file(cid: str) -> Dict[str, Any]:
     This extends the native unified Wave A tool set with an unpin operation
     while preserving the kit result envelope for callers.
     """
+    if not isinstance(cid, str) or not cid.strip():
+        return _error_result("cid must be a non-empty string")
+
     kit = get_ipfs_files_kit()
-    result = kit.unpin_file(cid=cid)
-    return {
-        "success": result.success,
-        "data": result.data,
-        "error": result.error,
-    }
+    try:
+        result = kit.unpin_file(cid=cid.strip())
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error,
+        }
+    except Exception as exc:
+        return _error_result(str(exc))
 
 
 def ipfs_files_get_file(cid: str, output_path: str) -> Dict[str, Any]:
@@ -88,13 +124,21 @@ def ipfs_files_get_file(cid: str, output_path: str) -> Dict[str, Any]:
     This extends the native unified Wave A tool set with a read/get operation
     while preserving the kit result envelope for callers.
     """
+    if not isinstance(cid, str) or not cid.strip():
+        return _error_result("cid must be a non-empty string")
+    if not isinstance(output_path, str) or not output_path.strip():
+        return _error_result("output_path must be a non-empty string")
+
     kit = get_ipfs_files_kit()
-    result = kit.get_file(cid=cid, output_path=output_path)
-    return {
-        "success": result.success,
-        "data": result.data,
-        "error": result.error,
-    }
+    try:
+        result = kit.get_file(cid=cid.strip(), output_path=output_path)
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error,
+        }
+    except Exception as exc:
+        return _error_result(str(exc))
 
 
 def ipfs_files_cat(cid: str) -> Dict[str, Any]:
@@ -103,13 +147,19 @@ def ipfs_files_cat(cid: str) -> Dict[str, Any]:
     This extends the native unified Wave A tool set with direct content
     retrieval (`ipfs cat` equivalent) while preserving the kit result envelope.
     """
+    if not isinstance(cid, str) or not cid.strip():
+        return _error_result("cid must be a non-empty string")
+
     kit = get_ipfs_files_kit()
-    result = kit.cat_file(cid=cid)
-    return {
-        "success": result.success,
-        "data": result.data,
-        "error": result.error,
-    }
+    try:
+        result = kit.cat_file(cid=cid.strip())
+        return {
+            "success": result.success,
+            "data": result.data,
+            "error": result.error,
+        }
+    except Exception as exc:
+        return _error_result(str(exc))
 
 
 def register_native_ipfs_tools(manager: Any) -> None:
@@ -122,7 +172,7 @@ def register_native_ipfs_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "cid": {"type": "string"},
+                "cid": {"type": "string", "minLength": 1},
             },
             "required": ["cid"],
         },
@@ -138,7 +188,7 @@ def register_native_ipfs_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "path": {"type": "string", "default": "/"},
+                "path": {"type": "string", "default": "/", "minLength": 1},
             },
             "required": [],
         },
@@ -154,7 +204,7 @@ def register_native_ipfs_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "path": {"type": "string"},
+                "path": {"type": "string", "minLength": 1},
                 "pin": {"type": "boolean", "default": True},
             },
             "required": ["path"],
@@ -171,7 +221,7 @@ def register_native_ipfs_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "cid": {"type": "string"},
+                "cid": {"type": "string", "minLength": 1},
             },
             "required": ["cid"],
         },
@@ -187,7 +237,7 @@ def register_native_ipfs_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "cid": {"type": "string"},
+                "cid": {"type": "string", "minLength": 1},
             },
             "required": ["cid"],
         },
@@ -203,8 +253,8 @@ def register_native_ipfs_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "cid": {"type": "string"},
-                "output_path": {"type": "string"},
+                "cid": {"type": "string", "minLength": 1},
+                "output_path": {"type": "string", "minLength": 1},
             },
             "required": ["cid", "output_path"],
         },
@@ -220,7 +270,7 @@ def register_native_ipfs_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "cid": {"type": "string"},
+                "cid": {"type": "string", "minLength": 1},
             },
             "required": ["cid"],
         },

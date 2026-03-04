@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 
+def _error_result(message: str) -> Dict[str, Any]:
+    return {"status": "error", "error": message}
+
+
 def _get_workflow_manager() -> Optional[Any]:
     """Resolve workflow manager lazily to avoid hard dependency at import time."""
     try:
@@ -57,6 +61,9 @@ def get_workflow_templates() -> Dict[str, Any]:
 
 def list_workflows(status: str | None = None) -> Dict[str, Any]:
     """List workflows using the shared workflow manager when available."""
+    if status is not None and not isinstance(status, str):
+        return _error_result("status must be a string or null")
+
     manager = _get_workflow_manager()
     if not manager:
         return {
@@ -64,7 +71,8 @@ def list_workflows(status: str | None = None) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    workflows = manager.list_workflows(status=status)
+    normalized_status = (status or "").strip() or None
+    workflows = manager.list_workflows(status=normalized_status)
     workflow_list = []
     for wf in workflows:
         progress = wf.get_progress()
@@ -92,6 +100,9 @@ def list_workflows(status: str | None = None) -> Dict[str, Any]:
 
 def get_workflow(workflow_id: str) -> Dict[str, Any]:
     """Get detailed workflow information using shared workflow manager when available."""
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        return _error_result("workflow_id must be a non-empty string")
+
     manager = _get_workflow_manager()
     if not manager:
         return {
@@ -99,7 +110,7 @@ def get_workflow(workflow_id: str) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    workflow = manager.get_workflow(workflow_id)
+    workflow = manager.get_workflow(workflow_id.strip())
     if not workflow:
         return {
             "status": "error",
@@ -144,6 +155,13 @@ def get_workflow(workflow_id: str) -> Dict[str, Any]:
 
 def create_workflow(name: str, description: str, tasks: List[Dict[str, Any]]) -> Dict[str, Any]:
     """Create a workflow using shared workflow manager when available."""
+    if not isinstance(name, str) or not name.strip():
+        return _error_result("name must be a non-empty string")
+    if not isinstance(description, str) or not description.strip():
+        return _error_result("description must be a non-empty string")
+    if not isinstance(tasks, list):
+        return _error_result("tasks must be a list")
+
     manager = _get_workflow_manager()
     if not manager:
         return {
@@ -151,7 +169,7 @@ def create_workflow(name: str, description: str, tasks: List[Dict[str, Any]]) ->
             "error": "Workflow manager not available",
         }
 
-    workflow = manager.create_workflow(name, description, tasks)
+    workflow = manager.create_workflow(name.strip(), description.strip(), tasks)
     return {
         "status": "success",
         "workflow_id": workflow.workflow_id,
@@ -169,6 +187,15 @@ def update_workflow(
     tasks: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Any]:
     """Update a workflow using shared workflow manager when available."""
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        return _error_result("workflow_id must be a non-empty string")
+    if name is not None and (not isinstance(name, str) or not name.strip()):
+        return _error_result("name must be null or a non-empty string")
+    if description is not None and (not isinstance(description, str) or not description.strip()):
+        return _error_result("description must be null or a non-empty string")
+    if tasks is not None and not isinstance(tasks, list):
+        return _error_result("tasks must be null or a list")
+
     manager = _get_workflow_manager()
     if not manager:
         return {
@@ -177,9 +204,9 @@ def update_workflow(
         }
 
     workflow = manager.update_workflow(
-        workflow_id=workflow_id,
-        name=name,
-        description=description,
+        workflow_id=workflow_id.strip(),
+        name=name.strip() if isinstance(name, str) else name,
+        description=description.strip() if isinstance(description, str) else description,
         tasks=tasks,
     )
     return {
@@ -194,6 +221,9 @@ def update_workflow(
 
 def delete_workflow(workflow_id: str) -> Dict[str, Any]:
     """Delete a workflow using shared workflow manager when available."""
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        return _error_result("workflow_id must be a non-empty string")
+
     manager = _get_workflow_manager()
     if not manager:
         return {
@@ -201,7 +231,7 @@ def delete_workflow(workflow_id: str) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    manager.delete_workflow(workflow_id)
+    manager.delete_workflow(workflow_id.strip())
     return {
         "status": "success",
         "workflow_id": workflow_id,
@@ -211,6 +241,9 @@ def delete_workflow(workflow_id: str) -> Dict[str, Any]:
 
 def start_workflow(workflow_id: str) -> Dict[str, Any]:
     """Start a workflow using shared workflow manager when available."""
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        return _error_result("workflow_id must be a non-empty string")
+
     manager = _get_workflow_manager()
     if not manager:
         return {
@@ -218,7 +251,7 @@ def start_workflow(workflow_id: str) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    manager.start_workflow(workflow_id)
+    manager.start_workflow(workflow_id.strip())
     return {
         "status": "success",
         "workflow_id": workflow_id,
@@ -228,6 +261,9 @@ def start_workflow(workflow_id: str) -> Dict[str, Any]:
 
 def pause_workflow(workflow_id: str) -> Dict[str, Any]:
     """Pause a workflow using shared workflow manager when available."""
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        return _error_result("workflow_id must be a non-empty string")
+
     manager = _get_workflow_manager()
     if not manager:
         return {
@@ -235,7 +271,7 @@ def pause_workflow(workflow_id: str) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    manager.pause_workflow(workflow_id)
+    manager.pause_workflow(workflow_id.strip())
     return {
         "status": "success",
         "workflow_id": workflow_id,
@@ -245,6 +281,9 @@ def pause_workflow(workflow_id: str) -> Dict[str, Any]:
 
 def stop_workflow(workflow_id: str) -> Dict[str, Any]:
     """Stop a workflow using shared workflow manager when available."""
+    if not isinstance(workflow_id, str) or not workflow_id.strip():
+        return _error_result("workflow_id must be a non-empty string")
+
     manager = _get_workflow_manager()
     if not manager:
         return {
@@ -252,7 +291,7 @@ def stop_workflow(workflow_id: str) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    manager.stop_workflow(workflow_id)
+    manager.stop_workflow(workflow_id.strip())
     return {
         "status": "success",
         "workflow_id": workflow_id,
@@ -300,7 +339,7 @@ def register_native_workflow_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
             },
             "required": ["workflow_id"],
         },
@@ -316,8 +355,8 @@ def register_native_workflow_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "name": {"type": "string"},
-                "description": {"type": "string"},
+                "name": {"type": "string", "minLength": 1},
+                "description": {"type": "string", "minLength": 1},
                 "tasks": {
                     "type": "array",
                     "items": {"type": "object"},
@@ -337,9 +376,9 @@ def register_native_workflow_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
-                "name": {"type": ["string", "null"]},
-                "description": {"type": ["string", "null"]},
+                "workflow_id": {"type": "string", "minLength": 1},
+                "name": {"type": ["string", "null"], "minLength": 1},
+                "description": {"type": ["string", "null"], "minLength": 1},
                 "tasks": {
                     "type": ["array", "null"],
                     "items": {"type": "object"},
@@ -359,7 +398,7 @@ def register_native_workflow_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
             },
             "required": ["workflow_id"],
         },
@@ -375,7 +414,7 @@ def register_native_workflow_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
             },
             "required": ["workflow_id"],
         },
@@ -391,7 +430,7 @@ def register_native_workflow_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
             },
             "required": ["workflow_id"],
         },
@@ -407,7 +446,7 @@ def register_native_workflow_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
             },
             "required": ["workflow_id"],
         },

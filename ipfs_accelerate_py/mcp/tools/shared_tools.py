@@ -763,6 +763,9 @@ def register_shared_tools(mcp: FastMCP) -> None:
             "list_available_models",
             "search_models",
             "get_model_information",
+            # Inference should be callable via MCP+p2p without requiring a
+            # background worker pool.
+            "run_inference",
             "check_network_status",
             "get_connected_peers",
             "get_system_status",
@@ -776,7 +779,6 @@ def register_shared_tools(mcp: FastMCP) -> None:
             # Compute-heavy inference / tests / file operations
             "generate_text",
             "classify_text",
-            "run_inference",
             "run_model_test",
             "add_file_to_ipfs",
             "get_file_from_ipfs",

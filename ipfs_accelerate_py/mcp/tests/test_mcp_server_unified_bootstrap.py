@@ -5326,6 +5326,224 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_ipfs_native_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """ipfs native category should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="ipfs-native-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("ipfs")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("ipfs_files_validate_cid", names)
+            self.assertIn("ipfs_files_get_file", names)
+
+            validate_schema = await get_schema("ipfs", "ipfs_files_validate_cid")
+            validate_props = (validate_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((validate_props.get("cid") or {}).get("minLength"), 1)
+
+            get_schema_payload = await get_schema("ipfs", "ipfs_files_get_file")
+            get_props = (get_schema_payload.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((get_props.get("output_path") or {}).get("minLength"), 1)
+
+            invalid_cid = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "ipfs",
+                    "ipfs_files_validate_cid",
+                    {"cid": "   "},
+                )
+            )
+            self.assertFalse(invalid_cid.get("success"))
+            self.assertIn("cid must be a non-empty string", str(invalid_cid.get("error", "")))
+
+            invalid_output = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "ipfs",
+                    "ipfs_files_get_file",
+                    {"cid": "bafy-demo", "output_path": "   "},
+                )
+            )
+            self.assertFalse(invalid_output.get("success"))
+            self.assertIn("output_path must be a non-empty string", str(invalid_output.get("error", "")))
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_workflow_native_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """workflow native category should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="workflow-native-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("workflow")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("get_workflow_templates", names)
+            self.assertIn("create_workflow", names)
+
+            get_schema_payload = await get_schema("workflow", "get_workflow")
+            get_props = (get_schema_payload.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((get_props.get("workflow_id") or {}).get("minLength"), 1)
+
+            create_schema = await get_schema("workflow", "create_workflow")
+            create_props = (create_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((create_props.get("name") or {}).get("minLength"), 1)
+
+            invalid_get = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow",
+                    "get_workflow",
+                    {"workflow_id": "   "},
+                )
+            )
+            self.assertEqual(invalid_get.get("status"), "error")
+            self.assertIn("workflow_id must be a non-empty string", str(invalid_get.get("error", "")))
+
+            invalid_create = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow",
+                    "create_workflow",
+                    {
+                        "name": "",
+                        "description": "demo",
+                        "tasks": [],
+                    },
+                )
+            )
+            self.assertEqual(invalid_create.get("status"), "error")
+            self.assertIn("name must be a non-empty string", str(invalid_create.get("error", "")))
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_p2p_native_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """p2p native category should expose schema contracts and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="p2p-native-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("p2p")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("p2p_taskqueue_status", names)
+            self.assertIn("p2p_taskqueue_submit", names)
+
+            status_schema = await get_schema("p2p", "p2p_taskqueue_status")
+            status_props = (status_schema.get("input_schema") or {}).get("properties", {})
+            self.assertGreater((status_props.get("timeout_s") or {}).get("minimum", 0), 0)
+
+            submit_schema = await get_schema("p2p", "p2p_taskqueue_submit")
+            submit_props = (submit_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((submit_props.get("task_type") or {}).get("minLength"), 1)
+
+            invalid_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "p2p",
+                    "p2p_taskqueue_status",
+                    {"timeout_s": 0},
+                )
+            )
+            self.assertFalse(invalid_timeout.get("ok"))
+            self.assertIn("timeout_s must be a number > 0", str(invalid_timeout.get("error", "")))
+
+            invalid_submit = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "p2p",
+                    "p2p_taskqueue_submit",
+                    {
+                        "task_type": "",
+                        "model_name": "demo-model",
+                        "payload": {},
+                    },
+                )
+            )
+            self.assertFalse(invalid_submit.get("ok"))
+            self.assertIn("task_type must be a non-empty string", str(invalid_submit.get("error", "")))
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_session_tools_enhanced_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """session_tools should expose enhanced wrappers with deterministic dispatch contracts."""
 

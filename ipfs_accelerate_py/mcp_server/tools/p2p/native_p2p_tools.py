@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 
+def _error_result(message: str) -> Dict[str, Any]:
+    return {"ok": False, "error": message}
+
+
 async def _request_status(
     remote_multiaddr: str = "",
     peer_id: str = "",
@@ -31,6 +35,11 @@ async def p2p_taskqueue_status(
     detail: bool = False,
 ) -> Dict[str, Any]:
     """Get TaskQueue service status from native unified p2p tool path."""
+    if not isinstance(timeout_s, (int, float)) or float(timeout_s) <= 0:
+        return _error_result("timeout_s must be a number > 0")
+    if not isinstance(detail, bool):
+        return _error_result("detail must be a boolean")
+
     try:
         resp = await _request_status(
             remote_multiaddr=remote_multiaddr,
@@ -72,6 +81,13 @@ async def p2p_taskqueue_submit(
     peer_id: str = "",
 ) -> Dict[str, Any]:
     """Submit a task from native unified p2p tool path."""
+    if not isinstance(task_type, str) or not task_type.strip():
+        return _error_result("task_type must be a non-empty string")
+    if not isinstance(model_name, str) or not model_name.strip():
+        return _error_result("model_name must be a non-empty string")
+    if not isinstance(payload, dict):
+        return _error_result("payload must be an object")
+
     try:
         info = await _submit_task_with_info(
             task_type=task_type,
@@ -246,6 +262,9 @@ async def p2p_taskqueue_get_task(
     remote_peer_id: str = "",
 ) -> Dict[str, Any]:
     """Get a single TaskQueue task from native unified p2p tool path."""
+    if not isinstance(task_id, str) or not task_id.strip():
+        return _error_result("task_id must be a non-empty string")
+
     try:
         task = await _get_task(
             task_id=task_id,
@@ -283,6 +302,11 @@ async def p2p_taskqueue_wait_task(
     remote_peer_id: str = "",
 ) -> Dict[str, Any]:
     """Wait for a TaskQueue task from native unified p2p tool path."""
+    if not isinstance(task_id, str) or not task_id.strip():
+        return _error_result("task_id must be a non-empty string")
+    if not isinstance(timeout_s, (int, float)) or float(timeout_s) <= 0:
+        return _error_result("timeout_s must be a number > 0")
+
     try:
         task = await _wait_task(
             task_id=task_id,
@@ -739,7 +763,7 @@ def register_native_p2p_tools(manager: Any) -> None:
             "properties": {
                 "remote_multiaddr": {"type": "string", "default": ""},
                 "peer_id": {"type": "string", "default": ""},
-                "timeout_s": {"type": "number", "default": 10.0},
+                "timeout_s": {"type": "number", "default": 10.0, "minimum": 0.000001},
                 "detail": {"type": "boolean", "default": False},
             },
             "required": [],
@@ -756,8 +780,8 @@ def register_native_p2p_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "task_type": {"type": "string"},
-                "model_name": {"type": "string"},
+                "task_type": {"type": "string", "minLength": 1},
+                "model_name": {"type": "string", "minLength": 1},
                 "payload": {
                     "type": "object",
                     "additionalProperties": True,
@@ -852,7 +876,7 @@ def register_native_p2p_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "task_id": {"type": "string"},
+                "task_id": {"type": "string", "minLength": 1},
                 "remote_multiaddr": {"type": "string", "default": ""},
                 "remote_peer_id": {"type": "string", "default": ""},
             },
@@ -870,8 +894,8 @@ def register_native_p2p_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "task_id": {"type": "string"},
-                "timeout_s": {"type": "number", "default": 60.0},
+                "task_id": {"type": "string", "minLength": 1},
+                "timeout_s": {"type": "number", "default": 60.0, "minimum": 0.000001},
                 "remote_multiaddr": {"type": "string", "default": ""},
                 "remote_peer_id": {"type": "string", "default": ""},
             },
