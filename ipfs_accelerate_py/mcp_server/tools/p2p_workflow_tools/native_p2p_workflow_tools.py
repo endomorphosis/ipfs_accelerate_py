@@ -93,6 +93,16 @@ def _load_p2p_workflow_api() -> Dict[str, Any]:
 _API = _load_p2p_workflow_api()
 
 
+def _normalize_status_envelope(payload: Any) -> Dict[str, Any]:
+    normalized = dict(payload or {})
+    status_value = normalized.get("status")
+    if not isinstance(status_value, str):
+        if status_value is not None:
+            normalized.setdefault("details", status_value)
+        normalized["status"] = "success" if normalized.get("success", True) else "error"
+    return normalized
+
+
 async def initialize_p2p_scheduler(
     peer_id: Optional[str] = None,
     peers: Optional[List[str]] = None,
@@ -113,10 +123,7 @@ async def initialize_p2p_scheduler(
 
     result = _API["initialize_p2p_scheduler"](peer_id=peer_id, peers=peers)
     payload = await result if hasattr(result, "__await__") else result
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
-    return normalized
+    return _normalize_status_envelope(payload)
 
 
 async def schedule_p2p_workflow(
@@ -176,9 +183,7 @@ async def schedule_p2p_workflow(
         metadata=metadata,
     )
     payload = await result if hasattr(result, "__await__") else result
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
+    normalized = _normalize_status_envelope(payload)
     normalized.setdefault("workflow_id", normalized_workflow_id)
     return normalized
 
@@ -187,30 +192,21 @@ async def get_next_p2p_workflow() -> Dict[str, Any]:
     """Get the next workflow from the scheduler queue."""
     result = _API["get_next_p2p_workflow"]()
     payload = await result if hasattr(result, "__await__") else result
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
-    return normalized
+    return _normalize_status_envelope(payload)
 
 
 async def get_p2p_scheduler_status() -> Dict[str, Any]:
     """Get current P2P scheduler status."""
     result = _API["get_p2p_scheduler_status"]()
     payload = await result if hasattr(result, "__await__") else result
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
-    return normalized
+    return _normalize_status_envelope(payload)
 
 
 async def get_assigned_workflows() -> Dict[str, Any]:
     """Get workflows currently assigned to this peer."""
     result = _API["get_assigned_workflows"]()
     payload = await result if hasattr(result, "__await__") else result
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
-    return normalized
+    return _normalize_status_envelope(payload)
 
 
 def register_native_p2p_workflow_tools(manager: Any) -> None:
