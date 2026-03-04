@@ -145,13 +145,17 @@ async def manage_endpoints(
                 "ctx_length": ctx_length,
             }
 
-    return await _API["manage_endpoints"](
+    result = await _API["manage_endpoints"](
         action=normalized_action,
         model=model,
         endpoint=endpoint,
         endpoint_type=endpoint_type,
         ctx_length=normalized_ctx_length,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("action", normalized_action)
+    return payload
 
 
 async def system_maintenance(
@@ -179,12 +183,16 @@ async def system_maintenance(
             "force": force,
         }
 
-    return await _API["system_maintenance"](
+    result = await _API["system_maintenance"](
         operation=normalized_operation,
         target=target,
         force=force,
         action=normalized_operation,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("operation", normalized_operation)
+    return payload
 
 
 async def configure_system(
@@ -221,12 +229,16 @@ async def configure_system(
             "validate_only": validate_only,
         }
 
-    return await _API["configure_system"](
+    result = await _API["configure_system"](
         action=normalized_action,
         config_key=config_key,
         settings=settings,
         validate_only=validate_only,
     )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("action", normalized_action)
+    return payload
 
 
 def register_native_admin_tools(manager: Any) -> None:
