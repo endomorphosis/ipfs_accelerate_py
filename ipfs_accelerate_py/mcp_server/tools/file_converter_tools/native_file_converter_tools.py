@@ -74,6 +74,24 @@ def _load_file_converter_tools_api() -> Dict[str, Any]:
 _API = _load_file_converter_tools_api()
 
 
+def _normalize_payload(
+    payload: Any,
+    *,
+    default_fields: Dict[str, Any],
+) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic dictionary envelopes."""
+    if isinstance(payload, dict):
+        merged: Dict[str, Any] = dict(default_fields)
+        merged.update(payload)
+        merged.setdefault("status", "success")
+        return merged
+    return {
+        **default_fields,
+        "status": "success",
+        "result": payload,
+    }
+
+
 async def convert_file_tool(
     input_path: str,
     backend: str = "native",
@@ -81,23 +99,89 @@ async def convert_file_tool(
     output_format: str = "text",
 ) -> Dict[str, Any]:
     """Convert a file or URL into text/structured output."""
-    result = _API["convert_file_tool"](
-        input_path=input_path,
-        backend=backend,
-        extract_archives=extract_archives,
-        output_format=output_format,
+    normalized_input_path = str(input_path or "").strip()
+    if not normalized_input_path:
+        return {
+            "status": "error",
+            "error": "input_path is required",
+        }
+
+    normalized_backend = str(backend or "").strip()
+    if not normalized_backend:
+        return {
+            "status": "error",
+            "error": "backend must be a non-empty string",
+        }
+
+    normalized_output_format = str(output_format or "").strip()
+    if not normalized_output_format:
+        return {
+            "status": "error",
+            "error": "output_format must be a non-empty string",
+        }
+
+    if not isinstance(extract_archives, bool):
+        return {
+            "status": "error",
+            "error": "extract_archives must be a boolean",
+        }
+
+    try:
+        result = _API["convert_file_tool"](
+            input_path=normalized_input_path,
+            backend=normalized_backend,
+            extract_archives=extract_archives,
+            output_format=normalized_output_format,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": f"convert_file_tool failed: {exc}",
+            "input_path": normalized_input_path,
+            "backend": normalized_backend,
+            "output_format": normalized_output_format,
+        }
+
+    return _normalize_payload(
+        result,
+        default_fields={
+            "tool": "convert_file_tool",
+            "input_path": normalized_input_path,
+            "backend": normalized_backend,
+            "output_format": normalized_output_format,
+        },
     )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
 
 
 async def file_info_tool(input_path: str) -> Dict[str, Any]:
     """Get file metadata and inferred type information."""
-    result = _API["file_info_tool"](input_path=input_path)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_input_path = str(input_path or "").strip()
+    if not normalized_input_path:
+        return {
+            "status": "error",
+            "error": "input_path is required",
+        }
+
+    try:
+        result = _API["file_info_tool"](input_path=normalized_input_path)
+        if hasattr(result, "__await__"):
+            result = await result
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": f"file_info_tool failed: {exc}",
+            "input_path": normalized_input_path,
+        }
+
+    return _normalize_payload(
+        result,
+        default_fields={
+            "tool": "file_info_tool",
+            "input_path": normalized_input_path,
+        },
+    )
 
 
 async def download_url_tool(
@@ -106,14 +190,51 @@ async def download_url_tool(
     max_size_mb: int = 100,
 ) -> Dict[str, Any]:
     """Download content from an HTTP/HTTPS URL."""
-    result = _API["download_url_tool"](
-        url=url,
-        timeout=timeout,
-        max_size_mb=max_size_mb,
+    normalized_url = str(url or "").strip()
+    if not normalized_url:
+        return {
+            "status": "error",
+            "error": "url is required",
+        }
+
+    if not isinstance(timeout, int) or timeout < 1:
+        return {
+            "status": "error",
+            "error": "timeout must be an integer >= 1",
+        }
+
+    if not isinstance(max_size_mb, int) or max_size_mb < 1:
+        return {
+            "status": "error",
+            "error": "max_size_mb must be an integer >= 1",
+        }
+
+    try:
+        result = _API["download_url_tool"](
+            url=normalized_url,
+            timeout=timeout,
+            max_size_mb=max_size_mb,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+    except Exception as exc:
+        return {
+            "status": "error",
+            "error": f"download_url_tool failed: {exc}",
+            "url": normalized_url,
+            "timeout": timeout,
+            "max_size_mb": max_size_mb,
+        }
+
+    return _normalize_payload(
+        result,
+        default_fields={
+            "tool": "download_url_tool",
+            "url": normalized_url,
+            "timeout": timeout,
+            "max_size_mb": max_size_mb,
+        },
     )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
 
 
 def register_native_file_converter_tools(manager: Any) -> None:
@@ -126,10 +247,10 @@ def register_native_file_converter_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "input_path": {"type": "string"},
-                "backend": {"type": "string"},
+                "input_path": {"type": "string", "minLength": 1},
+                "backend": {"type": "string", "minLength": 1, "default": "native"},
                 "extract_archives": {"type": "boolean"},
-                "output_format": {"type": "string"},
+                "output_format": {"type": "string", "minLength": 1, "default": "text"},
             },
             "required": ["input_path"],
         },
@@ -145,7 +266,7 @@ def register_native_file_converter_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "input_path": {"type": "string"},
+                "input_path": {"type": "string", "minLength": 1},
             },
             "required": ["input_path"],
         },
@@ -161,9 +282,9 @@ def register_native_file_converter_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "url": {"type": "string"},
-                "timeout": {"type": "integer"},
-                "max_size_mb": {"type": "integer"},
+                "url": {"type": "string", "minLength": 1},
+                "timeout": {"type": "integer", "minimum": 1, "default": 30},
+                "max_size_mb": {"type": "integer", "minimum": 1, "default": 100},
             },
             "required": ["url"],
         },
