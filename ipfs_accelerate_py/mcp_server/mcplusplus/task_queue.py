@@ -8,7 +8,10 @@ runtime can depend on a stable task queue interface.
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any, Optional
+
+import anyio
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +41,52 @@ def _build_remote(*, peer_id: str = "", multiaddr: str = "") -> Any:
     return RemoteQueue(peer_id=str(peer_id or "").strip(), multiaddr=str(multiaddr or "").strip())
 
 
+def _wrapper_retry_attempts() -> int:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_WRAPPER_RETRIES")
+    if raw is None:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRIES", "1")
+    try:
+        return max(0, int(raw))
+    except Exception:
+        return 1
+
+
+def _wrapper_retry_base_ms() -> int:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_QUEUE_WRAPPER_RETRY_BASE_MS")
+    if raw is None:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRY_BASE_MS", "50")
+    try:
+        return max(10, int(raw))
+    except Exception:
+        return 50
+
+
+def _is_retryable_wrapper_error(exc: BaseException) -> bool:
+    if isinstance(exc, BaseExceptionGroup):
+        return True
+    if isinstance(exc, (TimeoutError, ConnectionError, OSError)):
+        return True
+    text = str(exc or "").strip().lower()
+    if not text:
+        return False
+    markers = (
+        "discovery_timeout",
+        "discovery timeout",
+        "p2p request failed",
+        "no response",
+        "failed to negotiate the secure protocol",
+        "failed to upgrade security",
+        "handshake",
+        "connection reset",
+        "connection refused",
+        "temporarily unavailable",
+        "broken pipe",
+        "stream",
+        "timeout",
+    )
+    return any(m in text for m in markers)
+
+
 class TaskQueueWrapper:
     """Wrapper around P2P task queue operations."""
 
@@ -60,6 +109,26 @@ class TaskQueueWrapper:
     def _remote(self) -> Any:
         return _build_remote(peer_id=self.peer_id, multiaddr=self.multiaddr)
 
+    async def _call_with_retries(self, op_label: str, func: Any, **kwargs: Any) -> Any:
+        retries = _wrapper_retry_attempts()
+        base_ms = _wrapper_retry_base_ms()
+        for attempt in range(retries + 1):
+            try:
+                return await func(**kwargs)
+            except Exception as exc:
+                if attempt >= retries or not _is_retryable_wrapper_error(exc):
+                    raise
+                delay_s = (base_ms * (2**attempt)) / 1000.0
+                logger.debug(
+                    "TaskQueueWrapper retry op=%s attempt=%s/%s after %s: %s",
+                    op_label,
+                    attempt + 1,
+                    retries + 1,
+                    type(exc).__name__,
+                    exc,
+                )
+                await anyio.sleep(delay_s)
+
     async def submit(
         self,
         task_type: str,
@@ -78,7 +147,9 @@ class TaskQueueWrapper:
             merged_payload.update(kwargs)
 
         try:
-            response = await _client_submit_task_with_info(
+            response = await self._call_with_retries(
+                "submit",
+                _client_submit_task_with_info,
                 remote=self._remote(),
                 task_type=str(task_type),
                 model_name=str(model_name),
@@ -98,7 +169,12 @@ class TaskQueueWrapper:
             return None
 
         try:
-            response = await _client_get_task(remote=self._remote(), task_id=str(task_id))
+            response = await self._call_with_retries(
+                "get_status",
+                _client_get_task,
+                remote=self._remote(),
+                task_id=str(task_id),
+            )
             return response if isinstance(response, dict) else None
         except Exception as exc:
             logger.error("Failed to get task status: %s", exc)
@@ -110,7 +186,9 @@ class TaskQueueWrapper:
             return False
 
         try:
-            response = await _client_cancel_task(
+            response = await self._call_with_retries(
+                "cancel",
+                _client_cancel_task,
                 remote=self._remote(),
                 task_id=str(task_id),
                 reason=(str(reason) if reason else None),
@@ -131,7 +209,9 @@ class TaskQueueWrapper:
             return []
 
         try:
-            response = await _client_list_tasks(
+            response = await self._call_with_retries(
+                "list",
+                _client_list_tasks,
                 remote=self._remote(),
                 status=(str(status).strip() if status else None),
                 limit=int(limit),

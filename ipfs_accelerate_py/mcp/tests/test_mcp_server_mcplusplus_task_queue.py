@@ -52,6 +52,28 @@ class TestTaskQueueWrapper(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_submit_retries_transient_wrapper_error(self) -> None:
+        async def _run() -> None:
+            mock_submit = AsyncMock(
+                side_effect=[
+                    RuntimeError("connection reset by peer"),
+                    {"task_id": "task-retry", "peer_id": "peer-z"},
+                ]
+            )
+            with (
+                patch.object(tq, "_build_remote", return_value="REMOTE"),
+                patch.object(tq, "_client_submit_task_with_info", mock_submit),
+                patch.object(tq, "_wrapper_retry_attempts", return_value=1),
+                patch.object(tq, "_wrapper_retry_base_ms", return_value=10),
+            ):
+                queue = tq.TaskQueueWrapper(peer_id="peer-z", multiaddr="/ip4/1.2.3.4/tcp/9999")
+                task_id = await queue.submit("inference", {"prompt": "hello"}, priority=7)
+
+                self.assertEqual(task_id, "task-retry")
+                self.assertEqual(mock_submit.await_count, 2)
+
+        anyio.run(_run)
+
     def test_get_status_cancel_and_list_delegate_to_client(self) -> None:
         async def _run() -> None:
             mock_get = AsyncMock(return_value={"task_id": "task-9", "status": "pending"})
