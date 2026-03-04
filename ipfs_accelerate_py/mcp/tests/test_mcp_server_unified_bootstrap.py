@@ -6844,6 +6844,86 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_discord_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """discord_tools should expose source-compatible schema and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="discord-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("discord_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("discord_list_guilds", names)
+            self.assertIn("discord_list_channels", names)
+
+            schema = await get_schema("discord_tools", "discord_list_channels")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("guild_id") or {}).get("minLength"), 1)
+
+            invalid_guild = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "discord_tools",
+                    "discord_list_channels",
+                    {
+                        "guild_id": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_guild.get("status"), "error")
+            invalid_guild_text = (
+                str(invalid_guild.get("message", ""))
+                + " "
+                + str(invalid_guild.get("error", ""))
+            )
+            self.assertIn("guild_id is required", invalid_guild_text)
+
+            invalid_token = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "discord_tools",
+                    "discord_list_guilds",
+                    {
+                        "token": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_token.get("status"), "error")
+            invalid_token_text = (
+                str(invalid_token.get("message", ""))
+                + " "
+                + str(invalid_token.get("error", ""))
+            )
+            self.assertIn("token must be a non-empty string", invalid_token_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 
