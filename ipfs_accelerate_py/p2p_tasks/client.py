@@ -73,6 +73,8 @@ Environment:
     - seconds after which idle discovered multiaddr cache entries are pruned (default: 1800)
 - IPFS_DATASETS_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY / IPFS_ACCELERATE_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY
     - when enabled, retry attempts use lightweight dialing (cache + announce) and skip broad discovery fanout (default: 1)
+- IPFS_DATASETS_PY_TASK_P2P_RETRY_DELAY_MAX_MS / IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DELAY_MAX_MS
+    - cap in milliseconds for retry backoff delay before jitter (default: 5000)
 """
 
 from __future__ import annotations
@@ -85,7 +87,7 @@ import sys
 import threading
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from .protocol import PROTOCOL_V1, get_shared_token
 
@@ -405,9 +407,24 @@ def _retry_lightweight_discovery_enabled() -> bool:
     )
 
 
+def _retry_delay_max_ms() -> int:
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DELAY_MAX_MS")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_RETRY_DELAY_MAX_MS", "5000")
+        return max(10, int(str(raw).strip()))
+    except Exception:
+        return 5000
+
+
 def _retry_delay_s(*, attempt: int, base_ms: int) -> float:
     base = max(10, int(base_ms))
-    return ((base * (2**max(0, int(attempt)))) + random.randint(0, base)) / 1000.0
+    # Cap exponent growth so high retry counts do not create runaway sleeps.
+    exp = min(10, max(0, int(attempt)))
+    delay_cap_ms = max(base, _retry_delay_max_ms())
+    stage_delay_ms = min(delay_cap_ms, base * (2**exp))
+    jitter_cap_ms = max(1, min(base, stage_delay_ms))
+    return (stage_delay_ms + random.randint(0, int(jitter_cap_ms))) / 1000.0
 
 
 _P2P_RETRY_METRICS_LOCK = threading.Lock()
@@ -467,14 +484,46 @@ def _is_retryable_transport_error(exc: BaseException) -> bool:
         return True
     msg = str(exc or "").lower()
     markers = (
+        "discovery_timeout",
+        "discovery timeout",
         "p2p request failed",
+        "no response",
         "failed to negotiate the secure protocol",
         "handshake",
         "failed to upgrade security",
         "connect",
+        "connection reset",
+        "connection refused",
+        "temporarily unavailable",
         "stream",
+        "broken pipe",
     )
     return any(m in msg for m in markers)
+
+
+def _is_retryable_response_error(resp: Dict[str, Any]) -> bool:
+    """Return True when a response payload indicates a transient transport issue."""
+    if not isinstance(resp, dict):
+        return False
+    if bool(resp.get("ok")):
+        return False
+    text = str(resp.get("error") or resp).strip().lower()
+    if not text:
+        return False
+    markers = (
+        "discovery_timeout",
+        "p2p request failed",
+        "no response",
+        "unable to connect",
+        "failed to negotiate the secure protocol",
+        "failed to upgrade security",
+        "handshake",
+        "connect",
+        "stream",
+        "swarmexception",
+        "timeout",
+    )
+    return any(m in text for m in markers)
 
 
 def _exception_group_contains_timeout(exc: BaseException) -> bool:
@@ -715,6 +764,7 @@ async def _dial_and_request_with_retries(
     retry_base_ms: int,
     dial_timeout_s: float,
     op_label: str,
+    should_retry_response: Optional[Callable[[Dict[str, Any]], bool]] = None,
 ) -> Dict[str, Any]:
     import anyio
 
@@ -743,6 +793,27 @@ async def _dial_and_request_with_retries(
                 )
             finally:
                 release_slot()
+            retryable_response = False
+            if callable(should_retry_response):
+                try:
+                    retryable_response = bool(should_retry_response(resp))
+                except Exception:
+                    retryable_response = False
+            if not retryable_response:
+                retryable_response = _is_retryable_response_error(resp)
+            if retryable_response:
+                _remote_cooldown_mark_failure(remote)
+                if attempt >= max_retries:
+                    _retry_metric_inc(f"{op_label}.failed")
+                    return resp
+                delay_s = _retry_delay_s(attempt=attempt, base_ms=retry_base_ms)
+                _retry_metric_inc(f"{op_label}.retry")
+                _retry_metric_inc(f"{op_label}.retry_response")
+                _dial_debug(
+                    f"{op_label} retry after retryable response attempt={attempt + 1}/{max_retries + 1} delay_s={delay_s:.3f}"
+                )
+                await anyio.sleep(delay_s)
+                continue
             _remote_cooldown_mark_success(remote)
             if attempt > 0:
                 _retry_metric_inc(f"{op_label}.recovered")
@@ -2943,10 +3014,12 @@ def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail
 
 
 async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> str:
-    import anyio
-
-    def _is_retryable_submit_runtime_error(exc: RuntimeError) -> bool:
-        text = str(exc or "").strip().lower()
+    def _should_retry_submit_response(resp: Dict[str, Any]) -> bool:
+        if not isinstance(resp, dict):
+            return False
+        if bool(resp.get("ok")):
+            return False
+        text = str(resp.get("error") or resp).strip().lower()
         if not text:
             return False
         transient_markers = (
@@ -2962,85 +3035,18 @@ async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, p
         )
         return any(marker in text for marker in transient_markers)
 
-    retries = _submit_retry_attempts()
-    base_ms = _submit_retry_base_ms()
-    dial_timeout_s = _submit_dial_timeout_s()
-    last_exc: BaseException | None = None
-
-    for attempt in range(retries + 1):
-        attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
-        broad_discovery_override: bool | None = None
-        if attempt > 0 and _retry_lightweight_discovery_enabled():
-            broad_discovery_override = False
-            _retry_metric_inc("submit.retry_lightweight_discovery")
-        cooldown_wait_s = _remote_cooldown_wait_s(remote)
-        if cooldown_wait_s > 0:
-            _retry_metric_inc("submit.cooldown_wait")
-            _dial_debug(f"submit cooldown wait before attempt={attempt + 1}/{retries + 1} wait_s={cooldown_wait_s:.3f}")
-            await anyio.sleep(cooldown_wait_s)
-        try:
-            release_slot = await _acquire_dial_slot(op_label="submit")
-            try:
-                resp = await _dial_and_request(
-                    remote=remote,
-                    message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
-                    dial_timeout_s=attempt_dial_timeout_s,
-                    allow_broad_discovery_override=broad_discovery_override,
-                )
-            finally:
-                release_slot()
-            _remote_cooldown_mark_success(remote)
-            if not resp.get("ok"):
-                raise RuntimeError(f"submit failed: {resp}")
-            if attempt > 0:
-                _retry_metric_inc("submit.recovered")
-            return str(resp.get("task_id"))
-        except BaseExceptionGroup as exc:
-            last_exc = exc
-            _remote_cooldown_mark_failure(remote)
-            if attempt >= retries:
-                _retry_metric_inc("submit.failed")
-                raise
-            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
-            _retry_metric_inc("submit.retry")
-            _dial_debug(
-                f"submit retry after BaseExceptionGroup attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
-            )
-            await anyio.sleep(delay_s)
-        except RuntimeError as exc:
-            # Retry transport-like submit errors (e.g. discovery timeout,
-            # no-response handshake churn), but preserve immediate failure for
-            # clearly non-retryable submit responses.
-            retryable_runtime = _is_retryable_submit_runtime_error(exc)
-            if ("submit failed:" in str(exc)) and (not retryable_runtime):
-                raise
-            last_exc = exc
-            _remote_cooldown_mark_failure(remote)
-            if attempt >= retries:
-                _retry_metric_inc("submit.failed")
-                raise
-            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
-            _retry_metric_inc("submit.retry")
-            _dial_debug(
-                f"submit retry after RuntimeError attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
-            )
-            await anyio.sleep(delay_s)
-        except Exception as exc:
-            last_exc = exc
-            _remote_cooldown_mark_failure(remote)
-            if attempt >= retries:
-                _retry_metric_inc("submit.failed")
-                raise
-            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
-            _retry_metric_inc("submit.retry")
-            _dial_debug(
-                f"submit retry after {type(exc).__name__} attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
-            )
-            await anyio.sleep(delay_s)
-
-    if last_exc is not None:
-        raise RuntimeError(f"submit failed after retries: {last_exc}")
-    raise RuntimeError("submit failed after retries")
+    resp = await _dial_and_request_with_retries(
+        remote=remote,
+        message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
+        retries=_submit_retry_attempts(),
+        retry_base_ms=_submit_retry_base_ms(),
+        dial_timeout_s=_submit_dial_timeout_s(),
+        op_label="submit",
+        should_retry_response=_should_retry_submit_response,
+    )
+    if not resp.get("ok"):
+        raise RuntimeError(f"submit failed: {resp}")
+    return str(resp.get("task_id"))
 
 
 def _maybe_str_dict(value: Any) -> Dict[str, str]:
@@ -3631,61 +3637,15 @@ async def get_capabilities(*, remote: RemoteQueue, timeout_s: float = 10.0, deta
 
 
 async def request_status(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
-    import anyio
-
-    retries = _status_retry_attempts()
-    base_ms = _status_retry_base_ms()
-    dial_timeout_s = _status_dial_timeout_s()
-
-    for attempt in range(retries + 1):
-        attempt_dial_timeout_s = _dial_timeout_for_attempt(base_timeout_s=float(dial_timeout_s), attempt=attempt)
-        cooldown_wait_s = _remote_cooldown_wait_s(remote)
-        if cooldown_wait_s > 0:
-            _retry_metric_inc("status.cooldown_wait")
-            _dial_debug(f"status cooldown wait before attempt={attempt + 1}/{retries + 1} wait_s={cooldown_wait_s:.3f}")
-            await anyio.sleep(cooldown_wait_s)
-        try:
-            release_slot = await _acquire_dial_slot(op_label="status")
-            try:
-                resp = await _dial_and_request(
-                    remote=remote,
-                    message={"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)},
-                    dial_timeout_s=attempt_dial_timeout_s,
-                )
-            finally:
-                release_slot()
-            _remote_cooldown_mark_success(remote)
-            if attempt > 0:
-                _retry_metric_inc("status.recovered")
-            return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
-        except BaseExceptionGroup as exc:
-            retryable = _is_retryable_transport_error(exc)
-            if retryable:
-                _remote_cooldown_mark_failure(remote)
-            if attempt >= retries or not retryable:
-                if attempt >= retries:
-                    _retry_metric_inc("status.failed")
-                raise
-            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
-            _retry_metric_inc("status.retry")
-            _dial_debug(
-                f"status retry after BaseExceptionGroup attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}"
-            )
-            await anyio.sleep(delay_s)
-        except Exception as exc:
-            retryable = _is_retryable_transport_error(exc)
-            if retryable:
-                _remote_cooldown_mark_failure(remote)
-            if attempt >= retries or not retryable:
-                if attempt >= retries:
-                    _retry_metric_inc("status.failed")
-                raise
-            delay_s = _retry_delay_s(attempt=attempt, base_ms=base_ms)
-            _retry_metric_inc("status.retry")
-            _dial_debug(f"status retry after {type(exc).__name__} attempt={attempt + 1}/{retries + 1} delay_s={delay_s:.3f}")
-            await anyio.sleep(delay_s)
-
-    return {"ok": False, "error": "status_failed_after_retries"}
+    resp = await _dial_and_request_with_retries(
+        remote=remote,
+        message={"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)},
+        retries=_status_retry_attempts(),
+        retry_base_ms=_status_retry_base_ms(),
+        dial_timeout_s=_status_dial_timeout_s(),
+        op_label="status",
+    )
+    return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
 
 async def cancel_task(*, remote: RemoteQueue, task_id: str, reason: str | None = None) -> Dict[str, Any]:
     message: Dict[str, Any] = {"op": "cancel", "task_id": str(task_id)}

@@ -81,13 +81,66 @@ async def send_discord_message(
     config_file: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Send a Discord text notification for alerts."""
-    return await _API["send_discord_message"](
-        text=text,
-        role_names=role_names,
-        channel_id=channel_id,
-        thread_id=thread_id,
-        config_file=config_file,
+    normalized_text = str(text or "").strip()
+    if not normalized_text:
+        return {
+            "status": "error",
+            "message": "text is required",
+            "text": text,
+        }
+
+    normalized_role_names: Optional[List[str]] = None
+    if role_names is not None:
+        if not isinstance(role_names, list) or not all(isinstance(item, str) for item in role_names):
+            return {
+                "status": "error",
+                "message": "role_names must be an array of strings when provided",
+                "role_names": role_names,
+            }
+        normalized_role_names = [str(item).strip() for item in role_names]
+        if any(not item for item in normalized_role_names):
+            return {
+                "status": "error",
+                "message": "role_names cannot contain empty strings",
+                "role_names": role_names,
+            }
+
+    normalized_channel_id = str(channel_id).strip() if channel_id is not None else None
+    if channel_id is not None and not normalized_channel_id:
+        return {
+            "status": "error",
+            "message": "channel_id must be a non-empty string when provided",
+            "channel_id": channel_id,
+        }
+    normalized_thread_id = str(thread_id).strip() if thread_id is not None else None
+    if thread_id is not None and not normalized_thread_id:
+        return {
+            "status": "error",
+            "message": "thread_id must be a non-empty string when provided",
+            "thread_id": thread_id,
+        }
+    normalized_config_file = str(config_file).strip() if config_file is not None else None
+    if config_file is not None and not normalized_config_file:
+        return {
+            "status": "error",
+            "message": "config_file must be a non-empty string when provided",
+            "config_file": config_file,
+        }
+
+    result = await _API["send_discord_message"](
+        text=normalized_text,
+        role_names=normalized_role_names,
+        channel_id=normalized_channel_id,
+        thread_id=normalized_thread_id,
+        config_file=normalized_config_file,
     )
+    payload = dict(result or {})
+    if "error" in payload and payload.get("error"):
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "success")
+    payload.setdefault("text", normalized_text)
+    return payload
 
 
 async def evaluate_alert_rules(
@@ -96,11 +149,49 @@ async def evaluate_alert_rules(
     config_file: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Evaluate alert rules against an event payload."""
-    return await _API["evaluate_alert_rules"](
+    if not isinstance(event, dict):
+        return {
+            "status": "error",
+            "message": "event must be an object",
+            "event": event,
+        }
+
+    normalized_rule_ids: Optional[List[str]] = None
+    if rule_ids is not None:
+        if not isinstance(rule_ids, list) or not all(isinstance(item, str) for item in rule_ids):
+            return {
+                "status": "error",
+                "message": "rule_ids must be an array of strings when provided",
+                "rule_ids": rule_ids,
+            }
+        normalized_rule_ids = [str(item).strip() for item in rule_ids]
+        if any(not item for item in normalized_rule_ids):
+            return {
+                "status": "error",
+                "message": "rule_ids cannot contain empty strings",
+                "rule_ids": rule_ids,
+            }
+
+    normalized_config_file = str(config_file).strip() if config_file is not None else None
+    if config_file is not None and not normalized_config_file:
+        return {
+            "status": "error",
+            "message": "config_file must be a non-empty string when provided",
+            "config_file": config_file,
+        }
+
+    result = await _API["evaluate_alert_rules"](
         event=event,
-        rule_ids=rule_ids,
-        config_file=config_file,
+        rule_ids=normalized_rule_ids,
+        config_file=normalized_config_file,
     )
+    payload = dict(result or {})
+    if "error" in payload and payload.get("error"):
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "success")
+    payload.setdefault("event", event)
+    return payload
 
 
 async def list_alert_rules(
@@ -108,13 +199,35 @@ async def list_alert_rules(
     config_file: Optional[str] = None,
 ) -> Dict[str, Any]:
     """List configured alert rules."""
+    if not isinstance(enabled_only, bool):
+        return {
+            "status": "error",
+            "message": "enabled_only must be a boolean",
+            "enabled_only": enabled_only,
+        }
+
+    normalized_config_file = str(config_file).strip() if config_file is not None else None
+    if config_file is not None and not normalized_config_file:
+        return {
+            "status": "error",
+            "message": "config_file must be a non-empty string when provided",
+            "config_file": config_file,
+        }
+
     result = _API["list_alert_rules"](
         enabled_only=enabled_only,
-        config_file=config_file,
+        config_file=normalized_config_file,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        payload = dict(await result or {})
+    else:
+        payload = dict(result or {})
+    if "error" in payload and payload.get("error"):
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "success")
+    payload.setdefault("enabled_only", enabled_only)
+    return payload
 
 
 def register_native_alert_tools(manager: Any) -> None:
@@ -165,7 +278,7 @@ def register_native_alert_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "enabled_only": {"type": "boolean"},
+                "enabled_only": {"type": "boolean", "default": False},
                 "config_file": {"type": ["string", "null"]},
             },
             "required": [],

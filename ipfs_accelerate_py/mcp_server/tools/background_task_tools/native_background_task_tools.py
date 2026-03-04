@@ -145,10 +145,64 @@ async def check_task_status(
     limit: int = 20,
 ) -> Dict[str, Any]:
     """Check the status and progress of background tasks."""
-    result = _API["check_task_status"](task_id=task_id, task_type=task_type, status_filter=status_filter, limit=limit)
+    normalized_task_id = str(task_id).strip() if task_id is not None else None
+    if task_id is not None and not normalized_task_id:
+        return {
+            "status": "error",
+            "message": "task_id must be a non-empty string when provided",
+            "task_id": task_id,
+        }
+
+    normalized_task_type = str(task_type or "").strip().lower()
+    valid_task_types = {
+        "create_embeddings",
+        "shard_embeddings",
+        "index_sparse",
+        "index_cluster",
+        "storacha_clusters",
+        "all",
+    }
+    if normalized_task_type not in valid_task_types:
+        return {
+            "status": "error",
+            "message": "task_type must be one of: create_embeddings, shard_embeddings, index_sparse, index_cluster, storacha_clusters, all",
+            "task_type": task_type,
+        }
+
+    normalized_status_filter = str(status_filter or "").strip().lower()
+    valid_status_filters = {"pending", "running", "completed", "failed", "timeout", "all"}
+    if normalized_status_filter not in valid_status_filters:
+        return {
+            "status": "error",
+            "message": "status_filter must be one of: pending, running, completed, failed, timeout, all",
+            "status_filter": status_filter,
+        }
+
+    if not isinstance(limit, int) or limit < 1 or limit > 100:
+        return {
+            "status": "error",
+            "message": "limit must be an integer between 1 and 100",
+            "limit": limit,
+        }
+
+    result = _API["check_task_status"](
+        task_id=normalized_task_id,
+        task_type=normalized_task_type,
+        status_filter=normalized_status_filter,
+        limit=limit,
+    )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        payload = dict(await result or {})
+    else:
+        payload = dict(result or {})
+    if payload.get("status") in {"error", "not_found"} or ("error" in payload and payload.get("error")):
+        payload.setdefault("status", "error" if payload.get("status") != "not_found" else "not_found")
+    else:
+        payload.setdefault("status", "success")
+    payload.setdefault("task_type", normalized_task_type)
+    payload.setdefault("status_filter", normalized_status_filter)
+    payload.setdefault("limit", limit)
+    return payload
 
 
 async def manage_background_tasks(
@@ -160,17 +214,68 @@ async def manage_background_tasks(
     task_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Manage task lifecycle operations such as create, cancel, and stats."""
+    normalized_action = str(action or "").strip().lower()
+    valid_actions = {"create", "cancel", "pause", "resume", "get_stats", "list", "schedule"}
+    if normalized_action not in valid_actions:
+        return {
+            "status": "error",
+            "message": "action must be one of: create, cancel, pause, resume, get_stats, list, schedule",
+            "action": action,
+        }
+
+    normalized_task_id = str(task_id).strip() if task_id is not None else None
+    if normalized_action in {"cancel", "pause", "resume"} and not normalized_task_id:
+        return {
+            "status": "error",
+            "message": f"task_id is required for {normalized_action} action",
+            "task_id": task_id,
+        }
+
+    normalized_task_type = str(task_type).strip() if task_type is not None else None
+    if task_type is not None and not normalized_task_type:
+        return {
+            "status": "error",
+            "message": "task_type must be a non-empty string when provided",
+            "task_type": task_type,
+        }
+    if parameters is not None and not isinstance(parameters, dict):
+        return {
+            "status": "error",
+            "message": "parameters must be an object when provided",
+            "parameters": parameters,
+        }
+    normalized_priority = str(priority or "").strip().lower()
+    if normalized_priority not in {"high", "normal", "low"}:
+        return {
+            "status": "error",
+            "message": "priority must be one of: high, normal, low",
+            "priority": priority,
+        }
+    if task_config is not None and not isinstance(task_config, dict):
+        return {
+            "status": "error",
+            "message": "task_config must be an object when provided",
+            "task_config": task_config,
+        }
+
     result = _API["manage_background_tasks"](
-        action=action,
-        task_id=task_id,
-        task_type=task_type,
+        action=normalized_action,
+        task_id=normalized_task_id,
+        task_type=normalized_task_type,
         parameters=parameters,
-        priority=priority,
+        priority=normalized_priority,
         task_config=task_config,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        payload = dict(await result or {})
+    else:
+        payload = dict(result or {})
+    if payload.get("status") in {"error", "not_found"} or ("error" in payload and payload.get("error")):
+        payload.setdefault("status", "error" if payload.get("status") != "not_found" else "not_found")
+    else:
+        payload.setdefault("status", "success")
+    payload.setdefault("action", normalized_action)
+    return payload
 
 
 async def manage_task_queue(
@@ -179,14 +284,51 @@ async def manage_task_queue(
     max_concurrent: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Manage queue operations such as stats, clear, limits, and reorder."""
+    normalized_action = str(action or "").strip().lower()
+    valid_actions = {"get_stats", "clear_queue", "set_limits", "reorder"}
+    if normalized_action not in valid_actions:
+        return {
+            "status": "error",
+            "message": "action must be one of: get_stats, clear_queue, set_limits, reorder",
+            "action": action,
+        }
+
+    normalized_priority = str(priority).strip().lower() if priority is not None else None
+    if normalized_action in {"clear_queue", "reorder"} and not normalized_priority:
+        return {
+            "status": "error",
+            "message": f"priority is required for {normalized_action} action",
+            "priority": priority,
+        }
+    if normalized_priority is not None and normalized_priority not in {"high", "normal", "low"}:
+        return {
+            "status": "error",
+            "message": "priority must be one of: high, normal, low",
+            "priority": priority,
+        }
+
+    if max_concurrent is not None and (not isinstance(max_concurrent, int) or max_concurrent < 1):
+        return {
+            "status": "error",
+            "message": "max_concurrent must be a positive integer when provided",
+            "max_concurrent": max_concurrent,
+        }
+
     result = _API["manage_task_queue"](
-        action=action,
-        priority=priority,
+        action=normalized_action,
+        priority=normalized_priority,
         max_concurrent=max_concurrent,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        payload = dict(await result or {})
+    else:
+        payload = dict(result or {})
+    if payload.get("status") in {"error", "not_found"} or ("error" in payload and payload.get("error")):
+        payload.setdefault("status", "error" if payload.get("status") != "not_found" else "not_found")
+    else:
+        payload.setdefault("status", "success")
+    payload.setdefault("action", normalized_action)
+    return payload
 
 
 def register_native_background_task_tools(manager: Any) -> None:
@@ -200,9 +342,24 @@ def register_native_background_task_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "task_id": {"type": ["string", "null"]},
-                "task_type": {"type": "string"},
-                "status_filter": {"type": "string"},
-                "limit": {"type": "integer"},
+                "task_type": {
+                    "type": "string",
+                    "enum": [
+                        "create_embeddings",
+                        "shard_embeddings",
+                        "index_sparse",
+                        "index_cluster",
+                        "storacha_clusters",
+                        "all",
+                    ],
+                    "default": "all",
+                },
+                "status_filter": {
+                    "type": "string",
+                    "enum": ["pending", "running", "completed", "failed", "timeout", "all"],
+                    "default": "all",
+                },
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
             },
             "required": [],
         },
@@ -218,11 +375,14 @@ def register_native_background_task_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
+                "action": {
+                    "type": "string",
+                    "enum": ["create", "cancel", "pause", "resume", "get_stats", "list", "schedule"],
+                },
                 "task_id": {"type": ["string", "null"]},
                 "task_type": {"type": ["string", "null"]},
                 "parameters": {"type": ["object", "null"]},
-                "priority": {"type": "string"},
+                "priority": {"type": "string", "enum": ["high", "normal", "low"], "default": "normal"},
                 "task_config": {"type": ["object", "null"]},
             },
             "required": ["action"],
@@ -239,9 +399,12 @@ def register_native_background_task_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
-                "priority": {"type": ["string", "null"]},
-                "max_concurrent": {"type": ["integer", "null"]},
+                "action": {
+                    "type": "string",
+                    "enum": ["get_stats", "clear_queue", "set_limits", "reorder"],
+                },
+                "priority": {"type": ["string", "null"], "enum": ["high", "normal", "low", None]},
+                "max_concurrent": {"type": ["integer", "null"], "minimum": 1},
             },
             "required": ["action"],
         },
