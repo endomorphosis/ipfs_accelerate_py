@@ -158,8 +158,7 @@ def test_tools_resolver_prefers_explicit_modules(monkeypatch):
     def _taskqueue(_mcp):
         return None
 
-        async def _run() -> None:
-            result = await mcp.tools["p2p_taskqueue_submit_docker_hub"]["func"](
+    def _workflow(_mcp):
         return None
 
     def _fake_import_module(name: str):
@@ -167,14 +166,12 @@ def test_tools_resolver_prefers_explicit_modules(monkeypatch):
         if name.endswith("tools.taskqueue_tools"):
             return SimpleNamespace(register_p2p_taskqueue_tools=_taskqueue)
         if name.endswith("tools.workflow_tools"):
-            assert result == {"ok": True, "task_id": "delegated-task"}
-            assert captured["image"] == "python:3.12"
-            assert captured["command"] == ["python", "-V"]
-            assert captured["environment"] == {"MODE": "test"}
-            assert captured["remote_peer_id"] == "peer-xyz"
-            assert captured["extra_flag"] is True
+            return SimpleNamespace(register_p2p_workflow_tools=_workflow)
+        raise AssertionError(f"Unexpected import: {name}")
 
-        anyio.run(_run)
+    monkeypatch.setattr(tools, "import_module", _fake_import_module)
+
+    taskqueue_registrar, workflow_registrar = tools._resolve_p2p_registrars()
     assert taskqueue_registrar is _taskqueue
     assert workflow_registrar is _workflow
     assert calls == [
@@ -202,28 +199,24 @@ def test_tools_resolver_partial_import_failure_uses_package_symbols(monkeypatch)
     from ipfs_accelerate_py.mcplusplus_module import tools
 
     calls = []
-        async def _run() -> None:
-            status = await mcp.tools["p2p_scheduler_status"]["func"]()
-            submit = await mcp.tools["p2p_submit_task"]["func"](
-                task_id="task-1",
-                workflow_id="wf-1",
-                name="test",
-                tags=["p2p-only"],
-                priority=7,
-            )
-            next_task = await mcp.tools["p2p_get_next_task"]["func"]()
 
-            assert captured["status_called"] is True
-            assert captured["next_called"] is True
-            assert status["success"] is True
-            assert status["tool"] == "p2p_scheduler_status"
-            assert submit["success"] is True
-            assert submit["workflow_id"] == "wf-1"
-            assert captured["schedule_kwargs"]["workflow_id"] == "wf-1"
-            assert captured["schedule_kwargs"]["metadata"] == {"task_id": "task-1"}
-            assert next_task["task"] == {"workflow_id": "wf-1"}
+    def _fake_import_module(name: str):
+        calls.append(name)
+        if name.endswith("tools.taskqueue_tools"):
+            return SimpleNamespace(register_p2p_taskqueue_tools=lambda _mcp: None)
+        if name.endswith("tools.workflow_tools"):
+            raise ImportError("simulated workflow import failure")
+        raise AssertionError(f"Unexpected import: {name}")
 
-        anyio.run(_run)
+    monkeypatch.setattr(tools, "import_module", _fake_import_module)
+
+    taskqueue_registrar, workflow_registrar = tools._resolve_p2p_registrars()
+    assert taskqueue_registrar is tools.register_p2p_taskqueue_tools
+    assert workflow_registrar is tools.register_p2p_workflow_tools
+    assert calls == [
+        "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
+        "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools",
+    ]
 
 def test_register_all_p2p_tools_uses_resolver(monkeypatch):
     """Aggregate registration should call registrar callables from resolver."""
