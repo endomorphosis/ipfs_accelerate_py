@@ -6924,6 +6924,89 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_file_converter_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """file_converter_tools should expose source-compatible schema and deterministic validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="file-converter-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("file_converter_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("convert_file_tool", names)
+            self.assertIn("file_info_tool", names)
+            self.assertIn("download_url_tool", names)
+
+            schema = await get_schema("file_converter_tools", "download_url_tool")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((props.get("timeout") or {}).get("minimum"), 1)
+            self.assertEqual((props.get("max_size_mb") or {}).get("minimum"), 1)
+
+            invalid_path = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "file_converter_tools",
+                    "convert_file_tool",
+                    {
+                        "input_path": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_path.get("status"), "error")
+            invalid_path_text = (
+                str(invalid_path.get("message", ""))
+                + " "
+                + str(invalid_path.get("error", ""))
+            )
+            self.assertIn("input_path is required", invalid_path_text)
+
+            invalid_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "file_converter_tools",
+                    "download_url_tool",
+                    {
+                        "url": "https://example.com",
+                        "timeout": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_timeout.get("status"), "error")
+            invalid_timeout_text = (
+                str(invalid_timeout.get("message", ""))
+                + " "
+                + str(invalid_timeout.get("error", ""))
+            )
+            self.assertIn("timeout must be an integer >= 1", invalid_timeout_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_expanded_p2p_parity_operations(self, mock_wrapper):
         """workflow_tools should expose and dispatch expanded source-compatible P2P operations."""
 
