@@ -205,6 +205,10 @@ class ModelTestUtils:
                 "This is a test sentence.",
                 "The quick brown fox jumps over the lazy dog.",
             ]
+
+        # Decoder-only tokenizers (e.g., GPT-2) often have no pad token by default.
+        if getattr(tokenizer, "pad_token", None) is None and getattr(tokenizer, "eos_token", None) is not None:
+            tokenizer.pad_token = tokenizer.eos_token
         
         return tokenizer(
             texts,
@@ -309,6 +313,40 @@ class HardwareTestUtils:
             ModelTestUtils.assert_device_correct(outputs.last_hidden_state, device)
         elif isinstance(outputs, torch.Tensor):
             ModelTestUtils.assert_device_correct(outputs, device)
+
+    @staticmethod
+    def is_cuda_kernel_compatible(device_index: int = 0) -> bool:
+        """Return whether the current CUDA device has kernels in this torch build."""
+        if not torch.cuda.is_available():
+            return False
+
+        try:
+            arch_list = torch.cuda.get_arch_list()
+            if not arch_list:
+                return True
+            major, minor = torch.cuda.get_device_capability(device_index)
+            device_arch = f"sm_{major}{minor}"
+            return device_arch in arch_list
+        except Exception:
+            # If capability probing fails, prefer not to over-skip.
+            return True
+
+    @staticmethod
+    def get_cuda_kernel_skip_reason(device_index: int = 0) -> str:
+        """Build a clear skip reason for unsupported CUDA architecture."""
+        if not torch.cuda.is_available():
+            return "CUDA not available"
+
+        try:
+            major, minor = torch.cuda.get_device_capability(device_index)
+            device_arch = f"sm_{major}{minor}"
+            arch_list = torch.cuda.get_arch_list()
+            if device_arch not in arch_list:
+                return f"Torch CUDA kernels do not include {device_arch}; available={arch_list}"
+        except Exception:
+            return "Unable to verify CUDA kernel compatibility"
+
+        return "CUDA kernel compatible"
 
 
 class PerformanceTestUtils:

@@ -8,6 +8,12 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"status": "error", "error": message}
+    payload.update(extra)
+    return payload
+
+
 def _load_rate_limiting_tools_api() -> Dict[str, Any]:
     """Resolve source rate-limiting-tools APIs with compatibility fallback."""
     try:
@@ -109,20 +115,32 @@ async def configure_rate_limits(
 ) -> Dict[str, Any]:
     """Configure rate-limiting rules."""
     if not isinstance(limits, list):
-        return {
-            "configured_count": 0,
-            "configured_limits": [],
-            "errors": ["limits must be a list"],
-            "status": "error",
-        }
+        return _error_result(
+            "limits must be a list",
+            configured_count=0,
+            configured_limits=[],
+            errors=["limits must be a list"],
+        )
+    if not isinstance(apply_immediately, bool):
+        return _error_result("apply_immediately must be a boolean")
+    if not isinstance(backup_current, bool):
+        return _error_result("backup_current must be a boolean")
 
-    result = _API["configure_rate_limits"](
-        limits=limits,
-        apply_immediately=apply_immediately,
-        backup_current=backup_current,
-    )
-    if hasattr(result, "__await__"):
-        result = await result
+    for index, item in enumerate(limits):
+        if not isinstance(item, dict):
+            return _error_result(f"limits[{index}] must be an object")
+
+    try:
+        result = _API["configure_rate_limits"](
+            limits=limits,
+            apply_immediately=apply_immediately,
+            backup_current=backup_current,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+    except Exception as exc:
+        return _error_result(f"configure_rate_limits failed: {exc}")
+
     payload = dict(result or {})
     if "status" not in payload:
         payload["status"] = "error" if payload.get("errors") else "success"
@@ -137,25 +155,50 @@ async def check_rate_limit(
     """Check whether a request is within a named rate limit."""
     normalized_limit_name = str(limit_name or "").strip()
     if not normalized_limit_name:
-        return {
-            "allowed": False,
-            "limit_name": limit_name,
-            "identifier": str(identifier or "default"),
-            "error": "limit_name is required",
-            "status": "error",
-        }
+        return _error_result(
+            "limit_name is required",
+            allowed=False,
+            limit_name=limit_name,
+            identifier=str(identifier or "default"),
+        )
 
-    result = _API["check_rate_limit"](
-        limit_name=normalized_limit_name,
-        identifier=str(identifier or "default"),
-        request_metadata=request_metadata,
-    )
-    if hasattr(result, "__await__"):
-        result = await result
+    normalized_identifier = str(identifier or "").strip()
+    if not normalized_identifier:
+        return _error_result(
+            "identifier must be a non-empty string",
+            allowed=False,
+            limit_name=normalized_limit_name,
+            identifier=str(identifier or ""),
+        )
+
+    if request_metadata is not None and not isinstance(request_metadata, dict):
+        return _error_result(
+            "request_metadata must be an object or null",
+            allowed=False,
+            limit_name=normalized_limit_name,
+            identifier=normalized_identifier,
+        )
+
+    try:
+        result = _API["check_rate_limit"](
+            limit_name=normalized_limit_name,
+            identifier=normalized_identifier,
+            request_metadata=request_metadata,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+    except Exception as exc:
+        return _error_result(
+            f"check_rate_limit failed: {exc}",
+            allowed=False,
+            limit_name=normalized_limit_name,
+            identifier=normalized_identifier,
+        )
+
     payload = dict(result or {})
     payload.setdefault("status", "success" if payload.get("allowed", True) else "error")
     payload.setdefault("limit_name", normalized_limit_name)
-    payload.setdefault("identifier", str(identifier or "default"))
+    payload.setdefault("identifier", normalized_identifier)
     return payload
 
 
@@ -167,33 +210,40 @@ async def manage_rate_limits(
     """Manage rate-limiting configuration and statistics."""
     normalized_action = str(action or "").strip().lower()
     if not normalized_action:
-        return {
-            "error": "action is required",
-            "valid_actions": ["list", "enable", "disable", "delete", "update", "stats", "reset"],
-        }
+        return _error_result(
+            "action is required",
+            valid_actions=["list", "enable", "disable", "delete", "update", "stats", "reset"],
+        )
 
     valid_actions = {"list", "enable", "disable", "delete", "update", "stats", "reset"}
     if normalized_action not in valid_actions:
-        return {
-            "error": f"Unknown action: {action}",
-            "valid_actions": ["list", "enable", "disable", "delete", "update", "stats", "reset"],
-        }
+        return _error_result(
+            f"Unknown action: {action}",
+            valid_actions=["list", "enable", "disable", "delete", "update", "stats", "reset"],
+        )
 
-    if normalized_action in {"enable", "disable", "delete"} and not str(limit_name or "").strip():
-        return {"error": f"limit_name required for {normalized_action} action"}
+    normalized_limit_name = str(limit_name or "").strip() if limit_name is not None else None
 
-    if normalized_action == "update" and (
-        not str(limit_name or "").strip() or not isinstance(new_config, dict)
-    ):
-        return {"error": "limit_name and new_config required for update action"}
+    if normalized_action in {"enable", "disable", "delete"} and not normalized_limit_name:
+        return _error_result(f"limit_name required for {normalized_action} action")
 
-    result = _API["manage_rate_limits"](
-        action=normalized_action,
-        limit_name=limit_name,
-        new_config=new_config,
-    )
-    if hasattr(result, "__await__"):
-        result = await result
+    if normalized_action == "update" and (not normalized_limit_name or not isinstance(new_config, dict)):
+        return _error_result("limit_name and new_config required for update action")
+
+    if normalized_action in {"stats", "reset"} and limit_name is not None and not normalized_limit_name:
+        return _error_result(f"limit_name must be a non-empty string when provided for {normalized_action}")
+
+    try:
+        result = _API["manage_rate_limits"](
+            action=normalized_action,
+            limit_name=normalized_limit_name,
+            new_config=new_config,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+    except Exception as exc:
+        return _error_result(f"manage_rate_limits failed: {exc}", action=normalized_action)
+
     payload = dict(result or {})
     payload.setdefault("action", normalized_action)
     if "error" in payload:
@@ -214,8 +264,8 @@ def register_native_rate_limiting_tools_category(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "limits": {"type": "array", "items": {"type": "object"}},
-                "apply_immediately": {"type": "boolean"},
-                "backup_current": {"type": "boolean"},
+                "apply_immediately": {"type": "boolean", "default": True},
+                "backup_current": {"type": "boolean", "default": True},
             },
             "required": ["limits"],
         },
@@ -231,8 +281,8 @@ def register_native_rate_limiting_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "limit_name": {"type": "string"},
-                "identifier": {"type": "string"},
+                "limit_name": {"type": "string", "minLength": 1},
+                "identifier": {"type": "string", "minLength": 1, "default": "default"},
                 "request_metadata": {"type": ["object", "null"]},
             },
             "required": ["limit_name"],
@@ -249,8 +299,11 @@ def register_native_rate_limiting_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "action": {"type": "string"},
-                "limit_name": {"type": ["string", "null"]},
+                "action": {
+                    "type": "string",
+                    "enum": ["list", "enable", "disable", "delete", "update", "stats", "reset"],
+                },
+                "limit_name": {"type": ["string", "null"], "minLength": 1},
                 "new_config": {"type": ["object", "null"]},
             },
             "required": ["action"],

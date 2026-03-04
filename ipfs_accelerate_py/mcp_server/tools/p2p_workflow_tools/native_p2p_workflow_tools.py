@@ -8,6 +8,12 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"status": "error", "message": message}
+    payload.update(extra)
+    return payload
+
+
 def _load_p2p_workflow_api() -> Dict[str, Any]:
     """Resolve source P2P-workflow APIs with compatibility fallback."""
     try:
@@ -99,20 +105,16 @@ async def initialize_p2p_scheduler(
 ) -> Dict[str, Any]:
     """Initialize or retrieve the P2P workflow scheduler state."""
     if peer_id is not None and not str(peer_id).strip():
-        return {
-            "status": "error",
-            "message": "peer_id must be a non-empty string when provided",
-            "peer_id": peer_id,
-        }
+        return _error_result("peer_id must be a non-empty string when provided", peer_id=peer_id)
     if peers is not None and (not isinstance(peers, list) or not all(isinstance(item, str) and item.strip() for item in peers)):
-        return {
-            "status": "error",
-            "message": "peers must be an array of non-empty strings when provided",
-            "peers": peers,
-        }
+        return _error_result("peers must be an array of non-empty strings when provided", peers=peers)
 
-    result = _API["initialize_p2p_scheduler"](peer_id=peer_id, peers=peers)
-    payload = await result if hasattr(result, "__await__") else result
+    try:
+        result = _API["initialize_p2p_scheduler"](peer_id=peer_id, peers=peers)
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"initialize_p2p_scheduler failed: {exc}")
+
     normalized = dict(payload or {})
     if "status" not in normalized:
         normalized["status"] = "success" if normalized.get("success", True) else "error"
@@ -130,52 +132,35 @@ async def schedule_p2p_workflow(
     normalized_workflow_id = str(workflow_id or "").strip()
     normalized_name = str(name or "").strip()
     if not normalized_workflow_id:
-        return {
-            "status": "error",
-            "message": "workflow_id is required",
-            "workflow_id": workflow_id,
-        }
+        return _error_result("workflow_id is required", workflow_id=workflow_id)
     if not normalized_name:
-        return {
-            "status": "error",
-            "message": "name is required",
-            "name": name,
-        }
+        return _error_result("name is required", name=name)
     if not isinstance(tags, list) or not tags or not all(isinstance(item, str) and item.strip() for item in tags):
-        return {
-            "status": "error",
-            "message": "tags must be a non-empty array of strings",
-            "tags": tags,
-        }
+        return _error_result("tags must be a non-empty array of strings", tags=tags)
     try:
         normalized_priority = float(priority)
     except (TypeError, ValueError):
-        return {
-            "status": "error",
-            "message": "priority must be numeric",
-            "priority": priority,
-        }
+        return _error_result("priority must be numeric", priority=priority)
     if normalized_priority <= 0:
-        return {
-            "status": "error",
-            "message": "priority must be a positive number",
-            "priority": priority,
-        }
+        return _error_result("priority must be a positive number", priority=priority)
     if metadata is not None and not isinstance(metadata, dict):
-        return {
-            "status": "error",
-            "message": "metadata must be an object when provided",
-            "metadata": metadata,
-        }
+        return _error_result("metadata must be an object when provided", metadata=metadata)
 
-    result = _API["schedule_p2p_workflow"](
-        workflow_id=normalized_workflow_id,
-        name=normalized_name,
-        tags=tags,
-        priority=normalized_priority,
-        metadata=metadata,
-    )
-    payload = await result if hasattr(result, "__await__") else result
+    try:
+        result = _API["schedule_p2p_workflow"](
+            workflow_id=normalized_workflow_id,
+            name=normalized_name,
+            tags=tags,
+            priority=normalized_priority,
+            metadata=metadata,
+        )
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(
+            f"schedule_p2p_workflow failed: {exc}",
+            workflow_id=normalized_workflow_id,
+        )
+
     normalized = dict(payload or {})
     if "status" not in normalized:
         normalized["status"] = "success" if normalized.get("success", True) else "error"
@@ -185,8 +170,12 @@ async def schedule_p2p_workflow(
 
 async def get_next_p2p_workflow() -> Dict[str, Any]:
     """Get the next workflow from the scheduler queue."""
-    result = _API["get_next_p2p_workflow"]()
-    payload = await result if hasattr(result, "__await__") else result
+    try:
+        result = _API["get_next_p2p_workflow"]()
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"get_next_p2p_workflow failed: {exc}")
+
     normalized = dict(payload or {})
     if "status" not in normalized:
         normalized["status"] = "success" if normalized.get("success", True) else "error"
@@ -195,8 +184,12 @@ async def get_next_p2p_workflow() -> Dict[str, Any]:
 
 async def get_p2p_scheduler_status() -> Dict[str, Any]:
     """Get current P2P scheduler status."""
-    result = _API["get_p2p_scheduler_status"]()
-    payload = await result if hasattr(result, "__await__") else result
+    try:
+        result = _API["get_p2p_scheduler_status"]()
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"get_p2p_scheduler_status failed: {exc}")
+
     normalized = dict(payload or {})
     if "status" not in normalized:
         normalized["status"] = "success" if normalized.get("success", True) else "error"
@@ -205,8 +198,12 @@ async def get_p2p_scheduler_status() -> Dict[str, Any]:
 
 async def get_assigned_workflows() -> Dict[str, Any]:
     """Get workflows currently assigned to this peer."""
-    result = _API["get_assigned_workflows"]()
-    payload = await result if hasattr(result, "__await__") else result
+    try:
+        result = _API["get_assigned_workflows"]()
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"get_assigned_workflows failed: {exc}")
+
     normalized = dict(payload or {})
     if "status" not in normalized:
         normalized["status"] = "success" if normalized.get("success", True) else "error"
@@ -223,7 +220,7 @@ def register_native_p2p_workflow_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "peer_id": {"type": ["string", "null"]},
+                "peer_id": {"type": ["string", "null"], "minLength": 1},
                 "peers": {"type": ["array", "null"], "items": {"type": "string"}},
             },
             "required": [],
@@ -240,10 +237,10 @@ def register_native_p2p_workflow_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "workflow_id": {"type": "string"},
-                "name": {"type": "string"},
+                "workflow_id": {"type": "string", "minLength": 1},
+                "name": {"type": "string", "minLength": 1},
                 "tags": {"type": "array", "items": {"type": "string"}},
-                "priority": {"type": "number"},
+                "priority": {"type": "number", "minimum": 0.0000001, "default": 1.0},
                 "metadata": {"type": ["object", "null"]},
             },
             "required": ["workflow_id", "name", "tags"],

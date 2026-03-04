@@ -5,7 +5,13 @@ Test for gpt2 on webgpu hardware.
 
 import unittest
 import numpy as np
-from gpt2_webgpu_skill import gpt2Skill
+import pytest
+
+gpt2_webgpu_skill = pytest.importorskip(
+    "gpt2_webgpu_skill",
+    reason="Optional gpt2_webgpu_skill module is not installed in this environment",
+)
+gpt2Skill = gpt2_webgpu_skill.gpt2Skill
 
 class TestGpt2:
     """Test suite for gpt2 on webgpu."""

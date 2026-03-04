@@ -42,6 +42,8 @@ except ImportError:
 MODEL_ID = "gpt2"  # e.g., "bert-base-uncased"
 MODEL_NAME = "GPT2_STANDARDIZED"  # e.g., "bert"
 TASK_TYPE = "text-generation"  # e.g., "text_embedding"
+CUDA_KERNEL_SUPPORTED = HardwareTestUtils.is_cuda_kernel_compatible()
+CUDA_SKIP_REASON = HardwareTestUtils.get_cuda_kernel_skip_reason()
 
 
 # Fixtures
@@ -50,6 +52,8 @@ TASK_TYPE = "text-generation"  # e.g., "text_embedding"
 def model_and_tokenizer():
     """Load model and tokenizer (cached for module)."""
     tokenizer = transformers.AutoTokenizer.from_pretrained(MODEL_ID)
+    if tokenizer.pad_token is None and tokenizer.eos_token is not None:
+        tokenizer.pad_token = tokenizer.eos_token
     model = transformers.AutoModel.from_pretrained(MODEL_ID)
     model.eval()
     return model, tokenizer
@@ -173,7 +177,10 @@ class TestCPU:
 
 @pytest.mark.hardware
 @pytest.mark.cuda
-@pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+@pytest.mark.skipif(
+    (not torch.cuda.is_available()) or (not CUDA_KERNEL_SUPPORTED),
+    reason=(CUDA_SKIP_REASON if torch.cuda.is_available() else "CUDA not available"),
+)
 class TestCUDA:
     """Test model on CUDA."""
     
@@ -250,7 +257,10 @@ class TestPerformance:
         assert timing_stats['mean'] < 1.0, \
             f"Inference too slow: {timing_stats['mean']:.4f}s"
     
-    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    @pytest.mark.skipif(
+        (not torch.cuda.is_available()) or (not CUDA_KERNEL_SUPPORTED),
+        reason=(CUDA_SKIP_REASON if torch.cuda.is_available() else "CUDA not available"),
+    )
     def test_memory_usage(self, model_and_tokenizer, sample_inputs):
         """Test and report memory usage."""
         model, _ = model_and_tokenizer
@@ -308,8 +318,9 @@ class TestIntegration:
         """Test model works with transformers pipeline API."""
         if not HAS_TRANSFORMERS:
             pytest.skip("transformers not available")
-        
-        pipeline = transformers.pipeline(TASK_TYPE, model=MODEL_ID)
+
+        pipeline_device = 0 if (torch.cuda.is_available() and CUDA_KERNEL_SUPPORTED) else -1
+        pipeline = transformers.pipeline(TASK_TYPE, model=MODEL_ID, device=pipeline_device)
         result = pipeline("This is a test")
         
         assert result is not None, "Pipeline returned None"

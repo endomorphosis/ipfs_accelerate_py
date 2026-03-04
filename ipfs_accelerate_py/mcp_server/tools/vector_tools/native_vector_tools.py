@@ -76,6 +76,17 @@ def _load_vector_tools_api() -> Dict[str, Any]:
 _API = _load_vector_tools_api()
 
 
+def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
+    """Return a normalized error envelope for deterministic dispatch behavior."""
+    payload: Dict[str, Any] = {"status": "error", "error": message}
+    payload.update(extra)
+    return payload
+
+
+def _is_numeric_vector(value: Any) -> bool:
+    return isinstance(value, list) and bool(value) and all(isinstance(item, (int, float)) for item in value)
+
+
 async def create_vector_index(
     vectors: List[List[float]],
     dimension: Optional[int] = None,
@@ -85,17 +96,55 @@ async def create_vector_index(
     index_name: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Create a vector index for similarity search."""
-    result = _API["create_vector_index"](
-        vectors=vectors,
-        dimension=dimension,
-        metric=metric,
-        metadata=metadata,
-        index_id=index_id,
-        index_name=index_name,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(vectors, list) or not vectors:
+        return _error_result("vectors must be a non-empty array of numeric vectors", vectors=vectors)
+    if not all(_is_numeric_vector(vector) for vector in vectors):
+        return _error_result("vectors must contain only non-empty numeric vectors")
+
+    inferred_dimension = len(vectors[0])
+    if not all(len(vector) == inferred_dimension for vector in vectors):
+        return _error_result("all vectors must have identical dimensions")
+
+    normalized_dimension: Optional[int]
+    if dimension is None:
+        normalized_dimension = inferred_dimension
+    else:
+        try:
+            normalized_dimension = int(dimension)
+        except (TypeError, ValueError):
+            return _error_result("dimension must be a positive integer when provided", dimension=dimension)
+        if normalized_dimension <= 0:
+            return _error_result("dimension must be a positive integer when provided", dimension=dimension)
+        if normalized_dimension != inferred_dimension:
+            return _error_result(
+                "dimension must match vector length",
+                dimension=normalized_dimension,
+                inferred_dimension=inferred_dimension,
+            )
+
+    normalized_metric = str(metric or "").strip().lower()
+    if not normalized_metric:
+        return _error_result("metric must be a non-empty string", metric=metric)
+
+    if metadata is not None and not isinstance(metadata, list):
+        return _error_result("metadata must be an array when provided", metadata=metadata)
+
+    try:
+        result = _API["create_vector_index"](
+            vectors=vectors,
+            dimension=normalized_dimension,
+            metric=normalized_metric,
+            metadata=metadata,
+            index_id=index_id,
+            index_name=index_name,
+        )
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"create_vector_index failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "success")
+    return normalized
 
 
 async def search_vector_index(
@@ -107,17 +156,44 @@ async def search_vector_index(
     filter_metadata: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Search an existing vector index using similarity."""
-    result = _API["search_vector_index"](
-        index_id=index_id,
-        query_vector=query_vector,
-        top_k=top_k,
-        include_metadata=include_metadata,
-        include_distances=include_distances,
-        filter_metadata=filter_metadata,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_index_id = str(index_id or "").strip()
+    if not normalized_index_id:
+        return _error_result("index_id is required", index_id=index_id)
+
+    if not _is_numeric_vector(query_vector):
+        return _error_result("query_vector must be a non-empty list of numbers", query_vector=query_vector)
+
+    try:
+        normalized_top_k = int(top_k)
+    except (TypeError, ValueError):
+        return _error_result("top_k must be a positive integer", top_k=top_k)
+    if normalized_top_k <= 0:
+        return _error_result("top_k must be a positive integer", top_k=top_k)
+
+    if not isinstance(include_metadata, bool):
+        return _error_result("include_metadata must be a boolean", include_metadata=include_metadata)
+    if not isinstance(include_distances, bool):
+        return _error_result("include_distances must be a boolean", include_distances=include_distances)
+    if filter_metadata is not None and not isinstance(filter_metadata, dict):
+        return _error_result("filter_metadata must be an object when provided", filter_metadata=filter_metadata)
+
+    try:
+        result = _API["search_vector_index"](
+            index_id=normalized_index_id,
+            query_vector=query_vector,
+            top_k=normalized_top_k,
+            include_metadata=include_metadata,
+            include_distances=include_distances,
+            filter_metadata=filter_metadata,
+        )
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"search_vector_index failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "success")
+    normalized.setdefault("index_id", normalized_index_id)
+    return normalized
 
 
 async def orchestrate_vector_search_storage(
@@ -137,16 +213,18 @@ async def orchestrate_vector_search_storage(
     2) search that index
     3) optionally persist an audit record via storage tools
     """
-    if not vectors:
-        return {
-            "status": "error",
-            "error": "vectors must be a non-empty list",
-        }
-    if not query_vector:
-        return {
-            "status": "error",
-            "error": "query_vector must be provided",
-        }
+    if not isinstance(vectors, list) or not vectors:
+        return _error_result("vectors must be a non-empty list")
+    if not _is_numeric_vector(query_vector):
+        return _error_result("query_vector must be a non-empty list of numbers")
+    try:
+        normalized_top_k = int(top_k)
+    except (TypeError, ValueError):
+        return _error_result("top_k must be a positive integer", top_k=top_k)
+    if normalized_top_k <= 0:
+        return _error_result("top_k must be a positive integer", top_k=top_k)
+    if not isinstance(persist_audit, bool):
+        return _error_result("persist_audit must be a boolean", persist_audit=persist_audit)
 
     created = await create_vector_index(
         vectors=vectors,
@@ -154,24 +232,31 @@ async def orchestrate_vector_search_storage(
         metric=metric,
         index_id=index_id,
     )
+    if created.get("status") == "error":
+        return created
     resolved_index_id = str(created.get("index_id") or index_id or "")
 
     searched = await search_vector_index(
         index_id=resolved_index_id,
         query_vector=query_vector,
-        top_k=max(1, int(top_k)),
+        top_k=normalized_top_k,
         include_metadata=True,
         include_distances=True,
     )
+    if searched.get("status") == "error":
+        return searched
 
     from ipfs_accelerate_py.mcp_server.tools.search_tools.native_search_tools import similarity_search
 
-    search_tools_result = await similarity_search(
-        embedding=list(query_vector),
-        top_k=max(1, int(top_k)),
-        threshold=0.0,
-        collection=resolved_index_id or "default",
-    )
+    try:
+        search_tools_result = await similarity_search(
+            embedding=list(query_vector),
+            top_k=normalized_top_k,
+            threshold=0.0,
+            collection=resolved_index_id or "default",
+        )
+    except Exception as exc:
+        return _error_result(f"similarity_search integration failed: {exc}")
 
     search_results = searched.get("results") if isinstance(searched, dict) else []
     result_count = len(search_results or [])
@@ -186,17 +271,20 @@ async def orchestrate_vector_search_storage(
         audit_payload = {
             "index_id": resolved_index_id,
             "metric": metric,
-            "top_k": max(1, int(top_k)),
+            "top_k": normalized_top_k,
             "result_count": result_count,
         }
-        persisted = await store_data(
-            data=audit_payload,
-            storage_type="memory",
-            compression="none",
-            collection=str(audit_collection or "vector-search-audit"),
-            metadata={"source": "orchestrate_vector_search_storage"},
-            tags=["vector", "search", "storage", "integration"],
-        )
+        try:
+            persisted = await store_data(
+                data=audit_payload,
+                storage_type="memory",
+                compression="none",
+                collection=str(audit_collection or "vector-search-audit"),
+                metadata={"source": "orchestrate_vector_search_storage"},
+                tags=["vector", "search", "storage", "integration"],
+            )
+        except Exception as exc:
+            return _error_result(f"storage audit persistence failed: {exc}")
         storage_receipt = {
             "stored": bool(persisted.get("stored")),
             "collection": str(persisted.get("collection") or audit_collection),
@@ -231,12 +319,20 @@ def register_native_vector_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "vectors": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
-                "dimension": {"type": ["integer", "null"]},
-                "metric": {"type": "string"},
+                "vectors": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "number"},
+                    },
+                },
+                "dimension": {"type": ["integer", "null"], "minimum": 1},
+                "metric": {"type": "string", "minLength": 1, "default": "cosine"},
                 "metadata": {"type": ["array", "null"], "items": {"type": "object"}},
-                "index_id": {"type": ["string", "null"]},
-                "index_name": {"type": ["string", "null"]},
+                "index_id": {"type": ["string", "null"], "minLength": 1},
+                "index_name": {"type": ["string", "null"], "minLength": 1},
             },
             "required": ["vectors"],
         },
@@ -252,14 +348,14 @@ def register_native_vector_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "index_id": {"type": "string"},
-                "query_vector": {"type": ["array", "null"], "items": {"type": "number"}},
-                "top_k": {"type": "integer"},
-                "include_metadata": {"type": "boolean"},
-                "include_distances": {"type": "boolean"},
+                "index_id": {"type": "string", "minLength": 1},
+                "query_vector": {"type": "array", "minItems": 1, "items": {"type": "number"}},
+                "top_k": {"type": "integer", "minimum": 1, "default": 5},
+                "include_metadata": {"type": "boolean", "default": True},
+                "include_distances": {"type": "boolean", "default": True},
                 "filter_metadata": {"type": ["object", "null"]},
             },
-            "required": ["index_id"],
+            "required": ["index_id", "query_vector"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "vector-tools"],
@@ -273,13 +369,21 @@ def register_native_vector_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "vectors": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
-                "query_vector": {"type": "array", "items": {"type": "number"}},
-                "index_id": {"type": ["string", "null"]},
-                "metric": {"type": "string"},
+                "vectors": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {"type": "number"},
+                    },
+                },
+                "query_vector": {"type": "array", "minItems": 1, "items": {"type": "number"}},
+                "index_id": {"type": ["string", "null"], "minLength": 1},
+                "metric": {"type": "string", "minLength": 1, "default": "cosine"},
                 "top_k": {"type": "integer", "minimum": 1},
-                "persist_audit": {"type": "boolean"},
-                "audit_collection": {"type": "string"},
+                "persist_audit": {"type": "boolean", "default": False},
+                "audit_collection": {"type": "string", "minLength": 1, "default": "vector-search-audit"},
             },
             "required": ["vectors", "query_vector"],
         },
