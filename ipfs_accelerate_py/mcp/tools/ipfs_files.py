@@ -39,13 +39,13 @@ except ImportError:
 
 # Import shared operations
 try:
-    from shared import SharedCore, FileOperations
+    from ...shared import SharedCore, FileOperations
     shared_core = SharedCore()
     file_ops = FileOperations(shared_core)
     HAVE_SHARED = True
 except ImportError:
     try:
-        from ...shared import SharedCore, FileOperations
+        from shared import SharedCore, FileOperations  # type: ignore
         shared_core = SharedCore()
         file_ops = FileOperations(shared_core)
         HAVE_SHARED = True

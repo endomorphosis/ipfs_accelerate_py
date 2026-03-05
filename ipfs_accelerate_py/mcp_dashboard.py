@@ -1327,13 +1327,10 @@ class MCPDashboard:
                         try:
                             # Try absolute import first (when installed as package)
                             try:
-                                from shared import SharedCore, GitHubOperations
+                                from ipfs_accelerate_py.shared import SharedCore, GitHubOperations
                             except ImportError:
-                                # Fall back to relative import (when running from source)
-                                import sys
-                                import os
-                                sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-                                from shared import SharedCore, GitHubOperations
+                                # Fall back to top-level shared import (when scripts/ is on PYTHONPATH)
+                                from shared import SharedCore, GitHubOperations  # type: ignore
                             
                             shared_core = SharedCore()
                             github_ops = GitHubOperations(shared_core)

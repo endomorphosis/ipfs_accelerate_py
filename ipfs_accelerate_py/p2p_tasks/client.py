@@ -73,6 +73,8 @@ Environment:
     - seconds after which idle discovered multiaddr cache entries are pruned (default: 1800)
 - IPFS_DATASETS_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY / IPFS_ACCELERATE_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY
     - when enabled, retry attempts use lightweight dialing (cache + announce) and skip broad discovery fanout (default: 1)
+- IPFS_DATASETS_PY_TASK_P2P_FORCE_LIGHTWEIGHT_FINAL_BROAD_FALLBACK / IPFS_ACCELERATE_PY_TASK_P2P_FORCE_LIGHTWEIGHT_FINAL_BROAD_FALLBACK
+    - when enabled, forced-lightweight operations allow broad discovery on the final retry attempt only (default: 1)
 - IPFS_DATASETS_PY_TASK_P2P_RETRY_DELAY_MAX_MS / IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DELAY_MAX_MS
     - cap in milliseconds for retry backoff delay before jitter (default: 5000)
 """
@@ -414,6 +416,16 @@ def _retry_lightweight_discovery_enabled() -> bool:
     return _env_bool(
         primary="IPFS_ACCELERATE_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY",
         compat="IPFS_DATASETS_PY_TASK_P2P_RETRY_LIGHTWEIGHT_DISCOVERY",
+        default=True,
+    )
+
+
+def _force_lightweight_final_broad_fallback_enabled() -> bool:
+    """Allow broad discovery only on the final forced-lightweight retry."""
+
+    return _env_bool(
+        primary="IPFS_ACCELERATE_PY_TASK_P2P_FORCE_LIGHTWEIGHT_FINAL_BROAD_FALLBACK",
+        compat="IPFS_DATASETS_PY_TASK_P2P_FORCE_LIGHTWEIGHT_FINAL_BROAD_FALLBACK",
         default=True,
     )
 
@@ -831,9 +843,14 @@ async def _dial_and_request_with_retries(
                 pass
         broad_discovery_override: bool | None = None
         if bool(force_lightweight_discovery):
-            broad_discovery_override = False
-            if attempt == 0:
-                _retry_metric_inc(f"{op_label}.lightweight_forced")
+            allow_final_broad_fallback = _force_lightweight_final_broad_fallback_enabled()
+            if attempt < max_retries or not allow_final_broad_fallback:
+                broad_discovery_override = False
+                if attempt == 0:
+                    _retry_metric_inc(f"{op_label}.lightweight_forced")
+            else:
+                broad_discovery_override = None
+                _retry_metric_inc(f"{op_label}.lightweight_forced_final_broad_fallback")
         # Use lightweight dialing for early attempts to reduce network fanout
         # under sustained request rates, then allow broad discovery on the last
         # attempt as a recovery path.
