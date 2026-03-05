@@ -6331,6 +6331,80 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_pdf_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """pdf_tools should expose deterministic schema and validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="pdf-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("pdf_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("pdf_query_corpus", names)
+            self.assertIn("pdf_batch_process", names)
+
+            query_schema = await get_schema("pdf_tools", "pdf_query_corpus")
+            query_props = (query_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((query_props.get("max_documents") or {}).get("minimum"), 1)
+
+            batch_schema = await get_schema("pdf_tools", "pdf_batch_process")
+            batch_props = (batch_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((batch_props.get("pdf_sources") or {}).get("minItems"), 1)
+
+            invalid_query = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "pdf_tools",
+                    "pdf_query_corpus",
+                    {
+                        "query": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_query.get("status"), "error")
+            self.assertIn("query must be a non-empty string", str(invalid_query.get("error", "")))
+
+            invalid_batch = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "pdf_tools",
+                    "pdf_batch_process",
+                    {
+                        "pdf_sources": [""],
+                    },
+                )
+            )
+            self.assertEqual(invalid_batch.get("status"), "error")
+            self.assertIn("pdf_sources entries must be non-empty strings or objects", str(invalid_batch.get("error", "")))
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_session_tools_enhanced_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """session_tools should expose enhanced wrappers with deterministic dispatch contracts."""
 
@@ -6370,6 +6444,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("manage_session", names)
             self.assertIn("get_session_state", names)
 
+            create_schema = await get_schema("session_tools", "create_session")
+            create_props = (create_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("session_type", create_props)
+            self.assertIn("metadata", create_props)
+            self.assertIn("tags", create_props)
+
             manage_schema = await get_schema("session_tools", "manage_session")
             self.assertEqual(manage_schema.get("name"), "manage_session")
             self.assertEqual(manage_schema.get("category"), "session_tools")
@@ -6393,6 +6473,24 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(created.get("status"), "success")
             session_id = created.get("session_id")
             self.assertIsInstance(session_id, str)
+
+            invalid_tags = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "session_tools",
+                    "create_session",
+                    {
+                        "session_name": "invalid-session-tags",
+                        "tags": ["ok", "   "],
+                    },
+                )
+            )
+            self.assertEqual(invalid_tags.get("status"), "error")
+            invalid_tags_text = (
+                str(invalid_tags.get("message", ""))
+                + " "
+                + str(invalid_tags.get("error", ""))
+            )
+            self.assertIn("tags must be a list of non-empty strings", invalid_tags_text)
 
             managed_get = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8667,6 +8765,102 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_max_results.get("error", ""))
             )
             self.assertIn("max_results must be an integer >= 1", invalid_max_results_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_cache_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """cache_tools should expose enhanced cache stats/monitor schemas and deterministic envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="cache-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("cache_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("get_cache_stats", names)
+            self.assertIn("monitor_cache", names)
+
+            schema = await get_schema("cache_tools", "get_cache_stats")
+            props = (schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(
+                (props.get("format") or {}).get("enum"),
+                ["json", "summary"],
+            )
+
+            invalid_format = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cache_tools",
+                    "get_cache_stats",
+                    {
+                        "format": "xml",
+                    },
+                )
+            )
+            self.assertEqual(invalid_format.get("status"), "error")
+            invalid_format_text = (
+                str(invalid_format.get("message", ""))
+                + " "
+                + str(invalid_format.get("error", ""))
+            )
+            self.assertIn("format must be either", invalid_format_text)
+
+            invalid_metrics = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cache_tools",
+                    "monitor_cache",
+                    {
+                        "metrics": ["hit_rate", "   "],
+                    },
+                )
+            )
+            self.assertEqual(invalid_metrics.get("status"), "error")
+            invalid_metrics_text = (
+                str(invalid_metrics.get("message", ""))
+                + " "
+                + str(invalid_metrics.get("error", ""))
+            )
+            self.assertIn("metrics must be a list of non-empty strings", invalid_metrics_text)
+
+            monitor_ok = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cache_tools",
+                    "monitor_cache",
+                    {
+                        "metrics": ["hit_rate", "memory_usage"],
+                        "include_predictions": True,
+                    },
+                )
+            )
+            self.assertEqual(monitor_ok.get("status"), "success")
+            self.assertIn("predictions", monitor_ok)
 
         anyio.run(_run_flow)
 

@@ -9,7 +9,9 @@ import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.cache_tools.native_cache_tools import (
     cache_embeddings,
+    get_cache_stats,
     get_cached_embeddings,
+    monitor_cache,
     optimize_cache,
     register_native_cache_tools,
 )
@@ -31,6 +33,8 @@ class TestMCPServerUNI107CacheTools(unittest.TestCase):
         self.assertIn("optimize_cache", names)
         self.assertIn("cache_embeddings", names)
         self.assertIn("get_cached_embeddings", names)
+        self.assertIn("get_cache_stats", names)
+        self.assertIn("monitor_cache", names)
 
     def test_cache_embeddings_rejects_missing_text(self) -> None:
         async def _run() -> None:
@@ -80,6 +84,45 @@ class TestMCPServerUNI107CacheTools(unittest.TestCase):
             result = await optimize_cache(cache_type="embeddings", strategy="lfu", max_age_hours=24)
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("optimization_strategy"), "lfu")
+
+        anyio.run(_run)
+
+    def test_get_cache_stats_rejects_invalid_cache_type(self) -> None:
+        async def _run() -> None:
+            result = await get_cache_stats(cache_type="invalid-type")
+            self.assertEqual(result.get("success"), False)
+            self.assertIn("cache_type must be one of", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_get_cache_stats_supports_summary_format(self) -> None:
+        async def _run() -> None:
+            result = await get_cache_stats(format="summary")
+            self.assertEqual(result.get("success"), True)
+            self.assertIn("cache_health", result)
+            self.assertIn("hit_rate", result)
+
+        anyio.run(_run)
+
+    def test_monitor_cache_rejects_invalid_metrics_shape(self) -> None:
+        async def _run() -> None:
+            result = await monitor_cache(metrics=["hit_rate", "   "])
+            self.assertEqual(result.get("success"), False)
+            self.assertIn("metrics must be a list of non-empty strings", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_monitor_cache_returns_alerts_and_predictions(self) -> None:
+        async def _run() -> None:
+            result = await monitor_cache(
+                metrics=["hit_rate", "memory_usage"],
+                alert_thresholds={"hit_rate_min": 1.0, "memory_usage_max_percent": 0.0},
+                include_predictions=True,
+            )
+            self.assertEqual(result.get("success"), True)
+            self.assertIn("alerts", result)
+            self.assertGreaterEqual(int(result.get("alert_count", 0)), 1)
+            self.assertIn("predictions", result)
 
         anyio.run(_run)
 

@@ -118,8 +118,12 @@ def _is_valid_uuid(value: str) -> bool:
 async def create_session(
     session_name: str,
     user_id: str = "default_user",
+    session_type: str = "interactive",
     session_config: Optional[Dict[str, Any]] = None,
     resource_allocation: Optional[Dict[str, Any]] = None,
+    resource_limits: Optional[Dict[str, Any]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    tags: Optional[list[str]] = None,
     session_manager: Optional[Any] = None,
 ) -> Dict[str, Any]:
     """Create and initialize a new session."""
@@ -130,6 +134,14 @@ async def create_session(
             return {"status": "error", "message": "Session name must be 100 characters or less"}
         if not user_id or not isinstance(user_id, str):
             return {"status": "error", "message": "User ID is required and must be a string"}
+        if not isinstance(session_type, str) or not session_type.strip():
+            return {"status": "error", "message": "session_type must be a non-empty string"}
+        if metadata is not None and not isinstance(metadata, dict):
+            return {"status": "error", "message": "metadata must be an object"}
+        if tags is not None and (
+            not isinstance(tags, list) or not all(isinstance(tag, str) and tag.strip() for tag in tags)
+        ):
+            return {"status": "error", "message": "tags must be a list of non-empty strings"}
 
         config = session_config or {
             "models": ["sentence-transformers/all-MiniLM-L6-v2"],
@@ -138,7 +150,7 @@ async def create_session(
             "timeout_seconds": 3600,
             "auto_cleanup": True,
         }
-        resources = resource_allocation or {
+        resources = resource_limits or resource_allocation or {
             "memory_limit_mb": 2048,
             "cpu_cores": 1.0,
             "gpu_enabled": False,
@@ -148,8 +160,12 @@ async def create_session(
         session = await manager.create_session(
             session_name=session_name,
             user_id=user_id,
+            session_type=session_type,
             session_config=config,
             resource_allocation=resources,
+            resource_limits=resources,
+            metadata=metadata or {},
+            tags=tags or [],
             timeout_seconds=config.get("timeout_seconds", 3600),
         )
 
@@ -181,10 +197,13 @@ async def create_session(
             "session_id": session["session_id"],
             "session_name": session.get("session_name", session_name),
             "user_id": session.get("user_id", user_id),
+            "session_type": session.get("session_type", session_type),
             "created_at": created_at_str,
             "expires_at": expires_at_str,
             "config": session.get("config", session.get("configuration", config)),
             "resources": session.get("resources", session.get("resource_limits", resources)),
+            "metadata": session.get("metadata", metadata or {}),
+            "tags": session.get("tags", tags or []),
             "message": f"Session '{session_name}' created successfully",
         }
     except Exception as exc:
@@ -585,8 +604,12 @@ def register_native_session_tools(manager: Any) -> None:
             "properties": {
                 "session_name": {"type": "string"},
                 "user_id": {"type": "string"},
+                "session_type": {"type": "string", "default": "interactive"},
                 "session_config": {"type": ["object", "null"]},
                 "resource_allocation": {"type": ["object", "null"]},
+                "resource_limits": {"type": ["object", "null"]},
+                "metadata": {"type": ["object", "null"]},
+                "tags": {"type": ["array", "null"], "items": {"type": "string"}},
             },
             "required": ["session_name"],
         },

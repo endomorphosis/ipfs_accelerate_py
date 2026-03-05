@@ -173,11 +173,9 @@ async def graph_add_relationship(
     if not normalized_source or not normalized_target or not normalized_type:
         return _error_result(
             "source_id, target_id, and relationship_type must be provided",
-            {
-                "source_id": source_id,
-                "target_id": target_id,
-                "relationship_type": relationship_type,
-            },
+            source_id=source_id,
+            target_id=target_id,
+            relationship_type=relationship_type,
         )
     if properties is not None and not isinstance(properties, dict):
         return _error_result("properties must be an object when provided")

@@ -162,7 +162,7 @@ _API = _load_dataset_api()
 
 def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     """Return a normalized error envelope for deterministic dispatch behavior."""
-    payload: Dict[str, Any] = {"status": "error", "error": message}
+    payload: Dict[str, Any] = {"status": "error", "error": message, "message": message}
     payload.update(extra)
     return payload
 
