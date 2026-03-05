@@ -4614,6 +4614,84 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_policy_decision_uses_envelope_cid_when_prepersist_fails(self, mock_wrapper):
+        """Artifact emission should return envelope decision CID when policy pre-persist binding fails."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-policy-prepersist-fallback")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+
+            original_put = server._unified_artifact_store.put
+            put_calls = {"count": 0}
+
+            def flaky_put(cid, payload):
+                put_calls["count"] += 1
+                if put_calls["count"] == 1:
+                    raise RuntimeError("simulated pre-persist failure")
+                return original_put(cid, payload)
+
+            with patch.object(server._unified_artifact_store, "put", side_effect=flaky_put):
+                response = await server.tools["tools_dispatch"]["function"](
+                    "smoke",
+                    "echo",
+                    {
+                        "value": "ok",
+                        "__emit_artifacts": True,
+                        "__enforce_policy": True,
+                        "__policy_actor": "did:model:worker",
+                        "__policy_clauses": [
+                            {
+                                "clause_type": "permission",
+                                "actor": "did:model:worker",
+                                "action": "smoke.echo",
+                            }
+                        ],
+                    },
+                )
+
+            self.assertTrue(response["ok"])
+            self.assertIn("artifacts", response)
+            self.assertIn("policy_decision", response)
+
+            decision_cid = str((response.get("policy_decision") or {}).get("decision_cid") or "")
+            self.assertTrue(decision_cid.startswith("cidv1-sha256-"))
+            self.assertEqual(decision_cid, (response.get("artifacts") or {}).get("decision_cid"))
+            self.assertTrue((response.get("policy_decision") or {}).get("persisted"))
+
+            stored = server._unified_artifact_store.get(decision_cid) or {}
+            self.assertEqual(stored.get("decision"), "allow")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_risk_gating_denies_high_risk(self, mock_wrapper):
         """`tools_dispatch` should deny execution when risk scoring exceeds threshold."""
 
@@ -8918,6 +8996,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             listed = await tools_list("lizardperson_argparse_programs")
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("municipal_bluebook_validator_info", names)
+            self.assertIn("municipal_bluebook_validator_invoke", names)
 
             schema = await get_schema(
                 "lizardperson_argparse_programs",
@@ -8925,6 +9004,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual(props, {})
+
+            invoke_schema = await get_schema(
+                "lizardperson_argparse_programs",
+                "municipal_bluebook_validator_invoke",
+            )
+            invoke_props = (invoke_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((invoke_props.get("allow_execution") or {}).get("default"), False)
 
             dispatched = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8938,6 +9024,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 dispatched.get("entrypoint"),
                 "municipal_bluebook_citation_validator.main",
             )
+
+            invoked = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "lizardperson_argparse_programs",
+                    "municipal_bluebook_validator_invoke",
+                    {"argv": ["--sample-size", "7"]},
+                )
+            )
+            self.assertEqual(invoked.get("status"), "success")
+            self.assertIs(invoked.get("dry_run"), True)
+            self.assertIs(invoked.get("invoked"), False)
 
         anyio.run(_run_flow)
 

@@ -1020,7 +1020,12 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             "persisted": bool(persisted_artifacts_meta.get("persisted")),
             "stats": dict((persisted_artifacts_meta.get("stats") or {})),
         }
-        if policy_decision is not None and policy_decision_binding is not None:
+        if (
+            policy_decision is not None
+            and policy_decision_binding is not None
+            and bool(policy_decision_binding.get("persisted"))
+            and str(policy_decision_binding.get("decision_cid") or "")
+        ):
             policy_decision_response = dict(policy_decision_binding)
 
         return _build_success_response(

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,52 @@ async def municipal_bluebook_validator_info() -> Dict[str, Any]:
         return _error_result(str(exc))
 
 
+async def municipal_bluebook_validator_invoke(
+    argv: List[str] | None = None,
+    allow_execution: bool = False,
+) -> Dict[str, Any]:
+    """Safely invoke municipal Bluebook validator CLI entrypoint with guarded execution.
+
+    Defaults to dry-run mode (`allow_execution=False`) to avoid side effects.
+    """
+    try:
+        normalized_argv: List[str] = []
+        if argv is None:
+            normalized_argv = []
+        elif not isinstance(argv, list):
+            return _error_result("argv must be an array of strings")
+        elif not all(isinstance(item, str) and item.strip() for item in argv):
+            return _error_result("argv must contain only non-empty strings")
+        else:
+            normalized_argv = [item.strip() for item in argv]
+
+        entrypoint = _API.get("validator_main")
+        if not callable(entrypoint):
+            return _error_result("validator entrypoint unavailable")
+
+        if not bool(allow_execution):
+            return {
+                "status": "success",
+                "entrypoint": "municipal_bluebook_citation_validator.main",
+                "invoked": False,
+                "dry_run": True,
+                "argv": normalized_argv,
+            }
+
+        exit_code = entrypoint(normalized_argv)
+        return {
+            "status": "success",
+            "entrypoint": "municipal_bluebook_citation_validator.main",
+            "invoked": True,
+            "dry_run": False,
+            "argv": normalized_argv,
+            "exit_code": int(exit_code) if isinstance(exit_code, int) else 0,
+        }
+    except Exception as exc:
+        logger.error("municipal_bluebook_validator_invoke failed: %s", exc)
+        return _error_result(str(exc))
+
+
 def register_native_lizardperson_argparse_programs(manager: Any) -> None:
     """Register native lizardperson-argparse-programs tools in unified manager."""
     manager.register_tool(
@@ -52,6 +98,27 @@ def register_native_lizardperson_argparse_programs(manager: Any) -> None:
         func=municipal_bluebook_validator_info,
         description="Inspect metadata for municipal Bluebook citation validator argparse program.",
         input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "lizardperson-argparse-programs"],
+    )
+
+    manager.register_tool(
+        category="lizardperson_argparse_programs",
+        name="municipal_bluebook_validator_invoke",
+        func=municipal_bluebook_validator_invoke,
+        description="Safely invoke municipal Bluebook citation validator with dry-run default.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "argv": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "default": [],
+                },
+                "allow_execution": {"type": "boolean", "default": False},
+            },
+            "required": [],
+        },
         runtime="fastapi",
         tags=["native", "mcpp", "lizardperson-argparse-programs"],
     )
