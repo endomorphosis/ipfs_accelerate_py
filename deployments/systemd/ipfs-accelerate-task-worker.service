@@ -11,8 +11,8 @@ Group=devel
 
 # Adjust to your checkout or installed location.
 WorkingDirectory=%h/ipfs_accelerate_py
-Environment=VIRTUAL_ENV=%h/ipfs_accelerate_py/deployments/systemd/.venv
-Environment=PATH=%h/ipfs_accelerate_py/deployments/systemd/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv
+Environment=PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=%h/ipfs_accelerate_py
 
@@ -63,7 +63,7 @@ Environment=IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240
 #
 # /etc/ipfs-accelerate/task-worker.env remains optional for per-host overrides
 # (ports, session tags, queue path, max workers, disabling remote autoscale, etc.).
-ExecStart=%h/ipfs_accelerate_py/deployments/systemd/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker
+ExecStart=%h/ipfs_accelerate_py/.venv/bin/python -m ipfs_accelerate_py.p2p_tasks.worker
 
 Restart=always
 RestartSec=2

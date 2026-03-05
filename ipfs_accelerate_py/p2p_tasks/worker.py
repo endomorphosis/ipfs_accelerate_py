@@ -166,6 +166,11 @@ _HF_EMBED_MODEL_BYTES: int | None = None
 _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH: int | None = None
 _HF_EMBED_CUDA_FALLBACK_WARNED: bool = False
 
+_CUDA_CANARY_LOCK = threading.Lock()
+_CUDA_CANARY_DONE: bool = False
+_CUDA_CANARY_OK: bool = False
+_CUDA_CANARY_ERROR: str = ""
+
 
 def _available_ram_bytes() -> int:
     """Best-effort available system RAM bytes (Linux-friendly)."""
@@ -203,6 +208,59 @@ def _available_vram_bytes() -> int:
     return _cuda_free_bytes(device_index=0)
 
 
+def _cuda_canary_enabled() -> bool:
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_CUDA_CANARY")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_CUDA_CANARY")
+        or "1"
+    )
+    return _truthy(raw)
+
+
+def _cuda_runtime_usable() -> bool:
+    """Return True when CUDA can execute a minimal kernel in this process.
+
+    This catches environments where `torch.cuda.is_available()` returns True but
+    actual kernel launch fails (for example, GPU capability > wheel support).
+    """
+
+    global _CUDA_CANARY_DONE, _CUDA_CANARY_OK, _CUDA_CANARY_ERROR
+
+    if not _cuda_canary_enabled():
+        return True
+
+    with _CUDA_CANARY_LOCK:
+        if _CUDA_CANARY_DONE:
+            return bool(_CUDA_CANARY_OK)
+
+        ok = False
+        err = ""
+        try:
+            import torch  # type: ignore
+
+            if not bool(getattr(torch, "cuda", None)):
+                err = "torch.cuda unavailable"
+            elif not torch.cuda.is_available():
+                err = "torch.cuda reports unavailable"
+            else:
+                x = torch.ones((8, 8), device="cuda")
+                _ = x @ x
+                ok = True
+        except Exception as exc:
+            err = f"{type(exc).__name__}: {exc}"
+
+        _CUDA_CANARY_DONE = True
+        _CUDA_CANARY_OK = bool(ok)
+        _CUDA_CANARY_ERROR = str(err or "")
+
+        if not _CUDA_CANARY_OK:
+            print(
+                "[worker:cuda] warning: CUDA runtime canary failed; "
+                f"forcing CPU path for minimal HF tasks ({_CUDA_CANARY_ERROR})"
+            )
+        return bool(_CUDA_CANARY_OK)
+
+
 def _cuda_device_count() -> int:
     try:
         import torch  # type: ignore
@@ -210,6 +268,8 @@ def _cuda_device_count() -> int:
         if not bool(getattr(torch, "cuda", None)):
             return 0
         if not torch.cuda.is_available():
+            return 0
+        if not _cuda_runtime_usable():
             return 0
         return max(0, int(torch.cuda.device_count()))
     except Exception:
@@ -225,6 +285,8 @@ def _cuda_free_bytes(*, device_index: int) -> int:
         if not bool(getattr(torch, "cuda", None)):
             return 0
         if not torch.cuda.is_available():
+            return 0
+        if not _cuda_runtime_usable():
             return 0
         idx = int(device_index)
         if idx < 0 or idx >= int(torch.cuda.device_count()):
