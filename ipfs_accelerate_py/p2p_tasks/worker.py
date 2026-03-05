@@ -129,6 +129,17 @@ def _require_accelerate_infer_for_embedding() -> bool:
     return _truthy(raw)
 
 
+def _hf_cuda_strict_enabled() -> bool:
+    """Fail embedding setup when explicit CUDA placement fails."""
+
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_CUDA_STRICT")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_HF_CUDA_STRICT")
+        or ""
+    )
+    return _truthy(raw)
+
+
 _HF_TEXTGEN_LOCK = threading.RLock()
 _HF_TEXTGEN_PIPELINE: object | None = None
 _HF_TEXTGEN_MODEL_ID: str | None = None
@@ -153,6 +164,7 @@ _HF_EMBED_TOKENIZER: object | None = None
 _HF_EMBED_MODEL_ID: str | None = None
 _HF_EMBED_MODEL_BYTES: int | None = None
 _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH: int | None = None
+_HF_EMBED_CUDA_FALLBACK_WARNED: bool = False
 
 
 def _available_ram_bytes() -> int:
@@ -844,7 +856,7 @@ def _hf_get_textcls_pipeline(*, requested_model: str) -> object:
 def _hf_get_embed_components(*, requested_model: str) -> tuple[object, object]:
     """Get or create cached (tokenizer, model) for embeddings."""
 
-    global _HF_EMBED_MODEL, _HF_EMBED_TOKENIZER, _HF_EMBED_MODEL_ID, _HF_EMBED_MODEL_BYTES, _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH
+    global _HF_EMBED_MODEL, _HF_EMBED_TOKENIZER, _HF_EMBED_MODEL_ID, _HF_EMBED_MODEL_BYTES, _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH, _HF_EMBED_CUDA_FALLBACK_WARNED
 
     from transformers import AutoModel, AutoTokenizer  # type: ignore
 
@@ -858,8 +870,19 @@ def _hf_get_embed_components(*, requested_model: str) -> tuple[object, object]:
                 try:
                     dev = pref
                     model = model.to(dev)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if _hf_cuda_strict_enabled():
+                        raise RuntimeError(
+                            "Explicit CUDA placement failed for embeddings model "
+                            f"{requested_model} on {pref}: {type(exc).__name__}: {exc}"
+                        ) from exc
+                    if not _HF_EMBED_CUDA_FALLBACK_WARNED:
+                        _HF_EMBED_CUDA_FALLBACK_WARNED = True
+                        print(
+                            "[worker:embedding] warning: CUDA model placement failed; "
+                            f"falling back to CPU model execution (model={requested_model} "
+                            f"device={pref} error={type(exc).__name__}: {exc})"
+                        )
             elif pref == "cpu":
                 model = AutoModel.from_pretrained(requested_model)
             else:

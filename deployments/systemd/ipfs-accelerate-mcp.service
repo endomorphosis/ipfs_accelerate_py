@@ -11,10 +11,10 @@ Group=devel
 WorkingDirectory=%h/ipfs_accelerate_py
 
 # Environment variables
-Environment="PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+Environment="PATH=%h/ipfs_accelerate_py/deployments/systemd/.venv/bin:/usr/local/bin:/usr/bin:/bin"
 Environment="PYTHONUNBUFFERED=1"
 Environment="PYTHONPATH=%h/ipfs_accelerate_py"
-Environment="VIRTUAL_ENV=%h/ipfs_accelerate_py/.venv"
+Environment="VIRTUAL_ENV=%h/ipfs_accelerate_py/deployments/systemd/.venv"
 Environment="IPFS_ACCELERATE_REPO_DIR=%h/ipfs_accelerate_py"
 Environment="MCP_HOST=0.0.0.0"
 # Use a distinct MCP port so this unit can run alongside ipfs-accelerate.service
@@ -87,6 +87,7 @@ Environment="IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH=16"
 # Enable additional HuggingFace task types (beyond text-generation)
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF=1"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE=cuda:0"
 
 # Per-task micro-batch caps (0/auto enables safe estimation)
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX=4"
@@ -130,7 +131,7 @@ ExecStartPre=/bin/mkdir -p %h/ipfs_accelerate_py/state
 ExecStartPre=/bin/bash -lc '\
 	set -euo pipefail; \
 	if [[ "${MCP_ENABLE_HTTPS:-1}" == "1" || "${MCP_ENABLE_HTTPS:-}" == "true" || "${MCP_ENABLE_HTTPS:-}" == "yes" ]]; then \
-	  %h/ipfs_accelerate_py/.venv/bin/python3 %h/ipfs_accelerate_py/scripts/systemd/generate_self_signed_cert.py \
+	  %h/ipfs_accelerate_py/deployments/systemd/.venv/bin/python3 %h/ipfs_accelerate_py/scripts/systemd/generate_self_signed_cert.py \
 	    --certfile "${MCP_SSL_CERTFILE}" \
 	    --keyfile "${MCP_SSL_KEYFILE}" \
 	    --write-env-file "%h/ipfs_accelerate_py/state/mcpplusplus.env" \
@@ -158,13 +159,13 @@ ExecStart=/bin/bash -lc '\
 	  fi; \
 	  TLS_ARGS="--certfile $${MCP_SSL_CERTFILE} --keyfile $${MCP_SSL_KEYFILE}"; \
 	fi; \
-	%h/ipfs_accelerate_py/.venv/bin/python3 -m ipfs_accelerate_py.p2p_tasks.worker \
+	%h/ipfs_accelerate_py/deployments/systemd/.venv/bin/python3 -m ipfs_accelerate_py.p2p_tasks.worker \
 		--queue "$${QUEUE_PATH}" \
 		--worker-id "$${WORKER_ID}" \
 		--p2p-service \
 		--p2p-listen-port "$${P2P_PORT}" \
 		& \
-	exec %h/ipfs_accelerate_py/.venv/bin/python3 -m hypercorn \
+	exec %h/ipfs_accelerate_py/deployments/systemd/.venv/bin/python3 -m hypercorn \
 		--worker-class trio \
 		--bind "0.0.0.0:$${MCP_PORT}" \
 		--log-level info \
