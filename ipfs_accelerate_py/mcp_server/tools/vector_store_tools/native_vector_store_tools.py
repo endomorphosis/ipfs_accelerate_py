@@ -102,23 +102,23 @@ def _normalize_payload(result: Any) -> Dict[str, Any]:
 
 async def vector_index(
     action: str,
-    index_name: str,
+    index_name: Optional[str] = None,
     config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Create, update, delete, or inspect vector indexes."""
     normalized_action = str(action or "").strip().lower()
-    if normalized_action not in {"create", "update", "delete", "info"}:
+    if normalized_action not in {"create", "update", "delete", "info", "list"}:
         return {
             "status": "error",
-            "message": "action must be one of: create, update, delete, info",
+            "message": "action must be one of: create, update, delete, info, list",
             "action": action,
         }
 
     normalized_index_name = str(index_name or "").strip()
-    if not normalized_index_name:
+    if normalized_action != "list" and not normalized_index_name:
         return {
             "status": "error",
-            "message": "index_name must be provided",
+            "message": "index_name must be provided for create/update/delete/info actions",
             "index_name": index_name,
         }
     if config is not None and not isinstance(config, dict):
@@ -131,7 +131,7 @@ async def vector_index(
     try:
         result = await _API["vector_index"](
             action=normalized_action,
-            index_name=normalized_index_name,
+            index_name=normalized_index_name or None,
             config=config,
         )
     except Exception as exc:
@@ -144,7 +144,7 @@ async def vector_index(
 
     payload = _normalize_payload(result)
     payload.setdefault("action", normalized_action)
-    payload.setdefault("index_name", normalized_index_name)
+    payload.setdefault("index_name", normalized_index_name or None)
     return payload
 
 
@@ -282,12 +282,12 @@ def register_native_vector_store_tools(manager: Any) -> None:
             "properties": {
                 "action": {
                     "type": "string",
-                    "enum": ["create", "update", "delete", "info"],
+                    "enum": ["create", "update", "delete", "info", "list"],
                 },
-                "index_name": {"type": "string", "minLength": 1},
+                "index_name": {"type": ["string", "null"], "minLength": 1},
                 "config": {"type": ["object", "null"]},
             },
-            "required": ["action", "index_name"],
+            "required": ["action"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "vector-store"],

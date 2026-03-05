@@ -5908,6 +5908,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((similarity_props.get("embedding") or {}).get("minItems"), 1)
             self.assertEqual((similarity_props.get("threshold") or {}).get("maximum"), 1.0)
 
+            faceted_schema = await get_schema("search_tools", "faceted_search")
+            faceted_props = (faceted_schema.get("input_schema") or {}).get("properties", {})
+            facets_schema = faceted_props.get("facets") or {}
+            facet_items = (facets_schema.get("additionalProperties") or {}).get("items") or {}
+            self.assertEqual(facet_items.get("minLength"), 1)
+            self.assertEqual(
+                ((faceted_props.get("aggregations") or {}).get("items") or {}).get("minLength"),
+                1,
+            )
+
             invalid_query = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "search_tools",
@@ -5945,6 +5955,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_top_k.get("status"), "error")
             self.assertIn("top_k must be a positive integer", str(invalid_top_k.get("message", "")))
+
+            invalid_facets = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "search_tools",
+                    "faceted_search",
+                    {
+                        "query": "hello",
+                        "facets": {"category": "news"},
+                    },
+                )
+            )
+            self.assertEqual(invalid_facets.get("status"), "error")
+            self.assertIn(
+                "each facets value must be an array of non-empty strings",
+                str(invalid_facets.get("message", "")),
+            )
 
         anyio.run(_run_flow)
 
@@ -6074,6 +6100,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((query_props.get("limit") or {}).get("minimum"), 1)
             self.assertEqual((query_props.get("offset") or {}).get("minimum"), 0)
 
+            manage_schema = await get_schema("storage_tools", "manage_collections")
+            manage_props = (manage_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((manage_props.get("report_format") or {}).get("enum"), ["detailed", "summary"])
+
             invalid_tags = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",
@@ -6098,6 +6128,19 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_range.get("status"), "error")
             self.assertIn("size_range must be non-negative and ordered", str(invalid_range.get("error", "")))
+
+            invalid_report_format = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "stats",
+                        "report_format": "xml",
+                    },
+                )
+            )
+            self.assertEqual(invalid_report_format.get("status"), "error")
+            self.assertIn("report_format must be one of", str(invalid_report_format.get("error", "")))
 
         anyio.run(_run_flow)
 
@@ -6625,7 +6668,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             manage_schema = await get_schema("session_tools", "manage_session")
             self.assertEqual(manage_schema.get("name"), "manage_session")
             self.assertEqual(manage_schema.get("category"), "session_tools")
-            self.assertIn("action", (manage_schema.get("input_schema") or {}).get("properties", {}))
+            manage_props = (manage_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("action", manage_props)
+            cleanup_schema = manage_props.get("cleanup_options") or {}
+            cleanup_props = cleanup_schema.get("properties") or {}
+            self.assertEqual((cleanup_props.get("max_age_hours") or {}).get("minimum"), 1)
+            self.assertEqual((cleanup_props.get("dry_run") or {}).get("type"), "boolean")
 
             state_schema = await get_schema("session_tools", "get_session_state")
             self.assertEqual(state_schema.get("name"), "get_session_state")
@@ -6676,6 +6724,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(managed_get.get("status"), "success")
             self.assertIn("session", managed_get)
+
+            invalid_cleanup = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "session_tools",
+                    "manage_session",
+                    {
+                        "action": "cleanup",
+                        "cleanup_options": {"dry_run": "yes"},
+                    },
+                )
+            )
+            self.assertEqual(invalid_cleanup.get("status"), "error")
+            self.assertEqual(invalid_cleanup.get("code"), "INVALID_CLEANUP_OPTIONS")
+            self.assertIn(
+                "cleanup_options.dry_run must be a boolean",
+                str(invalid_cleanup.get("error", "")),
+            )
 
             invalid_state = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6806,6 +6871,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("analyze_data_distribution", names)
             self.assertIn("cluster_analysis", names)
             self.assertIn("quality_assessment", names)
+            self.assertIn("detect_outliers", names)
             self.assertIn("dimensionality_reduction", names)
 
             cluster_schema = await get_schema("analysis_tools", "cluster_analysis")
@@ -6818,6 +6884,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             method_props = ((reduction_schema.get("input_schema") or {}).get("properties", {}).get("method") or {})
             self.assertEqual(method_props.get("default"), "pca")
             self.assertIn("truncated_svd", method_props.get("enum", []))
+
+            outlier_schema = await get_schema("analysis_tools", "detect_outliers")
+            outlier_props = (outlier_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((outlier_props.get("threshold") or {}).get("exclusiveMinimum"), 0)
 
             invalid_clusters = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6854,6 +6924,19 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertIn(source_method.get("status"), ["success", "error"])
+
+            invalid_outliers = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "analysis_tools",
+                    "detect_outliers",
+                    {
+                        "data": [[0.1, 0.2], [0.2, 0.3]],
+                        "threshold": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_outliers.get("status"), "error")
+            self.assertIn("threshold must be a positive number", str(invalid_outliers.get("message", "")))
 
         anyio.run(_run_flow)
 
@@ -7926,11 +8009,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             listed = await tools_list("security_tools")
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("check_access_permission", names)
+            self.assertIn("check_access_permissions_batch", names)
 
             schema = await get_schema("security_tools", "check_access_permission")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("resource_id") or {}).get("minLength"), 1)
             self.assertEqual((props.get("user_id") or {}).get("minLength"), 1)
+
+            batch_schema = await get_schema("security_tools", "check_access_permissions_batch")
+            batch_props = (batch_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((batch_props.get("requests") or {}).get("minItems"), 1)
 
             invalid_permission = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7972,6 +8060,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "resource_type must be a non-empty string",
                 invalid_resource_type_text,
             )
+
+            invalid_batch = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "security_tools",
+                    "check_access_permissions_batch",
+                    {
+                        "requests": [],
+                    },
+                )
+            )
+            self.assertEqual(invalid_batch.get("status"), "error")
+            invalid_batch_text = (
+                str(invalid_batch.get("message", ""))
+                + " "
+                + str(invalid_batch.get("error", ""))
+            )
+            self.assertIn("requests must be a non-empty array", invalid_batch_text)
 
         anyio.run(_run_flow)
 
@@ -8019,6 +8124,8 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             schema = await get_schema("vector_store_tools", "vector_index")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("create", (props.get("action") or {}).get("enum", []))
+            self.assertIn("list", (props.get("action") or {}).get("enum", []))
+            self.assertEqual((props.get("index_name") or {}).get("type"), ["string", "null"])
 
             invalid_action = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8032,6 +8139,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_action.get("status"), "error")
             self.assertIn("action must be one of", str(invalid_action.get("message", "")))
+
+            list_indexes = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_store_tools",
+                    "vector_index",
+                    {
+                        "action": "list",
+                    },
+                )
+            )
+            self.assertEqual(list_indexes.get("status"), "success")
+            self.assertEqual(list_indexes.get("action"), "list")
 
             invalid_limit = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -9033,6 +9152,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(monitor_ok.get("status"), "success")
             self.assertIn("predictions", monitor_ok)
+
+            analyze_ok = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cache_tools",
+                    "manage_cache",
+                    {
+                        "action": "analyze",
+                    },
+                )
+            )
+            self.assertEqual(analyze_ok.get("status"), "success")
+            self.assertIn("analysis", analyze_ok)
 
         anyio.run(_run_flow)
 

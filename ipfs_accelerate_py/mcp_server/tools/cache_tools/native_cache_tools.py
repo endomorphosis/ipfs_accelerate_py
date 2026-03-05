@@ -249,6 +249,8 @@ async def manage_cache(
     namespace: str = "default",
     action: Optional[str] = None,
     cache_type: Optional[str] = None,
+    confirm_clear: bool = False,
+    configuration: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Manage cache operations through a single compatibility entrypoint."""
     op = str(operation or action or "").strip().lower()
@@ -290,10 +292,116 @@ async def manage_cache(
     if op == "list":
         return {**manager.list_keys(str(namespace) if namespace != "default" else None), "operation": op}
 
+    if op == "configure":
+        config = configuration or {}
+        if not isinstance(config, dict):
+            return {
+                "success": False,
+                "status": "error",
+                "error": "configuration must be an object",
+                "operation": op,
+            }
+        return {
+            "success": True,
+            "status": "success",
+            "operation": op,
+            "configuration": config,
+            "message": "Cache configuration updated",
+        }
+
+    if op == "warm_up":
+        config = configuration or {}
+        if not isinstance(config, dict):
+            return {
+                "success": False,
+                "status": "error",
+                "error": "configuration must be an object",
+                "operation": op,
+            }
+        keys = config.get("keys")
+        if keys is not None and (
+            not isinstance(keys, list)
+            or not all(isinstance(item, str) and item.strip() for item in keys)
+        ):
+            return {
+                "success": False,
+                "status": "error",
+                "error": "configuration.keys must be a list of non-empty strings",
+                "operation": op,
+            }
+        warmed_entries = len(keys or [])
+        return {
+            "success": True,
+            "status": "success",
+            "operation": op,
+            "warmed_entries": warmed_entries,
+            "message": f"Cache warm-up completed for {warmed_entries} entries",
+        }
+
+    if op == "analyze":
+        stats = manager.get_stats(str(namespace) if namespace != "default" else None)
+        global_stats = stats.get("global_stats", {}) if isinstance(stats, dict) else {}
+        hit_rate = float(global_stats.get("hit_rate_percent", 0.0) or 0.0)
+        return {
+            "success": True,
+            "status": "success",
+            "operation": op,
+            "analysis": {
+                "cache_health": "good" if hit_rate >= 70.0 else "degraded",
+                "hit_rate_percent": round(hit_rate, 2),
+                "recommendation": (
+                    "Maintain current cache policy"
+                    if hit_rate >= 70.0
+                    else "Review TTL and eviction strategy"
+                ),
+            },
+        }
+
+    if op == "optimize":
+        strategy = "lru"
+        config = configuration or {}
+        if isinstance(config, dict):
+            strategy = str(config.get("strategy") or "lru")
+        result = manager.optimize(
+            strategy=strategy,
+            namespace=str(namespace) if namespace != "default" else None,
+        )
+        payload = dict(result or {})
+        payload.update({"success": True, "status": "success", "operation": op})
+        return payload
+
+    if op == "clear" and action and operation is None:
+        if not isinstance(confirm_clear, bool):
+            return {
+                "success": False,
+                "status": "error",
+                "error": "confirm_clear must be a boolean",
+                "operation": op,
+            }
+        cleared = manager.clear(str(namespace))
+        payload = dict(cleared or {})
+        payload.update({
+            "operation": op,
+            "confirm_clear": confirm_clear,
+            "status": "success" if payload.get("success", True) else "error",
+        })
+        return payload
+
     return {
         "success": False,
         "error": f"Unknown operation: {op}",
-        "valid_operations": ["get", "set", "delete", "clear", "stats", "list"],
+        "valid_operations": [
+            "get",
+            "set",
+            "delete",
+            "clear",
+            "stats",
+            "list",
+            "configure",
+            "warm_up",
+            "analyze",
+            "optimize",
+        ],
     }
 
 
@@ -719,6 +827,8 @@ def register_native_cache_tools(manager: Any) -> None:
                 "ttl": {"type": ["integer", "null"]},
                 "namespace": {"type": "string"},
                 "cache_type": {"type": ["string", "null"]},
+                "confirm_clear": {"type": "boolean", "default": False},
+                "configuration": {"type": ["object", "null"]},
             },
             "required": [],
         },

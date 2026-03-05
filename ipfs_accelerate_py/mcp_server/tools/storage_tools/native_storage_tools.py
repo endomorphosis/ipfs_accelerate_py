@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 _VALID_STORAGE_TYPES = {"local", "ipfs", "s3", "google_cloud", "azure", "memory"}
 _VALID_COMPRESSION_TYPES = {"none", "gzip", "lz4", "brotli"}
 _VALID_COLLECTION_ACTIONS = {"create", "get", "list", "delete", "stats"}
+_VALID_REPORT_FORMATS = {"summary", "detailed"}
 
 
 def _load_storage_api() -> Dict[str, Any]:
@@ -250,6 +251,8 @@ async def manage_collections(
     description: Optional[str] = None,
     metadata: Optional[Dict[str, Any]] = None,
     delete_items: bool = False,
+    include_breakdown: bool = False,
+    report_format: str = "detailed",
 ) -> Dict[str, Any]:
     """Create, list, and manage storage collections."""
     normalized_action = str(action or "").strip().lower()
@@ -272,6 +275,19 @@ async def manage_collections(
         return _error_result("metadata must be an object when provided", action=normalized_action, success=False)
     if not isinstance(delete_items, bool):
         return _error_result("delete_items must be a boolean", action=normalized_action, success=False)
+    if not isinstance(include_breakdown, bool):
+        return _error_result("include_breakdown must be a boolean", action=normalized_action, success=False)
+
+    normalized_report_format = str(report_format or "detailed").strip().lower()
+    if normalized_action == "stats" and normalized_report_format not in _VALID_REPORT_FORMATS:
+        return _error_result(
+            (
+                "report_format must be one of: "
+                f"{sorted(_VALID_REPORT_FORMATS)}"
+            ),
+            action=normalized_action,
+            success=False,
+        )
 
     try:
         payload = await _API["manage_collections"](
@@ -287,6 +303,39 @@ async def manage_collections(
     normalized = dict(payload or {})
     normalized.setdefault("status", "success" if normalized.get("success", True) else "error")
     normalized.setdefault("action", normalized_action)
+
+    if normalized_action == "stats" and normalized.get("status") == "success":
+        report_payload: Dict[str, Any] = {
+            "report_format": normalized_report_format,
+            "generated_at": datetime.now().isoformat(),
+        }
+
+        if normalized_report_format == "summary":
+            global_stats = normalized.get("global_stats") or {}
+            collection_stats = normalized.get("collection_stats") or {}
+            candidate = global_stats if isinstance(global_stats, dict) and global_stats else collection_stats
+            report_payload["summary"] = {
+                "total_items": int(candidate.get("total_items", 0) or 0),
+                "total_size_bytes": int(candidate.get("total_size_bytes", 0) or 0),
+            }
+        else:
+            report_payload["details"] = {
+                "collection_name": normalized_collection_name,
+                "has_global_stats": isinstance(normalized.get("global_stats"), dict),
+                "has_collection_stats": isinstance(normalized.get("collection_stats"), dict),
+            }
+
+        if include_breakdown:
+            report_payload["breakdown"] = {
+                "storage_distribution": (
+                    normalized.get("global_stats", {}).get("storage_distribution", {})
+                    if isinstance(normalized.get("global_stats"), dict)
+                    else {}
+                )
+            }
+
+        normalized["storage_report"] = report_payload
+
     return normalized
 
 
@@ -428,6 +477,12 @@ def register_native_storage_tools(manager: Any) -> None:
                 "description": {"type": ["string", "null"]},
                 "metadata": {"type": ["object", "null"]},
                 "delete_items": {"type": "boolean", "default": False},
+                "include_breakdown": {"type": "boolean", "default": False},
+                "report_format": {
+                    "type": "string",
+                    "enum": sorted(_VALID_REPORT_FORMATS),
+                    "default": "detailed",
+                },
             },
             "required": ["action"],
         },

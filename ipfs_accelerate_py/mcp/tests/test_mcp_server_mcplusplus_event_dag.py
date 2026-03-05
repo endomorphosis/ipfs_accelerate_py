@@ -75,6 +75,62 @@ class TestMCPServerMCPPlusPlusEventDAG(unittest.TestCase):
         with self.assertRaises(ValueError):
             store.add_event("cid-root", {"parents": [], "intent_cid": "i2"})
 
+    def test_add_event_isolated_from_external_nested_mutation(self) -> None:
+        store = EventDAGStore()
+        payload = {
+            "parents": [],
+            "intent_cid": "i1",
+            "meta": {"attrs": {"priority": 1}},
+        }
+
+        store.add_event("cid-root", payload)
+        payload["meta"]["attrs"]["priority"] = 9
+
+        stored = store.get_event("cid-root") or {}
+        self.assertEqual((((stored.get("meta") or {}).get("attrs") or {}).get("priority")), 1)
+
+    def test_get_event_returns_deep_copy_for_nested_payloads(self) -> None:
+        store = EventDAGStore()
+        store.add_event(
+            "cid-root",
+            {
+                "parents": [],
+                "intent_cid": "i1",
+                "meta": {"attrs": {"priority": 1}},
+                "labels": ["root"],
+            },
+        )
+
+        first = store.get_event("cid-root") or {}
+        first["meta"]["attrs"]["priority"] = 7
+        first["labels"].append("mutated")
+
+        second = store.get_event("cid-root") or {}
+        self.assertEqual((((second.get("meta") or {}).get("attrs") or {}).get("priority")), 1)
+        self.assertEqual(second.get("labels"), ["root"])
+
+    def test_export_snapshot_returns_deep_copy_payloads(self) -> None:
+        store = EventDAGStore()
+        store.add_event(
+            "cid-root",
+            {
+                "parents": [],
+                "intent_cid": "i1",
+                "meta": {"attrs": {"priority": 1}},
+            },
+        )
+
+        snapshot = store.export_snapshot()
+        events = snapshot.get("events") or []
+        events[0]["payload"]["meta"]["attrs"]["priority"] = 11
+
+        fresh = store.export_snapshot()
+        fresh_events = fresh.get("events") or []
+        self.assertEqual(
+            (((fresh_events[0].get("payload") or {}).get("meta") or {}).get("attrs") or {}).get("priority"),
+            1,
+        )
+
     def test_large_dag_replay_and_rollback_are_deterministic(self) -> None:
         store = EventDAGStore()
         store.add_event("cid-root", {"parents": [], "intent_cid": "root"})

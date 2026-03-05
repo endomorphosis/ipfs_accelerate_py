@@ -6,6 +6,7 @@ identifiers for intent/decision/receipt/event nodes.
 
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 from pathlib import Path
@@ -214,7 +215,7 @@ class ArtifactStore:
         if not key:
             return
         with self._lock:
-            self._by_cid[key] = dict(payload)
+            self._by_cid[key] = copy.deepcopy(payload)
 
     def put_many(self, records: dict[str, dict[str, Any]]) -> int:
         """Persist a mapping of `cid -> payload` and return number written."""
@@ -224,7 +225,7 @@ class ArtifactStore:
                 key = str(cid or "").strip()
                 if not key or not isinstance(payload, dict):
                     continue
-                self._by_cid[key] = dict(payload)
+                self._by_cid[key] = copy.deepcopy(payload)
                 count += 1
         return count
 
@@ -233,7 +234,7 @@ class ArtifactStore:
         key = str(cid or "").strip()
         with self._lock:
             payload = self._by_cid.get(key)
-            return dict(payload) if isinstance(payload, dict) else None
+            return copy.deepcopy(payload) if isinstance(payload, dict) else None
 
     def stats(self) -> dict[str, int]:
         """Return deterministic store statistics."""
@@ -243,7 +244,7 @@ class ArtifactStore:
     def export_records(self) -> dict[str, dict[str, Any]]:
         """Return deterministic deep-copy export of all records by sorted CID."""
         with self._lock:
-            return {cid: dict(self._by_cid[cid]) for cid in sorted(self._by_cid.keys())}
+            return {cid: copy.deepcopy(self._by_cid[cid]) for cid in sorted(self._by_cid.keys())}
 
     def import_records(self, records: dict[str, dict[str, Any]], *, clear: bool = False) -> int:
         """Import records from mapping and return number written."""
@@ -255,7 +256,7 @@ class ArtifactStore:
                 key = str(cid or "").strip()
                 if not key or not isinstance(payload, dict):
                     continue
-                self._by_cid[key] = dict(payload)
+                self._by_cid[key] = copy.deepcopy(payload)
                 count += 1
         return count
 

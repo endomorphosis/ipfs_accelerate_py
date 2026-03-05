@@ -10,6 +10,7 @@ import anyio
 from ipfs_accelerate_py.mcp_server.tools.analysis_tools.native_analysis_tools import (
     analyze_data_distribution,
     cluster_analysis,
+    detect_outliers,
     dimensionality_reduction,
     quality_assessment,
     register_native_analysis_tools,
@@ -32,6 +33,7 @@ class TestMCPServerUNI112AnalysisTools(unittest.TestCase):
         self.assertIn("analyze_data_distribution", names)
         self.assertIn("cluster_analysis", names)
         self.assertIn("quality_assessment", names)
+        self.assertIn("detect_outliers", names)
         self.assertIn("dimensionality_reduction", names)
 
     def test_analyze_data_distribution_rejects_bad_vectors_shape(self) -> None:
@@ -66,6 +68,31 @@ class TestMCPServerUNI112AnalysisTools(unittest.TestCase):
             result = await quality_assessment(metrics="accuracy")  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("metrics must be an array", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_detect_outliers_rejects_invalid_data_shape(self) -> None:
+        async def _run() -> None:
+            result = await detect_outliers(data=[[0.1, 0.2], ["bad"]])  # type: ignore[list-item]
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("array of numeric arrays", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_detect_outliers_rejects_invalid_threshold(self) -> None:
+        async def _run() -> None:
+            result = await detect_outliers(data=[[0.1, 0.2], [0.2, 0.3]], threshold=0)
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("threshold must be a positive number", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_detect_outliers_success_shape(self) -> None:
+        async def _run() -> None:
+            result = await detect_outliers(data=[[0.1, 0.2], [0.2, 0.3], [10.0, 12.0]], threshold=1.5)
+            self.assertEqual(result.get("status"), "success")
+            self.assertIn("outlier_indices", result)
+            self.assertIn("outlier_count", result)
 
         anyio.run(_run)
 

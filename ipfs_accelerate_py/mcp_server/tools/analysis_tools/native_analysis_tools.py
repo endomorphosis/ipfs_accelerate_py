@@ -11,6 +11,7 @@ def _load_analysis_api() -> Dict[str, Any]:
         from ipfs_datasets_py.ipfs_datasets_py.analytics.analysis_engine import (  # type: ignore
             analyze_data_distribution,
             cluster_analysis,
+            detect_outliers,
             dimensionality_reduction,
             quality_assessment,
         )
@@ -18,6 +19,7 @@ def _load_analysis_api() -> Dict[str, Any]:
         return {
             "analyze_data_distribution": analyze_data_distribution,
             "cluster_analysis": cluster_analysis,
+            "detect_outliers": detect_outliers,
             "quality_assessment": quality_assessment,
             "dimensionality_reduction": dimensionality_reduction,
         }
@@ -83,6 +85,13 @@ def _load_analysis_api() -> Dict[str, Any]:
                 "outliers": [],
             }
 
+        async def _detect_outliers_fallback(
+            data: List[List[float]],
+            threshold: float = 3.0,
+        ) -> List[int]:
+            _ = data, threshold
+            return []
+
         async def _reduction_fallback(
             data_source: str = "mock",
             method: str = "pca",
@@ -105,6 +114,7 @@ def _load_analysis_api() -> Dict[str, Any]:
         return {
             "analyze_data_distribution": _distribution_fallback,
             "cluster_analysis": _cluster_fallback,
+            "detect_outliers": _detect_outliers_fallback,
             "quality_assessment": _quality_fallback,
             "dimensionality_reduction": _reduction_fallback,
         }
@@ -239,6 +249,59 @@ async def quality_assessment(
     return payload
 
 
+async def detect_outliers(
+    data: List[List[float]],
+    threshold: float = 3.0,
+) -> Dict[str, Any]:
+    """Detect outlier rows in embedding vectors using z-score thresholding."""
+    if not isinstance(data, list) or not data:
+        return {
+            "status": "error",
+            "message": "data must be a non-empty array of numeric arrays",
+            "data": data,
+        }
+    for row in data:
+        if not isinstance(row, list) or not row or not all(isinstance(value, (int, float)) for value in row):
+            return {
+                "status": "error",
+                "message": "data must be a non-empty array of numeric arrays",
+                "data": data,
+            }
+
+    try:
+        normalized_threshold = float(threshold)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "threshold must be a positive number",
+            "threshold": threshold,
+        }
+    if normalized_threshold <= 0:
+        return {
+            "status": "error",
+            "message": "threshold must be a positive number",
+            "threshold": threshold,
+        }
+
+    result = _API["detect_outliers"](data=data, threshold=normalized_threshold)
+    if hasattr(result, "__await__"):
+        result = await result  # type: ignore[misc]
+
+    if isinstance(result, list):
+        outlier_indices = [int(idx) for idx in result]
+    elif isinstance(result, dict):
+        outlier_indices = [int(idx) for idx in (result.get("outlier_indices") or [])]
+    else:
+        outlier_indices = []
+
+    return {
+        "status": "success",
+        "outlier_indices": outlier_indices,
+        "outlier_count": len(outlier_indices),
+        "threshold": normalized_threshold,
+    }
+
+
 async def dimensionality_reduction(
     data_source: str = "mock",
     method: str = "pca",
@@ -350,6 +413,27 @@ def register_native_analysis_tools(manager: Any) -> None:
                 "outlier_detection": {"type": "boolean"},
             },
             "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "analysis"],
+    )
+
+    manager.register_tool(
+        category="analysis_tools",
+        name="detect_outliers",
+        func=detect_outliers,
+        description="Detect outlier row indices in numeric vector arrays.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "data": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"type": "array", "minItems": 1, "items": {"type": "number"}},
+                },
+                "threshold": {"type": "number", "default": 3.0, "exclusiveMinimum": 0},
+            },
+            "required": ["data"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "analysis"],

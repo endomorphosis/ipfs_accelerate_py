@@ -477,18 +477,45 @@ async def manage_session(
             }
 
         if normalized_action == "cleanup":
+            if cleanup_options is not None and not isinstance(cleanup_options, dict):
+                return {
+                    "status": "error",
+                    "error": "cleanup_options must be an object when provided",
+                    "code": "INVALID_CLEANUP_OPTIONS",
+                }
+
             opts = cleanup_options or {}
-            max_age_hours = int(opts.get("max_age_hours", 24) or 24)
-            dry_run = bool(opts.get("dry_run", False))
+            max_age_hours = opts.get("max_age_hours", 24)
+            if not isinstance(max_age_hours, int) or max_age_hours <= 0:
+                return {
+                    "status": "error",
+                    "error": "cleanup_options.max_age_hours must be a positive integer",
+                    "code": "INVALID_CLEANUP_OPTIONS",
+                }
+
+            dry_run = opts.get("dry_run", False)
+            if not isinstance(dry_run, bool):
+                return {
+                    "status": "error",
+                    "error": "cleanup_options.dry_run must be a boolean",
+                    "code": "INVALID_CLEANUP_OPTIONS",
+                }
+
             if not dry_run:
                 expired = await _get_session_manager().cleanup_expired_sessions(max_age_hours=max_age_hours)
             else:
                 expired = []
+            expired_count = len(expired) if isinstance(expired, list) else int(expired)
             return {
                 "status": "success",
-                "cleaned_up": len(expired),
+                "cleaned_up": expired_count,
                 "dry_run": dry_run,
-                "message": f"Cleaned up {len(expired)} expired sessions",
+                "cleanup_report": {
+                    "max_age_hours": max_age_hours,
+                    "dry_run": dry_run,
+                    "expired_session_count": expired_count,
+                },
+                "message": f"Cleaned up {expired_count} expired sessions",
             }
 
         return {
@@ -663,7 +690,14 @@ def register_native_session_tools(manager: Any) -> None:
                 "session_id": {"type": ["string", "null"]},
                 "updates": {"type": ["object", "null"]},
                 "filters": {"type": ["object", "null"]},
-                "cleanup_options": {"type": ["object", "null"]},
+                "cleanup_options": {
+                    "type": ["object", "null"],
+                    "properties": {
+                        "max_age_hours": {"type": "integer", "minimum": 1, "default": 24},
+                        "dry_run": {"type": "boolean", "default": False},
+                    },
+                    "additionalProperties": True,
+                },
             },
             "required": [],
         },

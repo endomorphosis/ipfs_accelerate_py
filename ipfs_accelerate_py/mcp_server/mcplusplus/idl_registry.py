@@ -6,6 +6,7 @@ in-memory interface repository used by Profile A (`mcp-idl`) tools.
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 import hashlib
 import json
@@ -110,7 +111,7 @@ class InterfaceDescriptorRegistry:
 
     def __init__(self, supported_capabilities: Optional[Iterable[str]] = None) -> None:
         self._by_cid: Dict[str, Dict[str, Any]] = {}
-        self._supported_capabilities = set(supported_capabilities or [])
+        self._supported_capabilities = {str(x) for x in (supported_capabilities or [])}
 
     @property
     def supported_capabilities(self) -> set[str]:
@@ -119,12 +120,12 @@ class InterfaceDescriptorRegistry:
 
     def set_supported_capabilities(self, capabilities: Iterable[str]) -> None:
         """Replace capability set used by compatibility checks."""
-        self._supported_capabilities = set(capabilities)
+        self._supported_capabilities = {str(x) for x in capabilities}
 
     def register_descriptor(self, descriptor: Dict[str, Any]) -> str:
         """Register a descriptor and return its computed `interface_cid`."""
         interface_cid = compute_interface_cid(descriptor)
-        payload = dict(descriptor)
+        payload = copy.deepcopy(descriptor)
         payload["interface_cid"] = interface_cid
         self._by_cid[interface_cid] = payload
         return interface_cid
@@ -136,7 +137,7 @@ class InterfaceDescriptorRegistry:
     def get_descriptor(self, interface_cid: str) -> Optional[Dict[str, Any]]:
         """Get descriptor payload for CID, if present."""
         payload = self._by_cid.get(interface_cid)
-        return dict(payload) if payload is not None else None
+        return copy.deepcopy(payload) if payload is not None else None
 
     def compat(self, interface_cid: str) -> CompatibilityVerdict:
         """Evaluate compatibility against local supported capabilities."""

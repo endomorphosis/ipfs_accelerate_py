@@ -212,17 +212,42 @@ async def faceted_search(
     if normalized_top_k <= 0:
         return _error_result("top_k must be a positive integer", top_k=top_k)
 
-    if facets is not None and not isinstance(facets, dict):
-        return _error_result("facets must be an object when provided", facets=facets)
-    if aggregations is not None and not isinstance(aggregations, list):
-        return _error_result("aggregations must be an array when provided", aggregations=aggregations)
+    normalized_facets: Dict[str, List[str]] = {}
+    if facets is not None:
+        if not isinstance(facets, dict):
+            return _error_result("facets must be an object when provided", facets=facets)
+        for facet_name, facet_values in facets.items():
+            if not isinstance(facet_name, str) or not facet_name.strip():
+                return _error_result(
+                    "facets keys must be non-empty strings",
+                    facets=facets,
+                )
+            if not isinstance(facet_values, list) or not all(
+                isinstance(value, str) and value.strip() for value in facet_values
+            ):
+                return _error_result(
+                    "each facets value must be an array of non-empty strings",
+                    facets=facets,
+                )
+            normalized_facets[facet_name.strip()] = [value.strip() for value in facet_values]
+
+    normalized_aggregations: List[str] = []
+    if aggregations is not None:
+        if not isinstance(aggregations, list):
+            return _error_result("aggregations must be an array when provided", aggregations=aggregations)
+        if not all(isinstance(item, str) and item.strip() for item in aggregations):
+            return _error_result(
+                "aggregations must contain only non-empty strings",
+                aggregations=aggregations,
+            )
+        normalized_aggregations = [item.strip() for item in aggregations]
 
     try:
         result = await _API["faceted"](
             vector_service=vector_service,
             query=str(query or ""),
-            facets=facets or {},
-            aggregations=aggregations or [],
+            facets=normalized_facets,
+            aggregations=normalized_aggregations,
             top_k=normalized_top_k,
             collection=str(collection or "default"),
         )
@@ -283,8 +308,17 @@ def register_native_search_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "query": {"type": "string", "default": ""},
-                "facets": {"type": ["object", "null"]},
-                "aggregations": {"type": ["array", "null"], "items": {"type": "string"}},
+                "facets": {
+                    "type": ["object", "null"],
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+                "aggregations": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "top_k": {"type": "integer", "minimum": 1, "default": 20},
                 "collection": {"type": "string", "minLength": 1, "default": "default"},
             },

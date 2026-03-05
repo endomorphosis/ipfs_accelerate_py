@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 _VALID_PERMISSION_TYPES = {"read", "write", "delete", "share", "admin", "execute"}
 
@@ -136,6 +136,69 @@ async def check_access_permission(
     }
 
 
+async def check_access_permissions_batch(
+    requests: List[Dict[str, Any]],
+    fail_fast: bool = False,
+) -> Dict[str, Any]:
+    """Evaluate multiple access checks with deterministic aggregate envelope."""
+    if not isinstance(requests, list) or not requests:
+        return {
+            "status": "error",
+            "error": "requests must be a non-empty array",
+            "results": [],
+            "allowed_count": 0,
+            "denied_count": 0,
+            "error_count": 0,
+        }
+
+    results: List[Dict[str, Any]] = []
+    allowed_count = 0
+    denied_count = 0
+    error_count = 0
+
+    for index, request in enumerate(requests):
+        if not isinstance(request, dict):
+            item_result = {
+                "status": "error",
+                "error": "request entry must be an object",
+                "allowed": False,
+                "index": index,
+            }
+        else:
+            item_result = await check_access_permission(
+                resource_id=str(request.get("resource_id", "")),
+                user_id=request.get("user_id"),
+                permission_type=str(request.get("permission_type", "read")),
+                resource_type=request.get("resource_type"),
+            )
+            item_result = dict(item_result)
+            item_result.setdefault("index", index)
+
+        if item_result.get("status") == "success" and bool(item_result.get("allowed", False)):
+            allowed_count += 1
+        elif item_result.get("status") == "error":
+            error_count += 1
+        else:
+            denied_count += 1
+
+        results.append(item_result)
+
+        if fail_fast and item_result.get("status") == "error":
+            break
+
+    return {
+        "status": "success",
+        "results": results,
+        "processed": len(results),
+        "requested": len(requests),
+        "all_allowed": error_count == 0 and denied_count == 0,
+        "allowed_count": allowed_count,
+        "denied_count": denied_count,
+        "error_count": error_count,
+        "fail_fast": bool(fail_fast),
+    }
+
+
 def register_native_security_tools(manager: Any) -> None:
     """Register native security tools in unified hierarchical manager."""
     manager.register_tool(
@@ -161,6 +224,45 @@ def register_native_security_tools(manager: Any) -> None:
                 },
             },
             "required": ["resource_id", "user_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "security"],
+    )
+
+    manager.register_tool(
+        category="security_tools",
+        name="check_access_permissions_batch",
+        func=check_access_permissions_batch,
+        description="Check permissions for multiple resource/user requests.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "requests": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "resource_id": {"type": "string", "minLength": 1},
+                            "user_id": {"type": "string", "minLength": 1},
+                            "permission_type": {
+                                "type": "string",
+                                "enum": sorted(_VALID_PERMISSION_TYPES),
+                                "default": "read",
+                            },
+                            "resource_type": {
+                                "anyOf": [
+                                    {"type": "string", "minLength": 1},
+                                    {"type": "null"},
+                                ]
+                            },
+                        },
+                        "required": ["resource_id", "user_id"],
+                    },
+                },
+                "fail_fast": {"type": "boolean", "default": False},
+            },
+            "required": ["requests"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "security"],
