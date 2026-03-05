@@ -150,12 +150,29 @@ class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
 
                 anyio.run(_mcp_p2p_initialize, backend="trio")
 
-                after = anyio.run(_call_status, backend="trio")
-                after_stats = self._extract_transport_stats(after)
+                before_started = int(before_stats.get("sessions_started") or 0)
+                before_initialized = int(before_stats.get("initialized_sessions") or 0)
+                before_closed = int(before_stats.get("sessions_closed") or 0)
+
+                # Networked p2p handlers update counters asynchronously; allow a
+                # short window for stats to become visible in status responses.
+                deadline = time.time() + 5.0
+                after_stats: dict[str, Any] = {}
+                while time.time() < deadline:
+                    after = anyio.run(_call_status, backend="trio")
+                    after_stats = self._extract_transport_stats(after)
+                    if (
+                        int(after_stats.get("sessions_started") or 0) >= (before_started + 1)
+                        and int(after_stats.get("initialized_sessions") or 0) >= (before_initialized + 1)
+                        and int(after_stats.get("sessions_closed") or 0) >= (before_closed + 1)
+                    ):
+                        break
+                    time.sleep(0.1)
+
                 self.assertIsInstance(after_stats, dict)
-                self.assertGreaterEqual(int(after_stats.get("sessions_started") or 0), int(before_stats.get("sessions_started") or 0) + 1)
-                self.assertGreaterEqual(int(after_stats.get("initialized_sessions") or 0), int(before_stats.get("initialized_sessions") or 0) + 1)
-                self.assertGreaterEqual(int(after_stats.get("sessions_closed") or 0), int(before_stats.get("sessions_closed") or 0) + 1)
+                self.assertGreaterEqual(int(after_stats.get("sessions_started") or 0), before_started + 1)
+                self.assertGreaterEqual(int(after_stats.get("initialized_sessions") or 0), before_initialized + 1)
+                self.assertGreaterEqual(int(after_stats.get("sessions_closed") or 0), before_closed + 1)
 
             finally:
                 try:
