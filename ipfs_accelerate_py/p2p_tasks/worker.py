@@ -4777,15 +4777,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Spawn autoscaled workers as threads instead of child processes",
     )
 
-    # Default behavior: autoscale-enabled worker with remote backlog awareness.
-    # Use --no-autoscale/--no-autoscale-remote to force single-worker local-only execution.
+    # Default behavior: autoscale-enabled worker.
+    # Keep remote/mesh/process toggles tri-state so env vars can disable them
+    # when explicit CLI flags are not provided.
     parser.set_defaults(
         p2p_service=False,
         mesh=False,
         autoscale=True,
-        autoscale_remote=True,
-        autoscale_mesh_children=True,
-        autoscale_processes=False,
+        autoscale_remote=None,
+        autoscale_mesh_children=None,
+        autoscale_processes=None,
     )
 
     args = parser.parse_args(argv)
@@ -4840,6 +4841,21 @@ def main(argv: Optional[list[str]] = None) -> int:
         mesh_children_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN"))
         proc_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES"))
 
+        if args.autoscale_remote is None:
+            autoscale_remote_enabled = bool(remote_default)
+        else:
+            autoscale_remote_enabled = bool(args.autoscale_remote)
+
+        if args.autoscale_mesh_children is None:
+            mesh_children_enabled = bool(mesh_children_default)
+        else:
+            mesh_children_enabled = bool(args.autoscale_mesh_children)
+
+        if args.autoscale_processes is None:
+            use_processes_enabled = bool(proc_default)
+        else:
+            use_processes_enabled = bool(args.autoscale_processes)
+
         return run_autoscaled_workers(
             queue_path=args.queue_path,
             base_worker_id=str(args.worker_id),
@@ -4855,11 +4871,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             mesh_refresh_s=args.mesh_refresh_s,
             mesh_claim_interval_s=args.mesh_claim_interval_s,
             mesh_max_peers=args.mesh_max_peers,
-            mesh_children=bool(args.autoscale_mesh_children) or bool(mesh_children_default),
-            autoscale_remote=bool(args.autoscale_remote) or bool(remote_default),
+            mesh_children=mesh_children_enabled,
+            autoscale_remote=autoscale_remote_enabled,
             remote_refresh_s=max(0.5, float(remote_refresh_s)),
             remote_max_peers=max(1, int(remote_max_peers)),
-            use_processes=bool(args.autoscale_processes) or bool(proc_default),
+            use_processes=use_processes_enabled,
         )
 
     return run_worker(
