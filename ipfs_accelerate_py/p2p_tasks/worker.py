@@ -2554,7 +2554,49 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
     if prompt is None:
         prompt = payload.get("input")
 
-    provider = str(payload.get("provider") or "copilot_cli").strip().lower() or "copilot_cli"
+    provider_raw = payload.get("provider")
+    provider = str(provider_raw or "copilot_cli").strip().lower() or "copilot_cli"
+    provider_explicit = isinstance(provider_raw, str) and bool(str(provider_raw).strip())
+    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
+
+    # For generic llm.generate jobs that do not explicitly request a provider,
+    # default to local text-generation so GPT-2 batches do not depend on
+    # copilot_cli tooling (e.g. missing `npx` on workers).
+    if not provider_explicit:
+        local_default = str(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LLM_GENERATE_DEFAULT_PROVIDER")
+            or "local_text_generation"
+        ).strip().lower()
+        if local_default in {"local", "local_text_generation", "minimal_hf", "text-generation", "text_generation"}:
+            fallback = _run_text_generation(task, accelerate_instance=None)
+            text = str((fallback or {}).get("text") or "")
+            session_id = _expected_session_tag()
+            out: Dict[str, Any] = {
+                "text": text,
+                "provider": "minimal_hf_direct",
+                "session_id": session_id,
+                "executor_worker_id": str(task.get("assigned_worker") or "").strip(),
+            }
+            try:
+                out["executor_peer_id"] = _read_local_announce_peer_id()
+                out["executor_multiaddr"] = _read_local_announce_multiaddr()
+            except Exception:
+                pass
+            if isinstance(chat_session_id, str) and chat_session_id.strip():
+                out["chat_session_id"] = chat_session_id.strip()
+                try:
+                    _chat_cache_append_turn(
+                        chat_session_id=chat_session_id.strip(),
+                        user_prompt=str(prompt or ""),
+                        assistant_text=str(text or ""),
+                        ttl_s=7 * 24 * 3600,
+                    )
+                except Exception:
+                    pass
+            if isinstance(resume_session_id, str) and resume_session_id.strip():
+                out["resume_session_id"] = resume_session_id.strip()
+            return out
+
     allowed = _allowed_llm_providers()
     if provider not in allowed:
         raise RuntimeError(f"llm.generate provider not allowed: {provider}")
@@ -2583,8 +2625,6 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         }
         if not allow:
             raise RuntimeError("copilot_cli tasks disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1)")
-
-    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
 
     # Forward known safe flags.
     kwargs: Dict[str, Any] = {}
