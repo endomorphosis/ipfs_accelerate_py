@@ -394,7 +394,18 @@ async def query_storage(
             return _error_result("date_range must be a 2-item array when provided")
         if not all(isinstance(item, str) and item.strip() for item in date_range):
             return _error_result("date_range values must be non-empty strings")
-        normalized_date_range: Optional[Tuple[str, str]] = (str(date_range[0]).strip(), str(date_range[1]).strip())
+
+        start_raw = str(date_range[0]).strip()
+        end_raw = str(date_range[1]).strip()
+        try:
+            start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+            end_dt = datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
+        except ValueError:
+            return _error_result("date_range values must be valid ISO-8601 datetime strings")
+        if start_dt > end_dt:
+            return _error_result("date_range must be ordered as [start, end]")
+
+        normalized_date_range: Optional[Tuple[str, str]] = (start_raw, end_raw)
     else:
         normalized_date_range = None
 
@@ -438,7 +449,10 @@ def register_native_storage_tools(manager: Any) -> None:
                 "compression": {"type": "string", "enum": sorted(_VALID_COMPRESSION_TYPES), "default": "none"},
                 "collection": {"type": "string", "minLength": 1, "default": "default"},
                 "metadata": {"type": ["object", "null"]},
-                "tags": {"type": ["array", "null"], "items": {"type": "string"}},
+                "tags": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
             },
             "required": ["data"],
         },
@@ -454,7 +468,11 @@ def register_native_storage_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "item_ids": {"type": "array", "items": {"type": "string"}},
+                "item_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                },
                 "include_content": {"type": "boolean", "default": False},
                 "format_type": {"type": "string", "minLength": 1, "default": "json"},
             },
@@ -500,16 +518,19 @@ def register_native_storage_tools(manager: Any) -> None:
             "properties": {
                 "collection": {"type": ["string", "null"]},
                 "storage_type": {"type": ["string", "null"], "enum": sorted(_VALID_STORAGE_TYPES) + [None]},
-                "tags": {"type": ["array", "null"], "items": {"type": "string"}},
+                "tags": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
                 "size_range": {
                     "type": ["array", "null"],
-                    "items": {"type": "integer"},
+                    "items": {"type": "integer", "minimum": 0},
                     "minItems": 2,
                     "maxItems": 2,
                 },
                 "date_range": {
                     "type": ["array", "null"],
-                    "items": {"type": "string"},
+                    "items": {"type": "string", "format": "date-time", "minLength": 1},
                     "minItems": 2,
                     "maxItems": 2,
                 },

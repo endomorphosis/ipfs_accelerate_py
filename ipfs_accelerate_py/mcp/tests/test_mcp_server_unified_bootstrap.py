@@ -6094,11 +6094,35 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             store_schema = await get_schema("storage_tools", "store_data")
             store_props = (store_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((store_props.get("collection") or {}).get("minLength"), 1)
+            self.assertEqual(
+                ((store_props.get("tags") or {}).get("items") or {}).get("minLength"),
+                1,
+            )
+
+            retrieve_schema = await get_schema("storage_tools", "retrieve_data")
+            retrieve_props = (retrieve_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(
+                ((retrieve_props.get("item_ids") or {}).get("items") or {}).get("minLength"),
+                1,
+            )
+            self.assertEqual((retrieve_props.get("item_ids") or {}).get("minItems"), 1)
 
             query_schema = await get_schema("storage_tools", "query_storage")
             query_props = (query_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((query_props.get("limit") or {}).get("minimum"), 1)
             self.assertEqual((query_props.get("offset") or {}).get("minimum"), 0)
+            self.assertEqual(
+                ((query_props.get("size_range") or {}).get("items") or {}).get("minimum"),
+                0,
+            )
+            self.assertEqual(
+                ((query_props.get("date_range") or {}).get("items") or {}).get("format"),
+                "date-time",
+            )
+            self.assertEqual(
+                ((query_props.get("date_range") or {}).get("items") or {}).get("minLength"),
+                1,
+            )
 
             manage_schema = await get_schema("storage_tools", "manage_collections")
             manage_props = (manage_schema.get("input_schema") or {}).get("properties", {})
@@ -6117,6 +6141,36 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(invalid_tags.get("status"), "error")
             self.assertIn("tags must be an array of non-empty strings", str(invalid_tags.get("error", "")))
 
+            invalid_item_ids = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "retrieve_data",
+                    {
+                        "item_ids": ["ok", ""],
+                    },
+                )
+            )
+            self.assertEqual(invalid_item_ids.get("status"), "error")
+            self.assertIn(
+                "item_ids must be an array of non-empty strings",
+                str(invalid_item_ids.get("error", "")),
+            )
+
+            missing_item_ids = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "retrieve_data",
+                    {
+                        "item_ids": [],
+                    },
+                )
+            )
+            self.assertEqual(missing_item_ids.get("status"), "error")
+            self.assertIn(
+                "At least one item ID must be provided",
+                str(missing_item_ids.get("error", "")),
+            )
+
             invalid_range = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",
@@ -6128,6 +6182,36 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_range.get("status"), "error")
             self.assertIn("size_range must be non-negative and ordered", str(invalid_range.get("error", "")))
+
+            invalid_date_range = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "query_storage",
+                    {
+                        "date_range": ["not-a-date", "2026-01-01T00:00:00Z"],
+                    },
+                )
+            )
+            self.assertEqual(invalid_date_range.get("status"), "error")
+            self.assertIn(
+                "date_range values must be valid ISO-8601 datetime strings",
+                str(invalid_date_range.get("error", "")),
+            )
+
+            empty_date_range = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "query_storage",
+                    {
+                        "date_range": ["", "2026-01-01T00:00:00Z"],
+                    },
+                )
+            )
+            self.assertEqual(empty_date_range.get("status"), "error")
+            self.assertIn(
+                "date_range values must be non-empty strings",
+                str(empty_date_range.get("error", "")),
+            )
 
             invalid_report_format = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6980,12 +7064,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("extract_geographic_entities", names)
             self.assertIn("map_spatiotemporal_events", names)
             self.assertIn("query_geographic_context", names)
+            self.assertIn("analyze_geospatial_corpus", names)
 
             map_schema = await get_schema("geospatial_tools", "map_spatiotemporal_events")
             self.assertEqual(map_schema.get("name"), "map_spatiotemporal_events")
             schema_props = (map_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((schema_props.get("temporal_resolution") or {}).get("default"), "day")
             self.assertIn("year", (schema_props.get("temporal_resolution") or {}).get("enum", []))
+
+            combined_schema = await get_schema("geospatial_tools", "analyze_geospatial_corpus")
+            combined_props = (combined_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((combined_props.get("confidence_threshold") or {}).get("default"), 0.7)
+            self.assertIn("month", (combined_props.get("temporal_resolution") or {}).get("enum", []))
 
             invalid_resolution = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7012,6 +7102,19 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertIn(valid_query.get("status"), ["success", "error"])
+
+            invalid_combined = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "geospatial_tools",
+                    "analyze_geospatial_corpus",
+                    {
+                        "corpus_data": "sample",
+                        "temporal_resolution": "quarter",
+                    },
+                )
+            )
+            self.assertEqual(invalid_combined.get("status"), "error")
+            self.assertEqual(invalid_combined.get("phase"), "map_spatiotemporal_events")
 
         anyio.run(_run_flow)
 
@@ -7056,12 +7159,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("manage_shards", names)
             self.assertIn("monitor_index_status", names)
             self.assertIn("manage_index_configuration", names)
+            self.assertIn("orchestrate_index_lifecycle", names)
 
             monitor_schema = await get_schema("index_management_tools", "monitor_index_status")
             self.assertEqual(monitor_schema.get("name"), "monitor_index_status")
             schema_props = (monitor_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((schema_props.get("time_range") or {}).get("default"), "24h")
             self.assertIn("30d", (schema_props.get("time_range") or {}).get("enum", []))
+
+            lifecycle_schema = await get_schema("index_management_tools", "orchestrate_index_lifecycle")
+            lifecycle_props = (lifecycle_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((lifecycle_props.get("dataset") or {}).get("minLength"), 1)
+            self.assertIn("optimize", (lifecycle_props.get("action") or {}).get("enum", []))
 
             invalid_shards = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7099,6 +7208,30 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertIn(valid_manage.get("status"), ["success", "error"])
+
+            invalid_lifecycle = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "index_management_tools",
+                    "orchestrate_index_lifecycle",
+                    {
+                        "dataset": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_lifecycle.get("status"), "error")
+            self.assertIn("dataset is required", str(invalid_lifecycle.get("message", "")))
+
+            valid_lifecycle = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "index_management_tools",
+                    "orchestrate_index_lifecycle",
+                    {
+                        "dataset": "bootstrap-dataset",
+                        "action": "create",
+                    },
+                )
+            )
+            self.assertIn(valid_lifecycle.get("status"), ["success", "error"])
 
         anyio.run(_run_flow)
 

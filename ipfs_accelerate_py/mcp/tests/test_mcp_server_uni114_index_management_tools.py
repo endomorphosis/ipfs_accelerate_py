@@ -12,6 +12,7 @@ from ipfs_accelerate_py.mcp_server.tools.index_management_tools.native_index_man
     manage_index_configuration,
     manage_shards,
     monitor_index_status,
+    orchestrate_index_lifecycle,
     register_native_index_management_tools,
 )
 
@@ -33,6 +34,7 @@ class TestMCPServerUNI114IndexManagementTools(unittest.TestCase):
         self.assertIn("manage_shards", names)
         self.assertIn("monitor_index_status", names)
         self.assertIn("manage_index_configuration", names)
+        self.assertIn("orchestrate_index_lifecycle", names)
 
     def test_register_schema_contracts(self) -> None:
         manager = _DummyManager()
@@ -49,6 +51,10 @@ class TestMCPServerUNI114IndexManagementTools(unittest.TestCase):
         self.assertEqual(optimization.get("default"), 1)
         self.assertEqual(optimization.get("minimum"), 1)
         self.assertEqual(optimization.get("maximum"), 3)
+
+        lifecycle_schema = by_name["orchestrate_index_lifecycle"]["input_schema"]
+        self.assertEqual((lifecycle_schema["properties"]["dataset"]).get("minLength"), 1)
+        self.assertIn("optimize", (lifecycle_schema["properties"]["action"]).get("enum", []))
 
     def test_load_index_rejects_invalid_action(self) -> None:
         async def _run() -> None:
@@ -104,6 +110,32 @@ class TestMCPServerUNI114IndexManagementTools(unittest.TestCase):
             self.assertIn(result.get("status"), ["success", "error"])
             if result.get("status") == "success":
                 self.assertIn("action", result)
+
+        anyio.run(_run)
+
+    def test_orchestrate_index_lifecycle_rejects_missing_dataset(self) -> None:
+        async def _run() -> None:
+            result = await orchestrate_index_lifecycle(dataset="   ")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("dataset is required", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_orchestrate_index_lifecycle_rejects_invalid_action(self) -> None:
+        async def _run() -> None:
+            result = await orchestrate_index_lifecycle(dataset="ds", action="delete")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("action must be one of", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_orchestrate_index_lifecycle_success_shape(self) -> None:
+        async def _run() -> None:
+            result = await orchestrate_index_lifecycle(dataset="demo-dataset", action="create")
+            self.assertEqual(result.get("status"), "success")
+            self.assertIn("load", result)
+            self.assertIn("shards", result)
+            self.assertIn("configuration", result)
 
         anyio.run(_run)
 
