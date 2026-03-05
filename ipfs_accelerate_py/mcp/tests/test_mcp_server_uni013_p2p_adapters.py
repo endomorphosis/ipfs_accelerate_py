@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import types
 import unittest
 from unittest.mock import patch
@@ -30,6 +31,24 @@ class _DummyRuntime:
         _ = timeout_s
         self.running = False
         return True
+
+
+class _StartRaisesRuntime:
+    def __init__(self) -> None:
+        self.running = False
+        self.last_error = ""
+
+    def start(self, **_kwargs):
+        raise RuntimeError("boom")
+
+
+class _NotRunningRuntime:
+    def __init__(self) -> None:
+        self.running = False
+        self.last_error = ""
+
+    def start(self, **_kwargs):
+        return types.SimpleNamespace(started=types.SimpleNamespace(wait=lambda timeout=0.0: True))
 
 
 class _Host:
@@ -92,6 +111,32 @@ class TestMCPServerUNI013P2PAdapters(unittest.TestCase):
             self.assertEqual(state.peer_id, "peer-1")
             self.assertEqual(state.connected_peers, 1)
             self.assertTrue(mgr.stop())
+
+    def test_service_manager_start_restores_env_when_start_raises(self) -> None:
+        mgr = P2PServiceManager(enabled=True)
+        os.environ.pop("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE", None)
+
+        with patch(
+            "ipfs_accelerate_py.p2p_tasks.runtime.TaskQueueP2PServiceRuntime",
+            return_value=_StartRaisesRuntime(),
+        ):
+            started = mgr.start(accelerate_instance=object())
+
+        self.assertFalse(started)
+        self.assertNotIn("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE", os.environ)
+
+    def test_service_manager_start_restores_env_when_runtime_not_running(self) -> None:
+        mgr = P2PServiceManager(enabled=True)
+        os.environ.pop("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE", None)
+
+        with patch(
+            "ipfs_accelerate_py.p2p_tasks.runtime.TaskQueueP2PServiceRuntime",
+            return_value=_NotRunningRuntime(),
+        ):
+            started = mgr.start(accelerate_instance=object())
+
+        self.assertFalse(started)
+        self.assertNotIn("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE", os.environ)
 
     def test_registry_adapter_runtime_metadata_and_filtering(self) -> None:
         adapter = P2PMCPRegistryAdapter(_Host())

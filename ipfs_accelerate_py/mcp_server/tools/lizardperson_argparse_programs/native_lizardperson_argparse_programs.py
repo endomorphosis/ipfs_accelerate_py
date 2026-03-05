@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 def _load_lizardperson_argparse_api() -> Dict[str, Any]:
     """Resolve source lizardperson argparse APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.lizardperson_argparse_programs.municipal_bluebook_citation_validator.main import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.processors.legal_scrapers.bluebook_citation_validator.cli import (  # type: ignore
             main as _validator_main,
         )
 

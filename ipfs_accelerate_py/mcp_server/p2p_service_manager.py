@@ -102,23 +102,31 @@ class P2PServiceManager:
             return False
 
         self._apply_env()
-        from ipfs_accelerate_py.p2p_tasks.runtime import TaskQueueP2PServiceRuntime
-
-        if self._runtime is None:
-            self._runtime = TaskQueueP2PServiceRuntime()
-
-        self._handle = self._runtime.start(
-            queue_path=self.queue_path,
-            listen_port=self.listen_port,
-            accelerate_instance=accelerate_instance,
-        )
-
         try:
-            self._handle.started.wait(timeout=max(0.0, self.startup_timeout_s))
-        except Exception:
-            pass
+            from ipfs_accelerate_py.p2p_tasks.runtime import TaskQueueP2PServiceRuntime
 
-        return bool(getattr(self._runtime, "running", False))
+            if self._runtime is None:
+                self._runtime = TaskQueueP2PServiceRuntime()
+
+            self._handle = self._runtime.start(
+                queue_path=self.queue_path,
+                listen_port=self.listen_port,
+                accelerate_instance=accelerate_instance,
+            )
+
+            try:
+                self._handle.started.wait(timeout=max(0.0, self.startup_timeout_s))
+            except Exception:
+                pass
+        except Exception:
+            self._handle = None
+            self._restore_env()
+            return False
+
+        started = bool(getattr(self._runtime, "running", False))
+        if not started:
+            self._restore_env()
+        return started
 
     def stop(self) -> bool:
         if self._runtime is None:

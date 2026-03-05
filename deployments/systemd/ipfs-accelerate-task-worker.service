@@ -16,9 +16,6 @@ Environment=PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=%h/ipfs_accelerate_py
 
-# Load per-host settings (listen port, session tag, caches, etc.)
-EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
-
 # Enable docker task types by default (override in task-worker.env if needed).
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1
 Environment=IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1
@@ -74,6 +71,10 @@ Environment=IPFS_ACCELERATE_PY_TASK_P2P_RELAY=0
 Environment=IPFS_DATASETS_PY_TASK_P2P_RELAY=0
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH=0
 Environment=IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH=0
+
+# Load per-host settings (listen port, session tag, caches, etc.).
+# Keep this *after* hardcoded defaults so host-specific values take precedence.
+EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
 
 # Run the TaskQueue worker daemon.
 # Default behavior includes:

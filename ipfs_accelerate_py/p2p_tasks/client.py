@@ -4132,6 +4132,36 @@ async def get_capabilities(*, remote: RemoteQueue, timeout_s: float = 10.0, deta
     return caps if isinstance(caps, dict) else {}
 
 
+def _normalize_status_detail_response(*, resp: Dict[str, Any], detail: bool) -> Dict[str, Any]:
+    """Normalize status payload shape for detail-mode compatibility.
+
+    Canonical status responses expose rich sections at top-level. Older
+    consumers may expect these under `detail`. When `detail=True`, mirror
+    top-level dict sections into `detail` if that block is absent.
+    """
+
+    if not bool(detail) or not isinstance(resp, dict):
+        return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+
+    existing_detail = resp.get("detail")
+    if isinstance(existing_detail, dict):
+        return resp
+
+    detail_payload: Dict[str, Any] = {}
+    for key, value in resp.items():
+        if key in {"ok", "peer_id", "capabilities", "nat", "session", "error", "detail"}:
+            continue
+        if isinstance(value, dict):
+            detail_payload[key] = value
+
+    if not detail_payload:
+        return resp
+
+    normalized = dict(resp)
+    normalized["detail"] = detail_payload
+    return normalized
+
+
 async def request_status(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
     # Short status probes are often used as health checks in tight loops.
     # Prefer cache/announce dialing there to avoid broad-discovery fanout.
@@ -4145,7 +4175,10 @@ async def request_status(*, remote: RemoteQueue, timeout_s: float = 10.0, detail
         op_label="status",
         force_lightweight_discovery=bool(lightweight_probe),
     )
-    return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+    return _normalize_status_detail_response(
+        resp=(resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}),
+        detail=bool(detail),
+    )
 
 
 def _should_retry_submit_response(resp: Dict[str, Any]) -> bool:

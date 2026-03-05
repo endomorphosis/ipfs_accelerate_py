@@ -56,6 +56,50 @@ class TestTrioAdapterFacade(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_start_resets_state_on_sync_serve_failure(self) -> None:
+        async def _run() -> None:
+            def _factory(**_kwargs):
+                return _DummyServer()
+
+            def _serve(_server, _config):
+                raise RuntimeError("serve failed")
+
+            adapter = TrioMCPServerAdapter(
+                TrioServerConfig(name="trio-test", description="desc"),
+                server_factory=_factory,
+                serve_fn=_serve,
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "serve failed"):
+                await adapter.start()
+
+            self.assertFalse(adapter.running)
+            self.assertIsNone(adapter.server)
+
+        anyio.run(_run)
+
+    def test_start_resets_state_on_async_serve_failure(self) -> None:
+        async def _run() -> None:
+            def _factory(**_kwargs):
+                return _DummyServer()
+
+            async def _serve(_server, _config):
+                raise RuntimeError("async serve failed")
+
+            adapter = TrioMCPServerAdapter(
+                TrioServerConfig(name="trio-test", description="desc"),
+                server_factory=_factory,
+                serve_fn=_serve,
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "async serve failed"):
+                await adapter.start()
+
+            self.assertFalse(adapter.running)
+            self.assertIsNone(adapter.server)
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

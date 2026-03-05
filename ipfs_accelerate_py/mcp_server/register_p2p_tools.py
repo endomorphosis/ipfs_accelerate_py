@@ -72,8 +72,11 @@ def register_p2p_category_loaders(manager: Any) -> dict[str, int]:
             failed += 1
             continue
 
-        registrar(manager)
-        loaded += 1
+        try:
+            registrar(manager)
+            loaded += 1
+        except Exception:
+            failed += 1
 
     return {"loaded": loaded, "failed": failed, "total": len(P2P_TOOL_MODULES)}
 

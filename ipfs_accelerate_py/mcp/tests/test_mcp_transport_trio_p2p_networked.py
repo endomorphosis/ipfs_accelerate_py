@@ -49,6 +49,15 @@ def _pick_free_port() -> int:
 class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
     """Networked trio-p2p integration checks (optional by dependency)."""
 
+    @staticmethod
+    def _extract_transport_stats(resp: dict[str, Any]) -> dict[str, Any]:
+        transport = resp.get("transport")
+        if not isinstance(transport, dict):
+            transport = ((resp.get("detail") or {}).get("transport") if isinstance(resp.get("detail"), dict) else {})
+        mcp_p2p = transport.get("mcp_p2p") if isinstance(transport, dict) else {}
+        stats = mcp_p2p.get("stats") if isinstance(mcp_p2p, dict) else {}
+        return stats if isinstance(stats, dict) else {}
+
     def test_unified_p2p_status_dispatch_against_real_service(self) -> None:
         with tempfile.TemporaryDirectory(prefix="mcp_trio_p2p_networked_") as td:
             queue_path = os.path.join(td, "queue.json")
@@ -124,7 +133,7 @@ class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
                 self.assertTrue(result.get("ok"), msg=f"unexpected response: {result}")
                 self.assertIn("peer_id", result)
 
-                before_stats = ((((result.get("detail") or {}).get("transport") or {}).get("mcp_p2p") or {}).get("stats") or {})
+                before_stats = self._extract_transport_stats(result)
                 self.assertIsInstance(before_stats, dict)
 
                 async def _mcp_p2p_initialize() -> None:
@@ -142,7 +151,7 @@ class TestMCPTransportTrioP2PNetworked(unittest.TestCase):
                 anyio.run(_mcp_p2p_initialize, backend="trio")
 
                 after = anyio.run(_call_status, backend="trio")
-                after_stats = ((((after.get("detail") or {}).get("transport") or {}).get("mcp_p2p") or {}).get("stats") or {})
+                after_stats = self._extract_transport_stats(after)
                 self.assertIsInstance(after_stats, dict)
                 self.assertGreaterEqual(int(after_stats.get("sessions_started") or 0), int(before_stats.get("sessions_started") or 0) + 1)
                 self.assertGreaterEqual(int(after_stats.get("initialized_sessions") or 0), int(before_stats.get("initialized_sessions") or 0) + 1)

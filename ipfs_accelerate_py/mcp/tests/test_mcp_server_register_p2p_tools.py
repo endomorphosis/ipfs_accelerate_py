@@ -82,6 +82,30 @@ class TestRegisterP2PToolsFacade(unittest.TestCase):
         self.assertEqual(summary["total"], len(register_p2p_tools.P2P_TOOL_MODULES))
         self.assertEqual(len(calls), 1)
 
+    def test_register_continues_when_registrar_raises(self) -> None:
+        calls = []
+
+        def _reg_ok(manager):
+            calls.append(("ok", manager))
+
+        def _reg_fail(_manager):
+            raise RuntimeError("boom")
+
+        manager = object()
+        with patch(
+            "ipfs_accelerate_py.mcp_server.register_p2p_tools._resolve_p2p_registrars",
+            return_value=[
+                {"module": "m1", "registrar": "r1", "status": "available", "callable": _reg_fail},
+                {"module": "m2", "registrar": "r2", "status": "available", "callable": _reg_ok},
+            ],
+        ):
+            summary = register_p2p_tools.register_p2p_category_loaders(manager)
+
+        self.assertEqual(summary["loaded"], 1)
+        self.assertEqual(summary["failed"], 1)
+        self.assertEqual(summary["total"], len(register_p2p_tools.P2P_TOOL_MODULES))
+        self.assertEqual(calls, [("ok", manager)])
+
 
 if __name__ == "__main__":
     unittest.main()

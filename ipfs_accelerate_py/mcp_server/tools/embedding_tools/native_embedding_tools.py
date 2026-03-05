@@ -184,16 +184,45 @@ def _load_embedding_api() -> Dict[str, Any]:
 _API = _load_embedding_api()
 
 
+def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
+    """Return a normalized error envelope for deterministic dispatch behavior."""
+    payload: Dict[str, Any] = {"status": "error", "error": message}
+    payload.update(extra)
+    return payload
+
+
+async def _await_maybe(result: Any) -> Dict[str, Any]:
+    """Await coroutine-like API results while supporting direct return values."""
+    if hasattr(result, "__await__"):
+        return await result
+    return result
+
+
 async def generate_embeddings(
     texts: List[str],
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Generate vector embeddings for multiple texts."""
-    result = _API["generate_embeddings"](texts=texts, model_name=model_name, **kwargs)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(texts, list) or not texts:
+        return _error_result("texts must be a non-empty array of strings")
+    if not all(isinstance(text, str) and text.strip() for text in texts):
+        return _error_result("texts must contain only non-empty strings")
+
+    normalized_model_name = str(model_name or "").strip()
+    if not normalized_model_name:
+        return _error_result("model_name must be a non-empty string")
+
+    try:
+        payload = await _await_maybe(
+            _API["generate_embeddings"](texts=texts, model_name=normalized_model_name, **kwargs)
+        )
+    except Exception as exc:
+        return _error_result(f"generate_embeddings failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
 
 
 async def shard_embeddings(
@@ -203,23 +232,51 @@ async def shard_embeddings(
     **kwargs: Any,
 ) -> Dict[str, Any]:
     """Shard embedding vectors using the selected strategy."""
-    result = _API["shard_embeddings"](
-        embeddings=embeddings,
-        shard_count=shard_count,
-        strategy=strategy,
-        **kwargs,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(embeddings, list) or not embeddings:
+        return _error_result("embeddings must be a non-empty array")
+
+    try:
+        normalized_shard_count = int(shard_count)
+    except (TypeError, ValueError):
+        return _error_result("shard_count must be an integer")
+    if normalized_shard_count <= 0:
+        return _error_result("shard_count must be a positive integer")
+
+    normalized_strategy = str(strategy or "").strip()
+    if not normalized_strategy:
+        return _error_result("strategy must be a non-empty string")
+
+    try:
+        payload = await _await_maybe(
+            _API["shard_embeddings"](
+                embeddings=embeddings,
+                shard_count=normalized_shard_count,
+                strategy=normalized_strategy,
+                **kwargs,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"shard_embeddings failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
 
 
 async def get_available_models(
     model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
 ) -> Dict[str, Any]:
     """Return available embedding model names from the source manager."""
-    manager = _API["EmbeddingManager"](model_name=model_name)
-    models = manager.get_available_models()
+    normalized_model_name = str(model_name or "").strip()
+    if not normalized_model_name:
+        return _error_result("model_name must be a non-empty string", models=[], count=0)
+
+    try:
+        manager = _API["EmbeddingManager"](model_name=normalized_model_name)
+        models = manager.get_available_models()
+    except Exception as exc:
+        return _error_result(f"get_available_models failed: {exc}", models=[], count=0)
+
     return {
         "status": "success",
         "models": [str(m) for m in models],
@@ -237,27 +294,52 @@ async def chunk_text_for_embeddings(
 ) -> Dict[str, Any]:
     """Chunk text for embedding workflows with deterministic envelope validation."""
     if not isinstance(text, str) or not text.strip():
-        return {"status": "error", "error": "text must be a non-empty string"}
-    if int(chunk_size) <= 0:
-        return {"status": "error", "error": "chunk_size must be positive"}
-    if int(chunk_overlap) < 0:
-        return {"status": "error", "error": "chunk_overlap must be non-negative"}
+        return _error_result("text must be a non-empty string")
+
+    try:
+        normalized_chunk_size = int(chunk_size)
+        normalized_chunk_overlap = int(chunk_overlap)
+        normalized_n_sentences = int(n_sentences)
+        normalized_step_size = int(step_size)
+    except (TypeError, ValueError):
+        return _error_result("chunk_size, chunk_overlap, n_sentences, and step_size must be integers")
+
+    if normalized_chunk_size <= 0:
+        return _error_result("chunk_size must be positive")
+    if normalized_chunk_overlap < 0:
+        return _error_result("chunk_overlap must be non-negative")
+    if normalized_chunk_overlap >= normalized_chunk_size:
+        return _error_result("chunk_overlap must be smaller than chunk_size")
+    if normalized_n_sentences <= 0:
+        return _error_result("n_sentences must be positive")
+    if normalized_step_size <= 0:
+        return _error_result("step_size must be positive")
+
+    normalized_method = str(method or "").strip()
+    if not normalized_method:
+        return _error_result("method must be a non-empty string")
 
     handler = _API.get("chunk_text")
     if not callable(handler):
-        return {"status": "error", "error": "chunk_text handler unavailable"}
+        return _error_result("chunk_text handler unavailable")
 
-    result = handler(
-        text=text,
-        chunk_size=int(chunk_size),
-        chunk_overlap=int(chunk_overlap),
-        method=str(method or "fixed"),
-        n_sentences=int(n_sentences),
-        step_size=int(step_size),
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        payload = await _await_maybe(
+            handler(
+                text=text,
+                chunk_size=normalized_chunk_size,
+                chunk_overlap=normalized_chunk_overlap,
+                method=normalized_method,
+                n_sentences=normalized_n_sentences,
+                step_size=normalized_step_size,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"chunk_text_for_embeddings failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
 
 
 async def manage_embedding_endpoints(
@@ -270,30 +352,47 @@ async def manage_embedding_endpoints(
     """Manage embedding endpoints through source-compatible endpoint actions."""
     normalized_action = str(action or "").strip().lower()
     if normalized_action not in {"add", "test", "list", "status"}:
-        return {"status": "error", "error": f"Unknown action: {action}"}
+        return _error_result(f"Unknown action: {action}")
 
     model_name = str(model or "").strip()
     if not model_name:
-        return {"status": "error", "error": "model must be provided"}
+        return _error_result("model must be provided")
 
     endpoint_value = str(endpoint or "").strip()
     if normalized_action in {"add", "test"} and not endpoint_value:
-        return {"status": "error", "error": "endpoint must be provided"}
+        return _error_result("endpoint must be provided")
+
+    normalized_endpoint_type = str(endpoint_type or "").strip()
+    if not normalized_endpoint_type:
+        return _error_result("endpoint_type must be a non-empty string")
+
+    try:
+        normalized_context_length = int(context_length)
+    except (TypeError, ValueError):
+        return _error_result("context_length must be an integer")
+    if normalized_context_length <= 0:
+        return _error_result("context_length must be a positive integer")
 
     handler = _API.get("manage_endpoints")
     if not callable(handler):
-        return {"status": "error", "error": "manage_endpoints handler unavailable"}
+        return _error_result("manage_endpoints handler unavailable")
 
-    result = handler(
-        action=normalized_action,
-        model=model_name,
-        endpoint=endpoint_value,
-        endpoint_type=str(endpoint_type or "tei"),
-        context_length=max(1, int(context_length)),
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        payload = await _await_maybe(
+            handler(
+                action=normalized_action,
+                model=model_name,
+                endpoint=endpoint_value,
+                endpoint_type=normalized_endpoint_type,
+                context_length=normalized_context_length,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"manage_embedding_endpoints failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
 
 
 def register_native_embedding_tools(manager: Any) -> None:
@@ -306,8 +405,16 @@ def register_native_embedding_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "texts": {"type": "array", "items": {"type": "string"}},
-                "model_name": {"type": "string"},
+                "texts": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                },
+                "model_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "sentence-transformers/all-MiniLM-L6-v2",
+                },
             },
             "required": ["texts"],
         },
@@ -323,9 +430,9 @@ def register_native_embedding_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "embeddings": {"type": "array"},
-                "shard_count": {"type": "integer"},
-                "strategy": {"type": "string"},
+                "embeddings": {"type": "array", "minItems": 1},
+                "shard_count": {"type": "integer", "minimum": 1, "default": 4},
+                "strategy": {"type": "string", "minLength": 1, "default": "balanced"},
             },
             "required": ["embeddings"],
         },
@@ -341,7 +448,11 @@ def register_native_embedding_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "model_name": {"type": "string"},
+                "model_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "sentence-transformers/all-MiniLM-L6-v2",
+                },
             },
             "required": [],
         },
@@ -358,11 +469,11 @@ def register_native_embedding_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "text": {"type": "string"},
-                "chunk_size": {"type": "integer", "minimum": 1},
-                "chunk_overlap": {"type": "integer", "minimum": 0},
-                "method": {"type": "string"},
-                "n_sentences": {"type": "integer", "minimum": 1},
-                "step_size": {"type": "integer", "minimum": 1},
+                "chunk_size": {"type": "integer", "minimum": 1, "default": 512},
+                "chunk_overlap": {"type": "integer", "minimum": 0, "default": 50},
+                "method": {"type": "string", "minLength": 1, "default": "fixed"},
+                "n_sentences": {"type": "integer", "minimum": 1, "default": 8},
+                "step_size": {"type": "integer", "minimum": 1, "default": 256},
             },
             "required": ["text"],
         },
@@ -379,10 +490,10 @@ def register_native_embedding_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "action": {"type": "string", "enum": ["add", "test", "list", "status"]},
-                "model": {"type": "string"},
-                "endpoint": {"type": "string"},
-                "endpoint_type": {"type": "string"},
-                "context_length": {"type": "integer", "minimum": 1},
+                "model": {"type": "string", "minLength": 1},
+                "endpoint": {"type": "string", "default": ""},
+                "endpoint_type": {"type": "string", "minLength": 1, "default": "tei"},
+                "context_length": {"type": "integer", "minimum": 1, "default": 512},
             },
             "required": ["action", "model"],
         },

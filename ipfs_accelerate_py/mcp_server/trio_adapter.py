@@ -53,15 +53,21 @@ class TrioMCPServerAdapter:
             return self.server
 
         self.server = self._server_factory(name=self.config.name, description=self.config.description)
-        self._running = True
 
-        if self._serve_fn is not None:
+        if self._serve_fn is None:
+            self._running = True
+            return self.server
+
+        try:
             result = self._serve_fn(self.server, self.config)
             if inspect.isawaitable(result):
-                return await result
+                result = await result
+            self._running = True
             return result
-
-        return self.server
+        except Exception:
+            self.server = None
+            self._running = False
+            raise
 
     async def stop(self) -> None:
         """Stop lifecycle and close wrapped server if close hooks exist."""
