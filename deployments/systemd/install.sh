@@ -82,6 +82,27 @@ ensure_python_deps() {
       echo "Installing hypercorn[trio] into ${PROJECT_DIR}/.venv (required for ipfs-accelerate-mcp.service)" >&2
       run_as_user "${user}" "${pip}" install -U 'hypercorn[trio]'
     fi
+
+    # MCP++ paths may exercise GitHub integration through tools/cache helpers.
+    if ! run_as_user "${user}" "${py}" -c 'import github' >/dev/null 2>&1; then
+      echo "Installing PyGithub into ${PROJECT_DIR}/.venv (required for github module imports)" >&2
+      run_as_user "${user}" "${pip}" install -U 'PyGithub>=2.3.0'
+    fi
+    return 0
+  fi
+
+  # Primary MCP/task-worker services can also hit GitHub-backed operations.
+  local py="${PROJECT_DIR}/.venv/bin/python3"
+  local pip="${PROJECT_DIR}/.venv/bin/pip"
+
+  if [[ ! -x "${py}" || ! -x "${pip}" ]]; then
+    echo "WARNING: venv not found at ${PROJECT_DIR}/.venv; cannot ensure PyGithub" >&2
+    return 0
+  fi
+
+  if ! run_as_user "${user}" "${py}" -c 'import github' >/dev/null 2>&1; then
+    echo "Installing PyGithub into ${PROJECT_DIR}/.venv (required for github module imports)" >&2
+    run_as_user "${user}" "${pip}" install -U 'PyGithub>=2.3.0'
   fi
 }
 

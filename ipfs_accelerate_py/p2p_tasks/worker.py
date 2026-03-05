@@ -2623,15 +2623,35 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
 
     from ipfs_accelerate_py import llm_router
 
-    text = llm_router.generate_text(str(prompt or ""), model_name=model_name, provider=provider, **kwargs)
+    provider_error = ""
+    effective_provider = str(provider)
+    try:
+        text = llm_router.generate_text(str(prompt or ""), model_name=model_name, provider=provider, **kwargs)
+    except Exception as exc:
+        provider_error = f"{type(exc).__name__}: {exc}"
+        # High-throughput queue users often route generic inference through
+        # llm.generate. If copilot_cli tooling is missing on a worker (e.g.
+        # npx not installed), degrade to local text-generation instead of
+        # returning a failed task with no text payload.
+        fallback_enabled = _truthy(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LLM_GENERATE_LOCAL_FALLBACK", "1")
+        )
+        if provider == "copilot_cli" and fallback_enabled:
+            fallback = _run_text_generation(task, accelerate_instance=None)
+            text = str((fallback or {}).get("text") or "")
+            effective_provider = "minimal_hf_fallback"
+        else:
+            raise
     session_id = _expected_session_tag()
 
     out: Dict[str, Any] = {
         "text": str(text),
-        "provider": provider,
+        "provider": effective_provider,
         "session_id": session_id,
         "executor_worker_id": str(task.get("assigned_worker") or "").strip(),
     }
+    if provider_error:
+        out["provider_error"] = provider_error
     try:
         out["executor_peer_id"] = _read_local_announce_peer_id()
         out["executor_multiaddr"] = _read_local_announce_multiaddr()
