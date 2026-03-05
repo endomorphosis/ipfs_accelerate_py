@@ -42,6 +42,14 @@ class TestMCPServerUNI111DataProcessingTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_chunk_text_rejects_unknown_strategy(self) -> None:
+        async def _run() -> None:
+            result = await chunk_text(text="abcdef", strategy="windowed")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("strategy must be one of", str(result.get("message", "")))
+
+        anyio.run(_run)
+
     def test_transform_data_requires_transformation(self) -> None:
         async def _run() -> None:
             result = await transform_data(data={"x": 1}, transformation=" ")
@@ -50,11 +58,27 @@ class TestMCPServerUNI111DataProcessingTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_transform_data_rejects_non_object_parameters(self) -> None:
+        async def _run() -> None:
+            result = await transform_data(data={"x": 1}, transformation="normalize", parameters=["bad"])  # type: ignore[arg-type]
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("parameters must be an object", str(result.get("message", "")))
+
+        anyio.run(_run)
+
     def test_convert_format_requires_formats(self) -> None:
         async def _run() -> None:
             result = await convert_format(data={"x": 1}, source_format="", target_format="json")
             self.assertEqual(result.get("status"), "error")
             self.assertIn("source_format and target_format are required", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_convert_format_rejects_non_object_options(self) -> None:
+        async def _run() -> None:
+            result = await convert_format(data={"x": 1}, source_format="json", target_format="json", options="bad")  # type: ignore[arg-type]
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("options must be an object", str(result.get("message", "")))
 
         anyio.run(_run)
 
@@ -71,6 +95,14 @@ class TestMCPServerUNI111DataProcessingTools(unittest.TestCase):
             result = await validate_data(data={"x": 1}, validation_type="schema", rules={"bad": True})  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("rules must be an array", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_validate_data_rejects_non_object_rules_entries(self) -> None:
+        async def _run() -> None:
+            result = await validate_data(data={"x": 1}, validation_type="schema", rules=[{"ok": True}, "bad"])  # type: ignore[list-item]
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("rules entries must be objects", str(result.get("message", "")))
 
         anyio.run(_run)
 

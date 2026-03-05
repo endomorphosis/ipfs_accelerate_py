@@ -5,6 +5,9 @@ from __future__ import annotations
 from typing import Any, Dict, List, Optional
 
 
+_VALID_CHUNK_STRATEGIES = {"fixed_size", "sentence", "paragraph", "semantic"}
+
+
 def _load_data_processing_api() -> Dict[str, Any]:
     """Resolve source data processing engines with compatibility fallback."""
     try:
@@ -96,11 +99,18 @@ async def chunk_text(
 ) -> Dict[str, Any]:
     """Split text into chunks using configured strategy."""
     normalized_text = str(text or "")
+    normalized_strategy = str(strategy or "").strip().lower()
     if not normalized_text.strip():
         return {
             "status": "error",
             "message": "text is required",
             "text": text,
+        }
+    if normalized_strategy not in _VALID_CHUNK_STRATEGIES:
+        return {
+            "status": "error",
+            "message": "strategy must be one of: fixed_size, sentence, paragraph, semantic",
+            "strategy": strategy,
         }
 
     normalized_chunk_size = int(chunk_size)
@@ -134,7 +144,7 @@ async def chunk_text(
 
     result = await _API["chunk_text"](
         text=text,
-        strategy=strategy,
+        strategy=normalized_strategy,
         chunk_size=normalized_chunk_size,
         overlap=normalized_overlap,
         max_chunks=normalized_max_chunks,
@@ -144,7 +154,12 @@ async def chunk_text(
     return payload
 
 
-async def transform_data(data: Any, transformation: str, **parameters: Any) -> Dict[str, Any]:
+async def transform_data(
+    data: Any,
+    transformation: str,
+    parameters: Optional[Dict[str, Any]] = None,
+    **kwargs: Any,
+) -> Dict[str, Any]:
     """Apply a named transformation to input data."""
     normalized_transformation = str(transformation or "").strip()
     if not normalized_transformation:
@@ -159,11 +174,22 @@ async def transform_data(data: Any, transformation: str, **parameters: Any) -> D
             "message": "data is required",
             "data": data,
         }
+    if parameters is not None and not isinstance(parameters, dict):
+        return {
+            "status": "error",
+            "message": "parameters must be an object when provided",
+            "parameters": parameters,
+        }
+
+    merged_parameters: Dict[str, Any] = {}
+    if parameters:
+        merged_parameters.update(parameters)
+    merged_parameters.update(kwargs)
 
     result = await _API["transform_data"](
         data=data,
         transformation=normalized_transformation,
-        **parameters,
+        **merged_parameters,
     )
     payload = dict(result or {})
     payload.setdefault("status", "success")
@@ -191,6 +217,12 @@ async def convert_format(
             "message": "source_format and target_format are required",
             "source_format": source_format,
             "target_format": target_format,
+        }
+    if options is not None and not isinstance(options, dict):
+        return {
+            "status": "error",
+            "message": "options must be an object when provided",
+            "options": options,
         }
 
     result = await _API["convert_format"](
@@ -236,6 +268,12 @@ async def validate_data(
             "message": "rules must be an array when provided",
             "rules": rules,
         }
+    if isinstance(rules, list) and not all(isinstance(item, dict) for item in rules):
+        return {
+            "status": "error",
+            "message": "rules entries must be objects",
+            "rules": rules,
+        }
 
     result = await _API["validate_data"](
         data=data,
@@ -259,7 +297,11 @@ def register_native_data_processing_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "text": {"type": "string"},
-                "strategy": {"type": "string"},
+                "strategy": {
+                    "type": "string",
+                    "default": "fixed_size",
+                    "enum": ["fixed_size", "sentence", "paragraph", "semantic"],
+                },
                 "chunk_size": {"type": "integer"},
                 "overlap": {"type": "integer"},
                 "max_chunks": {"type": "integer"},
@@ -280,6 +322,7 @@ def register_native_data_processing_tools(manager: Any) -> None:
             "properties": {
                 "data": {},
                 "transformation": {"type": "string"},
+                "parameters": {"type": ["object", "null"]},
             },
             "required": ["data", "transformation"],
         },

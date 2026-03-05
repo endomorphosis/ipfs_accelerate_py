@@ -118,20 +118,45 @@ def _load_logic_tools_api() -> Dict[str, Any]:
 _API = _load_logic_tools_api()
 
 
-async def logic_capabilities() -> Dict[str, Any]:
-    """Return discovered logic-module capabilities for the unified runtime."""
-    result = _API["logic_capabilities"]()
+def _error_result(message: str, context: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    """Return deterministic logic-tool error envelopes."""
+    payload: Dict[str, Any] = {"success": False, "error": message}
+    if context:
+        payload.update(context)
+    return payload
+
+
+async def _await_maybe(result: Any) -> Any:
+    """Await coroutine-like values while preserving sync fallback behavior."""
     if hasattr(result, "__await__"):
         return await result
     return result
+
+
+def _normalize_result(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic dictionary envelopes."""
+    normalized: Dict[str, Any] = dict(payload or {}) if isinstance(payload, dict) else {"result": payload}
+    if "success" not in normalized:
+        normalized["success"] = "error" not in normalized
+    return normalized
+
+
+async def logic_capabilities() -> Dict[str, Any]:
+    """Return discovered logic-module capabilities for the unified runtime."""
+    try:
+        payload = await _await_maybe(_API["logic_capabilities"]())
+    except Exception as exc:
+        return _error_result(f"logic_capabilities failed: {exc}")
+    return _normalize_result(payload)
 
 
 async def logic_health() -> Dict[str, Any]:
     """Return logic-module health status for the unified runtime."""
-    result = _API["logic_health"]()
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    try:
+        payload = await _await_maybe(_API["logic_health"]())
+    except Exception as exc:
+        return _error_result(f"logic_health failed: {exc}")
+    return _normalize_result(payload)
 
 
 async def tdfol_parse(
@@ -142,19 +167,28 @@ async def tdfol_parse(
     """Parse symbolic or natural-language input into TDFOL notation."""
     normalized_text = str(text or "").strip()
     if not normalized_text:
-        return {
-            "success": False,
-            "error": "'text' is required.",
-        }
+        return _error_result("'text' is required.")
 
-    result = _API["tdfol_parse"](
-        text=normalized_text,
-        format=str(format or "symbolic"),
-        language=str(language or "en"),
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_format = "symbolic" if format is None else str(format).strip()
+    normalized_language = "en" if language is None else str(language).strip()
+
+    if not normalized_format:
+        return _error_result("'format' must be a non-empty string.")
+    if not normalized_language:
+        return _error_result("'language' must be a non-empty string.")
+
+    try:
+        payload = await _await_maybe(
+            _API["tdfol_parse"](
+                text=normalized_text,
+                format=normalized_format,
+                language=normalized_language,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"tdfol_parse failed: {exc}")
+
+    return _normalize_result(payload)
 
 
 async def tdfol_convert(
@@ -165,19 +199,27 @@ async def tdfol_convert(
     """Convert a formula across supported logic formats."""
     normalized_formula = str(formula or "").strip()
     if not normalized_formula:
-        return {
-            "success": False,
-            "error": "'formula' is required.",
-        }
+        return _error_result("'formula' is required.")
 
-    result = _API["tdfol_convert"](
-        formula=normalized_formula,
-        source_format=str(source_format or "tdfol"),
-        target_format=str(target_format or "fol"),
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_source = "tdfol" if source_format is None else str(source_format).strip()
+    normalized_target = "fol" if target_format is None else str(target_format).strip()
+    if not normalized_source:
+        return _error_result("'source_format' must be a non-empty string.")
+    if not normalized_target:
+        return _error_result("'target_format' must be a non-empty string.")
+
+    try:
+        payload = await _await_maybe(
+            _API["tdfol_convert"](
+                formula=normalized_formula,
+                source_format=normalized_source,
+                target_format=normalized_target,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"tdfol_convert failed: {exc}")
+
+    return _normalize_result(payload)
 
 
 async def tdfol_prove(
@@ -191,27 +233,39 @@ async def tdfol_prove(
     """Prove a TDFOL formula with deterministic fallback envelopes."""
     normalized_formula = str(formula or "").strip()
     if not normalized_formula:
-        return {
-            "success": False,
-            "error": "'formula' is required.",
-        }
+        return _error_result("'formula' is required.")
+    if axioms is not None:
+        if not isinstance(axioms, list) or any(not isinstance(a, str) or not a.strip() for a in axioms):
+            return _error_result("'axioms' must be a list of non-empty strings when provided.")
 
-    result = _API["tdfol_prove"](
-        formula=normalized_formula,
-        axioms=axioms,
-        strategy=str(strategy or "auto"),
-        timeout_ms=int(timeout_ms),
-        max_depth=int(max_depth),
-        include_proof_steps=bool(include_proof_steps),
-    )
-    if hasattr(result, "__await__"):
-        result = await result
+    normalized_strategy = "auto" if strategy is None else str(strategy).strip()
+    if not normalized_strategy:
+        return _error_result("'strategy' must be a non-empty string.")
+    if not isinstance(timeout_ms, int) or timeout_ms < 1:
+        return _error_result("'timeout_ms' must be an integer greater than or equal to 1.")
+    if not isinstance(max_depth, int) or max_depth < 1:
+        return _error_result("'max_depth' must be an integer greater than or equal to 1.")
+    if not isinstance(include_proof_steps, bool):
+        return _error_result("'include_proof_steps' must be a boolean.")
 
-    if isinstance(result, dict) and result.get("success") is False and "formula" not in result:
-        result = dict(result)
-        result["formula"] = normalized_formula
+    try:
+        payload = await _await_maybe(
+            _API["tdfol_prove"](
+                formula=normalized_formula,
+                axioms=axioms,
+                strategy=normalized_strategy,
+                timeout_ms=timeout_ms,
+                max_depth=max_depth,
+                include_proof_steps=include_proof_steps,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"tdfol_prove failed: {exc}", {"formula": normalized_formula})
 
-    return result
+    normalized = _normalize_result(payload)
+    if normalized.get("success") is False and "formula" not in normalized:
+        normalized["formula"] = normalized_formula
+    return normalized
 
 
 def register_native_logic_tools(manager: Any) -> None:
@@ -245,8 +299,8 @@ def register_native_logic_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "text": {"type": "string"},
-                "format": {"type": "string", "default": "symbolic"},
-                "language": {"type": "string", "default": "en"},
+                "format": {"type": "string", "minLength": 1, "default": "symbolic"},
+                "language": {"type": "string", "minLength": 1, "default": "en"},
             },
             "required": ["text"],
         },
@@ -263,8 +317,8 @@ def register_native_logic_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "formula": {"type": "string"},
-                "source_format": {"type": "string", "default": "tdfol"},
-                "target_format": {"type": "string", "default": "fol"},
+                "source_format": {"type": "string", "minLength": 1, "default": "tdfol"},
+                "target_format": {"type": "string", "minLength": 1, "default": "fol"},
             },
             "required": ["formula"],
         },
@@ -282,9 +336,9 @@ def register_native_logic_tools(manager: Any) -> None:
             "properties": {
                 "formula": {"type": "string"},
                 "axioms": {"type": ["array", "null"], "items": {"type": "string"}},
-                "strategy": {"type": "string", "default": "auto"},
-                "timeout_ms": {"type": "integer", "default": 5000},
-                "max_depth": {"type": "integer", "default": 10},
+                "strategy": {"type": "string", "minLength": 1, "default": "auto"},
+                "timeout_ms": {"type": "integer", "minimum": 1, "default": 5000},
+                "max_depth": {"type": "integer", "minimum": 1, "default": 10},
                 "include_proof_steps": {"type": "boolean", "default": True},
             },
             "required": ["formula"],

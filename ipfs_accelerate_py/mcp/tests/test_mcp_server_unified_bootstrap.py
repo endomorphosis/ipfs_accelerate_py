@@ -6331,6 +6331,102 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_data_processing_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """data_processing_tools should expose deterministic schema and validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="data-processing-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("data_processing_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("chunk_text", names)
+            self.assertIn("transform_data", names)
+            self.assertIn("convert_format", names)
+            self.assertIn("validate_data", names)
+
+            chunk_schema = await get_schema("data_processing_tools", "chunk_text")
+            chunk_props = (chunk_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(
+                (chunk_props.get("strategy") or {}).get("enum"),
+                ["fixed_size", "sentence", "paragraph", "semantic"],
+            )
+
+            transform_schema = await get_schema("data_processing_tools", "transform_data")
+            transform_props = (transform_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("parameters", transform_props)
+
+            invalid_strategy = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "data_processing_tools",
+                    "chunk_text",
+                    {
+                        "text": "alpha beta gamma",
+                        "strategy": "windowed",
+                    },
+                )
+            )
+            self.assertEqual(invalid_strategy.get("status"), "error")
+            self.assertIn("strategy must be one of", str(invalid_strategy.get("message", "")))
+
+            invalid_parameters = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "data_processing_tools",
+                    "transform_data",
+                    {
+                        "data": {"x": 1},
+                        "transformation": "normalize",
+                        "parameters": ["bad"],
+                    },
+                )
+            )
+            self.assertEqual(invalid_parameters.get("status"), "error")
+            self.assertIn("parameters must be an object", str(invalid_parameters.get("message", "")))
+
+            invalid_rules = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "data_processing_tools",
+                    "validate_data",
+                    {
+                        "data": {"x": 1},
+                        "validation_type": "schema",
+                        "rules": [{"rule": "required"}, "bad"],
+                    },
+                )
+            )
+            self.assertEqual(invalid_rules.get("status"), "error")
+            self.assertIn("rules entries must be objects", str(invalid_rules.get("message", "")))
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_pdf_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """pdf_tools should expose deterministic schema and validation envelopes."""
 
@@ -6401,6 +6497,82 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_batch.get("status"), "error")
             self.assertIn("pdf_sources entries must be non-empty strings or objects", str(invalid_batch.get("error", "")))
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_logic_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
+        """logic_tools should expose deterministic schema and validation envelopes."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="logic-tools-parity")
+
+        async def _run_flow() -> None:
+            tools_list = server.tools["tools_list_tools"]["function"]
+            get_schema = server.tools["tools_get_schema"]["function"]
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            listed = await tools_list("logic_tools")
+            names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("tdfol_parse", names)
+            self.assertIn("tdfol_prove", names)
+
+            parse_schema = await get_schema("logic_tools", "tdfol_parse")
+            parse_props = (parse_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((parse_props.get("format") or {}).get("minLength"), 1)
+
+            prove_schema = await get_schema("logic_tools", "tdfol_prove")
+            prove_props = (prove_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((prove_props.get("timeout_ms") or {}).get("minimum"), 1)
+
+            invalid_parse = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "tdfol_parse",
+                    {
+                        "text": "forall x P(x)",
+                        "format": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_parse.get("success"), False)
+            self.assertIn("'format' must be a non-empty string", str(invalid_parse.get("error", "")))
+
+            invalid_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "tdfol_prove",
+                    {
+                        "formula": "forall x P(x)",
+                        "timeout_ms": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_timeout.get("success"), False)
+            self.assertIn("'timeout_ms' must be an integer greater than or equal to 1", str(invalid_timeout.get("error", "")))
 
         anyio.run(_run_flow)
 
