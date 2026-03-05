@@ -503,6 +503,18 @@ def register_native_storage_tools(manager: Any) -> None:
                 },
             },
             "required": ["action"],
+            "allOf": [
+                {
+                    "if": {
+                        "properties": {
+                            "action": {"enum": ["create", "get", "delete"]},
+                        },
+                    },
+                    "then": {
+                        "required": ["collection_name"],
+                    },
+                }
+            ],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "storage"],

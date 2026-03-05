@@ -6125,8 +6125,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
 
             manage_schema = await get_schema("storage_tools", "manage_collections")
-            manage_props = (manage_schema.get("input_schema") or {}).get("properties", {})
+            manage_input_schema = manage_schema.get("input_schema") or {}
+            manage_props = manage_input_schema.get("properties", {})
             self.assertEqual((manage_props.get("report_format") or {}).get("enum"), ["detailed", "summary"])
+            all_of = manage_input_schema.get("allOf") or []
+            self.assertGreaterEqual(len(all_of), 1)
+            first_rule = all_of[0]
+            self.assertIn("collection_name", ((first_rule.get("then") or {}).get("required") or []))
 
             invalid_tags = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6225,6 +6230,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_report_format.get("status"), "error")
             self.assertIn("report_format must be one of", str(invalid_report_format.get("error", "")))
+
+            missing_collection = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "create",
+                    },
+                )
+            )
+            self.assertEqual(missing_collection.get("status"), "error")
+            self.assertIn(
+                "collection_name required for create action",
+                str(missing_collection.get("error", "")),
+            )
 
         anyio.run(_run_flow)
 
