@@ -250,6 +250,17 @@ def _rpc_dial_timeout_s() -> float:
         return 8.0
 
 
+def _status_probe_lightweight_timeout_s() -> float:
+    """Timeout threshold below which status probes force lightweight dialing."""
+    try:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_STATUS_LIGHTWEIGHT_TIMEOUT_S")
+        if raw is None:
+            raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_STATUS_LIGHTWEIGHT_TIMEOUT_S", "3.0")
+        return max(0.1, float(str(raw).strip()))
+    except Exception:
+        return 3.0
+
+
 def _remote_cooldown_base_ms() -> int:
     try:
         raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_REMOTE_COOLDOWN_BASE_MS")
@@ -806,6 +817,7 @@ async def _dial_and_request_with_retries(
     op_label: str,
     min_attempt_dial_timeout_s: Optional[float] = None,
     should_retry_response: Optional[Callable[[Dict[str, Any]], bool]] = None,
+    force_lightweight_discovery: bool = False,
 ) -> Dict[str, Any]:
     import anyio
 
@@ -818,17 +830,21 @@ async def _dial_and_request_with_retries(
             except Exception:
                 pass
         broad_discovery_override: bool | None = None
+        if bool(force_lightweight_discovery):
+            broad_discovery_override = False
+            if attempt == 0:
+                _retry_metric_inc(f"{op_label}.lightweight_forced")
         # Use lightweight dialing for early attempts to reduce network fanout
         # under sustained request rates, then allow broad discovery on the last
         # attempt as a recovery path.
         prefer_lightweight_first = _prefer_lightweight_first_enabled()
-        if prefer_lightweight_first and attempt < max_retries:
+        if not bool(force_lightweight_discovery) and prefer_lightweight_first and attempt < max_retries:
             broad_discovery_override = False
             if attempt == 0:
                 _retry_metric_inc(f"{op_label}.lightweight_first")
             else:
                 _retry_metric_inc(f"{op_label}.retry_lightweight_discovery")
-        elif attempt > 0 and _retry_lightweight_discovery_enabled():
+        elif (not bool(force_lightweight_discovery)) and attempt > 0 and _retry_lightweight_discovery_enabled():
             broad_discovery_override = False
             _retry_metric_inc(f"{op_label}.retry_lightweight_discovery")
         cooldown_wait_s = _remote_cooldown_wait_s(remote)
@@ -3448,27 +3464,6 @@ def discover_status_sync(*, remote: RemoteQueue, timeout_s: float = 10.0, detail
 
 
 async def submit_task(*, remote: RemoteQueue, task_type: str, model_name: str, payload: Dict[str, Any]) -> str:
-    def _should_retry_submit_response(resp: Dict[str, Any]) -> bool:
-        if not isinstance(resp, dict):
-            return False
-        if bool(resp.get("ok")):
-            return False
-        text = str(resp.get("error") or resp).strip().lower()
-        if not text:
-            return False
-        transient_markers = (
-            "discovery_timeout",
-            "p2p request failed: no response",
-            "unable to connect",
-            "failed to upgrade security",
-            "failed to negotiate the secure protocol",
-            "handshake",
-            "timeout",
-            "stream",
-            "swarmexception",
-        )
-        return any(marker in text for marker in transient_markers)
-
     resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "submit", "task_type": task_type, "model_name": model_name, "payload": payload},
@@ -3680,6 +3675,7 @@ async def submit_task_with_info(
         retry_base_ms=_submit_retry_base_ms(),
         dial_timeout_s=_submit_dial_timeout_s(),
         op_label="submit_with_info",
+        should_retry_response=_should_retry_submit_response,
     )
     if not resp.get("ok"):
         raise RuntimeError(f"submit failed: {resp}")
@@ -3966,6 +3962,7 @@ async def get_task(*, remote: RemoteQueue, task_id: str) -> Optional[Dict[str, A
         retry_base_ms=_rpc_retry_base_ms(),
         dial_timeout_s=_rpc_dial_timeout_s(),
         op_label="get",
+        force_lightweight_discovery=True,
     )
     if not resp.get("ok"):
         raise RuntimeError(f"get failed: {resp}")
@@ -4119,6 +4116,9 @@ async def get_capabilities(*, remote: RemoteQueue, timeout_s: float = 10.0, deta
 
 
 async def request_status(*, remote: RemoteQueue, timeout_s: float = 10.0, detail: bool = False) -> Dict[str, Any]:
+    # Short status probes are often used as health checks in tight loops.
+    # Prefer cache/announce dialing there to avoid broad-discovery fanout.
+    lightweight_probe = (not bool(detail)) and (float(timeout_s) <= _status_probe_lightweight_timeout_s())
     resp = await _dial_and_request_with_retries(
         remote=remote,
         message={"op": "status", "timeout_s": float(timeout_s), "detail": bool(detail)},
@@ -4126,8 +4126,31 @@ async def request_status(*, remote: RemoteQueue, timeout_s: float = 10.0, detail
         retry_base_ms=_status_retry_base_ms(),
         dial_timeout_s=_status_dial_timeout_s(),
         op_label="status",
+        force_lightweight_discovery=bool(lightweight_probe),
     )
     return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+
+
+def _should_retry_submit_response(resp: Dict[str, Any]) -> bool:
+    if not isinstance(resp, dict):
+        return False
+    if bool(resp.get("ok")):
+        return False
+    text = str(resp.get("error") or resp).strip().lower()
+    if not text:
+        return False
+    transient_markers = (
+        "discovery_timeout",
+        "p2p request failed: no response",
+        "unable to connect",
+        "failed to upgrade security",
+        "failed to negotiate the secure protocol",
+        "handshake",
+        "timeout",
+        "stream",
+        "swarmexception",
+    )
+    return any(marker in text for marker in transient_markers)
 
 async def cancel_task(*, remote: RemoteQueue, task_id: str, reason: str | None = None) -> Dict[str, Any]:
     message: Dict[str, Any] = {"op": "cancel", "task_id": str(task_id)}
