@@ -213,7 +213,7 @@ Use this as the first implementation backlog for source top-level modules that a
 | `cid_artifacts.py` | `ADAPT` | `ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py` | B | artifact chain tests + unified bootstrap assertions |
 | `client.py` | `FACADE` | `ipfs_accelerate_py/mcp/integration.py` or `p2p_tasks/client.py` | C | process/subprocess client contract tests |
 | `compliance_checker.py` | `DEFER` | conformance tooling backlog (`mcpplusplus/*`) | D | checklist/matrix audit CI task |
-| `did_key_manager.py` | `MERGE` | `ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py` helper module | B | UCAN signature vector tests |
+| `did_key_manager.py` | `MERGE` | `ipfs_accelerate_py/mcp_server/did_key_manager.py` canonical key-management module | B | `test_mcp_server_did_key_manager.py`, `test_mcp_server_secrets_vault.py` |
 | `dispatch_pipeline.py` | `MERGE` | `ipfs_accelerate_py/mcp_server/runtime_router.py` + `server.py` dispatch flow | B | unified bootstrap dispatch regression suite |
 | `enterprise_api.py` | `DEFER` | follow-on enterprise profile package | D | deferred rationale in `SPEC_GAP_MATRIX` |
 | `event_dag.py` | `ADAPT` | `ipfs_accelerate_py/mcp_server/mcplusplus/event_dag.py` | B | event DAG lineage/replay tests |
