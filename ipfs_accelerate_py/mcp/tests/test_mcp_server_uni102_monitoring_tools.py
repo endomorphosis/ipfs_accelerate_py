@@ -29,22 +29,40 @@ class TestMCPServerUNI102MonitoringTools(unittest.TestCase):
     def test_register_schema_includes_source_parity_fields(self) -> None:
         manager = _DummyManager()
         register_native_monitoring_tools(manager)
-        self.assertEqual(len(manager.calls), 4)
+        self.assertEqual(len(manager.calls), 7)
 
-        health_schema = manager.calls[0]["input_schema"]
+        schemas = {call["name"]: call["input_schema"] for call in manager.calls}
+        self.assertEqual(
+            set(schemas),
+            {
+                "health_check",
+                "get_performance_metrics",
+                "monitor_services",
+                "generate_monitoring_report",
+                "check_health",
+                "collect_metrics",
+                "manage_alerts",
+            },
+        )
+
+        health_schema = schemas["health_check"]
         self.assertIn("check_type", health_schema["properties"])
         self.assertIn("components", health_schema["properties"])
 
-        perf_schema = manager.calls[1]["input_schema"]
+        perf_schema = schemas["get_performance_metrics"]
         self.assertIn("metric_types", perf_schema["properties"])
         self.assertIn("include_history", perf_schema["properties"])
 
-        monitor_schema = manager.calls[2]["input_schema"]
+        monitor_schema = schemas["monitor_services"]
         self.assertIn("services", monitor_schema["properties"])
         self.assertIn("check_interval", monitor_schema["properties"])
 
-        report_schema = manager.calls[3]["input_schema"]
+        report_schema = schemas["generate_monitoring_report"]
         self.assertIn("time_period", report_schema["properties"])
+
+        self.assertIn("check_depth", schemas["check_health"]["properties"])
+        self.assertIn("aggregation", schemas["collect_metrics"]["properties"])
+        self.assertIn("severity_filter", schemas["manage_alerts"]["properties"])
 
     def test_health_check_maps_service_name_to_source_custom_call(self) -> None:
         async def _run() -> None:

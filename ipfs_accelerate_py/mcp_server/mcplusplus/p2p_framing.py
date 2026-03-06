@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import json
+from json import JSONDecodeError
 import time
 from typing import Any, Dict, Tuple
 
@@ -38,7 +39,16 @@ def decode_jsonrpc_frame(frame: bytes, *, max_frame_bytes: int = 16 * 1024 * 102
     if len(frame) < 4 + declared:
         raise FramingError("incomplete_body")
     body = frame[4 : 4 + declared]
-    payload = json.loads(body.decode("utf-8"))
+    try:
+        decoded = body.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise FramingError("invalid_utf8") from exc
+
+    try:
+        payload = json.loads(decoded)
+    except JSONDecodeError as exc:
+        raise FramingError("invalid_json") from exc
+
     if not isinstance(payload, dict):
         raise FramingError("payload_not_object")
     return payload, 4 + declared

@@ -7392,6 +7392,8 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             listed = await tools_list("pdf_tools")
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("pdf_analyze_relationships", names)
+            self.assertIn("pdf_cross_document_analysis", names)
+            self.assertIn("pdf_optimize_for_llm", names)
             self.assertIn("pdf_query_corpus", names)
             self.assertIn("pdf_batch_process", names)
             self.assertIn("pdf_query_knowledge_graph", names)
@@ -7400,6 +7402,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             relationship_props = (relationship_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((relationship_props.get("document_id") or {}).get("minLength"), 1)
             self.assertEqual((relationship_props.get("min_confidence") or {}).get("maximum"), 1.0)
+
+            cross_schema = await get_schema("pdf_tools", "pdf_cross_document_analysis")
+            cross_props = (cross_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((cross_props.get("document_ids") or {}).get("minItems"), 1)
+            self.assertEqual((cross_props.get("similarity_threshold") or {}).get("maximum"), 1.0)
+
+            optimize_schema = await get_schema("pdf_tools", "pdf_optimize_for_llm")
+            optimize_props = (optimize_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((optimize_props.get("max_chunk_size") or {}).get("minimum"), 1)
+            self.assertEqual((optimize_props.get("overlap_size") or {}).get("minimum"), 0)
 
             query_schema = await get_schema("pdf_tools", "pdf_query_corpus")
             query_props = (query_schema.get("input_schema") or {}).get("properties", {})
@@ -7427,6 +7439,19 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(invalid_relationships.get("status"), "error")
             self.assertIn("relationship_types must be a list of non-empty strings", str(invalid_relationships.get("error", "")))
 
+            invalid_cross = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "pdf_tools",
+                    "pdf_cross_document_analysis",
+                    {
+                        "document_ids": ["doc-1", "doc-2"],
+                        "analysis_types": ["entities", ""],
+                    },
+                )
+            )
+            self.assertEqual(invalid_cross.get("status"), "error")
+            self.assertIn("analysis_types must be a list of non-empty strings", str(invalid_cross.get("error", "")))
+
             invalid_query = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "pdf_tools",
@@ -7450,6 +7475,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_batch.get("status"), "error")
             self.assertIn("pdf_sources entries must be non-empty strings or objects", str(invalid_batch.get("error", "")))
+
+            invalid_optimize = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "pdf_tools",
+                    "pdf_optimize_for_llm",
+                    {
+                        "pdf_source": "file.pdf",
+                        "max_chunk_size": 100,
+                        "overlap_size": 200,
+                    },
+                )
+            )
+            self.assertEqual(invalid_optimize.get("status"), "error")
+            self.assertIn("overlap_size must be less than or equal to max_chunk_size", str(invalid_optimize.get("error", "")))
 
             invalid_graph_query = self._assert_dispatch_success_envelope(
                 await dispatch(

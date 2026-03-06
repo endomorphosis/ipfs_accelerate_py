@@ -53,6 +53,18 @@ class TestMCPP2PFraming(unittest.TestCase):
         with self.assertRaises(FramingError):
             decode_jsonrpc_frame(frame)
 
+    def test_decode_rejects_invalid_utf8_payload(self) -> None:
+        body = b"\xff\xfe\xfd"
+        frame = len(body).to_bytes(4, byteorder="big", signed=False) + body
+        with self.assertRaisesRegex(FramingError, "invalid_utf8"):
+            decode_jsonrpc_frame(frame)
+
+    def test_decode_rejects_invalid_json_payload(self) -> None:
+        body = b'{"jsonrpc":'
+        frame = len(body).to_bytes(4, byteorder="big", signed=False) + body
+        with self.assertRaisesRegex(FramingError, "invalid_json"):
+            decode_jsonrpc_frame(frame)
+
 
 class TestMCPP2PAbuseLimits(unittest.TestCase):
     """Validate token-bucket rate limiting behavior."""
@@ -75,6 +87,10 @@ class TestMCPP2PAbuseLimits(unittest.TestCase):
 
         # 1s more refills back toward capacity.
         self.assertTrue(limiter.allow(cost=1, now=1.5))
+
+    def test_token_bucket_denies_cost_above_capacity(self) -> None:
+        limiter = TokenBucketLimiter(capacity=2, refill_rate_per_sec=5)
+        self.assertFalse(limiter.allow(cost=3, now=0.0))
 
 
 if __name__ == "__main__":

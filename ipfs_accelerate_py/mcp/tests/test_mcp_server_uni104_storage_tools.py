@@ -61,14 +61,33 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
         manager = _DummyManager()
         register_native_storage_tools(manager)
 
-        self.assertEqual(len(manager.calls), 4)
+        self.assertEqual(len(manager.calls), 7)
 
-        store_schema = manager.calls[0]["input_schema"]["properties"]
+        schemas = {call["name"]: call["input_schema"]["properties"] for call in manager.calls}
+        self.assertEqual(
+            set(schemas),
+            {
+                "store_data",
+                "retrieve_data",
+                "manage_collections",
+                "query_storage",
+                "list_storage",
+                "get_storage_stats",
+                "delete_data",
+            },
+        )
+
+        store_schema = schemas["store_data"]
         self.assertIn("enum", store_schema["storage_type"])
         self.assertIn("enum", store_schema["compression"])
 
-        manage_schema = manager.calls[2]["input_schema"]["properties"]
+        manage_schema = schemas["manage_collections"]
         self.assertIn("enum", manage_schema["action"])
+        self.assertIn("enum", manage_schema["report_format"])
+
+        self.assertIn("storage_type", schemas["query_storage"])
+        self.assertIn("report_format", schemas["get_storage_stats"])
+        self.assertIn("item_ids", schemas["delete_data"])
 
 
 if __name__ == "__main__":

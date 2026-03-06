@@ -63,10 +63,16 @@ _API = _load_finance_data_tools_api()
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
-        return payload
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
-        return {}
-    return {"result": payload}
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
@@ -108,6 +114,13 @@ async def scrape_stock_data(
         envelope.setdefault("status", "success")
         envelope.setdefault("symbols", clean_symbols)
         envelope.setdefault("days", days)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("data", [])
+            envelope.setdefault(
+                "metadata",
+                {"symbols": clean_symbols, "days": days, "include_volume": include_volume},
+            )
         return envelope
     except Exception as exc:
         return _error_result(str(exc), symbols=clean_symbols, days=days)
@@ -141,6 +154,17 @@ async def scrape_financial_news(
         envelope.setdefault("status", "success")
         envelope.setdefault("topics", clean_topics)
         envelope.setdefault("max_articles", max_articles)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("data", [])
+            envelope.setdefault(
+                "metadata",
+                {
+                    "topics": clean_topics,
+                    "max_articles": max_articles,
+                    "include_content": include_content,
+                },
+            )
         return envelope
     except Exception as exc:
         return _error_result(str(exc), topics=clean_topics, max_articles=max_articles)

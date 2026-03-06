@@ -706,6 +706,31 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         self.assertEqual(stats.get("sessions_started"), 1)
         self.assertEqual(stats.get("sessions_closed"), 1)
 
+    def test_handler_rejects_invalid_utf8_payload_as_invalid_json(self) -> None:
+        raw_payload = b"\xff\xfe\xfd"
+        stream = _FakeStream(len(raw_payload).to_bytes(4, byteorder="big", signed=False) + raw_payload)
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_DummyRegistry(),
+                max_frame_bytes=1024,
+            )
+
+        anyio.run(_run)
+
+        self.assertTrue(stream.closed)
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 1)
+        self.assertEqual(responses[0].get("error", {}).get("code"), -32003)
+        self.assertEqual(responses[0].get("error", {}).get("message"), "invalid_json")
+
+        stats = get_mcp_p2p_stats()
+        self.assertEqual(stats.get("frame_errors"), 1)
+        self.assertEqual(stats.get("sessions_started"), 1)
+        self.assertEqual(stats.get("sessions_closed"), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

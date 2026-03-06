@@ -35,6 +35,14 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
         self.assertEqual(relationship_props["document_id"].get("minLength"), 1)
         self.assertEqual(relationship_props["min_confidence"].get("maximum"), 1.0)
 
+        cross_props = by_name["pdf_cross_document_analysis"]["input_schema"]["properties"]
+        self.assertEqual(cross_props["document_ids"].get("minItems"), 1)
+        self.assertEqual(cross_props["similarity_threshold"].get("maximum"), 1.0)
+
+        optimize_props = by_name["pdf_optimize_for_llm"]["input_schema"]["properties"]
+        self.assertEqual(optimize_props["max_chunk_size"].get("minimum"), 1)
+        self.assertEqual(optimize_props["overlap_size"].get("minimum"), 0)
+
         graph_props = by_name["pdf_query_knowledge_graph"]["input_schema"]["properties"]
         self.assertIn("sparql", graph_props["query_type"].get("enum", []))
         self.assertEqual(graph_props["max_results"].get("minimum"), 1)
@@ -67,6 +75,32 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
                 wrapped = await pdf_tools.pdf_analyze_relationships("doc-1")
             self.assertEqual(wrapped.get("status"), "error")
             self.assertIn("pdf_analyze_relationships failed", str(wrapped.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_pdf_cross_document_analysis_validation_and_exception_envelope(self) -> None:
+        async def _run() -> None:
+            invalid_docs = await pdf_tools.pdf_cross_document_analysis(document_ids=[])
+            self.assertEqual(invalid_docs.get("status"), "error")
+            self.assertIn("document_ids must be provided as a non-empty array", str(invalid_docs.get("error", "")))
+
+            invalid_types = await pdf_tools.pdf_cross_document_analysis(
+                document_ids=["doc-1", "doc-2"],
+                analysis_types=["entities", ""],
+            )
+            self.assertEqual(invalid_types.get("status"), "error")
+            self.assertIn("analysis_types must be a list of non-empty strings", str(invalid_types.get("error", "")))
+
+            with patch.dict(
+                pdf_tools._API,
+                {
+                    "pdf_cross_document_analysis": lambda **_: (_ for _ in ()).throw(RuntimeError("cross-document backend exploded")),
+                },
+                clear=False,
+            ):
+                wrapped = await pdf_tools.pdf_cross_document_analysis(document_ids=["doc-1", "doc-2"])
+            self.assertEqual(wrapped.get("status"), "error")
+            self.assertIn("pdf_cross_document_analysis failed", str(wrapped.get("error", "")))
 
         anyio.run(_run)
 
@@ -164,6 +198,33 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
                 )
             self.assertEqual(wrapped.get("status"), "error")
             self.assertIn("pdf_query_knowledge_graph failed", str(wrapped.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_pdf_optimize_for_llm_validation_and_exception_envelope(self) -> None:
+        async def _run() -> None:
+            invalid_source = await pdf_tools.pdf_optimize_for_llm(pdf_source=None)
+            self.assertEqual(invalid_source.get("status"), "error")
+            self.assertIn("pdf_source must be provided", str(invalid_source.get("error", "")))
+
+            invalid_overlap = await pdf_tools.pdf_optimize_for_llm(
+                pdf_source="file.pdf",
+                max_chunk_size=100,
+                overlap_size=200,
+            )
+            self.assertEqual(invalid_overlap.get("status"), "error")
+            self.assertIn("overlap_size must be less than or equal to max_chunk_size", str(invalid_overlap.get("error", "")))
+
+            with patch.dict(
+                pdf_tools._API,
+                {
+                    "pdf_optimize_for_llm": lambda **_: (_ for _ in ()).throw(RuntimeError("optimize backend exploded")),
+                },
+                clear=False,
+            ):
+                wrapped = await pdf_tools.pdf_optimize_for_llm(pdf_source="file.pdf")
+            self.assertEqual(wrapped.get("status"), "error")
+            self.assertIn("pdf_optimize_for_llm failed", str(wrapped.get("error", "")))
 
         anyio.run(_run)
 

@@ -271,6 +271,8 @@ async def read_u32_framed_json(
             return None, "eof"
         if code == "payload_not_object":
             return None, "invalid_message"
+        if code in {"invalid_utf8", "invalid_json"}:
+            return None, "invalid_json"
         return None, "invalid_message"
     except Exception:
         return None, "invalid_json"

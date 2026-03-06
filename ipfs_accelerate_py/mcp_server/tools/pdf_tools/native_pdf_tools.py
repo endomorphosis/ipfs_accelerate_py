@@ -14,7 +14,9 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.pdf_tools import (  # type: ignore
             pdf_analyze_relationships as _pdf_analyze_relationships,
             pdf_batch_process as _pdf_batch_process,
+            pdf_cross_document_analysis as _pdf_cross_document_analysis,
             pdf_extract_entities as _pdf_extract_entities,
+            pdf_optimize_for_llm as _pdf_optimize_for_llm,
             pdf_query_corpus as _pdf_query_corpus,
             pdf_query_knowledge_graph as _pdf_query_knowledge_graph,
         )
@@ -24,6 +26,8 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             "pdf_query_corpus": _pdf_query_corpus,
             "pdf_extract_entities": _pdf_extract_entities,
             "pdf_batch_process": _pdf_batch_process,
+            "pdf_cross_document_analysis": _pdf_cross_document_analysis,
+            "pdf_optimize_for_llm": _pdf_optimize_for_llm,
             "pdf_query_knowledge_graph": _pdf_query_knowledge_graph,
         }
     except Exception:
@@ -119,11 +123,45 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
                 "message": "PDF batch processing backend unavailable",
             }
 
+        async def _cross_document_fallback(
+            document_ids: Optional[List[str]] = None,
+            analysis_types: Optional[List[str]] = None,
+            similarity_threshold: float = 0.75,
+            max_connections: int = 100,
+            temporal_analysis: bool = True,
+            include_visualizations: bool = False,
+            output_format: str = "detailed",
+        ) -> Dict[str, Any]:
+            _ = analysis_types, similarity_threshold, max_connections, temporal_analysis, include_visualizations, output_format
+            return {
+                "status": "error",
+                "document_ids": list(document_ids or []),
+                "message": "PDF cross-document analysis backend unavailable",
+            }
+
+        async def _optimize_fallback(
+            pdf_source: Union[str, Dict[str, Any], None] = None,
+            target_llm: str = "gpt-4",
+            chunk_strategy: str = "semantic",
+            max_chunk_size: int = 4000,
+            overlap_size: int = 200,
+            preserve_structure: bool = True,
+            include_metadata: bool = True,
+        ) -> Dict[str, Any]:
+            _ = target_llm, chunk_strategy, max_chunk_size, overlap_size, preserve_structure, include_metadata
+            return {
+                "status": "error",
+                "pdf_source": pdf_source,
+                "message": "PDF LLM optimization backend unavailable",
+            }
+
         return {
             "pdf_analyze_relationships": _relationships_fallback,
             "pdf_query_corpus": _query_fallback,
             "pdf_extract_entities": _extract_fallback,
             "pdf_batch_process": _batch_fallback,
+            "pdf_cross_document_analysis": _cross_document_fallback,
+            "pdf_optimize_for_llm": _optimize_fallback,
             "pdf_query_knowledge_graph": _knowledge_graph_fallback,
         }
 
@@ -360,6 +398,111 @@ async def pdf_batch_process(
     return normalized
 
 
+async def pdf_cross_document_analysis(
+    document_ids: Optional[List[str]] = None,
+    analysis_types: Optional[List[str]] = None,
+    similarity_threshold: float = 0.75,
+    max_connections: int = 100,
+    temporal_analysis: bool = True,
+    include_visualizations: bool = False,
+    output_format: str = "detailed",
+) -> Dict[str, Any]:
+    """Analyze relationships and themes across multiple PDFs."""
+    if not isinstance(document_ids, list) or not document_ids:
+        return _error_result(
+            "document_ids must be provided as a non-empty array",
+            {"document_ids": list(document_ids or [])},
+        )
+    if any(not isinstance(item, str) or not item.strip() for item in document_ids):
+        return _error_result("document_ids entries must be non-empty strings")
+    if analysis_types is not None:
+        if not isinstance(analysis_types, list) or any(not isinstance(item, str) or not item.strip() for item in analysis_types):
+            return _error_result("analysis_types must be a list of non-empty strings when provided")
+    if not isinstance(similarity_threshold, (int, float)):
+        return _error_result("similarity_threshold must be a number")
+    normalized_similarity = float(similarity_threshold)
+    if normalized_similarity < 0.0 or normalized_similarity > 1.0:
+        return _error_result("similarity_threshold must be between 0.0 and 1.0")
+    if not isinstance(max_connections, int) or max_connections < 1:
+        return _error_result("max_connections must be an integer greater than or equal to 1")
+    if not isinstance(temporal_analysis, bool):
+        return _error_result("temporal_analysis must be a boolean")
+    if not isinstance(include_visualizations, bool):
+        return _error_result("include_visualizations must be a boolean")
+    if not isinstance(output_format, str) or not output_format.strip():
+        return _error_result("output_format must be a non-empty string")
+
+    try:
+        payload = await _await_maybe(
+            _API["pdf_cross_document_analysis"](
+                document_ids=document_ids,
+                analysis_types=analysis_types,
+                similarity_threshold=normalized_similarity,
+                max_connections=max_connections,
+                temporal_analysis=temporal_analysis,
+                include_visualizations=include_visualizations,
+                output_format=output_format.strip(),
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"pdf_cross_document_analysis failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
+
+
+async def pdf_optimize_for_llm(
+    pdf_source: Union[str, Dict[str, Any], None] = None,
+    target_llm: str = "gpt-4",
+    chunk_strategy: str = "semantic",
+    max_chunk_size: int = 4000,
+    overlap_size: int = 200,
+    preserve_structure: bool = True,
+    include_metadata: bool = True,
+) -> Dict[str, Any]:
+    """Optimize PDF text/chunks for downstream LLM use."""
+    if pdf_source is None:
+        return _error_result("pdf_source must be provided")
+    if isinstance(pdf_source, str) and not pdf_source.strip():
+        return _error_result("pdf_source must be a non-empty string when provided as a string")
+    if not isinstance(pdf_source, (str, dict)):
+        return _error_result("pdf_source must be a string or object")
+    if not isinstance(target_llm, str) or not target_llm.strip():
+        return _error_result("target_llm must be a non-empty string")
+    if not isinstance(chunk_strategy, str) or not chunk_strategy.strip():
+        return _error_result("chunk_strategy must be a non-empty string")
+    if not isinstance(max_chunk_size, int) or max_chunk_size < 1:
+        return _error_result("max_chunk_size must be an integer greater than or equal to 1")
+    if not isinstance(overlap_size, int) or overlap_size < 0:
+        return _error_result("overlap_size must be an integer greater than or equal to 0")
+    if overlap_size > max_chunk_size:
+        return _error_result("overlap_size must be less than or equal to max_chunk_size")
+    if not isinstance(preserve_structure, bool):
+        return _error_result("preserve_structure must be a boolean")
+    if not isinstance(include_metadata, bool):
+        return _error_result("include_metadata must be a boolean")
+
+    try:
+        payload = await _await_maybe(
+            _API["pdf_optimize_for_llm"](
+                pdf_source=pdf_source,
+                target_llm=target_llm.strip(),
+                chunk_strategy=chunk_strategy.strip(),
+                max_chunk_size=max_chunk_size,
+                overlap_size=overlap_size,
+                preserve_structure=preserve_structure,
+                include_metadata=include_metadata,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"pdf_optimize_for_llm failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
+
+
 async def pdf_query_knowledge_graph(
     graph_id: str,
     query: str,
@@ -501,6 +644,50 @@ def register_native_pdf_tools(manager: Any) -> None:
                 "progress_callback": {"type": ["string", "null"]},
             },
             "required": ["pdf_sources"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "pdf-tools"],
+    )
+
+    manager.register_tool(
+        category="pdf_tools",
+        name="pdf_cross_document_analysis",
+        func=pdf_cross_document_analysis,
+        description="Analyze entities, themes, and citations across multiple PDFs.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "document_ids": {"type": "array", "minItems": 1, "items": {"type": "string"}},
+                "analysis_types": {"type": ["array", "null"], "items": {"type": "string"}},
+                "similarity_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.75},
+                "max_connections": {"type": "integer", "minimum": 1, "default": 100},
+                "temporal_analysis": {"type": "boolean", "default": True},
+                "include_visualizations": {"type": "boolean", "default": False},
+                "output_format": {"type": "string", "minLength": 1, "default": "detailed"},
+            },
+            "required": ["document_ids"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "pdf-tools"],
+    )
+
+    manager.register_tool(
+        category="pdf_tools",
+        name="pdf_optimize_for_llm",
+        func=pdf_optimize_for_llm,
+        description="Optimize PDF content for LLM chunking and downstream use.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "pdf_source": {"type": ["string", "object", "null"]},
+                "target_llm": {"type": "string", "minLength": 1, "default": "gpt-4"},
+                "chunk_strategy": {"type": "string", "minLength": 1, "default": "semantic"},
+                "max_chunk_size": {"type": "integer", "minimum": 1, "default": 4000},
+                "overlap_size": {"type": "integer", "minimum": 0, "default": 200},
+                "preserve_structure": {"type": "boolean", "default": True},
+                "include_metadata": {"type": "boolean", "default": True},
+            },
+            "required": [],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "pdf-tools"],

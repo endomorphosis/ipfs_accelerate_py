@@ -411,6 +411,12 @@ Next plan:
 2. Add stricter fuzz-style framing boundary tests (decode + rate limits).
 3. Harden status counter semantics under sustained abuse scenarios.
 
+Recent execution (2026-03-06):
+
+1. Completed stricter framing boundary regressions in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_p2p_framing_limits.py` covering malformed UTF-8 payloads, malformed JSON payloads, and over-capacity token bucket costs.
+2. Added handler regression in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py` validating malformed UTF-8 payload classification as deterministic `invalid_json` transport error.
+3. Hardened canonical framing decode normalization in `ipfs_accelerate_py/mcp_server/mcplusplus/p2p_framing.py` with explicit `FramingError` codes for malformed UTF-8/JSON, and updated `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py` to preserve `invalid_json` classification.
+
 ### 6.3 MCP-IDL (`mcp-idl`)
 
 Current posture: Implemented.
@@ -811,26 +817,50 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 1. `UNI-101` Security Tools Behavior Parity Expansion
    - Scope: Expand auth/security tools beyond currently implemented baseline.
    - Target files: `ipfs_accelerate_py/mcp_server/tools/security_tools/*`, `.../auth_tools/*`, related tests
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni101_security_tools.py`
+      - Targeted run result: `4 passed`.
    - Acceptance: representative operation and schema parity coverage added.
 
 2. `UNI-102` Monitoring and Observability Behavior Parity Expansion
    - Scope: Expand advanced monitoring/alert/diagnostic operations.
    - Target files: `ipfs_accelerate_py/mcp_server/tools/monitoring_tools/*`, `.../alert_tools/*`, tests
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni102_monitoring_tools.py`
+      - Targeted run result: `5 passed`.
    - Acceptance: advanced telemetry and diagnostics calls validated.
 
 3. `UNI-103` Dataset and Embedding Pipeline Parity Expansion
    - Scope: Expand `dataset_tools` + `embedding_tools` behavior-level parity.
    - Target files: `ipfs_accelerate_py/mcp_server/tools/dataset_tools/*`, `.../embedding_tools/*`, tests
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni103_dataset_logic_tools.py`
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni103_embedding_tools.py`
+      - Targeted run result: `9 passed`.
    - Acceptance: source-equivalent conversion and endpoint-management flows validated.
 
 4. `UNI-104` Vector/Search/Storage Integration Parity Expansion
    - Scope: Expand cross-category backend orchestration parity.
    - Target files: `ipfs_accelerate_py/mcp_server/tools/vector_tools/*`, `.../search_tools/*`, `.../storage_tools/*`, tests
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni104_vector_search_storage_tools.py`
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni104_storage_tools.py`
+      - Targeted run result: `10 passed`.
    - Acceptance: integration behavior and schema parity for representative flows.
 
 5. `UNI-105` PDF/Graph/Logic Advanced Surface Parity Expansion
    - Scope: Close high-value advanced operations in document/graph/logic categories.
    - Target files: `ipfs_accelerate_py/mcp_server/tools/pdf_tools/*`, `.../graph_tools/*`, `.../logic_tools/*`, tests
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni105_pdf_tools.py`
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni105_graph_tools.py`
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni105_logic_tools.py`
+      - Targeted run result: `15 passed`.
    - Acceptance: advanced ingestion/query/reasoning flows covered.
 
 ### Spec Chapter Hardening Issues
