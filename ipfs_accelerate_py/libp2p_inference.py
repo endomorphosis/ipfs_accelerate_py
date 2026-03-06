@@ -37,11 +37,7 @@ try:
     from ipfs_accelerate_py.github_cli.libp2p_compat import patch_libp2p_compatibility
     patch_libp2p_compatibility()
 except ImportError:
-    try:
-        from github_cli.libp2p_compat import patch_libp2p_compatibility
-        patch_libp2p_compatibility()
-    except ImportError:
-        logger.debug("libp2p compatibility layer not available")
+    logger.debug("libp2p compatibility layer not available")
 
 
 class PeerCapability(Enum):
