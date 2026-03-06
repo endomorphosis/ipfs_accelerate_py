@@ -48,12 +48,14 @@ def _load_embedding_api() -> Dict[str, Any]:
         try:
             from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.embedding_tools.advanced_search import (  # type: ignore
                 hybrid_search as _hybrid_search,
+                multi_modal_search as _multi_modal_search,
                 search_with_filters as _search_with_filters,
                 semantic_search as _semantic_search,
             )
 
             api["semantic_search"] = _semantic_search
             api["hybrid_search"] = _hybrid_search
+            api["multi_modal_search"] = _multi_modal_search
             api["search_with_filters"] = _search_with_filters
         except Exception:
             logger.warning("Source advanced_search import unavailable, using fallback semantic-search function")
@@ -331,6 +333,37 @@ def _load_embedding_api() -> Dict[str, Any]:
                 "filtered_out": 0,
             }
 
+        async def _multi_modal_search_fallback(
+            query: str | None = None,
+            image_query: str | None = None,
+            vector_store_id: str | None = None,
+            model_name: str = "clip-ViT-B-32",
+            top_k: int = 10,
+            modality_weights: Dict[str, float] | None = None,
+            **kwargs: Any,
+        ) -> Dict[str, Any]:
+            _ = kwargs
+            normalized_query = None if query is None else str(query).strip()
+            normalized_image_query = None if image_query is None else str(image_query).strip()
+            normalized_store = None if vector_store_id is None else str(vector_store_id).strip()
+
+            if not normalized_query and not normalized_image_query:
+                return {"status": "error", "error": "either query or image_query must be provided"}
+            if not normalized_store:
+                return {"status": "error", "error": "vector_store_id must be a non-empty string"}
+
+            return {
+                "status": "success",
+                "text_query": normalized_query,
+                "image_query": normalized_image_query,
+                "vector_store_id": normalized_store,
+                "model_used": str(model_name or "clip-ViT-B-32"),
+                "modality_weights": dict(modality_weights or {"text": 0.6, "image": 0.4}),
+                "top_k": int(top_k),
+                "results": [],
+                "total_results": 0,
+            }
+
         return {
             "EmbeddingManager": _FallbackEmbeddingManager,
             "generate_embeddings": _generate_fallback,
@@ -340,6 +373,7 @@ def _load_embedding_api() -> Dict[str, Any]:
             "semantic_search": _semantic_search_fallback,
             "hybrid_search": _hybrid_search_fallback,
             "search_with_filters": _search_with_filters_fallback,
+            "multi_modal_search": _multi_modal_search_fallback,
             "chunk_text": _chunk_text_fallback,
             "manage_endpoints": _manage_endpoints_fallback,
         }
@@ -730,6 +764,77 @@ async def search_with_filters(
     return normalized
 
 
+async def multi_modal_search(
+    query: str | None = None,
+    image_query: str | None = None,
+    vector_store_id: str | None = None,
+    model_name: str = "clip-ViT-B-32",
+    top_k: int = 10,
+    modality_weights: Dict[str, float] | None = None,
+) -> Dict[str, Any]:
+    """Perform source-aligned multi-modal search combining text and image queries."""
+    normalized_query = None if query is None else str(query).strip()
+    normalized_image_query = None if image_query is None else str(image_query).strip()
+    if not normalized_query and not normalized_image_query:
+        return _error_result("either query or image_query must be provided")
+
+    normalized_store = None if vector_store_id is None else str(vector_store_id).strip()
+    if not normalized_store:
+        return _error_result("vector_store_id must be a non-empty string")
+
+    normalized_model_name = str(model_name or "").strip()
+    if not normalized_model_name:
+        return _error_result("model_name must be a non-empty string")
+
+    try:
+        normalized_top_k = int(top_k)
+    except (TypeError, ValueError):
+        return _error_result("top_k must be an integer")
+    if normalized_top_k < 1 or normalized_top_k > 1000:
+        return _error_result("top_k must be between 1 and 1000")
+
+    normalized_modality_weights = None
+    if modality_weights is not None:
+        if not isinstance(modality_weights, dict):
+            return _error_result("modality_weights must be an object when provided")
+        if not all(isinstance(key, str) for key in modality_weights.keys()):
+            return _error_result("modality_weights keys must be strings")
+        try:
+            normalized_modality_weights = {str(key): float(value) for key, value in modality_weights.items()}
+        except (TypeError, ValueError):
+            return _error_result("modality_weights values must be numbers")
+
+    handler = _API.get("multi_modal_search")
+    if not callable(handler):
+        return _error_result("multi_modal_search handler unavailable")
+
+    try:
+        payload = await _await_maybe(
+            handler(
+                query=normalized_query,
+                image_query=normalized_image_query,
+                vector_store_id=normalized_store,
+                model_name=normalized_model_name,
+                top_k=normalized_top_k,
+                modality_weights=normalized_modality_weights,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"multi_modal_search failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("text_query", normalized_query)
+    normalized.setdefault("image_query", normalized_image_query)
+    normalized.setdefault("vector_store_id", normalized_store)
+    normalized.setdefault("model_used", normalized_model_name)
+    normalized.setdefault("modality_weights", normalized_modality_weights or {"text": 0.6, "image": 0.4})
+    normalized.setdefault("top_k", normalized_top_k)
+    normalized.setdefault("results", [])
+    normalized.setdefault("total_results", len(normalized.get("results") or []))
+    return normalized
+
+
 async def shard_embeddings(
     embeddings: List[Any],
     shard_count: int = 4,
@@ -1017,6 +1122,27 @@ def register_native_embedding_tools(manager: Any) -> None:
                 },
             },
             "required": ["query", "vector_store_id", "filters"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "embedding", "search"],
+    )
+
+    manager.register_tool(
+        category="embedding_tools",
+        name="multi_modal_search",
+        func=multi_modal_search,
+        description="Perform multi-modal search using text and/or image query inputs.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": ["string", "null"]},
+                "image_query": {"type": ["string", "null"]},
+                "vector_store_id": {"type": "string", "minLength": 1},
+                "model_name": {"type": "string", "minLength": 1, "default": "clip-ViT-B-32"},
+                "top_k": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 10},
+                "modality_weights": {"type": ["object", "null"]},
+            },
+            "required": ["vector_store_id"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "embedding", "search"],

@@ -490,6 +490,29 @@ def test_taskqueue_module_optional_dependency_contract():
         taskqueue.RemoteQueue()
 
 
+def test_connectivity_module_optional_dependency_contract():
+    """Connectivity module should expose explicit stubs when zeroconf is absent."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcplusplus_module.p2p import connectivity
+
+    assert connectivity.Zeroconf is not None
+    assert connectivity.ServiceInfo is not None
+    assert connectivity.ServiceBrowser is not None
+
+    missing_stub_type = type(mcplusplus_module._missing_dependency_stub("_probe"))
+
+    if connectivity.HAVE_ZEROCONF:
+        assert not isinstance(connectivity.Zeroconf, missing_stub_type)
+        return
+
+    assert isinstance(connectivity.Zeroconf, missing_stub_type)
+    assert isinstance(connectivity.ServiceInfo, missing_stub_type)
+    assert isinstance(connectivity.ServiceBrowser, missing_stub_type)
+
+    with pytest.raises(RuntimeError, match="Zeroconf is unavailable"):
+        connectivity.Zeroconf()
+
+
 def test_trio_module_optional_dependency_contract():
     """Trio package optional exports should use explicit compatibility stubs."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module

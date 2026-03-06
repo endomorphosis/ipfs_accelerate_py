@@ -203,6 +203,68 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         self.assertEqual(stats.get("initialized_sessions"), 1)
         self.assertEqual(stats.get("rate_limited"), 1)
 
+    def test_handler_enforces_max_frames_limit_independent_of_token_bucket(self) -> None:
+        init = encode_jsonrpc_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {},
+            }
+        )
+        tools_list_1 = encode_jsonrpc_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools/list",
+                "params": {},
+            }
+        )
+        tools_list_2 = encode_jsonrpc_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/list",
+                "params": {},
+            }
+        )
+        stream = _FakeStream(init + tools_list_1 + tools_list_2)
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_DummyRegistry(),
+                max_frame_bytes=1024 * 1024,
+            )
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_DATASETS_PY_MCP_P2P_MAX_FRAMES": "2",
+                "IPFS_DATASETS_PY_MCP_P2P_RATE_CAPACITY": "100",
+                "IPFS_DATASETS_PY_MCP_P2P_RATE_REFILL_PER_SEC": "100",
+            },
+            clear=False,
+        ):
+            anyio.run(_run)
+
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 3)
+        self.assertEqual(responses[0].get("id"), 1)
+        self.assertIn("result", responses[0])
+        self.assertEqual(responses[1].get("id"), 2)
+        self.assertIn("result", responses[1])
+        self.assertEqual(responses[2].get("id"), 3)
+        self.assertEqual(responses[2].get("error", {}).get("code"), -32010)
+        self.assertEqual(responses[2].get("error", {}).get("message"), "rate_limited")
+
+        stats = get_mcp_p2p_stats()
+        self.assertEqual(stats.get("sessions_started"), 1)
+        self.assertEqual(stats.get("sessions_closed"), 1)
+        self.assertEqual(stats.get("initialized_sessions"), 1)
+        self.assertEqual(stats.get("rate_limited"), 1)
+
     def test_rate_limited_counter_accumulates_across_sessions(self) -> None:
         init = encode_jsonrpc_frame(
             {

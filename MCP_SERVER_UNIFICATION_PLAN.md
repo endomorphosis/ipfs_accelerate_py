@@ -580,6 +580,12 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 1. `UNI-001` Canonical Dispatch Service Consumption
    - Scope: Prove `_unified_services` are consumed on live dispatch paths.
    - Target files: `ipfs_accelerate_py/mcp_server/server.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+     - `test_tools_dispatch_frontier_execution_binds_to_workflow_scheduler`
+     - `test_tools_dispatch_frontier_execution_binds_to_task_queue_fallback`
+     - `test_tools_dispatch_result_cache_factory_consumed_on_cache_hit`
+     - `test_tools_dispatch_peer_registry_factory_consumed_for_probe`
    - Acceptance:
      - Dispatch path tests assert service factory invocation and usage.
      - No behavior regression in unified bootstrap suite.

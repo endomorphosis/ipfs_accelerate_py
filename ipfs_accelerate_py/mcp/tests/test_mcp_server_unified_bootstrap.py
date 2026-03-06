@@ -6645,6 +6645,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("semantic_search", names)
             self.assertIn("hybrid_search", names)
             self.assertIn("search_with_filters", names)
+            self.assertIn("multi_modal_search", names)
             self.assertIn("generate_embeddings", names)
             self.assertIn("chunk_text_for_embeddings", names)
 
@@ -6667,6 +6668,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             filter_schema = await get_schema("embedding_tools", "search_with_filters")
             filter_props = (filter_schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("semantic", (filter_props.get("search_method") or {}).get("enum", []))
+
+            multimodal_schema = await get_schema("embedding_tools", "multi_modal_search")
+            multimodal_props = (multimodal_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((multimodal_props.get("top_k") or {}).get("maximum"), 1000)
 
             generate_schema = await get_schema("embedding_tools", "generate_embeddings")
             generate_props = (generate_schema.get("input_schema") or {}).get("properties", {})
@@ -6756,6 +6761,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_filter_method.get("status"), "error")
             self.assertIn("search_method must be one of", str(invalid_filter_method.get("error", "")))
+
+            invalid_multimodal_inputs = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "embedding_tools",
+                    "multi_modal_search",
+                    {
+                        "vector_store_id": "vs-1",
+                    },
+                )
+            )
+            self.assertEqual(invalid_multimodal_inputs.get("status"), "error")
+            self.assertIn(
+                "either query or image_query must be provided",
+                str(invalid_multimodal_inputs.get("error", "")),
+            )
 
             invalid_overlap = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10626,8 +10646,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "mcplusplus_engine_status",
                 "mcplusplus_list_engines",
                 "mcplusplus_taskqueue_get_status",
+                "mcplusplus_taskqueue_submit",
                 "mcplusplus_workflow_get_status",
+                "mcplusplus_workflow_submit",
                 "mcplusplus_peer_list",
+                "mcplusplus_peer_discover",
             }
             self.assertTrue(expected.issubset(names))
 
@@ -10638,6 +10661,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             peer_schema = await get_schema("mcplusplus", "mcplusplus_peer_list")
             peer_props = (peer_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((peer_props.get("limit") or {}).get("minimum"), 1)
+
+            peer_discover_schema = await get_schema("mcplusplus", "mcplusplus_peer_discover")
+            peer_discover_props = (peer_discover_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((peer_discover_props.get("max_peers") or {}).get("minimum"), 1)
 
             invalid_task = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10665,12 +10692,47 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 str(invalid_limit.get("error", "")),
             )
 
+            invalid_submit = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "mcplusplus",
+                    "mcplusplus_taskqueue_submit",
+                    {
+                        "task_id": "task-1",
+                        "task_type": "demo",
+                        "payload": {},
+                        "priority": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_submit.get("status"), "error")
+            self.assertIn(
+                "priority must be > 0",
+                str(invalid_submit.get("error", "")),
+            )
+
             calls = [
                 ("mcplusplus_engine_status", {}),
                 ("mcplusplus_list_engines", {}),
                 ("mcplusplus_taskqueue_get_status", {"task_id": "task-1"}),
+                (
+                    "mcplusplus_taskqueue_submit",
+                    {
+                        "task_id": "task-1",
+                        "task_type": "demo",
+                        "payload": {"x": 1},
+                    },
+                ),
                 ("mcplusplus_workflow_get_status", {"workflow_id": "wf-1"}),
+                (
+                    "mcplusplus_workflow_submit",
+                    {
+                        "workflow_id": "wf-1",
+                        "name": "demo",
+                        "steps": [{"step_id": "s1", "action": "noop"}],
+                    },
+                ),
                 ("mcplusplus_peer_list", {"limit": 5}),
+                ("mcplusplus_peer_discover", {"max_peers": 2}),
             ]
 
             for tool_name, params in calls:

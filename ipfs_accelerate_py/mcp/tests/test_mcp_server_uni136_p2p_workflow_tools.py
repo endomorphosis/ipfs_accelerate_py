@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -78,6 +79,69 @@ class TestMCPServerUNI136P2PWorkflowTools(unittest.TestCase):
             for call in (get_next_p2p_workflow, get_p2p_scheduler_status, get_assigned_workflows):
                 result = await call()
                 self.assertIn(result.get("status"), ["success", "error"])
+
+        anyio.run(_run)
+
+    def test_schedule_p2p_workflow_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await schedule_p2p_workflow(
+                    workflow_id="wf-1",
+                    name="workflow",
+                    tags=["p2p_eligible"],
+                    priority=2,
+                )
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("workflow_id"), "wf-1")
+            self.assertEqual(result.get("name"), "workflow")
+            self.assertEqual(result.get("tags"), ["p2p_eligible"])
+            self.assertEqual(result.get("priority"), 2.0)
+            self.assertEqual(result.get("metadata"), {})
+
+        anyio.run(_run)
+
+    def test_get_assigned_workflows_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools._API"
+            ) as mock_api:
+                async def _impl() -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await get_assigned_workflows()
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("assigned_workflows"), [])
+            self.assertEqual(result.get("count"), 0)
+
+        anyio.run(_run)
+
+    def test_get_p2p_scheduler_status_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools._API"
+            ) as mock_api:
+                async def _impl() -> dict:
+                    return {"error": "scheduler unavailable"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await get_p2p_scheduler_status()
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("scheduler unavailable", str(result.get("error", "")))
 
         anyio.run(_run)
 

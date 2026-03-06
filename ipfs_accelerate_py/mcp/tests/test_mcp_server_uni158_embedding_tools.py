@@ -40,6 +40,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
         filter_props = schemas["search_with_filters"]["properties"]
         self.assertIn("semantic", filter_props["search_method"].get("enum", []))
 
+        multimodal_props = schemas["multi_modal_search"]["properties"]
+        self.assertEqual(multimodal_props["top_k"].get("maximum"), 1000)
+
         generate_props = schemas["generate_embeddings"]["properties"]
         self.assertEqual(generate_props["texts"].get("minItems"), 1)
 
@@ -259,6 +262,48 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 )
                 self.assertEqual(failed.get("status"), "error")
                 self.assertIn("search_with_filters failed", str(failed.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_multi_modal_search_validates_and_wraps_exceptions(self) -> None:
+        async def _boom(**_: object) -> dict:
+            raise RuntimeError("multimodal boom")
+
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            invalid_inputs = await native_embedding_tools.multi_modal_search(
+                vector_store_id="vs-1",
+            )
+            self.assertEqual(invalid_inputs.get("status"), "error")
+            self.assertIn("either query or image_query must be provided", str(invalid_inputs.get("error", "")))
+
+            invalid_weights = await native_embedding_tools.multi_modal_search(
+                query="hello",
+                vector_store_id="vs-1",
+                modality_weights="bad",  # type: ignore[arg-type]
+            )
+            self.assertEqual(invalid_weights.get("status"), "error")
+            self.assertIn("modality_weights must be an object", str(invalid_weights.get("error", "")))
+
+            with patch.dict(native_embedding_tools._API, {"multi_modal_search": _minimal}, clear=False):
+                result = await native_embedding_tools.multi_modal_search(
+                    query="hello",
+                    vector_store_id="vs-1",
+                )
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("text_query"), "hello")
+                self.assertEqual(result.get("vector_store_id"), "vs-1")
+                self.assertEqual(result.get("results"), [])
+
+            with patch.dict(native_embedding_tools._API, {"multi_modal_search": _boom}, clear=False):
+                failed = await native_embedding_tools.multi_modal_search(
+                    query="hello",
+                    vector_store_id="vs-1",
+                )
+                self.assertEqual(failed.get("status"), "error")
+                self.assertIn("multi_modal_search failed", str(failed.get("error", "")))
 
         anyio.run(_run)
 

@@ -99,6 +99,17 @@ def _load_p2p_workflow_api() -> Dict[str, Any]:
 _API = _load_p2p_workflow_api()
 
 
+def _normalize_status(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Infer deterministic status from success/error fields when absent."""
+    normalized = dict(payload or {})
+    if "status" in normalized and not isinstance(normalized.get("status"), str):
+        normalized.setdefault("scheduler_status", normalized.get("status"))
+        normalized.pop("status", None)
+    if "status" not in normalized:
+        normalized["status"] = "error" if (normalized.get("error") or normalized.get("success") is False) else "success"
+    return normalized
+
+
 async def initialize_p2p_scheduler(
     peer_id: Optional[str] = None,
     peers: Optional[List[str]] = None,
@@ -115,9 +126,14 @@ async def initialize_p2p_scheduler(
     except Exception as exc:
         return _error_result(f"initialize_p2p_scheduler failed: {exc}")
 
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
+    normalized = _normalize_status(dict(payload or {}))
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
+        normalized.setdefault("message", "P2P scheduler initialized")
+        normalized.setdefault("scheduler_status", {})
+        if isinstance(normalized.get("scheduler_status"), dict):
+            normalized["scheduler_status"].setdefault("peer_id", peer_id)
+            normalized["scheduler_status"].setdefault("peer_count", len(peers or []))
     return normalized
 
 
@@ -161,9 +177,13 @@ async def schedule_p2p_workflow(
             workflow_id=normalized_workflow_id,
         )
 
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
+    normalized = _normalize_status(dict(payload or {}))
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
+        normalized.setdefault("name", normalized_name)
+        normalized.setdefault("tags", tags)
+        normalized.setdefault("priority", normalized_priority)
+        normalized.setdefault("metadata", metadata or {})
     normalized.setdefault("workflow_id", normalized_workflow_id)
     return normalized
 
@@ -176,9 +196,11 @@ async def get_next_p2p_workflow() -> Dict[str, Any]:
     except Exception as exc:
         return _error_result(f"get_next_p2p_workflow failed: {exc}")
 
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
+    normalized = _normalize_status(dict(payload or {}))
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
+        normalized.setdefault("workflow", None)
+        normalized.setdefault("message", "No workflows in queue")
     return normalized
 
 
@@ -190,9 +212,13 @@ async def get_p2p_scheduler_status() -> Dict[str, Any]:
     except Exception as exc:
         return _error_result(f"get_p2p_scheduler_status failed: {exc}")
 
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
+    normalized = _normalize_status(dict(payload or {}))
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
+        normalized.setdefault("scheduler_status", {})
+        if isinstance(normalized.get("scheduler_status"), dict):
+            normalized["scheduler_status"].setdefault("queue_size", 0)
+            normalized["scheduler_status"].setdefault("peer_count", 0)
     return normalized
 
 
@@ -204,9 +230,11 @@ async def get_assigned_workflows() -> Dict[str, Any]:
     except Exception as exc:
         return _error_result(f"get_assigned_workflows failed: {exc}")
 
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "success" if normalized.get("success", True) else "error"
+    normalized = _normalize_status(dict(payload or {}))
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
+        normalized.setdefault("assigned_workflows", [])
+        normalized.setdefault("count", len(normalized.get("assigned_workflows") or []))
     return normalized
 
 

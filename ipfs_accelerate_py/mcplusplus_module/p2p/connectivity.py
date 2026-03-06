@@ -30,13 +30,15 @@ import time
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
 
+from .. import _missing_dependency_stub
+
 try:
     from zeroconf import Zeroconf, ServiceInfo, ServiceBrowser
     HAVE_ZEROCONF = True
 except Exception:
-    Zeroconf = None
-    ServiceInfo = None
-    ServiceBrowser = None
+    Zeroconf = _missing_dependency_stub("Zeroconf")
+    ServiceInfo = _missing_dependency_stub("ServiceInfo")
+    ServiceBrowser = _missing_dependency_stub("ServiceBrowser")
     HAVE_ZEROCONF = False
 
 logger = logging.getLogger(__name__)
