@@ -402,6 +402,10 @@ Next plan:
 2. Add downgrade/unknown-profile compatibility regression cases.
 3. Add profile capability snapshot tests to prevent accidental capability drift.
 
+Recent execution (2026-03-06):
+
+1. Added explicit profile capability snapshot regression coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to lock the canonical supported-profile list and normalized negotiation payload across bootstrap attachments, runtime context, and context snapshots.
+
 ### 6.2 Transport (`transport-mcp-p2p`)
 
 Current posture: Implemented.
@@ -417,6 +421,7 @@ Recent execution (2026-03-06):
 2. Added handler regression in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py` validating malformed UTF-8 payload classification as deterministic `invalid_json` transport error.
 3. Hardened canonical framing decode normalization in `ipfs_accelerate_py/mcp_server/mcplusplus/p2p_framing.py` with explicit `FramingError` codes for malformed UTF-8/JSON, and updated `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py` to preserve `invalid_json` classification.
 4. Added sustained mixed-abuse counter regression in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py` validating exact cumulative status counters across oversized-frame, malformed-UTF8, unauthorized, rate-limited, and write-failure sessions.
+5. Expanded live mixed-version libp2p interop coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_mcp_p2p_networked.py` to validate unknown-profile fallback and canonical `tools/list` vs alias `tools.list` parity over a real MCP+p2p network session.
 
 ### 6.3 MCP-IDL (`mcp-idl`)
 
@@ -885,6 +890,10 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 
 3. `SPEC-203` Artifact Durability and Replay
    - Chapter: `cid-native-artifacts.md`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py`
+      - Targeted run result: `12 passed`.
    - Acceptance: durable store path and replay integrity tests beyond in-memory behavior.
 
 4. `SPEC-204` UCAN Verification Vector Expansion

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -140,6 +141,89 @@ class TestMCPServerUNI138LegalDatasetTools(unittest.TestCase):
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("term"), "regulation")
             self.assertEqual(result.get("relationship_type"), "hierarchical")
+
+        anyio.run(_run)
+
+    def test_scrape_state_laws_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools.native_legal_dataset_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await scrape_state_laws(states=["ca"], output_format="json")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("states"), ["CA"])
+            self.assertEqual(result.get("output_format"), "json")
+            self.assertEqual(result.get("data"), [])
+            self.assertEqual(
+                result.get("metadata"),
+                {"selected_states": ["CA"], "legal_areas": [], "include_metadata": True},
+            )
+
+        anyio.run(_run)
+
+    def test_expand_legal_query_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools.native_legal_dataset_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.get.return_value = _impl
+
+                result = await expand_legal_query(query="epa water rules")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("original_query"), "epa water rules")
+            self.assertEqual(result.get("strategy_used"), "balanced")
+            self.assertEqual(result.get("expanded_queries"), [])
+            self.assertEqual(result.get("expansion_metadata"), {})
+            self.assertEqual(result.get("total_expansions"), 0)
+
+        anyio.run(_run)
+
+    def test_get_legal_synonyms_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools.native_legal_dataset_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.get.return_value = _impl
+
+                result = await get_legal_synonyms(term="regulation")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("term"), "regulation")
+            self.assertEqual(result.get("synonyms"), [])
+            self.assertEqual(result.get("count"), 0)
+
+        anyio.run(_run)
+
+    def test_get_legal_relationships_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools.native_legal_dataset_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"error": "backend unavailable"}
+
+                mock_api.get.return_value = _impl
+
+                result = await get_legal_relationships(term="regulation")
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("backend unavailable", str(result.get("error", "")))
 
         anyio.run(_run)
 

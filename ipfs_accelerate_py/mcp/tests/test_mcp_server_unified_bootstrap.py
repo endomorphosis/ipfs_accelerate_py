@@ -319,6 +319,50 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         )
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    def test_unified_profile_capability_snapshot_matches_expected_contract(self, mock_create):
+        """Canonical profile capability metadata should remain stable across bootstrap snapshots."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        dummy = DummyServer()
+        mock_create.return_value = dummy
+
+        expected_profiles = [
+            "mcp++/profile-a-idl",
+            "mcp++/profile-b-cid-artifacts",
+            "mcp++/profile-c-ucan",
+            "mcp++/profile-d-temporal-policy",
+            "mcp++/profile-e-mcp-p2p",
+        ]
+        expected_negotiation = {
+            "supports_profile_negotiation": True,
+            "mode": "optional_additive",
+            "profiles": expected_profiles,
+        }
+
+        with patch.dict(os.environ, {"IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1"}, clear=False):
+            server = create_server(name="dummy")
+
+        self.assertEqual(get_unified_supported_profiles(), expected_profiles)
+        self.assertEqual(server._unified_supported_profiles, expected_profiles)
+        self.assertEqual(server._unified_profile_negotiation, expected_negotiation)
+        self.assertEqual(server._unified_server_context.supported_profiles, expected_profiles)
+        self.assertEqual(server._unified_server_context.profile_negotiation(), expected_negotiation)
+        self.assertEqual(server._unified_server_context_snapshot.get("supported_profiles"), expected_profiles)
+        self.assertEqual(server._unified_server_context_snapshot.get("profile_negotiation"), expected_negotiation)
+
+    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
     def test_unified_bootstrap_service_factories_smoke(self, mock_create):
         """Unified bootstrap should provide callable MCP++ service factories."""
 

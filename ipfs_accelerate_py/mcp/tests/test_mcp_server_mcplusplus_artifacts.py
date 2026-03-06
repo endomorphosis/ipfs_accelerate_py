@@ -3,8 +3,12 @@
 
 from __future__ import annotations
 
+import os
 import tempfile
 import unittest
+from unittest.mock import patch
+
+import anyio
 
 from ipfs_accelerate_py.mcp_server.mcplusplus.artifacts import (
     ArtifactStore,
@@ -16,10 +20,38 @@ from ipfs_accelerate_py.mcp_server.mcplusplus.artifacts import (
     compute_artifact_cid,
     envelope_from_payloads,
 )
+from ipfs_accelerate_py.mcp.server import create_mcp_server
+
+
+class _DummyServer:
+    def __init__(self) -> None:
+        self.tools = {}
+        self.mcp = None
+
+    def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+        self.tools[name] = {
+            "function": function,
+            "description": description,
+            "input_schema": input_schema,
+            "execution_context": execution_context,
+            "tags": tags,
+        }
 
 
 class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
     """Validate Profile B helper determinism and chain integrity."""
+
+    def _create_unified_server(self, *, name: str, enable_cid_artifacts: bool = False):
+        env = {
+            "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+            "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+        }
+        if enable_cid_artifacts:
+            env["IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS"] = "1"
+
+        with patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", return_value=_DummyServer()):
+            with patch.dict(os.environ, env, clear=False):
+                return create_mcp_server(name=name)
 
     def test_canonicalization_and_cid_are_deterministic(self) -> None:
         a = {"z": [3, 2, 1], "a": {"k": "v"}}
@@ -205,6 +237,125 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
         root_event = reloaded.get(root["event_cid"])
         self.assertIsNotNone(root_event)
         self.assertEqual((root_event or {}).get("parents"), [])
+
+    def test_dispatch_artifact_emission_opt_in_persists_chain(self) -> None:
+        server = self._create_unified_server(name="artifacts-opt-in")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__emit_artifacts": True,
+                    "__correlation_id": "corr-203",
+                    "__proof_cid": "cid-proof",
+                    "__policy_cid": "cid-policy",
+                    "__parent_event_cids": ["cid-parent-203"],
+                },
+            )
+
+            self.assertTrue(response.get("ok"))
+            self.assertEqual((response.get("result") or {}).get("echo"), "ok")
+
+            artifacts = response.get("artifacts") or {}
+            for key in ["input_cid", "intent_cid", "decision_cid", "output_cid", "receipt_cid", "event_cid"]:
+                self.assertTrue(str(artifacts.get(key) or "").startswith("cidv1-sha256-"))
+
+            payloads = response.get("artifact_payloads") or {}
+            self.assertEqual(((payloads.get("intent") or {}).get("correlation_id")), "corr-203")
+            self.assertEqual(((payloads.get("decision") or {}).get("policy_cid")), "cid-policy")
+            self.assertEqual(((payloads.get("event") or {}).get("parents")), ["cid-parent-203"])
+
+            artifact_store = response.get("artifact_store") or {}
+            self.assertTrue(artifact_store.get("persisted"))
+            self.assertEqual(int(artifact_store.get("written") or 0), 6)
+
+            stored_event = server._unified_artifact_store.get(artifacts.get("event_cid", "")) or {}
+            self.assertEqual(stored_event.get("intent_cid"), artifacts.get("intent_cid"))
+
+        anyio.run(_run_flow)
+
+    def test_dispatch_artifact_policy_is_deterministic_across_emit_modes(self) -> None:
+        server = self._create_unified_server(name="artifacts-policy-modes")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            base_payload = {
+                "value": "ok",
+                "__enforce_policy": True,
+                "__policy_actor": "did:model:worker",
+                "__policy_version": "v1",
+                "__policy_clauses": [
+                    {
+                        "clause_type": "permission",
+                        "actor": "did:model:worker",
+                        "action": "smoke.echo",
+                    },
+                    {
+                        "clause_type": "obligation",
+                        "actor": "did:model:worker",
+                        "action": "smoke.echo",
+                        "obligation_deadline": "2030-01-01T00:00:00Z",
+                        "metadata": {"migration": "phase-b"},
+                    },
+                ],
+            }
+
+            response_no_emit = await dispatch("smoke", "echo", dict(base_payload, **{"__emit_artifacts": False}))
+            response_emit = await dispatch("smoke", "echo", dict(base_payload, **{"__emit_artifacts": True}))
+
+            cid_no_emit = str((response_no_emit.get("policy_decision") or {}).get("decision_cid") or "")
+            cid_emit = str((response_emit.get("policy_decision") or {}).get("decision_cid") or "")
+            self.assertTrue(cid_no_emit.startswith("cidv1-sha256-"))
+            self.assertEqual(cid_no_emit, cid_emit)
+
+            stored_v1 = server._unified_artifact_store.get(cid_no_emit) or {}
+            self.assertEqual(stored_v1.get("policy_version"), "v1")
+            self.assertEqual(stored_v1.get("decision"), "allow_with_obligations")
+
+            response_v2 = await dispatch(
+                "smoke",
+                "echo",
+                dict(base_payload, **{"__policy_version": "v2", "__emit_artifacts": False}),
+            )
+            cid_v2 = str((response_v2.get("policy_decision") or {}).get("decision_cid") or "")
+            self.assertTrue(cid_v2.startswith("cidv1-sha256-"))
+            self.assertNotEqual(cid_no_emit, cid_v2)
+
+            stored_v2 = server._unified_artifact_store.get(cid_v2) or {}
+            self.assertEqual(stored_v2.get("policy_version"), "v2")
+
+        anyio.run(_run_flow)
+
+    def test_dispatch_artifact_default_policy_from_config(self) -> None:
+        server = self._create_unified_server(name="artifacts-default-policy", enable_cid_artifacts=True)
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+            response = await dispatch("smoke", "echo", {"value": "ok", "__correlation_id": "corr-default"})
+
+            self.assertTrue(response.get("ok"))
+            self.assertIn("artifacts", response)
+            self.assertIn("artifact_payloads", response)
+            self.assertTrue(((response.get("artifact_store") or {}).get("persisted")))
+
+        anyio.run(_run_flow)
 
 
 if __name__ == "__main__":

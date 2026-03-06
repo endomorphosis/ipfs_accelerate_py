@@ -195,10 +195,16 @@ _API = _load_legal_dataset_tools_api()
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
-        return payload
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
-        return {}
-    return {"result": payload}
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
@@ -220,6 +226,10 @@ async def list_state_jurisdictions() -> Dict[str, Any]:
             result = await result
         envelope = _normalize_payload(result)
         envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("states", {})
+            envelope.setdefault("count", len(envelope.get("states") or {}))
         return envelope
     except Exception as exc:
         return _error_result(str(exc))
@@ -317,6 +327,17 @@ async def scrape_state_laws(
         envelope.setdefault("output_format", clean_output_format)
         if clean_states is not None:
             envelope.setdefault("states", clean_states)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("data", [])
+            envelope.setdefault(
+                "metadata",
+                {
+                    "selected_states": clean_states or ["all"],
+                    "legal_areas": clean_legal_areas or [],
+                    "include_metadata": include_metadata,
+                },
+            )
         return envelope
     except Exception as exc:
         return _error_result(
@@ -401,9 +422,13 @@ async def expand_legal_query(
         envelope.setdefault("status", "success")
         envelope.setdefault("original_query", normalized_query)
         envelope.setdefault("strategy_used", normalized_strategy)
+        envelope.setdefault("expanded_queries", [])
+        envelope.setdefault("expansion_metadata", {})
         envelope.setdefault("total_expansions", len(envelope.get("expanded_queries") or []))
         if normalized_domains is not None:
             envelope.setdefault("domains", normalized_domains)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
         return envelope
     except Exception as exc:
         return _error_result(str(exc), query=normalized_query, strategy=normalized_strategy)
@@ -435,6 +460,11 @@ async def get_legal_synonyms(
             envelope.setdefault("term", normalized_term)
         else:
             envelope.setdefault("category", normalized_category)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            if normalized_term is not None:
+                envelope.setdefault("synonyms", [])
+                envelope.setdefault("count", len(envelope.get("synonyms") or []))
         return envelope
     except Exception as exc:
         return _error_result(str(exc), term=normalized_term, category=normalized_category)
@@ -471,6 +501,9 @@ async def get_legal_relationships(
         if normalized_term is not None:
             envelope.setdefault("term", normalized_term)
         envelope.setdefault("relationship_type", normalized_relationship_type)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("relationships", {})
         return envelope
     except Exception as exc:
         return _error_result(
