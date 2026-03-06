@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -67,6 +68,40 @@ class TestMCPServerUNI132DevelopmentTools(unittest.TestCase):
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("pattern"), "README")
             self.assertEqual(result.get("path"), ".")
+
+        anyio.run(_run)
+
+    def test_codebase_search_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.development_tools.native_development_tools._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda **_: {"status": "success"}
+
+                result = await codebase_search(pattern="README", path="src")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("pattern"), "README")
+            self.assertEqual(result.get("path"), "src")
+            self.assertEqual(result.get("result", {}).get("matches"), [])
+            self.assertEqual(result.get("result", {}).get("summary"), {})
+
+        anyio.run(_run)
+
+    def test_vscode_cli_status_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.development_tools.native_development_tools._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda **_: {"status": "success"}
+
+                result = await vscode_cli_status(install_dir="/opt/code")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("installed"), False)
+            self.assertEqual(result.get("install_dir"), "/opt/code")
 
         anyio.run(_run)
 

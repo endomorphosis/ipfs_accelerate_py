@@ -129,6 +129,17 @@ def _require_accelerate_infer_for_embedding() -> bool:
     return _truthy(raw)
 
 
+def _hf_cuda_strict_enabled() -> bool:
+    """Fail embedding setup when explicit CUDA placement fails."""
+
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_HF_CUDA_STRICT")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_HF_CUDA_STRICT")
+        or ""
+    )
+    return _truthy(raw)
+
+
 _HF_TEXTGEN_LOCK = threading.RLock()
 _HF_TEXTGEN_PIPELINE: object | None = None
 _HF_TEXTGEN_MODEL_ID: str | None = None
@@ -153,6 +164,40 @@ _HF_EMBED_TOKENIZER: object | None = None
 _HF_EMBED_MODEL_ID: str | None = None
 _HF_EMBED_MODEL_BYTES: int | None = None
 _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH: int | None = None
+_HF_EMBED_CUDA_FALLBACK_WARNED: bool = False
+
+_CUDA_CANARY_LOCK = threading.Lock()
+_CUDA_CANARY_DONE: bool = False
+_CUDA_CANARY_OK: bool = False
+_CUDA_CANARY_ERROR: str = ""
+
+
+def _is_meta_tensor_copy_error(exc: BaseException) -> bool:
+    """Return True when an exception matches the known HF meta-tensor copy failure."""
+
+    msg = str(exc or "").lower()
+    return "meta tensor" in msg and "to_empty" in msg
+
+
+def _rebuild_textgen_pipeline_on_cpu(*, requested_model: str) -> object:
+    """Rebuild text-generation pipeline on CPU after a CUDA/meta initialization failure."""
+
+    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID, _HF_TEXTGEN_MODEL_BYTES, _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH
+
+    # Pin local worker fallback to CPU for subsequent minimal_hf generations.
+    os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE"] = "cpu"
+
+    with _HF_TEXTGEN_LOCK:
+        _HF_TEXTGEN_PIPELINE = None
+        _HF_TEXTGEN_MODEL_ID = None
+        _HF_TEXTGEN_MODEL_BYTES = None
+        _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH = None
+
+    print(
+        "[worker:textgen] warning: CUDA/meta initialization failed; "
+        f"rebuilding minimal HF pipeline on CPU (model={requested_model})"
+    )
+    return _hf_get_textgen_pipeline(requested_model=requested_model)
 
 
 def _available_ram_bytes() -> int:
@@ -191,6 +236,59 @@ def _available_vram_bytes() -> int:
     return _cuda_free_bytes(device_index=0)
 
 
+def _cuda_canary_enabled() -> bool:
+    raw = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_CUDA_CANARY")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_CUDA_CANARY")
+        or "1"
+    )
+    return _truthy(raw)
+
+
+def _cuda_runtime_usable() -> bool:
+    """Return True when CUDA can execute a minimal kernel in this process.
+
+    This catches environments where `torch.cuda.is_available()` returns True but
+    actual kernel launch fails (for example, GPU capability > wheel support).
+    """
+
+    global _CUDA_CANARY_DONE, _CUDA_CANARY_OK, _CUDA_CANARY_ERROR
+
+    if not _cuda_canary_enabled():
+        return True
+
+    with _CUDA_CANARY_LOCK:
+        if _CUDA_CANARY_DONE:
+            return bool(_CUDA_CANARY_OK)
+
+        ok = False
+        err = ""
+        try:
+            import torch  # type: ignore
+
+            if not bool(getattr(torch, "cuda", None)):
+                err = "torch.cuda unavailable"
+            elif not torch.cuda.is_available():
+                err = "torch.cuda reports unavailable"
+            else:
+                x = torch.ones((8, 8), device="cuda")
+                _ = x @ x
+                ok = True
+        except Exception as exc:
+            err = f"{type(exc).__name__}: {exc}"
+
+        _CUDA_CANARY_DONE = True
+        _CUDA_CANARY_OK = bool(ok)
+        _CUDA_CANARY_ERROR = str(err or "")
+
+        if not _CUDA_CANARY_OK:
+            print(
+                "[worker:cuda] warning: CUDA runtime canary failed; "
+                f"forcing CPU path for minimal HF tasks ({_CUDA_CANARY_ERROR})"
+            )
+        return bool(_CUDA_CANARY_OK)
+
+
 def _cuda_device_count() -> int:
     try:
         import torch  # type: ignore
@@ -198,6 +296,8 @@ def _cuda_device_count() -> int:
         if not bool(getattr(torch, "cuda", None)):
             return 0
         if not torch.cuda.is_available():
+            return 0
+        if not _cuda_runtime_usable():
             return 0
         return max(0, int(torch.cuda.device_count()))
     except Exception:
@@ -213,6 +313,8 @@ def _cuda_free_bytes(*, device_index: int) -> int:
         if not bool(getattr(torch, "cuda", None)):
             return 0
         if not torch.cuda.is_available():
+            return 0
+        if not _cuda_runtime_usable():
             return 0
         idx = int(device_index)
         if idx < 0 or idx >= int(torch.cuda.device_count()):
@@ -844,7 +946,7 @@ def _hf_get_textcls_pipeline(*, requested_model: str) -> object:
 def _hf_get_embed_components(*, requested_model: str) -> tuple[object, object]:
     """Get or create cached (tokenizer, model) for embeddings."""
 
-    global _HF_EMBED_MODEL, _HF_EMBED_TOKENIZER, _HF_EMBED_MODEL_ID, _HF_EMBED_MODEL_BYTES, _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH
+    global _HF_EMBED_MODEL, _HF_EMBED_TOKENIZER, _HF_EMBED_MODEL_ID, _HF_EMBED_MODEL_BYTES, _HF_EMBED_ACT_BYTES_PER_TOKEN_PER_BATCH, _HF_EMBED_CUDA_FALLBACK_WARNED
 
     from transformers import AutoModel, AutoTokenizer  # type: ignore
 
@@ -858,8 +960,19 @@ def _hf_get_embed_components(*, requested_model: str) -> tuple[object, object]:
                 try:
                     dev = pref
                     model = model.to(dev)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    if _hf_cuda_strict_enabled():
+                        raise RuntimeError(
+                            "Explicit CUDA placement failed for embeddings model "
+                            f"{requested_model} on {pref}: {type(exc).__name__}: {exc}"
+                        ) from exc
+                    if not _HF_EMBED_CUDA_FALLBACK_WARNED:
+                        _HF_EMBED_CUDA_FALLBACK_WARNED = True
+                        print(
+                            "[worker:embedding] warning: CUDA model placement failed; "
+                            f"falling back to CPU model execution (model={requested_model} "
+                            f"device={pref} error={type(exc).__name__}: {exc})"
+                        )
             elif pref == "cpu":
                 model = AutoModel.from_pretrained(requested_model)
             else:
@@ -933,7 +1046,17 @@ def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, tem
             + "; this often means a local 'transformers.py' is shadowing the package"
         ) from exc
     except Exception as exc:
-        raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
+        if _is_meta_tensor_copy_error(exc):
+            try:
+                gen = _rebuild_textgen_pipeline_on_cpu(requested_model=requested_model)
+            except Exception as fallback_exc:
+                raise RuntimeError(
+                    "minimal text-generation failed after CPU fallback: "
+                    f"{type(fallback_exc).__name__}: {fallback_exc} "
+                    f"(original={type(exc).__name__}: {exc})"
+                ) from fallback_exc
+        else:
+            raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
 
     # Pipeline calls are not guaranteed thread-safe; guard the call.
     with _HF_TEXTGEN_LOCK:
@@ -989,7 +1112,17 @@ def _hf_textgen_batch(
             + "; this often means a local 'transformers.py' is shadowing the package"
         ) from exc
     except Exception as exc:
-        raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
+        if _is_meta_tensor_copy_error(exc):
+            try:
+                gen = _rebuild_textgen_pipeline_on_cpu(requested_model=requested_model)
+            except Exception as fallback_exc:
+                raise RuntimeError(
+                    "minimal text-generation failed after CPU fallback: "
+                    f"{type(fallback_exc).__name__}: {fallback_exc} "
+                    f"(original={type(exc).__name__}: {exc})"
+                ) from fallback_exc
+        else:
+            raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
 
     with _HF_TEXTGEN_LOCK:
         out = gen(
@@ -2469,7 +2602,49 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
     if prompt is None:
         prompt = payload.get("input")
 
-    provider = str(payload.get("provider") or "copilot_cli").strip().lower() or "copilot_cli"
+    provider_raw = payload.get("provider")
+    provider = str(provider_raw or "copilot_cli").strip().lower() or "copilot_cli"
+    provider_explicit = isinstance(provider_raw, str) and bool(str(provider_raw).strip())
+    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
+
+    # For generic llm.generate jobs that do not explicitly request a provider,
+    # default to local text-generation so GPT-2 batches do not depend on
+    # copilot_cli tooling (e.g. missing `npx` on workers).
+    if not provider_explicit:
+        local_default = str(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LLM_GENERATE_DEFAULT_PROVIDER")
+            or "local_text_generation"
+        ).strip().lower()
+        if local_default in {"local", "local_text_generation", "minimal_hf", "text-generation", "text_generation"}:
+            fallback = _run_text_generation(task, accelerate_instance=None)
+            text = str((fallback or {}).get("text") or "")
+            session_id = _expected_session_tag()
+            out: Dict[str, Any] = {
+                "text": text,
+                "provider": "minimal_hf_direct",
+                "session_id": session_id,
+                "executor_worker_id": str(task.get("assigned_worker") or "").strip(),
+            }
+            try:
+                out["executor_peer_id"] = _read_local_announce_peer_id()
+                out["executor_multiaddr"] = _read_local_announce_multiaddr()
+            except Exception:
+                pass
+            if isinstance(chat_session_id, str) and chat_session_id.strip():
+                out["chat_session_id"] = chat_session_id.strip()
+                try:
+                    _chat_cache_append_turn(
+                        chat_session_id=chat_session_id.strip(),
+                        user_prompt=str(prompt or ""),
+                        assistant_text=str(text or ""),
+                        ttl_s=7 * 24 * 3600,
+                    )
+                except Exception:
+                    pass
+            if isinstance(resume_session_id, str) and resume_session_id.strip():
+                out["resume_session_id"] = resume_session_id.strip()
+            return out
+
     allowed = _allowed_llm_providers()
     if provider not in allowed:
         raise RuntimeError(f"llm.generate provider not allowed: {provider}")
@@ -2498,8 +2673,6 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
         }
         if not allow:
             raise RuntimeError("copilot_cli tasks disabled (set IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI=1)")
-
-    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
 
     # Forward known safe flags.
     kwargs: Dict[str, Any] = {}
@@ -2538,15 +2711,35 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
 
     from ipfs_accelerate_py import llm_router
 
-    text = llm_router.generate_text(str(prompt or ""), model_name=model_name, provider=provider, **kwargs)
+    provider_error = ""
+    effective_provider = str(provider)
+    try:
+        text = llm_router.generate_text(str(prompt or ""), model_name=model_name, provider=provider, **kwargs)
+    except Exception as exc:
+        provider_error = f"{type(exc).__name__}: {exc}"
+        # High-throughput queue users often route generic inference through
+        # llm.generate. If copilot_cli tooling is missing on a worker (e.g.
+        # npx not installed), degrade to local text-generation instead of
+        # returning a failed task with no text payload.
+        fallback_enabled = _truthy(
+            os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_LLM_GENERATE_LOCAL_FALLBACK", "1")
+        )
+        if provider == "copilot_cli" and fallback_enabled:
+            fallback = _run_text_generation(task, accelerate_instance=None)
+            text = str((fallback or {}).get("text") or "")
+            effective_provider = "minimal_hf_fallback"
+        else:
+            raise
     session_id = _expected_session_tag()
 
     out: Dict[str, Any] = {
         "text": str(text),
-        "provider": provider,
+        "provider": effective_provider,
         "session_id": session_id,
         "executor_worker_id": str(task.get("assigned_worker") or "").strip(),
     }
+    if provider_error:
+        out["provider_error"] = provider_error
     try:
         out["executor_peer_id"] = _read_local_announce_peer_id()
         out["executor_multiaddr"] = _read_local_announce_multiaddr()
@@ -4632,15 +4825,16 @@ def main(argv: Optional[list[str]] = None) -> int:
         help="Spawn autoscaled workers as threads instead of child processes",
     )
 
-    # Default behavior: autoscale-enabled worker with remote backlog awareness.
-    # Use --no-autoscale/--no-autoscale-remote to force single-worker local-only execution.
+    # Default behavior: autoscale-enabled worker.
+    # Keep remote/mesh/process toggles tri-state so env vars can disable them
+    # when explicit CLI flags are not provided.
     parser.set_defaults(
         p2p_service=False,
         mesh=False,
         autoscale=True,
-        autoscale_remote=True,
-        autoscale_mesh_children=True,
-        autoscale_processes=False,
+        autoscale_remote=None,
+        autoscale_mesh_children=None,
+        autoscale_processes=None,
     )
 
     args = parser.parse_args(argv)
@@ -4695,6 +4889,21 @@ def main(argv: Optional[list[str]] = None) -> int:
         mesh_children_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN"))
         proc_default = _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES"))
 
+        if args.autoscale_remote is None:
+            autoscale_remote_enabled = bool(remote_default)
+        else:
+            autoscale_remote_enabled = bool(args.autoscale_remote)
+
+        if args.autoscale_mesh_children is None:
+            mesh_children_enabled = bool(mesh_children_default)
+        else:
+            mesh_children_enabled = bool(args.autoscale_mesh_children)
+
+        if args.autoscale_processes is None:
+            use_processes_enabled = bool(proc_default)
+        else:
+            use_processes_enabled = bool(args.autoscale_processes)
+
         return run_autoscaled_workers(
             queue_path=args.queue_path,
             base_worker_id=str(args.worker_id),
@@ -4710,11 +4919,11 @@ def main(argv: Optional[list[str]] = None) -> int:
             mesh_refresh_s=args.mesh_refresh_s,
             mesh_claim_interval_s=args.mesh_claim_interval_s,
             mesh_max_peers=args.mesh_max_peers,
-            mesh_children=bool(args.autoscale_mesh_children) or bool(mesh_children_default),
-            autoscale_remote=bool(args.autoscale_remote) or bool(remote_default),
+            mesh_children=mesh_children_enabled,
+            autoscale_remote=autoscale_remote_enabled,
             remote_refresh_s=max(0.5, float(remote_refresh_s)),
             remote_max_peers=max(1, int(remote_max_peers)),
-            use_processes=bool(args.autoscale_processes) or bool(proc_default),
+            use_processes=use_processes_enabled,
         )
 
     return run_worker(

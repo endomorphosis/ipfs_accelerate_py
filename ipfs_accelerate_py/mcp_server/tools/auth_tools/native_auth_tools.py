@@ -115,6 +115,7 @@ _API = _load_auth_api()
 async def authenticate_user(
     username: str,
     password: str,
+    remember_me: bool = False,
 ) -> Dict[str, Any]:
     """Authenticate user credentials and return access token."""
     normalized_username = str(username or "").strip()
@@ -126,14 +127,22 @@ async def authenticate_user(
     normalized_password = str(password or "")
     if not normalized_password:
         return {"status": "error", "message": "Password is required and must be a string"}
+    if not isinstance(remember_me, bool):
+        return {"status": "error", "message": "remember_me must be a boolean"}
 
-    return await _API["authenticate_user"](username=username, password=password)
+    result = await _API["authenticate_user"](username=username, password=password)
+    payload = dict(result or {})
+    if payload.get("status") == "success" and remember_me and isinstance(payload.get("expires_in"), int):
+        payload["expires_in"] = 86400 * 7
+    payload.setdefault("remember_me", remember_me)
+    return payload
 
 
 async def validate_token(
     token: str,
     required_permission: Optional[str] = None,
     action: str = "validate",
+    strict: bool = False,
 ) -> Dict[str, Any]:
     """Validate, refresh, or decode an access token."""
     normalized_token = str(token or "").strip()
@@ -162,20 +171,65 @@ async def validate_token(
             "valid": False,
             "message": "Invalid action. Must be one of: validate, refresh, decode",
         }
+    if not isinstance(strict, bool):
+        return {
+            "status": "error",
+            "valid": False,
+            "message": "strict must be a boolean",
+        }
 
-    return await _API["validate_token"](
+    result = await _API["validate_token"](
         token=normalized_token,
         required_permission=normalized_permission,
         action=normalized_action,
     )
+    payload = dict(result or {})
+    payload.setdefault("strict", strict)
+
+    if strict and payload.get("status") == "success" and normalized_action == "validate":
+        warnings = []
+        if required_permission and payload.get("has_required_permission") is False:
+            warnings.append(f"Insufficient permissions for {normalized_permission}")
+        expires_in = payload.get("expires_in")
+        if isinstance(expires_in, (int, float)) and expires_in < 3600:
+            warnings.append("Token expires within 1 hour")
+        if warnings:
+            payload["warnings"] = warnings
+
+    return payload
 
 
-async def get_user_info(token: str) -> Dict[str, Any]:
+async def get_user_info(
+    token: str,
+    include_permissions: bool = True,
+    include_profile: bool = True,
+) -> Dict[str, Any]:
     """Get authenticated user information from token."""
     normalized_token = str(token or "").strip()
     if not normalized_token:
         return {"status": "error", "message": "Token is required and must be a string"}
-    return await _API["get_user_info"](token=normalized_token)
+    if not isinstance(include_permissions, bool):
+        return {"status": "error", "message": "include_permissions must be a boolean"}
+    if not isinstance(include_profile, bool):
+        return {"status": "error", "message": "include_profile must be a boolean"}
+
+    result = await _API["get_user_info"](token=normalized_token)
+    payload = dict(result or {})
+    if payload.get("status") == "success":
+        user_info: Dict[str, Any] = {
+            "username": payload.get("username"),
+            "role": payload.get("role"),
+        }
+        if include_permissions:
+            user_info["permissions"] = payload.get("permissions", [])
+        if include_profile:
+            user_info["profile"] = payload.get("profile", {})
+        if "session_info" in payload:
+            user_info["session_info"] = payload.get("session_info")
+        payload.setdefault("user_info", user_info)
+    payload.setdefault("include_permissions", include_permissions)
+    payload.setdefault("include_profile", include_profile)
+    return payload
 
 
 def register_native_auth_tools(manager: Any) -> None:
@@ -190,6 +244,7 @@ def register_native_auth_tools(manager: Any) -> None:
             "properties": {
                 "username": {"type": "string"},
                 "password": {"type": "string"},
+                "remember_me": {"type": "boolean", "default": False},
             },
             "required": ["username", "password"],
         },
@@ -215,6 +270,7 @@ def register_native_auth_tools(manager: Any) -> None:
                     "enum": ["validate", "refresh", "decode"],
                     "default": "validate",
                 },
+                "strict": {"type": "boolean", "default": False},
             },
             "required": ["token"],
         },
@@ -231,6 +287,8 @@ def register_native_auth_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "token": {"type": "string"},
+                "include_permissions": {"type": "boolean", "default": True},
+                "include_profile": {"type": "boolean", "default": True},
             },
             "required": ["token"],
         },

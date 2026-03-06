@@ -92,7 +92,7 @@ class SecretsVault:
         mgr = self._did_key_manager
         if mgr is None:
             try:
-                from ipfs_datasets_py.ipfs_datasets_py.mcp_server.did_key_manager import get_did_key_manager  # type: ignore
+                from .did_key_manager import get_did_key_manager  # type: ignore
 
                 mgr = get_did_key_manager()
             except Exception:

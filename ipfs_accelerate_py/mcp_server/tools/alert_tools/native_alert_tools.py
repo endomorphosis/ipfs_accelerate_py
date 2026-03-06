@@ -14,6 +14,7 @@ def _load_alert_api() -> Dict[str, Any]:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.alert_tools.discord_alert_tools import (  # type: ignore
             evaluate_alert_rules as _evaluate_alert_rules,
             list_alert_rules as _list_alert_rules,
+            remove_alert_rule as _remove_alert_rule,
             send_discord_message as _send_discord_message,
         )
 
@@ -21,6 +22,7 @@ def _load_alert_api() -> Dict[str, Any]:
             "send_discord_message": _send_discord_message,
             "evaluate_alert_rules": _evaluate_alert_rules,
             "list_alert_rules": _list_alert_rules,
+            "remove_alert_rule": _remove_alert_rule,
         }
     except Exception:
         logger.warning("Source alert_tools import unavailable, using fallback alert functions")
@@ -63,10 +65,22 @@ def _load_alert_api() -> Dict[str, Any]:
                 "rules": [],
             }
 
+        def _remove_fallback(
+            rule_id: str,
+            config_file: Optional[str] = None,
+        ) -> Dict[str, Any]:
+            _ = config_file
+            return {
+                "status": "success",
+                "message": f"Removed rule: {rule_id}",
+                "rule_id": rule_id,
+            }
+
         return {
             "send_discord_message": _send_fallback,
             "evaluate_alert_rules": _evaluate_fallback,
             "list_alert_rules": _list_fallback,
+            "remove_alert_rule": _remove_fallback,
         }
 
 
@@ -140,6 +154,9 @@ async def send_discord_message(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("text", normalized_text)
+    payload.setdefault("role_names", normalized_role_names or [])
+    payload.setdefault("channel_id", normalized_channel_id)
+    payload.setdefault("thread_id", normalized_thread_id)
     return payload
 
 
@@ -191,6 +208,9 @@ async def evaluate_alert_rules(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("event", event)
+    payload.setdefault("rule_ids", normalized_rule_ids or [])
+    payload.setdefault("results", [])
+    payload.setdefault("triggered_rules", len(payload.get("results") or []))
     return payload
 
 
@@ -227,6 +247,46 @@ async def list_alert_rules(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("enabled_only", enabled_only)
+    payload.setdefault("rules", [])
+    payload.setdefault("count", len(payload.get("rules") or []))
+    return payload
+
+
+async def remove_alert_rule(
+    rule_id: str,
+    config_file: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Remove an alert rule by ID with deterministic validation and envelope."""
+    normalized_rule_id = str(rule_id or "").strip()
+    if not normalized_rule_id:
+        return {
+            "status": "error",
+            "message": "rule_id is required",
+            "rule_id": rule_id,
+        }
+
+    normalized_config_file = str(config_file).strip() if config_file is not None else None
+    if config_file is not None and not normalized_config_file:
+        return {
+            "status": "error",
+            "message": "config_file must be a non-empty string when provided",
+            "config_file": config_file,
+        }
+
+    result = _API["remove_alert_rule"](
+        rule_id=normalized_rule_id,
+        config_file=normalized_config_file,
+    )
+    if hasattr(result, "__await__"):
+        payload = dict(await result or {})
+    else:
+        payload = dict(result or {})
+
+    if "error" in payload and payload.get("error"):
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "success")
+    payload.setdefault("rule_id", normalized_rule_id)
     return payload
 
 
@@ -282,6 +342,23 @@ def register_native_alert_tools(manager: Any) -> None:
                 "config_file": {"type": ["string", "null"]},
             },
             "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "alerts"],
+    )
+
+    manager.register_tool(
+        category="alert_tools",
+        name="remove_alert_rule",
+        func=remove_alert_rule,
+        description="Remove a configured alert rule by ID.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "rule_id": {"type": "string", "minLength": 1},
+                "config_file": {"type": ["string", "null"]},
+            },
+            "required": ["rule_id"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "alerts"],

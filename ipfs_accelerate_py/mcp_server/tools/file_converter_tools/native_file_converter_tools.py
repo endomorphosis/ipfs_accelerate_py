@@ -83,11 +83,17 @@ def _normalize_payload(
     if isinstance(payload, dict):
         merged: Dict[str, Any] = dict(default_fields)
         merged.update(payload)
-        merged.setdefault("status", "success")
+        if merged.get("error") and not merged.get("status"):
+            merged["status"] = "error"
+        else:
+            merged.setdefault("status", "success")
+        if merged.get("status") == "success":
+            merged.setdefault("success", True)
         return merged
     return {
         **default_fields,
         "status": "success",
+        "success": True,
         "result": payload,
     }
 

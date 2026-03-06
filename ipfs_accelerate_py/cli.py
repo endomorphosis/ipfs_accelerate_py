@@ -1673,7 +1673,7 @@ class IPFSAccelerateCLI:
                 # Get GitHub operations
                 _load_heavy_imports()
                 try:
-                    from shared import GitHubOperations
+                    from ipfs_accelerate_py.shared import GitHubOperations
                     github_ops = GitHubOperations(shared_core)
                 except Exception as e:
                     self.send_response(500)

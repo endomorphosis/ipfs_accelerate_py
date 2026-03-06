@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Set
 
@@ -37,10 +38,10 @@ class EventDAGStore:
 
         existing = self._events.get(event_cid)
         if existing is not None:
-            incoming_payload = dict(payload)
+            incoming_payload = copy.deepcopy(payload)
             incoming_payload.setdefault("parents", list(parents))
 
-            existing_payload = dict(existing.payload)
+            existing_payload = copy.deepcopy(existing.payload)
             existing_payload.setdefault("parents", list(existing.parents))
 
             if incoming_payload == existing_payload and list(parents) == list(existing.parents):
@@ -51,7 +52,7 @@ class EventDAGStore:
             if parent not in self._events:
                 raise ValueError(f"missing_parent:{parent}")
 
-        node = EventNode(event_cid=event_cid, payload=dict(payload), parents=parents)
+        node = EventNode(event_cid=event_cid, payload=copy.deepcopy(payload), parents=parents)
         self._events[event_cid] = node
         for parent in parents:
             self._children.setdefault(parent, set()).add(event_cid)
@@ -62,7 +63,7 @@ class EventDAGStore:
         node = self._events.get(event_cid)
         if node is None:
             return None
-        out = dict(node.payload)
+        out = copy.deepcopy(node.payload)
         out.setdefault("parents", list(node.parents))
         out["event_cid"] = event_cid
         return out
@@ -106,7 +107,7 @@ class EventDAGStore:
         events: List[Dict[str, Any]] = []
         for event_cid in sorted(self._events.keys()):
             node = self._events[event_cid]
-            payload = dict(node.payload)
+            payload = copy.deepcopy(node.payload)
             payload.setdefault("parents", list(node.parents))
             events.append(
                 {
@@ -137,7 +138,7 @@ class EventDAGStore:
             payload = item.get("payload")
             if not event_cid or not isinstance(payload, dict):
                 continue
-            pending.append({"event_cid": event_cid, "payload": dict(payload)})
+            pending.append({"event_cid": event_cid, "payload": copy.deepcopy(payload)})
 
         # Deterministically add events after their parents using simple fixed-point passes.
         remaining = list(sorted(pending, key=lambda x: x["event_cid"]))

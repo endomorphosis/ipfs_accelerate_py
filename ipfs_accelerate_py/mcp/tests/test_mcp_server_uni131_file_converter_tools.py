@@ -79,6 +79,44 @@ class TestMCPServerUNI131FileConverterTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_convert_file_tool_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch.dict(nfc._API, {"convert_file_tool": lambda **_: {"status": "success"}}):
+                result = await nfc.convert_file_tool(input_path="/tmp/example.txt")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("tool"), "convert_file_tool")
+            self.assertEqual(result.get("input_path"), "/tmp/example.txt")
+
+        anyio.run(_run)
+
+    def test_download_url_tool_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch.dict(nfc._API, {"download_url_tool": lambda **_: {"status": "success"}}):
+                result = await nfc.download_url_tool(url="https://example.com", timeout=15, max_size_mb=25)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("tool"), "download_url_tool")
+            self.assertEqual(result.get("url"), "https://example.com")
+            self.assertEqual(result.get("timeout"), 15)
+            self.assertEqual(result.get("max_size_mb"), 25)
+
+        anyio.run(_run)
+
+    def test_file_info_tool_error_only_payload_infers_error_status(self) -> None:
+        async def _run() -> None:
+            with patch.dict(nfc._API, {"file_info_tool": lambda **_: {"error": "unavailable"}}):
+                result = await nfc.file_info_tool(input_path="/tmp/example.txt")
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("tool"), "file_info_tool")
+            self.assertEqual(result.get("input_path"), "/tmp/example.txt")
+            self.assertIn("unavailable", str(result.get("error", "")))
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

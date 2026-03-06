@@ -12,7 +12,7 @@ import anyio
 
 from ipfs_accelerate_py.mcp.server import create_mcp_server
 from ipfs_accelerate_py.mcp_server.exceptions import ValidationError
-from ipfs_accelerate_py.mcp_server.logger import get_logger
+from ipfs_accelerate_py.mcp_server.logger import configure_root_logging, get_logger
 from ipfs_accelerate_py.mcp_server.validators import EnhancedParameterValidator, validate_dispatch_inputs
 
 
@@ -40,6 +40,33 @@ class TestMCPServerUNI015ValidationLogging(unittest.TestCase):
     def test_get_logger_returns_python_logger(self) -> None:
         logger = get_logger("ipfs_accelerate_py.mcp_server.tests.uni015")
         self.assertIsInstance(logger, logging.Logger)
+
+    @patch("ipfs_accelerate_py.mcp_server.logger.logging.basicConfig")
+    @patch("ipfs_accelerate_py.mcp_server.logger.logging.FileHandler", side_effect=OSError("no file"))
+    @patch("ipfs_accelerate_py.mcp_server.logger.logging.getLogger")
+    def test_configure_root_logging_falls_back_to_stream_handler(
+        self,
+        mock_get_logger,
+        _mock_file_handler,
+        mock_basic_config,
+    ) -> None:
+        mock_get_logger.return_value = type("Root", (), {"handlers": []})()
+
+        configure_root_logging()
+
+        kwargs = mock_basic_config.call_args.kwargs
+        handlers = kwargs.get("handlers", [])
+        self.assertEqual(len(handlers), 1)
+        self.assertIsInstance(handlers[0], logging.StreamHandler)
+
+    @patch("ipfs_accelerate_py.mcp_server.logger.logging.basicConfig")
+    @patch("ipfs_accelerate_py.mcp_server.logger.logging.getLogger")
+    def test_configure_root_logging_skips_when_handlers_present(self, mock_get_logger, mock_basic_config) -> None:
+        mock_get_logger.return_value = type("Root", (), {"handlers": [object()]})()
+
+        configure_root_logging()
+
+        mock_basic_config.assert_not_called()
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_rejects_non_string_category(self, mock_wrapper) -> None:

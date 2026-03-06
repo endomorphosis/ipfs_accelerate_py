@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -65,6 +66,38 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
             result = await ytdlp_extract_info(url="https://example.com/video")
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("url"), "https://example.com/video")
+
+        anyio.run(_run)
+
+    def test_ffmpeg_analyze_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.media_tools.native_media_tools._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda **_: {"status": "success"}
+
+                result = await ffmpeg_analyze(input_file="/tmp/video.mp4")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("input_file"), "/tmp/video.mp4")
+            self.assertEqual(result.get("metadata"), {})
+
+        anyio.run(_run)
+
+    def test_ytdlp_extract_info_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.media_tools.native_media_tools._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda **_: {"status": "success"}
+
+                result = await ytdlp_extract_info(url="https://example.com/video")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("url"), "https://example.com/video")
+            self.assertEqual(result.get("info"), {})
 
         anyio.run(_run)
 

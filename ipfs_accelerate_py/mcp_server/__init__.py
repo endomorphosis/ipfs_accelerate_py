@@ -96,6 +96,7 @@ from .simple_server import (
     start_simple_server,
 )
 from .client import IPFSDatasetsMCPClient
+from .did_key_manager import DIDKeyManager, get_did_key_manager
 from .validators import EnhancedParameterValidator, validate_dispatch_inputs, validator
 from .logger import configure_root_logging, get_logger, logger, mcp_logger
 
@@ -178,6 +179,8 @@ __all__ = [
     "SimpleIPFSDatasetsMCPServer",
     "start_simple_server",
     "IPFSDatasetsMCPClient",
+    "DIDKeyManager",
+    "get_did_key_manager",
     "EnhancedParameterValidator",
     "validate_dispatch_inputs",
     "validator",

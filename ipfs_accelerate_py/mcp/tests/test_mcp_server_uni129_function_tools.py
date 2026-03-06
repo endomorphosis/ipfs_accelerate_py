@@ -73,6 +73,25 @@ class TestMCPServerUNI129FunctionTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_execute_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.functions.native_function_tools._API"
+            ) as mock_api:
+                async def _impl(**kwargs):
+                    _ = kwargs
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await execute_python_snippet(code="print('ok')", timeout_seconds=7)
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("timeout_seconds"), 7)
+                self.assertEqual(result.get("message"), "Execution request processed")
+                self.assertEqual(result.get("execution_time_ms"), 0)
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

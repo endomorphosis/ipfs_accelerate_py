@@ -13,6 +13,20 @@ import numpy as np
 from pathlib import Path
 from refactored_test_suite.model_test import ModelTest
 
+
+def _has_compatible_cuda_kernels() -> bool:
+    """Return True only when current CUDA device has kernels in this torch build."""
+    if not torch.cuda.is_available():
+        return False
+    try:
+        arch_list = torch.cuda.get_arch_list()
+        if not arch_list:
+            return True
+        major, minor = torch.cuda.get_device_capability(0)
+        return f"sm_{major}{minor}" in arch_list
+    except Exception:
+        return True
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -26,7 +40,7 @@ class TestGptModel(ModelTest):
         
         # Initialize model-specific attributes
         self.model_id = "gpt2"
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = "cuda" if _has_compatible_cuda_kernels() else "cpu"
         
         # Define model parameters
         self.task = "text-generation"

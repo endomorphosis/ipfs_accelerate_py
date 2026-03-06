@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.sparse_embedding_tools.native_sparse_embedding_tools import (
     generate_sparse_embedding,
+    index_sparse_collection,
     manage_sparse_models,
     register_native_sparse_embedding_tools,
     sparse_search,
@@ -85,6 +87,83 @@ class TestMCPServerUNI124SparseEmbeddingTools(unittest.TestCase):
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("model"), "splade")
             self.assertEqual(result.get("top_k"), 5)
+
+        anyio.run(_run)
+
+    def test_generate_and_search_defaults_with_minimal_payloads(self) -> None:
+        async def _minimal_generate(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _minimal_search(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.sparse_embedding_tools.native_sparse_embedding_tools._API",
+                {
+                    "generate_sparse_embedding": _minimal_generate,
+                    "index_sparse_collection": None,
+                    "sparse_search": _minimal_search,
+                    "manage_sparse_models": None,
+                },
+            ):
+                generated = await generate_sparse_embedding(text="hello", model="splade", top_k=7)
+                searched = await sparse_search(query="hello", collection_name="docs", model="splade", top_k=3)
+
+            self.assertEqual(generated.get("status"), "success")
+            self.assertEqual(generated.get("text"), "hello")
+            self.assertEqual(generated.get("model"), "splade")
+            self.assertEqual(generated.get("top_k"), 7)
+            self.assertEqual(generated.get("sparse_embedding"), {})
+
+            self.assertEqual(searched.get("status"), "success")
+            self.assertEqual(searched.get("query"), "hello")
+            self.assertEqual(searched.get("collection_name"), "docs")
+            self.assertEqual(searched.get("model"), "splade")
+            self.assertEqual(searched.get("top_k"), 3)
+            self.assertEqual(searched.get("results"), [])
+            self.assertEqual(searched.get("total_found"), 0)
+            self.assertEqual(searched.get("has_more"), False)
+
+        anyio.run(_run)
+
+    def test_index_and_manage_defaults_with_minimal_payloads(self) -> None:
+        async def _minimal_index(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _minimal_manage(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.sparse_embedding_tools.native_sparse_embedding_tools._API",
+                {
+                    "generate_sparse_embedding": None,
+                    "index_sparse_collection": _minimal_index,
+                    "sparse_search": None,
+                    "manage_sparse_models": _minimal_manage,
+                },
+            ):
+                indexed = await index_sparse_collection(collection_name="docs", dataset="sample")
+                listed = await manage_sparse_models(action="list")
+                stats = await manage_sparse_models(action="stats")
+
+            self.assertEqual(indexed.get("status"), "success")
+            self.assertEqual(indexed.get("collection_name"), "docs")
+            self.assertEqual(indexed.get("dataset"), "sample")
+            self.assertEqual(indexed.get("split"), "train")
+            self.assertEqual(indexed.get("column"), "text")
+            self.assertEqual(indexed.get("batch_size"), 100)
+            self.assertEqual(indexed.get("total_documents"), 0)
+            self.assertEqual(indexed.get("results"), {})
+
+            self.assertEqual(listed.get("status"), "success")
+            self.assertEqual(listed.get("action"), "list")
+            self.assertEqual(listed.get("models"), [])
+
+            self.assertEqual(stats.get("status"), "success")
+            self.assertEqual(stats.get("action"), "stats")
+            self.assertEqual(stats.get("stats"), {})
 
         anyio.run(_run)
 

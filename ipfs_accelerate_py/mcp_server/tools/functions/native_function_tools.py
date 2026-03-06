@@ -101,6 +101,9 @@ async def execute_python_snippet(
         }
 
     payload.setdefault("timeout_seconds", timeout_seconds)
+    if payload.get("status") == "success":
+        payload.setdefault("message", "Execution request processed")
+        payload.setdefault("execution_time_ms", 0)
     return payload
 
 

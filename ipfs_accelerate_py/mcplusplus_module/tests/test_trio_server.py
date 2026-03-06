@@ -15,6 +15,8 @@ from ipfs_accelerate_py.mcplusplus_module.trio import (
     is_trio_context,
 )
 
+pytestmark = pytest.mark.anyio
+
 
 class TestServerConfig:
     """Tests for ServerConfig."""

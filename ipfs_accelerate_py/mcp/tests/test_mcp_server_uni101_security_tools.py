@@ -26,9 +26,11 @@ class TestMCPServerUNI101SecurityTools(unittest.TestCase):
     def test_register_schema_requires_user_id(self) -> None:
         manager = _DummyManager()
         register_native_security_tools(manager)
-        self.assertEqual(len(manager.calls), 1)
+        self.assertEqual(len(manager.calls), 2)
 
-        schema = manager.calls[0]["input_schema"]
+        tool_by_name = {call["name"]: call for call in manager.calls}
+
+        schema = tool_by_name["check_access_permission"]["input_schema"]
         self.assertIn("required", schema)
         self.assertEqual(schema["required"], ["resource_id", "user_id"])
         self.assertEqual(schema["properties"]["permission_type"]["default"], "read")

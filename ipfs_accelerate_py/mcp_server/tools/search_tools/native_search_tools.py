@@ -106,6 +106,13 @@ def _load_search_api() -> Dict[str, Any]:
 _API = _load_search_api()
 
 
+def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
+    """Return a normalized error envelope for deterministic dispatch behavior."""
+    payload: Dict[str, Any] = {"status": "error", "message": message}
+    payload.update(extra)
+    return payload
+
+
 async def semantic_search(
     query: str,
     model: str = "sentence-transformers/all-MiniLM-L6-v2",
@@ -117,31 +124,40 @@ async def semantic_search(
     """Perform semantic search on vector embeddings."""
     normalized_query = str(query or "").strip()
     if not normalized_query:
-        return {
-            "status": "error",
-            "message": "query is required",
-            "query": query,
-        }
+        return _error_result("query is required", query=query)
 
-    normalized_top_k = int(top_k)
+    try:
+        normalized_top_k = int(top_k)
+    except (TypeError, ValueError):
+        return _error_result("top_k must be a positive integer", top_k=top_k)
     if normalized_top_k <= 0:
-        return {
-            "status": "error",
-            "message": "top_k must be a positive integer",
-            "top_k": top_k,
-        }
+        return _error_result("top_k must be a positive integer", top_k=top_k)
 
-    result = await _API["semantic"](
-        vector_service=vector_service,
-        query=normalized_query,
-        model=str(model or "sentence-transformers/all-MiniLM-L6-v2"),
-        top_k=normalized_top_k,
-        collection=str(collection or "default"),
-        filters=filters or {},
-    )
+    if filters is not None and not isinstance(filters, dict):
+        return _error_result("filters must be an object when provided", filters=filters)
+
+    normalized_model = str(model or "sentence-transformers/all-MiniLM-L6-v2")
+    normalized_collection = str(collection or "default")
+
+    try:
+        result = await _API["semantic"](
+            vector_service=vector_service,
+            query=normalized_query,
+            model=normalized_model,
+            top_k=normalized_top_k,
+            collection=normalized_collection,
+            filters=filters or {},
+        )
+    except Exception as exc:
+        return _error_result("semantic search failed", error=str(exc))
     payload = dict(result or {})
     payload.setdefault("status", "success")
     payload.setdefault("query", normalized_query)
+    payload.setdefault("model", normalized_model)
+    payload.setdefault("top_k", normalized_top_k)
+    payload.setdefault("collection", normalized_collection)
+    payload.setdefault("results", [])
+    payload.setdefault("total_found", len(payload.get("results") or []))
     return payload
 
 
@@ -154,44 +170,44 @@ async def similarity_search(
 ) -> Dict[str, Any]:
     """Find similar embeddings based on a reference vector."""
     if not isinstance(embedding, list) or not embedding:
-        return {
-            "status": "error",
-            "message": "embedding must be a non-empty list of numbers",
-            "embedding": embedding,
-        }
+        return _error_result("embedding must be a non-empty list of numbers", embedding=embedding)
     if not all(isinstance(x, (int, float)) for x in embedding):
-        return {
-            "status": "error",
-            "message": "embedding must contain only numbers",
-            "embedding": embedding,
-        }
+        return _error_result("embedding must contain only numbers", embedding=embedding)
 
-    normalized_top_k = int(top_k)
+    try:
+        normalized_top_k = int(top_k)
+    except (TypeError, ValueError):
+        return _error_result("top_k must be a positive integer", top_k=top_k)
     if normalized_top_k <= 0:
-        return {
-            "status": "error",
-            "message": "top_k must be a positive integer",
-            "top_k": top_k,
-        }
+        return _error_result("top_k must be a positive integer", top_k=top_k)
 
-    normalized_threshold = float(threshold)
+    try:
+        normalized_threshold = float(threshold)
+    except (TypeError, ValueError):
+        return _error_result("threshold must be between 0.0 and 1.0", threshold=threshold)
     if normalized_threshold < 0.0 or normalized_threshold > 1.0:
-        return {
-            "status": "error",
-            "message": "threshold must be between 0.0 and 1.0",
-            "threshold": threshold,
-        }
+        return _error_result("threshold must be between 0.0 and 1.0", threshold=threshold)
 
-    result = await _API["similarity"](
-        vector_service=vector_service,
-        embedding=embedding,
-        top_k=normalized_top_k,
-        threshold=normalized_threshold,
-        collection=str(collection or "default"),
-    )
+    normalized_collection = str(collection or "default")
+
+    try:
+        result = await _API["similarity"](
+            vector_service=vector_service,
+            embedding=embedding,
+            top_k=normalized_top_k,
+            threshold=normalized_threshold,
+            collection=normalized_collection,
+        )
+    except Exception as exc:
+        return _error_result("similarity search failed", error=str(exc))
     payload = dict(result or {})
     payload.setdefault("status", "success")
     payload.setdefault("embedding_dimension", len(embedding))
+    payload.setdefault("top_k", normalized_top_k)
+    payload.setdefault("threshold", normalized_threshold)
+    payload.setdefault("collection", normalized_collection)
+    payload.setdefault("results", [])
+    payload.setdefault("total_found", len(payload.get("results") or []))
     return payload
 
 
@@ -204,35 +220,54 @@ async def faceted_search(
     vector_service: Any = None,
 ) -> Dict[str, Any]:
     """Perform faceted search with metadata filtering."""
-    normalized_top_k = int(top_k)
+    try:
+        normalized_top_k = int(top_k)
+    except (TypeError, ValueError):
+        return _error_result("top_k must be a positive integer", top_k=top_k)
     if normalized_top_k <= 0:
-        return {
-            "status": "error",
-            "message": "top_k must be a positive integer",
-            "top_k": top_k,
-        }
+        return _error_result("top_k must be a positive integer", top_k=top_k)
 
-    if facets is not None and not isinstance(facets, dict):
-        return {
-            "status": "error",
-            "message": "facets must be an object when provided",
-            "facets": facets,
-        }
-    if aggregations is not None and not isinstance(aggregations, list):
-        return {
-            "status": "error",
-            "message": "aggregations must be an array when provided",
-            "aggregations": aggregations,
-        }
+    normalized_facets: Dict[str, List[str]] = {}
+    if facets is not None:
+        if not isinstance(facets, dict):
+            return _error_result("facets must be an object when provided", facets=facets)
+        for facet_name, facet_values in facets.items():
+            if not isinstance(facet_name, str) or not facet_name.strip():
+                return _error_result(
+                    "facets keys must be non-empty strings",
+                    facets=facets,
+                )
+            if not isinstance(facet_values, list) or not all(
+                isinstance(value, str) and value.strip() for value in facet_values
+            ):
+                return _error_result(
+                    "each facets value must be an array of non-empty strings",
+                    facets=facets,
+                )
+            normalized_facets[facet_name.strip()] = [value.strip() for value in facet_values]
 
-    result = await _API["faceted"](
-        vector_service=vector_service,
-        query=str(query or ""),
-        facets=facets or {},
-        aggregations=aggregations or [],
-        top_k=normalized_top_k,
-        collection=str(collection or "default"),
-    )
+    normalized_aggregations: List[str] = []
+    if aggregations is not None:
+        if not isinstance(aggregations, list):
+            return _error_result("aggregations must be an array when provided", aggregations=aggregations)
+        if not all(isinstance(item, str) and item.strip() for item in aggregations):
+            return _error_result(
+                "aggregations must contain only non-empty strings",
+                aggregations=aggregations,
+            )
+        normalized_aggregations = [item.strip() for item in aggregations]
+
+    try:
+        result = await _API["faceted"](
+            vector_service=vector_service,
+            query=str(query or ""),
+            facets=normalized_facets,
+            aggregations=normalized_aggregations,
+            top_k=normalized_top_k,
+            collection=str(collection or "default"),
+        )
+    except Exception as exc:
+        return _error_result("faceted search failed", error=str(exc))
     payload = dict(result or {})
     payload.setdefault("status", "success")
     return payload
@@ -248,10 +283,10 @@ def register_native_search_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "query": {"type": "string"},
+                "query": {"type": "string", "minLength": 1},
                 "model": {"type": "string"},
-                "top_k": {"type": "integer"},
-                "collection": {"type": "string"},
+                "top_k": {"type": "integer", "minimum": 1, "default": 5},
+                "collection": {"type": "string", "minLength": 1, "default": "default"},
                 "filters": {"type": ["object", "null"]},
             },
             "required": ["query"],
@@ -268,10 +303,10 @@ def register_native_search_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "embedding": {"type": "array", "items": {"type": "number"}},
-                "top_k": {"type": "integer"},
-                "threshold": {"type": "number"},
-                "collection": {"type": "string"},
+                "embedding": {"type": "array", "items": {"type": "number"}, "minItems": 1},
+                "top_k": {"type": "integer", "minimum": 1, "default": 10},
+                "threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.5},
+                "collection": {"type": "string", "minLength": 1, "default": "default"},
             },
             "required": ["embedding"],
         },
@@ -287,11 +322,20 @@ def register_native_search_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "query": {"type": "string"},
-                "facets": {"type": ["object", "null"]},
-                "aggregations": {"type": ["array", "null"], "items": {"type": "string"}},
-                "top_k": {"type": "integer"},
-                "collection": {"type": "string"},
+                "query": {"type": "string", "default": ""},
+                "facets": {
+                    "type": ["object", "null"],
+                    "additionalProperties": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                    },
+                },
+                "aggregations": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "top_k": {"type": "integer", "minimum": 1, "default": 20},
+                "collection": {"type": "string", "minLength": 1, "default": "default"},
             },
             "required": [],
         },

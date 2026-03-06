@@ -464,6 +464,26 @@ async def _main_async(args: argparse.Namespace) -> Dict[str, Any]:
                             if st_probe == "completed" or st_probe in {"failed", "cancelled", "error"}:
                                 break
                         await anyio.sleep(0.35)
+
+                # If task is still non-terminal, perform one additional bounded
+                # long-poll cycle before final classification. This catches
+                # stragglers that cross completion right after the initial wait
+                # window under heavy concurrent load.
+                if isinstance(task, dict) and str(task.get("status") or "") in non_terminal:
+                    extra_wait_s = min(max(5.0, float(args.timeout_s) * 0.20), 90.0)
+                    try:
+                        task2 = await wait_task(remote=remote, task_id=task_id, timeout_s=extra_wait_s)
+                    except Exception:
+                        task2 = None
+                    if isinstance(task2, dict):
+                        task = task2
+                    else:
+                        try:
+                            probe = await get_task(remote=remote, task_id=task_id)
+                        except Exception:
+                            probe = None
+                        if isinstance(probe, dict):
+                            task = probe
             dt = float(time.time() - t0)
             async with results_lock:
                 if task is None:

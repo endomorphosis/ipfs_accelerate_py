@@ -20,11 +20,25 @@ def _load_monitoring_api() -> Dict[str, Any]:
             monitor_services as _monitor_services,
         )
 
+        try:
+            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.monitoring_tools.enhanced_monitoring_tools import (  # type: ignore
+                check_health as _check_health,
+                collect_metrics as _collect_metrics,
+                manage_alerts as _manage_alerts,
+            )
+        except Exception:
+            _check_health = None
+            _collect_metrics = None
+            _manage_alerts = None
+
         return {
             "health_check": _health_check,
             "get_performance_metrics": _get_performance_metrics,
             "monitor_services": _monitor_services,
             "generate_monitoring_report": _generate_monitoring_report,
+            "check_health": _check_health,
+            "collect_metrics": _collect_metrics,
+            "manage_alerts": _manage_alerts,
         }
     except Exception:
         logger.warning("Source monitoring_tools import unavailable, using fallback monitoring functions")
@@ -85,11 +99,85 @@ def _load_monitoring_api() -> Dict[str, Any]:
                 },
             }
 
+        async def _check_health_fallback(
+            include_services: bool = True,
+            include_metrics: bool = True,
+            check_depth: str = "standard",
+            services: Optional[List[str]] = None,
+            include_recommendations: bool = True,
+        ) -> Dict[str, Any]:
+            return {
+                "health_check": {
+                    "overall_status": "healthy",
+                    "services": list(services or []),
+                    "system_metrics": {},
+                },
+                "check_depth": check_depth,
+                "include_services": include_services,
+                "include_metrics": include_metrics,
+                "recommendations": [] if include_recommendations else None,
+            }
+
+        async def _collect_metrics_fallback(
+            time_window: str = "1h",
+            metrics: Optional[List[str]] = None,
+            aggregation: str = "average",
+            include_trends: bool = True,
+            include_anomalies: bool = False,
+            export_format: str = "json",
+        ) -> Dict[str, Any]:
+            payload: Dict[str, Any] = {
+                "metrics_collection": {
+                    "metrics": {},
+                    "time_window": time_window,
+                    "aggregation": aggregation,
+                },
+                "collection_config": {
+                    "time_window": time_window,
+                    "metrics_requested": list(metrics or []),
+                    "aggregation": aggregation,
+                },
+            }
+            if include_trends:
+                payload["trend_analysis"] = {}
+            if include_anomalies:
+                payload["anomaly_detection"] = {"anomalies_found": 0, "anomalies": []}
+            if export_format != "json":
+                payload["export_info"] = {"format": export_format}
+            return payload
+
+        async def _manage_alerts_fallback(
+            action: str,
+            severity_filter: Optional[str] = None,
+            resolved_filter: Optional[bool] = None,
+            time_range: str = "24h",
+            include_metrics: bool = True,
+            alert_id: Optional[str] = None,
+            threshold_config: Optional[Dict[str, Any]] = None,
+        ) -> Dict[str, Any]:
+            _ = severity_filter, resolved_filter, include_metrics, threshold_config
+            if action == "list":
+                return {
+                    "action": action,
+                    "alerts": [],
+                    "total_count": 0,
+                    "filters_applied": {"time_range": time_range},
+                    "alert_metrics": {},
+                }
+            return {
+                "action": action,
+                "alert_id": alert_id,
+                "success": True,
+            }
+
         return {
             "health_check": _health_fallback,
             "get_performance_metrics": _metrics_fallback,
             "monitor_services": _services_fallback,
             "generate_monitoring_report": _report_fallback,
+            "check_health": _check_health_fallback,
+            "collect_metrics": _collect_metrics_fallback,
+            "manage_alerts": _manage_alerts_fallback,
         }
 
 
@@ -169,6 +257,8 @@ async def health_check(
     else:
         payload = _normalize_payload(result)
     payload.setdefault("check_type", normalized_check_type)
+    payload.setdefault("components", normalized_components)
+    payload.setdefault("include_metrics", include_metrics)
     return payload
 
 
@@ -223,6 +313,8 @@ async def get_performance_metrics(
         payload = _normalize_payload(result)
     payload.setdefault("time_range", normalized_time_range)
     payload.setdefault("include_history", include_history)
+    payload.setdefault("metric_types", list(metric_types or []))
+    payload.setdefault("metrics", {})
     return payload
 
 
@@ -280,6 +372,8 @@ async def monitor_services(
 
     payload = _normalize_payload(resolved)
     payload.setdefault("action", normalized_action)
+    payload.setdefault("services", list(services or []))
+    payload.setdefault("check_interval", int(check_interval))
     return payload
 
 
@@ -313,6 +407,149 @@ async def generate_monitoring_report(
         payload = _normalize_payload(result)
     payload.setdefault("report_type", normalized_report_type)
     payload.setdefault("time_period", normalized_time_period)
+    payload.setdefault("report", {})
+    return payload
+
+
+async def check_health(
+    include_services: bool = True,
+    include_metrics: bool = True,
+    check_depth: str = "standard",
+    services: Optional[List[str]] = None,
+    include_recommendations: bool = True,
+) -> Dict[str, Any]:
+    """Expose enhanced health-check semantics from the source monitoring surface."""
+    for name, value in {
+        "include_services": include_services,
+        "include_metrics": include_metrics,
+        "include_recommendations": include_recommendations,
+    }.items():
+        if not isinstance(value, bool):
+            return {"status": "error", "message": f"{name} must be a boolean", name: value}
+    normalized_depth = str(check_depth or "standard").strip().lower()
+    if normalized_depth not in {"basic", "standard", "comprehensive"}:
+        return {
+            "status": "error",
+            "message": "check_depth must be one of: basic, standard, comprehensive",
+            "check_depth": check_depth,
+        }
+    if services is not None:
+        if not isinstance(services, list) or not all(isinstance(item, str) and item.strip() for item in services):
+            return {"status": "error", "message": "services must be a list of non-empty strings when provided", "services": services}
+
+    result = _API["check_health"](
+        include_services=include_services,
+        include_metrics=include_metrics,
+        check_depth=normalized_depth,
+        services=[item.strip() for item in (services or [])] or None,
+        include_recommendations=include_recommendations,
+    )
+    if hasattr(result, "__await__"):
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("check_depth", normalized_depth)
+    payload.setdefault("health_check", {})
+    if include_recommendations:
+        payload.setdefault("recommendations", [])
+    return payload
+
+
+async def collect_metrics(
+    time_window: str = "1h",
+    metrics: Optional[List[str]] = None,
+    aggregation: str = "average",
+    include_trends: bool = True,
+    include_anomalies: bool = False,
+    export_format: str = "json",
+) -> Dict[str, Any]:
+    """Expose enhanced metrics collection and trend/anomaly analysis."""
+    normalized_window = str(time_window or "1h").strip().lower()
+    if normalized_window not in _VALID_TIME_RANGES:
+        return {"status": "error", "message": "time_window must be one of: 5m, 15m, 1h, 6h, 24h, 7d", "time_window": time_window}
+    if metrics is not None:
+        if not isinstance(metrics, list) or not all(isinstance(item, str) and item.strip() for item in metrics):
+            return {"status": "error", "message": "metrics must be a list of non-empty strings when provided", "metrics": metrics}
+    normalized_aggregation = str(aggregation or "average").strip().lower()
+    if normalized_aggregation not in {"average", "min", "max", "sum"}:
+        return {"status": "error", "message": "aggregation must be one of: average, min, max, sum", "aggregation": aggregation}
+    for name, value in {"include_trends": include_trends, "include_anomalies": include_anomalies}.items():
+        if not isinstance(value, bool):
+            return {"status": "error", "message": f"{name} must be a boolean", name: value}
+    normalized_export = str(export_format or "json").strip().lower()
+    if normalized_export not in {"json", "csv", "parquet"}:
+        return {"status": "error", "message": "export_format must be one of: json, csv, parquet", "export_format": export_format}
+
+    result = _API["collect_metrics"](
+        time_window=normalized_window,
+        metrics=[item.strip() for item in (metrics or [])] or None,
+        aggregation=normalized_aggregation,
+        include_trends=include_trends,
+        include_anomalies=include_anomalies,
+        export_format=normalized_export,
+    )
+    if hasattr(result, "__await__"):
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("metrics_collection", {})
+    payload.setdefault(
+        "collection_config",
+        {"time_window": normalized_window, "metrics_requested": list(metrics or []), "aggregation": normalized_aggregation},
+    )
+    return payload
+
+
+async def manage_alerts(
+    action: str,
+    severity_filter: Optional[str] = None,
+    resolved_filter: Optional[bool] = None,
+    time_range: str = "24h",
+    include_metrics: bool = True,
+    alert_id: Optional[str] = None,
+    threshold_config: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Expose enhanced alert listing, acknowledgement, resolution, and threshold config."""
+    normalized_action = str(action or "").strip().lower()
+    valid_actions = {"list", "acknowledge", "resolve", "configure_thresholds"}
+    if normalized_action not in valid_actions:
+        return {"status": "error", "message": "action must be one of: acknowledge, configure_thresholds, list, resolve", "action": action}
+    if severity_filter is not None:
+        normalized_severity = str(severity_filter).strip().lower()
+        if normalized_severity not in {"info", "warning", "critical"}:
+            return {"status": "error", "message": "severity_filter must be one of: info, warning, critical", "severity_filter": severity_filter}
+    else:
+        normalized_severity = None
+    if resolved_filter is not None and not isinstance(resolved_filter, bool):
+        return {"status": "error", "message": "resolved_filter must be a boolean when provided", "resolved_filter": resolved_filter}
+    normalized_time_range = str(time_range or "24h").strip().lower()
+    if normalized_time_range not in _VALID_TIME_RANGES:
+        return {"status": "error", "message": "time_range must be one of: 5m, 15m, 1h, 6h, 24h, 7d", "time_range": time_range}
+    if not isinstance(include_metrics, bool):
+        return {"status": "error", "message": "include_metrics must be a boolean", "include_metrics": include_metrics}
+    normalized_alert_id = str(alert_id).strip() if alert_id is not None else None
+    if normalized_action in {"acknowledge", "resolve"} and not normalized_alert_id:
+        return {"status": "error", "message": f"alert_id required for {normalized_action} action", "alert_id": alert_id}
+    if threshold_config is not None and not isinstance(threshold_config, dict):
+        return {"status": "error", "message": "threshold_config must be an object when provided", "threshold_config": threshold_config}
+
+    result = _API["manage_alerts"](
+        action=normalized_action,
+        severity_filter=normalized_severity,
+        resolved_filter=resolved_filter,
+        time_range=normalized_time_range,
+        include_metrics=include_metrics,
+        alert_id=normalized_alert_id,
+        threshold_config=threshold_config,
+    )
+    if hasattr(result, "__await__"):
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("action", normalized_action)
+    if normalized_action == "list":
+        payload.setdefault("alerts", [])
+        payload.setdefault("total_count", len(payload.get("alerts") or []))
     return payload
 
 
@@ -392,4 +629,67 @@ def register_native_monitoring_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "monitoring"],
+    )
+
+    manager.register_tool(
+        category="monitoring_tools",
+        name="check_health",
+        func=check_health,
+        description="Run the enhanced comprehensive health-check workflow.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "include_services": {"type": "boolean", "default": True},
+                "include_metrics": {"type": "boolean", "default": True},
+                "check_depth": {"type": "string", "enum": ["basic", "standard", "comprehensive"], "default": "standard"},
+                "services": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "include_recommendations": {"type": "boolean", "default": True},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "enhanced"],
+    )
+
+    manager.register_tool(
+        category="monitoring_tools",
+        name="collect_metrics",
+        func=collect_metrics,
+        description="Run enhanced metrics collection with trend and anomaly analysis.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "time_window": {"type": "string", "enum": ["5m", "15m", "1h", "6h", "24h", "7d"], "default": "1h"},
+                "metrics": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
+                "aggregation": {"type": "string", "enum": ["average", "min", "max", "sum"], "default": "average"},
+                "include_trends": {"type": "boolean", "default": True},
+                "include_anomalies": {"type": "boolean", "default": False},
+                "export_format": {"type": "string", "enum": ["json", "csv", "parquet"], "default": "json"},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "enhanced"],
+    )
+
+    manager.register_tool(
+        category="monitoring_tools",
+        name="manage_alerts",
+        func=manage_alerts,
+        description="List, acknowledge, resolve, and configure monitoring alerts.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "action": {"type": "string", "enum": ["list", "acknowledge", "resolve", "configure_thresholds"]},
+                "severity_filter": {"type": ["string", "null"], "enum": ["info", "warning", "critical", None]},
+                "resolved_filter": {"type": ["boolean", "null"]},
+                "time_range": {"type": "string", "enum": ["5m", "15m", "1h", "6h", "24h", "7d"], "default": "24h"},
+                "include_metrics": {"type": "boolean", "default": True},
+                "alert_id": {"type": ["string", "null"]},
+                "threshold_config": {"type": ["object", "null"]},
+            },
+            "required": ["action"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "monitoring", "enhanced"],
     )

@@ -19,12 +19,16 @@ def _load_email_api() -> Dict[str, Any]:
             email_list_folders as _email_list_folders,
             email_test_connection as _email_test_connection,
         )
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.email_tools.email_export import (  # type: ignore
+            email_parse_eml as _email_parse_eml,
+        )
 
         return {
             "email_test_connection": _email_test_connection,
             "email_list_folders": _email_list_folders,
             "email_analyze_export": _email_analyze_export,
             "email_search_export": _email_search_export,
+            "email_parse_eml": _email_parse_eml,
         }
     except Exception:
         logger.warning("Source email_tools import unavailable, using fallback email functions")
@@ -88,11 +92,23 @@ def _load_email_api() -> Dict[str, Any]:
                 "error": "Email analysis backend not available",
             }
 
+        async def _parse_eml_fallback(
+            file_path: str,
+            include_attachments: bool = True,
+        ) -> Dict[str, Any]:
+            _ = include_attachments
+            return {
+                "status": "error",
+                "error": "Email processor not available",
+                "file_path": file_path,
+            }
+
         return {
             "email_test_connection": _test_conn_fallback,
             "email_list_folders": _list_folders_fallback,
             "email_analyze_export": _analyze_export_fallback,
             "email_search_export": _search_export_fallback,
+            "email_parse_eml": _parse_eml_fallback,
         }
 
 
@@ -172,6 +188,8 @@ async def email_test_connection(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("protocol", normalized_protocol)
+    payload.setdefault("use_ssl", use_ssl)
+    payload.setdefault("timeout", timeout)
     if normalized_server is not None:
         payload.setdefault("server", normalized_server)
     return payload
@@ -239,6 +257,10 @@ async def email_list_folders(
         payload.setdefault("status", "error")
     else:
         payload.setdefault("status", "success")
+    payload.setdefault("folders", [])
+    payload.setdefault("folder_count", len(payload.get("folders") or []))
+    payload.setdefault("use_ssl", use_ssl)
+    payload.setdefault("timeout", timeout)
     if normalized_server is not None:
         payload.setdefault("server", normalized_server)
     return payload
@@ -261,6 +283,7 @@ async def email_analyze_export(**kwargs: Any) -> Dict[str, Any]:
     else:
         payload.setdefault("status", "success")
     payload.setdefault("file_path", normalized_file_path)
+    payload.setdefault("analysis", {})
     return payload
 
 
@@ -306,6 +329,42 @@ async def email_search_export(**kwargs: Any) -> Dict[str, Any]:
     payload.setdefault("file_path", normalized_file_path)
     payload.setdefault("query", normalized_query)
     payload.setdefault("field", normalized_field)
+    payload.setdefault("results", [])
+    payload.setdefault("match_count", len(payload.get("results") or []))
+    return payload
+
+
+async def email_parse_eml(
+    file_path: str,
+    include_attachments: bool = True,
+) -> Dict[str, Any]:
+    """Parse an EML file and return normalized parsing envelope."""
+    normalized_file_path = str(file_path or "").strip()
+    if not normalized_file_path:
+        return {
+            "status": "error",
+            "message": "file_path is required",
+            "file_path": file_path,
+        }
+    if not isinstance(include_attachments, bool):
+        return {
+            "status": "error",
+            "message": "include_attachments must be a boolean",
+            "include_attachments": include_attachments,
+        }
+
+    result = await _API["email_parse_eml"](
+        file_path=normalized_file_path,
+        include_attachments=include_attachments,
+    )
+    payload = dict(result or {})
+    if "error" in payload and payload.get("error"):
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "success")
+    payload.setdefault("file_path", normalized_file_path)
+    payload.setdefault("include_attachments", include_attachments)
+    payload.setdefault("email", {})
     return payload
 
 
@@ -387,6 +446,23 @@ def register_native_email_tools(manager: Any) -> None:
                 },
             },
             "required": ["file_path", "query"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "email"],
+    )
+
+    manager.register_tool(
+        category="email_tools",
+        name="email_parse_eml",
+        func=email_parse_eml,
+        description="Parse a single EML file and return extracted fields.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "file_path": {"type": "string", "minLength": 1},
+                "include_attachments": {"type": "boolean", "default": True},
+            },
+            "required": ["file_path"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "email"],

@@ -35,7 +35,7 @@ except ImportError:
 
 # Import shared operations
 try:
-    from shared import (
+    from ...shared import (
         SharedCore,
         InferenceOperations,
         FileOperations,
@@ -54,7 +54,7 @@ try:
     HAVE_SHARED = True
 except ImportError:
     try:
-        from ...shared import (
+        from shared import (  # type: ignore
             SharedCore,
             InferenceOperations,
             FileOperations,

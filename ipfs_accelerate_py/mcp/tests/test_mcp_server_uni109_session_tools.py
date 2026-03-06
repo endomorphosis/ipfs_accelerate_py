@@ -71,6 +71,34 @@ class TestMCPServerUNI109SessionTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_create_session_accepts_enhanced_creation_fields(self) -> None:
+        async def _run() -> None:
+            created = await create_session(
+                session_name="uni109-enhanced",
+                user_id="uni109-user",
+                session_type="batch",
+                resource_limits={"memory_limit_mb": 512},
+                metadata={"purpose": "test"},
+                tags=["uni", "session"],
+            )
+            self.assertEqual(created.get("status"), "success")
+            self.assertEqual(created.get("session_type"), "batch")
+            self.assertEqual(created.get("metadata", {}).get("purpose"), "test")
+            self.assertIn("session", created.get("tags", []))
+
+        anyio.run(_run)
+
+    def test_create_session_rejects_invalid_tags_shape(self) -> None:
+        async def _run() -> None:
+            created = await create_session(
+                session_name="uni109-invalid-tags",
+                tags=["ok", "   "],
+            )
+            self.assertEqual(created.get("status"), "error")
+            self.assertIn("tags must be a list of non-empty strings", str(created.get("message", "")))
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

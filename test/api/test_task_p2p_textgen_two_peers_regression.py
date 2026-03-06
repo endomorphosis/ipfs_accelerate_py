@@ -91,6 +91,9 @@ def _run_textgen_worker_with_service(
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RELAY"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH"] = "0"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRIES"] = "2"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRY_BASE_MS"] = "50"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_MAX_S"] = "180"
 
     # Keep worker behavior stable and minimal.
     os.environ["IPFS_ACCEL_SKIP_CORE"] = "1"
@@ -213,6 +216,8 @@ def test_task_p2p_two_peers_textgen_regression_50(tmp_path: Path):
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_WAIT_RETRIES"] = "6"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_WAIT_RETRY_BASE_MS"] = "200"
         os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_MAX_S"] = "180"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRIES"] = "2"
+        os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRY_BASE_MS"] = "50"
 
         # Prefer announce-file multiaddrs for deterministic local dialing; if
         # missing, fall back to a one-time mDNS resolve.

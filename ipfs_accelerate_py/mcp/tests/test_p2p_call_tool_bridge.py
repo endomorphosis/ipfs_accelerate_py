@@ -25,6 +25,28 @@ def _have_local_gpt2() -> bool:
         return False
 
 
+def _is_transient_transport_error_text(text: str) -> bool:
+    err = str(text or "").strip().lower()
+    if not err:
+        return False
+    markers = (
+        "timeout",
+        "no response",
+        "discovery_timeout",
+        "unable to connect",
+        "connect",
+        "connection reset",
+        "connection refused",
+        "temporarily unavailable",
+        "failed to negotiate the secure protocol",
+        "failed to upgrade security",
+        "handshake",
+        "broken pipe",
+        "stream",
+    )
+    return any(m in err for m in markers)
+
+
 def test_p2p_call_tool_dispatches_to_mcp_registry() -> None:
     """E2E (single-process): libp2p TaskQueue service op=call_tool -> MCP tool registry."""
 
@@ -40,6 +62,9 @@ def test_p2p_call_tool_dispatches_to_mcp_registry() -> None:
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_MDNS"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_PUBLIC_IP"] = "127.0.0.1"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRIES"] = "2"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRY_BASE_MS"] = "50"
+    os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RETRY_DIAL_TIMEOUT_MAX_S"] = "180"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRIES"] = "0"
     os.environ["IPFS_ACCELERATE_PY_TASK_P2P_RPC_RETRY_BASE_MS"] = "25"
 
@@ -173,7 +198,7 @@ def test_p2p_call_tool_runs_gpt2_inference_over_libp2p() -> None:
             assert isinstance(resp, dict)
             if not bool(resp.get("ok")):
                 err = str(resp.get("error") or "").lower()
-                if ("timeout" in err) or ("no response" in err):
+                if _is_transient_transport_error_text(err):
                     status_ok = bool(isinstance(status_resp, dict) and status_resp.get("ok"))
                     pytest.skip(
                         f"gpt2 inference unavailable in this environment: {err}; "

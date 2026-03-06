@@ -263,6 +263,67 @@ async def query_geographic_context(
     return payload
 
 
+async def analyze_geospatial_corpus(
+    corpus_data: str,
+    confidence_threshold: float = 0.7,
+    temporal_resolution: str = "day",
+    clustering_distance: float = 50.0,
+    include_coordinates: bool = True,
+) -> Dict[str, Any]:
+    """Run combined entity extraction and spatiotemporal mapping analysis."""
+    normalized_corpus = str(corpus_data or "")
+    if not normalized_corpus.strip():
+        return {
+            "status": "error",
+            "message": "corpus_data is required",
+            "corpus_data": corpus_data,
+        }
+
+    extract_result = await extract_geographic_entities(
+        corpus_data=normalized_corpus,
+        confidence_threshold=confidence_threshold,
+        include_coordinates=include_coordinates,
+    )
+    if extract_result.get("status") == "error":
+        return {
+            "status": "error",
+            "message": "entity extraction failed",
+            "phase": "extract_geographic_entities",
+            "details": extract_result,
+        }
+
+    map_result = await map_spatiotemporal_events(
+        corpus_data=normalized_corpus,
+        time_range=None,
+        clustering_distance=clustering_distance,
+        temporal_resolution=temporal_resolution,
+    )
+    if map_result.get("status") == "error":
+        return {
+            "status": "error",
+            "message": "spatiotemporal mapping failed",
+            "phase": "map_spatiotemporal_events",
+            "details": map_result,
+        }
+
+    entity_count = int(extract_result.get("entity_count", len(extract_result.get("entities", [])) or 0))
+    cluster_count = int(map_result.get("cluster_count", len(map_result.get("clusters", [])) or 0))
+    return {
+        "status": "success",
+        "summary": {
+            "entity_count": entity_count,
+            "cluster_count": cluster_count,
+            "temporal_resolution": str(temporal_resolution or "day").strip().lower() or "day",
+            "confidence_threshold": float(confidence_threshold),
+            "clustering_distance": float(clustering_distance),
+        },
+        "entities": extract_result.get("entities", []),
+        "clusters": map_result.get("clusters", []),
+        "entity_analysis": extract_result,
+        "spatiotemporal_analysis": map_result,
+    }
+
+
 def register_native_geospatial_tools(manager: Any) -> None:
     """Register native geospatial tools in unified hierarchical manager."""
     manager.register_tool(
@@ -322,6 +383,30 @@ def register_native_geospatial_tools(manager: Any) -> None:
                 "temporal_context": {"type": "boolean", "default": True},
             },
             "required": ["query", "corpus_data"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "geospatial"],
+    )
+
+    manager.register_tool(
+        category="geospatial_tools",
+        name="analyze_geospatial_corpus",
+        func=analyze_geospatial_corpus,
+        description="Run combined geospatial entity and spatiotemporal analysis.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "corpus_data": {"type": "string"},
+                "confidence_threshold": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.7},
+                "temporal_resolution": {
+                    "type": "string",
+                    "enum": ["hour", "day", "week", "month", "year"],
+                    "default": "day",
+                },
+                "clustering_distance": {"type": "number", "minimum": 0.000001, "default": 50.0},
+                "include_coordinates": {"type": "boolean", "default": True},
+            },
+            "required": ["corpus_data"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "geospatial"],

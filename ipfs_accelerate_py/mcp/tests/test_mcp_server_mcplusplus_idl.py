@@ -199,6 +199,64 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
         self.assertTrue(verdict.compatible)
         self.assertEqual(verdict.requires_missing, [])
 
+    def test_registry_register_descriptor_isolated_from_external_nested_mutation(self) -> None:
+        registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl"])
+        descriptor = build_descriptor(
+            name="mutation-safe",
+            namespace="test.ns",
+            version="1.0.0",
+            methods=[
+                {
+                    "name": "x",
+                    "input_schema": {"type": "object", "properties": {"v": {"type": "string"}}},
+                    "output_schema": {"type": "object"},
+                }
+            ],
+            requires=["mcp++/profile-a-idl"],
+        )
+        cid = registry.register_descriptor(descriptor)
+
+        descriptor["methods"][0]["input_schema"]["properties"]["v"]["type"] = "integer"
+        descriptor["requires"].append("mcp++/profile-e-mcp-p2p")
+
+        stored = registry.get_descriptor(cid) or {}
+        method = ((stored.get("methods") or [{}])[0]) if isinstance(stored.get("methods"), list) else {}
+        input_schema = method.get("input_schema") or {}
+        properties = input_schema.get("properties") or {}
+        self.assertEqual(((properties.get("v") or {}).get("type")), "string")
+        self.assertEqual(stored.get("requires"), ["mcp++/profile-a-idl"])
+
+    def test_registry_get_descriptor_returns_deep_copy(self) -> None:
+        registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl"])
+        cid = registry.register_descriptor(
+            build_descriptor(
+                name="copy-safe",
+                namespace="test.ns",
+                version="1.0.0",
+                methods=[
+                    {
+                        "name": "copy",
+                        "input_schema": {"type": "object", "properties": {"flag": {"type": "boolean"}}},
+                        "output_schema": {"type": "object"},
+                    }
+                ],
+                requires=["mcp++/profile-a-idl"],
+            )
+        )
+
+        first = registry.get_descriptor(cid) or {}
+        first_methods = first.get("methods") or []
+        first_methods[0]["input_schema"]["properties"]["flag"]["type"] = "string"
+        first["requires"].append("mcp++/profile-e-mcp-p2p")
+
+        second = registry.get_descriptor(cid) or {}
+        second_method = ((second.get("methods") or [{}])[0]) if isinstance(second.get("methods"), list) else {}
+        second_input_schema = second_method.get("input_schema") or {}
+        second_properties = second_input_schema.get("properties") or {}
+
+        self.assertEqual(((second_properties.get("flag") or {}).get("type")), "boolean")
+        self.assertEqual(second.get("requires"), ["mcp++/profile-a-idl"])
+
     def test_native_idl_tools_dispatch_flow(self) -> None:
         async def _run() -> None:
             manager = HierarchicalToolManager(runtime_router=RuntimeRouter())

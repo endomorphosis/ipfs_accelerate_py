@@ -13,6 +13,7 @@ def _load_dataset_api() -> Dict[str, Any]:
     try:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.dataset_tools import (  # type: ignore
             convert_dataset_format as _convert_dataset_format,
+            dataset_tools_claudes as _dataset_tools_claudes,
             legal_text_to_deontic as _legal_text_to_deontic,
             load_dataset as _load_dataset,
             process_dataset as _process_dataset,
@@ -27,6 +28,7 @@ def _load_dataset_api() -> Dict[str, Any]:
             "convert_dataset_format": _convert_dataset_format,
             "text_to_fol": _text_to_fol,
             "legal_text_to_deontic": _legal_text_to_deontic,
+            "dataset_tools_claudes": _dataset_tools_claudes,
         }
     except Exception:
         logger.warning("Source dataset_tools import unavailable, using fallback dataset functions")
@@ -147,6 +149,14 @@ def _load_dataset_api() -> Dict[str, Any]:
                 "include_exceptions": bool(include_exceptions),
             }
 
+        async def _dataset_tools_claudes_fallback() -> Dict[str, Any]:
+            return {
+                "status": "success",
+                "message": "ClaudesDatasetTool initialized successfully",
+                "tool_type": "Dataset processing tool",
+                "available_methods": ["process_data"],
+            }
+
         return {
             "load_dataset": _load_fallback,
             "save_dataset": _save_fallback,
@@ -154,10 +164,25 @@ def _load_dataset_api() -> Dict[str, Any]:
             "convert_dataset_format": _convert_fallback,
             "text_to_fol": _text_to_fol_fallback,
             "legal_text_to_deontic": _legal_text_to_deontic_fallback,
+            "dataset_tools_claudes": _dataset_tools_claudes_fallback,
         }
 
 
 _API = _load_dataset_api()
+
+
+def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
+    """Return a normalized error envelope for deterministic dispatch behavior."""
+    payload: Dict[str, Any] = {"status": "error", "error": message, "message": message}
+    payload.update(extra)
+    return payload
+
+
+async def _await_maybe(result: Any) -> Dict[str, Any]:
+    """Await coroutine-like API results while supporting direct return values."""
+    if hasattr(result, "__await__"):
+        return await result
+    return result
 
 
 async def load_dataset(
@@ -166,10 +191,29 @@ async def load_dataset(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Load a dataset from a source identifier."""
-    result = _API["load_dataset"](source=source, format=format, options=options)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_source = str(source or "").strip()
+    normalized_format = None if format is None else str(format).strip()
+    if not normalized_source:
+        return _error_result("source must be a non-empty string")
+    if normalized_format is not None and not normalized_format:
+        return _error_result("format must be a non-empty string when provided")
+    if options is not None and not isinstance(options, dict):
+        return _error_result("options must be an object when provided")
+
+    try:
+        payload = await _await_maybe(
+            _API["load_dataset"](
+                source=normalized_source,
+                format=normalized_format,
+                options=options,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"load_dataset failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
 
 
 async def save_dataset(
@@ -179,15 +223,35 @@ async def save_dataset(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Save a dataset to a target destination and format."""
-    result = _API["save_dataset"](
-        dataset_data=dataset_data,
-        destination=destination,
-        format=format,
-        options=options,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if isinstance(dataset_data, str) and not dataset_data.strip():
+        return _error_result("dataset_data must be non-empty when provided as a string")
+    if not isinstance(dataset_data, (str, dict)):
+        return _error_result("dataset_data must be a string or object")
+
+    normalized_destination = None if destination is None else str(destination).strip()
+    normalized_format = None if format is None else str(format).strip()
+    if normalized_destination is not None and not normalized_destination:
+        return _error_result("destination must be a non-empty string when provided")
+    if normalized_format is not None and not normalized_format:
+        return _error_result("format must be a non-empty string when provided")
+    if options is not None and not isinstance(options, dict):
+        return _error_result("options must be an object when provided")
+
+    try:
+        payload = await _await_maybe(
+            _API["save_dataset"](
+                dataset_data=dataset_data,
+                destination=normalized_destination,
+                format=normalized_format,
+                options=options,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"save_dataset failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
 
 
 async def process_dataset(
@@ -196,14 +260,31 @@ async def process_dataset(
     output_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Process a dataset using a list of transformation operations."""
-    result = _API["process_dataset"](
-        dataset_source=dataset_source,
-        operations=operations,
-        output_id=output_id,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if isinstance(dataset_source, str) and not dataset_source.strip():
+        return _error_result("dataset_source must be non-empty when provided as a string")
+    if operations is not None and (
+        not isinstance(operations, list)
+        or not all(isinstance(operation, dict) for operation in operations)
+    ):
+        return _error_result("operations must be an array of objects when provided")
+    normalized_output_id = None if output_id is None else str(output_id).strip()
+    if normalized_output_id is not None and not normalized_output_id:
+        return _error_result("output_id must be a non-empty string when provided")
+
+    try:
+        payload = await _await_maybe(
+            _API["process_dataset"](
+                dataset_source=dataset_source,
+                operations=operations,
+                output_id=normalized_output_id,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"process_dataset failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
 
 
 async def convert_dataset_format(
@@ -213,15 +294,33 @@ async def convert_dataset_format(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Convert an existing dataset into a target format."""
-    result = _API["convert_dataset_format"](
-        dataset_id=dataset_id,
-        target_format=target_format,
-        output_path=output_path,
-        options=options,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    normalized_dataset_id = str(dataset_id or "").strip()
+    normalized_target_format = None if target_format is None else str(target_format).strip()
+    normalized_output_path = None if output_path is None else str(output_path).strip()
+    if not normalized_dataset_id:
+        return _error_result("dataset_id must be a non-empty string")
+    if normalized_target_format is not None and not normalized_target_format:
+        return _error_result("target_format must be a non-empty string when provided")
+    if normalized_output_path is not None and not normalized_output_path:
+        return _error_result("output_path must be a non-empty string when provided")
+    if options is not None and not isinstance(options, dict):
+        return _error_result("options must be an object when provided")
+
+    try:
+        payload = await _await_maybe(
+            _API["convert_dataset_format"](
+                dataset_id=normalized_dataset_id,
+                target_format=normalized_target_format,
+                output_path=normalized_output_path,
+                options=options,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"convert_dataset_format failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
 
 
 async def text_to_fol(
@@ -232,16 +331,51 @@ async def text_to_fol(
     confidence_threshold: float = 0.5,
 ) -> Dict[str, Any]:
     """Convert natural-language text into first-order logic payloads."""
-    result = _API["text_to_fol"](
-        text_input=text_input,
-        domain_predicates=domain_predicates,
-        output_format=output_format,
-        include_metadata=include_metadata,
-        confidence_threshold=confidence_threshold,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if isinstance(text_input, str):
+        if not text_input.strip():
+            return _error_result("text_input must be provided")
+    elif isinstance(text_input, dict):
+        text_value = text_input.get("text")
+        if not isinstance(text_value, str) or not text_value.strip():
+            return _error_result("text_input object must include non-empty 'text'")
+    else:
+        return _error_result("text_input must be a string or object")
+
+    if domain_predicates is not None and (
+        not isinstance(domain_predicates, list)
+        or not all(isinstance(item, str) and item.strip() for item in domain_predicates)
+    ):
+        return _error_result("domain_predicates must be an array of non-empty strings when provided")
+
+    normalized_output_format = str(output_format or "").strip()
+    if not normalized_output_format:
+        return _error_result("output_format must be a non-empty string")
+    if not isinstance(include_metadata, bool):
+        return _error_result("include_metadata must be a boolean")
+
+    try:
+        normalized_confidence = float(confidence_threshold)
+    except (TypeError, ValueError):
+        return _error_result("confidence_threshold must be a number")
+    if normalized_confidence < 0.0 or normalized_confidence > 1.0:
+        return _error_result("confidence_threshold must be between 0 and 1")
+
+    try:
+        payload = await _await_maybe(
+            _API["text_to_fol"](
+                text_input=text_input,
+                domain_predicates=domain_predicates,
+                output_format=normalized_output_format,
+                include_metadata=include_metadata,
+                confidence_threshold=normalized_confidence,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"text_to_fol failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
 
 
 async def legal_text_to_deontic(
@@ -253,17 +387,64 @@ async def legal_text_to_deontic(
     include_exceptions: bool = True,
 ) -> Dict[str, Any]:
     """Convert legal text into deontic-logic payloads."""
-    result = _API["legal_text_to_deontic"](
-        text_input=text_input,
-        jurisdiction=jurisdiction,
-        document_type=document_type,
-        output_format=output_format,
-        extract_obligations=extract_obligations,
-        include_exceptions=include_exceptions,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if isinstance(text_input, str):
+        if not text_input.strip():
+            return _error_result("text_input must be provided")
+    elif isinstance(text_input, dict):
+        text_value = text_input.get("text")
+        if not isinstance(text_value, str) or not text_value.strip():
+            return _error_result("text_input object must include non-empty 'text'")
+    else:
+        return _error_result("text_input must be a string or object")
+
+    normalized_jurisdiction = str(jurisdiction or "").strip()
+    normalized_document_type = str(document_type or "").strip()
+    normalized_output_format = str(output_format or "").strip()
+    if not normalized_jurisdiction:
+        return _error_result("jurisdiction must be a non-empty string")
+    if not normalized_document_type:
+        return _error_result("document_type must be a non-empty string")
+    if not normalized_output_format:
+        return _error_result("output_format must be a non-empty string")
+    if not isinstance(extract_obligations, bool):
+        return _error_result("extract_obligations must be a boolean")
+    if not isinstance(include_exceptions, bool):
+        return _error_result("include_exceptions must be a boolean")
+
+    try:
+        payload = await _await_maybe(
+            _API["legal_text_to_deontic"](
+                text_input=text_input,
+                jurisdiction=normalized_jurisdiction,
+                document_type=normalized_document_type,
+                output_format=normalized_output_format,
+                extract_obligations=extract_obligations,
+                include_exceptions=include_exceptions,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"legal_text_to_deontic failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
+
+
+async def dataset_tools_claudes() -> Dict[str, Any]:
+    """Expose source-aligned Claude's dataset helper surface."""
+    try:
+        payload = await _await_maybe(
+            _API["dataset_tools_claudes"]()
+        )
+    except Exception as exc:
+        return _error_result(f"dataset_tools_claudes failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("message", "ClaudesDatasetTool initialized successfully")
+    normalized.setdefault("tool_type", "Dataset processing tool")
+    normalized.setdefault("available_methods", ["process_data"])
+    return normalized
 
 
 def register_native_dataset_tools(manager: Any) -> None:
@@ -276,7 +457,7 @@ def register_native_dataset_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "source": {"type": "string"},
+                "source": {"type": "string", "minLength": 1},
                 "format": {"type": ["string", "null"]},
                 "options": {"type": ["object", "null"]},
             },
@@ -295,7 +476,7 @@ def register_native_dataset_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "dataset_data": {"type": ["string", "object"]},
-                "destination": {"type": ["string", "null"]},
+                "destination": {"type": ["string", "null"], "minLength": 1},
                 "format": {"type": ["string", "null"]},
                 "options": {"type": ["object", "null"]},
             },
@@ -318,7 +499,7 @@ def register_native_dataset_tools(manager: Any) -> None:
                     "type": ["array", "null"],
                     "items": {"type": "object"},
                 },
-                "output_id": {"type": ["string", "null"]},
+                "output_id": {"type": ["string", "null"], "minLength": 1},
             },
             "required": ["dataset_source"],
         },
@@ -334,7 +515,7 @@ def register_native_dataset_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "dataset_id": {"type": "string"},
+                "dataset_id": {"type": "string", "minLength": 1},
                 "target_format": {"type": ["string", "null"]},
                 "output_path": {"type": ["string", "null"]},
                 "options": {"type": ["object", "null"]},
@@ -357,7 +538,12 @@ def register_native_dataset_tools(manager: Any) -> None:
                 "domain_predicates": {"type": ["array", "null"], "items": {"type": "string"}},
                 "output_format": {"type": "string", "default": "json"},
                 "include_metadata": {"type": "boolean", "default": True},
-                "confidence_threshold": {"type": "number", "default": 0.5},
+                "confidence_threshold": {
+                    "type": "number",
+                    "minimum": 0,
+                    "maximum": 1,
+                    "default": 0.5,
+                },
             },
             "required": ["text_input"],
         },
@@ -384,4 +570,14 @@ def register_native_dataset_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "dataset", "logic"],
+    )
+
+    manager.register_tool(
+        category="dataset_tools",
+        name="dataset_tools_claudes",
+        func=dataset_tools_claudes,
+        description="Run source-aligned Claude's dataset helper initialization surface.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "dataset"],
     )

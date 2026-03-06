@@ -16,9 +16,6 @@ Environment=PATH=%h/ipfs_accelerate_py/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONPATH=%h/ipfs_accelerate_py
 
-# Load per-host settings (listen port, session tag, caches, etc.)
-EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
-
 # Enable docker task types by default (override in task-worker.env if needed).
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_DOCKER=1
 Environment=IPFS_DATASETS_PY_TASK_WORKER_ENABLE_DOCKER=1
@@ -34,15 +31,16 @@ Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN=1
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX=4
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S=2
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S=30
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=0
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S=5
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS=10
-Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=0
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_PROCESSES=0
 
 # Advertise and execute HF-backed task families out of the box.
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF=1
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF=1
+Environment=IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE=cuda:0
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX=4
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TEXT2TEXT_BATCH_MAX=8
 Environment=IPFS_ACCELERATE_PY_TASK_WORKER_TEXTCLS_BATCH_MAX=16
@@ -53,6 +51,30 @@ Environment=IPFS_ACCELERATE_PY_TASK_WORKER_EMBED_BATCH_MAX=16
 # - Enabled by default in code (set IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER=0 to disable)
 Environment=IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240
 Environment=IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240
+
+# Conservative default for single-host/LAN deployments:
+# avoid public bootstrap + DHT/rendezvous discovery, which can generate
+# persistent libp2p secure-handshake failures against incompatible peers.
+# Disable mDNS by default as well; set to 1 in task-worker.env when you
+# intentionally run a trusted LAN mesh.
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS=off
+Environment=IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS=off
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_DHT=0
+Environment=IPFS_DATASETS_PY_TASK_P2P_DHT=0
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS=0
+Environment=IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS=0
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_MDNS=0
+Environment=IPFS_DATASETS_PY_TASK_P2P_MDNS=0
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT=0
+Environment=IPFS_DATASETS_PY_TASK_P2P_AUTONAT=0
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_RELAY=0
+Environment=IPFS_DATASETS_PY_TASK_P2P_RELAY=0
+Environment=IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH=0
+Environment=IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH=0
+
+# Load per-host settings (listen port, session tag, caches, etc.).
+# Keep this *after* hardcoded defaults so host-specific values take precedence.
+EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
 
 # Run the TaskQueue worker daemon.
 # Default behavior includes:

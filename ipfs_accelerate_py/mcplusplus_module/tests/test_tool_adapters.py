@@ -388,6 +388,74 @@ def test_create_storage_wrapper_returns_none_on_factory_error(monkeypatch):
     assert mcplusplus_module._create_storage_wrapper(auto_detect_ci=True) is None
 
 
+def test_shared_detect_runner_name_prefers_env(monkeypatch):
+    """Runner-name helper should prefer RUNNER_NAME and fallback to hostname."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+
+    monkeypatch.setenv("RUNNER_NAME", "runner-env")
+    monkeypatch.setattr(mcplusplus_module.socket, "gethostname", lambda: "runner-host")
+    assert mcplusplus_module._detect_runner_name() == "runner-env"
+
+    monkeypatch.delenv("RUNNER_NAME", raising=False)
+    assert mcplusplus_module._detect_runner_name() == "runner-host"
+
+
+def test_shared_detect_public_ip_tries_fallback_services(monkeypatch):
+    """Public IP helper should continue to fallback services when one fails."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+
+    class _Response:
+        def __init__(self, payload: bytes):
+            self._payload = payload
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            _ = exc_type, exc, tb
+            return False
+
+        def read(self):
+            return self._payload
+
+    calls = []
+
+    def _fake_urlopen(url: str, timeout: int = 5):
+        calls.append((url, timeout))
+        if "ipify" in url:
+            raise RuntimeError("simulated primary failure")
+        return _Response(b"203.0.113.10\n")
+
+    monkeypatch.setattr(mcplusplus_module.urllib.request, "urlopen", _fake_urlopen)
+
+    assert mcplusplus_module._detect_public_ip() == "203.0.113.10"
+    assert len(calls) >= 2
+
+
+def test_bootstrap_detection_delegates_to_shared_helpers(monkeypatch):
+    """Bootstrap shim should use shared detection helpers to avoid duplicate logic."""
+    from ipfs_accelerate_py.mcplusplus_module.p2p import bootstrap
+
+    monkeypatch.setattr(bootstrap, "_shared_detect_runner_name", lambda: "shared-runner")
+    monkeypatch.setattr(bootstrap, "_shared_detect_public_ip", lambda: "198.51.100.5")
+
+    peer_bootstrap = bootstrap.SimplePeerBootstrap(cache_dir=None)
+    assert peer_bootstrap.runner_name == "shared-runner"
+    assert peer_bootstrap.public_ip == "198.51.100.5"
+
+
+def test_peer_registry_detection_delegates_to_shared_helpers(monkeypatch):
+    """Peer-registry shim should use shared detection helpers to avoid drift."""
+    from ipfs_accelerate_py.mcplusplus_module.p2p import peer_registry
+
+    monkeypatch.setattr(peer_registry, "_shared_detect_runner_name", lambda: "shared-runner")
+    monkeypatch.setattr(peer_registry, "_shared_detect_public_ip", lambda: "198.51.100.6")
+
+    registry = peer_registry.P2PPeerRegistry(repo="owner/repo")
+    assert registry.runner_name == "shared-runner"
+    assert registry.public_ip == "198.51.100.6"
+
+
 def test_workflow_module_optional_dependency_contract():
     """Workflow module should expose explicit stubs when scheduler deps are absent."""
     from ipfs_accelerate_py.mcplusplus_module.p2p import workflow
@@ -420,6 +488,29 @@ def test_taskqueue_module_optional_dependency_contract():
 
     with pytest.raises(RuntimeError, match="RemoteQueue is unavailable"):
         taskqueue.RemoteQueue()
+
+
+def test_connectivity_module_optional_dependency_contract():
+    """Connectivity module should expose explicit stubs when zeroconf is absent."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcplusplus_module.p2p import connectivity
+
+    assert connectivity.Zeroconf is not None
+    assert connectivity.ServiceInfo is not None
+    assert connectivity.ServiceBrowser is not None
+
+    missing_stub_type = type(mcplusplus_module._missing_dependency_stub("_probe"))
+
+    if connectivity.HAVE_ZEROCONF:
+        assert not isinstance(connectivity.Zeroconf, missing_stub_type)
+        return
+
+    assert isinstance(connectivity.Zeroconf, missing_stub_type)
+    assert isinstance(connectivity.ServiceInfo, missing_stub_type)
+    assert isinstance(connectivity.ServiceBrowser, missing_stub_type)
+
+    with pytest.raises(RuntimeError, match="Zeroconf is unavailable"):
+        connectivity.Zeroconf()
 
 
 def test_trio_module_optional_dependency_contract():

@@ -88,6 +88,37 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
         payload["k"] = "changed"
         self.assertEqual(store.get("cid-x"), {"k": "v"})
 
+    def test_artifact_store_get_returns_deep_copy_for_nested_payloads(self) -> None:
+        store = ArtifactStore()
+        store.put("cid-nested", {"meta": {"level": {"value": 1}}, "tags": ["a", "b"]})
+
+        payload = store.get("cid-nested") or {}
+        self.assertEqual(((payload.get("meta") or {}).get("level") or {}).get("value"), 1)
+
+        payload["meta"]["level"]["value"] = 99
+        payload["tags"].append("mutated")
+
+        reloaded = store.get("cid-nested") or {}
+        self.assertEqual((((reloaded.get("meta") or {}).get("level") or {}).get("value")), 1)
+        self.assertEqual(reloaded.get("tags"), ["a", "b"])
+
+    def test_artifact_store_export_records_returns_deep_copy(self) -> None:
+        store = ArtifactStore()
+        store.put_many(
+            {
+                "cid-a": {"meta": {"depth": 1}},
+                "cid-b": {"items": [{"x": 1}]},
+            }
+        )
+
+        exported = store.export_records()
+        exported["cid-a"]["meta"]["depth"] = 7
+        exported["cid-b"]["items"][0]["x"] = 9
+
+        again = store.export_records()
+        self.assertEqual(((again.get("cid-a") or {}).get("meta") or {}).get("depth"), 1)
+        self.assertEqual((((again.get("cid-b") or {}).get("items") or [{}])[0]).get("x"), 1)
+
     def test_artifact_store_json_round_trip_is_deterministic(self) -> None:
         envelope = envelope_from_payloads(
             interface_cid="cid-iface",

@@ -31,6 +31,10 @@ class TestMCPServerUNI146LizardpersonArgparsePrograms(unittest.TestCase):
         self.assertEqual(schema["type"], "object")
         self.assertEqual(schema["required"], [])
 
+        invoke_schema = by_name["municipal_bluebook_validator_invoke"]["input_schema"]
+        self.assertEqual(invoke_schema["type"], "object")
+        self.assertEqual(invoke_schema["properties"]["allow_execution"]["default"], False)
+
     def test_success_envelope_shapes(self) -> None:
         async def _run() -> None:
             result = await argparse_mod.municipal_bluebook_validator_info()
@@ -60,6 +64,47 @@ class TestMCPServerUNI146LizardpersonArgparsePrograms(unittest.TestCase):
                 "municipal_bluebook_citation_validator.main",
             )
             self.assertIn("boom", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_invoke_tool_dry_run_and_validation(self) -> None:
+        async def _run() -> None:
+            invalid = await argparse_mod.municipal_bluebook_validator_invoke(argv=["", "ok"])
+            self.assertEqual(invalid.get("status"), "error")
+            self.assertIn("non-empty strings", str(invalid.get("error", "")))
+
+            dry_run = await argparse_mod.municipal_bluebook_validator_invoke(
+                argv=["--citation-dir", "./citations"],
+                allow_execution=False,
+            )
+            self.assertEqual(dry_run.get("status"), "success")
+            self.assertIs(dry_run.get("invoked"), False)
+            self.assertIs(dry_run.get("dry_run"), True)
+
+        anyio.run(_run)
+
+    def test_invoke_tool_executes_entrypoint_when_enabled(self) -> None:
+        async def _run() -> None:
+            class _Entry:
+                def __init__(self) -> None:
+                    self.calls: list[list[str]] = []
+
+                def __call__(self, argv):
+                    self.calls.append(list(argv))
+                    return 3
+
+            entry = _Entry()
+            with patch.object(argparse_mod, "_API", new={"validator_main": entry}):
+                result = await argparse_mod.municipal_bluebook_validator_invoke(
+                    argv=["--sample-size", "5"],
+                    allow_execution=True,
+                )
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertIs(result.get("invoked"), True)
+            self.assertIs(result.get("dry_run"), False)
+            self.assertEqual(result.get("exit_code"), 3)
+            self.assertEqual(entry.calls, [["--sample-size", "5"]])
 
         anyio.run(_run)
 

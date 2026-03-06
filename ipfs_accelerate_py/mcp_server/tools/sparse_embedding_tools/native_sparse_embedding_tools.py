@@ -170,8 +170,10 @@ async def generate_sparse_embedding(
         payload = _normalize_payload(await result)
     else:
         payload = _normalize_payload(result)
+    payload.setdefault("text", normalized_text)
     payload.setdefault("model", normalized_model)
     payload.setdefault("top_k", top_k)
+    payload.setdefault("sparse_embedding", {})
     return payload
 
 
@@ -256,6 +258,11 @@ async def index_sparse_collection(
         payload = _normalize_payload(result)
     payload.setdefault("collection_name", normalized_collection_name)
     payload.setdefault("dataset", normalized_dataset)
+    payload.setdefault("split", normalized_split)
+    payload.setdefault("column", normalized_column)
+    payload.setdefault("batch_size", batch_size)
+    payload.setdefault("total_documents", 0)
+    payload.setdefault("results", {})
     return payload
 
 
@@ -329,7 +336,12 @@ async def sparse_search(
     else:
         payload = _normalize_payload(result)
     payload.setdefault("query", normalized_query)
+    payload.setdefault("collection_name", normalized_collection)
     payload.setdefault("model", normalized_model)
+    payload.setdefault("top_k", top_k)
+    payload.setdefault("results", [])
+    payload.setdefault("total_found", len(payload.get("results") or []))
+    payload.setdefault("has_more", False)
     return payload
 
 
@@ -378,6 +390,10 @@ async def manage_sparse_models(
     payload.setdefault("action", normalized_action)
     if normalized_model_name is not None:
         payload.setdefault("model_name", normalized_model_name)
+    if normalized_action == "list":
+        payload.setdefault("models", [])
+    if normalized_action == "stats":
+        payload.setdefault("stats", {})
     return payload
 
 

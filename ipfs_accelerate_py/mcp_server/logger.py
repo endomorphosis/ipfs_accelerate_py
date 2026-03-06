@@ -17,11 +17,17 @@ def configure_root_logging(level: int = logging.INFO) -> None:
     if root_logger.handlers:
         return
 
-    _DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+    handlers: list[logging.Handler]
+    try:
+        _DEFAULT_LOG_DIR.mkdir(parents=True, exist_ok=True)
+        handlers = [logging.FileHandler(_DEFAULT_LOG_FILE, mode="a")]
+    except Exception:
+        handlers = [logging.StreamHandler()]
+
     logging.basicConfig(
         level=level,
         format=_LOG_FORMAT,
-        handlers=[logging.FileHandler(_DEFAULT_LOG_FILE, mode="a")],
+        handlers=handlers,
     )
 
 

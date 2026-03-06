@@ -232,6 +232,56 @@ def test_request_status_retries_on_retryable_response(monkeypatch):
     assert metrics.get("status.recovered", 0) >= 1
 
 
+def test_request_status_detail_mode_mirrors_top_level_sections(monkeypatch):
+    import ipfs_accelerate_py.p2p_tasks.client as client
+    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+
+    async def fake_dial_and_request_with_retries(**_kwargs):
+        return {
+            "ok": True,
+            "peer_id": "peer-status",
+            "transport": {"mcp_p2p": {"stats": {"sessions_started": 2}}},
+            "scheduler": {"counts": {"workers": 1}},
+        }
+
+    monkeypatch.setattr(client, "_dial_and_request_with_retries", fake_dial_and_request_with_retries)
+
+    async def _do() -> None:
+        remote = RemoteQueue(peer_id="peer-status", multiaddr="")
+        resp = await client.request_status(remote=remote, timeout_s=1.0, detail=True)
+        assert resp.get("ok") is True
+        assert isinstance(resp.get("detail"), dict)
+        detail = resp.get("detail") or {}
+        assert (detail.get("transport") or {}).get("mcp_p2p")
+        assert (detail.get("scheduler") or {}).get("counts", {}).get("workers") == 1
+        assert (resp.get("transport") or {}).get("mcp_p2p")
+
+    anyio.run(_do, backend="trio")
+
+
+def test_request_status_detail_mode_preserves_existing_detail(monkeypatch):
+    import ipfs_accelerate_py.p2p_tasks.client as client
+    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+
+    async def fake_dial_and_request_with_retries(**_kwargs):
+        return {
+            "ok": True,
+            "peer_id": "peer-status",
+            "detail": {"transport": {"mcp_p2p": {"stats": {"sessions_started": 5}}}},
+            "transport": {"mcp_p2p": {"stats": {"sessions_started": 1}}},
+        }
+
+    monkeypatch.setattr(client, "_dial_and_request_with_retries", fake_dial_and_request_with_retries)
+
+    async def _do() -> None:
+        remote = RemoteQueue(peer_id="peer-status", multiaddr="")
+        resp = await client.request_status(remote=remote, timeout_s=1.0, detail=True)
+        assert resp.get("ok") is True
+        assert ((resp.get("detail") or {}).get("transport") or {}).get("mcp_p2p", {}).get("stats", {}).get("sessions_started") == 5
+
+    anyio.run(_do, backend="trio")
+
+
 def test_wait_task_preserves_long_poll_dial_timeout(monkeypatch):
     import ipfs_accelerate_py.p2p_tasks.client as client
     from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue

@@ -122,10 +122,16 @@ _API = _load_p2p_tools_api()
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads into deterministic dictionary envelopes."""
     if isinstance(payload, dict):
-        return payload
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("ok") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
-        return {}
-    return {"result": payload}
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
@@ -158,6 +164,10 @@ async def p2p_cache_get(key: str) -> Dict[str, Any]:
             result = await result
         envelope = _normalize_payload(result)
         envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("hit", False)
+            envelope.setdefault("value", None)
         envelope.setdefault("key", key)
         return envelope
     except Exception as exc:
@@ -233,6 +243,9 @@ async def p2p_task_submit(task_type: str, payload: Dict[str, Any], model_name: s
             result = await result
         envelope = _normalize_payload(result)
         envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("task_id", None)
         envelope.setdefault("task_type", task_type)
         return envelope
     except Exception as exc:
@@ -299,6 +312,10 @@ async def p2p_remote_status(
             result = await result
         envelope = _normalize_payload(result)
         envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("remote_multiaddr", remote_multiaddr.strip())
+            envelope.setdefault("peer_id", peer_id.strip())
         return envelope
     except Exception as exc:
         return _error_result(str(exc), peer_id=peer_id, remote_multiaddr=remote_multiaddr)
@@ -335,6 +352,11 @@ async def p2p_remote_call_tool(
             result = await result
         envelope = _normalize_payload(result)
         envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("args", args if isinstance(args, dict) else None)
+            envelope.setdefault("remote_multiaddr", remote_multiaddr.strip())
+            envelope.setdefault("remote_peer_id", remote_peer_id.strip())
         envelope.setdefault("tool_name", tool_name)
         return envelope
     except Exception as exc:

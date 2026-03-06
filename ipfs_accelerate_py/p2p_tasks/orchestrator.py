@@ -59,6 +59,20 @@ def _env_float(name: str, default: float) -> float:
         return float(default)
 
 
+def _task_p2p_mdns_enabled() -> bool:
+    """Return whether task p2p mDNS discovery is enabled.
+
+    Defaults to enabled when unset for backward compatibility.
+    """
+
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_P2P_MDNS")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_P2P_MDNS")
+    if raw is None:
+        return True
+    return _truthy(str(raw))
+
+
 def _default_orchestrator_id() -> str:
     return f"orch-{socket.gethostname()}"
 
@@ -153,6 +167,18 @@ class TaskOrchestrator:
 
     def _start_peer_discovery(self) -> None:
         if self._peers_thread and self._peers_thread.is_alive():
+            return
+
+        # Explicitly disabled: no remote mesh draining.
+        if int(self._cfg.mesh_max_peers) <= 0:
+            with self._peers_lock:
+                self._peers = []
+            return
+
+        # Respect task p2p mDNS controls used by service/client runtime.
+        if not _task_p2p_mdns_enabled():
+            with self._peers_lock:
+                self._peers = []
             return
 
         expected_session = _expected_session_tag()

@@ -17,10 +17,18 @@ def _load_background_task_api() -> Dict[str, Any]:
             manage_task_queue as _manage_task_queue,
         )
 
+        try:
+            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.background_task_tools.enhanced_background_task_tools import (  # type: ignore
+                get_task_status as _get_task_status,
+            )
+        except Exception:
+            _get_task_status = None
+
         return {
             "check_task_status": _check_task_status,
             "manage_background_tasks": _manage_background_tasks,
             "manage_task_queue": _manage_task_queue,
+            "get_task_status": _get_task_status,
         }
     except Exception:
         logger.warning(
@@ -128,10 +136,40 @@ def _load_background_task_api() -> Dict[str, Any]:
                 "message": f"Queue action '{action}' completed",
             }
 
+        async def _get_task_status_fallback(
+            task_id: Optional[str] = None,
+            include_logs: bool = True,
+            include_system_status: bool = False,
+            include_queue_status: bool = False,
+            log_limit: int = 20,
+        ) -> Dict[str, Any]:
+            _ = include_logs, include_queue_status, log_limit
+            if task_id:
+                return {
+                    "status": "error",
+                    "error": "Task not found",
+                    "task_id": task_id,
+                }
+            payload: Dict[str, Any] = {
+                "status": "success",
+                "summary": {"total_tasks": 0, "task_ids": []},
+                "message": "Task status retrieved successfully",
+            }
+            if include_system_status:
+                payload["system_status"] = {
+                    "total_tasks": 0,
+                    "running_tasks": 0,
+                    "pending_tasks": 0,
+                    "completed_tasks": 0,
+                    "failed_tasks": 0,
+                }
+            return payload
+
         return {
             "check_task_status": _check_status_fallback,
             "manage_background_tasks": _manage_background_fallback,
             "manage_task_queue": _manage_queue_fallback,
+            "get_task_status": _get_task_status_fallback,
         }
 
 
@@ -202,6 +240,10 @@ async def check_task_status(
     payload.setdefault("task_type", normalized_task_type)
     payload.setdefault("status_filter", normalized_status_filter)
     payload.setdefault("limit", limit)
+    if normalized_task_id is not None:
+        payload.setdefault("task_id", normalized_task_id)
+    payload.setdefault("tasks", [])
+    payload.setdefault("count", len(payload.get("tasks") or []))
     return payload
 
 
@@ -275,6 +317,16 @@ async def manage_background_tasks(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("action", normalized_action)
+    if normalized_task_id is not None:
+        payload.setdefault("task_id", normalized_task_id)
+    if normalized_task_type is not None:
+        payload.setdefault("task_type", normalized_task_type)
+    payload.setdefault("priority", normalized_priority)
+    if normalized_action == "list":
+        payload.setdefault("tasks", [])
+        payload.setdefault("count", len(payload.get("tasks") or []))
+    if normalized_action == "get_stats":
+        payload.setdefault("statistics", {})
     return payload
 
 
@@ -328,6 +380,88 @@ async def manage_task_queue(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("action", normalized_action)
+    if normalized_priority is not None:
+        payload.setdefault("priority", normalized_priority)
+    if max_concurrent is not None:
+        payload.setdefault("max_concurrent", max_concurrent)
+    if normalized_action == "get_stats":
+        payload.setdefault("queue_statistics", {})
+    return payload
+
+
+async def get_task_status(
+    task_id: Optional[str] = None,
+    include_logs: bool = True,
+    include_system_status: bool = False,
+    include_queue_status: bool = False,
+    log_limit: int = 20,
+) -> Dict[str, Any]:
+    """Get detailed status for one task or system-level background-task telemetry."""
+    normalized_task_id = str(task_id).strip() if task_id is not None else None
+    if task_id is not None and not normalized_task_id:
+        return {
+            "status": "error",
+            "message": "task_id must be a non-empty string when provided",
+            "task_id": task_id,
+        }
+    if not isinstance(include_logs, bool):
+        return {
+            "status": "error",
+            "message": "include_logs must be a boolean",
+            "include_logs": include_logs,
+        }
+    if not isinstance(include_system_status, bool):
+        return {
+            "status": "error",
+            "message": "include_system_status must be a boolean",
+            "include_system_status": include_system_status,
+        }
+    if not isinstance(include_queue_status, bool):
+        return {
+            "status": "error",
+            "message": "include_queue_status must be a boolean",
+            "include_queue_status": include_queue_status,
+        }
+    if not isinstance(log_limit, int) or log_limit < 1 or log_limit > 500:
+        return {
+            "status": "error",
+            "message": "log_limit must be an integer between 1 and 500",
+            "log_limit": log_limit,
+        }
+
+    delegate = _API.get("get_task_status")
+    if delegate is None:
+        result: Dict[str, Any] = {
+            "status": "success",
+            "summary": {"total_tasks": 0, "task_ids": []},
+            "message": "Task status retrieved successfully",
+        }
+    else:
+        result = await delegate(
+            task_id=normalized_task_id,
+            include_logs=include_logs,
+            include_system_status=include_system_status,
+            include_queue_status=include_queue_status,
+            log_limit=log_limit,
+        )
+
+    payload = dict(result or {})
+    if payload.get("status") in {"error", "not_found"} or ("error" in payload and payload.get("error")):
+        payload.setdefault("status", "error" if payload.get("status") != "not_found" else "not_found")
+    else:
+        payload.setdefault("status", "success")
+    if normalized_task_id is not None:
+        payload.setdefault("task_id", normalized_task_id)
+    payload.setdefault("include_logs", include_logs)
+    payload.setdefault("include_system_status", include_system_status)
+    payload.setdefault("include_queue_status", include_queue_status)
+    payload.setdefault("log_limit", log_limit)
+    if include_system_status:
+        payload.setdefault("system_status", {})
+    if include_queue_status:
+        payload.setdefault("queue_status", {})
+    if normalized_task_id is None:
+        payload.setdefault("summary", {"total_tasks": 0, "task_ids": []})
     return payload
 
 
@@ -407,6 +541,26 @@ def register_native_background_task_tools(manager: Any) -> None:
                 "max_concurrent": {"type": ["integer", "null"], "minimum": 1},
             },
             "required": ["action"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "background-task"],
+    )
+
+    manager.register_tool(
+        category="background_task_tools",
+        name="get_task_status",
+        func=get_task_status,
+        description="Get detailed task/system/queue status telemetry for background tasks.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "task_id": {"type": ["string", "null"]},
+                "include_logs": {"type": "boolean", "default": True},
+                "include_system_status": {"type": "boolean", "default": False},
+                "include_queue_status": {"type": "boolean", "default": False},
+                "log_limit": {"type": "integer", "minimum": 1, "maximum": 500, "default": 20},
+            },
+            "required": [],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "background-task"],

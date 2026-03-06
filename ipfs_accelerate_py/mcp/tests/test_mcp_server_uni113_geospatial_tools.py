@@ -8,6 +8,7 @@ import unittest
 import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.geospatial_tools.native_geospatial_tools import (
+    analyze_geospatial_corpus,
     extract_geographic_entities,
     map_spatiotemporal_events,
     query_geographic_context,
@@ -31,6 +32,7 @@ class TestMCPServerUNI113GeospatialTools(unittest.TestCase):
         self.assertIn("extract_geographic_entities", names)
         self.assertIn("map_spatiotemporal_events", names)
         self.assertIn("query_geographic_context", names)
+        self.assertIn("analyze_geospatial_corpus", names)
 
     def test_register_schema_contracts(self) -> None:
         manager = _DummyManager()
@@ -98,6 +100,38 @@ class TestMCPServerUNI113GeospatialTools(unittest.TestCase):
             )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("must be a boolean", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_analyze_geospatial_corpus_rejects_missing_corpus(self) -> None:
+        async def _run() -> None:
+            result = await analyze_geospatial_corpus(corpus_data="   ")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("corpus_data is required", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_analyze_geospatial_corpus_propagates_phase_error(self) -> None:
+        async def _run() -> None:
+            result = await analyze_geospatial_corpus(
+                corpus_data="sample",
+                temporal_resolution="quarter",
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("phase"), "map_spatiotemporal_events")
+
+        anyio.run(_run)
+
+    def test_analyze_geospatial_corpus_success_shape(self) -> None:
+        async def _run() -> None:
+            result = await analyze_geospatial_corpus(
+                corpus_data="sample",
+                temporal_resolution="day",
+            )
+            self.assertEqual(result.get("status"), "success")
+            self.assertIn("summary", result)
+            self.assertIn("entity_analysis", result)
+            self.assertIn("spatiotemporal_analysis", result)
 
         anyio.run(_run)
 

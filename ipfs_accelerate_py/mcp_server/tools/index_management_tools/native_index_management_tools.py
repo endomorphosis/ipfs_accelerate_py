@@ -295,6 +295,93 @@ async def manage_index_configuration(
     return payload
 
 
+async def orchestrate_index_lifecycle(
+    dataset: str,
+    action: str = "create",
+    num_shards: int = 4,
+    optimization_level: int = 1,
+    include_status: bool = True,
+) -> Dict[str, Any]:
+    """Run a deterministic create/optimize/status lifecycle orchestration for index management."""
+    normalized_dataset = str(dataset or "").strip()
+    if not normalized_dataset:
+        return {
+            "status": "error",
+            "message": "dataset is required",
+            "dataset": dataset,
+        }
+
+    normalized_action = str(action or "").strip().lower()
+    allowed_actions = {"create", "reload", "optimize"}
+    if normalized_action not in allowed_actions:
+        return {
+            "status": "error",
+            "message": f"action must be one of: {', '.join(sorted(allowed_actions))}",
+            "action": action,
+        }
+
+    load_action = "create" if normalized_action == "create" else "reload"
+    load_result = await load_index(action=load_action, dataset=normalized_dataset)
+    if load_result.get("status") == "error":
+        return {
+            "status": "error",
+            "phase": "load_index",
+            "message": "index load phase failed",
+            "details": load_result,
+        }
+
+    shard_result = await manage_shards(
+        action="create_shards",
+        dataset=normalized_dataset,
+        num_shards=num_shards,
+    )
+    if shard_result.get("status") == "error":
+        return {
+            "status": "error",
+            "phase": "manage_shards",
+            "message": "shard management phase failed",
+            "details": shard_result,
+        }
+
+    config_result = await manage_index_configuration(
+        action="optimize_config" if normalized_action == "optimize" else "get_config",
+        index_id=load_result.get("index_id"),
+        optimization_level=optimization_level,
+    )
+    if config_result.get("status") == "error":
+        return {
+            "status": "error",
+            "phase": "manage_index_configuration",
+            "message": "configuration phase failed",
+            "details": config_result,
+        }
+
+    status_result: Optional[Dict[str, Any]] = None
+    if include_status:
+        status_result = await monitor_index_status(
+            index_id=load_result.get("index_id"),
+            time_range="24h",
+            include_details=False,
+        )
+        if status_result.get("status") == "error":
+            return {
+                "status": "error",
+                "phase": "monitor_index_status",
+                "message": "status phase failed",
+                "details": status_result,
+            }
+
+    return {
+        "status": "success",
+        "dataset": normalized_dataset,
+        "lifecycle_action": normalized_action,
+        "load": load_result,
+        "shards": shard_result,
+        "configuration": config_result,
+        "status_monitor": status_result,
+    }
+
+
 def register_native_index_management_tools(manager: Any) -> None:
     """Register native index-management tools in unified hierarchical manager."""
     manager.register_tool(
@@ -383,6 +470,26 @@ def register_native_index_management_tools(manager: Any) -> None:
                 "optimization_level": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1},
             },
             "required": ["action"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "indexing"],
+    )
+
+    manager.register_tool(
+        category="index_management_tools",
+        name="orchestrate_index_lifecycle",
+        func=orchestrate_index_lifecycle,
+        description="Run create/shard/config/status lifecycle orchestration for a dataset index.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "dataset": {"type": "string", "minLength": 1},
+                "action": {"type": "string", "enum": ["create", "reload", "optimize"], "default": "create"},
+                "num_shards": {"type": "integer", "minimum": 1, "default": 4},
+                "optimization_level": {"type": "integer", "minimum": 1, "maximum": 3, "default": 1},
+                "include_status": {"type": "boolean", "default": True},
+            },
+            "required": ["dataset"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "indexing"],

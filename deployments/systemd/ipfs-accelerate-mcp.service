@@ -43,9 +43,6 @@ EnvironmentFile=-%h/ipfs_accelerate_py/state/mcpplusplus.env
 
 EnvironmentFile=-/etc/ipfs-accelerate/secrets.env
 
-# Optional worker overrides (session tags, autoscale knobs, failover tuning, etc.).
-EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
-
 # If you use `gh auth login` (user-scoped auth), point gh at the service user's
 # config directory. This is especially important when the unit is installed with
 # `deployments/systemd/install.sh --user <you>`.
@@ -69,10 +66,10 @@ Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MIN=1"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MAX=4"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_POLL_S=2"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_IDLE_S=30"
-Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE=0"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_REFRESH_S=5"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_REMOTE_MAX_PEERS=10"
-Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_AUTOSCALE_MESH_CHILDREN=0"
 
 # DuckDB-backed TaskQueue uses a single-writer lock per DB file.
 # Ensure autoscaling uses threads (single process) to avoid worker child
@@ -87,6 +84,7 @@ Environment="IPFS_ACCELERATE_PY_TASK_WORKER_LOCAL_CLAIM_BATCH=16"
 # Enable additional HuggingFace task types (beyond text-generation)
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_HF=1"
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_MINIMAL_HF=1"
+Environment="IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE=cuda:0"
 
 # Per-task micro-batch caps (0/auto enables safe estimation)
 Environment="IPFS_ACCELERATE_PY_TASK_WORKER_TEXTGEN_BATCH_MAX=4"
@@ -118,11 +116,35 @@ Environment="IPFS_ACCELERATE_PY_TASK_P2P_ANNOUNCE_FILE=%h/ipfs_accelerate_py/sta
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_DNSADDR_RESOLVE=1"
 Environment="IPFS_DATASETS_PY_TASK_P2P_DNSADDR_RESOLVE=1"
 
+# Conservative default for single-host/LAN deployments:
+# avoid public bootstrap + DHT/rendezvous discovery, which can generate
+# persistent libp2p secure-handshake failures against incompatible peers.
+# Disable mDNS by default as well; set to 1 in task-worker.env when you
+# intentionally run a trusted LAN mesh.
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_BOOTSTRAP_PEERS=off"
+Environment="IPFS_DATASETS_PY_TASK_P2P_BOOTSTRAP_PEERS=off"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_DHT=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_DHT=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_RENDEZVOUS=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_RENDEZVOUS=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_MDNS=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_MDNS=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_AUTONAT=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_AUTONAT=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_RELAY=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_RELAY=0"
+Environment="IPFS_ACCELERATE_PY_TASK_P2P_HOLEPUNCH=0"
+Environment="IPFS_DATASETS_PY_TASK_P2P_HOLEPUNCH=0"
+
 # Session failover (conservative): resubmit locally if a queued task requires a
 # different session_id and the matching session peer can't drain it.
 # - Enabled by default in code (set IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER=0 to disable)
 Environment="IPFS_ACCELERATE_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240"
 Environment="IPFS_DATASETS_PY_TASK_P2P_SESSION_FAILOVER_AFTER_S=240"
+
+# Optional worker overrides (session tags, autoscale knobs, failover tuning, etc.).
+# Keep this *after* hardcoded defaults so host-specific values take precedence.
+EnvironmentFile=-/etc/ipfs-accelerate/task-worker.env
 
 # NOTE: Avoid auto-updating on every restart; it can be slow and brittle.
 # Run scripts/auto-update.sh manually when you actually want to update.

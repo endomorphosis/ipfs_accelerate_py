@@ -10,6 +10,7 @@ import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools import (
     check_access_permission,
+    check_access_permissions_batch,
     register_native_security_tools,
 )
 
@@ -26,15 +27,20 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
     def test_register_schema_enforces_non_empty_strings(self) -> None:
         manager = _DummyManager()
         register_native_security_tools(manager)
-        self.assertEqual(len(manager.calls), 1)
+        self.assertEqual(len(manager.calls), 2)
 
-        schema = manager.calls[0]["input_schema"]
+        tool_by_name = {call["name"]: call for call in manager.calls}
+
+        schema = tool_by_name["check_access_permission"]["input_schema"]
         properties = schema["properties"]
         self.assertEqual(properties["resource_id"].get("minLength"), 1)
         self.assertEqual(properties["user_id"].get("minLength"), 1)
 
         resource_type_anyof = properties["resource_type"]["anyOf"]
         self.assertEqual(resource_type_anyof[0].get("minLength"), 1)
+
+        batch_schema = tool_by_name["check_access_permissions_batch"]["input_schema"]
+        self.assertEqual((batch_schema["properties"]["requests"]).get("minItems"), 1)
 
     def test_check_access_permission_rejects_blank_resource_type(self) -> None:
         async def _run() -> None:
@@ -121,6 +127,48 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
                 self.assertEqual(result.get("allowed"), False)
                 self.assertIn("backend failure", str(result.get("error", "")))
                 self.assertEqual(result.get("permission_type"), "write")
+
+        anyio.run(_run)
+
+    def test_check_access_permissions_batch_requires_non_empty_array(self) -> None:
+        async def _run() -> None:
+            result = await check_access_permissions_batch(requests=[])
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("non-empty array", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_check_access_permissions_batch_aggregates_results(self) -> None:
+        async def _run() -> None:
+            result = await check_access_permissions_batch(
+                requests=[
+                    {"resource_id": "resource-1", "user_id": "user-1", "permission_type": "read"},
+                    {"resource_id": "", "user_id": "user-2", "permission_type": "read"},
+                ],
+                fail_fast=False,
+            )
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("processed"), 2)
+            self.assertIn("allowed_count", result)
+            self.assertIn("error_count", result)
+            self.assertIn("results", result)
+            self.assertEqual(len(result["results"]), 2)
+
+        anyio.run(_run)
+
+    def test_check_access_permissions_batch_honors_fail_fast(self) -> None:
+        async def _run() -> None:
+            result = await check_access_permissions_batch(
+                requests=[
+                    {"resource_id": "", "user_id": "user-1", "permission_type": "read"},
+                    {"resource_id": "resource-2", "user_id": "user-2", "permission_type": "read"},
+                ],
+                fail_fast=True,
+            )
+            self.assertEqual(result.get("status").lower(), "success")
+            self.assertEqual(result.get("processed"), 1)
+            self.assertEqual(result.get("requested"), 2)
+            self.assertGreaterEqual(int(result.get("error_count", 0)), 1)
 
         anyio.run(_run)
 
