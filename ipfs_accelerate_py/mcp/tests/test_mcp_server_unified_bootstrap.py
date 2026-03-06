@@ -441,6 +441,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "IPFS_MCP_SERVER_ENABLE_MONITORING": "1",
                 "IPFS_MCP_SERVER_ENABLE_OTEL_TRACING": "1",
                 "IPFS_MCP_SERVER_ENABLE_PROMETHEUS_EXPORTER": "1",
+                "IPFS_MCP_SERVER_ENABLE_POLICY_AUDIT": "1",
                 "IPFS_MCP_SERVER_PROMETHEUS_NAMESPACE": "mcp_test",
             },
             clear=False,
@@ -452,6 +453,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertIsNotNone(getattr(server, "_unified_tracer", None))
         self.assertIsNotNone(getattr(server, "_unified_tracing_status", None))
         self.assertIsNotNone(getattr(server, "_unified_prometheus_status", None))
+        self.assertIsNotNone(getattr(server, "_unified_audit_metrics_status", None))
 
         tracing = getattr(server, "_unified_tracing_status", {})
         self.assertIn("enabled", tracing)
@@ -460,6 +462,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         prom = getattr(server, "_unified_prometheus_status", {})
         self.assertTrue(prom.get("enabled"))
         self.assertEqual((prom.get("info") or {}).get("namespace"), "mcp_test")
+
+        audit_metrics = getattr(server, "_unified_audit_metrics_status", {})
+        self.assertTrue(audit_metrics.get("enabled"))
+        self.assertTrue(audit_metrics.get("attached"))
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
     def test_unified_bootstrap_autoloads_secrets_into_env(self, mock_create):
@@ -5281,6 +5287,173 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_result_cache_factory_consumed_on_cache_hit(self, mock_wrapper):
+        """tools_dispatch should consume result_cache_factory and short-circuit on cache hit."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakeResultCache:
+            def __init__(self):
+                self.get_calls = []
+                self.put_calls = []
+
+            async def get(self, task_id, inputs=None):
+                self.get_calls.append({"task_id": task_id, "inputs": dict(inputs or {})})
+                return {"echo": "from-cache"}
+
+            async def put(self, task_id, value, ttl=None, inputs=None):
+                self.put_calls.append(
+                    {
+                        "task_id": task_id,
+                        "value": value,
+                        "ttl": ttl,
+                        "inputs": dict(inputs or {}),
+                    }
+                )
+
+        fake_cache = FakeResultCache()
+        factory_calls = {"result_cache_factory": 0}
+        dispatch_invocations = {"count": 0}
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-result-cache-hit")
+
+        def _result_cache_factory(**kwargs):
+            _ = kwargs
+            factory_calls["result_cache_factory"] += 1
+            return fake_cache
+
+        server._unified_services["result_cache_factory"] = _result_cache_factory
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                dispatch_invocations["count"] += 1
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ignored-by-cache",
+                    "__use_result_cache": True,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            self.assertEqual(response["result"], {"echo": "from-cache"})
+            self.assertEqual(dispatch_invocations["count"], 0)
+            self.assertEqual(factory_calls["result_cache_factory"], 1)
+            self.assertEqual(len(fake_cache.get_calls), 1)
+            self.assertEqual(len(fake_cache.put_calls), 0)
+            self.assertIn("cache", response)
+            self.assertTrue(response["cache"]["enabled"])
+            self.assertTrue(response["cache"]["hit"])
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_peer_registry_factory_consumed_for_probe(self, mock_wrapper):
+        """tools_dispatch should consume peer_registry_factory when peer probing is requested."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakePeerRegistry:
+            def __init__(self):
+                self.calls = []
+
+            async def discover_peers(self, max_peers=50):
+                self.calls.append({"max_peers": max_peers})
+                return [
+                    {"peer_id": "peer-a", "multiaddr": "/ip4/127.0.0.1/tcp/4001"},
+                    {"peer_id": "peer-b", "multiaddr": "/ip4/127.0.0.1/tcp/4002"},
+                ]
+
+        fake_registry = FakePeerRegistry()
+        factory_calls = {"peer_registry_factory": 0}
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-peer-registry-probe")
+
+        def _peer_registry_factory(**kwargs):
+            _ = kwargs
+            factory_calls["peer_registry_factory"] += 1
+            return fake_registry
+
+        server._unified_services["peer_registry_factory"] = _peer_registry_factory
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__discover_peers": True,
+                    "__peer_probe_limit": 1,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            self.assertEqual(factory_calls["peer_registry_factory"], 1)
+            self.assertEqual(len(fake_registry.calls), 1)
+            self.assertEqual(fake_registry.calls[0]["max_peers"], 1)
+            self.assertIn("peer_registry", response)
+            self.assertTrue(response["peer_registry"]["enabled"])
+            self.assertTrue(response["peer_registry"]["factory_used"])
+            self.assertEqual(response["peer_registry"]["peer_count"], 1)
+            self.assertEqual(len(response["peer_registry"]["peers"]), 1)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_ipfs_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """ipfs_tools should expose source-compatible operations and dispatch envelopes."""
 
@@ -6469,6 +6642,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("generate_embedding", names)
             self.assertIn("generate_embeddings_from_file", names)
+            self.assertIn("semantic_search", names)
+            self.assertIn("hybrid_search", names)
+            self.assertIn("search_with_filters", names)
             self.assertIn("generate_embeddings", names)
             self.assertIn("chunk_text_for_embeddings", names)
 
@@ -6479,6 +6655,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             file_schema = await get_schema("embedding_tools", "generate_embeddings_from_file")
             file_props = (file_schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("json", (file_props.get("output_format") or {}).get("enum", []))
+
+            semantic_schema = await get_schema("embedding_tools", "semantic_search")
+            semantic_props = (semantic_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((semantic_props.get("top_k") or {}).get("maximum"), 1000)
+
+            hybrid_schema = await get_schema("embedding_tools", "hybrid_search")
+            hybrid_props = (hybrid_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((hybrid_props.get("top_k") or {}).get("minimum"), 1)
+
+            filter_schema = await get_schema("embedding_tools", "search_with_filters")
+            filter_props = (filter_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("semantic", (filter_props.get("search_method") or {}).get("enum", []))
 
             generate_schema = await get_schema("embedding_tools", "generate_embeddings")
             generate_props = (generate_schema.get("input_schema") or {}).get("properties", {})
@@ -6525,6 +6713,49 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_file_format.get("status"), "error")
             self.assertIn("output_format must be one of", str(invalid_file_format.get("error", "")))
+
+            invalid_semantic_top_k = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "embedding_tools",
+                    "semantic_search",
+                    {
+                        "query": "hello",
+                        "vector_store_id": "vs-1",
+                        "top_k": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_semantic_top_k.get("status"), "error")
+            self.assertIn("top_k must be between 1 and 1000", str(invalid_semantic_top_k.get("error", "")))
+
+            invalid_hybrid_top_k = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "embedding_tools",
+                    "hybrid_search",
+                    {
+                        "query": "hello",
+                        "vector_store_id": "vs-1",
+                        "top_k": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_hybrid_top_k.get("status"), "error")
+            self.assertIn("top_k must be >= 1", str(invalid_hybrid_top_k.get("error", "")))
+
+            invalid_filter_method = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "embedding_tools",
+                    "search_with_filters",
+                    {
+                        "query": "hello",
+                        "vector_store_id": "vs-1",
+                        "filters": {"category": "tech"},
+                        "search_method": "vector",
+                    },
+                )
+            )
+            self.assertEqual(invalid_filter_method.get("status"), "error")
+            self.assertIn("search_method must be one of", str(invalid_filter_method.get("error", "")))
 
             invalid_overlap = self._assert_dispatch_success_envelope(
                 await dispatch(

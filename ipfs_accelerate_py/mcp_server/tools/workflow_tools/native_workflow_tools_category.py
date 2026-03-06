@@ -303,10 +303,16 @@ _API = _load_workflow_tools_api()
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize tool results to deterministic dictionary envelopes."""
     if isinstance(payload, dict):
-        return payload
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
         return {}
-    return {"result": payload}
+    return {"status": "success", "result": payload}
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
@@ -587,6 +593,8 @@ async def schedule_p2p_workflow(
         envelope.setdefault("workflow_id", workflow_id)
         envelope.setdefault("name", name)
         envelope.setdefault("tags", clean_tags)
+        envelope.setdefault("priority", float(priority))
+        envelope.setdefault("metadata", metadata or {})
         return envelope
     except Exception as exc:
         return _error_result(str(exc), workflow_id=workflow_id, name=name)
@@ -661,6 +669,7 @@ async def calculate_peer_distance(hash1: str, hash2: str) -> Dict[str, Any]:
         envelope.setdefault("success", True)
         envelope.setdefault("hash1", hash1)
         envelope.setdefault("hash2", hash2)
+        envelope.setdefault("distance", 0)
         return envelope
     except Exception as exc:
         return _error_result(str(exc), hash1=hash1, hash2=hash2)
@@ -717,6 +726,11 @@ async def merge_merkle_clock(
         envelope.setdefault("success", True)
         envelope.setdefault("other_peer_id", other_peer_id)
         envelope.setdefault("other_counter", other_counter)
+        envelope.setdefault("other_parent_hash", parent_hash)
+        envelope.setdefault(
+            "other_timestamp",
+            float(other_timestamp) if isinstance(other_timestamp, (int, float)) else None,
+        )
         return envelope
     except Exception as exc:
         return _error_result(

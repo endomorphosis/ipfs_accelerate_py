@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass, field
 import json
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 
 @dataclass
@@ -37,11 +37,18 @@ class PolicyAuditEntry:
 class PolicyAuditLog:
     """Thread-safe in-memory audit log with bounded retention."""
 
-    def __init__(self, *, enabled: bool = False, max_entries: int = 10_000) -> None:
+    def __init__(
+        self,
+        *,
+        enabled: bool = False,
+        max_entries: int = 10_000,
+        sink: Optional[Callable[[PolicyAuditEntry], None]] = None,
+    ) -> None:
         self._enabled = bool(enabled)
         self._max_entries = int(max_entries)
         self._entries: List[PolicyAuditEntry] = []
         self._lock = threading.Lock()
+        self._sink: Optional[Callable[[PolicyAuditEntry], None]] = sink
         self._total_recorded = 0
         self._counts: Dict[str, int] = {
             "allow": 0,
@@ -94,6 +101,13 @@ class PolicyAuditLog:
             self._entries.append(entry)
             self._total_recorded += 1
             self._counts[entry.decision] = self._counts.get(entry.decision, 0) + 1
+
+        if self._sink is not None:
+            try:
+                self._sink(entry)
+            except Exception:
+                # Keep audit recording non-fatal when sink integrations fail.
+                pass
 
         return entry
 

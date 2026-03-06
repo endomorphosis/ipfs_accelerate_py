@@ -82,6 +82,7 @@ from .mcplusplus.event_dag import EventDAGStore
 from .mcplusplus.risk_scheduler import RiskScheduler
 from .risk_scorer import RiskScorer, RiskScoringPolicy
 from .policy_audit_log import PolicyAuditLog
+from .audit_metrics_bridge import connect_audit_to_prometheus
 from .secrets_vault import SecretsVault
 from .monitoring import EnhancedMetricsCollector, P2PMetricsCollector
 from .otel_tracing import MCPTracer, configure_tracing
@@ -252,6 +253,29 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             prometheus_status["info"] = prometheus_exporter.get_info()
         except Exception as exc:
             prometheus_status["error"] = str(exc)
+    audit_metrics_bridge = None
+    audit_metrics_status: dict[str, Any] = {
+        "enabled": False,
+        "attached": False,
+        "forwarded_count": 0,
+        "error": "",
+        "category": "policy",
+    }
+    if policy_audit.enabled and prometheus_exporter is not None:
+        try:
+            audit_metrics_bridge = connect_audit_to_prometheus(
+                policy_audit,
+                prometheus_exporter,
+                category="policy",
+            )
+            audit_metrics_status = {
+                "enabled": True,
+                **audit_metrics_bridge.get_info(),
+                "error": "",
+            }
+        except Exception as exc:
+            audit_metrics_status["enabled"] = True
+            audit_metrics_status["error"] = str(exc)
     secrets_vault = SecretsVault() if config.enable_secrets_vault else None
     secrets_status: dict[str, Any] = {
         "attached": secrets_vault is not None,
@@ -719,6 +743,24 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 payload.pop("__execute_frontier", config.enable_risk_frontier_execution),
                 field_name="__execute_frontier",
             )
+            use_result_cache = coerce_dispatch_bool(
+                payload.pop("__use_result_cache", False),
+                field_name="__use_result_cache",
+            )
+            cache_ttl_raw = payload.pop("__cache_ttl", None)
+            cache_ttl: float | None = None
+            if cache_ttl_raw is not None:
+                cache_ttl = float(cache_ttl_raw)
+                if cache_ttl <= 0:
+                    raise ValueError("__cache_ttl must be > 0 when provided")
+            discover_peers = coerce_dispatch_bool(
+                payload.pop("__discover_peers", False),
+                field_name="__discover_peers",
+            )
+            peer_probe_limit_raw = payload.pop("__peer_probe_limit", 25)
+            peer_probe_limit = int(peer_probe_limit_raw)
+            if peer_probe_limit < 1:
+                raise ValueError("__peer_probe_limit must be >= 1")
         except ValueError as exc:
             _record_observability("error")
             return {
@@ -730,6 +772,78 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
         policy_decision_binding: dict[str, Any] | None = None
         risk_assessment = None
+
+        services = getattr(server, "_unified_services", {})
+        result_cache = None
+        cache_meta: dict[str, Any] = {
+            "enabled": use_result_cache,
+            "hit": False,
+            "stored": False,
+            "error": "",
+            "key": f"{category}.{tool_name}",
+        }
+        peer_registry_meta: dict[str, Any] | None = None
+
+        if use_result_cache and isinstance(services, dict):
+            cache_factory = services.get("result_cache_factory")
+            if callable(cache_factory):
+                try:
+                    result_cache = cache_factory()
+                except Exception as exc:
+                    cache_meta["error"] = str(exc)
+
+        async def _probe_peer_registry() -> dict[str, Any] | None:
+            if not discover_peers:
+                return None
+
+            response: dict[str, Any] = {
+                "enabled": True,
+                "factory_used": False,
+                "peer_count": 0,
+                "peers": [],
+                "error": "",
+            }
+
+            if not isinstance(services, dict):
+                response["error"] = "services_unavailable"
+                return response
+
+            registry_factory = services.get("peer_registry_factory")
+            if not callable(registry_factory):
+                response["error"] = "peer_registry_factory_unavailable"
+                return response
+
+            try:
+                response["factory_used"] = True
+                registry = registry_factory()
+                if registry is None:
+                    response["error"] = "peer_registry_unavailable"
+                    return response
+
+                discover_fn = getattr(registry, "discover_peers", None)
+                if not callable(discover_fn):
+                    discover_fn = getattr(registry, "list_connected_peers", None)
+                if not callable(discover_fn):
+                    response["error"] = "peer_registry_discovery_unavailable"
+                    return response
+
+                try:
+                    peers_result = await _invoke_maybe_async(discover_fn, max_peers=peer_probe_limit)
+                except TypeError:
+                    peers_result = await _invoke_maybe_async(discover_fn)
+                peers: list[dict[str, Any]] = []
+                if isinstance(peers_result, list):
+                    peers = [p for p in peers_result if isinstance(p, dict)]
+                elif isinstance(peers_result, dict):
+                    maybe_peers = peers_result.get("peers")
+                    if isinstance(maybe_peers, list):
+                        peers = [p for p in maybe_peers if isinstance(p, dict)]
+                response["peers"] = peers[:peer_probe_limit]
+                response["peer_count"] = len(response["peers"])
+            except Exception as exc:
+                response["error"] = str(exc)
+
+            return response
 
         if enforce_risk:
             scorer = risk_scorer
@@ -860,10 +974,80 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 }
 
         try:
+            if result_cache is not None:
+                get_fn = getattr(result_cache, "get", None)
+                if callable(get_fn):
+                    cached = await _invoke_maybe_async(
+                        get_fn,
+                        task_id=f"{category}.{tool_name}",
+                        inputs=payload,
+                    )
+                    if cached is not None:
+                        cache_meta["hit"] = True
+                        peer_registry_meta = await _probe_peer_registry()
+                        obligations = len(policy_decision.obligations) if policy_decision is not None else 0
+                        record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
+                        policy_decision_label = "allow"
+                        policy_justification = ""
+                        policy_obligations: list[str] = []
+                        if policy_decision is not None:
+                            policy_decision_label = policy_decision.decision
+                            policy_justification = policy_decision.justification
+                            policy_obligations = [str(x.get("type") or "") for x in policy_decision.obligations]
+                        policy_audit.record(
+                            decision=policy_decision_label,
+                            tool=f"{category}.{tool_name}",
+                            actor=policy_actor or ucan_actor or risk_actor,
+                            intent_cid=dispatch_intent_cid,
+                            policy_cid=policy_cid,
+                            justification=policy_justification,
+                            obligations=policy_obligations,
+                            extra={"cache_hit": True},
+                        )
+                        _record_observability("success")
+                        extra_fields: dict[str, Any] = {}
+                        if use_result_cache:
+                            extra_fields["cache"] = dict(cache_meta)
+                        if peer_registry_meta is not None:
+                            extra_fields["peer_registry"] = dict(peer_registry_meta)
+                        if policy_decision is None:
+                            return _build_success_response(
+                                result=cached,
+                                risk_record=record,
+                                risk_assessment_obj=risk_assessment,
+                                passthrough_result_fields=isinstance(cached, dict),
+                                extra_fields=extra_fields,
+                            )
+                        return _build_success_response(
+                            result=cached,
+                            risk_record=record,
+                            risk_assessment_obj=risk_assessment,
+                            policy_obj=policy_decision,
+                            policy_decision_obj=policy_decision_binding,
+                            extra_fields=extra_fields,
+                        )
+
             result = await manager.dispatch(category, tool_name, payload)
+
+            if result_cache is not None:
+                put_fn = getattr(result_cache, "put", None)
+                if callable(put_fn):
+                    try:
+                        await _invoke_maybe_async(
+                            put_fn,
+                            task_id=f"{category}.{tool_name}",
+                            value=result,
+                            ttl=cache_ttl,
+                            inputs=payload,
+                        )
+                        cache_meta["stored"] = True
+                    except Exception as exc:
+                        cache_meta["error"] = str(exc)
         except Exception:
             _record_observability("error")
             raise
+
+        peer_registry_meta = await _probe_peer_registry()
         if not emit_artifacts:
             obligations = len(policy_decision.obligations) if policy_decision is not None else 0
             record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
@@ -891,6 +1075,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     risk_record=record,
                     risk_assessment_obj=risk_assessment,
                     passthrough_result_fields=isinstance(result, dict),
+                    extra_fields={
+                        **({"cache": dict(cache_meta)} if use_result_cache else {}),
+                        **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
+                    },
                 )
             _record_observability("success")
             return _build_success_response(
@@ -899,6 +1087,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 risk_assessment_obj=risk_assessment,
                 policy_obj=policy_decision,
                 policy_decision_obj=policy_decision_binding,
+                extra_fields={
+                    **({"cache": dict(cache_meta)} if use_result_cache else {}),
+                    **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
+                },
             )
 
         # Build immutable artifact references without changing default dispatch
@@ -1058,6 +1250,8 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     "execution": frontier_execution,
                     "stats": risk_scheduler.stats(),
                 },
+                **({"cache": dict(cache_meta)} if use_result_cache else {}),
+                **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
             },
         )
 
@@ -1077,6 +1271,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     **dict(prometheus_status),
                     "info": prometheus_exporter.get_info() if prometheus_exporter is not None else dict(prometheus_status.get("info") or {}),
                 },
+                "audit_metrics": dict(audit_metrics_status),
             },
         }
 
@@ -1110,6 +1305,8 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_tracing_status", tracing_status)
     setattr(server, "_unified_prometheus_exporter", prometheus_exporter)
     setattr(server, "_unified_prometheus_status", prometheus_status)
+    setattr(server, "_unified_audit_metrics_bridge", audit_metrics_bridge)
+    setattr(server, "_unified_audit_metrics_status", audit_metrics_status)
     setattr(server, "_unified_secrets_vault", secrets_vault)
     setattr(server, "_unified_secrets_status", secrets_status)
     setattr(server, "_unified_supported_profiles", list(unified_context.supported_profiles))

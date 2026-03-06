@@ -45,6 +45,19 @@ def _load_embedding_api() -> Dict[str, Any]:
         except Exception:
             logger.warning("Source advanced_embedding_generation import unavailable, using fallback file-embedding function")
 
+        try:
+            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.embedding_tools.advanced_search import (  # type: ignore
+                hybrid_search as _hybrid_search,
+                search_with_filters as _search_with_filters,
+                semantic_search as _semantic_search,
+            )
+
+            api["semantic_search"] = _semantic_search
+            api["hybrid_search"] = _hybrid_search
+            api["search_with_filters"] = _search_with_filters
+        except Exception:
+            logger.warning("Source advanced_search import unavailable, using fallback semantic-search function")
+
         return api
     except Exception:
         logger.warning("Source embedding_tools import unavailable, using fallback embedding functions")
@@ -230,12 +243,103 @@ def _load_embedding_api() -> Dict[str, Any]:
                 "count": 0,
             }
 
+        async def _semantic_search_fallback(
+            query: str,
+            vector_store_id: str,
+            model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+            top_k: int = 10,
+            similarity_threshold: float = 0.7,
+            include_metadata: bool = True,
+            **kwargs: Any,
+        ) -> Dict[str, Any]:
+            _ = kwargs
+            normalized_query = str(query or "").strip()
+            normalized_store = str(vector_store_id or "").strip()
+            if not normalized_query:
+                return {"status": "error", "error": "query must be a non-empty string"}
+            if not normalized_store:
+                return {"status": "error", "error": "vector_store_id must be a non-empty string"}
+            return {
+                "status": "success",
+                "query": normalized_query,
+                "vector_store_id": normalized_store,
+                "model_used": str(model_name or "sentence-transformers/all-MiniLM-L6-v2"),
+                "top_k": int(top_k),
+                "similarity_threshold": float(similarity_threshold),
+                "include_metadata": bool(include_metadata),
+                "results": [],
+                "total_results": 0,
+            }
+
+        async def _hybrid_search_fallback(
+            query: str,
+            vector_store_id: str,
+            lexical_weight: float = 0.3,
+            semantic_weight: float = 0.7,
+            top_k: int = 10,
+            rerank_results: bool = True,
+            **kwargs: Any,
+        ) -> Dict[str, Any]:
+            _ = kwargs
+            normalized_query = str(query or "").strip()
+            normalized_store = str(vector_store_id or "").strip()
+            if not normalized_query:
+                return {"status": "error", "error": "query must be a non-empty string"}
+            if not normalized_store:
+                return {"status": "error", "error": "vector_store_id must be a non-empty string"}
+            return {
+                "status": "success",
+                "query": normalized_query,
+                "vector_store_id": normalized_store,
+                "weights": {
+                    "lexical": float(lexical_weight),
+                    "semantic": float(semantic_weight),
+                },
+                "top_k": int(top_k),
+                "reranked": bool(rerank_results),
+                "results": [],
+                "total_results": 0,
+            }
+
+        async def _search_with_filters_fallback(
+            query: str,
+            vector_store_id: str,
+            filters: Dict[str, Any],
+            top_k: int = 10,
+            search_method: str = "semantic",
+            **kwargs: Any,
+        ) -> Dict[str, Any]:
+            _ = kwargs
+            normalized_query = str(query or "").strip()
+            normalized_store = str(vector_store_id or "").strip()
+            if not normalized_query:
+                return {"status": "error", "error": "query must be a non-empty string"}
+            if not normalized_store:
+                return {"status": "error", "error": "vector_store_id must be a non-empty string"}
+            if not isinstance(filters, dict):
+                return {"status": "error", "error": "filters must be an object"}
+            return {
+                "status": "success",
+                "query": normalized_query,
+                "vector_store_id": normalized_store,
+                "filters_applied": filters,
+                "search_method": str(search_method or "semantic"),
+                "top_k": int(top_k),
+                "results": [],
+                "total_results": 0,
+                "total_candidates": 0,
+                "filtered_out": 0,
+            }
+
         return {
             "EmbeddingManager": _FallbackEmbeddingManager,
             "generate_embeddings": _generate_fallback,
             "shard_embeddings": _shard_fallback,
             "generate_embedding": _generate_embedding_fallback,
             "generate_embeddings_from_file": _generate_from_file_fallback,
+            "semantic_search": _semantic_search_fallback,
+            "hybrid_search": _hybrid_search_fallback,
+            "search_with_filters": _search_with_filters_fallback,
             "chunk_text": _chunk_text_fallback,
             "manage_endpoints": _manage_endpoints_fallback,
         }
@@ -421,6 +525,208 @@ async def generate_embeddings_from_file(
     normalized.setdefault("count", len(normalized.get("embeddings") or []))
     if normalized_output_path is not None:
         normalized.setdefault("output_path", normalized_output_path)
+    return normalized
+
+
+async def semantic_search(
+    query: str,
+    vector_store_id: str,
+    model_name: str = "sentence-transformers/all-MiniLM-L6-v2",
+    top_k: int = 10,
+    similarity_threshold: float = 0.7,
+    include_metadata: bool = True,
+) -> Dict[str, Any]:
+    """Perform source-aligned semantic search using embedding similarity."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return _error_result("query must be a non-empty string")
+
+    normalized_store = str(vector_store_id or "").strip()
+    if not normalized_store:
+        return _error_result("vector_store_id must be a non-empty string")
+
+    normalized_model_name = str(model_name or "").strip()
+    if not normalized_model_name:
+        return _error_result("model_name must be a non-empty string")
+
+    try:
+        normalized_top_k = int(top_k)
+    except (TypeError, ValueError):
+        return _error_result("top_k must be an integer")
+    if normalized_top_k < 1 or normalized_top_k > 1000:
+        return _error_result("top_k must be between 1 and 1000")
+
+    try:
+        normalized_similarity_threshold = float(similarity_threshold)
+    except (TypeError, ValueError):
+        return _error_result("similarity_threshold must be a number")
+    if normalized_similarity_threshold < 0.0 or normalized_similarity_threshold > 1.0:
+        return _error_result("similarity_threshold must be between 0 and 1")
+
+    if not isinstance(include_metadata, bool):
+        return _error_result("include_metadata must be a boolean")
+
+    handler = _API.get("semantic_search")
+    if not callable(handler):
+        return _error_result("semantic_search handler unavailable")
+
+    try:
+        payload = await _await_maybe(
+            handler(
+                query=normalized_query,
+                vector_store_id=normalized_store,
+                model_name=normalized_model_name,
+                top_k=normalized_top_k,
+                similarity_threshold=normalized_similarity_threshold,
+                include_metadata=include_metadata,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"semantic_search failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("query", normalized_query)
+    normalized.setdefault("vector_store_id", normalized_store)
+    normalized.setdefault("model_used", normalized_model_name)
+    normalized.setdefault("top_k", normalized_top_k)
+    normalized.setdefault("similarity_threshold", normalized_similarity_threshold)
+    normalized.setdefault("results", [])
+    normalized.setdefault("total_results", len(normalized.get("results") or []))
+    return normalized
+
+
+async def hybrid_search(
+    query: str,
+    vector_store_id: str,
+    lexical_weight: float = 0.3,
+    semantic_weight: float = 0.7,
+    top_k: int = 10,
+    rerank_results: bool = True,
+) -> Dict[str, Any]:
+    """Perform source-aligned hybrid lexical+semantic search."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return _error_result("query must be a non-empty string")
+
+    normalized_store = str(vector_store_id or "").strip()
+    if not normalized_store:
+        return _error_result("vector_store_id must be a non-empty string")
+
+    try:
+        normalized_lexical_weight = float(lexical_weight)
+    except (TypeError, ValueError):
+        return _error_result("lexical_weight must be a number")
+
+    try:
+        normalized_semantic_weight = float(semantic_weight)
+    except (TypeError, ValueError):
+        return _error_result("semantic_weight must be a number")
+
+    try:
+        normalized_top_k = int(top_k)
+    except (TypeError, ValueError):
+        return _error_result("top_k must be an integer")
+    if normalized_top_k < 1:
+        return _error_result("top_k must be >= 1")
+
+    if not isinstance(rerank_results, bool):
+        return _error_result("rerank_results must be a boolean")
+
+    handler = _API.get("hybrid_search")
+    if not callable(handler):
+        return _error_result("hybrid_search handler unavailable")
+
+    try:
+        payload = await _await_maybe(
+            handler(
+                query=normalized_query,
+                vector_store_id=normalized_store,
+                lexical_weight=normalized_lexical_weight,
+                semantic_weight=normalized_semantic_weight,
+                top_k=normalized_top_k,
+                rerank_results=rerank_results,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"hybrid_search failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("query", normalized_query)
+    normalized.setdefault("vector_store_id", normalized_store)
+    normalized.setdefault(
+        "weights",
+        {
+            "lexical": normalized_lexical_weight,
+            "semantic": normalized_semantic_weight,
+        },
+    )
+    normalized.setdefault("top_k", normalized_top_k)
+    normalized.setdefault("reranked", rerank_results)
+    normalized.setdefault("results", [])
+    normalized.setdefault("total_results", len(normalized.get("results") or []))
+    return normalized
+
+
+async def search_with_filters(
+    query: str,
+    vector_store_id: str,
+    filters: Dict[str, Any],
+    top_k: int = 10,
+    search_method: str = "semantic",
+) -> Dict[str, Any]:
+    """Perform source-aligned metadata-filtered search with selectable search method."""
+    normalized_query = str(query or "").strip()
+    if not normalized_query:
+        return _error_result("query must be a non-empty string")
+
+    normalized_store = str(vector_store_id or "").strip()
+    if not normalized_store:
+        return _error_result("vector_store_id must be a non-empty string")
+
+    if not isinstance(filters, dict):
+        return _error_result("filters must be an object")
+
+    try:
+        normalized_top_k = int(top_k)
+    except (TypeError, ValueError):
+        return _error_result("top_k must be an integer")
+    if normalized_top_k < 1 or normalized_top_k > 1000:
+        return _error_result("top_k must be between 1 and 1000")
+
+    normalized_search_method = str(search_method or "").strip().lower()
+    if normalized_search_method not in {"semantic", "lexical", "hybrid"}:
+        return _error_result("search_method must be one of: semantic, lexical, hybrid")
+
+    handler = _API.get("search_with_filters")
+    if not callable(handler):
+        return _error_result("search_with_filters handler unavailable")
+
+    try:
+        payload = await _await_maybe(
+            handler(
+                query=normalized_query,
+                vector_store_id=normalized_store,
+                filters=filters,
+                top_k=normalized_top_k,
+                search_method=normalized_search_method,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"search_with_filters failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("query", normalized_query)
+    normalized.setdefault("vector_store_id", normalized_store)
+    normalized.setdefault("filters_applied", filters)
+    normalized.setdefault("search_method", normalized_search_method)
+    normalized.setdefault("top_k", normalized_top_k)
+    normalized.setdefault("results", [])
+    normalized.setdefault("total_results", len(normalized.get("results") or []))
+    normalized.setdefault("total_candidates", normalized.get("total_results") or 0)
+    normalized.setdefault("filtered_out", 0)
     return normalized
 
 
@@ -644,6 +950,76 @@ def register_native_embedding_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "embedding"],
+    )
+
+    manager.register_tool(
+        category="embedding_tools",
+        name="semantic_search",
+        func=semantic_search,
+        description="Perform semantic search over a vector store using embedding similarity.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "minLength": 1},
+                "vector_store_id": {"type": "string", "minLength": 1},
+                "model_name": {
+                    "type": "string",
+                    "minLength": 1,
+                    "default": "sentence-transformers/all-MiniLM-L6-v2",
+                },
+                "top_k": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 10},
+                "similarity_threshold": {"type": "number", "minimum": 0, "maximum": 1, "default": 0.7},
+                "include_metadata": {"type": "boolean", "default": True},
+            },
+            "required": ["query", "vector_store_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "embedding", "search"],
+    )
+
+    manager.register_tool(
+        category="embedding_tools",
+        name="hybrid_search",
+        func=hybrid_search,
+        description="Perform hybrid lexical+semantic search over a vector store.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "minLength": 1},
+                "vector_store_id": {"type": "string", "minLength": 1},
+                "lexical_weight": {"type": "number", "default": 0.3},
+                "semantic_weight": {"type": "number", "default": 0.7},
+                "top_k": {"type": "integer", "minimum": 1, "default": 10},
+                "rerank_results": {"type": "boolean", "default": True},
+            },
+            "required": ["query", "vector_store_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "embedding", "search"],
+    )
+
+    manager.register_tool(
+        category="embedding_tools",
+        name="search_with_filters",
+        func=search_with_filters,
+        description="Perform filtered search over a vector store using semantic, lexical, or hybrid methods.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "query": {"type": "string", "minLength": 1},
+                "vector_store_id": {"type": "string", "minLength": 1},
+                "filters": {"type": "object"},
+                "top_k": {"type": "integer", "minimum": 1, "maximum": 1000, "default": 10},
+                "search_method": {
+                    "type": "string",
+                    "enum": ["semantic", "lexical", "hybrid"],
+                    "default": "semantic",
+                },
+            },
+            "required": ["query", "vector_store_id", "filters"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "embedding", "search"],
     )
 
     manager.register_tool(

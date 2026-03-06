@@ -31,6 +31,15 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
         from_file_props = schemas["generate_embeddings_from_file"]["properties"]
         self.assertIn("json", from_file_props["output_format"].get("enum", []))
 
+        semantic_props = schemas["semantic_search"]["properties"]
+        self.assertEqual(semantic_props["top_k"].get("maximum"), 1000)
+
+        hybrid_props = schemas["hybrid_search"]["properties"]
+        self.assertEqual(hybrid_props["top_k"].get("minimum"), 1)
+
+        filter_props = schemas["search_with_filters"]["properties"]
+        self.assertIn("semantic", filter_props["search_method"].get("enum", []))
+
         generate_props = schemas["generate_embeddings"]["properties"]
         self.assertEqual(generate_props["texts"].get("minItems"), 1)
 
@@ -116,6 +125,140 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 failed = await native_embedding_tools.generate_embeddings_from_file(file_path="input.txt")
                 self.assertEqual(failed.get("status"), "error")
                 self.assertIn("generate_embeddings_from_file failed", str(failed.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_semantic_search_validates_and_wraps_exceptions(self) -> None:
+        async def _boom(**_: object) -> dict:
+            raise RuntimeError("semantic boom")
+
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            invalid_query = await native_embedding_tools.semantic_search(
+                query=" ",
+                vector_store_id="vs-1",
+            )
+            self.assertEqual(invalid_query.get("status"), "error")
+            self.assertIn("query must be a non-empty string", str(invalid_query.get("error", "")))
+
+            invalid_top_k = await native_embedding_tools.semantic_search(
+                query="hello",
+                vector_store_id="vs-1",
+                top_k=0,
+            )
+            self.assertEqual(invalid_top_k.get("status"), "error")
+            self.assertIn("top_k must be between 1 and 1000", str(invalid_top_k.get("error", "")))
+
+            with patch.dict(native_embedding_tools._API, {"semantic_search": _minimal}, clear=False):
+                result = await native_embedding_tools.semantic_search(
+                    query="hello",
+                    vector_store_id="vs-1",
+                )
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("query"), "hello")
+                self.assertEqual(result.get("vector_store_id"), "vs-1")
+                self.assertEqual(result.get("results"), [])
+
+            with patch.dict(native_embedding_tools._API, {"semantic_search": _boom}, clear=False):
+                failed = await native_embedding_tools.semantic_search(
+                    query="hello",
+                    vector_store_id="vs-1",
+                )
+                self.assertEqual(failed.get("status"), "error")
+                self.assertIn("semantic_search failed", str(failed.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_hybrid_search_validates_and_wraps_exceptions(self) -> None:
+        async def _boom(**_: object) -> dict:
+            raise RuntimeError("hybrid boom")
+
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            invalid_top_k = await native_embedding_tools.hybrid_search(
+                query="hello",
+                vector_store_id="vs-1",
+                top_k=0,
+            )
+            self.assertEqual(invalid_top_k.get("status"), "error")
+            self.assertIn("top_k must be >= 1", str(invalid_top_k.get("error", "")))
+
+            invalid_weight = await native_embedding_tools.hybrid_search(
+                query="hello",
+                vector_store_id="vs-1",
+                lexical_weight="bad",  # type: ignore[arg-type]
+            )
+            self.assertEqual(invalid_weight.get("status"), "error")
+            self.assertIn("lexical_weight must be a number", str(invalid_weight.get("error", "")))
+
+            with patch.dict(native_embedding_tools._API, {"hybrid_search": _minimal}, clear=False):
+                result = await native_embedding_tools.hybrid_search(
+                    query="hello",
+                    vector_store_id="vs-1",
+                )
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("query"), "hello")
+                self.assertEqual(result.get("vector_store_id"), "vs-1")
+                self.assertEqual(result.get("results"), [])
+
+            with patch.dict(native_embedding_tools._API, {"hybrid_search": _boom}, clear=False):
+                failed = await native_embedding_tools.hybrid_search(
+                    query="hello",
+                    vector_store_id="vs-1",
+                )
+                self.assertEqual(failed.get("status"), "error")
+                self.assertIn("hybrid_search failed", str(failed.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_search_with_filters_validates_and_wraps_exceptions(self) -> None:
+        async def _boom(**_: object) -> dict:
+            raise RuntimeError("filter search boom")
+
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            invalid_filters = await native_embedding_tools.search_with_filters(
+                query="hello",
+                vector_store_id="vs-1",
+                filters=[],  # type: ignore[arg-type]
+            )
+            self.assertEqual(invalid_filters.get("status"), "error")
+            self.assertIn("filters must be an object", str(invalid_filters.get("error", "")))
+
+            invalid_method = await native_embedding_tools.search_with_filters(
+                query="hello",
+                vector_store_id="vs-1",
+                filters={"category": "tech"},
+                search_method="vector",
+            )
+            self.assertEqual(invalid_method.get("status"), "error")
+            self.assertIn("search_method must be one of", str(invalid_method.get("error", "")))
+
+            with patch.dict(native_embedding_tools._API, {"search_with_filters": _minimal}, clear=False):
+                result = await native_embedding_tools.search_with_filters(
+                    query="hello",
+                    vector_store_id="vs-1",
+                    filters={"category": "tech"},
+                )
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("query"), "hello")
+                self.assertEqual(result.get("vector_store_id"), "vs-1")
+                self.assertEqual(result.get("results"), [])
+
+            with patch.dict(native_embedding_tools._API, {"search_with_filters": _boom}, clear=False):
+                failed = await native_embedding_tools.search_with_filters(
+                    query="hello",
+                    vector_store_id="vs-1",
+                    filters={"category": "tech"},
+                )
+                self.assertEqual(failed.get("status"), "error")
+                self.assertIn("search_with_filters failed", str(failed.get("error", "")))
 
         anyio.run(_run)
 

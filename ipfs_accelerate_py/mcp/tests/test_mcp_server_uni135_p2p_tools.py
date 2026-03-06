@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -75,6 +76,65 @@ class TestMCPServerUNI135P2PTools(unittest.TestCase):
             result = await p2p_cache_get(key="smoke")
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("key"), "smoke")
+
+        anyio.run(_run)
+
+    def test_p2p_cache_get_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda **_: {"status": "success"}
+
+                result = await p2p_cache_get(key="k1")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("key"), "k1")
+            self.assertEqual(result.get("hit"), False)
+            self.assertIsNone(result.get("value"))
+
+        anyio.run(_run)
+
+    def test_p2p_remote_call_tool_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await p2p_remote_call_tool(
+                    tool_name="echo",
+                    args={"x": 1},
+                    remote_multiaddr="/ip4/127.0.0.1/tcp/4001",
+                    remote_peer_id="peer-a",
+                )
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("tool_name"), "echo")
+            self.assertEqual(result.get("args"), {"x": 1})
+            self.assertEqual(result.get("remote_peer_id"), "peer-a")
+
+        anyio.run(_run)
+
+    def test_p2p_remote_status_error_only_payload_infers_error_status(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"error": "offline"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await p2p_remote_status(peer_id="peer-a")
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("offline", str(result.get("error", "")))
 
         anyio.run(_run)
 

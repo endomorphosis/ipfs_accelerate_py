@@ -19,14 +19,17 @@ authenticated with repo access.
 import json
 import logging
 import os
-import socket
 import subprocess
 import time
 import tempfile
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
 
-from .. import _create_storage_wrapper
+from .. import (
+    _create_storage_wrapper,
+    _detect_public_ip as _shared_detect_public_ip,
+    _detect_runner_name as _shared_detect_runner_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -258,16 +261,7 @@ class P2PPeerRegistry:
     
     def _detect_runner_name(self) -> str:
         """Detect the GitHub Actions runner name."""
-        # Try environment variables
-        runner_name = os.environ.get("RUNNER_NAME")
-        if runner_name:
-            return runner_name
-        
-        # Try hostname
-        try:
-            return socket.gethostname()
-        except Exception:
-            return "unknown-runner"
+        return _shared_detect_runner_name()
     
     def _detect_public_ip(self) -> Optional[str]:
         """
@@ -276,22 +270,7 @@ class P2PPeerRegistry:
         This is needed for NAT traversal and peer connectivity.
         """
         try:
-            # Try multiple services for redundancy
-            services = [
-                "https://api.ipify.org",
-                "https://ifconfig.me/ip",
-                "https://icanhazip.com"
-            ]
-            
-            import urllib.request
-            for service in services:
-                try:
-                    with urllib.request.urlopen(service, timeout=5) as response:
-                        return response.read().decode('utf-8').strip()
-                except Exception:
-                    continue
-            
-            return None
+            return _shared_detect_public_ip()
         except Exception as e:
             logger.warning(f"Failed to detect public IP: {e}")
             return None
