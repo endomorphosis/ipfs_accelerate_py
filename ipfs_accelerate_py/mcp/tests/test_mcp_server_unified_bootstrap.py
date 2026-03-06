@@ -8003,10 +8003,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("email_test_connection", names)
             self.assertIn("email_analyze_export", names)
             self.assertIn("email_search_export", names)
+            self.assertIn("email_parse_eml", names)
 
             search_schema = await get_schema("email_tools", "email_search_export")
             search_props = (search_schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("all", (search_props.get("field") or {}).get("enum", []))
+
+            parse_schema = await get_schema("email_tools", "email_parse_eml")
+            parse_props = (parse_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((parse_props.get("include_attachments") or {}).get("default"), True)
 
             invalid_protocol = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8032,6 +8037,30 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(missing_query.get("status"), "error")
             self.assertIn("query is required", str(missing_query.get("message", "")))
+
+            missing_parse_file = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "email_tools",
+                    "email_parse_eml",
+                    {
+                        "file_path": "",
+                    },
+                )
+            )
+            self.assertEqual(missing_parse_file.get("status"), "error")
+            self.assertIn("file_path is required", str(missing_parse_file.get("message", "")))
+
+            valid_parse = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "email_tools",
+                    "email_parse_eml",
+                    {
+                        "file_path": "/tmp/mail.eml",
+                        "include_attachments": False,
+                    },
+                )
+            )
+            self.assertIn(valid_parse.get("status"), ["success", "error"])
 
         anyio.run(_run_flow)
 
