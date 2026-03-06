@@ -6132,6 +6132,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertGreaterEqual(len(all_of), 1)
             first_rule = all_of[0]
             self.assertIn("collection_name", ((first_rule.get("then") or {}).get("required") or []))
+            conditional_collection_schema = (
+                ((first_rule.get("then") or {}).get("properties") or {}).get("collection_name")
+                or {}
+            )
+            self.assertEqual(conditional_collection_schema.get("type"), "string")
+            self.assertEqual(conditional_collection_schema.get("minLength"), 1)
 
             invalid_tags = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6244,6 +6250,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(
                 "collection_name required for create action",
                 str(missing_collection.get("error", "")),
+            )
+
+            null_collection = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "create",
+                        "collection_name": None,
+                    },
+                )
+            )
+            self.assertEqual(null_collection.get("status"), "error")
+            self.assertIn(
+                "collection_name required for create action",
+                str(null_collection.get("error", "")),
             )
 
         anyio.run(_run_flow)

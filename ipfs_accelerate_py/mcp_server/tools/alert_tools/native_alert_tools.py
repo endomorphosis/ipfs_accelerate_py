@@ -140,6 +140,9 @@ async def send_discord_message(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("text", normalized_text)
+    payload.setdefault("role_names", normalized_role_names or [])
+    payload.setdefault("channel_id", normalized_channel_id)
+    payload.setdefault("thread_id", normalized_thread_id)
     return payload
 
 
@@ -191,6 +194,9 @@ async def evaluate_alert_rules(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("event", event)
+    payload.setdefault("rule_ids", normalized_rule_ids or [])
+    payload.setdefault("results", [])
+    payload.setdefault("triggered_rules", len(payload.get("results") or []))
     return payload
 
 
@@ -227,6 +233,8 @@ async def list_alert_rules(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("enabled_only", enabled_only)
+    payload.setdefault("rules", [])
+    payload.setdefault("count", len(payload.get("rules") or []))
     return payload
 
 

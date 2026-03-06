@@ -11,7 +11,41 @@ logger = logging.getLogger(__name__)
 _VALID_STORAGE_TYPES = {"local", "ipfs", "s3", "google_cloud", "azure", "memory"}
 _VALID_COMPRESSION_TYPES = {"none", "gzip", "lz4", "brotli"}
 _VALID_COLLECTION_ACTIONS = {"create", "get", "list", "delete", "stats"}
-_VALID_REPORT_FORMATS = {"summary", "detailed"}
+_VALID_REPORT_FORMATS = {"summary", "detailed", "analytics"}
+
+
+def _extract_stats_totals(stats_payload: Dict[str, Any]) -> Dict[str, int]:
+    """Normalize total counters from either direct or nested basic-stats payloads."""
+    if not isinstance(stats_payload, dict):
+        return {"total_items": 0, "total_size_bytes": 0}
+
+    basic_stats = stats_payload.get("basic_stats")
+    stats_root = basic_stats if isinstance(basic_stats, dict) else stats_payload
+
+    return {
+        "total_items": int(stats_root.get("total_items", 0) or 0),
+        "total_size_bytes": int(stats_root.get("total_size_bytes", 0) or 0),
+    }
+
+
+def _extract_storage_distribution(stats_payload: Dict[str, Any]) -> Dict[str, int]:
+    """Normalize storage distribution map from direct or nested storage stats."""
+    if not isinstance(stats_payload, dict):
+        return {}
+
+    basic_stats = stats_payload.get("basic_stats")
+    stats_root = basic_stats if isinstance(basic_stats, dict) else stats_payload
+    storage_types = stats_root.get("storage_types")
+    if not isinstance(storage_types, dict):
+        return {}
+
+    normalized: Dict[str, int] = {}
+    for key, value in storage_types.items():
+        try:
+            normalized[str(key)] = int(value)
+        except (TypeError, ValueError):
+            normalized[str(key)] = 0
+    return normalized
 
 
 def _load_storage_api() -> Dict[str, Any]:
@@ -313,11 +347,55 @@ async def manage_collections(
         if normalized_report_format == "summary":
             global_stats = normalized.get("global_stats") or {}
             collection_stats = normalized.get("collection_stats") or {}
-            candidate = global_stats if isinstance(global_stats, dict) and global_stats else collection_stats
-            report_payload["summary"] = {
-                "total_items": int(candidate.get("total_items", 0) or 0),
-                "total_size_bytes": int(candidate.get("total_size_bytes", 0) or 0),
-            }
+            if isinstance(global_stats, dict) and global_stats:
+                report_payload["summary"] = _extract_stats_totals(global_stats)
+            elif isinstance(collection_stats, dict):
+                report_payload["summary"] = {
+                    "total_items": int(collection_stats.get("items_count", 0) or 0),
+                    "total_size_bytes": int(collection_stats.get("total_size_bytes", 0) or 0),
+                }
+            else:
+                report_payload["summary"] = {"total_items": 0, "total_size_bytes": 0}
+        elif normalized_report_format == "analytics":
+            global_stats = normalized.get("global_stats") or {}
+            collection_stats = normalized.get("collection_stats") or {}
+
+            if isinstance(global_stats, dict) and global_stats:
+                totals = _extract_stats_totals(global_stats)
+                storage_distribution = _extract_storage_distribution(global_stats)
+                average_item_size_bytes = float(global_stats.get("average_item_size_bytes", 0.0) or 0.0)
+                compression_usage_ratios = global_stats.get("compression_usage_ratios")
+
+                report_payload["analytics"] = {
+                    "scope": "global",
+                    "totals": totals,
+                    "average_item_size_bytes": average_item_size_bytes,
+                    "largest_collection": str(global_stats.get("largest_collection", "none")),
+                    "storage_distribution": storage_distribution,
+                    "compression_usage_ratios": (
+                        compression_usage_ratios if isinstance(compression_usage_ratios, dict) else {}
+                    ),
+                }
+            elif isinstance(collection_stats, dict):
+                report_payload["analytics"] = {
+                    "scope": "collection",
+                    "collection_name": str(collection_stats.get("name", normalized_collection_name or "")),
+                    "totals": {
+                        "total_items": int(collection_stats.get("items_count", 0) or 0),
+                        "total_size_bytes": int(collection_stats.get("total_size_bytes", 0) or 0),
+                    },
+                    "storage_distribution": (
+                        collection_stats.get("storage_breakdown")
+                        if isinstance(collection_stats.get("storage_breakdown"), dict)
+                        else {}
+                    ),
+                }
+            else:
+                report_payload["analytics"] = {
+                    "scope": "unknown",
+                    "totals": {"total_items": 0, "total_size_bytes": 0},
+                    "storage_distribution": {},
+                }
         else:
             report_payload["details"] = {
                 "collection_name": normalized_collection_name,
@@ -326,12 +404,13 @@ async def manage_collections(
             }
 
         if include_breakdown:
+            global_stats = normalized.get("global_stats")
             report_payload["breakdown"] = {
                 "storage_distribution": (
-                    normalized.get("global_stats", {}).get("storage_distribution", {})
-                    if isinstance(normalized.get("global_stats"), dict)
+                    _extract_storage_distribution(global_stats)
+                    if isinstance(global_stats, dict)
                     else {}
-                )
+                ),
             }
 
         normalized["storage_report"] = report_payload
@@ -511,6 +590,9 @@ def register_native_storage_tools(manager: Any) -> None:
                         },
                     },
                     "then": {
+                        "properties": {
+                            "collection_name": {"type": "string", "minLength": 1},
+                        },
                         "required": ["collection_name"],
                     },
                 }

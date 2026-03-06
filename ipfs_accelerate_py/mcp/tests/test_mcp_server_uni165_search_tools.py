@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -70,6 +71,50 @@ class TestMCPServerUNI165SearchTools(unittest.TestCase):
             )
             self.assertEqual(result.get("status"), "success")
             self.assertIn("results", result)
+
+        anyio.run(_run)
+
+    def test_semantic_search_success_applies_deterministic_result_defaults(self) -> None:
+        async def _semantic_minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch.dict(native_search_tools._API, {"semantic": _semantic_minimal}, clear=False):
+                result = await native_search_tools.semantic_search(
+                    query="hello",
+                    model="demo-model",
+                    top_k=3,
+                    collection="demo-collection",
+                )
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("query"), "hello")
+            self.assertEqual(result.get("model"), "demo-model")
+            self.assertEqual(result.get("top_k"), 3)
+            self.assertEqual(result.get("collection"), "demo-collection")
+            self.assertEqual(result.get("results"), [])
+            self.assertEqual(result.get("total_found"), 0)
+
+        anyio.run(_run)
+
+    def test_similarity_search_success_applies_deterministic_result_defaults(self) -> None:
+        async def _similarity_minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch.dict(native_search_tools._API, {"similarity": _similarity_minimal}, clear=False):
+                result = await native_search_tools.similarity_search(
+                    embedding=[0.1, 0.2, 0.3],
+                    top_k=4,
+                    threshold=0.2,
+                    collection="demo-collection",
+                )
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("embedding_dimension"), 3)
+            self.assertEqual(result.get("top_k"), 4)
+            self.assertEqual(result.get("threshold"), 0.2)
+            self.assertEqual(result.get("collection"), "demo-collection")
+            self.assertEqual(result.get("results"), [])
+            self.assertEqual(result.get("total_found"), 0)
 
         anyio.run(_run)
 

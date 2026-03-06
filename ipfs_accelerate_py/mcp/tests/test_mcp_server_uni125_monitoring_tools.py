@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -73,6 +74,61 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
             result = await health_check(check_type="basic")
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("check_type"), "basic")
+
+        anyio.run(_run)
+
+    def test_success_defaults_applied_for_minimal_metrics_payload(self) -> None:
+        async def _minimal_metrics(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.monitoring_tools.native_monitoring_tools._API",
+                {
+                    "health_check": None,
+                    "get_performance_metrics": _minimal_metrics,
+                    "monitor_services": None,
+                    "generate_monitoring_report": None,
+                },
+            ):
+                result = await get_performance_metrics(time_range="1h", metric_types=["cpu"], include_history=False)
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("time_range"), "1h")
+            self.assertEqual(result.get("metric_types"), ["cpu"])
+            self.assertEqual(result.get("include_history"), False)
+            self.assertEqual(result.get("metrics"), {})
+
+        anyio.run(_run)
+
+    def test_success_defaults_applied_for_minimal_status_and_report_payloads(self) -> None:
+        async def _minimal_services(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _minimal_report(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.monitoring_tools.native_monitoring_tools._API",
+                {
+                    "health_check": None,
+                    "get_performance_metrics": None,
+                    "monitor_services": _minimal_services,
+                    "generate_monitoring_report": _minimal_report,
+                },
+            ):
+                status_result = await monitor_services(action="status", services=["mcp_server"], check_interval=5)
+                report_result = await generate_monitoring_report(report_type="summary", time_period="24h")
+
+            self.assertEqual(status_result.get("status"), "success")
+            self.assertEqual(status_result.get("action"), "status")
+            self.assertEqual(status_result.get("services"), ["mcp_server"])
+            self.assertEqual(status_result.get("check_interval"), 5)
+
+            self.assertEqual(report_result.get("status"), "success")
+            self.assertEqual(report_result.get("report_type"), "summary")
+            self.assertEqual(report_result.get("time_period"), "24h")
+            self.assertEqual(report_result.get("report"), {})
 
         anyio.run(_run)
 

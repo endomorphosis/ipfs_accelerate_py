@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -66,6 +67,41 @@ class TestMCPServerUNI104VectorSearchStorageTools(unittest.TestCase):
             storage = result.get("storage") or {}
             self.assertTrue(storage.get("stored"))
             self.assertEqual(storage.get("collection"), "uni104-audit")
+
+        anyio.run(_run)
+
+    def test_orchestration_uses_deterministic_fallback_index_id(self) -> None:
+        async def _fake_create(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _fake_search(**kwargs: object) -> dict:
+            return {
+                "status": "success",
+                "index_id": kwargs.get("index_id"),
+                "results": [],
+            }
+
+        async def _fake_similarity(**_: object) -> dict:
+            return {"status": "success", "results": [], "total_found": 0}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.vector_tools.native_vector_tools.create_vector_index",
+                new=_fake_create,
+            ), patch(
+                "ipfs_accelerate_py.mcp_server.tools.vector_tools.native_vector_tools.search_vector_index",
+                new=_fake_search,
+            ), patch(
+                "ipfs_accelerate_py.mcp_server.tools.search_tools.native_search_tools.similarity_search",
+                new=_fake_similarity,
+            ):
+                result = await orchestrate_vector_search_storage(
+                    vectors=[[0.1, 0.2], [0.2, 0.3]],
+                    query_vector=[0.2, 0.3],
+                    top_k=2,
+                )
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("index_id"), "vector-index")
 
         anyio.run(_run)
 

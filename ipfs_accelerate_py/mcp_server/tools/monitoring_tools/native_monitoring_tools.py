@@ -169,6 +169,8 @@ async def health_check(
     else:
         payload = _normalize_payload(result)
     payload.setdefault("check_type", normalized_check_type)
+    payload.setdefault("components", normalized_components)
+    payload.setdefault("include_metrics", include_metrics)
     return payload
 
 
@@ -223,6 +225,8 @@ async def get_performance_metrics(
         payload = _normalize_payload(result)
     payload.setdefault("time_range", normalized_time_range)
     payload.setdefault("include_history", include_history)
+    payload.setdefault("metric_types", list(metric_types or []))
+    payload.setdefault("metrics", {})
     return payload
 
 
@@ -280,6 +284,8 @@ async def monitor_services(
 
     payload = _normalize_payload(resolved)
     payload.setdefault("action", normalized_action)
+    payload.setdefault("services", list(services or []))
+    payload.setdefault("check_interval", int(check_interval))
     return payload
 
 
@@ -313,6 +319,7 @@ async def generate_monitoring_report(
         payload = _normalize_payload(result)
     payload.setdefault("report_type", normalized_report_type)
     payload.setdefault("time_period", normalized_time_period)
+    payload.setdefault("report", {})
     return payload
 
 

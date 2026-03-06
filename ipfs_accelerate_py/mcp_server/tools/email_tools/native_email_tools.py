@@ -172,6 +172,8 @@ async def email_test_connection(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("protocol", normalized_protocol)
+    payload.setdefault("use_ssl", use_ssl)
+    payload.setdefault("timeout", timeout)
     if normalized_server is not None:
         payload.setdefault("server", normalized_server)
     return payload
@@ -239,6 +241,10 @@ async def email_list_folders(
         payload.setdefault("status", "error")
     else:
         payload.setdefault("status", "success")
+    payload.setdefault("folders", [])
+    payload.setdefault("folder_count", len(payload.get("folders") or []))
+    payload.setdefault("use_ssl", use_ssl)
+    payload.setdefault("timeout", timeout)
     if normalized_server is not None:
         payload.setdefault("server", normalized_server)
     return payload
@@ -261,6 +267,7 @@ async def email_analyze_export(**kwargs: Any) -> Dict[str, Any]:
     else:
         payload.setdefault("status", "success")
     payload.setdefault("file_path", normalized_file_path)
+    payload.setdefault("analysis", {})
     return payload
 
 
@@ -306,6 +313,8 @@ async def email_search_export(**kwargs: Any) -> Dict[str, Any]:
     payload.setdefault("file_path", normalized_file_path)
     payload.setdefault("query", normalized_query)
     payload.setdefault("field", normalized_field)
+    payload.setdefault("results", [])
+    payload.setdefault("match_count", len(payload.get("results") or []))
     return payload
 
 

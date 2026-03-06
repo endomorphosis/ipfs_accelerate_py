@@ -136,13 +136,16 @@ async def semantic_search(
     if filters is not None and not isinstance(filters, dict):
         return _error_result("filters must be an object when provided", filters=filters)
 
+    normalized_model = str(model or "sentence-transformers/all-MiniLM-L6-v2")
+    normalized_collection = str(collection or "default")
+
     try:
         result = await _API["semantic"](
             vector_service=vector_service,
             query=normalized_query,
-            model=str(model or "sentence-transformers/all-MiniLM-L6-v2"),
+            model=normalized_model,
             top_k=normalized_top_k,
-            collection=str(collection or "default"),
+            collection=normalized_collection,
             filters=filters or {},
         )
     except Exception as exc:
@@ -150,6 +153,11 @@ async def semantic_search(
     payload = dict(result or {})
     payload.setdefault("status", "success")
     payload.setdefault("query", normalized_query)
+    payload.setdefault("model", normalized_model)
+    payload.setdefault("top_k", normalized_top_k)
+    payload.setdefault("collection", normalized_collection)
+    payload.setdefault("results", [])
+    payload.setdefault("total_found", len(payload.get("results") or []))
     return payload
 
 
@@ -180,19 +188,26 @@ async def similarity_search(
     if normalized_threshold < 0.0 or normalized_threshold > 1.0:
         return _error_result("threshold must be between 0.0 and 1.0", threshold=threshold)
 
+    normalized_collection = str(collection or "default")
+
     try:
         result = await _API["similarity"](
             vector_service=vector_service,
             embedding=embedding,
             top_k=normalized_top_k,
             threshold=normalized_threshold,
-            collection=str(collection or "default"),
+            collection=normalized_collection,
         )
     except Exception as exc:
         return _error_result("similarity search failed", error=str(exc))
     payload = dict(result or {})
     payload.setdefault("status", "success")
     payload.setdefault("embedding_dimension", len(embedding))
+    payload.setdefault("top_k", normalized_top_k)
+    payload.setdefault("threshold", normalized_threshold)
+    payload.setdefault("collection", normalized_collection)
+    payload.setdefault("results", [])
+    payload.setdefault("total_found", len(payload.get("results") or []))
     return payload
 
 

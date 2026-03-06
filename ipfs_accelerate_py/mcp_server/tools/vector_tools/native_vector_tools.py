@@ -234,7 +234,7 @@ async def orchestrate_vector_search_storage(
     )
     if created.get("status") == "error":
         return created
-    resolved_index_id = str(created.get("index_id") or index_id or "")
+    resolved_index_id = str(created.get("index_id") or index_id or "").strip() or "vector-index"
 
     searched = await search_vector_index(
         index_id=resolved_index_id,
