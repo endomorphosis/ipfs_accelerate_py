@@ -8104,6 +8104,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("check_task_status", names)
             self.assertIn("manage_background_tasks", names)
             self.assertIn("manage_task_queue", names)
+            self.assertIn("get_task_status", names)
 
             schema = await get_schema("background_task_tools", "check_task_status")
             props = (schema.get("input_schema") or {}).get("properties", {})
@@ -8132,6 +8133,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(missing_cancel_task_id.get("status"), "error")
             self.assertIn("task_id is required for cancel action", str(missing_cancel_task_id.get("message", "")))
+
+            status_schema = await get_schema("background_task_tools", "get_task_status")
+            status_props = (status_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((status_props.get("log_limit") or {}).get("maximum"), 500)
+
+            invalid_log_limit = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "background_task_tools",
+                    "get_task_status",
+                    {
+                        "log_limit": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_log_limit.get("status"), "error")
+            self.assertIn("between 1 and 500", str(invalid_log_limit.get("message", "")))
 
         anyio.run(_run_flow)
 

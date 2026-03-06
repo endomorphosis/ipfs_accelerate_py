@@ -150,6 +150,15 @@ async def manage_ipfs_cluster(
     else:
         payload = _normalize_payload(result)
     payload.setdefault("action", normalized_action)
+    payload.setdefault("replication_factor", replication_factor)
+    payload.setdefault("cluster_config", cluster_config or {})
+    payload.setdefault("filters", filters or {})
+    payload.setdefault("cluster_operation", True)
+    payload.setdefault("result", {})
+    if normalized_node_id is not None:
+        payload.setdefault("node_id", normalized_node_id)
+    if normalized_cid is not None:
+        payload.setdefault("cid", normalized_cid)
     return payload
 
 
@@ -219,6 +228,14 @@ async def manage_ipfs_content(
     else:
         payload = _normalize_payload(result)
     payload.setdefault("action", normalized_action)
+    payload.setdefault("pin", pin)
+    payload.setdefault("content_type", normalized_content_type)
+    payload.setdefault("metadata", metadata or {})
+    payload.setdefault("result", {})
+    if normalized_cid is not None:
+        payload.setdefault("cid", normalized_cid)
+    if normalized_content is not None:
+        payload.setdefault("content", normalized_content)
     return payload
 
 
