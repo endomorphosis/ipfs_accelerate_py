@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 
 _VALID_STORAGE_TYPES = {"local", "ipfs", "s3", "google_cloud", "azure", "memory"}
 _VALID_COMPRESSION_TYPES = {"none", "gzip", "lz4", "brotli"}
-_VALID_COLLECTION_ACTIONS = {"create", "get", "list", "delete", "stats"}
+_VALID_COLLECTION_ACTIONS = {"create", "get", "list", "delete", "stats", "backend_status"}
 _VALID_REPORT_FORMATS = {"summary", "detailed", "analytics"}
 
 
@@ -286,6 +286,10 @@ async def manage_collections(
     metadata: Optional[Dict[str, Any]] = None,
     delete_items: bool = False,
     include_breakdown: bool = False,
+    include_capabilities: bool = False,
+    backend_types: Optional[List[str]] = None,
+    unavailable_backends: Optional[List[str]] = None,
+    unavailable_reasons: Optional[Dict[str, str]] = None,
     report_format: str = "detailed",
 ) -> Dict[str, Any]:
     """Create, list, and manage storage collections."""
@@ -311,6 +315,37 @@ async def manage_collections(
         return _error_result("delete_items must be a boolean", action=normalized_action, success=False)
     if not isinstance(include_breakdown, bool):
         return _error_result("include_breakdown must be a boolean", action=normalized_action, success=False)
+    if not isinstance(include_capabilities, bool):
+        return _error_result("include_capabilities must be a boolean", action=normalized_action, success=False)
+    if backend_types is not None and (
+        not isinstance(backend_types, list)
+        or not all(isinstance(item, str) and item.strip() for item in backend_types)
+    ):
+        return _error_result("backend_types must be an array of non-empty strings", action=normalized_action, success=False)
+    if unavailable_backends is not None and (
+        not isinstance(unavailable_backends, list)
+        or not all(isinstance(item, str) and item.strip() for item in unavailable_backends)
+    ):
+        return _error_result(
+            "unavailable_backends must be an array of non-empty strings",
+            action=normalized_action,
+            success=False,
+        )
+    if unavailable_reasons is not None and (
+        not isinstance(unavailable_reasons, dict)
+        or not all(
+            isinstance(key, str)
+            and key.strip()
+            and isinstance(value, str)
+            and value.strip()
+            for key, value in unavailable_reasons.items()
+        )
+    ):
+        return _error_result(
+            "unavailable_reasons must be an object with non-empty string keys/values",
+            action=normalized_action,
+            success=False,
+        )
 
     normalized_report_format = str(report_format or "detailed").strip().lower()
     if normalized_action == "stats" and normalized_report_format not in _VALID_REPORT_FORMATS:
@@ -322,6 +357,93 @@ async def manage_collections(
             action=normalized_action,
             success=False,
         )
+
+    if normalized_action == "backend_status":
+        requested_backends = (
+            [str(item).strip().lower() for item in backend_types]
+            if backend_types is not None
+            else sorted(_VALID_STORAGE_TYPES)
+        )
+        invalid_requested = sorted({name for name in requested_backends if name not in _VALID_STORAGE_TYPES})
+        if invalid_requested:
+            return _error_result(
+                "backend_types contains unknown storage backends",
+                action=normalized_action,
+                success=False,
+                invalid_backends=invalid_requested,
+            )
+
+        unavailable_set = (
+            {str(item).strip().lower() for item in unavailable_backends}
+            if unavailable_backends is not None
+            else set()
+        )
+        invalid_unavailable = sorted({name for name in unavailable_set if name not in _VALID_STORAGE_TYPES})
+        if invalid_unavailable:
+            return _error_result(
+                "unavailable_backends contains unknown storage backends",
+                action=normalized_action,
+                success=False,
+                invalid_backends=invalid_unavailable,
+            )
+
+        normalized_unavailable_reasons = (
+            {str(key).strip().lower(): str(value).strip() for key, value in unavailable_reasons.items()}
+            if unavailable_reasons is not None
+            else {}
+        )
+        invalid_reason_backends = sorted(
+            {
+                backend
+                for backend in normalized_unavailable_reasons
+                if backend not in _VALID_STORAGE_TYPES
+            }
+        )
+        if invalid_reason_backends:
+            return _error_result(
+                "unavailable_reasons contains unknown storage backends",
+                action=normalized_action,
+                success=False,
+                invalid_backends=invalid_reason_backends,
+            )
+
+        backend_entries: List[Dict[str, Any]] = []
+        for storage_name in requested_backends:
+            entry: Dict[str, Any] = {
+                "storage_type": storage_name,
+                "available": storage_name not in unavailable_set,
+                "supports_collections": True,
+            }
+            if not entry["available"] and storage_name in normalized_unavailable_reasons:
+                entry["unavailable_reason"] = normalized_unavailable_reasons[storage_name]
+            if include_capabilities:
+                entry["capabilities"] = {
+                    "supports_compression": storage_name != "memory",
+                    "supports_tags": True,
+                    "supports_metadata": True,
+                    "supports_query_filters": True,
+                }
+            backend_entries.append(entry)
+
+        result: Dict[str, Any] = {
+            "status": "success",
+            "action": normalized_action,
+            "success": True,
+            "backend_report": {
+                "generated_at": datetime.now().isoformat(),
+                "backend_count": len(backend_entries),
+                "backends": backend_entries,
+            },
+        }
+
+        if include_breakdown:
+            available_count = len([entry for entry in backend_entries if entry.get("available")])
+            result["backend_report"]["breakdown"] = {
+                "available_count": available_count,
+                "unavailable_count": len(backend_entries) - available_count,
+            }
+
+        return result
 
     try:
         payload = await _API["manage_collections"](
@@ -575,6 +697,19 @@ def register_native_storage_tools(manager: Any) -> None:
                 "metadata": {"type": ["object", "null"]},
                 "delete_items": {"type": "boolean", "default": False},
                 "include_breakdown": {"type": "boolean", "default": False},
+                "include_capabilities": {"type": "boolean", "default": False},
+                "backend_types": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "minLength": 1},
+                },
+                "unavailable_backends": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "minLength": 1},
+                },
+                "unavailable_reasons": {
+                    "type": ["object", "null"],
+                    "additionalProperties": {"type": "string", "minLength": 1},
+                },
                 "report_format": {
                     "type": "string",
                     "enum": sorted(_VALID_REPORT_FORMATS),
