@@ -31,5 +31,6 @@ PyGithub>=2.3.0
 # Utilities
 tqdm>=4.64.0
 numpy>=1.23.0
+toml>=0.10.2
 multiformats>=0.3.0
 pymultihash>=0.8.2

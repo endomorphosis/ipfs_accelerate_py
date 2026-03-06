@@ -54,7 +54,7 @@ try:
     HAVE_SHARED = True
 except ImportError:
     try:
-        from shared import (  # type: ignore
+        from ipfs_accelerate_py.shared import (
             SharedCore,
             InferenceOperations,
             FileOperations,

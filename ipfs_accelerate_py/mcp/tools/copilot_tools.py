@@ -34,9 +34,16 @@ try:
     copilot_ops = CopilotOperations(shared_core)
     HAVE_COPILOT = True
 except ImportError as e:
-    logger.warning(f"Copilot operations not available: {e}")
-    HAVE_COPILOT = False
-    copilot_ops = None
+    try:
+        from ipfs_accelerate_py.shared import SharedCore, CopilotOperations
+
+        shared_core = SharedCore()
+        copilot_ops = CopilotOperations(shared_core)
+        HAVE_COPILOT = True
+    except ImportError as e2:
+        logger.warning(f"Copilot operations not available: {e2}")
+        HAVE_COPILOT = False
+        copilot_ops = None
 
 
 def register_copilot_tools(mcp: FastMCP) -> None:

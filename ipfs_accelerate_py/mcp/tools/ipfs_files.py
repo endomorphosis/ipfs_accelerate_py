@@ -45,7 +45,7 @@ try:
     HAVE_SHARED = True
 except ImportError:
     try:
-        from shared import SharedCore, FileOperations  # type: ignore
+        from ipfs_accelerate_py.shared import SharedCore, FileOperations
         shared_core = SharedCore()
         file_ops = FileOperations(shared_core)
         HAVE_SHARED = True

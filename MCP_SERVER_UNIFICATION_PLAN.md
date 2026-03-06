@@ -717,6 +717,12 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 4. `UNI-011` Policy/Delegation Legacy Surface Adaptation
     - Scope: Adapt source `ucan_delegation.py`, `temporal_policy.py`, and `temporal_deontic_mcp_server.py` surfaces to canonical MCP++ policy/delegation modules.
     - Target files: `ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py`, `ipfs_accelerate_py/mcp_server/mcplusplus/policy_engine.py`, `ipfs_accelerate_py/mcp_server/server.py`.
+    - Status: COMPLETE (2026-03-06)
+    - Evidence:
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_policy_delegation_legacy_adapters.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py`
+       - Targeted run result: `32 passed`.
     - Acceptance:
        - Legacy surface behavior is represented without introducing duplicate runtimes.
        - UCAN + temporal policy tests pass with stable decision artifacts.
@@ -725,6 +731,13 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 5. `UNI-012` Artifact/IDL/Event Module Adaptation
     - Scope: Fold source `cid_artifacts.py`, `interface_descriptor.py`, and `event_dag.py` surfaces into canonical MCP++ implementations.
     - Target files: `ipfs_accelerate_py/mcp_server/mcplusplus/artifacts.py`, `ipfs_accelerate_py/mcp_server/mcplusplus/idl_registry.py`, `ipfs_accelerate_py/mcp_server/mcplusplus/event_dag.py`.
+    - Status: COMPLETE (2026-03-06)
+    - Evidence:
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni012_legacy_adapters.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py`
+       - Targeted run result: `32 passed`.
     - Acceptance:
        - Source-equivalent interfaces are reachable through canonical APIs.
        - Artifact, IDL, and Event DAG tests remain deterministic.
@@ -733,6 +746,12 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 6. `UNI-013` P2P Service Manager and Registry Adapter Merge
     - Scope: Port `p2p_service_manager.py` and `p2p_mcp_registry_adapter.py` semantics into canonical p2p service boundary.
     - Target files: `ipfs_accelerate_py/p2p_tasks/service.py`, related canonical bootstrap wiring.
+    - Status: COMPLETE (2026-03-06)
+    - Evidence:
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni013_p2p_adapters.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_trio_p2p_networked.py`
+       - Targeted run result: `10 passed`.
     - Acceptance:
        - P2P service lifecycle paths are canonical-owned.
        - Process-level and networked p2p tests validate integration.
@@ -741,6 +760,11 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 7. `UNI-014` Legacy Entry Facade Normalization
     - Scope: Normalize source entry surfaces (`__main__.py`, `simple_server.py`, `standalone_server.py`, `client.py`) as compatibility facades only.
     - Target files: `ipfs_accelerate_py/mcp/__main__.py`, `ipfs_accelerate_py/mcp/standalone.py`, `ipfs_accelerate_py/mcp/integration.py`.
+    - Status: COMPLETE (2026-03-06)
+    - Evidence:
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni014_entry_facades.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_subprocess_contracts.py`
+       - Targeted run result: `11 passed`.
     - Acceptance:
        - Legacy entrypoints route to canonical runtime paths.
        - Startup and subprocess contract tests remain stable.
@@ -749,6 +773,11 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 8. `UNI-015` Validation and Logging Surface Consolidation
     - Scope: Consolidate `validators.py` and `logger.py` semantics into canonical runtime modules without standalone runtime duplication.
     - Target files: `ipfs_accelerate_py/mcp_server/runtime_router.py`, `ipfs_accelerate_py/mcp_server/server.py`, category modules that enforce schemas.
+    - Status: COMPLETE (2026-03-06)
+    - Evidence:
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni015_validation_logging.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_dispatch_flag_coercion.py`
+       - Targeted run result: `9 passed`.
     - Acceptance:
        - Validation and logging behavior is deterministic and centralized.
        - Error-envelope and invalid-input tests pass across representative categories.
@@ -757,6 +786,10 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 9. `UNI-016` Deferred Source Module Governance
     - Scope: Track deferred modules (`enterprise_api.py`, `grpc_transport.py`, `nl_ucan_policy.py`, `trio_bridge.py`, `compliance_checker.py`, `investigation_mcp_client.py`) with explicit phase/rationale.
     - Target files: `mcpplusplus/SPEC_GAP_MATRIX.md`, this plan, optional follow-on backlog docs.
+    - Status: COMPLETE (2026-03-06)
+    - Evidence:
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni016_deferred_governance_docs.py`
+       - Targeted run result: `4 passed`.
     - Acceptance:
        - Each deferred module has rationale, risk, and target milestone.
        - No deferred module is treated as implicitly complete.

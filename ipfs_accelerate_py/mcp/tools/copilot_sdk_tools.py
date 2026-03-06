@@ -34,9 +34,16 @@ try:
     copilot_sdk_ops = CopilotSDKOperations(shared_core)
     HAVE_COPILOT_SDK = True
 except ImportError as e:
-    logger.warning(f"Copilot SDK operations not available: {e}")
-    HAVE_COPILOT_SDK = False
-    copilot_sdk_ops = None
+    try:
+        from ipfs_accelerate_py.shared import SharedCore, CopilotSDKOperations
+
+        shared_core = SharedCore()
+        copilot_sdk_ops = CopilotSDKOperations(shared_core)
+        HAVE_COPILOT_SDK = True
+    except ImportError as e2:
+        logger.warning(f"Copilot SDK operations not available: {e2}")
+        HAVE_COPILOT_SDK = False
+        copilot_sdk_ops = None
 
 
 def register_copilot_sdk_tools(mcp: FastMCP) -> None:
