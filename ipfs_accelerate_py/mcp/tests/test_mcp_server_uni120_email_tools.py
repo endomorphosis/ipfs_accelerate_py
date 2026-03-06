@@ -11,6 +11,7 @@ import anyio
 from ipfs_accelerate_py.mcp_server.tools.email_tools.native_email_tools import (
     email_analyze_export,
     email_list_folders,
+    email_parse_eml,
     email_search_export,
     email_test_connection,
     register_native_email_tools,
@@ -34,6 +35,7 @@ class TestMCPServerUNI120EmailTools(unittest.TestCase):
         self.assertIn("email_list_folders", names)
         self.assertIn("email_analyze_export", names)
         self.assertIn("email_search_export", names)
+        self.assertIn("email_parse_eml", names)
 
     def test_register_schema_contracts(self) -> None:
         manager = _DummyManager()
@@ -45,6 +47,9 @@ class TestMCPServerUNI120EmailTools(unittest.TestCase):
 
         search_schema = by_name["email_search_export"]["input_schema"]
         self.assertIn("all", search_schema["properties"]["field"].get("enum", []))
+
+        parse_schema = by_name["email_parse_eml"]["input_schema"]
+        self.assertEqual(parse_schema["properties"]["include_attachments"].get("default"), True)
 
     def test_email_test_connection_rejects_invalid_protocol(self) -> None:
         async def _run() -> None:
@@ -87,6 +92,22 @@ class TestMCPServerUNI120EmailTools(unittest.TestCase):
             )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("field must be one of", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_email_parse_eml_requires_file_path(self) -> None:
+        async def _run() -> None:
+            result = await email_parse_eml(file_path="")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("file_path is required", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_email_parse_eml_rejects_non_boolean_include_attachments(self) -> None:
+        async def _run() -> None:
+            result = await email_parse_eml(file_path="/tmp/mail.eml", include_attachments="yes")  # type: ignore[arg-type]
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("must be a boolean", str(result.get("message", "")))
 
         anyio.run(_run)
 
@@ -166,6 +187,30 @@ class TestMCPServerUNI120EmailTools(unittest.TestCase):
             self.assertEqual(search_result.get("field"), "subject")
             self.assertEqual(search_result.get("results"), [])
             self.assertEqual(search_result.get("match_count"), 0)
+
+        anyio.run(_run)
+
+    def test_email_parse_eml_success_defaults_with_minimal_payload(self) -> None:
+        async def _minimal_parse(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.email_tools.native_email_tools._API",
+                {
+                    "email_test_connection": None,
+                    "email_list_folders": None,
+                    "email_analyze_export": None,
+                    "email_search_export": None,
+                    "email_parse_eml": _minimal_parse,
+                },
+            ):
+                result = await email_parse_eml(file_path="/tmp/mail.eml", include_attachments=False)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("file_path"), "/tmp/mail.eml")
+            self.assertEqual(result.get("include_attachments"), False)
+            self.assertEqual(result.get("email"), {})
 
         anyio.run(_run)
 

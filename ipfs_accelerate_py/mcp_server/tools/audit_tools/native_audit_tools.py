@@ -18,10 +18,14 @@ def _load_audit_api() -> Dict[str, Any]:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.audit_tools.record_audit_event import (  # type: ignore
             record_audit_event as _record_audit_event,
         )
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.audit_tools.audit_tools import (  # type: ignore
+            audit_tools as _audit_tools,
+        )
 
         return {
             "record_audit_event": _record_audit_event,
             "generate_audit_report": _generate_audit_report,
+            "audit_tools": _audit_tools,
         }
     except Exception:
         logger.warning("Source audit_tools import unavailable, using fallback audit functions")
@@ -62,9 +66,27 @@ def _load_audit_api() -> Dict[str, Any]:
                 "report": {},
             }
 
+        async def _audit_tools_fallback(
+            target: str = ".",
+            action: str = "audit",
+            user: Optional[str] = None,
+            details: Optional[Dict[str, Any]] = None,
+        ) -> Dict[str, Any]:
+            return {
+                "status": "success",
+                "event_id": "fallback-audit-tools-1",
+                "message": f"Audit performed on target '{target}'",
+                "tool_type": "Audit tool",
+                "target": target,
+                "action": action,
+                "user": user,
+                "details": details or {},
+            }
+
         return {
             "record_audit_event": _record_fallback,
             "generate_audit_report": _report_fallback,
+            "audit_tools": _audit_tools_fallback,
         }
 
 
@@ -264,6 +286,57 @@ async def generate_audit_report(
     return payload
 
 
+async def audit_tools(
+    target: str = ".",
+    action: str = "audit",
+    user: Optional[str] = None,
+    details: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Source-aligned general audit wrapper for operational audit actions."""
+    normalized_target = str(target or "").strip()
+    if not normalized_target:
+        return {
+            "status": "error",
+            "message": "target is required",
+            "target": target,
+        }
+    normalized_action = str(action or "").strip()
+    if not normalized_action:
+        return {
+            "status": "error",
+            "message": "action is required",
+            "action": action,
+        }
+    normalized_user = str(user).strip() if user is not None else None
+    if user is not None and not normalized_user:
+        return {
+            "status": "error",
+            "message": "user must be a non-empty string when provided",
+            "user": user,
+        }
+    if details is not None and not isinstance(details, dict):
+        return {
+            "status": "error",
+            "message": "details must be an object when provided",
+            "details": details,
+        }
+
+    result = await _API["audit_tools"](
+        target=normalized_target,
+        action=normalized_action,
+        user=normalized_user,
+        details=details,
+    )
+    payload = dict(result or {})
+    if "error" in payload and payload.get("error"):
+        payload.setdefault("status", "error")
+    else:
+        payload.setdefault("status", "success")
+    payload.setdefault("target", normalized_target)
+    payload.setdefault("action", normalized_action)
+    return payload
+
+
 def register_native_audit_tools(manager: Any) -> None:
     """Register native audit tools in unified hierarchical manager."""
     manager.register_tool(
@@ -316,6 +389,25 @@ def register_native_audit_tools(manager: Any) -> None:
                 },
                 "output_path": {"type": ["string", "null"]},
                 "include_details": {"type": "boolean", "default": True},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "audit"],
+    )
+
+    manager.register_tool(
+        category="audit_tools",
+        name="audit_tools",
+        func=audit_tools,
+        description="Run source-aligned generic audit action wrapper.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "target": {"type": "string", "minLength": 1, "default": "."},
+                "action": {"type": "string", "minLength": 1, "default": "audit"},
+                "user": {"type": ["string", "null"]},
+                "details": {"type": ["object", "null"]},
             },
             "required": [],
         },

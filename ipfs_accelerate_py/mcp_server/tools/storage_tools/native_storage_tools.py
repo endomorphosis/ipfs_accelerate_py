@@ -10,7 +10,15 @@ logger = logging.getLogger(__name__)
 
 _VALID_STORAGE_TYPES = {"local", "ipfs", "s3", "google_cloud", "azure", "memory"}
 _VALID_COMPRESSION_TYPES = {"none", "gzip", "lz4", "brotli"}
-_VALID_COLLECTION_ACTIONS = {"create", "get", "list", "delete", "stats", "backend_status"}
+_VALID_COLLECTION_ACTIONS = {
+    "create",
+    "get",
+    "list",
+    "delete",
+    "stats",
+    "backend_status",
+    "lifecycle_report",
+}
 _VALID_REPORT_FORMATS = {"summary", "detailed", "analytics"}
 
 
@@ -464,6 +472,71 @@ async def manage_collections(
             }
 
         return result
+
+    if normalized_action == "lifecycle_report":
+        list_payload = await manage_collections(action="list")
+        if list_payload.get("status") == "error":
+            return list_payload
+
+        collections = list_payload.get("collections")
+        if not isinstance(collections, list):
+            collections = []
+
+        stats_payload = await manage_collections(
+            action="stats",
+            collection_name=normalized_collection_name,
+            include_breakdown=include_breakdown,
+            report_format=report_format,
+        )
+        if stats_payload.get("status") == "error":
+            return stats_payload
+
+        collection_names = [
+            str((entry or {}).get("name", "")).strip()
+            for entry in collections
+            if isinstance(entry, dict)
+        ]
+        collection_names = [name for name in collection_names if name]
+
+        storage_report = stats_payload.get("storage_report")
+        if not isinstance(storage_report, dict):
+            storage_report = {}
+
+        summary = storage_report.get("summary")
+        if not isinstance(summary, dict):
+            summary = {}
+        totals = {
+            "total_items": int(summary.get("total_items", 0) or 0),
+            "total_size_bytes": int(summary.get("total_size_bytes", 0) or 0),
+        }
+
+        lifecycle_report: Dict[str, Any] = {
+            "generated_at": datetime.now().isoformat(),
+            "scope": "collection" if normalized_collection_name else "global",
+            "collection_name": normalized_collection_name,
+            "collections_total": int(list_payload.get("total_count", len(collections)) or 0),
+            "collection_names": collection_names,
+            "totals": totals,
+            "stats_report_format": str(storage_report.get("report_format") or report_format),
+        }
+
+        if include_breakdown:
+            lifecycle_report["collections"] = collections
+            breakdown = storage_report.get("breakdown")
+            if isinstance(breakdown, dict):
+                lifecycle_report["breakdown"] = breakdown
+
+        if normalized_report_format == "analytics":
+            analytics = storage_report.get("analytics")
+            if isinstance(analytics, dict):
+                lifecycle_report["analytics"] = analytics
+
+        return {
+            "status": "success",
+            "action": normalized_action,
+            "success": True,
+            "lifecycle_report": lifecycle_report,
+        }
 
     try:
         payload = await _API["manage_collections"](

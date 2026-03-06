@@ -6141,6 +6141,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             action_enum = (manage_props.get("action") or {}).get("enum") or []
             self.assertIn("backend_status", action_enum)
+            self.assertIn("lifecycle_report", action_enum)
             all_of = manage_input_schema.get("allOf") or []
             self.assertGreaterEqual(len(all_of), 1)
             first_rule = all_of[0]
@@ -6289,6 +6290,25 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((backend_entries[0] or {}).get("available"), False)
             self.assertEqual((backend_entries[0] or {}).get("unavailable_reason"), "dial timeout")
             self.assertEqual((backend_report.get("breakdown") or {}).get("unavailable_count"), 1)
+
+            lifecycle_report = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "lifecycle_report",
+                        "collection_name": "default",
+                        "report_format": "analytics",
+                        "include_breakdown": True,
+                    },
+                )
+            )
+            self.assertEqual(lifecycle_report.get("status"), "success")
+            lifecycle_payload = lifecycle_report.get("lifecycle_report") or {}
+            self.assertEqual(lifecycle_payload.get("scope"), "collection")
+            self.assertEqual(lifecycle_payload.get("collection_name"), "default")
+            self.assertIn("collections_total", lifecycle_payload)
+            self.assertIn("totals", lifecycle_payload)
 
             missing_collection = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7782,10 +7802,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("record_audit_event", names)
             self.assertIn("generate_audit_report", names)
+            self.assertIn("audit_tools", names)
 
             event_schema = await get_schema("audit_tools", "record_audit_event")
             event_props = (event_schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("critical", (event_props.get("severity") or {}).get("enum", []))
+
+            tools_schema = await get_schema("audit_tools", "audit_tools")
+            tools_props = (tools_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((tools_props.get("target") or {}).get("default"), ".")
+            self.assertEqual((tools_props.get("action") or {}).get("default"), "audit")
 
             invalid_severity = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7811,6 +7837,30 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_report_type.get("status"), "error")
             self.assertIn("report_type must be one of", str(invalid_report_type.get("message", "")))
+
+            invalid_audit_tools_target = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "audit_tools",
+                    "audit_tools",
+                    {
+                        "target": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_audit_tools_target.get("status"), "error")
+            self.assertIn("target is required", str(invalid_audit_tools_target.get("message", "")))
+
+            valid_audit_tools = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "audit_tools",
+                    "audit_tools",
+                    {
+                        "target": "/tmp/audit-target",
+                        "action": "scan",
+                    },
+                )
+            )
+            self.assertIn(valid_audit_tools.get("status"), ["success", "error"])
 
         anyio.run(_run_flow)
 
@@ -7854,10 +7904,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("send_discord_message", names)
             self.assertIn("evaluate_alert_rules", names)
             self.assertIn("list_alert_rules", names)
+            self.assertIn("remove_alert_rule", names)
 
             list_schema = await get_schema("alert_tools", "list_alert_rules")
             list_props = (list_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((list_props.get("enabled_only") or {}).get("default"), False)
+
+            remove_schema = await get_schema("alert_tools", "remove_alert_rule")
+            remove_props = (remove_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((remove_props.get("rule_id") or {}).get("minLength"), 1)
 
             invalid_text = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7882,6 +7937,29 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_event.get("status"), "error")
             self.assertIn("event must be an object", str(invalid_event.get("message", "")))
+
+            invalid_remove = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "alert_tools",
+                    "remove_alert_rule",
+                    {
+                        "rule_id": " ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_remove.get("status"), "error")
+            self.assertIn("rule_id is required", str(invalid_remove.get("message", "")))
+
+            valid_remove = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "alert_tools",
+                    "remove_alert_rule",
+                    {
+                        "rule_id": "rule-1",
+                    },
+                )
+            )
+            self.assertIn(valid_remove.get("status"), ["success", "error"])
 
         anyio.run(_run_flow)
 

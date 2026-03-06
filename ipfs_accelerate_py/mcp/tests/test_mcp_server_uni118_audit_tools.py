@@ -8,6 +8,7 @@ import unittest
 import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.audit_tools.native_audit_tools import (
+    audit_tools,
     generate_audit_report,
     record_audit_event,
     register_native_audit_tools,
@@ -29,6 +30,7 @@ class TestMCPServerUNI118AuditTools(unittest.TestCase):
         names = [c["name"] for c in manager.calls]
         self.assertIn("record_audit_event", names)
         self.assertIn("generate_audit_report", names)
+        self.assertIn("audit_tools", names)
 
     def test_register_schema_contracts(self) -> None:
         manager = _DummyManager()
@@ -41,6 +43,10 @@ class TestMCPServerUNI118AuditTools(unittest.TestCase):
         report_schema = by_name["generate_audit_report"]["input_schema"]
         self.assertIn("comprehensive", report_schema["properties"]["report_type"].get("enum", []))
         self.assertEqual(report_schema["properties"]["start_time"].get("format"), "date-time")
+
+        tools_schema = by_name["audit_tools"]["input_schema"]
+        self.assertEqual(tools_schema["properties"]["target"].get("default"), ".")
+        self.assertEqual(tools_schema["properties"]["action"].get("default"), "audit")
 
     def test_record_audit_event_rejects_empty_action(self) -> None:
         async def _run() -> None:
@@ -80,6 +86,31 @@ class TestMCPServerUNI118AuditTools(unittest.TestCase):
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("report_type"), "compliance")
             self.assertEqual(result.get("output_format"), "json")
+
+        anyio.run(_run)
+
+    def test_audit_tools_rejects_empty_target(self) -> None:
+        async def _run() -> None:
+            result = await audit_tools(target="   ")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("target is required", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_audit_tools_rejects_invalid_details_shape(self) -> None:
+        async def _run() -> None:
+            result = await audit_tools(target="/tmp", details=["bad"])  # type: ignore[arg-type]
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("must be an object", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_audit_tools_success_envelope_shape(self) -> None:
+        async def _run() -> None:
+            result = await audit_tools(target="/tmp", action="scan")
+            self.assertIn(result.get("status"), ["success", "error"])
+            self.assertEqual(result.get("target"), "/tmp")
+            self.assertEqual(result.get("action"), "scan")
 
         anyio.run(_run)
 
