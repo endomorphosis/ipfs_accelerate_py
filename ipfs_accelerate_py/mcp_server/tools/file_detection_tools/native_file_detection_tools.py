@@ -296,6 +296,110 @@ async def analyze_detection_accuracy(
     return payload
 
 
+async def generate_detection_report(
+    results: Dict[str, Dict[str, Any]],
+    include_examples: bool = True,
+    top_mime_types: int = 10,
+) -> Dict[str, Any]:
+    """Generate deterministic summary/report from batch file-detection results."""
+    if not isinstance(results, dict) or not results:
+        return {
+            "status": "error",
+            "message": "results must be a non-empty object",
+            "results": results,
+        }
+    if not isinstance(include_examples, bool):
+        return {
+            "status": "error",
+            "message": "include_examples must be a boolean",
+            "include_examples": include_examples,
+        }
+    try:
+        normalized_top_mime_types = int(top_mime_types)
+    except (TypeError, ValueError):
+        return {
+            "status": "error",
+            "message": "top_mime_types must be an integer between 1 and 50",
+            "top_mime_types": top_mime_types,
+        }
+    if normalized_top_mime_types < 1 or normalized_top_mime_types > 50:
+        return {
+            "status": "error",
+            "message": "top_mime_types must be an integer between 1 and 50",
+            "top_mime_types": top_mime_types,
+        }
+
+    total_files = len(results)
+    successful = 0
+    failed = 0
+    malformed = 0
+    confidence_sum = 0.0
+    confidence_count = 0
+    mime_counts: Dict[str, int] = {}
+    error_examples: List[Dict[str, Any]] = []
+
+    for file_path, entry in results.items():
+        if not isinstance(entry, dict):
+            malformed += 1
+            failed += 1
+            if include_examples and len(error_examples) < 5:
+                error_examples.append(
+                    {
+                        "file_path": str(file_path),
+                        "error": "result entry must be an object",
+                    }
+                )
+            continue
+
+        mime_type = entry.get("mime_type")
+        error_text = entry.get("error")
+        if error_text or not mime_type:
+            failed += 1
+            if include_examples and len(error_examples) < 5:
+                error_examples.append(
+                    {
+                        "file_path": str(file_path),
+                        "error": str(error_text or "mime_type missing"),
+                    }
+                )
+            continue
+
+        successful += 1
+        mime_key = str(mime_type)
+        mime_counts[mime_key] = mime_counts.get(mime_key, 0) + 1
+
+        confidence_value = entry.get("confidence")
+        if isinstance(confidence_value, (int, float)):
+            confidence_sum += float(confidence_value)
+            confidence_count += 1
+
+    sorted_mimes = sorted(
+        mime_counts.items(),
+        key=lambda pair: (-pair[1], pair[0]),
+    )[:normalized_top_mime_types]
+    common_mime_types = [
+        {"mime_type": mime_type, "count": count}
+        for mime_type, count in sorted_mimes
+    ]
+
+    report: Dict[str, Any] = {
+        "total_files": total_files,
+        "successful": successful,
+        "failed": failed,
+        "malformed": malformed,
+        "success_rate": (successful / total_files) if total_files else 0.0,
+        "avg_confidence": (confidence_sum / confidence_count) if confidence_count else 0.0,
+        "common_mime_types": common_mime_types,
+    }
+    if include_examples:
+        report["error_examples"] = error_examples
+
+    return {
+        "status": "success",
+        "report": report,
+    }
+
+
 def register_native_file_detection_tools(manager: Any) -> None:
     """Register native file-detection tools in unified hierarchical manager."""
     manager.register_tool(
@@ -357,6 +461,28 @@ def register_native_file_detection_tools(manager: Any) -> None:
                 "pattern": {"type": "string", "default": "*"},
             },
             "required": ["directory"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "file-detection"],
+    )
+
+    manager.register_tool(
+        category="file_detection_tools",
+        name="generate_detection_report",
+        func=generate_detection_report,
+        description="Generate summary statistics and common MIME findings from detection results.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "results": {
+                    "type": "object",
+                    "minProperties": 1,
+                    "additionalProperties": {"type": "object"},
+                },
+                "include_examples": {"type": "boolean", "default": True},
+                "top_mime_types": {"type": "integer", "minimum": 1, "maximum": 50, "default": 10},
+            },
+            "required": ["results"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "file-detection"],

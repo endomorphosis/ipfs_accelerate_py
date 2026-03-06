@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.web_scraping_tools.native_web_scraping_tools import (
+    check_scraper_methods_tool,
     register_native_web_scraping_tools,
     scrape_multiple_urls_tool,
     scrape_url_tool,
@@ -79,6 +81,63 @@ class TestMCPServerUNI123WebScrapingTools(unittest.TestCase):
             result = await scrape_url_tool(url="https://example.com", method="requests_only")
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("url"), "https://example.com")
+
+        anyio.run(_run)
+
+    def test_scrape_url_success_defaults_with_minimal_payload(self) -> None:
+        async def _minimal_scrape_url(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.web_scraping_tools.native_web_scraping_tools._API",
+                {
+                    "scrape_url_tool": _minimal_scrape_url,
+                    "scrape_multiple_urls_tool": None,
+                    "check_scraper_methods_tool": None,
+                },
+            ):
+                result = await scrape_url_tool(url="https://example.com")
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("url"), "https://example.com")
+            self.assertEqual(result.get("content"), "")
+            self.assertEqual(result.get("title"), "")
+            self.assertEqual(result.get("links"), [])
+            self.assertEqual(result.get("method_used"), "fallback")
+
+        anyio.run(_run)
+
+    def test_scrape_multiple_and_methods_defaults_with_minimal_payloads(self) -> None:
+        async def _minimal_scrape_multiple(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _minimal_methods() -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.web_scraping_tools.native_web_scraping_tools._API",
+                {
+                    "scrape_url_tool": None,
+                    "scrape_multiple_urls_tool": _minimal_scrape_multiple,
+                    "check_scraper_methods_tool": _minimal_methods,
+                },
+            ):
+                multi_result = await scrape_multiple_urls_tool(urls=["https://example.com", "https://example.org"])
+                methods_result = await check_scraper_methods_tool()
+
+            self.assertEqual(multi_result.get("status"), "success")
+            self.assertEqual(multi_result.get("total_urls"), 2)
+            self.assertEqual(multi_result.get("results"), [])
+            self.assertEqual(multi_result.get("successful_count"), 0)
+            self.assertEqual(multi_result.get("failed_count"), 2)
+
+            self.assertEqual(methods_result.get("status"), "success")
+            self.assertEqual(methods_result.get("available_methods"), {})
+            self.assertEqual(methods_result.get("unavailable_methods"), [])
+            self.assertEqual(methods_result.get("recommended_installs"), [])
+            self.assertEqual(methods_result.get("all_methods"), [])
+            self.assertEqual(methods_result.get("fallback_sequence"), [])
 
         anyio.run(_run)
 

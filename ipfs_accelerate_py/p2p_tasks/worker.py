@@ -172,6 +172,34 @@ _CUDA_CANARY_OK: bool = False
 _CUDA_CANARY_ERROR: str = ""
 
 
+def _is_meta_tensor_copy_error(exc: BaseException) -> bool:
+    """Return True when an exception matches the known HF meta-tensor copy failure."""
+
+    msg = str(exc or "").lower()
+    return "meta tensor" in msg and "to_empty" in msg
+
+
+def _rebuild_textgen_pipeline_on_cpu(*, requested_model: str) -> object:
+    """Rebuild text-generation pipeline on CPU after a CUDA/meta initialization failure."""
+
+    global _HF_TEXTGEN_PIPELINE, _HF_TEXTGEN_MODEL_ID, _HF_TEXTGEN_MODEL_BYTES, _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH
+
+    # Pin local worker fallback to CPU for subsequent minimal_hf generations.
+    os.environ["IPFS_ACCELERATE_PY_TASK_WORKER_HF_DEVICE"] = "cpu"
+
+    with _HF_TEXTGEN_LOCK:
+        _HF_TEXTGEN_PIPELINE = None
+        _HF_TEXTGEN_MODEL_ID = None
+        _HF_TEXTGEN_MODEL_BYTES = None
+        _HF_TEXTGEN_KV_BYTES_PER_TOKEN_PER_BATCH = None
+
+    print(
+        "[worker:textgen] warning: CUDA/meta initialization failed; "
+        f"rebuilding minimal HF pipeline on CPU (model={requested_model})"
+    )
+    return _hf_get_textgen_pipeline(requested_model=requested_model)
+
+
 def _available_ram_bytes() -> int:
     """Best-effort available system RAM bytes (Linux-friendly)."""
 
@@ -1018,7 +1046,17 @@ def _hf_textgen(prompt: str, *, model_name: str | None, max_new_tokens: int, tem
             + "; this often means a local 'transformers.py' is shadowing the package"
         ) from exc
     except Exception as exc:
-        raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
+        if _is_meta_tensor_copy_error(exc):
+            try:
+                gen = _rebuild_textgen_pipeline_on_cpu(requested_model=requested_model)
+            except Exception as fallback_exc:
+                raise RuntimeError(
+                    "minimal text-generation failed after CPU fallback: "
+                    f"{type(fallback_exc).__name__}: {fallback_exc} "
+                    f"(original={type(exc).__name__}: {exc})"
+                ) from fallback_exc
+        else:
+            raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
 
     # Pipeline calls are not guaranteed thread-safe; guard the call.
     with _HF_TEXTGEN_LOCK:
@@ -1074,7 +1112,17 @@ def _hf_textgen_batch(
             + "; this often means a local 'transformers.py' is shadowing the package"
         ) from exc
     except Exception as exc:
-        raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
+        if _is_meta_tensor_copy_error(exc):
+            try:
+                gen = _rebuild_textgen_pipeline_on_cpu(requested_model=requested_model)
+            except Exception as fallback_exc:
+                raise RuntimeError(
+                    "minimal text-generation failed after CPU fallback: "
+                    f"{type(fallback_exc).__name__}: {fallback_exc} "
+                    f"(original={type(exc).__name__}: {exc})"
+                ) from fallback_exc
+        else:
+            raise RuntimeError(f"minimal text-generation failed: {type(exc).__name__}: {exc}") from exc
 
     with _HF_TEXTGEN_LOCK:
         out = gen(

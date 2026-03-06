@@ -178,6 +178,10 @@ async def scrape_url_tool(
     else:
         payload = _normalize_payload(result)
     payload.setdefault("url", normalized_url)
+    payload.setdefault("content", "")
+    payload.setdefault("title", "")
+    payload.setdefault("links", [])
+    payload.setdefault("method_used", normalized_method or "fallback")
     if normalized_method is not None:
         payload.setdefault("method", normalized_method)
     return payload
@@ -278,6 +282,9 @@ async def scrape_multiple_urls_tool(
     else:
         payload = _normalize_payload(result)
     payload.setdefault("total_urls", len(normalized_urls))
+    payload.setdefault("results", [])
+    payload.setdefault("successful_count", len(payload.get("results") or []))
+    payload.setdefault("failed_count", max(0, payload.get("total_urls", len(normalized_urls)) - payload.get("successful_count", 0)))
     if normalized_method is not None:
         payload.setdefault("method", normalized_method)
     return payload
@@ -287,8 +294,15 @@ async def check_scraper_methods_tool() -> Dict[str, Any]:
     """Return available web-scraping methods and recommended installs."""
     result = _API["check_scraper_methods_tool"]()
     if hasattr(result, "__await__"):
-        return _normalize_payload(await result)
-    return _normalize_payload(result)
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("available_methods", {})
+    payload.setdefault("unavailable_methods", [])
+    payload.setdefault("recommended_installs", [])
+    payload.setdefault("all_methods", [])
+    payload.setdefault("fallback_sequence", [])
+    return payload
 
 
 def register_native_web_scraping_tools(manager: Any) -> None:
