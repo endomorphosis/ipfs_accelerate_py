@@ -15,6 +15,7 @@ def _load_admin_api() -> Dict[str, Any]:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.admin_tools.admin_tools import (  # type: ignore
             configure_system as _configure_system,
             manage_endpoints as _manage_endpoints,
+            system_health as _system_health,
             system_maintenance as _system_maintenance,
         )
 
@@ -22,6 +23,7 @@ def _load_admin_api() -> Dict[str, Any]:
             "manage_endpoints": _manage_endpoints,
             "system_maintenance": _system_maintenance,
             "configure_system": _configure_system,
+            "system_health": _system_health,
         }
     except Exception:
         logger.warning("Source admin_tools import unavailable, using fallback admin functions")
@@ -81,10 +83,25 @@ def _load_admin_api() -> Dict[str, Any]:
                 "timestamp": datetime.now().isoformat(),
             }
 
+        async def _system_health_fallback(
+            component: str = "all",
+            detailed: bool = False,
+        ) -> Dict[str, Any]:
+            return {
+                "success": True,
+                "status": "success",
+                "component": component,
+                "detailed": detailed,
+                "health": "healthy",
+                "components": {},
+                "timestamp": datetime.now().isoformat(),
+            }
+
         return {
             "manage_endpoints": _manage_endpoints_fallback,
             "system_maintenance": _system_maintenance_fallback,
             "configure_system": _configure_system_fallback,
+            "system_health": _system_health_fallback,
         }
 
 
@@ -241,6 +258,37 @@ async def configure_system(
     return payload
 
 
+async def system_health(
+    component: str = "all",
+    detailed: bool = False,
+) -> Dict[str, Any]:
+    """Return system health summary with deterministic validation and envelope."""
+    normalized_component = str(component or "").strip().lower()
+    if not normalized_component:
+        return {
+            "status": "error",
+            "message": "component must be a non-empty string",
+            "component": component,
+        }
+    if not isinstance(detailed, bool):
+        return {
+            "status": "error",
+            "message": "detailed must be a boolean",
+            "detailed": detailed,
+        }
+
+    result = await _API["system_health"](
+        component=normalized_component,
+        detailed=detailed,
+    )
+    payload = dict(result or {})
+    payload.setdefault("status", "success")
+    payload.setdefault("component", normalized_component)
+    payload.setdefault("detailed", detailed)
+    payload.setdefault("health", "unknown")
+    return payload
+
+
 def register_native_admin_tools(manager: Any) -> None:
     """Register native admin tools in unified hierarchical manager."""
     manager.register_tool(
@@ -296,6 +344,23 @@ def register_native_admin_tools(manager: Any) -> None:
                 "validate_only": {"type": "boolean", "default": False},
             },
             "required": ["action"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "admin"],
+    )
+
+    manager.register_tool(
+        category="admin_tools",
+        name="system_health",
+        func=system_health,
+        description="Get system health for a target component.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "component": {"type": "string", "minLength": 1, "default": "all"},
+                "detailed": {"type": "boolean", "default": False},
+            },
+            "required": [],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "admin"],

@@ -6127,7 +6127,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             manage_schema = await get_schema("storage_tools", "manage_collections")
             manage_input_schema = manage_schema.get("input_schema") or {}
             manage_props = manage_input_schema.get("properties", {})
-            self.assertEqual((manage_props.get("report_format") or {}).get("enum"), ["detailed", "summary"])
+            report_enum = (manage_props.get("report_format") or {}).get("enum") or []
+            self.assertIn("detailed", report_enum)
+            self.assertIn("summary", report_enum)
+            self.assertIn("analytics", report_enum)
+            self.assertEqual((manage_props.get("include_capabilities") or {}).get("type"), "boolean")
+            self.assertIn("backend_types", manage_props)
+            self.assertIn("unavailable_backends", manage_props)
+            self.assertIn("unavailable_reasons", manage_props)
+            availability_filter_schema = manage_props.get("availability_filter") or {}
+            self.assertIn("available", availability_filter_schema.get("enum") or [])
+            self.assertIn("unavailable", availability_filter_schema.get("enum") or [])
+
+            action_enum = (manage_props.get("action") or {}).get("enum") or []
+            self.assertIn("backend_status", action_enum)
             all_of = manage_input_schema.get("allOf") or []
             self.assertGreaterEqual(len(all_of), 1)
             first_rule = all_of[0]
@@ -6236,6 +6249,46 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_report_format.get("status"), "error")
             self.assertIn("report_format must be one of", str(invalid_report_format.get("error", "")))
+
+            invalid_availability_filter = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "backend_status",
+                        "availability_filter": "partial",
+                    },
+                )
+            )
+            self.assertEqual(invalid_availability_filter.get("status"), "error")
+            self.assertIn(
+                "availability_filter must be one of",
+                str(invalid_availability_filter.get("error", "")),
+            )
+
+            backend_status = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "backend_status",
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                        "unavailable_reasons": {"ipfs": "dial timeout"},
+                        "availability_filter": "unavailable",
+                        "include_breakdown": True,
+                    },
+                )
+            )
+            self.assertEqual(backend_status.get("status"), "success")
+            backend_report = backend_status.get("backend_report") or {}
+            self.assertEqual(backend_report.get("availability_filter"), "unavailable")
+            backend_entries = backend_report.get("backends") or []
+            self.assertEqual(len(backend_entries), 1)
+            self.assertEqual((backend_entries[0] or {}).get("storage_type"), "ipfs")
+            self.assertEqual((backend_entries[0] or {}).get("available"), False)
+            self.assertEqual((backend_entries[0] or {}).get("unavailable_reason"), "dial timeout")
+            self.assertEqual((backend_report.get("breakdown") or {}).get("unavailable_count"), 1)
 
             missing_collection = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7315,11 +7368,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             listed = await tools_list("provenance_tools")
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("record_provenance", names)
+            self.assertIn("record_provenance_batch", names)
 
             schema = await get_schema("provenance_tools", "record_provenance")
             self.assertEqual(schema.get("name"), "record_provenance")
             schema_props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((schema_props.get("timestamp") or {}).get("format"), "date-time")
+
+            batch_schema = await get_schema("provenance_tools", "record_provenance_batch")
+            self.assertEqual(batch_schema.get("name"), "record_provenance_batch")
+            batch_props = (batch_schema.get("input_schema") or {}).get("properties", {})
+            records_schema = batch_props.get("records") or {}
+            self.assertEqual(records_schema.get("type"), "array")
+            item_props = (records_schema.get("items") or {}).get("properties", {})
+            self.assertEqual((item_props.get("timestamp") or {}).get("format"), "date-time")
 
             invalid_timestamp = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7347,6 +7409,38 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertIn(valid_record.get("status"), ["success", "error"])
+
+            invalid_batch = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "provenance_tools",
+                    "record_provenance_batch",
+                    {"records": []},
+                )
+            )
+            self.assertEqual(invalid_batch.get("status"), "error")
+            self.assertIn("non-empty array", str(invalid_batch.get("message", "")))
+
+            valid_batch = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "provenance_tools",
+                    "record_provenance_batch",
+                    {
+                        "records": [
+                            {
+                                "dataset_id": "dataset-1",
+                                "operation": "transform",
+                                "timestamp": "2026-03-03T12:00:00Z",
+                            },
+                            {
+                                "dataset_id": "dataset-2",
+                                "operation": "publish",
+                            },
+                        ]
+                    },
+                )
+            )
+            self.assertEqual(valid_batch.get("status"), "success")
+            self.assertEqual(valid_batch.get("processed"), 2)
 
         anyio.run(_run_flow)
 
@@ -7390,11 +7484,17 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("manage_endpoints", names)
             self.assertIn("system_maintenance", names)
             self.assertIn("configure_system", names)
+            self.assertIn("system_health", names)
 
             endpoint_schema = await get_schema("admin_tools", "manage_endpoints")
             props = (endpoint_schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("list", (props.get("action") or {}).get("enum", []))
             self.assertEqual((props.get("ctx_length") or {}).get("minimum"), 1)
+
+            health_schema = await get_schema("admin_tools", "system_health")
+            health_props = (health_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((health_props.get("component") or {}).get("default"), "all")
+            self.assertEqual((health_props.get("detailed") or {}).get("default"), False)
 
             invalid_action = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7431,6 +7531,30 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_settings.get("status"), "error")
             self.assertIn("must be an object", str(invalid_settings.get("message", "")))
+
+            invalid_health_component = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "system_health",
+                    {
+                        "component": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_health_component.get("status"), "error")
+            self.assertIn("non-empty string", str(invalid_health_component.get("message", "")))
+
+            valid_health = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "system_health",
+                    {
+                        "component": "all",
+                        "detailed": True,
+                    },
+                )
+            )
+            self.assertIn(valid_health.get("status"), ["success", "error"])
 
         anyio.run(_run_flow)
 

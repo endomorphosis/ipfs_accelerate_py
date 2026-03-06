@@ -16,6 +16,8 @@ from ipfs_accelerate_py.mcplusplus_module.trio import (
     require_trio,
 )
 
+pytestmark = pytest.mark.anyio
+
 
 class TestTrioBridge:
     """Tests for Trio bridge utilities."""
