@@ -103,6 +103,9 @@ async def ffmpeg_analyze(input_file: Union[str, Dict[str, Any]]) -> Dict[str, An
 
     payload = _normalize_payload(resolved)
     payload.setdefault("input_file", normalized_input)
+    if payload.get("status") == "success":
+        payload.setdefault("success", True)
+        payload.setdefault("metadata", {})
     return payload
 
 
@@ -153,6 +156,9 @@ async def ytdlp_extract_info(
 
     payload = _normalize_payload(resolved)
     payload.setdefault("url", normalized_url)
+    if payload.get("status") == "success":
+        payload.setdefault("success", True)
+        payload.setdefault("info", {})
     return payload
 
 

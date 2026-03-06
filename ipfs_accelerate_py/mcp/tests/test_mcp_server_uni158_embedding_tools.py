@@ -25,6 +25,12 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
         native_embedding_tools.register_native_embedding_tools(manager)
         schemas = {call["name"]: call["input_schema"] for call in manager.calls}
 
+        single_props = schemas["generate_embedding"]["properties"]
+        self.assertEqual(single_props["batch_size"].get("minimum"), 1)
+
+        from_file_props = schemas["generate_embeddings_from_file"]["properties"]
+        self.assertIn("json", from_file_props["output_format"].get("enum", []))
+
         generate_props = schemas["generate_embeddings"]["properties"]
         self.assertEqual(generate_props["texts"].get("minItems"), 1)
 
@@ -44,6 +50,72 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 result = await native_embedding_tools.generate_embeddings(texts=["hello"])
                 self.assertEqual(result.get("status"), "error")
                 self.assertIn("generate_embeddings failed", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_generate_embedding_validates_and_wraps_exceptions(self) -> None:
+        async def _boom(**_: object) -> dict:
+            raise RuntimeError("single embedding boom")
+
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            invalid_text = await native_embedding_tools.generate_embedding(text="   ")
+            self.assertEqual(invalid_text.get("status"), "error")
+            self.assertIn("text must be a non-empty string", str(invalid_text.get("error", "")))
+
+            invalid_batch = await native_embedding_tools.generate_embedding(text="hello", batch_size=0)
+            self.assertEqual(invalid_batch.get("status"), "error")
+            self.assertIn("batch_size must be a positive integer", str(invalid_batch.get("error", "")))
+
+            with patch.dict(native_embedding_tools._API, {"generate_embedding": _minimal}, clear=False):
+                result = await native_embedding_tools.generate_embedding(text="hello", batch_size=8)
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("batch_size"), 8)
+                self.assertEqual(result.get("embedding"), [])
+
+            with patch.dict(native_embedding_tools._API, {"generate_embedding": _boom}, clear=False):
+                failed = await native_embedding_tools.generate_embedding(text="hello")
+                self.assertEqual(failed.get("status"), "error")
+                self.assertIn("generate_embedding failed", str(failed.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_generate_embeddings_from_file_validates_and_wraps_exceptions(self) -> None:
+        async def _boom(**_: object) -> dict:
+            raise RuntimeError("file embedding boom")
+
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            invalid_path = await native_embedding_tools.generate_embeddings_from_file(file_path="  ")
+            self.assertEqual(invalid_path.get("status"), "error")
+            self.assertIn("file_path must be a non-empty string", str(invalid_path.get("error", "")))
+
+            invalid_format = await native_embedding_tools.generate_embeddings_from_file(
+                file_path="input.txt",
+                output_format="csv",
+            )
+            self.assertEqual(invalid_format.get("status"), "error")
+            self.assertIn("output_format must be one of", str(invalid_format.get("error", "")))
+
+            with patch.dict(native_embedding_tools._API, {"generate_embeddings_from_file": _minimal}, clear=False):
+                result = await native_embedding_tools.generate_embeddings_from_file(
+                    file_path="input.txt",
+                    output_format="json",
+                    batch_size=16,
+                )
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("file_path"), "input.txt")
+                self.assertEqual(result.get("batch_size"), 16)
+                self.assertEqual(result.get("embeddings"), [])
+
+            with patch.dict(native_embedding_tools._API, {"generate_embeddings_from_file": _boom}, clear=False):
+                failed = await native_embedding_tools.generate_embeddings_from_file(file_path="input.txt")
+                self.assertEqual(failed.get("status"), "error")
+                self.assertIn("generate_embeddings_from_file failed", str(failed.get("error", "")))
 
         anyio.run(_run)
 

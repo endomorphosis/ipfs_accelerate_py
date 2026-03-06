@@ -181,6 +181,12 @@ async def codebase_search(
     payload = _normalize_payload(resolved)
     payload.setdefault("pattern", normalized_pattern)
     payload.setdefault("path", normalized_path)
+    if payload.get("status") == "success":
+        payload.setdefault("success", True)
+        payload.setdefault("result", {})
+        if isinstance(payload.get("result"), dict):
+            payload["result"].setdefault("matches", [])
+            payload["result"].setdefault("summary", {})
     return payload
 
 
@@ -207,6 +213,9 @@ async def vscode_cli_status(install_dir: Optional[str] = None) -> Dict[str, Any]
 
     payload = _normalize_payload(resolved)
     payload.setdefault("install_dir", normalized_install_dir)
+    if payload.get("status") == "success":
+        payload.setdefault("success", True)
+        payload.setdefault("installed", False)
     return payload
 
 

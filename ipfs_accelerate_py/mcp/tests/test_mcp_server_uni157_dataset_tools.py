@@ -32,6 +32,8 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
         self.assertEqual(text_to_fol_props["confidence_threshold"].get("minimum"), 0)
         self.assertEqual(text_to_fol_props["confidence_threshold"].get("maximum"), 1)
 
+        self.assertEqual(schemas["dataset_tools_claudes"].get("type"), "object")
+
     def test_load_and_save_validate_and_wrap_exceptions(self) -> None:
         async def _boom(**_: object) -> dict:
             raise RuntimeError("dataset boom")
@@ -88,6 +90,27 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
                 )
                 self.assertEqual(result.get("status"), "error")
                 self.assertIn("legal_text_to_deontic failed", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_dataset_tools_claudes_success_defaults_and_exception_wrapping(self) -> None:
+        async def _minimal() -> dict:
+            return {"status": "success"}
+
+        async def _boom() -> dict:
+            raise RuntimeError("claudes boom")
+
+        async def _run() -> None:
+            with patch.dict(native_dataset_tools._API, {"dataset_tools_claudes": _minimal}, clear=False):
+                result = await native_dataset_tools.dataset_tools_claudes()
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("tool_type"), "Dataset processing tool")
+                self.assertEqual(result.get("available_methods"), ["process_data"])
+
+            with patch.dict(native_dataset_tools._API, {"dataset_tools_claudes": _boom}, clear=False):
+                failed = await native_dataset_tools.dataset_tools_claudes()
+                self.assertEqual(failed.get("status"), "error")
+                self.assertIn("dataset_tools_claudes failed", str(failed.get("error", "")))
 
         anyio.run(_run)
 

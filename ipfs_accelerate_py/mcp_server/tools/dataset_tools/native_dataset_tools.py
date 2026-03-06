@@ -13,6 +13,7 @@ def _load_dataset_api() -> Dict[str, Any]:
     try:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.dataset_tools import (  # type: ignore
             convert_dataset_format as _convert_dataset_format,
+            dataset_tools_claudes as _dataset_tools_claudes,
             legal_text_to_deontic as _legal_text_to_deontic,
             load_dataset as _load_dataset,
             process_dataset as _process_dataset,
@@ -27,6 +28,7 @@ def _load_dataset_api() -> Dict[str, Any]:
             "convert_dataset_format": _convert_dataset_format,
             "text_to_fol": _text_to_fol,
             "legal_text_to_deontic": _legal_text_to_deontic,
+            "dataset_tools_claudes": _dataset_tools_claudes,
         }
     except Exception:
         logger.warning("Source dataset_tools import unavailable, using fallback dataset functions")
@@ -147,6 +149,14 @@ def _load_dataset_api() -> Dict[str, Any]:
                 "include_exceptions": bool(include_exceptions),
             }
 
+        async def _dataset_tools_claudes_fallback() -> Dict[str, Any]:
+            return {
+                "status": "success",
+                "message": "ClaudesDatasetTool initialized successfully",
+                "tool_type": "Dataset processing tool",
+                "available_methods": ["process_data"],
+            }
+
         return {
             "load_dataset": _load_fallback,
             "save_dataset": _save_fallback,
@@ -154,6 +164,7 @@ def _load_dataset_api() -> Dict[str, Any]:
             "convert_dataset_format": _convert_fallback,
             "text_to_fol": _text_to_fol_fallback,
             "legal_text_to_deontic": _legal_text_to_deontic_fallback,
+            "dataset_tools_claudes": _dataset_tools_claudes_fallback,
         }
 
 
@@ -419,6 +430,23 @@ async def legal_text_to_deontic(
     return normalized
 
 
+async def dataset_tools_claudes() -> Dict[str, Any]:
+    """Expose source-aligned Claude's dataset helper surface."""
+    try:
+        payload = await _await_maybe(
+            _API["dataset_tools_claudes"]()
+        )
+    except Exception as exc:
+        return _error_result(f"dataset_tools_claudes failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("message", "ClaudesDatasetTool initialized successfully")
+    normalized.setdefault("tool_type", "Dataset processing tool")
+    normalized.setdefault("available_methods", ["process_data"])
+    return normalized
+
+
 def register_native_dataset_tools(manager: Any) -> None:
     """Register native dataset tools in unified hierarchical manager."""
     manager.register_tool(
@@ -542,4 +570,14 @@ def register_native_dataset_tools(manager: Any) -> None:
         },
         runtime="fastapi",
         tags=["native", "mcpp", "dataset", "logic"],
+    )
+
+    manager.register_tool(
+        category="dataset_tools",
+        name="dataset_tools_claudes",
+        func=dataset_tools_claudes,
+        description="Run source-aligned Claude's dataset helper initialization surface.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "dataset"],
     )

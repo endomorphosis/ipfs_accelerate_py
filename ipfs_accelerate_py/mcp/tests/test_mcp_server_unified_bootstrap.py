@@ -6382,6 +6382,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("load_dataset", names)
             self.assertIn("text_to_fol", names)
+            self.assertIn("dataset_tools_claudes", names)
 
             load_schema = await get_schema("dataset_tools", "load_dataset")
             load_props = (load_schema.get("input_schema") or {}).get("properties", {})
@@ -6416,6 +6417,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_threshold.get("status"), "error")
             self.assertIn("confidence_threshold must be between 0 and 1", str(invalid_threshold.get("error", "")))
+
+            claudes_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "dataset_tools",
+                    "dataset_tools_claudes",
+                    {},
+                )
+            )
+            self.assertIn(claudes_result.get("status"), ["success", "error"])
+            self.assertIn("available_methods", claudes_result)
 
         anyio.run(_run_flow)
 
@@ -6456,8 +6467,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             listed = await tools_list("embedding_tools")
             names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("generate_embedding", names)
+            self.assertIn("generate_embeddings_from_file", names)
             self.assertIn("generate_embeddings", names)
             self.assertIn("chunk_text_for_embeddings", names)
+
+            single_schema = await get_schema("embedding_tools", "generate_embedding")
+            single_props = (single_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((single_props.get("batch_size") or {}).get("minimum"), 1)
+
+            file_schema = await get_schema("embedding_tools", "generate_embeddings_from_file")
+            file_props = (file_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("json", (file_props.get("output_format") or {}).get("enum", []))
 
             generate_schema = await get_schema("embedding_tools", "generate_embeddings")
             generate_props = (generate_schema.get("input_schema") or {}).get("properties", {})
@@ -6478,6 +6499,32 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_texts.get("status"), "error")
             self.assertIn("non-empty strings", str(invalid_texts.get("error", "")))
+
+            invalid_single_batch = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "embedding_tools",
+                    "generate_embedding",
+                    {
+                        "text": "hello",
+                        "batch_size": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_single_batch.get("status"), "error")
+            self.assertIn("batch_size must be a positive integer", str(invalid_single_batch.get("error", "")))
+
+            invalid_file_format = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "embedding_tools",
+                    "generate_embeddings_from_file",
+                    {
+                        "file_path": "input.txt",
+                        "output_format": "csv",
+                    },
+                )
+            )
+            self.assertEqual(invalid_file_format.get("status"), "error")
+            self.assertIn("output_format must be one of", str(invalid_file_format.get("error", "")))
 
             invalid_overlap = self._assert_dispatch_success_envelope(
                 await dispatch(
