@@ -144,8 +144,11 @@ async def get_tdfol_metrics() -> Dict[str, Any]:
     """Get current TDFOL performance metrics."""
     result = _API["get_tdfol_metrics"]()
     if hasattr(result, "__await__"):
-        return _normalize_payload(await result)
-    return _normalize_payload(result)
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("metrics", {})
+    return payload
 
 
 async def profile_tdfol_operation(
@@ -203,6 +206,7 @@ async def profile_tdfol_operation(
         payload = _normalize_payload(result)
     payload.setdefault("formula", normalized_formula)
     payload.setdefault("runs", runs)
+    payload.setdefault("profile", {})
     if normalized_strategy is not None:
         payload.setdefault("strategy", normalized_strategy)
     return payload
@@ -233,6 +237,7 @@ async def generate_tdfol_dashboard(
     else:
         payload = _normalize_payload(result)
     payload.setdefault("include_profiling", include_profiling)
+    payload.setdefault("dashboard_generated", False)
     if normalized_output_path is not None:
         payload.setdefault("output_path", normalized_output_path)
     return payload
@@ -264,6 +269,7 @@ async def export_tdfol_statistics(
         payload = _normalize_payload(result)
     payload.setdefault("format", normalized_format)
     payload.setdefault("include_raw_data", include_raw_data)
+    payload.setdefault("statistics", {})
     return payload
 
 
@@ -293,6 +299,7 @@ async def get_tdfol_profiler_report(
         payload = _normalize_payload(result)
     payload.setdefault("format", normalized_report_format)
     payload.setdefault("top_n", top_n)
+    payload.setdefault("report", {})
     return payload
 
 
@@ -369,6 +376,7 @@ async def compare_tdfol_strategies(
         payload = _normalize_payload(result)
     payload.setdefault("formula", normalized_formula)
     payload.setdefault("runs_per_strategy", runs_per_strategy)
+    payload.setdefault("comparison", {})
     if normalized_strategies is not None:
         payload.setdefault("strategies", normalized_strategies)
     return payload
@@ -399,6 +407,7 @@ async def check_tdfol_performance_regression(
     else:
         payload = _normalize_payload(result)
     payload.setdefault("threshold_percent", float(threshold_percent))
+    payload.setdefault("regression_detected", False)
     if normalized_baseline_path is not None:
         payload.setdefault("baseline_path", normalized_baseline_path)
     return payload
@@ -408,8 +417,11 @@ async def reset_tdfol_metrics() -> Dict[str, Any]:
     """Reset TDFOL performance metrics and collectors."""
     result = _API["reset_tdfol_metrics"]()
     if hasattr(result, "__await__"):
-        return _normalize_payload(await result)
-    return _normalize_payload(result)
+        payload = _normalize_payload(await result)
+    else:
+        payload = _normalize_payload(result)
+    payload.setdefault("reset", True)
+    return payload
 
 
 def register_native_dashboard_tools(manager: Any) -> None:

@@ -48,6 +48,9 @@ def _extract_storage_distribution(stats_payload: Dict[str, Any]) -> Dict[str, in
     return normalized
 
 
+_VALID_BACKEND_AVAILABILITY_FILTERS = {"all", "available", "unavailable"}
+
+
 def _load_storage_api() -> Dict[str, Any]:
     """Resolve source storage APIs with compatibility fallback."""
     try:
@@ -290,6 +293,7 @@ async def manage_collections(
     backend_types: Optional[List[str]] = None,
     unavailable_backends: Optional[List[str]] = None,
     unavailable_reasons: Optional[Dict[str, str]] = None,
+    availability_filter: str = "all",
     report_format: str = "detailed",
 ) -> Dict[str, Any]:
     """Create, list, and manage storage collections."""
@@ -343,6 +347,16 @@ async def manage_collections(
     ):
         return _error_result(
             "unavailable_reasons must be an object with non-empty string keys/values",
+            action=normalized_action,
+            success=False,
+        )
+    normalized_availability_filter = str(availability_filter or "all").strip().lower() or "all"
+    if normalized_availability_filter not in _VALID_BACKEND_AVAILABILITY_FILTERS:
+        return _error_result(
+            (
+                "availability_filter must be one of: "
+                f"{sorted(_VALID_BACKEND_AVAILABILITY_FILTERS)}"
+            ),
             action=normalized_action,
             success=False,
         )
@@ -425,12 +439,18 @@ async def manage_collections(
                 }
             backend_entries.append(entry)
 
+        if normalized_availability_filter == "available":
+            backend_entries = [entry for entry in backend_entries if entry.get("available")]
+        elif normalized_availability_filter == "unavailable":
+            backend_entries = [entry for entry in backend_entries if not entry.get("available")]
+
         result: Dict[str, Any] = {
             "status": "success",
             "action": normalized_action,
             "success": True,
             "backend_report": {
                 "generated_at": datetime.now().isoformat(),
+                "availability_filter": normalized_availability_filter,
                 "backend_count": len(backend_entries),
                 "backends": backend_entries,
             },
@@ -709,6 +729,11 @@ def register_native_storage_tools(manager: Any) -> None:
                 "unavailable_reasons": {
                     "type": ["object", "null"],
                     "additionalProperties": {"type": "string", "minLength": 1},
+                },
+                "availability_filter": {
+                    "type": "string",
+                    "enum": sorted(_VALID_BACKEND_AVAILABILITY_FILTERS),
+                    "default": "all",
                 },
                 "report_format": {
                     "type": "string",

@@ -202,6 +202,10 @@ async def check_task_status(
     payload.setdefault("task_type", normalized_task_type)
     payload.setdefault("status_filter", normalized_status_filter)
     payload.setdefault("limit", limit)
+    if normalized_task_id is not None:
+        payload.setdefault("task_id", normalized_task_id)
+    payload.setdefault("tasks", [])
+    payload.setdefault("count", len(payload.get("tasks") or []))
     return payload
 
 
@@ -275,6 +279,16 @@ async def manage_background_tasks(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("action", normalized_action)
+    if normalized_task_id is not None:
+        payload.setdefault("task_id", normalized_task_id)
+    if normalized_task_type is not None:
+        payload.setdefault("task_type", normalized_task_type)
+    payload.setdefault("priority", normalized_priority)
+    if normalized_action == "list":
+        payload.setdefault("tasks", [])
+        payload.setdefault("count", len(payload.get("tasks") or []))
+    if normalized_action == "get_stats":
+        payload.setdefault("statistics", {})
     return payload
 
 
@@ -328,6 +342,12 @@ async def manage_task_queue(
     else:
         payload.setdefault("status", "success")
     payload.setdefault("action", normalized_action)
+    if normalized_priority is not None:
+        payload.setdefault("priority", normalized_priority)
+    if max_concurrent is not None:
+        payload.setdefault("max_concurrent", max_concurrent)
+    if normalized_action == "get_stats":
+        payload.setdefault("queue_statistics", {})
     return payload
 
 

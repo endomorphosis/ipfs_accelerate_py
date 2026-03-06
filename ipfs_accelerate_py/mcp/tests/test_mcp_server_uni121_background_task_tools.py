@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -80,6 +81,72 @@ class TestMCPServerUNI121BackgroundTaskTools(unittest.TestCase):
             result = await manage_background_tasks(action="get_stats")
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("action"), "get_stats")
+
+        anyio.run(_run)
+
+    def test_check_task_status_success_defaults_with_minimal_payload(self) -> None:
+        async def _minimal_status(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.background_task_tools.native_background_task_tools._API",
+                {
+                    "check_task_status": _minimal_status,
+                    "manage_background_tasks": None,
+                    "manage_task_queue": None,
+                },
+            ):
+                result = await check_task_status(task_id="task-1", task_type="all", status_filter="all", limit=10)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("task_id"), "task-1")
+            self.assertEqual(result.get("task_type"), "all")
+            self.assertEqual(result.get("status_filter"), "all")
+            self.assertEqual(result.get("limit"), 10)
+            self.assertEqual(result.get("tasks"), [])
+            self.assertEqual(result.get("count"), 0)
+
+        anyio.run(_run)
+
+    def test_manage_background_and_queue_success_defaults_with_minimal_payloads(self) -> None:
+        async def _minimal_manage_background(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _minimal_manage_queue(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.background_task_tools.native_background_task_tools._API",
+                {
+                    "check_task_status": None,
+                    "manage_background_tasks": _minimal_manage_background,
+                    "manage_task_queue": _minimal_manage_queue,
+                },
+            ):
+                list_result = await manage_background_tasks(action="list", task_type="create_embeddings", priority="high")
+                stats_result = await manage_background_tasks(action="get_stats")
+                queue_result = await manage_task_queue(action="get_stats")
+                limits_result = await manage_task_queue(action="set_limits", max_concurrent=3)
+
+            self.assertEqual(list_result.get("status"), "success")
+            self.assertEqual(list_result.get("action"), "list")
+            self.assertEqual(list_result.get("priority"), "high")
+            self.assertEqual(list_result.get("task_type"), "create_embeddings")
+            self.assertEqual(list_result.get("tasks"), [])
+            self.assertEqual(list_result.get("count"), 0)
+
+            self.assertEqual(stats_result.get("status"), "success")
+            self.assertEqual(stats_result.get("statistics"), {})
+
+            self.assertEqual(queue_result.get("status"), "success")
+            self.assertEqual(queue_result.get("action"), "get_stats")
+            self.assertEqual(queue_result.get("queue_statistics"), {})
+
+            self.assertEqual(limits_result.get("status"), "success")
+            self.assertEqual(limits_result.get("action"), "set_limits")
+            self.assertEqual(limits_result.get("max_concurrent"), 3)
 
         anyio.run(_run)
 
