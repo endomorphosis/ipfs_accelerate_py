@@ -33,6 +33,22 @@ class TestMCPServerUNI155VectorTools(unittest.TestCase):
         self.assertEqual(search_props["index_id"].get("minLength"), 1)
         self.assertEqual(search_props["query_vector"].get("minItems"), 1)
 
+        list_indexes_props = schemas["list_vector_indexes"]["properties"]
+        self.assertEqual(list_indexes_props["backend"].get("default"), "all")
+
+        manage_props = schemas["manage_vector_store"]["properties"]
+        self.assertIn("create", manage_props["operation"].get("enum", []))
+        self.assertEqual(manage_props["top_k"].get("minimum"), 1)
+
+        create_store_props = schemas["create_store"]["properties"]
+        self.assertEqual(create_store_props["name"].get("minLength"), 1)
+
+        list_stores_props = schemas["list_stores"]["properties"]
+        self.assertEqual(list_stores_props["include_details"].get("default"), False)
+
+        store_info_props = schemas["get_vector_store_info"]["properties"]
+        self.assertEqual(store_info_props["store_name"].get("minLength"), 1)
+
         orchestrate_props = schemas["orchestrate_vector_search_storage"]["properties"]
         self.assertEqual(orchestrate_props["audit_collection"].get("minLength"), 1)
 
@@ -93,6 +109,75 @@ class TestMCPServerUNI155VectorTools(unittest.TestCase):
                 )
                 self.assertEqual(search_result.get("status"), "error")
                 self.assertIn("search_vector_index failed", str(search_result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_vector_store_management_aliases_validate_and_normalize(self) -> None:
+        async def _run() -> None:
+            invalid_backend = await native_vector_tools.list_vector_indexes(backend="sqlite")
+            self.assertEqual(invalid_backend.get("status"), "error")
+            self.assertIn("backend must be one of", str(invalid_backend.get("error", "")))
+
+            invalid_operation = await native_vector_tools.manage_vector_store(operation="rename")
+            self.assertEqual(invalid_operation.get("status"), "error")
+            self.assertIn("operation must be one of", str(invalid_operation.get("error", "")))
+
+            invalid_index_ids = await native_vector_tools.manage_vector_store(
+                operation="index",
+                collection_name="legal",
+                vectors=[[1.0, 2.0], [3.0, 4.0]],
+                ids=["doc-1"],
+            )
+            self.assertEqual(invalid_index_ids.get("status"), "error")
+            self.assertIn("same length as vectors", str(invalid_index_ids.get("error", "")))
+
+            invalid_load_flag = await native_vector_tools.load_store(name="legal", create_if_missing="yes")  # type: ignore[arg-type]
+            self.assertEqual(invalid_load_flag.get("status"), "error")
+            self.assertIn("create_if_missing must be a boolean", str(invalid_load_flag.get("error", "")))
+
+            created = await native_vector_tools.create_store(name="legal", backend="faiss")
+            self.assertEqual(created.get("status"), "success")
+            self.assertEqual(created.get("store_name"), "legal")
+
+            indexed = await native_vector_tools.manage_vector_store(
+                operation="index",
+                store_type="faiss",
+                collection_name="legal",
+                vectors=[[1.0, 2.0], [3.0, 4.0]],
+                ids=["doc-1", "doc-2"],
+                metadata=[{"topic": "alpha"}, {"topic": "beta"}],
+            )
+            self.assertEqual(indexed.get("status"), "success")
+            self.assertEqual(indexed.get("indexed_count"), 2)
+
+            queried = await native_vector_tools.manage_vector_store(
+                operation="query",
+                store_type="faiss",
+                collection_name="legal",
+                query_vector=[1.0, 2.0],
+                top_k=1,
+            )
+            self.assertEqual(queried.get("status"), "success")
+            self.assertEqual(queried.get("results_count"), 1)
+
+            listed = await native_vector_tools.list_stores(backend="all", include_details=True)
+            self.assertEqual(listed.get("status"), "success")
+            self.assertTrue(any(store.get("store_name") == "legal" for store in listed.get("stores", [])))
+
+            info = await native_vector_tools.get_vector_store_info(store_name="legal", backend="faiss")
+            self.assertEqual(info.get("status"), "success")
+            self.assertEqual(info.get("vector_count"), 2)
+
+            saved = await native_vector_tools.save_store(store_name="legal", backend="faiss")
+            self.assertEqual(saved.get("status"), "success")
+            self.assertEqual(saved.get("saved"), True)
+
+            optimized = await native_vector_tools.optimize_vector_store(store_type="faiss", collection_name="legal")
+            self.assertEqual(optimized.get("status"), "success")
+
+            deleted = await native_vector_tools.delete_vector_index(index_name="legal", backend="faiss")
+            self.assertIn(deleted.get("status"), ["success", "error"])
+            self.assertEqual(deleted.get("backend"), "faiss")
 
         anyio.run(_run)
 

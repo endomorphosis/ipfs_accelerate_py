@@ -63,6 +63,7 @@ def _load_storage_api() -> Dict[str, Any]:
     """Resolve source storage APIs with compatibility fallback."""
     try:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.storage_tools.storage_tools import (  # type: ignore
+            _storage_manager as _source_storage_manager,
             manage_collections as _manage_collections,
             query_storage as _query_storage,
             retrieve_data as _retrieve_data,
@@ -74,9 +75,28 @@ def _load_storage_api() -> Dict[str, Any]:
             "retrieve_data": _retrieve_data,
             "manage_collections": _manage_collections,
             "query_storage": _query_storage,
+            "storage_manager": _source_storage_manager,
         }
     except Exception:
         logger.warning("Source storage_tools import unavailable, using fallback storage functions")
+
+        fallback_manager = None
+        fallback_storage_enum = None
+        fallback_compression_enum = None
+        try:
+            from ipfs_datasets_py.ipfs_datasets_py.storage.storage_engine import (  # type: ignore
+                CompressionType as _FallbackCompressionType,
+                MockStorageManager as _FallbackMockStorageManager,
+                StorageType as _FallbackStorageType,
+            )
+
+            fallback_manager = _FallbackMockStorageManager()
+            fallback_storage_enum = _FallbackStorageType
+            fallback_compression_enum = _FallbackCompressionType
+        except Exception:
+            fallback_manager = None
+            fallback_storage_enum = None
+            fallback_compression_enum = None
 
         async def _store_fallback(
             data: Union[str, bytes, Dict[str, Any], List[Any]],
@@ -86,7 +106,31 @@ def _load_storage_api() -> Dict[str, Any]:
             metadata: Optional[Dict[str, Any]] = None,
             tags: Optional[List[str]] = None,
         ) -> Dict[str, Any]:
-            _ = data, metadata, tags
+            if (
+                fallback_manager is not None
+                and fallback_storage_enum is not None
+                and fallback_compression_enum is not None
+            ):
+                stored_item = fallback_manager.store_item(
+                    content=data,
+                    storage_type=fallback_storage_enum(storage_type),
+                    compression=fallback_compression_enum(compression),
+                    metadata=metadata,
+                    tags=tags,
+                    collection_name=collection,
+                )
+                return {
+                    "stored": True,
+                    "item_id": stored_item.id,
+                    "path": stored_item.path,
+                    "size_bytes": stored_item.size_bytes,
+                    "content_hash": stored_item.content_hash,
+                    "storage_type": stored_item.storage_type.value,
+                    "compression": stored_item.compression.value,
+                    "collection": collection,
+                    "stored_at": stored_item.created_at.isoformat(),
+                }
+
             return {
                 "stored": True,
                 "item_id": "fallback-item-1",
@@ -104,7 +148,25 @@ def _load_storage_api() -> Dict[str, Any]:
             include_content: bool = False,
             format_type: str = "json",
         ) -> Dict[str, Any]:
-            _ = include_content
+            if fallback_manager is not None:
+                results = []
+                not_found = []
+                for item_id in item_ids:
+                    retrieved = fallback_manager.retrieve_item(item_id, include_content=include_content)
+                    if retrieved is None:
+                        not_found.append(item_id)
+                    else:
+                        results.append(retrieved)
+                return {
+                    "retrieved_count": len(results),
+                    "not_found_count": len(not_found),
+                    "results": results,
+                    "not_found": not_found,
+                    "format": format_type,
+                    "include_content": include_content,
+                    "retrieved_at": datetime.now().isoformat(),
+                }
+
             return {
                 "retrieved_count": 0,
                 "not_found_count": len(item_ids),
@@ -122,7 +184,47 @@ def _load_storage_api() -> Dict[str, Any]:
             metadata: Optional[Dict[str, Any]] = None,
             delete_items: bool = False,
         ) -> Dict[str, Any]:
-            _ = description, metadata, delete_items
+            if fallback_manager is not None:
+                if action == "create":
+                    created = fallback_manager.create_collection(
+                        name=str(collection_name),
+                        description=description or "",
+                        metadata=metadata,
+                    )
+                    return {"action": action, "success": True, "collection": created}
+                if action == "get":
+                    collection = fallback_manager.get_collection(str(collection_name))
+                    if collection is None:
+                        return {"action": action, "success": False, "error": f"Collection '{collection_name}' not found"}
+                    return {"action": action, "success": True, "collection": collection}
+                if action == "list":
+                    collections = fallback_manager.list_collections()
+                    return {
+                        "action": action,
+                        "success": True,
+                        "collections": collections,
+                        "total_count": len(collections),
+                    }
+                if action == "delete":
+                    deleted = fallback_manager.delete_collection(str(collection_name), delete_items)
+                    return {
+                        "action": action,
+                        "success": deleted,
+                        "collection_name": collection_name,
+                        "items_deleted": delete_items,
+                    }
+                if action == "stats":
+                    if collection_name:
+                        collection = fallback_manager.get_collection(str(collection_name))
+                        if collection is None:
+                            return {"action": action, "success": False, "error": f"Collection '{collection_name}' not found"}
+                        return {"action": action, "success": True, "collection_stats": collection}
+                    return {
+                        "action": action,
+                        "success": True,
+                        "global_stats": fallback_manager.get_storage_stats(),
+                    }
+
             if action == "list":
                 return {
                     "action": action,
@@ -145,7 +247,47 @@ def _load_storage_api() -> Dict[str, Any]:
             limit: int = 100,
             offset: int = 0,
         ) -> Dict[str, Any]:
-            _ = collection, storage_type, tags, size_range, date_range, limit, offset
+            if fallback_manager is not None:
+                items = fallback_manager.list_items(
+                    collection_name=collection,
+                    storage_type=(fallback_storage_enum(storage_type) if storage_type and fallback_storage_enum is not None else None),
+                    tags=tags,
+                    limit=max(limit * 2, limit),
+                    offset=offset,
+                )
+
+                filtered_items = items
+                if size_range is not None:
+                    size_min, size_max = size_range
+                    filtered_items = [item for item in filtered_items if size_min <= int(item.get("size_bytes", 0)) <= size_max]
+                if date_range is not None:
+                    start_raw, end_raw = date_range
+                    start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
+                    end_dt = datetime.fromisoformat(end_raw.replace("Z", "+00:00"))
+                    filtered_items = [
+                        item for item in filtered_items
+                        if start_dt <= datetime.fromisoformat(str(item.get("created_at"))) <= end_dt
+                    ]
+
+                filtered_items = filtered_items[:limit]
+                storage_distribution: Dict[str, int] = {}
+                for item in filtered_items:
+                    item_storage_type = str(item.get("storage_type", ""))
+                    storage_distribution[item_storage_type] = storage_distribution.get(item_storage_type, 0) + 1
+
+                return {
+                    "query_results": filtered_items,
+                    "total_found": len(filtered_items),
+                    "total_size_bytes": sum(int(item.get("size_bytes", 0)) for item in filtered_items),
+                    "storage_distribution": storage_distribution,
+                    "pagination": {
+                        "limit": limit,
+                        "offset": offset,
+                        "has_more": len(items) > len(filtered_items),
+                    },
+                    "queried_at": datetime.now().isoformat(),
+                }
+
             return {
                 "query_results": [],
                 "total_found": 0,
@@ -164,6 +306,7 @@ def _load_storage_api() -> Dict[str, Any]:
             "retrieve_data": _retrieve_fallback,
             "manage_collections": _manage_fallback,
             "query_storage": _query_fallback,
+            "storage_manager": fallback_manager,
         }
 
 
@@ -728,6 +871,183 @@ async def query_storage(
     return normalized
 
 
+async def list_storage(
+    collection: Optional[str] = None,
+    storage_type: Optional[str] = None,
+    tags: Optional[List[str]] = None,
+    limit: int = 100,
+    offset: int = 0,
+) -> Dict[str, Any]:
+    """List stored items using the query_storage filtering surface."""
+    result = await query_storage(
+        collection=collection,
+        storage_type=storage_type,
+        tags=tags,
+        limit=limit,
+        offset=offset,
+    )
+    if result.get("status") == "error":
+        return result
+
+    objects = result.get("query_results")
+    if not isinstance(objects, list):
+        objects = []
+
+    normalized_objects: List[Dict[str, Any]] = []
+    for item in objects:
+        if not isinstance(item, dict):
+            continue
+        normalized_objects.append(
+            {
+                "item_id": item.get("id"),
+                "path": item.get("path"),
+                "size_bytes": item.get("size_bytes", 0),
+                "storage_type": item.get("storage_type"),
+                "last_modified": item.get("created_at"),
+                "tags": item.get("tags", []),
+                "metadata": item.get("metadata", {}),
+            }
+        )
+
+    return {
+        "status": "success",
+        "objects": normalized_objects,
+        "total_count": int(result.get("total_found", len(normalized_objects)) or 0),
+        "storage_distribution": result.get("storage_distribution", {}),
+        "pagination": result.get(
+            "pagination",
+            {"limit": limit, "offset": offset, "has_more": False},
+        ),
+    }
+
+
+async def get_storage_stats(
+    collection_name: Optional[str] = None,
+    report_format: str = "summary",
+    include_breakdown: bool = False,
+) -> Dict[str, Any]:
+    """Return normalized storage statistics via manage_collections(stats)."""
+    result = await manage_collections(
+        action="stats",
+        collection_name=collection_name,
+        report_format=report_format,
+        include_breakdown=include_breakdown,
+    )
+    if result.get("status") == "error":
+        return result
+
+    storage_report = result.get("storage_report")
+    if not isinstance(storage_report, dict):
+        storage_report = {}
+    summary = storage_report.get("summary")
+    if not isinstance(summary, dict):
+        summary = {}
+    analytics = storage_report.get("analytics")
+    if not isinstance(analytics, dict):
+        analytics = {}
+    details = storage_report.get("details")
+    if not isinstance(details, dict):
+        details = {}
+    breakdown = storage_report.get("breakdown")
+    if not isinstance(breakdown, dict):
+        breakdown = {}
+
+    totals = {
+        "total_objects": int(summary.get("total_items", analytics.get("totals", {}).get("total_items", 0)) or 0),
+        "total_bytes": int(summary.get("total_size_bytes", analytics.get("totals", {}).get("total_size_bytes", 0)) or 0),
+    }
+
+    return {
+        "status": "success",
+        "collection_name": collection_name,
+        "report_format": storage_report.get("report_format", report_format),
+        "backends": breakdown.get("storage_distribution", analytics.get("storage_distribution", {})),
+        **totals,
+        "details": details,
+        "analytics": analytics,
+        "breakdown": breakdown if include_breakdown else {},
+        "generated_at": storage_report.get("generated_at"),
+    }
+
+
+async def delete_data(
+    item_ids: List[str],
+    missing_ok: bool = False,
+) -> Dict[str, Any]:
+    """Delete stored items through the source storage manager when available."""
+    if not isinstance(item_ids, list) or not item_ids:
+        return _error_result(
+            "At least one item ID must be provided",
+            deleted_count=0,
+            missing_count=0,
+            deleted_ids=[],
+            missing_ids=[],
+        )
+    if not all(isinstance(item_id, str) and item_id.strip() for item_id in item_ids):
+        return _error_result(
+            "item_ids must be an array of non-empty strings",
+            deleted_count=0,
+            missing_count=0,
+            deleted_ids=[],
+            missing_ids=[],
+        )
+    if not isinstance(missing_ok, bool):
+        return _error_result(
+            "missing_ok must be a boolean",
+            deleted_count=0,
+            missing_count=0,
+            deleted_ids=[],
+            missing_ids=[],
+        )
+
+    storage_manager = _API.get("storage_manager")
+    if storage_manager is None or not hasattr(storage_manager, "delete_item"):
+        return _error_result(
+            "delete_data unavailable: source storage manager is not available",
+            deleted_count=0,
+            missing_count=len(item_ids),
+            deleted_ids=[],
+            missing_ids=item_ids,
+        )
+
+    deleted_ids: List[str] = []
+    missing_ids: List[str] = []
+    try:
+        for item_id in item_ids:
+            normalized_item_id = item_id.strip()
+            deleted = bool(storage_manager.delete_item(normalized_item_id))
+            if deleted:
+                deleted_ids.append(normalized_item_id)
+            else:
+                missing_ids.append(normalized_item_id)
+    except Exception as exc:
+        return _error_result(
+            f"delete_data failed: {exc}",
+            deleted_count=len(deleted_ids),
+            missing_count=len(missing_ids),
+            deleted_ids=deleted_ids,
+            missing_ids=missing_ids,
+        )
+
+    if missing_ids and not missing_ok:
+        return _error_result(
+            "One or more item IDs were not found",
+            deleted_count=len(deleted_ids),
+            missing_count=len(missing_ids),
+            deleted_ids=deleted_ids,
+            missing_ids=missing_ids,
+        )
+
+    return {
+        "status": "success",
+        "deleted_count": len(deleted_ids),
+        "missing_count": len(missing_ids),
+        "deleted_ids": deleted_ids,
+        "missing_ids": missing_ids,
+        "missing_ok": missing_ok,
+    }
+
+
 def register_native_storage_tools(manager: Any) -> None:
     """Register native storage tools in unified hierarchical manager."""
     manager.register_tool(
@@ -865,6 +1185,72 @@ def register_native_storage_tools(manager: Any) -> None:
                 "offset": {"type": "integer", "minimum": 0, "default": 0},
             },
             "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="list_storage",
+        func=list_storage,
+        description="List stored items using collection, backend, and tag filters.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "collection": {"type": ["string", "null"]},
+                "storage_type": {"type": ["string", "null"], "enum": sorted(_VALID_STORAGE_TYPES) + [None]},
+                "tags": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "minLength": 1},
+                },
+                "limit": {"type": "integer", "minimum": 1, "default": 100},
+                "offset": {"type": "integer", "minimum": 0, "default": 0},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="get_storage_stats",
+        func=get_storage_stats,
+        description="Return normalized storage statistics for all collections or a specific collection.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "collection_name": {"type": ["string", "null"], "minLength": 1},
+                "report_format": {
+                    "type": "string",
+                    "enum": sorted(_VALID_REPORT_FORMATS),
+                    "default": "summary",
+                },
+                "include_breakdown": {"type": "boolean", "default": False},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="delete_data",
+        func=delete_data,
+        description="Delete stored items by ID using the underlying storage manager.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "item_ids": {
+                    "type": "array",
+                    "items": {"type": "string", "minLength": 1},
+                    "minItems": 1,
+                },
+                "missing_ok": {"type": "boolean", "default": False},
+            },
+            "required": ["item_ids"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "storage"],

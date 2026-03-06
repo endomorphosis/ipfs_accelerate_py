@@ -594,6 +594,10 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 2. `UNI-002` IPFS Tools Deep Parity Wave
    - Scope: Close operation/schema deltas in `ipfs_tools` category.
    - Target files: `ipfs_accelerate_py/mcp_server/tools/ipfs_tools/*`, `ipfs_accelerate_py/mcp/tests/*ipfs*`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni002_ipfs_tools.py` (`10 passed`)
+     - `test_ipfs_tools_discovery_schema_and_dispatch_parity` in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`1 passed`)
    - Acceptance:
      - Representative source operations and schemas mapped and passing.
      - `SPEC_GAP_MATRIX` IPFS rows updated with evidence.
@@ -602,6 +606,12 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 3. `UNI-003` Workflow Tools Deep Parity Wave
    - Scope: Complete workflow operation parity and schema behavior.
    - Target files: `ipfs_accelerate_py/mcp_server/tools/workflow_tools/*`, `ipfs_accelerate_py/mcp/tests/*workflow*`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni134_workflow_tools.py`
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni149_native_workflow_tools.py`
+     - `test_workflow_tools_discovery_schema_and_dispatch_parity` in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+     - `test_workflow_tools_expanded_p2p_parity_operations` in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
    - Acceptance:
      - End-to-end workflow dispatch parity for source-equivalent operations.
      - Deterministic tests for status/submit/next/edge cases.
@@ -610,6 +620,13 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 4. `UNI-004` P2P and MCP++ Tool Surface Deep Parity
    - Scope: Fill behavior gaps in `p2p_tools` and `mcplusplus` tool category.
    - Target files: `ipfs_accelerate_py/mcp_server/tools/p2p_tools/*`, `ipfs_accelerate_py/mcp_server/tools/mcplusplus/*`, tests under `ipfs_accelerate_py/mcp/tests/`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni135_p2p_tools.py`
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py`
+     - `test_p2p_tools_discovery_schema_and_dispatch_parity` in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+     - `test_p2p_tools_expanded_parity_operations` in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+     - `test_mcplusplus_tools_engine_status_operations` in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
    - Acceptance:
      - Remote-call/workflow-helper parity validated.
      - Taskqueue/workflow operation coverage expanded.
@@ -618,6 +635,11 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 5. `UNI-005` Shim Convergence Finalization
    - Scope: Remove remaining duplicated fallback/resolver behavior in `mcplusplus_module` boundaries.
    - Target files: `ipfs_accelerate_py/mcplusplus_module/p2p/bootstrap.py`, `ipfs_accelerate_py/mcplusplus_module/p2p/peer_registry.py`, tests under `ipfs_accelerate_py/mcplusplus_module/tests/`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+     - `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py` (`24 passed`)
+     - Includes canonical-first resolver fallback checks and explicit optional-dependency compatibility-stub contracts.
+     - Includes shared-helper delegation checks for `bootstrap`/`peer_registry` detection paths.
    - Acceptance:
      - Canonical-first delegation where applicable.
      - Optional dependency boundaries use explicit compatibility contracts.
@@ -626,6 +648,14 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 6. `UNI-006` Transport Interop and Abuse Regression Expansion
    - Scope: Strengthen `mcp+p2p` framing, init-order, and abuse-path matrix.
    - Target files: `ipfs_accelerate_py/mcp/tests/test_mcp_transport_*`, `ipfs_accelerate_py/p2p_tasks/*`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_p2p_framing_limits.py`
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py`
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_client_limits.py`
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py`
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_parity.py`
+     - Targeted run result: `37 passed`.
    - Acceptance:
      - Added regressions for mixed-version peer behavior.
      - Required transport lanes remain green.
@@ -634,6 +664,10 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 7. `UNI-007` Cutover Dry-Run and Rollback Verification
    - Scope: Exercise runtime default switch and rollback procedure in CI-compatible flow.
    - Target files: `ipfs_accelerate_py/mcp/server.py`, startup scripts/config, tests/workflow docs
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+     - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py` (`3 passed`)
+     - Covers dry-run success path, dry-run failure fallback path, and force-legacy rollback override behavior.
    - Acceptance:
      - Dry-run validates canonical path as default.
      - Rollback path tested and documented.
@@ -644,6 +678,11 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 1. `UNI-008` Runtime Pipeline and Context Module Convergence
     - Scope: Merge source runtime pipeline/context modules into canonical dispatch path.
     - Target files: `ipfs_accelerate_py/mcp_server/runtime_router.py`, `ipfs_accelerate_py/mcp_server/server.py`, new/merged helpers for `dispatch_pipeline` and `server_context` semantics.
+    - Status: COMPLETE (2026-03-06)
+    - Evidence:
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_dispatch_pipeline.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni008_runtime_context.py`
+       - Targeted run result: `7 passed`.
     - Acceptance:
        - Source `dispatch_pipeline.py`, `server_context.py`, and `mcp_interfaces.py` behaviors are represented in canonical runtime.
        - Unified bootstrap tests confirm deterministic routing and context metadata behavior.
@@ -652,6 +691,10 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 2. `UNI-009` Canonical HTTP Service Entry Convergence
     - Scope: Port `fastapi_service.py` and `fastapi_config.py` behavior into canonical runtime, with compatibility facade where required.
     - Target files: canonical HTTP entry module(s) under `ipfs_accelerate_py/mcp_server/`, facade updates in `ipfs_accelerate_py/mcp/*`, transport tests.
+    - Status: COMPLETE (2026-03-06)
+    - Evidence:
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_fastapi_service.py`
+       - Targeted run result: `4 passed`.
     - Acceptance:
        - HTTP startup path is canonical and deterministic.
        - Transport parity tests validate HTTP lane behavior.
@@ -660,6 +703,12 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 3. `UNI-010` MCP+p2p Transport Adapter Consolidation
     - Scope: Reconcile `mcp_p2p_transport.py`, `trio_adapter.py`, and `register_p2p_tools.py` semantics into canonical transport wiring.
     - Target files: `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py`, `ipfs_accelerate_py/mcp_server/mcplusplus/p2p_framing.py`, `ipfs_accelerate_py/mcp_server/server.py`.
+    - Status: COMPLETE (2026-03-06)
+    - Evidence:
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcp_p2p_transport.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_trio_adapter.py`
+       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_register_p2p_tools.py`
+       - Targeted run result: `12 passed`.
     - Acceptance:
        - No duplicate registration or transport adapter branches.
        - Existing `mcp+p2p` limit and handshake tests remain green.

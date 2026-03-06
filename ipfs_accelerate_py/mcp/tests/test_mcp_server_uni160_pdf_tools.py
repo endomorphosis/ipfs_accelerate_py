@@ -31,10 +31,44 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
         self.assertEqual(query_props["confidence_threshold"].get("minimum"), 0.0)
         self.assertEqual(query_props["confidence_threshold"].get("maximum"), 1.0)
 
+        relationship_props = by_name["pdf_analyze_relationships"]["input_schema"]["properties"]
+        self.assertEqual(relationship_props["document_id"].get("minLength"), 1)
+        self.assertEqual(relationship_props["min_confidence"].get("maximum"), 1.0)
+
+        graph_props = by_name["pdf_query_knowledge_graph"]["input_schema"]["properties"]
+        self.assertIn("sparql", graph_props["query_type"].get("enum", []))
+        self.assertEqual(graph_props["max_results"].get("minimum"), 1)
+
         batch_props = by_name["pdf_batch_process"]["input_schema"]["properties"]
         self.assertEqual(batch_props["pdf_sources"].get("minItems"), 1)
         self.assertEqual(batch_props["batch_size"].get("minimum"), 1)
         self.assertEqual(batch_props["parallel_workers"].get("minimum"), 1)
+
+    def test_pdf_analyze_relationships_validation_and_exception_envelope(self) -> None:
+        async def _run() -> None:
+            invalid_document = await pdf_tools.pdf_analyze_relationships("")
+            self.assertEqual(invalid_document.get("status"), "error")
+            self.assertIn("document_id must be a non-empty string", str(invalid_document.get("error", "")))
+
+            invalid_types = await pdf_tools.pdf_analyze_relationships(
+                "doc-1",
+                relationship_types=["SIGNED_BY", ""],
+            )
+            self.assertEqual(invalid_types.get("status"), "error")
+            self.assertIn("relationship_types must be a list of non-empty strings", str(invalid_types.get("error", "")))
+
+            with patch.dict(
+                pdf_tools._API,
+                {
+                    "pdf_analyze_relationships": lambda **_: (_ for _ in ()).throw(RuntimeError("relationships backend exploded")),
+                },
+                clear=False,
+            ):
+                wrapped = await pdf_tools.pdf_analyze_relationships("doc-1")
+            self.assertEqual(wrapped.get("status"), "error")
+            self.assertIn("pdf_analyze_relationships failed", str(wrapped.get("error", "")))
+
+        anyio.run(_run)
 
     def test_pdf_query_validation_and_exception_envelope(self) -> None:
         async def _run() -> None:
@@ -100,6 +134,36 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
                 wrapped = await pdf_tools.pdf_batch_process(pdf_sources=["a.pdf"])
             self.assertEqual(wrapped.get("status"), "error")
             self.assertIn("pdf_batch_process failed", str(wrapped.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_pdf_query_knowledge_graph_validation_and_exception_envelope(self) -> None:
+        async def _run() -> None:
+            invalid_graph = await pdf_tools.pdf_query_knowledge_graph(graph_id="", query="MATCH (n) RETURN n")
+            self.assertEqual(invalid_graph.get("status"), "error")
+            self.assertIn("graph_id must be a non-empty string", str(invalid_graph.get("error", "")))
+
+            invalid_type = await pdf_tools.pdf_query_knowledge_graph(
+                graph_id="graph-1",
+                query="MATCH (n) RETURN n",
+                query_type="sql",
+            )
+            self.assertEqual(invalid_type.get("status"), "error")
+            self.assertIn("query_type must be one of", str(invalid_type.get("error", "")))
+
+            with patch.dict(
+                pdf_tools._API,
+                {
+                    "pdf_query_knowledge_graph": lambda **_: (_ for _ in ()).throw(RuntimeError("graph backend exploded")),
+                },
+                clear=False,
+            ):
+                wrapped = await pdf_tools.pdf_query_knowledge_graph(
+                    graph_id="graph-1",
+                    query="MATCH (n) RETURN n",
+                )
+            self.assertEqual(wrapped.get("status"), "error")
+            self.assertIn("pdf_query_knowledge_graph failed", str(wrapped.get("error", "")))
 
         anyio.run(_run)
 

@@ -11,6 +11,9 @@ import anyio
 from ipfs_accelerate_py.mcp_server.tools.workflow_tools.native_workflow_tools_category import (
     calculate_peer_distance,
     create_template,
+    enhanced_batch_processing,
+    enhanced_data_pipeline,
+    enhanced_workflow_management,
     merge_merkle_clock,
     register_native_workflow_tools_category,
     resume_workflow,
@@ -43,6 +46,15 @@ class TestMCPServerUNI134WorkflowTools(unittest.TestCase):
         self.assertEqual(props["workflow_id"].get("minLength"), 1)
         self.assertEqual(props["tags"].get("minItems"), 1)
         self.assertEqual(props["priority"].get("minimum"), 0)
+
+        enhanced_management_schema = by_name["enhanced_workflow_management"]["input_schema"]
+        self.assertIn("create", enhanced_management_schema["properties"]["action"].get("enum", []))
+
+        enhanced_batch_schema = by_name["enhanced_batch_processing"]["input_schema"]
+        self.assertEqual(enhanced_batch_schema["properties"]["operation_type"].get("minLength"), 1)
+
+        enhanced_pipeline_schema = by_name["enhanced_data_pipeline"]["input_schema"]
+        self.assertEqual(enhanced_pipeline_schema["properties"]["pipeline_config"].get("minProperties"), 1)
 
     def test_create_template_rejects_empty_template(self) -> None:
         async def _run() -> None:
@@ -150,6 +162,65 @@ class TestMCPServerUNI134WorkflowTools(unittest.TestCase):
             self.assertEqual(result.get("other_counter"), 3)
             self.assertEqual(result.get("other_parent_hash"), "h1")
             self.assertEqual(result.get("other_timestamp"), 123.0)
+
+        anyio.run(_run)
+
+    def test_enhanced_workflow_management_rejects_missing_definition_for_create(self) -> None:
+        async def _run() -> None:
+            result = await enhanced_workflow_management(action="create")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("workflow_definition must be a non-empty object", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_enhanced_batch_processing_rejects_empty_data_source(self) -> None:
+        async def _run() -> None:
+            result = await enhanced_batch_processing(
+                operation_type="reindex",
+                data_source={},
+                output_config={"destination": "/tmp/out"},
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("data_source must be a non-empty object", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_enhanced_data_pipeline_rejects_missing_extract(self) -> None:
+        async def _run() -> None:
+            result = await enhanced_data_pipeline(
+                pipeline_config={"name": "demo", "load": {"destination_type": "file"}},
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("must include 'extract'", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_enhanced_workflow_success_shapes(self) -> None:
+        async def _run() -> None:
+            manage_result = await enhanced_workflow_management(
+                action="list",
+                status_filter="active",
+            )
+            self.assertEqual(manage_result.get("status"), "success")
+            self.assertIn("workflows", manage_result)
+
+            batch_result = await enhanced_batch_processing(
+                operation_type="reindex",
+                data_source={"source_type": "dataset", "name": "demo"},
+                output_config={"destination": "/tmp/out"},
+            )
+            self.assertEqual(batch_result.get("status"), "success")
+            self.assertIn("processing_completed", batch_result)
+
+            pipeline_result = await enhanced_data_pipeline(
+                pipeline_config={
+                    "name": "demo-pipeline",
+                    "extract": {"source_type": "dataset"},
+                    "load": {"destination_type": "file"},
+                },
+            )
+            self.assertEqual(pipeline_result.get("status"), "success")
+            self.assertIn("pipeline_name", pipeline_result)
 
         anyio.run(_run)
 

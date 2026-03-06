@@ -12,18 +12,37 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
     """Resolve source pdf-tools APIs with compatibility fallback."""
     try:
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.pdf_tools import (  # type: ignore
+            pdf_analyze_relationships as _pdf_analyze_relationships,
             pdf_batch_process as _pdf_batch_process,
             pdf_extract_entities as _pdf_extract_entities,
             pdf_query_corpus as _pdf_query_corpus,
+            pdf_query_knowledge_graph as _pdf_query_knowledge_graph,
         )
 
         return {
+            "pdf_analyze_relationships": _pdf_analyze_relationships,
             "pdf_query_corpus": _pdf_query_corpus,
             "pdf_extract_entities": _pdf_extract_entities,
             "pdf_batch_process": _pdf_batch_process,
+            "pdf_query_knowledge_graph": _pdf_query_knowledge_graph,
         }
     except Exception:
         logger.warning("Source pdf_tools import unavailable, using fallback pdf-tools functions")
+
+        async def _relationships_fallback(
+            document_id: str,
+            analysis_type: str = "comprehensive",
+            include_cross_document: bool = True,
+            relationship_types: Optional[List[str]] = None,
+            min_confidence: float = 0.6,
+            max_relationships: int = 100,
+        ) -> Dict[str, Any]:
+            _ = analysis_type, include_cross_document, relationship_types, min_confidence, max_relationships
+            return {
+                "status": "error",
+                "document_id": document_id,
+                "message": "PDF relationship analysis backend unavailable",
+            }
 
         async def _query_fallback(
             query: str,
@@ -39,6 +58,22 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
                 "status": "error",
                 "query": query,
                 "message": "PDF query backend unavailable",
+            }
+
+        async def _knowledge_graph_fallback(
+            graph_id: str,
+            query: str,
+            query_type: str = "sparql",
+            max_results: int = 100,
+            include_metadata: bool = True,
+            return_subgraph: bool = False,
+        ) -> Dict[str, Any]:
+            _ = query_type, max_results, include_metadata, return_subgraph
+            return {
+                "status": "error",
+                "graph_id": graph_id,
+                "query": query,
+                "message": "PDF knowledge graph backend unavailable",
             }
 
         async def _extract_fallback(
@@ -85,9 +120,11 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             }
 
         return {
+            "pdf_analyze_relationships": _relationships_fallback,
             "pdf_query_corpus": _query_fallback,
             "pdf_extract_entities": _extract_fallback,
             "pdf_batch_process": _batch_fallback,
+            "pdf_query_knowledge_graph": _knowledge_graph_fallback,
         }
 
 
@@ -155,6 +192,54 @@ async def pdf_query_corpus(
         )
     except Exception as exc:
         return _error_result(f"pdf_query_corpus failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
+
+
+async def pdf_analyze_relationships(
+    document_id: str,
+    analysis_type: str = "comprehensive",
+    include_cross_document: bool = True,
+    relationship_types: Optional[List[str]] = None,
+    min_confidence: float = 0.6,
+    max_relationships: int = 100,
+) -> Dict[str, Any]:
+    """Analyze intra-document and cross-document relationships in PDF content."""
+    normalized_document_id = str(document_id or "").strip()
+    normalized_analysis_type = str(analysis_type or "").strip()
+
+    if not normalized_document_id:
+        return _error_result("document_id must be a non-empty string", {"document_id": document_id})
+    if not normalized_analysis_type:
+        return _error_result("analysis_type must be a non-empty string when provided")
+    if not isinstance(include_cross_document, bool):
+        return _error_result("include_cross_document must be a boolean")
+    if relationship_types is not None:
+        if not isinstance(relationship_types, list) or any(not isinstance(item, str) or not item.strip() for item in relationship_types):
+            return _error_result("relationship_types must be a list of non-empty strings when provided")
+    if not isinstance(min_confidence, (int, float)):
+        return _error_result("min_confidence must be a number")
+    normalized_confidence = float(min_confidence)
+    if normalized_confidence < 0.0 or normalized_confidence > 1.0:
+        return _error_result("min_confidence must be between 0.0 and 1.0")
+    if not isinstance(max_relationships, int) or max_relationships < 1:
+        return _error_result("max_relationships must be an integer greater than or equal to 1")
+
+    try:
+        payload = await _await_maybe(
+            _API["pdf_analyze_relationships"](
+                document_id=normalized_document_id,
+                analysis_type=normalized_analysis_type,
+                include_cross_document=include_cross_document,
+                relationship_types=relationship_types,
+                min_confidence=normalized_confidence,
+                max_relationships=max_relationships,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"pdf_analyze_relationships failed: {exc}")
 
     normalized = dict(payload or {})
     normalized.setdefault("status", "error" if "error" in normalized else "success")
@@ -275,8 +360,78 @@ async def pdf_batch_process(
     return normalized
 
 
+async def pdf_query_knowledge_graph(
+    graph_id: str,
+    query: str,
+    query_type: str = "sparql",
+    max_results: int = 100,
+    include_metadata: bool = True,
+    return_subgraph: bool = False,
+) -> Dict[str, Any]:
+    """Query a knowledge graph generated from processed PDFs."""
+    normalized_graph_id = str(graph_id or "").strip()
+    normalized_query = str(query or "").strip()
+    normalized_query_type = str(query_type or "").strip()
+    valid_query_types = {"sparql", "cypher", "entity", "relationship", "natural_language"}
+
+    if not normalized_graph_id:
+        return _error_result("graph_id must be a non-empty string", {"graph_id": graph_id})
+    if not normalized_query:
+        return _error_result("query must be a non-empty string", {"query": query})
+    if normalized_query_type not in valid_query_types:
+        return _error_result(
+            f"query_type must be one of: {sorted(valid_query_types)}",
+            {"query_type": query_type},
+        )
+    if not isinstance(max_results, int) or max_results < 1:
+        return _error_result("max_results must be an integer greater than or equal to 1")
+    if not isinstance(include_metadata, bool):
+        return _error_result("include_metadata must be a boolean")
+    if not isinstance(return_subgraph, bool):
+        return _error_result("return_subgraph must be a boolean")
+
+    try:
+        payload = await _await_maybe(
+            _API["pdf_query_knowledge_graph"](
+                graph_id=normalized_graph_id,
+                query=normalized_query,
+                query_type=normalized_query_type,
+                max_results=max_results,
+                include_metadata=include_metadata,
+                return_subgraph=return_subgraph,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"pdf_query_knowledge_graph failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
+
+
 def register_native_pdf_tools(manager: Any) -> None:
     """Register native pdf-tools category tools in unified manager."""
+    manager.register_tool(
+        category="pdf_tools",
+        name="pdf_analyze_relationships",
+        func=pdf_analyze_relationships,
+        description="Analyze entity relationships in processed PDFs.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "document_id": {"type": "string", "minLength": 1},
+                "analysis_type": {"type": "string", "minLength": 1, "default": "comprehensive"},
+                "include_cross_document": {"type": "boolean", "default": True},
+                "relationship_types": {"type": ["array", "null"], "items": {"type": "string"}},
+                "min_confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0, "default": 0.6},
+                "max_relationships": {"type": "integer", "minimum": 1, "default": 100},
+            },
+            "required": ["document_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "pdf-tools"],
+    )
+
     manager.register_tool(
         category="pdf_tools",
         name="pdf_query_corpus",
@@ -346,6 +501,31 @@ def register_native_pdf_tools(manager: Any) -> None:
                 "progress_callback": {"type": ["string", "null"]},
             },
             "required": ["pdf_sources"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "pdf-tools"],
+    )
+
+    manager.register_tool(
+        category="pdf_tools",
+        name="pdf_query_knowledge_graph",
+        func=pdf_query_knowledge_graph,
+        description="Query a PDF-derived knowledge graph.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "graph_id": {"type": "string", "minLength": 1},
+                "query": {"type": "string", "minLength": 1},
+                "query_type": {
+                    "type": "string",
+                    "enum": ["sparql", "cypher", "entity", "relationship", "natural_language"],
+                    "default": "sparql",
+                },
+                "max_results": {"type": "integer", "minimum": 1, "default": 100},
+                "include_metadata": {"type": "boolean", "default": True},
+                "return_subgraph": {"type": "boolean", "default": False},
+            },
+            "required": ["graph_id", "query"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "pdf-tools"],

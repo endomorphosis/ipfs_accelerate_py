@@ -5492,6 +5492,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("pin_to_ipfs", names)
             self.assertIn("get_from_ipfs", names)
+            self.assertIn("query_knowledge_graph", names)
+            self.assertIn("graph_search_hybrid", names)
+            self.assertIn("graph_visualize", names)
+            self.assertIn("graph_explain", names)
 
             pin_schema = await get_schema("ipfs_tools", "pin_to_ipfs")
             self.assertEqual(pin_schema.get("name"), "pin_to_ipfs")
@@ -5500,6 +5504,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             get_schema_payload = await get_schema("ipfs_tools", "get_from_ipfs")
             self.assertEqual(get_schema_payload.get("name"), "get_from_ipfs")
+
+            search_schema = await get_schema("graph_tools", "graph_search_hybrid")
+            search_props = (search_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual(get_schema_payload.get("category"), "ipfs_tools")
             get_schema_input = get_schema_payload.get("input_schema") or {}
             get_schema_props = get_schema_input.get("properties", {})
@@ -5508,6 +5515,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             pin_result = self._assert_dispatch_success_envelope(
                 await dispatch(
+
                     "ipfs_tools",
                     "pin_to_ipfs",
                     {
@@ -6186,6 +6194,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("create_vector_index", names)
             self.assertIn("search_vector_index", names)
+            self.assertIn("list_vector_indexes", names)
+            self.assertIn("manage_vector_store", names)
+            self.assertIn("create_store", names)
+            self.assertIn("list_stores", names)
+            self.assertIn("get_vector_store_info", names)
+            self.assertIn("save_store", names)
+            self.assertIn("delete_vector_index", names)
 
             create_schema = await get_schema("vector_tools", "create_vector_index")
             create_props = (create_schema.get("input_schema") or {}).get("properties", {})
@@ -6196,6 +6211,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             search_props = (search_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((search_props.get("index_id") or {}).get("minLength"), 1)
             self.assertEqual((search_props.get("query_vector") or {}).get("minItems"), 1)
+
+            list_indexes_schema = await get_schema("vector_tools", "list_vector_indexes")
+            list_indexes_props = (list_indexes_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((list_indexes_props.get("backend") or {}).get("default"), "all")
+
+            manage_schema = await get_schema("vector_tools", "manage_vector_store")
+            manage_props = (manage_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("create", (manage_props.get("operation") or {}).get("enum", []))
+            self.assertEqual((manage_props.get("top_k") or {}).get("minimum"), 1)
+
+            create_store_schema = await get_schema("vector_tools", "create_store")
+            create_store_props = (create_store_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((create_store_props.get("name") or {}).get("minLength"), 1)
+
+            list_stores_schema = await get_schema("vector_tools", "list_stores")
+            list_stores_props = (list_stores_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((list_stores_props.get("include_details") or {}).get("default"), False)
 
             invalid_vectors = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6221,6 +6253,129 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_query_vector.get("status"), "error")
             self.assertIn("query_vector must be a non-empty list of numbers", str(invalid_query_vector.get("error", "")))
+
+            invalid_manage = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "manage_vector_store",
+                    {
+                        "operation": "rename",
+                    },
+                )
+            )
+            self.assertEqual(invalid_manage.get("status"), "error")
+            self.assertIn("operation must be one of", str(invalid_manage.get("error", "")))
+
+            invalid_load = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "load_store",
+                    {
+                        "name": "legal",
+                        "create_if_missing": "yes",
+                    },
+                )
+            )
+            self.assertEqual(invalid_load.get("status"), "error")
+            self.assertIn("create_if_missing must be a boolean", str(invalid_load.get("error", "")))
+
+            created_store = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "create_store",
+                    {
+                        "name": "legal",
+                        "backend": "faiss",
+                    },
+                )
+            )
+            self.assertEqual(created_store.get("status"), "success")
+            self.assertEqual(created_store.get("store_name"), "legal")
+
+            indexed_store = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "manage_vector_store",
+                    {
+                        "operation": "index",
+                        "store_type": "faiss",
+                        "collection_name": "legal",
+                        "vectors": [[1.0, 2.0], [3.0, 4.0]],
+                        "ids": ["doc-1", "doc-2"],
+                        "metadata": [{"topic": "alpha"}, {"topic": "beta"}],
+                    },
+                )
+            )
+            self.assertEqual(indexed_store.get("status"), "success")
+            self.assertEqual(indexed_store.get("indexed_count"), 2)
+
+            queried_store = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "manage_vector_store",
+                    {
+                        "operation": "query",
+                        "store_type": "faiss",
+                        "collection_name": "legal",
+                        "query_vector": [1.0, 2.0],
+                        "top_k": 1,
+                    },
+                )
+            )
+            self.assertEqual(queried_store.get("status"), "success")
+            self.assertEqual(queried_store.get("results_count"), 1)
+
+            listed_stores = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "list_stores",
+                    {
+                        "backend": "all",
+                        "include_details": True,
+                    },
+                )
+            )
+            self.assertEqual(listed_stores.get("status"), "success")
+            self.assertTrue(any(store.get("store_name") == "legal" for store in listed_stores.get("stores", [])))
+
+            store_info = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "get_vector_store_info",
+                    {
+                        "store_name": "legal",
+                        "backend": "faiss",
+                    },
+                )
+            )
+            self.assertEqual(store_info.get("status"), "success")
+            self.assertEqual(store_info.get("vector_count"), 2)
+
+            saved_store = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "save_store",
+                    {
+                        "store_name": "legal",
+                        "backend": "faiss",
+                    },
+                )
+            )
+            self.assertEqual(saved_store.get("status"), "success")
+            self.assertEqual(saved_store.get("saved"), True)
+
+            deleted_store = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_tools",
+                    "delete_vector_index",
+                    {
+                        "index_name": "legal",
+                        "backend": "faiss",
+                    },
+                )
+            )
+            self.assertIn(deleted_store.get("status"), ["success", "error"])
+            self.assertEqual(deleted_store.get("backend"), "faiss")
 
         anyio.run(_run_flow)
 
@@ -6263,6 +6418,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("store_data", names)
             self.assertIn("query_storage", names)
+            self.assertIn("list_storage", names)
+            self.assertIn("get_storage_stats", names)
+            self.assertIn("delete_data", names)
 
             store_schema = await get_schema("storage_tools", "store_data")
             store_props = (store_schema.get("input_schema") or {}).get("properties", {})
@@ -6296,6 +6454,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 ((query_props.get("date_range") or {}).get("items") or {}).get("minLength"),
                 1,
             )
+
+            list_schema = await get_schema("storage_tools", "list_storage")
+            list_props = (list_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((list_props.get("limit") or {}).get("minimum"), 1)
+            self.assertEqual((list_props.get("offset") or {}).get("minimum"), 0)
+
+            stats_schema = await get_schema("storage_tools", "get_storage_stats")
+            stats_props = (stats_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((stats_props.get("report_format") or {}).get("default"), "summary")
+
+            delete_schema = await get_schema("storage_tools", "delete_data")
+            delete_props = (delete_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((delete_props.get("missing_ok") or {}).get("default"), False)
+            self.assertEqual((delete_props.get("item_ids") or {}).get("minItems"), 1)
 
             manage_schema = await get_schema("storage_tools", "manage_collections")
             manage_input_schema = manage_schema.get("input_schema") or {}
@@ -6380,6 +6552,30 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_range.get("status"), "error")
             self.assertIn("size_range must be non-negative and ordered", str(invalid_range.get("error", "")))
+
+            invalid_list_limit = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "list_storage",
+                    {
+                        "limit": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_list_limit.get("status"), "error")
+            self.assertIn("limit must be a positive integer", str(invalid_list_limit.get("error", "")))
+
+            invalid_delete = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "delete_data",
+                    {
+                        "item_ids": ["ok", ""],
+                    },
+                )
+            )
+            self.assertEqual(invalid_delete.get("status"), "error")
+            self.assertIn("item_ids must be an array of non-empty strings", str(invalid_delete.get("error", "")))
 
             invalid_date_range = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6482,6 +6678,56 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(lifecycle_payload.get("collection_name"), "default")
             self.assertIn("collections_total", lifecycle_payload)
             self.assertIn("totals", lifecycle_payload)
+
+            stored = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "store_data",
+                    {
+                        "data": {"x": 1},
+                        "collection": "default",
+                    },
+                )
+            )
+            self.assertEqual(stored.get("status"), "success")
+            stored_item_id = stored.get("item_id")
+
+            listed_storage = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "list_storage",
+                    {
+                        "limit": 5,
+                    },
+                )
+            )
+            self.assertEqual(listed_storage.get("status"), "success")
+            self.assertIn("objects", listed_storage)
+
+            storage_stats = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_stats",
+                    {
+                        "report_format": "summary",
+                    },
+                )
+            )
+            self.assertEqual(storage_stats.get("status"), "success")
+            self.assertIn("total_objects", storage_stats)
+            self.assertIn("total_bytes", storage_stats)
+
+            deleted = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "delete_data",
+                    {
+                        "item_ids": [stored_item_id],
+                    },
+                )
+            )
+            self.assertEqual(deleted.get("status"), "success")
+            self.assertEqual(deleted.get("deleted_count"), 1)
 
             missing_collection = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6832,6 +7078,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("graph_add_entity", names)
             self.assertIn("graph_query_cypher", names)
+            self.assertIn("query_knowledge_graph", names)
+            self.assertIn("graph_search_hybrid", names)
+            self.assertIn("graph_transaction_begin", names)
+            self.assertIn("graph_transaction_commit", names)
+            self.assertIn("graph_transaction_rollback", names)
+            self.assertIn("graph_index_create", names)
+            self.assertIn("graph_constraint_add", names)
+            self.assertIn("graph_visualize", names)
+            self.assertIn("graph_explain", names)
 
             add_entity_schema = await get_schema("graph_tools", "graph_add_entity")
             add_entity_props = (add_entity_schema.get("input_schema") or {}).get("properties", {})
@@ -6840,6 +7095,32 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             query_schema = await get_schema("graph_tools", "graph_query_cypher")
             query_props = (query_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((query_props.get("query") or {}).get("minLength"), 1)
+
+            search_schema = await get_schema("graph_tools", "graph_search_hybrid")
+            search_props = (search_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(
+                (search_props.get("search_type") or {}).get("enum"),
+                ["hybrid", "keyword", "semantic"],
+            )
+
+            tx_commit_schema = await get_schema("graph_tools", "graph_transaction_commit")
+            tx_commit_props = (tx_commit_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((tx_commit_props.get("transaction_id") or {}).get("minLength"), 1)
+
+            index_schema = await get_schema("graph_tools", "graph_index_create")
+            index_props = (index_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((index_props.get("properties") or {}).get("minItems"), 1)
+
+            constraint_schema = await get_schema("graph_tools", "graph_constraint_add")
+            constraint_props = (constraint_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("unique", (constraint_props.get("constraint_type") or {}).get("enum", []))
+
+            visualize_schema = await get_schema("graph_tools", "graph_visualize")
+            visualize_props = (visualize_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(
+                (visualize_props.get("format") or {}).get("enum"),
+                ["ascii", "d3_json", "dot", "mermaid"],
+            )
 
             invalid_properties = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6867,6 +7148,113 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_parameters.get("status"), "error")
             self.assertIn("parameters must be an object", str(invalid_parameters.get("error", "")))
+
+            invalid_search_type = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "graph_tools",
+                    "graph_search_hybrid",
+                    {
+                        "query": "find people",
+                        "search_type": "vector",
+                    },
+                )
+            )
+            self.assertEqual(invalid_search_type.get("status"), "error")
+            self.assertIn("search_type must be one of", str(invalid_search_type.get("error", "")))
+
+            invalid_tx = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "graph_tools",
+                    "graph_transaction_commit",
+                    {"transaction_id": "   "},
+                )
+            )
+            self.assertEqual(invalid_tx.get("status"), "error")
+            self.assertIn("transaction_id must be a non-empty string", str(invalid_tx.get("error", "")))
+
+            invalid_constraint = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "graph_tools",
+                    "graph_constraint_add",
+                    {
+                        "constraint_name": "person-email",
+                        "constraint_type": "primary",
+                        "entity_type": "Person",
+                        "properties": ["email"],
+                    },
+                )
+            )
+            self.assertEqual(invalid_constraint.get("status"), "error")
+            self.assertIn("constraint_type must be one of", str(invalid_constraint.get("error", "")))
+
+            invalid_explain = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "graph_tools",
+                    "graph_explain",
+                    {
+                        "explain_type": "relationship",
+                    },
+                )
+            )
+            self.assertEqual(invalid_explain.get("status"), "error")
+            self.assertIn("relationship_id is required", str(invalid_explain.get("error", "")))
+
+            begun = self._assert_dispatch_success_envelope(
+                await dispatch("graph_tools", "graph_transaction_begin", {})
+            )
+            self.assertEqual(begun.get("status"), "success")
+            transaction_id = begun.get("transaction_id")
+            self.assertIsInstance(transaction_id, str)
+
+            committed = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "graph_tools",
+                    "graph_transaction_commit",
+                    {"transaction_id": transaction_id},
+                )
+            )
+            self.assertEqual(committed.get("status"), "success")
+
+            created_index = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "graph_tools",
+                    "graph_index_create",
+                    {
+                        "index_name": "people-name",
+                        "entity_type": "Person",
+                        "properties": ["name"],
+                    },
+                )
+            )
+            self.assertEqual(created_index.get("status"), "success")
+            self.assertEqual(created_index.get("index_name"), "people-name")
+
+            created_constraint = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "graph_tools",
+                    "graph_constraint_add",
+                    {
+                        "constraint_name": "person-email",
+                        "constraint_type": "unique",
+                        "entity_type": "Person",
+                        "properties": ["email"],
+                    },
+                )
+            )
+            self.assertEqual(created_constraint.get("status"), "success")
+            self.assertEqual(created_constraint.get("constraint_name"), "person-email")
+
+            valid_query_kg = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "graph_tools",
+                    "query_knowledge_graph",
+                    {
+                        "query": "find regulations",
+                    },
+                )
+            )
+            self.assertIn(valid_query_kg.get("status"), ["success", "error"])
+            self.assertEqual(valid_query_kg.get("query"), "find regulations")
 
         anyio.run(_run_flow)
 
@@ -7003,8 +7391,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             listed = await tools_list("pdf_tools")
             names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("pdf_analyze_relationships", names)
             self.assertIn("pdf_query_corpus", names)
             self.assertIn("pdf_batch_process", names)
+            self.assertIn("pdf_query_knowledge_graph", names)
+
+            relationship_schema = await get_schema("pdf_tools", "pdf_analyze_relationships")
+            relationship_props = (relationship_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((relationship_props.get("document_id") or {}).get("minLength"), 1)
+            self.assertEqual((relationship_props.get("min_confidence") or {}).get("maximum"), 1.0)
 
             query_schema = await get_schema("pdf_tools", "pdf_query_corpus")
             query_props = (query_schema.get("input_schema") or {}).get("properties", {})
@@ -7013,6 +7408,24 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             batch_schema = await get_schema("pdf_tools", "pdf_batch_process")
             batch_props = (batch_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((batch_props.get("pdf_sources") or {}).get("minItems"), 1)
+
+            graph_schema = await get_schema("pdf_tools", "pdf_query_knowledge_graph")
+            graph_props = (graph_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("sparql", (graph_props.get("query_type") or {}).get("enum", []))
+            self.assertEqual((graph_props.get("max_results") or {}).get("minimum"), 1)
+
+            invalid_relationships = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "pdf_tools",
+                    "pdf_analyze_relationships",
+                    {
+                        "document_id": "doc-1",
+                        "relationship_types": ["SIGNED_BY", ""],
+                    },
+                )
+            )
+            self.assertEqual(invalid_relationships.get("status"), "error")
+            self.assertIn("relationship_types must be a list of non-empty strings", str(invalid_relationships.get("error", "")))
 
             invalid_query = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7037,6 +7450,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_batch.get("status"), "error")
             self.assertIn("pdf_sources entries must be non-empty strings or objects", str(invalid_batch.get("error", "")))
+
+            invalid_graph_query = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "pdf_tools",
+                    "pdf_query_knowledge_graph",
+                    {
+                        "graph_id": "graph-1",
+                        "query": "MATCH (n) RETURN n",
+                        "query_type": "sql",
+                    },
+                )
+            )
+            self.assertEqual(invalid_graph_query.get("status"), "error")
+            self.assertIn("query_type must be one of", str(invalid_graph_query.get("error", "")))
 
         anyio.run(_run_flow)
 
@@ -7079,6 +7506,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("tdfol_parse", names)
             self.assertIn("tdfol_prove", names)
+            self.assertIn("tdfol_kb_add_axiom", names)
+            self.assertIn("tdfol_kb_query", names)
+            self.assertIn("tdfol_kb_export", names)
+            self.assertIn("cec_prove", names)
+            self.assertIn("cec_parse", names)
+            self.assertIn("cec_validate_formula", names)
 
             parse_schema = await get_schema("logic_tools", "tdfol_parse")
             parse_props = (parse_schema.get("input_schema") or {}).get("properties", {})
@@ -7087,6 +7520,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             prove_schema = await get_schema("logic_tools", "tdfol_prove")
             prove_props = (prove_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((prove_props.get("timeout_ms") or {}).get("minimum"), 1)
+
+            kb_export_schema = await get_schema("logic_tools", "tdfol_kb_export")
+            kb_export_props = (kb_export_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("json", (kb_export_props.get("export_format") or {}).get("enum", []))
+
+            cec_prove_schema = await get_schema("logic_tools", "cec_prove")
+            cec_prove_props = (cec_prove_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((cec_prove_props.get("timeout") or {}).get("minimum"), 1)
+
+            cec_parse_schema = await get_schema("logic_tools", "cec_parse")
+            cec_parse_props = (cec_parse_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((cec_parse_props.get("language") or {}).get("minLength"), 1)
 
             invalid_parse = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7113,6 +7558,101 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_timeout.get("success"), False)
             self.assertIn("'timeout_ms' must be an integer greater than or equal to 1", str(invalid_timeout.get("error", "")))
+
+            invalid_kb_export = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "tdfol_kb_export",
+                    {
+                        "export_format": "xml",
+                    },
+                )
+            )
+            self.assertEqual(invalid_kb_export.get("success"), False)
+            self.assertIn("'export_format' must be one of", str(invalid_kb_export.get("error", "")))
+
+            invalid_cec_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "cec_prove",
+                    {
+                        "goal": "P(a)",
+                        "timeout": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_cec_timeout.get("success"), False)
+            self.assertIn("'timeout' must be an integer greater than or equal to 1", str(invalid_cec_timeout.get("error", "")))
+
+            invalid_cec_parse = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "cec_parse",
+                    {
+                        "text": "agent knows p",
+                        "language": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_cec_parse.get("success"), False)
+            self.assertIn("'language' must be a non-empty string", str(invalid_cec_parse.get("error", "")))
+
+            added_axiom = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "tdfol_kb_add_axiom",
+                    {
+                        "formula": "forall x P(x)",
+                    },
+                )
+            )
+            self.assertEqual(added_axiom.get("success"), True)
+
+            queried_kb = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "tdfol_kb_query",
+                    {},
+                )
+            )
+            self.assertEqual(queried_kb.get("success"), True)
+            self.assertIn("stats", queried_kb)
+
+            exported_kb = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "tdfol_kb_export",
+                    {
+                        "export_format": "json",
+                    },
+                )
+            )
+            self.assertEqual(exported_kb.get("success"), True)
+            self.assertEqual(exported_kb.get("format"), "json")
+
+            cec_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "cec_prove",
+                    {
+                        "goal": "K(agent,P)",
+                        "timeout": 30,
+                    },
+                )
+            )
+            self.assertIn(cec_result.get("success"), [True, False])
+
+            cec_parse_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "logic_tools",
+                    "cec_parse",
+                    {
+                        "text": "agent knows p",
+                        "language": "en",
+                    },
+                )
+            )
+            self.assertIn(cec_parse_result.get("success"), [True, False])
 
         anyio.run(_run_flow)
 
@@ -7299,6 +7839,15 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             schema_props = (validate_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((schema_props.get("action") or {}).get("default"), "validate")
             self.assertIn("decode", (schema_props.get("action") or {}).get("enum", []))
+            self.assertEqual((schema_props.get("strict") or {}).get("default"), False)
+
+            auth_schema = await get_schema("auth_tools", "authenticate_user")
+            auth_props = (auth_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((auth_props.get("remember_me") or {}).get("default"), False)
+
+            user_info_schema = await get_schema("auth_tools", "get_user_info")
+            user_info_props = (user_info_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((user_info_props.get("include_permissions") or {}).get("default"), True)
 
             invalid_action = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7325,6 +7874,34 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn(decode_result.get("status"), ["success", "error"])
             self.assertIn("message", decode_result)
+
+            auth_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "auth_tools",
+                    "authenticate_user",
+                    {
+                        "username": "demo",
+                        "password": "pw",
+                        "remember_me": True,
+                    },
+                )
+            )
+            self.assertIn(auth_result.get("status"), ["success", "error"])
+            self.assertEqual(auth_result.get("remember_me"), True)
+
+            user_info_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "auth_tools",
+                    "get_user_info",
+                    {
+                        "token": "dummy-token",
+                        "include_permissions": False,
+                        "include_profile": False,
+                    },
+                )
+            )
+            self.assertIn(user_info_result.get("status"), ["success", "error"])
+            self.assertEqual(user_info_result.get("include_permissions"), False)
 
         anyio.run(_run_flow)
 
@@ -7880,6 +8457,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("system_maintenance", names)
             self.assertIn("configure_system", names)
             self.assertIn("system_health", names)
+            self.assertIn("get_system_status", names)
+            self.assertIn("manage_service", names)
+            self.assertIn("update_configuration", names)
+            self.assertIn("cleanup_resources", names)
 
             endpoint_schema = await get_schema("admin_tools", "manage_endpoints")
             props = (endpoint_schema.get("input_schema") or {}).get("properties", {})
@@ -7890,6 +8471,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             health_props = (health_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((health_props.get("component") or {}).get("default"), "all")
             self.assertEqual((health_props.get("detailed") or {}).get("default"), False)
+
+            status_schema = await get_schema("admin_tools", "get_system_status")
+            status_props = (status_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((status_props.get("format") or {}).get("default"), "json")
+
+            service_schema = await get_schema("admin_tools", "manage_service")
+            service_props = (service_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((service_props.get("timeout_seconds") or {}).get("minimum"), 1)
+
+            update_schema = await get_schema("admin_tools", "update_configuration")
+            update_props = (update_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((update_props.get("create_backup") or {}).get("default"), True)
+
+            cleanup_schema = await get_schema("admin_tools", "cleanup_resources")
+            cleanup_props = (cleanup_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((cleanup_props.get("max_log_age_days") or {}).get("minimum"), 1)
 
             invalid_action = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7950,6 +8547,104 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 )
             )
             self.assertIn(valid_health.get("status"), ["success", "error"])
+
+            invalid_status_format = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "get_system_status",
+                    {
+                        "format": "xml",
+                    },
+                )
+            )
+            self.assertEqual(invalid_status_format.get("status"), "error")
+            self.assertIn("must be one of", str(invalid_status_format.get("message", "")))
+
+            valid_status = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "get_system_status",
+                    {
+                        "format": "detailed",
+                        "include_services": True,
+                    },
+                )
+            )
+            self.assertIn(valid_status.get("status"), ["success", "operational"])
+
+            invalid_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "manage_service",
+                    {
+                        "service_name": "cache_service",
+                        "action": "restart",
+                        "timeout_seconds": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_timeout.get("status"), "error")
+            self.assertIn("positive integer", str(invalid_timeout.get("message", "")))
+
+            valid_service = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "manage_service",
+                    {
+                        "service_name": "all",
+                        "action": "status",
+                    },
+                )
+            )
+            self.assertEqual(valid_service.get("status"), "success")
+
+            invalid_config_updates = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "update_configuration",
+                    {
+                        "action": "update",
+                        "config_updates": ["bad"],
+                    },
+                )
+            )
+            self.assertEqual(invalid_config_updates.get("status"), "error")
+            self.assertIn("must be an object", str(invalid_config_updates.get("message", "")))
+
+            valid_update = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "update_configuration",
+                    {
+                        "action": "validate",
+                        "config_updates": {"cache.timeout": 5},
+                    },
+                )
+            )
+            self.assertEqual(valid_update.get("status"), "success")
+
+            invalid_cleanup = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "cleanup_resources",
+                    {
+                        "cleanup_type": "purge",
+                    },
+                )
+            )
+            self.assertEqual(invalid_cleanup.get("status"), "error")
+            self.assertIn("must be one of", str(invalid_cleanup.get("message", "")))
+
+            valid_cleanup = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "admin_tools",
+                    "cleanup_resources",
+                    {
+                        "cleanup_type": "basic",
+                    },
+                )
+            )
+            self.assertEqual(valid_cleanup.get("status"), "success")
 
         anyio.run(_run_flow)
 
@@ -8704,10 +9399,25 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("health_check", names)
             self.assertIn("get_performance_metrics", names)
             self.assertIn("generate_monitoring_report", names)
+            self.assertIn("check_health", names)
+            self.assertIn("collect_metrics", names)
+            self.assertIn("manage_alerts", names)
 
             schema = await get_schema("monitoring_tools", "generate_monitoring_report")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("summary", (props.get("report_type") or {}).get("enum", []))
+
+            enhanced_health_schema = await get_schema("monitoring_tools", "check_health")
+            enhanced_health_props = (enhanced_health_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("comprehensive", (enhanced_health_props.get("check_depth") or {}).get("enum", []))
+
+            enhanced_collect_schema = await get_schema("monitoring_tools", "collect_metrics")
+            enhanced_collect_props = (enhanced_collect_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("parquet", (enhanced_collect_props.get("export_format") or {}).get("enum", []))
+
+            enhanced_alert_schema = await get_schema("monitoring_tools", "manage_alerts")
+            enhanced_alert_props = (enhanced_alert_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("configure_thresholds", (enhanced_alert_props.get("action") or {}).get("enum", []))
 
             invalid_check_type = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8732,6 +9442,79 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_time_period.get("status"), "error")
             self.assertIn("time_period must be one of", str(invalid_time_period.get("message", "")))
+
+            invalid_depth = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "monitoring_tools",
+                    "check_health",
+                    {
+                        "check_depth": "deep",
+                    },
+                )
+            )
+            self.assertEqual(invalid_depth.get("status"), "error")
+            self.assertIn("check_depth must be one of", str(invalid_depth.get("message", "")))
+
+            valid_enhanced_health = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "monitoring_tools",
+                    "check_health",
+                    {
+                        "check_depth": "comprehensive",
+                    },
+                )
+            )
+            self.assertEqual(valid_enhanced_health.get("status"), "success")
+            self.assertIn("health_check", valid_enhanced_health)
+
+            invalid_export = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "monitoring_tools",
+                    "collect_metrics",
+                    {
+                        "export_format": "xml",
+                    },
+                )
+            )
+            self.assertEqual(invalid_export.get("status"), "error")
+            self.assertIn("export_format must be one of", str(invalid_export.get("message", "")))
+
+            valid_collect = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "monitoring_tools",
+                    "collect_metrics",
+                    {
+                        "include_anomalies": True,
+                    },
+                )
+            )
+            self.assertEqual(valid_collect.get("status"), "success")
+            self.assertIn("metrics_collection", valid_collect)
+
+            missing_alert_id = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "monitoring_tools",
+                    "manage_alerts",
+                    {
+                        "action": "resolve",
+                    },
+                )
+            )
+            self.assertEqual(missing_alert_id.get("status"), "error")
+            self.assertIn("alert_id required", str(missing_alert_id.get("message", "")))
+
+            valid_alerts = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "monitoring_tools",
+                    "manage_alerts",
+                    {
+                        "action": "list",
+                        "include_metrics": True,
+                    },
+                )
+            )
+            self.assertEqual(valid_alerts.get("status"), "success")
+            self.assertIn("alerts", valid_alerts)
 
         anyio.run(_run_flow)
 
@@ -8954,12 +9737,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("vector_index", names)
             self.assertIn("vector_retrieval", names)
             self.assertIn("vector_metadata", names)
+            self.assertIn("enhanced_vector_index", names)
+            self.assertIn("enhanced_vector_search", names)
+            self.assertIn("enhanced_vector_storage", names)
 
             schema = await get_schema("vector_store_tools", "vector_index")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("create", (props.get("action") or {}).get("enum", []))
             self.assertIn("list", (props.get("action") or {}).get("enum", []))
             self.assertEqual((props.get("index_name") or {}).get("type"), ["string", "null"])
+
+            enhanced_search_schema = await get_schema("vector_store_tools", "enhanced_vector_search")
+            enhanced_search_props = (enhanced_search_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((enhanced_search_props.get("query_vector") or {}).get("minItems"), 1)
+
+            enhanced_storage_schema = await get_schema("vector_store_tools", "enhanced_vector_storage")
+            enhanced_storage_props = (enhanced_storage_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("get_metadata", (enhanced_storage_props.get("action") or {}).get("enum", []))
 
             invalid_action = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -8998,6 +9792,69 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_limit.get("status"), "error")
             self.assertIn("limit must be an integer >= 1", str(invalid_limit.get("message", "")))
+
+            invalid_enhanced_search = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_store_tools",
+                    "enhanced_vector_search",
+                    {
+                        "collection": "docs",
+                        "query_vector": [],
+                    },
+                )
+            )
+            self.assertEqual(invalid_enhanced_search.get("status"), "error")
+            self.assertIn("non-empty list of numbers", str(invalid_enhanced_search.get("message", "")))
+
+            valid_enhanced_index = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_store_tools",
+                    "enhanced_vector_index",
+                    {
+                        "action": "list",
+                    },
+                )
+            )
+            self.assertEqual(valid_enhanced_index.get("status"), "success")
+
+            valid_enhanced_search = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_store_tools",
+                    "enhanced_vector_search",
+                    {
+                        "collection": "docs",
+                        "query_vector": [0.1, 0.2, 0.3],
+                        "top_k": 3,
+                    },
+                )
+            )
+            self.assertEqual(valid_enhanced_search.get("status"), "success")
+            self.assertIn("results", valid_enhanced_search)
+
+            invalid_enhanced_storage = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_store_tools",
+                    "enhanced_vector_storage",
+                    {
+                        "action": "delete",
+                        "vector_ids": [""],
+                    },
+                )
+            )
+            self.assertEqual(invalid_enhanced_storage.get("status"), "error")
+            self.assertIn("list of non-empty strings", str(invalid_enhanced_storage.get("message", "")))
+
+            valid_enhanced_storage = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "vector_store_tools",
+                    "enhanced_vector_storage",
+                    {
+                        "action": "list",
+                        "collection": "docs",
+                    },
+                )
+            )
+            self.assertEqual(valid_enhanced_storage.get("status"), "success")
 
         anyio.run(_run_flow)
 
@@ -9435,12 +10292,27 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("resume_workflow", names)
             self.assertIn("merge_merkle_clock", names)
+            self.assertIn("enhanced_workflow_management", names)
+            self.assertIn("enhanced_batch_processing", names)
+            self.assertIn("enhanced_data_pipeline", names)
 
             schema = await get_schema("workflow_tools", "schedule_p2p_workflow")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("workflow_id") or {}).get("minLength"), 1)
             self.assertEqual((props.get("tags") or {}).get("minItems"), 1)
             self.assertEqual((props.get("priority") or {}).get("minimum"), 0)
+
+            enhanced_management_schema = await get_schema("workflow_tools", "enhanced_workflow_management")
+            management_props = (enhanced_management_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("create", (management_props.get("action") or {}).get("enum", []))
+
+            enhanced_batch_schema = await get_schema("workflow_tools", "enhanced_batch_processing")
+            batch_props = (enhanced_batch_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((batch_props.get("operation_type") or {}).get("minLength"), 1)
+
+            enhanced_pipeline_schema = await get_schema("workflow_tools", "enhanced_data_pipeline")
+            pipeline_props = (enhanced_pipeline_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((pipeline_props.get("pipeline_config") or {}).get("minProperties"), 1)
 
             invalid_workflow_id = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -9476,6 +10348,102 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_counter.get("error", ""))
             )
             self.assertIn("other_counter must be an integer >= 0", invalid_counter_text)
+
+            invalid_enhanced_create = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow_tools",
+                    "enhanced_workflow_management",
+                    {
+                        "action": "create",
+                    },
+                )
+            )
+            self.assertEqual(invalid_enhanced_create.get("status"), "error")
+            invalid_enhanced_create_text = (
+                str(invalid_enhanced_create.get("message", ""))
+                + " "
+                + str(invalid_enhanced_create.get("error", ""))
+            )
+            self.assertIn("workflow_definition must be a non-empty object", invalid_enhanced_create_text)
+
+            valid_enhanced_list = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow_tools",
+                    "enhanced_workflow_management",
+                    {
+                        "action": "list",
+                        "status_filter": "active",
+                    },
+                )
+            )
+            self.assertEqual(valid_enhanced_list.get("status"), "success")
+            self.assertIn("workflows", valid_enhanced_list)
+
+            invalid_batch_source = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow_tools",
+                    "enhanced_batch_processing",
+                    {
+                        "operation_type": "reindex",
+                        "data_source": {},
+                        "output_config": {"destination": "/tmp/out"},
+                    },
+                )
+            )
+            self.assertEqual(invalid_batch_source.get("status"), "error")
+            invalid_batch_source_text = (
+                str(invalid_batch_source.get("message", ""))
+                + " "
+                + str(invalid_batch_source.get("error", ""))
+            )
+            self.assertIn("data_source must be a non-empty object", invalid_batch_source_text)
+
+            valid_batch = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow_tools",
+                    "enhanced_batch_processing",
+                    {
+                        "operation_type": "reindex",
+                        "data_source": {"source_type": "dataset", "name": "demo"},
+                        "output_config": {"destination": "/tmp/out"},
+                    },
+                )
+            )
+            self.assertEqual(valid_batch.get("status"), "success")
+            self.assertIn("processing_completed", valid_batch)
+
+            invalid_pipeline = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow_tools",
+                    "enhanced_data_pipeline",
+                    {
+                        "pipeline_config": {"name": "demo", "load": {"destination_type": "file"}},
+                    },
+                )
+            )
+            self.assertEqual(invalid_pipeline.get("status"), "error")
+            invalid_pipeline_text = (
+                str(invalid_pipeline.get("message", ""))
+                + " "
+                + str(invalid_pipeline.get("error", ""))
+            )
+            self.assertIn("must include 'extract'", invalid_pipeline_text)
+
+            valid_pipeline = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "workflow_tools",
+                    "enhanced_data_pipeline",
+                    {
+                        "pipeline_config": {
+                            "name": "demo-pipeline",
+                            "extract": {"source_type": "dataset"},
+                            "load": {"destination_type": "file"},
+                        },
+                    },
+                )
+            )
+            self.assertEqual(valid_pipeline.get("status"), "success")
+            self.assertIn("pipeline_name", valid_pipeline)
 
         anyio.run(_run_flow)
 
@@ -9681,6 +10649,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("list_state_jurisdictions", names)
             self.assertIn("scrape_state_laws", names)
+            self.assertIn("expand_legal_query", names)
+            self.assertIn("get_legal_synonyms", names)
+            self.assertIn("get_legal_relationships", names)
 
             schema = await get_schema("legal_dataset_tools", "scrape_state_laws")
             props = (schema.get("input_schema") or {}).get("properties", {})
@@ -9689,6 +10660,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(
                 (props.get("output_format") or {}).get("enum"),
                 ["json", "csv", "parquet"],
+            )
+
+            expand_schema = await get_schema("legal_dataset_tools", "expand_legal_query")
+            expand_props = (expand_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(
+                (expand_props.get("strategy") or {}).get("enum"),
+                ["conservative", "balanced", "aggressive"],
+            )
+            self.assertEqual((expand_props.get("max_expansions") or {}).get("maximum"), 50)
+
+            relationship_schema = await get_schema("legal_dataset_tools", "get_legal_relationships")
+            relationship_props = (relationship_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn(
+                "hierarchical",
+                (relationship_props.get("relationship_type") or {}).get("enum", []),
             )
 
             invalid_output_format = self._assert_dispatch_success_envelope(
@@ -9725,6 +10711,67 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_chars.get("error", ""))
             )
             self.assertIn("min_full_text_chars must be an integer >= 1", invalid_chars_text)
+
+            invalid_strategy = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "legal_dataset_tools",
+                    "expand_legal_query",
+                    {
+                        "query": "epa water rules",
+                        "strategy": "wide",
+                    },
+                )
+            )
+            self.assertEqual(invalid_strategy.get("status"), "error")
+            invalid_strategy_text = (
+                str(invalid_strategy.get("message", ""))
+                + " "
+                + str(invalid_strategy.get("error", ""))
+            )
+            self.assertIn("strategy must be one of", invalid_strategy_text)
+
+            valid_expand = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "legal_dataset_tools",
+                    "expand_legal_query",
+                    {
+                        "query": "epa water rules",
+                        "strategy": "balanced",
+                        "domains": ["environmental"],
+                    },
+                )
+            )
+            self.assertEqual(valid_expand.get("status"), "success")
+            self.assertEqual(valid_expand.get("original_query"), "epa water rules")
+
+            invalid_relationship = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "legal_dataset_tools",
+                    "get_legal_relationships",
+                    {
+                        "relationship_type": "graph",
+                    },
+                )
+            )
+            self.assertEqual(invalid_relationship.get("status"), "error")
+            invalid_relationship_text = (
+                str(invalid_relationship.get("message", ""))
+                + " "
+                + str(invalid_relationship.get("error", ""))
+            )
+            self.assertIn("relationship_type must be null or one of", invalid_relationship_text)
+
+            valid_synonyms = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "legal_dataset_tools",
+                    "get_legal_synonyms",
+                    {
+                        "term": "regulation",
+                    },
+                )
+            )
+            self.assertEqual(valid_synonyms.get("status"), "success")
+            self.assertEqual(valid_synonyms.get("term"), "regulation")
 
         anyio.run(_run_flow)
 
@@ -10647,10 +11694,31 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "mcplusplus_list_engines",
                 "mcplusplus_taskqueue_get_status",
                 "mcplusplus_taskqueue_submit",
+                "mcplusplus_taskqueue_priority",
+                "mcplusplus_taskqueue_cancel",
+                "mcplusplus_taskqueue_list",
+                "mcplusplus_taskqueue_set_priority",
+                "mcplusplus_taskqueue_stats",
+                "mcplusplus_taskqueue_retry",
+                "mcplusplus_taskqueue_pause",
+                "mcplusplus_taskqueue_resume",
+                "mcplusplus_taskqueue_clear",
+                "mcplusplus_worker_register",
+                "mcplusplus_worker_unregister",
+                "mcplusplus_worker_status",
+                "mcplusplus_taskqueue_result",
                 "mcplusplus_workflow_get_status",
                 "mcplusplus_workflow_submit",
+                "mcplusplus_workflow_cancel",
+                "mcplusplus_workflow_list",
+                "mcplusplus_workflow_dependencies",
+                "mcplusplus_workflow_result",
                 "mcplusplus_peer_list",
                 "mcplusplus_peer_discover",
+                "mcplusplus_peer_connect",
+                "mcplusplus_peer_disconnect",
+                "mcplusplus_peer_metrics",
+                "mcplusplus_peer_bootstrap_network",
             }
             self.assertTrue(expected.issubset(names))
 
@@ -10662,9 +11730,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             peer_props = (peer_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((peer_props.get("limit") or {}).get("minimum"), 1)
 
+            task_priority_schema = await get_schema("mcplusplus", "mcplusplus_taskqueue_priority")
+            task_priority_props = (task_priority_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((task_priority_props.get("new_priority") or {}).get("exclusiveMinimum"), 0)
+
+            task_set_priority_schema = await get_schema("mcplusplus", "mcplusplus_taskqueue_set_priority")
+            task_set_priority_props = (task_set_priority_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((task_set_priority_props.get("new_priority") or {}).get("exclusiveMinimum"), 0)
+
             peer_discover_schema = await get_schema("mcplusplus", "mcplusplus_peer_discover")
             peer_discover_props = (peer_discover_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((peer_discover_props.get("max_peers") or {}).get("minimum"), 1)
+
+            workflow_deps_schema = await get_schema("mcplusplus", "mcplusplus_workflow_dependencies")
+            workflow_deps_props = (workflow_deps_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((workflow_deps_props.get("fmt") or {}).get("default"), "json")
 
             invalid_task = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10710,6 +11790,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 str(invalid_submit.get("error", "")),
             )
 
+            invalid_set_priority = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "mcplusplus",
+                    "mcplusplus_taskqueue_set_priority",
+                    {
+                        "task_id": "task-1",
+                        "new_priority": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_set_priority.get("status"), "error")
+            self.assertIn(
+                "new_priority must be > 0",
+                str(invalid_set_priority.get("error", "")),
+            )
+
             calls = [
                 ("mcplusplus_engine_status", {}),
                 ("mcplusplus_list_engines", {}),
@@ -10720,8 +11816,28 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                         "task_id": "task-1",
                         "task_type": "demo",
                         "payload": {"x": 1},
+                        "metadata": {"source": "bootstrap-test"},
                     },
                 ),
+                ("mcplusplus_taskqueue_priority", {"task_id": "task-1", "new_priority": 2}),
+                ("mcplusplus_taskqueue_cancel", {"task_id": "task-1"}),
+                ("mcplusplus_taskqueue_list", {"limit": 5}),
+                (
+                    "mcplusplus_taskqueue_set_priority",
+                    {"task_id": "task-1", "new_priority": 2.0},
+                ),
+                ("mcplusplus_taskqueue_stats", {}),
+                ("mcplusplus_taskqueue_retry", {"task_id": "task-1"}),
+                ("mcplusplus_taskqueue_pause", {}),
+                ("mcplusplus_taskqueue_resume", {}),
+                ("mcplusplus_taskqueue_clear", {"confirm": True}),
+                (
+                    "mcplusplus_worker_register",
+                    {"worker_id": "worker-1", "capabilities": ["inference"]},
+                ),
+                ("mcplusplus_worker_status", {"worker_id": "worker-1"}),
+                ("mcplusplus_worker_unregister", {"worker_id": "worker-1"}),
+                ("mcplusplus_taskqueue_result", {"task_id": "task-1"}),
                 ("mcplusplus_workflow_get_status", {"workflow_id": "wf-1"}),
                 (
                     "mcplusplus_workflow_submit",
@@ -10729,10 +11845,25 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                         "workflow_id": "wf-1",
                         "name": "demo",
                         "steps": [{"step_id": "s1", "action": "noop"}],
+                        "dependencies": ["wf-0"],
                     },
                 ),
-                ("mcplusplus_peer_list", {"limit": 5}),
+                ("mcplusplus_workflow_cancel", {"workflow_id": "wf-1"}),
+                ("mcplusplus_workflow_list", {"limit": 5}),
+                ("mcplusplus_workflow_dependencies", {"workflow_id": "wf-1", "fmt": "json"}),
+                ("mcplusplus_workflow_result", {"workflow_id": "wf-1"}),
+                (
+                    "mcplusplus_peer_list",
+                    {"limit": 5, "capability_filter": ["inference"], "sort_by": "last_seen", "offset": 0},
+                ),
                 ("mcplusplus_peer_discover", {"max_peers": 2}),
+                (
+                    "mcplusplus_peer_connect",
+                    {"peer_id": "peer-1", "multiaddr": "/ip4/127.0.0.1/tcp/4001"},
+                ),
+                ("mcplusplus_peer_disconnect", {"peer_id": "peer-1"}),
+                ("mcplusplus_peer_metrics", {"peer_id": "peer-1"}),
+                ("mcplusplus_peer_bootstrap_network", {"max_connections": 5}),
             ]
 
             for tool_name, params in calls:

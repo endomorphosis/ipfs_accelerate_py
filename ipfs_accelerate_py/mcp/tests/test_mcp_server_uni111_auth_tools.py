@@ -37,10 +37,18 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
         register_native_auth_tools(manager)
         by_name = {c["name"]: c for c in manager.calls}
 
+        auth_schema = by_name["authenticate_user"]["input_schema"]
+        self.assertEqual(auth_schema["properties"]["remember_me"]["default"], False)
+
         schema = by_name["validate_token"]["input_schema"]
         action = schema["properties"]["action"]
         self.assertEqual(action.get("default"), "validate")
         self.assertIn("decode", action.get("enum", []))
+        self.assertEqual(schema["properties"]["strict"]["default"], False)
+
+        user_info_schema = by_name["get_user_info"]["input_schema"]
+        self.assertEqual(user_info_schema["properties"]["include_permissions"]["default"], True)
+        self.assertEqual(user_info_schema["properties"]["include_profile"]["default"], True)
 
     def test_authenticate_user_rejects_invalid_username(self) -> None:
         async def _run() -> None:
@@ -62,6 +70,11 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             self.assertEqual(bad_permission.get("valid"), False)
             self.assertIn("Invalid required_permission", str(bad_permission.get("message", "")))
 
+            bad_strict = await validate_token(token="tok", strict="yes")
+            self.assertEqual(bad_strict.get("status"), "error")
+            self.assertEqual(bad_strict.get("valid"), False)
+            self.assertIn("strict must be a boolean", str(bad_strict.get("message", "")))
+
         anyio.run(_run)
 
     def test_get_user_info_requires_token(self) -> None:
@@ -69,6 +82,10 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             result = await get_user_info(token=" ")
             self.assertEqual(result.get("status"), "error")
             self.assertIn("Token is required", str(result.get("message", "")))
+
+            bad_permissions = await get_user_info(token="tok", include_permissions="yes")
+            self.assertEqual(bad_permissions.get("status"), "error")
+            self.assertIn("include_permissions must be a boolean", str(bad_permissions.get("message", "")))
 
         anyio.run(_run)
 
@@ -78,6 +95,19 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             self.assertIn(result.get("status"), ["success", "error"])
             if result.get("status") == "success":
                 self.assertIn("message", result)
+
+            auth = await authenticate_user(username="demo", password="pw", remember_me=True)
+            self.assertIn(auth.get("status"), ["success", "error"])
+            self.assertEqual(auth.get("remember_me"), True)
+
+            info = await get_user_info(token="dummy", include_permissions=False, include_profile=False)
+            self.assertIn(info.get("status"), ["success", "error"])
+            self.assertEqual(info.get("include_permissions"), False)
+            self.assertEqual(info.get("include_profile"), False)
+
+            strict_validation = await validate_token(token="dummy", strict=True)
+            self.assertIn(strict_validation.get("status"), ["success", "error"])
+            self.assertEqual(strict_validation.get("strict"), True)
 
         anyio.run(_run)
 
