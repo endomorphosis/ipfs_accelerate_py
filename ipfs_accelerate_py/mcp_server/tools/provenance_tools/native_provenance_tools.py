@@ -41,8 +41,19 @@ def _load_provenance_api() -> Dict[str, Any]:
                 "record": {},
             }
 
+        async def _record_batch_fallback(
+            records: List[Dict[str, Any]],
+        ) -> Dict[str, Any]:
+            _ = records
+            return {
+                "status": "success",
+                "results": [],
+                "processed": 0,
+            }
+
         return {
             "record_provenance": _record_fallback,
+            "record_provenance_batch": _record_batch_fallback,
         }
 
 
@@ -151,6 +162,68 @@ async def record_provenance(
     return payload
 
 
+async def record_provenance_batch(
+    records: List[Dict[str, Any]],
+    fail_fast: bool = False,
+) -> Dict[str, Any]:
+    """Record provenance for multiple operations with deterministic aggregate output."""
+    if not isinstance(records, list) or not records:
+        return {
+            "status": "error",
+            "message": "records must be a non-empty array",
+            "results": [],
+            "processed": 0,
+            "requested": 0,
+            "success_count": 0,
+            "error_count": 0,
+        }
+
+    results: List[Dict[str, Any]] = []
+    success_count = 0
+    error_count = 0
+
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            item_result = {
+                "status": "error",
+                "message": "record entry must be an object",
+                "index": index,
+            }
+        else:
+            item_result = await record_provenance(
+                dataset_id=str(record.get("dataset_id", "")),
+                operation=str(record.get("operation", "")),
+                inputs=record.get("inputs"),
+                parameters=record.get("parameters"),
+                description=record.get("description"),
+                agent_id=record.get("agent_id"),
+                timestamp=record.get("timestamp"),
+                tags=record.get("tags"),
+            )
+            item_result = dict(item_result)
+            item_result.setdefault("index", index)
+
+        if item_result.get("status") == "error":
+            error_count += 1
+        else:
+            success_count += 1
+
+        results.append(item_result)
+
+        if fail_fast and item_result.get("status") == "error":
+            break
+
+    return {
+        "status": "success",
+        "results": results,
+        "processed": len(results),
+        "requested": len(records),
+        "success_count": success_count,
+        "error_count": error_count,
+        "fail_fast": bool(fail_fast),
+    }
+
+
 def register_native_provenance_tools(manager: Any) -> None:
     """Register native provenance tools in unified hierarchical manager."""
     manager.register_tool(
@@ -171,6 +244,40 @@ def register_native_provenance_tools(manager: Any) -> None:
                 "tags": {"type": ["array", "null"], "items": {"type": "string"}},
             },
             "required": ["dataset_id", "operation"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "provenance"],
+    )
+
+    manager.register_tool(
+        category="provenance_tools",
+        name="record_provenance_batch",
+        func=record_provenance_batch,
+        description="Record provenance information for multiple dataset operations.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "records": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "dataset_id": {"type": "string", "minLength": 1},
+                            "operation": {"type": "string", "minLength": 1},
+                            "inputs": {"type": ["array", "null"], "items": {"type": "string"}},
+                            "parameters": {"type": ["object", "null"]},
+                            "description": {"type": ["string", "null"]},
+                            "agent_id": {"type": ["string", "null"]},
+                            "timestamp": {"type": ["string", "null"], "format": "date-time"},
+                            "tags": {"type": ["array", "null"], "items": {"type": "string"}},
+                        },
+                        "required": ["dataset_id", "operation"],
+                    },
+                },
+                "fail_fast": {"type": "boolean", "default": False},
+            },
+            "required": ["records"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "provenance"],
