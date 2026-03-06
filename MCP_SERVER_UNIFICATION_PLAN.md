@@ -863,9 +863,9 @@ Prove that canonical dispatch paths in `ipfs_accelerate_py/mcp_server/server.py`
 - `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
 
 ## Acceptance Criteria
-- [ ] Tests assert service factory invocation and runtime usage.
-- [ ] No regressions in unified bootstrap tests.
-- [ ] Evidence references added to `mcpplusplus/SPEC_GAP_MATRIX.md`.
+- [x] Tests assert service factory invocation and runtime usage.
+- [x] No regressions in unified bootstrap tests.
+- [x] Evidence references added to `mcpplusplus/SPEC_GAP_MATRIX.md`.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_unified_bootstrap`
@@ -891,9 +891,9 @@ Close operation-level and schema-level parity deltas for `ipfs_tools` between so
 - `ipfs_accelerate_py/mcp/tests/*ipfs*`
 
 ## Acceptance Criteria
-- [ ] Representative source operations are implemented or explicitly deferred with rationale.
-- [ ] `tools_get_schema` parity validated for representative tools.
-- [ ] `SPEC_GAP_MATRIX` IPFS rows updated with evidence.
+- [x] Representative source operations are implemented or explicitly deferred with rationale.
+- [x] `tools_get_schema` parity validated for representative tools.
+- [x] `SPEC_GAP_MATRIX` IPFS rows updated with evidence.
 
 ## Verification
 - `python3 -m unittest <ipfs parity test modules>`
@@ -918,9 +918,9 @@ Complete behavior and schema parity for workflow operations in canonical runtime
 - `ipfs_accelerate_py/mcp/tests/*workflow*`
 
 ## Acceptance Criteria
-- [ ] Workflow dispatch parity for representative source operations.
-- [ ] Edge-case tests for arguments and error envelopes.
-- [ ] Evidence links updated in conformance docs.
+- [x] Workflow dispatch parity for representative source operations.
+- [x] Edge-case tests for arguments and error envelopes.
+- [x] Evidence links updated in conformance docs.
 
 ## Verification
 - `python3 -m unittest <workflow parity test modules>`
@@ -946,9 +946,9 @@ Close high-impact behavior gaps in `p2p_tools` and `mcplusplus` category surface
 - `ipfs_accelerate_py/mcp/tests/*p2p*`
 
 ## Acceptance Criteria
-- [ ] Representative source-equivalent p2p operations dispatch correctly.
-- [ ] MCP++ tool wrappers expose expected schemas and behavior.
-- [ ] Matrix/checklist evidence updated.
+- [x] Representative source-equivalent p2p operations dispatch correctly.
+- [x] MCP++ tool wrappers expose expected schemas and behavior.
+- [x] Matrix/checklist evidence updated.
 
 ## Verification
 - `python3 -m unittest <p2p and mcplusplus parity test modules>`
@@ -974,9 +974,9 @@ Finish convergence of `mcplusplus_module` so it remains compatibility-only and d
 - `ipfs_accelerate_py/mcplusplus_module/tests/*`
 
 ## Acceptance Criteria
-- [ ] Canonical-first delegation or explicit compatibility rationale in all touched boundaries.
-- [ ] No raw `None` export surfaces at module boundaries where explicit stubs are required.
-- [ ] Contract tests updated and passing.
+- [x] Canonical-first delegation or explicit compatibility rationale in all touched boundaries.
+- [x] No raw `None` export surfaces at module boundaries where explicit stubs are required.
+- [x] Contract tests updated and passing.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcplusplus_module.tests.test_tool_adapters ipfs_accelerate_py.mcplusplus_module.tests.test_trio_server`
