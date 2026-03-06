@@ -3,6 +3,10 @@
 
 from __future__ import annotations
 
+import json
+import os
+import subprocess
+import sys
 import unittest
 
 import anyio
@@ -134,6 +138,59 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
             cids.append(cid_a)
 
         self.assertEqual(len(cids), len(set(cids)))
+
+    def test_descriptor_canonicalization_is_stable_across_runtime_environments(self) -> None:
+        descriptor = {
+            "name": "runtime-stable",
+            "namespace": "test.ns",
+            "version": "3.2.1",
+            "methods": [
+                {
+                    "name": "runtime/stable",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "alpha": {"type": "string"},
+                            "beta": {"type": "integer"},
+                        },
+                        "required": ["alpha"],
+                    },
+                    "output_schema": {"type": "object", "properties": {"ok": {"type": "boolean"}}},
+                }
+            ],
+            "errors": [{"name": "ValidationError"}],
+            "requires": ["mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"],
+            "compatibility": {"compatible_with": ["cidv1-sha256-prev"], "supersedes": []},
+        }
+
+        expected = {
+            "canonical": canonicalize_descriptor(descriptor).decode("utf-8"),
+            "cid": compute_interface_cid(descriptor),
+        }
+
+        code = (
+            "import json, os;"
+            "from ipfs_accelerate_py.mcp_server.mcplusplus.idl_registry import canonicalize_descriptor, compute_interface_cid;"
+            "descriptor=json.loads(os.environ['IDL_DESCRIPTOR_JSON']);"
+            "print(json.dumps({'canonical': canonicalize_descriptor(descriptor).decode('utf-8'), 'cid': compute_interface_cid(descriptor)}, sort_keys=True))"
+        )
+
+        for hash_seed in ("1", "777"):
+            env = dict(os.environ)
+            env["PYTHONHASHSEED"] = hash_seed
+            env["IDL_DESCRIPTOR_JSON"] = json.dumps(descriptor)
+
+            result = subprocess.run(
+                [sys.executable, "-c", code],
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=True,
+            )
+
+            observed = json.loads(result.stdout.strip())
+            self.assertEqual(observed, expected)
 
     def test_registry_compatibility_missing_requirements(self) -> None:
         registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl"])
@@ -396,6 +453,111 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
                     self.assertEqual(requires, {"mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"})
 
             self.assertEqual(found, {"workflow_tools": True, "p2p_tools": True})
+
+        anyio.run(_run)
+
+    def test_native_idl_tools_cover_all_loaded_migrated_categories_consistently(self) -> None:
+        async def _run() -> None:
+            manager = HierarchicalToolManager(runtime_router=RuntimeRouter())
+
+            async def ipfs_echo(cid: str) -> dict:
+                return {"cid": cid}
+
+            async def workflow_ping(workflow_id: str) -> dict:
+                return {"workflow_id": workflow_id}
+
+            async def p2p_echo(peer_id: str) -> dict:
+                return {"peer_id": peer_id}
+
+            async def dataset_describe(dataset_name: str) -> dict:
+                return {"dataset_name": dataset_name}
+
+            registrations = [
+                (
+                    "ipfs",
+                    "ipfs_echo",
+                    ipfs_echo,
+                    {"cid": {"type": "string"}},
+                    ["cid"],
+                    {"mcp++/profile-a-idl"},
+                    "ipfs/ipfs_echo",
+                    "ipfs_tools",
+                ),
+                (
+                    "workflow",
+                    "workflow_ping",
+                    workflow_ping,
+                    {"workflow_id": {"type": "string"}},
+                    ["workflow_id"],
+                    {"mcp++/profile-a-idl"},
+                    "workflow/workflow_ping",
+                    "workflow_tools",
+                ),
+                (
+                    "p2p",
+                    "p2p_echo",
+                    p2p_echo,
+                    {"peer_id": {"type": "string"}},
+                    ["peer_id"],
+                    {"mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"},
+                    "p2p/p2p_echo",
+                    "p2p_tools",
+                ),
+                (
+                    "dataset",
+                    "dataset_describe",
+                    dataset_describe,
+                    {"dataset_name": {"type": "string"}},
+                    ["dataset_name"],
+                    {"mcp++/profile-a-idl"},
+                    "dataset/dataset_describe",
+                    "dataset_tools",
+                ),
+            ]
+
+            for category, name, func, properties, required, _requires, _method_name, _descriptor_name in registrations:
+                manager.register_tool(
+                    category=category,
+                    name=name,
+                    func=func,
+                    description=f"{category} test tool",
+                    input_schema={
+                        "type": "object",
+                        "properties": properties,
+                        "required": required,
+                    },
+                    runtime="fastapi",
+                )
+
+            register_native_idl_tools(
+                manager,
+                supported_capabilities=[
+                    "mcp++/profile-a-idl",
+                    "mcp++/profile-e-mcp-p2p",
+                ],
+            )
+
+            listed = await manager.dispatch("idl", "interfaces_list", {})
+            self.assertEqual(listed.get("count"), 1 + len(registrations))
+
+            descriptors_by_name = {}
+            for interface_cid in listed.get("interface_cids", []):
+                payload = await manager.dispatch("idl", "interfaces_get", {"interface_cid": interface_cid})
+                descriptor = (payload or {}).get("descriptor") or {}
+                if descriptor.get("name"):
+                    descriptors_by_name[descriptor["name"]] = descriptor
+
+            self.assertIn("interfaces", descriptors_by_name)
+            for _category, _name, _func, _properties, _required, expected_requires, expected_method_name, descriptor_name in registrations:
+                descriptor = descriptors_by_name.get(descriptor_name) or {}
+                self.assertTrue(descriptor, msg=f"missing descriptor for {descriptor_name}")
+                methods = [m for m in descriptor.get("methods", []) if isinstance(m, dict)]
+                method_names = {m.get("name") for m in methods}
+                self.assertEqual(method_names, {expected_method_name})
+                self.assertEqual(set(descriptor.get("requires", [])), expected_requires)
+
+                verdict = await manager.dispatch("idl", "interfaces_compat", {"interface_cid": descriptor.get("interface_cid")})
+                self.assertTrue(verdict.get("compatible"), msg=f"unexpected incompatibility for {descriptor_name}: {verdict}")
 
         anyio.run(_run)
 

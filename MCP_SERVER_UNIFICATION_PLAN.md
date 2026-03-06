@@ -405,6 +405,7 @@ Next plan:
 Recent execution (2026-03-06):
 
 1. Added explicit profile capability snapshot regression coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to lock the canonical supported-profile list and normalized negotiation payload across bootstrap attachments, runtime context, and context snapshots.
+2. Added HTTP transport process-level coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py` to verify mounted standalone apps preserve the same additive unified profile negotiation metadata exposed by the canonical bootstrap.
 
 ### 6.2 Transport (`transport-mcp-p2p`)
 
@@ -431,6 +432,10 @@ Next plan:
 1. Ensure descriptor generation covers all loaded migrated categories consistently.
 2. Add canonicalization hash stability tests across Python/runtime environments.
 3. Add compatibility algorithm regression corpus (`interfaces/compat`).
+
+Recent execution (2026-03-06):
+
+1. Added descriptor-generation coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` to verify all loaded migrated categories registered in the manager produce consistent MCP-IDL descriptors with deterministic names, method surfaces, and capability requirements.
 
 ### 6.4 CID Artifacts (`cid-native-artifacts`)
 
@@ -898,22 +903,45 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 
 4. `SPEC-204` UCAN Verification Vector Expansion
    - Chapter: `ucan-delegation.md`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py`
+      - Targeted run result: `20 passed`.
    - Acceptance: expanded signature/caveat/proof-link vectors and deny/allow telemetry checks.
 
 5. `SPEC-205` Temporal Policy Lifecycle Hardening
    - Chapter: `temporal-deontic-policy.md`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py`
+      - Combined targeted SPEC-205/SPEC-206/SPEC-207 run result: `20 passed`.
    - Acceptance: obligation/deadline/version migration tests and transport parity assertions.
 
 6. `SPEC-206` Event DAG Scale and Conflict Scenarios
    - Chapter: `event-dag-ordering.md`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py`
+      - Combined targeted SPEC-205/SPEC-206/SPEC-207 run result: `20 passed`.
    - Acceptance: large-DAG replay/rollback and fork/conflict handling tests.
 
 7. `SPEC-207` Risk Frontier + Consensus Enhancements
    - Chapter: `risk-scheduling.md`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py`
+      - Combined targeted SPEC-205/SPEC-206/SPEC-207 run result: `20 passed`.
    - Acceptance: load/retry frontier binding tests and optional consensus signal integration tests.
 
 8. `SPEC-208` mcp+p2p Mixed-Version Interop Matrix
    - Chapter: `transport-mcp-p2p.md`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_p2p_framing_limits.py`
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py`
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_client_limits.py`
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py`
+      - Targeted run result: `37 passed`.
    - Acceptance: mixed-version interop and abuse-resistance matrix incorporated into CI evidence.
 
 ### Issue Lifecycle Rules

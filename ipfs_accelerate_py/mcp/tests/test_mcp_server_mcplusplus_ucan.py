@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
-import unittest
 import base64
 import json
+import os
+import unittest
+from unittest.mock import patch
+
+import anyio
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
@@ -19,6 +23,7 @@ from ipfs_accelerate_py.mcp_server.mcplusplus.delegation import (
     validate_delegation_chain,
     validate_raw_delegation_chain,
 )
+from ipfs_accelerate_py.mcp.server import create_mcp_server
 
 
 _B58_ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz"
@@ -47,6 +52,32 @@ def _base58btc_encode(raw: bytes) -> str:
 
 class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
     """Validate Profile C execution-time authorization checks."""
+
+    def _create_unified_server(self, *, name: str):
+        class _DummyServer:
+            def __init__(self) -> None:
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        with patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", return_value=_DummyServer()):
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ):
+                return create_mcp_server(name=name)
 
     def test_allows_valid_chain_for_leaf_actor_and_capability(self) -> None:
         raw_chain = [
@@ -656,6 +687,45 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
         )
         self.assertTrue(result.allowed)
         self.assertEqual(result.reason, "allowed")
+
+    def test_dispatch_combined_ucan_and_policy_denial_prefers_ucan(self) -> None:
+        server = self._create_unified_server(name="ucan-policy-combined-deny")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_ucan": True,
+                    "__ucan_actor": "did:model:worker",
+                    "__ucan_proof_chain": [],
+                    "__enforce_policy": True,
+                    "__policy_actor": "did:model:worker",
+                    "__policy_clauses": [
+                        {
+                            "clause_type": "prohibition",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                        }
+                    ],
+                },
+            )
+
+            self.assertFalse(response.get("ok"))
+            self.assertEqual(response.get("error"), "authorization_denied")
+            self.assertEqual(((response.get("authorization") or {}).get("scheme")), "ucan")
+            self.assertEqual(((response.get("authorization") or {}).get("reason")), "missing_delegation_chain")
+            self.assertNotIn("policy", response)
+            self.assertNotIn("policy_decision", response)
+
+        anyio.run(_run_flow)
 
 
 if __name__ == "__main__":

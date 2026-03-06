@@ -9,6 +9,11 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def _compat_subset(payload: Dict[str, Any], keys: tuple[str, ...]) -> Dict[str, Any]:
+    """Build a compact compatibility payload from selected keys."""
+    return {key: payload[key] for key in keys if key in payload}
+
+
 def _load_auth_api() -> Dict[str, Any]:
     """Resolve source auth APIs with compatibility fallback."""
     try:
@@ -134,6 +139,15 @@ async def authenticate_user(
     payload = dict(result or {})
     if payload.get("status") == "success" and remember_me and isinstance(payload.get("expires_in"), int):
         payload["expires_in"] = 86400 * 7
+    if payload.get("status") == "success":
+        payload.setdefault("message", "Authentication successful")
+        payload.setdefault(
+            "authentication",
+            _compat_subset(
+                payload,
+                ("username", "access_token", "token_type", "role", "expires_in", "refresh_token"),
+            ),
+        )
     payload.setdefault("remember_me", remember_me)
     return payload
 
@@ -186,6 +200,38 @@ async def validate_token(
     payload = dict(result or {})
     payload.setdefault("strict", strict)
 
+    if payload.get("status") == "success":
+        if normalized_action == "refresh":
+            payload.setdefault("message", "Token refreshed successfully")
+            payload.setdefault(
+                "refresh_result",
+                _compat_subset(payload, ("access_token", "refresh_token", "expires_in", "token_type")),
+            )
+        elif normalized_action == "decode":
+            payload.setdefault("message", "Token decoded successfully")
+            payload.setdefault(
+                "decoded_token",
+                _compat_subset(payload, ("user_id", "username", "exp", "iat", "permissions", "role")),
+            )
+        else:
+            payload.setdefault("message", "Token is valid")
+            payload.setdefault(
+                "validation_result",
+                _compat_subset(
+                    payload,
+                    (
+                        "valid",
+                        "username",
+                        "role",
+                        "permissions",
+                        "expires_at",
+                        "expires_in",
+                        "time_remaining",
+                        "has_required_permission",
+                    ),
+                ),
+            )
+
     if strict and payload.get("status") == "success" and normalized_action == "validate":
         warnings = []
         if required_permission and payload.get("has_required_permission") is False:
@@ -216,6 +262,7 @@ async def get_user_info(
     result = await _API["get_user_info"](token=normalized_token)
     payload = dict(result or {})
     if payload.get("status") == "success":
+        payload.setdefault("message", "User information retrieved successfully")
         user_info: Dict[str, Any] = {
             "username": payload.get("username"),
             "role": payload.get("role"),

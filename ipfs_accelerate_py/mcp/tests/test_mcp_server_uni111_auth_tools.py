@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -108,6 +109,91 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             strict_validation = await validate_token(token="dummy", strict=True)
             self.assertIn(strict_validation.get("status"), ["success", "error"])
             self.assertEqual(strict_validation.get("strict"), True)
+
+        anyio.run(_run)
+
+    def test_authenticate_user_sets_enhanced_authentication_payload(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools._API"
+            ) as mock_api:
+                async def _authenticate(**kwargs):
+                    self.assertEqual(kwargs["username"], "demo")
+                    self.assertEqual(kwargs["password"], "pw")
+                    return {
+                        "status": "success",
+                        "username": "demo",
+                        "access_token": "token-123",
+                        "token_type": "bearer",
+                        "role": "user",
+                        "expires_in": 3600,
+                    }
+
+                mock_api.__getitem__.side_effect = {
+                    "authenticate_user": _authenticate,
+                    "validate_token": None,
+                    "get_user_info": None,
+                }.__getitem__
+
+                result = await authenticate_user(username="demo", password="pw", remember_me=True)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("expires_in"), 86400 * 7)
+            self.assertEqual(result.get("message"), "Authentication successful")
+            self.assertEqual((result.get("authentication") or {}).get("access_token"), "token-123")
+            self.assertEqual((result.get("authentication") or {}).get("expires_in"), 86400 * 7)
+
+        anyio.run(_run)
+
+    def test_validate_token_sets_enhanced_nested_payloads(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools._API"
+            ) as mock_api:
+                async def _validate(**kwargs):
+                    action = kwargs["action"]
+                    if action == "refresh":
+                        return {
+                            "status": "success",
+                            "access_token": "new-token",
+                            "refresh_token": "refresh-token",
+                            "expires_in": 3600,
+                            "token_type": "bearer",
+                        }
+                    if action == "decode":
+                        return {
+                            "status": "success",
+                            "user_id": "user-1",
+                            "username": "demo",
+                            "exp": 12345,
+                            "role": "admin",
+                        }
+                    return {
+                        "status": "success",
+                        "valid": True,
+                        "username": "demo",
+                        "role": "admin",
+                        "permissions": ["manage"],
+                        "expires_in": 7200,
+                        "has_required_permission": True,
+                    }
+
+                mock_api.__getitem__.side_effect = {
+                    "authenticate_user": None,
+                    "validate_token": _validate,
+                    "get_user_info": None,
+                }.__getitem__
+
+                refreshed = await validate_token(token="tok", action="refresh")
+                decoded = await validate_token(token="tok", action="decode")
+                validated = await validate_token(token="tok", required_permission="manage", strict=True)
+
+            self.assertEqual((refreshed.get("refresh_result") or {}).get("access_token"), "new-token")
+            self.assertEqual(decoded.get("message"), "Token decoded successfully")
+            self.assertEqual((decoded.get("decoded_token") or {}).get("user_id"), "user-1")
+            self.assertEqual((validated.get("validation_result") or {}).get("username"), "demo")
+            self.assertEqual((validated.get("validation_result") or {}).get("has_required_permission"), True)
+            self.assertEqual(validated.get("strict"), True)
 
         anyio.run(_run)
 

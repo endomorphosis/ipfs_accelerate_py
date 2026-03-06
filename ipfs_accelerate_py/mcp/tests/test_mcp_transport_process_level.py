@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Process-level transport helper tests for MCP integration module."""
 
+import os
 import types
 import unittest
 from unittest.mock import MagicMock, patch
@@ -11,6 +12,17 @@ from ipfs_accelerate_py.mcp.integration import create_standalone_app, run_standa
 class _DummyServer:
     def __init__(self):
         self.app = object()
+        self.tools = {}
+        self.mcp = None
+
+    def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+        self.tools[name] = {
+            "function": function,
+            "description": description,
+            "input_schema": input_schema,
+            "execution_context": execution_context,
+            "tags": tags,
+        }
 
 
 class TestMCPTransportProcessLevel(unittest.TestCase):
@@ -37,6 +49,42 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
         self.assertTrue(hasattr(app, "mounts"))
         self.assertEqual(app.mounts[0]["path"], "/mcp")
         self.assertEqual(app.mounts[0]["name"], "mcp_server")
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", side_effect=lambda *args, **kwargs: _DummyServer())
+    def test_create_standalone_app_preserves_additive_profile_metadata(self, _mock_wrapper: MagicMock) -> None:
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            app = create_standalone_app(mount_path="/mcp", name="demo", description="demo server")
+
+        mounted_server = getattr(app, "_mcp_server")
+        expected_profiles = [
+            "mcp++/profile-a-idl",
+            "mcp++/profile-b-cid-artifacts",
+            "mcp++/profile-c-ucan",
+            "mcp++/profile-d-temporal-policy",
+            "mcp++/profile-e-mcp-p2p",
+        ]
+
+        self.assertEqual(getattr(mounted_server, "_unified_supported_profiles", []), expected_profiles)
+        self.assertEqual(
+            getattr(mounted_server, "_unified_profile_negotiation", {}).get("profiles"),
+            expected_profiles,
+        )
+        self.assertTrue(getattr(mounted_server, "_unified_profile_negotiation", {}).get("supports_profile_negotiation"))
+        self.assertEqual(
+            getattr(mounted_server, "_unified_profile_negotiation", {}).get("mode"),
+            "optional_additive",
+        )
+        self.assertEqual(
+            (getattr(mounted_server, "_unified_server_context_snapshot", {}) or {}).get("profile_negotiation"),
+            getattr(mounted_server, "_unified_profile_negotiation", {}),
+        )
 
     def test_run_standalone_app_invokes_uvicorn(self) -> None:
         mock_run = MagicMock()

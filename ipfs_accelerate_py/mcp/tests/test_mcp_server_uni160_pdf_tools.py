@@ -52,6 +52,36 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
         self.assertEqual(batch_props["batch_size"].get("minimum"), 1)
         self.assertEqual(batch_props["parallel_workers"].get("minimum"), 1)
 
+    def test_pdf_ingest_to_graphrag_validation_and_exception_envelope(self) -> None:
+        async def _run() -> None:
+            invalid_source = await pdf_tools.pdf_ingest_to_graphrag(None)
+            self.assertEqual(invalid_source.get("status"), "error")
+            self.assertIn("pdf_source must be provided", str(invalid_source.get("error", "")))
+
+            invalid_dict = await pdf_tools.pdf_ingest_to_graphrag({"metadata": {"title": "doc"}})
+            self.assertEqual(invalid_dict.get("status"), "error")
+            self.assertIn("pdf_source object must include", str(invalid_dict.get("error", "")))
+
+            invalid_metadata = await pdf_tools.pdf_ingest_to_graphrag(
+                "file.pdf",
+                metadata=["bad"],
+            )
+            self.assertEqual(invalid_metadata.get("status"), "error")
+            self.assertIn("metadata must be an object", str(invalid_metadata.get("error", "")))
+
+            with patch.dict(
+                pdf_tools._API,
+                {
+                    "pdf_ingest_to_graphrag": lambda **_: (_ for _ in ()).throw(RuntimeError("ingest backend exploded")),
+                },
+                clear=False,
+            ):
+                wrapped = await pdf_tools.pdf_ingest_to_graphrag("file.pdf")
+            self.assertEqual(wrapped.get("status"), "error")
+            self.assertIn("pdf_ingest_to_graphrag failed", str(wrapped.get("error", "")))
+
+        anyio.run(_run)
+
     def test_pdf_analyze_relationships_validation_and_exception_envelope(self) -> None:
         async def _run() -> None:
             invalid_document = await pdf_tools.pdf_analyze_relationships("")

@@ -16,6 +16,7 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             pdf_batch_process as _pdf_batch_process,
             pdf_cross_document_analysis as _pdf_cross_document_analysis,
             pdf_extract_entities as _pdf_extract_entities,
+            pdf_ingest_to_graphrag as _pdf_ingest_to_graphrag,
             pdf_optimize_for_llm as _pdf_optimize_for_llm,
             pdf_query_corpus as _pdf_query_corpus,
             pdf_query_knowledge_graph as _pdf_query_knowledge_graph,
@@ -25,6 +26,7 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             "pdf_analyze_relationships": _pdf_analyze_relationships,
             "pdf_query_corpus": _pdf_query_corpus,
             "pdf_extract_entities": _pdf_extract_entities,
+            "pdf_ingest_to_graphrag": _pdf_ingest_to_graphrag,
             "pdf_batch_process": _pdf_batch_process,
             "pdf_cross_document_analysis": _pdf_cross_document_analysis,
             "pdf_optimize_for_llm": _pdf_optimize_for_llm,
@@ -96,6 +98,33 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
                 "message": "PDF entity extraction backend unavailable",
             }
 
+        async def _ingest_fallback(
+            pdf_source: Union[str, Dict[str, Any], None] = None,
+            collection_name: str = "default",
+            metadata: Optional[Dict[str, Any]] = None,
+            chunk_strategy: str = "semantic",
+            max_chunk_size: int = 4000,
+            overlap_size: int = 200,
+            extract_entities: bool = True,
+            build_knowledge_graph: bool = True,
+            store_embeddings: bool = True,
+        ) -> Dict[str, Any]:
+            _ = (
+                collection_name,
+                metadata,
+                chunk_strategy,
+                max_chunk_size,
+                overlap_size,
+                extract_entities,
+                build_knowledge_graph,
+                store_embeddings,
+            )
+            return {
+                "status": "error",
+                "pdf_source": pdf_source,
+                "message": "PDF GraphRAG ingestion backend unavailable",
+            }
+
         async def _batch_fallback(
             pdf_sources: Optional[List[Union[str, Dict[str, Any]]]] = None,
             batch_size: int = 5,
@@ -159,6 +188,7 @@ def _load_pdf_tools_api() -> Dict[str, Any]:
             "pdf_analyze_relationships": _relationships_fallback,
             "pdf_query_corpus": _query_fallback,
             "pdf_extract_entities": _extract_fallback,
+            "pdf_ingest_to_graphrag": _ingest_fallback,
             "pdf_batch_process": _batch_fallback,
             "pdf_cross_document_analysis": _cross_document_fallback,
             "pdf_optimize_for_llm": _optimize_fallback,
@@ -398,6 +428,67 @@ async def pdf_batch_process(
     return normalized
 
 
+async def pdf_ingest_to_graphrag(
+    pdf_source: Union[str, Dict[str, Any], None] = None,
+    collection_name: str = "default",
+    metadata: Optional[Dict[str, Any]] = None,
+    chunk_strategy: str = "semantic",
+    max_chunk_size: int = 4000,
+    overlap_size: int = 200,
+    extract_entities: bool = True,
+    build_knowledge_graph: bool = True,
+    store_embeddings: bool = True,
+) -> Dict[str, Any]:
+    """Ingest a PDF into the GraphRAG pipeline with normalized validation."""
+    if pdf_source is None:
+        return _error_result("pdf_source must be provided")
+    if isinstance(pdf_source, str) and not pdf_source.strip():
+        return _error_result("pdf_source must be a non-empty string when provided as a string")
+    if not isinstance(pdf_source, (str, dict)):
+        return _error_result("pdf_source must be a string or object")
+    if isinstance(pdf_source, dict) and not any(key in pdf_source for key in ("path", "url", "cid", "content")):
+        return _error_result("pdf_source object must include at least one of: path, url, cid, content")
+    if not isinstance(collection_name, str) or not collection_name.strip():
+        return _error_result("collection_name must be a non-empty string")
+    if metadata is not None and not isinstance(metadata, dict):
+        return _error_result("metadata must be an object when provided")
+    if not isinstance(chunk_strategy, str) or not chunk_strategy.strip():
+        return _error_result("chunk_strategy must be a non-empty string")
+    if not isinstance(max_chunk_size, int) or max_chunk_size < 1:
+        return _error_result("max_chunk_size must be an integer greater than or equal to 1")
+    if not isinstance(overlap_size, int) or overlap_size < 0:
+        return _error_result("overlap_size must be an integer greater than or equal to 0")
+    if overlap_size > max_chunk_size:
+        return _error_result("overlap_size must be less than or equal to max_chunk_size")
+    if not isinstance(extract_entities, bool):
+        return _error_result("extract_entities must be a boolean")
+    if not isinstance(build_knowledge_graph, bool):
+        return _error_result("build_knowledge_graph must be a boolean")
+    if not isinstance(store_embeddings, bool):
+        return _error_result("store_embeddings must be a boolean")
+
+    try:
+        payload = await _await_maybe(
+            _API["pdf_ingest_to_graphrag"](
+                pdf_source=pdf_source,
+                collection_name=collection_name.strip(),
+                metadata=metadata,
+                chunk_strategy=chunk_strategy.strip(),
+                max_chunk_size=max_chunk_size,
+                overlap_size=overlap_size,
+                extract_entities=extract_entities,
+                build_knowledge_graph=build_knowledge_graph,
+                store_embeddings=store_embeddings,
+            )
+        )
+    except Exception as exc:
+        return _error_result(f"pdf_ingest_to_graphrag failed: {exc}")
+
+    normalized = dict(payload or {})
+    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    return normalized
+
+
 async def pdf_cross_document_analysis(
     document_ids: Optional[List[str]] = None,
     analysis_types: Optional[List[str]] = None,
@@ -554,6 +645,38 @@ async def pdf_query_knowledge_graph(
 
 def register_native_pdf_tools(manager: Any) -> None:
     """Register native pdf-tools category tools in unified manager."""
+    manager.register_tool(
+        category="pdf_tools",
+        name="pdf_ingest_to_graphrag",
+        func=pdf_ingest_to_graphrag,
+        description="Ingest a PDF into the GraphRAG processing pipeline.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "pdf_source": {
+                    "type": ["string", "object", "null"],
+                    "properties": {
+                        "path": {"type": "string", "minLength": 1},
+                        "url": {"type": "string", "minLength": 1},
+                        "cid": {"type": "string", "minLength": 1},
+                        "content": {"type": "string", "minLength": 1}
+                    },
+                    "additionalProperties": True
+                },
+                "collection_name": {"type": "string", "minLength": 1, "default": "default"},
+                "metadata": {"type": ["object", "null"]},
+                "chunk_strategy": {"type": "string", "minLength": 1, "default": "semantic"},
+                "max_chunk_size": {"type": "integer", "minimum": 1, "default": 4000},
+                "overlap_size": {"type": "integer", "minimum": 0, "default": 200},
+                "extract_entities": {"type": "boolean", "default": True},
+                "build_knowledge_graph": {"type": "boolean", "default": True},
+                "store_embeddings": {"type": "boolean", "default": True}
+            },
+            "required": []
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "pdf-tools"],
+    )
     manager.register_tool(
         category="pdf_tools",
         name="pdf_analyze_relationships",
