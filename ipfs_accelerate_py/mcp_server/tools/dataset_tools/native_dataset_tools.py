@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Any, Dict, List, Optional
 
@@ -171,6 +172,52 @@ def _load_dataset_api() -> Dict[str, Any]:
 _API = _load_dataset_api()
 
 
+def _mcp_text_response(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Build MCP text envelope used by legacy JSON-string call paths."""
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(payload),
+            }
+        ]
+    }
+
+
+def _mcp_error_response(message: str, *, error_type: str = "error") -> Dict[str, Any]:
+    return _mcp_text_response(
+        {
+            "status": "error",
+            "error": message,
+            "error_type": error_type,
+        }
+    )
+
+
+def _parse_json_object(request_json: Any) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Parse JSON-string object payload for source-compatible MCP entrypoints."""
+    if not isinstance(request_json, str):
+        return None, _mcp_error_response("Input must be a JSON string")
+
+    if not request_json.strip():
+        return None, _mcp_error_response("Input JSON is empty", error_type="validation")
+
+    try:
+        decoded = json.loads(request_json)
+    except json.JSONDecodeError as exc:
+        return None, _mcp_error_response(f"Invalid JSON: {exc.msg}", error_type="validation")
+
+    if not isinstance(decoded, dict):
+        return None, _mcp_error_response("Input JSON must be an object", error_type="validation")
+
+    return decoded, None
+
+
+def _looks_like_json_object_input(value: Any) -> bool:
+    """Gate JSON-string entrypoints without breaking plain string calls."""
+    return isinstance(value, str) and bool(value.strip()) and value.lstrip()[:1] in {"{", "["}
+
+
 def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     """Return a normalized error envelope for deterministic dispatch behavior."""
     payload: Dict[str, Any] = {"status": "error", "error": message, "message": message}
@@ -191,6 +238,20 @@ async def load_dataset(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Load a dataset from a source identifier."""
+    if _looks_like_json_object_input(source) and format is None and options is None:
+        data, error = _parse_json_object(source)
+        if error is not None:
+            return error
+        if not data.get("source"):
+            return _mcp_error_response("Missing required field: source", error_type="validation")
+
+        payload = await load_dataset(
+            source=str(data["source"]),
+            format=data.get("format"),
+            options=data.get("options"),
+        )
+        return _mcp_text_response(payload)
+
     normalized_source = str(source or "").strip()
     normalized_format = None if format is None else str(format).strip()
     if not normalized_source:
@@ -223,6 +284,23 @@ async def save_dataset(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Save a dataset to a target destination and format."""
+    if _looks_like_json_object_input(dataset_data) and destination is None and format is None and options is None:
+        data, error = _parse_json_object(dataset_data)
+        if error is not None:
+            return error
+        if "destination" not in data:
+            return _mcp_error_response("Missing required field: destination", error_type="validation")
+        if "dataset_data" not in data:
+            return _mcp_error_response("Missing required field: dataset_data", error_type="validation")
+
+        payload = await save_dataset(
+            dataset_data=data["dataset_data"],
+            destination=data.get("destination"),
+            format=data.get("format"),
+            options=data.get("options"),
+        )
+        return _mcp_text_response(payload)
+
     if isinstance(dataset_data, str) and not dataset_data.strip():
         return _error_result("dataset_data must be non-empty when provided as a string")
     if not isinstance(dataset_data, (str, dict)):
@@ -260,6 +338,20 @@ async def process_dataset(
     output_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Process a dataset using a list of transformation operations."""
+    if _looks_like_json_object_input(dataset_source) and operations is None and output_id is None:
+        data, error = _parse_json_object(dataset_source)
+        if error is not None:
+            return error
+        if "dataset_source" not in data or "operations" not in data:
+            return _mcp_error_response("Missing required fields", error_type="validation")
+
+        payload = await process_dataset(
+            dataset_source=data["dataset_source"],
+            operations=data["operations"],
+            output_id=data.get("output_id"),
+        )
+        return _mcp_text_response(payload)
+
     if isinstance(dataset_source, str) and not dataset_source.strip():
         return _error_result("dataset_source must be non-empty when provided as a string")
     if operations is not None and (
@@ -294,6 +386,23 @@ async def convert_dataset_format(
     options: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Convert an existing dataset into a target format."""
+    if _looks_like_json_object_input(dataset_id) and target_format is None and output_path is None and options is None:
+        data, error = _parse_json_object(dataset_id)
+        if error is not None:
+            return error
+        if "dataset_id" not in data:
+            return _mcp_error_response("Missing required field: dataset_id", error_type="validation")
+        if "target_format" not in data:
+            return _mcp_error_response("Missing required field: target_format", error_type="validation")
+
+        payload = await convert_dataset_format(
+            dataset_id=str(data["dataset_id"]),
+            target_format=data.get("target_format"),
+            output_path=data.get("output_path"),
+            options=data.get("options"),
+        )
+        return _mcp_text_response(payload)
+
     normalized_dataset_id = str(dataset_id or "").strip()
     normalized_target_format = None if target_format is None else str(target_format).strip()
     normalized_output_path = None if output_path is None else str(output_path).strip()

@@ -2,9 +2,51 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any, Dict, List, Optional
 
 _VALID_PERMISSION_TYPES = {"read", "write", "delete", "share", "admin", "execute"}
+
+
+def _mcp_text_response(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Build MCP text envelope used by legacy JSON-string call paths."""
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": json.dumps(payload),
+            }
+        ]
+    }
+
+
+def _mcp_error_response(message: str, *, error_type: str = "error") -> Dict[str, Any]:
+    return _mcp_text_response(
+        {
+            "status": "error",
+            "error": message,
+            "error_type": error_type,
+        }
+    )
+
+
+def _parse_json_object(request_json: Any) -> tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+    """Parse JSON-string object payload for source-compatible MCP entrypoints."""
+    if not isinstance(request_json, str):
+        return None, _mcp_error_response("Input must be a JSON string")
+
+    if not request_json.strip():
+        return None, _mcp_error_response("Input JSON is empty", error_type="validation")
+
+    try:
+        decoded = json.loads(request_json)
+    except json.JSONDecodeError as exc:
+        return None, _mcp_error_response(f"Invalid JSON: {exc.msg}", error_type="validation")
+
+    if not isinstance(decoded, dict):
+        return None, _mcp_error_response("Input JSON must be an object", error_type="validation")
+
+    return decoded, None
 
 
 def _load_check_access_permission() -> Any:
@@ -46,6 +88,28 @@ async def check_access_permission(
     resource_type: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Check whether a user has access permission to a resource."""
+    if isinstance(resource_id, str) and user_id is None and (
+        not resource_id.strip()
+        or resource_id.lstrip().startswith("{")
+        or resource_id.lstrip().startswith("[")
+        or any(ch.isspace() for ch in resource_id)
+    ):
+        data, error = _parse_json_object(resource_id)
+        if error is not None:
+            return error
+
+        for field in ("resource_id", "user_id"):
+            if not data.get(field):
+                return _mcp_error_response(f"Missing required field: {field}", error_type="validation")
+
+        payload = await check_access_permission(
+            resource_id=str(data["resource_id"]),
+            user_id=str(data["user_id"]),
+            permission_type=str(data.get("permission_type", "read")),
+            resource_type=data.get("resource_type"),
+        )
+        return _mcp_text_response(payload)
+
     normalized_resource_id = str(resource_id or "").strip()
     normalized_user_id = str(user_id or "").strip()
     normalized_permission_type = str(permission_type or "read").strip().lower() or "read"

@@ -14,6 +14,7 @@ from ipfs_accelerate_py.mcp_server.tools.workflow_tools.native_workflow_tools_ca
     enhanced_batch_processing,
     enhanced_data_pipeline,
     enhanced_workflow_management,
+    get_workflow_tags,
     merge_merkle_clock,
     register_native_workflow_tools_category,
     resume_workflow,
@@ -162,6 +163,21 @@ class TestMCPServerUNI134WorkflowTools(unittest.TestCase):
             self.assertEqual(result.get("other_counter"), 3)
             self.assertEqual(result.get("other_parent_hash"), "h1")
             self.assertEqual(result.get("other_timestamp"), 123.0)
+
+        anyio.run(_run)
+
+    def test_get_workflow_tags_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.workflow_tools.native_workflow_tools_category._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda: {"success": True}
+
+                result = await get_workflow_tags()
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("tags"), [])
 
         anyio.run(_run)
 

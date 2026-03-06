@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from unittest.mock import patch
 
@@ -77,6 +78,45 @@ class TestMCPServerUNI101SecurityTools(unittest.TestCase):
                 self.assertEqual(result.get("resource_id"), "abc")
                 self.assertEqual(result.get("user_id"), "user-1")
                 self.assertEqual(result.get("permission_type"), "read")
+
+        anyio.run(_run)
+
+    def test_check_access_permission_supports_json_string_entrypoint(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
+            ) as mock_impl:
+                async def _impl(**kwargs):
+                    return {"status": "success", "allowed": True, **kwargs}
+
+                mock_impl.side_effect = _impl
+
+                result = await check_access_permission(
+                    json.dumps(
+                        {
+                            "resource_id": "resource-1",
+                            "user_id": "user-1",
+                            "permission_type": "write",
+                            "resource_type": "dataset",
+                        }
+                    )
+                )
+
+            payload = json.loads(result["content"][0]["text"])
+            self.assertEqual(payload.get("status"), "success")
+            self.assertEqual(payload.get("allowed"), True)
+            self.assertEqual(payload.get("resource_id"), "resource-1")
+            self.assertEqual(payload.get("user_id"), "user-1")
+            self.assertEqual(payload.get("permission_type"), "write")
+
+        anyio.run(_run)
+
+    def test_check_access_permission_json_string_requires_fields(self) -> None:
+        async def _run() -> None:
+            result = await check_access_permission(json.dumps({"resource_id": "resource-1"}))
+            payload = json.loads(result["content"][0]["text"])
+            self.assertEqual(payload.get("status"), "error")
+            self.assertIn("Missing required field: user_id", str(payload.get("error", "")))
 
         anyio.run(_run)
 

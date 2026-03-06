@@ -5,6 +5,14 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional
 
+from ipfs_accelerate_py.mcp_server.tools.workflow_tools.native_workflow_tools_category import (
+    add_p2p_peer,
+    calculate_peer_distance,
+    get_workflow_tags,
+    merge_merkle_clock,
+    remove_p2p_peer,
+)
+
 logger = logging.getLogger(__name__)
 
 
@@ -12,6 +20,21 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"status": "error", "message": message}
     payload.update(extra)
     return payload
+
+
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic status envelopes."""
+    if isinstance(payload, dict):
+        normalized = dict(payload)
+        if "status" not in normalized:
+            if normalized.get("error") or normalized.get("success") is False:
+                normalized["status"] = "error"
+            else:
+                normalized["status"] = "success"
+        return normalized
+    if payload is None:
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _load_p2p_workflow_api() -> Dict[str, Any]:
@@ -100,7 +123,7 @@ _API = _load_p2p_workflow_api()
 
 
 def _normalize_status_envelope(payload: Any) -> Dict[str, Any]:
-    normalized = dict(payload or {})
+    normalized = _normalize_payload(payload)
     status_value = normalized.get("status")
     if not isinstance(status_value, str):
         if status_value is not None:
@@ -123,9 +146,19 @@ async def initialize_p2p_scheduler(
             "peers": peers,
         }
 
-    result = _API["initialize_p2p_scheduler"](peer_id=peer_id, peers=peers)
-    payload = await result if hasattr(result, "__await__") else result
-    return _normalize_status_envelope(payload)
+    try:
+        result = _API["initialize_p2p_scheduler"](peer_id=peer_id, peers=peers)
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"initialize_p2p_scheduler failed: {exc}", peer_id=peer_id, peers=peers)
+
+    normalized = _normalize_status_envelope(payload)
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
+        normalized.setdefault("status", {})
+        if isinstance(normalized.get("status"), str):
+            normalized.setdefault("scheduler_status", {})
+    return normalized
 
 
 async def schedule_p2p_workflow(
@@ -157,38 +190,79 @@ async def schedule_p2p_workflow(
             "metadata": metadata,
         }
 
-    result = _API["schedule_p2p_workflow"](
-        workflow_id=normalized_workflow_id,
-        name=normalized_name,
-        tags=tags,
-        priority=normalized_priority,
-        metadata=metadata,
-    )
-    payload = await result if hasattr(result, "__await__") else result
+    try:
+        result = _API["schedule_p2p_workflow"](
+            workflow_id=normalized_workflow_id,
+            name=normalized_name,
+            tags=tags,
+            priority=normalized_priority,
+            metadata=metadata,
+        )
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(
+            f"schedule_p2p_workflow failed: {exc}",
+            workflow_id=normalized_workflow_id,
+            name=normalized_name,
+            tags=tags,
+            priority=normalized_priority,
+        )
+
     normalized = _normalize_status_envelope(payload)
     normalized.setdefault("workflow_id", normalized_workflow_id)
+    normalized.setdefault("name", normalized_name)
+    normalized.setdefault("tags", tags)
+    normalized.setdefault("priority", normalized_priority)
+    normalized.setdefault("metadata", metadata or {})
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
     return normalized
 
 
 async def get_next_p2p_workflow() -> Dict[str, Any]:
     """Get the next workflow from the scheduler queue."""
-    result = _API["get_next_p2p_workflow"]()
-    payload = await result if hasattr(result, "__await__") else result
-    return _normalize_status_envelope(payload)
+    try:
+        result = _API["get_next_p2p_workflow"]()
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"get_next_p2p_workflow failed: {exc}")
+
+    normalized = _normalize_status_envelope(payload)
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
+        normalized.setdefault("workflow", None)
+    return normalized
 
 
 async def get_p2p_scheduler_status() -> Dict[str, Any]:
     """Get current P2P scheduler status."""
-    result = _API["get_p2p_scheduler_status"]()
-    payload = await result if hasattr(result, "__await__") else result
-    return _normalize_status_envelope(payload)
+    try:
+        result = _API["get_p2p_scheduler_status"]()
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"get_p2p_scheduler_status failed: {exc}")
+
+    normalized = _normalize_status_envelope(payload)
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
+        normalized.setdefault("details", {})
+    return normalized
 
 
 async def get_assigned_workflows() -> Dict[str, Any]:
     """Get workflows currently assigned to this peer."""
-    result = _API["get_assigned_workflows"]()
-    payload = await result if hasattr(result, "__await__") else result
-    return _normalize_status_envelope(payload)
+    try:
+        result = _API["get_assigned_workflows"]()
+        payload = await result if hasattr(result, "__await__") else result
+    except Exception as exc:
+        return _error_result(f"get_assigned_workflows failed: {exc}")
+
+    normalized = _normalize_status_envelope(payload)
+    if normalized.get("status") == "success":
+        normalized.setdefault("success", True)
+        normalized.setdefault("assigned_workflows", [])
+        normalized.setdefault("count", len(normalized.get("assigned_workflows") or []))
+    return normalized
 
 
 def register_native_p2p_workflow_tools(manager: Any) -> None:
@@ -256,6 +330,84 @@ def register_native_p2p_workflow_tools(manager: Any) -> None:
         func=get_assigned_workflows,
         description="Get workflows assigned to this peer.",
         input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "p2p-workflow"],
+    )
+
+    manager.register_tool(
+        category="p2p_workflow_tools",
+        name="get_workflow_tags",
+        func=get_workflow_tags,
+        description="List available workflow tags for P2P scheduling.",
+        input_schema={"type": "object", "properties": {}, "required": []},
+        runtime="fastapi",
+        tags=["native", "mcpp", "p2p-workflow"],
+    )
+
+    manager.register_tool(
+        category="p2p_workflow_tools",
+        name="add_p2p_peer",
+        func=add_p2p_peer,
+        description="Add a peer to P2P scheduler membership.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "peer_id": {"type": "string", "minLength": 1},
+            },
+            "required": ["peer_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "p2p-workflow"],
+    )
+
+    manager.register_tool(
+        category="p2p_workflow_tools",
+        name="remove_p2p_peer",
+        func=remove_p2p_peer,
+        description="Remove a peer from P2P scheduler membership.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "peer_id": {"type": "string", "minLength": 1},
+            },
+            "required": ["peer_id"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "p2p-workflow"],
+    )
+
+    manager.register_tool(
+        category="p2p_workflow_tools",
+        name="calculate_peer_distance",
+        func=calculate_peer_distance,
+        description="Calculate hamming distance between two peer hashes.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "hash1": {"type": "string", "minLength": 1},
+                "hash2": {"type": "string", "minLength": 1},
+            },
+            "required": ["hash1", "hash2"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "p2p-workflow"],
+    )
+
+    manager.register_tool(
+        category="p2p_workflow_tools",
+        name="merge_merkle_clock",
+        func=merge_merkle_clock,
+        description="Merge remote peer merkle-clock state.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "other_peer_id": {"type": "string", "minLength": 1},
+                "other_counter": {"type": "integer", "minimum": 0},
+                "other_parent_hash": {"type": ["string", "null"]},
+                "other_timestamp": {"type": ["number", "null"]},
+            },
+            "required": ["other_peer_id", "other_counter"],
+        },
         runtime="fastapi",
         tags=["native", "mcpp", "p2p-workflow"],
     )

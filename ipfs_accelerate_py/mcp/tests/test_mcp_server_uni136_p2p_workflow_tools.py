@@ -36,6 +36,11 @@ class TestMCPServerUNI136P2PWorkflowTools(unittest.TestCase):
         self.assertIn("get_next_p2p_workflow", names)
         self.assertIn("get_p2p_scheduler_status", names)
         self.assertIn("get_assigned_workflows", names)
+        self.assertIn("get_workflow_tags", names)
+        self.assertIn("add_p2p_peer", names)
+        self.assertIn("remove_p2p_peer", names)
+        self.assertIn("calculate_peer_distance", names)
+        self.assertIn("merge_merkle_clock", names)
 
     def test_initialize_p2p_scheduler_rejects_bad_peers_shape(self) -> None:
         async def _run() -> None:

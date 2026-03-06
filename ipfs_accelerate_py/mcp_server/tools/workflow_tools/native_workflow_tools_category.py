@@ -540,8 +540,12 @@ async def get_workflow_tags() -> Dict[str, Any]:
     """Get available workflow tags."""
     result = _API["get_workflow_tags"]()
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        result = await result
+    envelope = _normalize_payload(result)
+    envelope.setdefault("status", "success")
+    envelope.setdefault("success", True)
+    envelope.setdefault("tags", [])
+    return envelope
 
 
 async def list_templates() -> Dict[str, Any]:

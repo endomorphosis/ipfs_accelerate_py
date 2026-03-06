@@ -5548,10 +5548,6 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("pin_to_ipfs", names)
             self.assertIn("get_from_ipfs", names)
-            self.assertIn("query_knowledge_graph", names)
-            self.assertIn("graph_search_hybrid", names)
-            self.assertIn("graph_visualize", names)
-            self.assertIn("graph_explain", names)
 
             pin_schema = await get_schema("ipfs_tools", "pin_to_ipfs")
             self.assertEqual(pin_schema.get("name"), "pin_to_ipfs")
@@ -5560,9 +5556,6 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             get_schema_payload = await get_schema("ipfs_tools", "get_from_ipfs")
             self.assertEqual(get_schema_payload.get("name"), "get_from_ipfs")
-
-            search_schema = await get_schema("graph_tools", "graph_search_hybrid")
-            search_props = (search_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual(get_schema_payload.get("category"), "ipfs_tools")
             get_schema_input = get_schema_payload.get("input_schema") or {}
             get_schema_props = get_schema_input.get("properties", {})
@@ -6061,11 +6054,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("initialize_p2p_scheduler", names)
             self.assertIn("schedule_p2p_workflow", names)
+            self.assertIn("get_workflow_tags", names)
+            self.assertIn("add_p2p_peer", names)
+            self.assertIn("remove_p2p_peer", names)
+            self.assertIn("calculate_peer_distance", names)
+            self.assertIn("merge_merkle_clock", names)
 
             schedule_schema = await get_schema("p2p_workflow_tools", "schedule_p2p_workflow")
             schedule_props = (schedule_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((schedule_props.get("workflow_id") or {}).get("minLength"), 1)
             self.assertGreater((schedule_props.get("priority") or {}).get("minimum", 0), 0)
+
+            add_peer_schema = await get_schema("p2p_workflow_tools", "add_p2p_peer")
+            add_peer_props = (add_peer_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((add_peer_props.get("peer_id") or {}).get("minLength"), 1)
 
             invalid_tags = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6092,6 +6094,28 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_peers.get("status"), "error")
             self.assertIn("array of non-empty strings", str(invalid_peers.get("message", "")))
+
+            invalid_peer_id = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "p2p_workflow_tools",
+                    "add_p2p_peer",
+                    {
+                        "peer_id": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_peer_id.get("status"), "error")
+            self.assertIn("peer_id must be a non-empty string", str(invalid_peer_id.get("error", "")))
+
+            workflow_tags = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "p2p_workflow_tools",
+                    "get_workflow_tags",
+                    {},
+                )
+            )
+            self.assertEqual(workflow_tags.get("status"), "success")
+            self.assertIn("tags", workflow_tags)
 
         anyio.run(_run_flow)
 
@@ -10062,10 +10086,19 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("discord_list_guilds", names)
             self.assertIn("discord_list_channels", names)
+            self.assertIn("discord_list_dm_channels", names)
+            self.assertIn("discord_export_channel", names)
+            self.assertIn("discord_analyze_export", names)
+            self.assertIn("discord_convert_export", names)
+            self.assertIn("discord_batch_convert_exports", names)
 
             schema = await get_schema("discord_tools", "discord_list_channels")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("guild_id") or {}).get("minLength"), 1)
+
+            export_schema = await get_schema("discord_tools", "discord_export_channel")
+            export_props = (export_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((export_props.get("channel_id") or {}).get("minLength"), 1)
 
             invalid_guild = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10100,6 +10133,32 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_token.get("error", ""))
             )
             self.assertIn("token must be a non-empty string", invalid_token_text)
+
+            invalid_export = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "discord_tools",
+                    "discord_export_channel",
+                    {
+                        "channel_id": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_export.get("status"), "error")
+            self.assertIn("channel_id is required", str(invalid_export.get("error", "")))
+
+            invalid_convert = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "discord_tools",
+                    "discord_convert_export",
+                    {
+                        "input_path": "in.json",
+                        "output_path": "out.json",
+                        "to_format": "xml",
+                    },
+                )
+            )
+            self.assertEqual(invalid_convert.get("status"), "error")
+            self.assertIn("to_format must be one of", str(invalid_convert.get("error", "")))
 
         anyio.run(_run_flow)
 

@@ -157,11 +157,14 @@ class InterfaceDescriptorRegistry:
                 compatible=False,
                 reasons=["missing_required_capabilities"],
                 requires_missing=missing,
-                suggested_alternatives=[
-                    cid
-                    for cid, payload in self._by_cid.items()
-                    if cid != interface_cid and not _missing_capabilities(payload.get("requires", []), self._supported_capabilities)
-                ],
+                suggested_alternatives=sorted(
+                    [
+                        cid
+                        for cid, payload in self._by_cid.items()
+                        if cid != interface_cid
+                        and not _missing_capabilities(payload.get("requires", []), self._supported_capabilities)
+                    ]
+                ),
             )
 
         return CompatibilityVerdict(

@@ -30,6 +30,17 @@ class TestMCPServerUNI153P2PWorkflowTools(unittest.TestCase):
         self.assertEqual(schedule_props["name"].get("minLength"), 1)
         self.assertGreater(schedule_props["priority"].get("minimum", 0), 0)
 
+        peer_props = by_name["add_p2p_peer"]["input_schema"]["properties"]
+        self.assertEqual(peer_props["peer_id"].get("minLength"), 1)
+
+        distance_props = by_name["calculate_peer_distance"]["input_schema"]["properties"]
+        self.assertEqual(distance_props["hash1"].get("minLength"), 1)
+        self.assertEqual(distance_props["hash2"].get("minLength"), 1)
+
+        merge_props = by_name["merge_merkle_clock"]["input_schema"]["properties"]
+        self.assertEqual(merge_props["other_peer_id"].get("minLength"), 1)
+        self.assertEqual(merge_props["other_counter"].get("minimum"), 0)
+
     def test_initialize_scheduler_exception_yields_error_envelope(self) -> None:
         async def _run() -> None:
             with patch.dict(

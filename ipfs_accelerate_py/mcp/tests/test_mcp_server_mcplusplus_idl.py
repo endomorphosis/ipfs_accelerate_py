@@ -208,6 +208,63 @@ class TestMCPServerMCPPlusPlusIDL(unittest.TestCase):
         self.assertIn("missing_required_capabilities", verdict.reasons)
         self.assertIn("mcp++/profile-z-nonexistent", verdict.requires_missing)
 
+    def test_registry_compatibility_corpus_is_deterministic(self) -> None:
+        registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl"])
+        compatible_later = registry.register_descriptor(
+            build_descriptor(
+                name="compatible-later",
+                namespace="test.ns",
+                version="1.0.0",
+                methods=[{"name": "later.call", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                requires=[],
+            )
+        )
+        incompatible = registry.register_descriptor(
+            build_descriptor(
+                name="incompatible",
+                namespace="test.ns",
+                version="1.0.0",
+                methods=[{"name": "blocked.call", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                requires=["mcp++/profile-q-unavailable"],
+            )
+        )
+        compatible_earlier = registry.register_descriptor(
+            build_descriptor(
+                name="compatible-earlier",
+                namespace="test.ns",
+                version="1.0.0",
+                methods=[{"name": "earlier.call", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                requires=["mcp++/profile-a-idl"],
+            )
+        )
+        target = registry.register_descriptor(
+            build_descriptor(
+                name="target",
+                namespace="test.ns",
+                version="1.0.0",
+                methods=[{"name": "target.call", "input_schema": {"type": "object"}, "output_schema": {"type": "object"}}],
+                requires=["mcp++/profile-z-missing", "mcp++/profile-b-missing"],
+            )
+        )
+
+        verdict = registry.compat(target)
+
+        self.assertFalse(verdict.compatible)
+        self.assertEqual(verdict.reasons, ["missing_required_capabilities"])
+        self.assertEqual(verdict.requires_missing, ["mcp++/profile-b-missing", "mcp++/profile-z-missing"])
+        self.assertEqual(verdict.suggested_alternatives, sorted([compatible_earlier, compatible_later]))
+        self.assertNotIn(incompatible, verdict.suggested_alternatives)
+
+    def test_registry_compatibility_returns_not_found_for_unknown_interface(self) -> None:
+        registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl"])
+
+        verdict = registry.compat("cidv1-sha256-does-not-exist")
+
+        self.assertFalse(verdict.compatible)
+        self.assertEqual(verdict.reasons, ["interface_not_found"])
+        self.assertEqual(verdict.requires_missing, [])
+        self.assertEqual(verdict.suggested_alternatives, [])
+
     def test_registry_compatibility_normalizes_versioned_capabilities(self) -> None:
         registry = InterfaceDescriptorRegistry(supported_capabilities=["mcp++/profile-a-idl@1.0.0"])
         cid = registry.register_descriptor(

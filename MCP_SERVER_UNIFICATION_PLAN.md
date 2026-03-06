@@ -436,6 +436,7 @@ Next plan:
 Recent execution (2026-03-06):
 
 1. Added descriptor-generation coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` to verify all loaded migrated categories registered in the manager produce consistent MCP-IDL descriptors with deterministic names, method surfaces, and capability requirements.
+2. Added cross-runtime canonicalization stability coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` to verify canonical descriptor bytes and computed interface CIDs remain stable across isolated Python processes with different runtime hash seeds.
 
 ### 6.4 CID Artifacts (`cid-native-artifacts`)
 
@@ -1113,9 +1114,9 @@ Strengthen transport interop and abuse-resistance evidence for `mcp+p2p`.
 - `.github/workflows/mcp-transport-libp2p.yml`
 
 ## Acceptance Criteria
-- [ ] Additional regression tests merged for interop/abuse scenarios.
-- [ ] Default transport lane remains green.
-- [ ] libp2p lane remains green and required.
+- [x] Additional regression tests merged for interop/abuse scenarios.
+- [x] Default transport lane remains green.
+- [x] libp2p lane remains green and required.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_transport_p2p_framing_limits`
@@ -1143,9 +1144,9 @@ Run a release-grade dry-run where canonical runtime is default, then verify roll
 - startup scripts/config and CI docs
 
 ## Acceptance Criteria
-- [ ] Canonical default path validated in dry-run.
-- [ ] Rollback scenario tested and documented.
-- [ ] Conformance docs updated with cutover evidence.
+- [x] Canonical default path validated in dry-run.
+- [x] Rollback scenario tested and documented.
+- [x] Conformance docs updated with cutover evidence.
 
 ## Verification
 - `python3 -m unittest <cutover/rollback regression modules>`
@@ -1177,9 +1178,9 @@ Harden profile negotiation behavior for additive compatibility, downgrade behavi
 - `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
 
 ## Acceptance Criteria
-- [ ] Negotiation behavior remains additive and backward compatible.
-- [ ] Unknown profiles produce deterministic fallback.
-- [ ] Conformance evidence updated.
+- [x] Negotiation behavior remains additive and backward compatible.
+- [x] Unknown profiles produce deterministic fallback.
+- [x] Conformance evidence updated.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_unified_bootstrap`
@@ -1209,9 +1210,9 @@ Expand deterministic MCP-IDL descriptor and compatibility tests to lock cross-ru
 - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py`
 
 ## Acceptance Criteria
-- [ ] Descriptor CIDs are deterministic for corpus inputs.
-- [ ] Compatibility matching remains stable under case/whitespace/version variants.
-- [ ] Evidence updated in matrix/checklist.
+- [x] Descriptor CIDs are deterministic for corpus inputs.
+- [x] Compatibility matching remains stable under case/whitespace/version variants.
+- [x] Evidence updated in matrix/checklist.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_idl`
@@ -1241,9 +1242,9 @@ Extend CID-native artifact pipeline validation beyond in-memory behavior into du
 - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py`
 
 ## Acceptance Criteria
-- [ ] Durable artifact retrieval passes deterministic integrity checks.
-- [ ] Replay reconstructs chain correctly.
-- [ ] Emission policy is deterministic across modes.
+- [x] Durable artifact retrieval passes deterministic integrity checks.
+- [x] Replay reconstructs chain correctly.
+- [x] Emission policy is deterministic across modes.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_artifacts`
@@ -1273,9 +1274,9 @@ Broaden UCAN verification coverage for signature formats, caveats, proof linkage
 - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py`
 
 ## Acceptance Criteria
-- [ ] Expanded positive and negative UCAN vectors pass deterministically.
-- [ ] Denial behavior is explicit and auditable.
-- [ ] Conformance evidence updated.
+- [x] Expanded positive and negative UCAN vectors pass deterministically.
+- [x] Denial behavior is explicit and auditable.
+- [x] Conformance evidence updated.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_ucan`
@@ -1305,9 +1306,9 @@ Strengthen temporal policy lifecycle semantics for obligations, deadlines, and p
 - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py`
 
 ## Acceptance Criteria
-- [ ] Obligation lifecycle behavior is deterministic.
-- [ ] Decision CID persistence remains stable across dispatch modes/transports.
-- [ ] Evidence links updated.
+- [x] Obligation lifecycle behavior is deterministic.
+- [x] Decision CID persistence remains stable across dispatch modes/transports.
+- [x] Evidence links updated.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_policy`
@@ -1336,9 +1337,9 @@ Expand Event DAG tests for larger graphs, replay/rollback correctness, and fork/
 - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py`
 
 ## Acceptance Criteria
-- [ ] Replay and rollback paths are deterministic for larger graphs.
-- [ ] Conflict behavior is explicit and tested.
-- [ ] Snapshot compatibility preserved.
+- [x] Replay and rollback paths are deterministic for larger graphs.
+- [x] Conflict behavior is explicit and tested.
+- [x] Snapshot compatibility preserved.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_event_dag`
@@ -1367,9 +1368,9 @@ Strengthen risk frontier execution under load/retry patterns and add optional co
 - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py`
 
 ## Acceptance Criteria
-- [ ] Frontier execution binding deterministic under load/retries.
-- [ ] Consensus signal path remains optional and non-breaking.
-- [ ] Evidence updated in conformance docs.
+- [x] Frontier execution binding deterministic under load/retries.
+- [x] Consensus signal path remains optional and non-breaking.
+- [x] Evidence updated in conformance docs.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_server_mcplusplus_risk_scheduler`
@@ -1400,9 +1401,9 @@ Expand `mcp+p2p` interop and abuse-resistance regression matrix to include mixed
 - `.github/workflows/mcp-transport-libp2p.yml`
 
 ## Acceptance Criteria
-- [ ] Mixed-version matrix behavior is deterministic.
-- [ ] Abuse-resistance assertions expanded and passing.
-- [ ] CI evidence remains green in required lanes.
+- [x] Mixed-version matrix behavior is deterministic.
+- [x] Abuse-resistance assertions expanded and passing.
+- [x] CI evidence remains green in required lanes.
 
 ## Verification
 - `python3 -m unittest ipfs_accelerate_py.mcp.tests.test_mcp_transport_p2p_framing_limits`
@@ -1433,9 +1434,9 @@ Expand behavior-level parity in `security_tools` and `auth_tools` beyond baselin
 - `ipfs_accelerate_py/mcp/tests/*security*`
 
 ## Acceptance Criteria
-- [ ] Representative missing operations implemented or deferred with rationale.
-- [ ] `tools_get_schema` and dispatch parity tests added.
-- [ ] Evidence links updated in conformance docs.
+- [x] Representative missing operations implemented or deferred with rationale.
+- [x] `tools_get_schema` and dispatch parity tests added.
+- [x] Evidence links updated in conformance docs.
 
 ## Verification
 - `python3 -m unittest <security and auth parity test modules>`
@@ -1461,9 +1462,9 @@ Deepen parity for advanced monitoring, diagnostics, and alert operations.
 - `ipfs_accelerate_py/mcp/tests/*monitor*`
 
 ## Acceptance Criteria
-- [ ] Advanced monitoring operations behave deterministically.
-- [ ] Alert/diagnostic schemas and outputs are parity-validated.
-- [ ] Matrix/checklist evidence updated.
+- [x] Advanced monitoring operations behave deterministically.
+- [x] Alert/diagnostic schemas and outputs are parity-validated.
+- [x] Matrix/checklist evidence updated.
 
 ## Verification
 - `python3 -m unittest <monitoring and alert parity test modules>`
@@ -1491,9 +1492,9 @@ Expand behavior-level parity for dataset and embedding operations, including adv
 - `ipfs_accelerate_py/mcp/tests/*embedding*`
 
 ## Acceptance Criteria
-- [ ] Representative dataset and embedding deltas closed.
-- [ ] Edge-case arguments and error envelopes parity-tested.
-- [ ] Evidence links updated in conformance artifacts.
+- [x] Representative dataset and embedding deltas closed.
+- [x] Edge-case arguments and error envelopes parity-tested.
+- [x] Evidence links updated in conformance artifacts.
 
 ## Verification
 - `python3 -m unittest <dataset and embedding parity test modules>`
@@ -1522,9 +1523,9 @@ Close cross-category behavior gaps for vector, search, and storage orchestration
 - `ipfs_accelerate_py/mcp/tests/*storage*`
 
 ## Acceptance Criteria
-- [ ] Representative integration flows are parity-validated.
-- [ ] Deterministic schema and result contracts are asserted.
-- [ ] Matrix rows/evidence are updated.
+- [x] Representative integration flows are parity-validated.
+- [x] Deterministic schema and result contracts are asserted.
+- [x] Matrix rows/evidence are updated.
 
 ## Verification
 - `python3 -m unittest <vector search storage parity test modules>`
@@ -1553,9 +1554,9 @@ Deepen parity for advanced document, graph, and logic operations.
 - `ipfs_accelerate_py/mcp/tests/*logic*`
 
 ## Acceptance Criteria
-- [ ] Advanced operations implemented or deferred with rationale.
-- [ ] Deterministic behavior and schema parity tests added.
-- [ ] Evidence updated in conformance docs.
+- [x] Advanced operations implemented or deferred with rationale.
+- [x] Deterministic behavior and schema parity tests added.
+- [x] Evidence updated in conformance docs.
 
 ## Verification
 - `python3 -m unittest <pdf graph logic parity test modules>`

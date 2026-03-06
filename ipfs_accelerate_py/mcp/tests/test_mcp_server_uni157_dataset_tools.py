@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import unittest
 from unittest.mock import patch
 
@@ -111,6 +112,106 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
                 failed = await native_dataset_tools.dataset_tools_claudes()
                 self.assertEqual(failed.get("status"), "error")
                 self.assertIn("dataset_tools_claudes failed", str(failed.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_dataset_crud_tools_support_json_string_entrypoints(self) -> None:
+        async def _load(**kwargs: object) -> dict:
+            return {"status": "success", "source": kwargs.get("source"), "dataset_id": "loaded-1"}
+
+        async def _save(**kwargs: object) -> dict:
+            return {
+                "status": "success",
+                "destination": kwargs.get("destination"),
+                "dataset_id": "saved-1",
+            }
+
+        async def _process(**kwargs: object) -> dict:
+            operations = kwargs.get("operations") or []
+            return {
+                "status": "success",
+                "dataset_id": kwargs.get("output_id") or "processed-1",
+                "num_operations": len(operations),
+            }
+
+        async def _convert(**kwargs: object) -> dict:
+            return {
+                "status": "success",
+                "dataset_id": f"converted-{kwargs.get('dataset_id')}",
+                "target_format": kwargs.get("target_format"),
+            }
+
+        async def _run() -> None:
+            with patch.dict(
+                native_dataset_tools._API,
+                {
+                    "load_dataset": _load,
+                    "save_dataset": _save,
+                    "process_dataset": _process,
+                    "convert_dataset_format": _convert,
+                },
+                clear=False,
+            ):
+                load_result = await native_dataset_tools.load_dataset(
+                    source=json.dumps({"source": "dataset://demo", "format": "json"})
+                )
+                load_payload = json.loads(load_result["content"][0]["text"])
+                self.assertEqual(load_payload.get("status"), "success")
+                self.assertEqual(load_payload.get("source"), "dataset://demo")
+
+                save_result = await native_dataset_tools.save_dataset(
+                    dataset_data=json.dumps(
+                        {
+                            "dataset_data": {"records": [1, 2]},
+                            "destination": "/tmp/output.json",
+                            "format": "json",
+                        }
+                    )
+                )
+                save_payload = json.loads(save_result["content"][0]["text"])
+                self.assertEqual(save_payload.get("status"), "success")
+                self.assertEqual(save_payload.get("destination"), "/tmp/output.json")
+
+                process_result = await native_dataset_tools.process_dataset(
+                    dataset_source=json.dumps(
+                        {
+                            "dataset_source": "dataset://demo",
+                            "operations": [{"type": "filter"}],
+                            "output_id": "processed-compat",
+                        }
+                    )
+                )
+                process_payload = json.loads(process_result["content"][0]["text"])
+                self.assertEqual(process_payload.get("status"), "success")
+                self.assertEqual(process_payload.get("dataset_id"), "processed-compat")
+                self.assertEqual(process_payload.get("num_operations"), 1)
+
+                convert_result = await native_dataset_tools.convert_dataset_format(
+                    dataset_id=json.dumps({"dataset_id": "dataset-1", "target_format": "parquet"})
+                )
+                convert_payload = json.loads(convert_result["content"][0]["text"])
+                self.assertEqual(convert_payload.get("status"), "success")
+                self.assertEqual(convert_payload.get("dataset_id"), "converted-dataset-1")
+                self.assertEqual(convert_payload.get("target_format"), "parquet")
+
+        anyio.run(_run)
+
+    def test_dataset_json_string_entrypoints_require_source_fields(self) -> None:
+        async def _run() -> None:
+            save_result = await native_dataset_tools.save_dataset(dataset_data=json.dumps({"dataset_data": {}}))
+            save_payload = json.loads(save_result["content"][0]["text"])
+            self.assertEqual(save_payload.get("status"), "error")
+            self.assertIn("Missing required field: destination", str(save_payload.get("error", "")))
+
+            process_result = await native_dataset_tools.process_dataset(dataset_source=json.dumps({"dataset_source": "x"}))
+            process_payload = json.loads(process_result["content"][0]["text"])
+            self.assertEqual(process_payload.get("status"), "error")
+            self.assertIn("Missing required fields", str(process_payload.get("error", "")))
+
+            convert_result = await native_dataset_tools.convert_dataset_format(dataset_id=json.dumps({"dataset_id": "x"}))
+            convert_payload = json.loads(convert_result["content"][0]["text"])
+            self.assertEqual(convert_payload.get("status"), "error")
+            self.assertIn("Missing required field: target_format", str(convert_payload.get("error", "")))
 
         anyio.run(_run)
 
