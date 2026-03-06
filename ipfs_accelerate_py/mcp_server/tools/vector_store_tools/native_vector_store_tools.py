@@ -145,6 +145,9 @@ async def vector_index(
     payload = _normalize_payload(result)
     payload.setdefault("action", normalized_action)
     payload.setdefault("index_name", normalized_index_name or None)
+    if payload.get("status") == "success":
+        payload.setdefault("result", {})
+        payload.setdefault("success", True)
     return payload
 
 
@@ -202,6 +205,9 @@ async def vector_retrieval(
     payload.setdefault("collection", normalized_collection)
     payload.setdefault("ids", ids or [])
     payload.setdefault("limit", limit)
+    if payload.get("status") == "success":
+        payload.setdefault("results", [])
+        payload.setdefault("total_found", len(payload.get("results") or []))
     return payload
 
 
@@ -267,6 +273,8 @@ async def vector_metadata(
     payload.setdefault("action", normalized_action)
     payload.setdefault("collection", normalized_collection)
     payload.setdefault("ids", ids or [])
+    if payload.get("status") == "success":
+        payload.setdefault("metadata", metadata or {})
     return payload
 
 
