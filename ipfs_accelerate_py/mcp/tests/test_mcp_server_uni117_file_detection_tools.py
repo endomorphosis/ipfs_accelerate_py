@@ -11,6 +11,7 @@ from ipfs_accelerate_py.mcp_server.tools.file_detection_tools.native_file_detect
     analyze_detection_accuracy,
     batch_detect_file_types,
     detect_file_type,
+    generate_detection_report,
     register_native_file_detection_tools,
 )
 
@@ -31,6 +32,7 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
         self.assertIn("detect_file_type", names)
         self.assertIn("batch_detect_file_types", names)
         self.assertIn("analyze_detection_accuracy", names)
+        self.assertIn("generate_detection_report", names)
 
     def test_register_schema_contracts(self) -> None:
         manager = _DummyManager()
@@ -43,6 +45,10 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
         batch_schema = by_name["batch_detect_file_types"]["input_schema"]
         self.assertEqual(batch_schema["properties"]["pattern"].get("default"), "*")
+
+        report_schema = by_name["generate_detection_report"]["input_schema"]
+        self.assertEqual(report_schema["properties"]["top_mime_types"].get("maximum"), 50)
+        self.assertEqual(report_schema["properties"]["include_examples"].get("default"), True)
 
     def test_detect_file_type_rejects_invalid_method(self) -> None:
         async def _run() -> None:
@@ -81,6 +87,43 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
             result = await detect_file_type(file_path="/tmp/x.txt", strategy="accurate")
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertIn("file_path", result)
+
+        anyio.run(_run)
+
+    def test_generate_detection_report_rejects_empty_results(self) -> None:
+        async def _run() -> None:
+            result = await generate_detection_report(results={})
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("non-empty object", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_generate_detection_report_rejects_invalid_top_mime_types(self) -> None:
+        async def _run() -> None:
+            result = await generate_detection_report(
+                results={"/tmp/a.txt": {"mime_type": "text/plain", "confidence": 0.8}},
+                top_mime_types=0,
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("between 1 and 50", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_generate_detection_report_success_shape(self) -> None:
+        async def _run() -> None:
+            result = await generate_detection_report(
+                results={
+                    "/tmp/a.txt": {"mime_type": "text/plain", "confidence": 0.9},
+                    "/tmp/b.pdf": {"mime_type": "application/pdf", "confidence": 0.8},
+                    "/tmp/c.unknown": {"error": "not detected"},
+                }
+            )
+            self.assertEqual(result.get("status"), "success")
+            report = result.get("report") or {}
+            self.assertEqual(report.get("total_files"), 3)
+            self.assertEqual(report.get("successful"), 2)
+            self.assertEqual(report.get("failed"), 1)
+            self.assertIn("common_mime_types", report)
 
         anyio.run(_run)
 

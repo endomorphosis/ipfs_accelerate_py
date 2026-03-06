@@ -7675,10 +7675,16 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("detect_file_type", names)
             self.assertIn("batch_detect_file_types", names)
             self.assertIn("analyze_detection_accuracy", names)
+            self.assertIn("generate_detection_report", names)
 
             detect_schema = await get_schema("file_detection_tools", "detect_file_type")
             schema_props = (detect_schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("voting", (schema_props.get("strategy") or {}).get("enum", []))
+
+            report_schema = await get_schema("file_detection_tools", "generate_detection_report")
+            report_props = (report_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((report_props.get("top_mime_types") or {}).get("maximum"), 50)
+            self.assertEqual((report_props.get("include_examples") or {}).get("default"), True)
 
             invalid_methods = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7692,6 +7698,36 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_methods.get("status"), "error")
             self.assertIn("methods entries must be one of", str(invalid_methods.get("message", "")))
+
+            invalid_report = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "file_detection_tools",
+                    "generate_detection_report",
+                    {
+                        "results": {},
+                    },
+                )
+            )
+            self.assertEqual(invalid_report.get("status"), "error")
+            self.assertIn("non-empty object", str(invalid_report.get("message", "")))
+
+            valid_report = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "file_detection_tools",
+                    "generate_detection_report",
+                    {
+                        "results": {
+                            "/tmp/a.txt": {"mime_type": "text/plain", "confidence": 0.9},
+                            "/tmp/b.pdf": {"mime_type": "application/pdf", "confidence": 0.8},
+                            "/tmp/c": {"error": "not detected"},
+                        }
+                    },
+                )
+            )
+            self.assertEqual(valid_report.get("status"), "success")
+            report_payload = valid_report.get("report") or {}
+            self.assertEqual(report_payload.get("total_files"), 3)
+            self.assertEqual(report_payload.get("successful"), 2)
 
             missing_batch_source = self._assert_dispatch_success_envelope(
                 await dispatch(
