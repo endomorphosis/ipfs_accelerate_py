@@ -7369,6 +7369,8 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("record_provenance", names)
             self.assertIn("record_provenance_batch", names)
+            self.assertIn("verify_provenance_records", names)
+            self.assertIn("generate_provenance_report", names)
 
             schema = await get_schema("provenance_tools", "record_provenance")
             self.assertEqual(schema.get("name"), "record_provenance")
@@ -7382,6 +7384,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(records_schema.get("type"), "array")
             item_props = (records_schema.get("items") or {}).get("properties", {})
             self.assertEqual((item_props.get("timestamp") or {}).get("format"), "date-time")
+
+            verify_schema = await get_schema("provenance_tools", "verify_provenance_records")
+            self.assertEqual(verify_schema.get("name"), "verify_provenance_records")
+            verify_props = (verify_schema.get("input_schema") or {}).get("properties", {})
+            verify_records_schema = verify_props.get("records") or {}
+            self.assertEqual(verify_records_schema.get("type"), "array")
+            self.assertEqual(verify_records_schema.get("minItems"), 1)
+
+            report_schema = await get_schema("provenance_tools", "generate_provenance_report")
+            self.assertEqual(report_schema.get("name"), "generate_provenance_report")
+            report_props = (report_schema.get("input_schema") or {}).get("properties", {})
+            report_records_schema = report_props.get("records") or {}
+            self.assertEqual(report_records_schema.get("type"), "array")
+            self.assertEqual(report_records_schema.get("minItems"), 1)
 
             invalid_timestamp = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -7441,6 +7457,67 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(valid_batch.get("status"), "success")
             self.assertEqual(valid_batch.get("processed"), 2)
+
+            invalid_verify = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "provenance_tools",
+                    "verify_provenance_records",
+                    {"records": []},
+                )
+            )
+            self.assertEqual(invalid_verify.get("status"), "error")
+            self.assertIn("non-empty array", str(invalid_verify.get("message", "")))
+
+            valid_verify = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "provenance_tools",
+                    "verify_provenance_records",
+                    {
+                        "records": [
+                            {
+                                "status": "success",
+                                "dataset_id": "dataset-1",
+                                "operation": "transform",
+                            },
+                            {
+                                "status": "error",
+                                "dataset_id": "dataset-2",
+                                "operation": "publish",
+                                "message": "failed",
+                            },
+                        ]
+                    },
+                )
+            )
+            self.assertEqual(valid_verify.get("status"), "success")
+            self.assertEqual(valid_verify.get("verified_count"), 1)
+            self.assertEqual(valid_verify.get("failed_count"), 1)
+
+            valid_report = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "provenance_tools",
+                    "generate_provenance_report",
+                    {
+                        "records": [
+                            {
+                                "status": "success",
+                                "dataset_id": "dataset-1",
+                                "operation": "transform",
+                            },
+                            {
+                                "status": "error",
+                                "dataset_id": "dataset-2",
+                                "operation": "transform",
+                                "message": "validation failed",
+                            },
+                        ]
+                    },
+                )
+            )
+            self.assertEqual(valid_report.get("status"), "success")
+            report_payload = valid_report.get("report") or {}
+            self.assertEqual(report_payload.get("success_count"), 1)
+            self.assertEqual(report_payload.get("error_count"), 1)
 
         anyio.run(_run_flow)
 

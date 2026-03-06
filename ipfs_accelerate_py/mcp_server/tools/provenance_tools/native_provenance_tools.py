@@ -249,6 +249,137 @@ async def record_provenance_batch(
     }
 
 
+async def verify_provenance_records(
+    records: List[Dict[str, Any]],
+    require_success_status: bool = True,
+    require_dataset_id: bool = True,
+    require_operation: bool = True,
+) -> Dict[str, Any]:
+    """Verify provenance-record shape and status contracts deterministically."""
+    if not isinstance(records, list) or not records:
+        return {
+            "status": "error",
+            "message": "records must be a non-empty array",
+            "verification_results": [],
+            "verified_count": 0,
+            "failed_count": 0,
+        }
+
+    verification_results: List[Dict[str, Any]] = []
+    verified_count = 0
+    failed_count = 0
+
+    for index, record in enumerate(records):
+        reasons: List[str] = []
+        if not isinstance(record, dict):
+            reasons.append("record must be an object")
+            normalized_status = ""
+            dataset_id = ""
+            operation = ""
+        else:
+            normalized_status = str(record.get("status", "")).strip().lower()
+            dataset_id = str(record.get("dataset_id", "")).strip()
+            operation = str(record.get("operation", "")).strip()
+
+            if require_success_status and normalized_status != "success":
+                reasons.append("record status must be 'success'")
+            if require_dataset_id and not dataset_id:
+                reasons.append("dataset_id is required")
+            if require_operation and not operation:
+                reasons.append("operation is required")
+
+        is_valid = len(reasons) == 0
+        verification_results.append(
+            {
+                "index": index,
+                "valid": is_valid,
+                "reasons": reasons,
+                "status": normalized_status,
+                "dataset_id": dataset_id,
+                "operation": operation,
+            }
+        )
+
+        if is_valid:
+            verified_count += 1
+        else:
+            failed_count += 1
+
+    return {
+        "status": "success",
+        "verification_results": verification_results,
+        "verified_count": verified_count,
+        "failed_count": failed_count,
+        "all_valid": failed_count == 0,
+    }
+
+
+async def generate_provenance_report(
+    records: List[Dict[str, Any]],
+    include_errors: bool = True,
+    aggregate_by_operation: bool = True,
+) -> Dict[str, Any]:
+    """Generate deterministic aggregate reporting for provenance records."""
+    if not isinstance(records, list) or not records:
+        return {
+            "status": "error",
+            "message": "records must be a non-empty array",
+            "report": {
+                "requested_records": 0,
+                "processed_records": 0,
+                "success_count": 0,
+                "error_count": 0,
+                "by_operation": {},
+            },
+        }
+
+    by_operation: Dict[str, int] = {}
+    success_count = 0
+    error_count = 0
+    error_samples: List[Dict[str, Any]] = []
+
+    for index, record in enumerate(records):
+        if not isinstance(record, dict):
+            error_count += 1
+            if include_errors:
+                error_samples.append({"index": index, "message": "record must be an object"})
+            continue
+
+        operation = str(record.get("operation", "")).strip() or "unknown"
+        status = str(record.get("status", "success")).strip().lower()
+
+        if status == "success":
+            success_count += 1
+        else:
+            error_count += 1
+            if include_errors:
+                error_samples.append(
+                    {
+                        "index": index,
+                        "message": str(record.get("message") or record.get("error") or "unknown error"),
+                        "status": status,
+                    }
+                )
+
+        if aggregate_by_operation:
+            by_operation[operation] = by_operation.get(operation, 0) + 1
+
+    report: Dict[str, Any] = {
+        "requested_records": len(records),
+        "processed_records": len(records),
+        "success_count": success_count,
+        "error_count": error_count,
+        "by_operation": by_operation if aggregate_by_operation else {},
+    }
+    if include_errors:
+        report["error_samples"] = error_samples[:10]
+
+    return {
+        "status": "success",
+        "report": report,
+    }
+
+
 def register_native_provenance_tools(manager: Any) -> None:
     """Register native provenance tools in unified hierarchical manager."""
     manager.register_tool(
@@ -301,6 +432,51 @@ def register_native_provenance_tools(manager: Any) -> None:
                     },
                 },
                 "fail_fast": {"type": "boolean", "default": False},
+            },
+            "required": ["records"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "provenance"],
+    )
+
+    manager.register_tool(
+        category="provenance_tools",
+        name="verify_provenance_records",
+        func=verify_provenance_records,
+        description="Verify provenance records against deterministic contract checks.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "records": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"type": "object"},
+                },
+                "require_success_status": {"type": "boolean", "default": True},
+                "require_dataset_id": {"type": "boolean", "default": True},
+                "require_operation": {"type": "boolean", "default": True},
+            },
+            "required": ["records"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "provenance"],
+    )
+
+    manager.register_tool(
+        category="provenance_tools",
+        name="generate_provenance_report",
+        func=generate_provenance_report,
+        description="Generate aggregate provenance report telemetry from provenance records.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "records": {
+                    "type": "array",
+                    "minItems": 1,
+                    "items": {"type": "object"},
+                },
+                "include_errors": {"type": "boolean", "default": True},
+                "aggregate_by_operation": {"type": "boolean", "default": True},
             },
             "required": ["records"],
         },
