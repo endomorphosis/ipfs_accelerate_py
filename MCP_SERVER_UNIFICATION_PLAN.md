@@ -416,6 +416,7 @@ Recent execution (2026-03-06):
 1. Completed stricter framing boundary regressions in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_p2p_framing_limits.py` covering malformed UTF-8 payloads, malformed JSON payloads, and over-capacity token bucket costs.
 2. Added handler regression in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py` validating malformed UTF-8 payload classification as deterministic `invalid_json` transport error.
 3. Hardened canonical framing decode normalization in `ipfs_accelerate_py/mcp_server/mcplusplus/p2p_framing.py` with explicit `FramingError` codes for malformed UTF-8/JSON, and updated `ipfs_accelerate_py/p2p_tasks/mcp_p2p.py` to preserve `invalid_json` classification.
+4. Added sustained mixed-abuse counter regression in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py` validating exact cumulative status counters across oversized-frame, malformed-UTF8, unauthorized, rate-limited, and write-failure sessions.
 
 ### 6.3 MCP-IDL (`mcp-idl`)
 
@@ -867,10 +868,19 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 
 1. `SPEC-201` Profiles Negotiation Hardening
    - Chapter: `mcp++-profiles-draft.md`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py`
+      - Targeted run result: `6 passed`.
    - Acceptance: downgrade/unknown-profile regression cases and capability snapshot checks.
 
 2. `SPEC-202` MCP-IDL Stability Corpus
    - Chapter: `mcp-idl.md`
+   - Status: COMPLETE (2026-03-06)
+   - Evidence:
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py`
+      - Targeted run result: `11 passed`.
    - Acceptance: canonicalization stability corpus and compat matching regression suite.
 
 3. `SPEC-203` Artifact Durability and Replay

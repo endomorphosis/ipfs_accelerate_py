@@ -456,6 +456,44 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         result = responses[0].get("result", {})
         self.assertEqual(result.get("active_profile"), "mcp++/profile-a-idl")
 
+    def test_initialize_uses_supported_profile_list_when_singular_request_is_unknown(self) -> None:
+        stream = _FakeStream(
+            encode_jsonrpc_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "profile": "mcp++/profile-z-unknown",
+                        "profiles": [
+                            "mcp++/profile-z-next",
+                            "mcp++/profile-e-mcp-p2p",
+                            "mcp++/profile-a-idl",
+                        ],
+                    },
+                }
+            )
+        )
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_NegotiatingRegistry(),
+                max_frame_bytes=4096,
+            )
+
+        anyio.run(_run)
+
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 1)
+        result = responses[0].get("result", {})
+        self.assertEqual(result.get("active_profile"), "mcp++/profile-e-mcp-p2p")
+        self.assertEqual(
+            (result.get("profile_negotiation") or {}).get("profiles"),
+            ["mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"],
+        )
+
     def test_initialize_normalizes_negotiation_payload_and_profile_list(self) -> None:
         stream = _FakeStream(
             encode_jsonrpc_frame(
@@ -547,6 +585,102 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         self.assertEqual(stats.get("internal_errors"), 1)
         self.assertEqual(stats.get("sessions_started"), 1)
         self.assertEqual(stats.get("sessions_closed"), 1)
+
+    def test_status_counters_remain_exact_under_mixed_sustained_abuse(self) -> None:
+        async def _run_oversized_frame() -> None:
+            await handle_mcp_p2p_stream(
+                _FakeStream((4097).to_bytes(4, byteorder="big", signed=False)),
+                local_peer_id="peer-a",
+                registry=_DummyRegistry(),
+                max_frame_bytes=1024,
+            )
+
+        async def _run_invalid_utf8() -> None:
+            raw_payload = b"\xff\xfe\xfd"
+            await handle_mcp_p2p_stream(
+                _FakeStream(len(raw_payload).to_bytes(4, byteorder="big", signed=False) + raw_payload),
+                local_peer_id="peer-a",
+                registry=_DummyRegistry(),
+                max_frame_bytes=1024,
+            )
+
+        async def _run_unauthorized() -> None:
+            await handle_mcp_p2p_stream(
+                _FakeStream(
+                    encode_jsonrpc_frame(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": 1,
+                            "method": "initialize",
+                            "params": {},
+                        }
+                    )
+                ),
+                local_peer_id="peer-a",
+                registry=_RejectingRegistry(),
+                max_frame_bytes=1024,
+            )
+
+        async def _run_rate_limited() -> None:
+            init = encode_jsonrpc_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {},
+                }
+            )
+            tools_list = encode_jsonrpc_frame(
+                {
+                    "jsonrpc": "2.0",
+                    "id": 2,
+                    "method": "tools/list",
+                    "params": {},
+                }
+            )
+            await handle_mcp_p2p_stream(
+                _FakeStream(init + tools_list),
+                local_peer_id="peer-a",
+                registry=_DummyRegistry(),
+                max_frame_bytes=1024,
+            )
+
+        async def _run_failing_write() -> None:
+            await handle_mcp_p2p_stream(
+                _FailingWriteStream((4097).to_bytes(4, byteorder="big", signed=False)),
+                local_peer_id="peer-a",
+                registry=_DummyRegistry(),
+                max_frame_bytes=1024,
+            )
+
+        anyio.run(_run_oversized_frame)
+        anyio.run(_run_invalid_utf8)
+        anyio.run(_run_unauthorized)
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_DATASETS_PY_MCP_P2P_MAX_FRAMES": "16",
+                "IPFS_DATASETS_PY_MCP_P2P_RATE_CAPACITY": "1",
+                "IPFS_DATASETS_PY_MCP_P2P_RATE_REFILL_PER_SEC": "0.0001",
+            },
+            clear=False,
+        ):
+            anyio.run(_run_rate_limited)
+        anyio.run(_run_failing_write)
+
+        stats = get_mcp_p2p_stats()
+        self.assertEqual(
+            stats,
+            {
+                "sessions_started": 5,
+                "sessions_closed": 5,
+                "initialized_sessions": 1,
+                "frame_errors": 3,
+                "rate_limited": 1,
+                "unauthorized": 1,
+                "internal_errors": 1,
+            },
+        )
 
     def test_non_initialize_first_request_is_rejected(self) -> None:
         stream = _FakeStream(

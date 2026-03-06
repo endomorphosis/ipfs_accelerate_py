@@ -305,6 +305,18 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             server._unified_server_context_snapshot.get("supported_profiles"),
             expected_profiles,
         )
+        self.assertEqual(
+            server._unified_server_context.profile_negotiation().get("profiles"),
+            expected_profiles,
+        )
+        self.assertEqual(
+            (server._unified_server_context_snapshot.get("profile_negotiation") or {}).get("profiles"),
+            expected_profiles,
+        )
+        self.assertEqual(
+            (server._unified_server_context_snapshot.get("profile_negotiation") or {}).get("mode"),
+            "optional_additive",
+        )
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
     def test_unified_bootstrap_service_factories_smoke(self, mock_create):
@@ -10853,12 +10865,37 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("analyze_entities", names)
             self.assertIn("map_relationships", names)
+            self.assertIn("explore_entity", names)
+            self.assertIn("analyze_entity_timeline", names)
+            self.assertIn("detect_patterns", names)
+            self.assertIn("track_provenance", names)
+            self.assertIn("ingest_news_article", names)
+            self.assertIn("ingest_news_feed", names)
+            self.assertIn("ingest_website", names)
+            self.assertIn("ingest_document_collection", names)
+            self.assertIn("analyze_deontological_conflicts", names)
+            self.assertIn("query_deontic_statements", names)
+            self.assertIn("query_deontic_conflicts", names)
+            self.assertIn("extract_geographic_entities", names)
+            self.assertIn("map_spatiotemporal_events", names)
+            self.assertIn("query_geographic_context", names)
 
             schema = await get_schema("investigation_tools", "analyze_entities")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("analysis_type") or {}).get("minLength"), 1)
             self.assertEqual((props.get("confidence_threshold") or {}).get("minimum"), 0)
             self.assertEqual((props.get("confidence_threshold") or {}).get("maximum"), 1)
+
+            timeline_schema = await get_schema("investigation_tools", "analyze_entity_timeline")
+            timeline_props = (timeline_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual(
+                (timeline_props.get("time_granularity") or {}).get("enum"),
+                ["hour", "day", "week", "month"],
+            )
+
+            geo_schema = await get_schema("investigation_tools", "query_geographic_context")
+            geo_props = (geo_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((geo_props.get("radius_km") or {}).get("exclusiveMinimum"), 0)
 
             invalid_confidence = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10895,6 +10932,70 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_depth.get("error", ""))
             )
             self.assertIn("max_depth must be an integer >= 1", invalid_depth_text)
+
+            invalid_granularity = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "investigation_tools",
+                    "analyze_entity_timeline",
+                    {
+                        "corpus_data": '{"documents": []}',
+                        "entity_id": "entity-1",
+                        "time_granularity": "year",
+                    },
+                )
+            )
+            self.assertEqual(invalid_granularity.get("status"), "error")
+            invalid_granularity_text = (
+                str(invalid_granularity.get("message", ""))
+                + " "
+                + str(invalid_granularity.get("error", ""))
+            )
+            self.assertIn("time_granularity must be one of", invalid_granularity_text)
+
+            valid_explore = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "investigation_tools",
+                    "explore_entity",
+                    {
+                        "entity_id": "entity-1",
+                        "corpus_data": '{"documents": []}',
+                    },
+                )
+            )
+            self.assertEqual(valid_explore.get("status"), "success")
+            self.assertEqual(valid_explore.get("entity_id"), "entity-1")
+
+            invalid_modality = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "investigation_tools",
+                    "query_deontic_statements",
+                    {
+                        "corpus_data": '{"documents": []}',
+                        "modality": "should",
+                    },
+                )
+            )
+            self.assertEqual(invalid_modality.get("status"), "error")
+            invalid_modality_text = (
+                str(invalid_modality.get("message", ""))
+                + " "
+                + str(invalid_modality.get("error", ""))
+            )
+            self.assertIn("modality must be null or one of", invalid_modality_text)
+
+            valid_geo = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "investigation_tools",
+                    "query_geographic_context",
+                    {
+                        "query": "incident near river",
+                        "corpus_data": '{"documents": []}',
+                        "radius_km": 25,
+                    },
+                )
+            )
+            self.assertEqual(valid_geo.get("status"), "success")
+            self.assertEqual(valid_geo.get("query"), "incident near river")
 
         anyio.run(_run_flow)
 
