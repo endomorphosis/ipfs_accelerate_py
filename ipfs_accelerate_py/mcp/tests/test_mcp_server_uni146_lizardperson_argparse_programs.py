@@ -108,6 +108,29 @@ class TestMCPServerUNI146LizardpersonArgparsePrograms(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_info_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch.object(argparse_mod, "_API", new={}):
+                result = await argparse_mod.municipal_bluebook_validator_info()
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("entrypoint"), "municipal_bluebook_citation_validator.main")
+            self.assertEqual(result.get("callable"), False)
+
+        anyio.run(_run)
+
+    def test_invoke_error_envelope_has_success_false(self) -> None:
+        async def _run() -> None:
+            with patch.object(argparse_mod, "_API", new={}):
+                result = await argparse_mod.municipal_bluebook_validator_invoke(argv=["--sample-size", "5"])
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("success"), False)
+            self.assertIn("validator entrypoint unavailable", str(result.get("error", "")))
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -33,11 +33,27 @@ _API = _load_mcplusplus_api()
 def _error_result(message: str, engine: str = "", method: str = "") -> Dict[str, Any]:
     return {
         "status": "error",
+        "success": False,
         "available": bool(_API),
         "engine": engine,
         "method": method,
         "error": message,
     }
+
+
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic dict envelopes."""
+    if isinstance(payload, dict):
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
+    if payload is None:
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 async def _invoke_engine_method(engine_name: str, method_name: str, **kwargs: Any) -> Dict[str, Any]:
@@ -46,6 +62,7 @@ async def _invoke_engine_method(engine_name: str, method_name: str, **kwargs: An
     if cls is None:
         return {
             "status": "error",
+            "success": False,
             "available": False,
             "engine": engine_name,
             "method": method_name,
@@ -59,6 +76,7 @@ async def _invoke_engine_method(engine_name: str, method_name: str, **kwargs: An
         if not callable(method):
             return {
                 "status": "error",
+                "success": False,
                 "available": True,
                 "engine": engine_name,
                 "method": method_name,
@@ -69,17 +87,18 @@ async def _invoke_engine_method(engine_name: str, method_name: str, **kwargs: An
         if hasattr(result, "__await__"):
             result = await result
 
-        if isinstance(result, dict):
-            return result
-        return {
-            "status": "success",
-            "engine": engine_name,
-            "method": method_name,
-            "result": result,
-        }
+        envelope = _normalize_payload(result)
+        envelope.setdefault("engine", engine_name)
+        envelope.setdefault("method", method_name)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+        else:
+            envelope.setdefault("success", False)
+        return envelope
     except Exception as exc:
         return {
             "status": "error",
+            "success": False,
             "available": True,
             "engine": engine_name,
             "method": method_name,
@@ -92,6 +111,7 @@ async def mcplusplus_engine_status() -> Dict[str, Any]:
     if not _API:
         return {
             "status": "success",
+            "success": True,
             "engines": {},
             "available": False,
             "fallback": True,
@@ -111,6 +131,7 @@ async def mcplusplus_engine_status() -> Dict[str, Any]:
 
     return {
         "status": "success",
+        "success": True,
         "available": True,
         "engines": engines,
     }
@@ -119,10 +140,11 @@ async def mcplusplus_engine_status() -> Dict[str, Any]:
 async def mcplusplus_list_engines() -> Dict[str, List[str]]:
     """List MCP++ engine classes exposed through source compatibility shims."""
     if not _API:
-        return {"status": "success", "engines": [], "fallback": True}
+        return {"status": "success", "success": True, "engines": [], "fallback": True}
 
     return {
         "status": "success",
+        "success": True,
         "engines": sorted(list(_API.keys())),
     }
 

@@ -27,18 +27,43 @@ _API = _load_lizardperson_argparse_api()
 
 
 def _error_result(message: str) -> Dict[str, Any]:
-    return {"status": "error", "error": message, "entrypoint": "municipal_bluebook_citation_validator.main"}
+    return {
+        "status": "error",
+        "success": False,
+        "error": message,
+        "entrypoint": "municipal_bluebook_citation_validator.main",
+    }
+
+
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic dict envelopes."""
+    if isinstance(payload, dict):
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
+    if payload is None:
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 async def municipal_bluebook_validator_info() -> Dict[str, Any]:
     """Return metadata about the municipal Bluebook citation validator CLI entrypoint."""
     try:
-        return {
+        envelope = _normalize_payload({
             "status": "success",
             "entrypoint": "municipal_bluebook_citation_validator.main",
             "callable": callable(_API.get("validator_main")),
             "fallback": not bool(_API),
-        }
+        })
+        envelope.setdefault("success", True)
+        envelope.setdefault("entrypoint", "municipal_bluebook_citation_validator.main")
+        envelope.setdefault("callable", False)
+        envelope.setdefault("fallback", not bool(_API))
+        return envelope
     except Exception as exc:
         logger.error("municipal_bluebook_validator_info failed: %s", exc)
         return _error_result(str(exc))
@@ -68,23 +93,36 @@ async def municipal_bluebook_validator_invoke(
             return _error_result("validator entrypoint unavailable")
 
         if not bool(allow_execution):
-            return {
+            envelope = _normalize_payload({
                 "status": "success",
                 "entrypoint": "municipal_bluebook_citation_validator.main",
                 "invoked": False,
                 "dry_run": True,
                 "argv": normalized_argv,
-            }
+            })
+            envelope.setdefault("success", True)
+            envelope.setdefault("entrypoint", "municipal_bluebook_citation_validator.main")
+            envelope.setdefault("invoked", False)
+            envelope.setdefault("dry_run", True)
+            envelope.setdefault("argv", normalized_argv)
+            return envelope
 
         exit_code = entrypoint(normalized_argv)
-        return {
+        envelope = _normalize_payload({
             "status": "success",
             "entrypoint": "municipal_bluebook_citation_validator.main",
             "invoked": True,
             "dry_run": False,
             "argv": normalized_argv,
             "exit_code": int(exit_code) if isinstance(exit_code, int) else 0,
-        }
+        })
+        envelope.setdefault("success", True)
+        envelope.setdefault("entrypoint", "municipal_bluebook_citation_validator.main")
+        envelope.setdefault("invoked", True)
+        envelope.setdefault("dry_run", False)
+        envelope.setdefault("argv", normalized_argv)
+        envelope.setdefault("exit_code", 0)
+        return envelope
     except Exception as exc:
         logger.error("municipal_bluebook_validator_invoke failed: %s", exc)
         return _error_result(str(exc))

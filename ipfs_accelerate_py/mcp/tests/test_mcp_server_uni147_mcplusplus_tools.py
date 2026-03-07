@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -526,6 +527,39 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
 
             worker_unregister = await mcpp_mod.mcplusplus_worker_unregister(worker_id="worker-1")
             self.assertIn(worker_unregister.get("status"), ["success", "error"])
+
+        anyio.run(_run)
+
+    def test_taskqueue_get_status_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            class _TaskQueueEngine:
+                def get_status(self, **_kwargs):
+                    return {"status": "success"}
+
+            with patch.object(mcpp_mod, "_API", new={"TaskQueueEngine": _TaskQueueEngine}):
+                result = await mcpp_mod.mcplusplus_taskqueue_get_status("task-1")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("engine"), "TaskQueueEngine")
+            self.assertEqual(result.get("method"), "get_status")
+
+        anyio.run(_run)
+
+    def test_taskqueue_get_status_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            class _TaskQueueEngine:
+                def get_status(self, **_kwargs):
+                    return {"error": "task missing"}
+
+            with patch.object(mcpp_mod, "_API", new={"TaskQueueEngine": _TaskQueueEngine}):
+                result = await mcpp_mod.mcplusplus_taskqueue_get_status("task-1")
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("success"), False)
+            self.assertEqual(result.get("engine"), "TaskQueueEngine")
+            self.assertEqual(result.get("method"), "get_status")
+            self.assertIn("task missing", str(result.get("error", "")))
 
         anyio.run(_run)
 

@@ -230,6 +230,98 @@ class TestMCPServerTransportE2EMatrix(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_policy_decision_persistence_and_retrieval_parity_across_http_and_mcp_p2p(self) -> None:
+        """Validate persisted temporal-policy decisions retain the same response/retrieval shape across HTTP-style and MCP+p2p entrypoints."""
+
+        async def _run() -> None:
+            server = self._bootstrap_server()
+            manager = server._unified_tool_manager
+
+            async def echo(value: str):
+                return {"mode": "policy-transport", "value": value}
+
+            manager.register_tool("transport", "echo_policy", echo, description="policy parity echo")
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+            policy_payload = {
+                "value": "ok",
+                "__enforce_policy": True,
+                "__policy_actor": "did:model:worker",
+                "__policy_cid": "cid-policy-transport-v1",
+                "__policy_version": "v1",
+                "__policy_clauses": [
+                    {
+                        "clause_type": "permission",
+                        "actor": "did:model:worker",
+                        "action": "transport.echo_policy",
+                    },
+                    {
+                        "clause_type": "obligation",
+                        "actor": "did:model:worker",
+                        "action": "transport.echo_policy",
+                        "obligation_deadline": "2030-01-01T00:00:00Z",
+                        "metadata": {"ticket": "transport-obl-1"},
+                    },
+                ],
+            }
+
+            http_result = await dispatch("transport", "echo_policy", dict(policy_payload))
+            self.assertTrue(http_result.get("ok"))
+            self.assertEqual((http_result.get("policy") or {}).get("decision"), "allow_with_obligations")
+
+            stream = _FakeStream(
+                encode_jsonrpc_frame({"jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {}})
+                + encode_jsonrpc_frame(
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "tools_dispatch",
+                            "arguments": {
+                                "category": "transport",
+                                "tool_name": "echo_policy",
+                                "parameters": dict(policy_payload),
+                            },
+                        },
+                    }
+                )
+            )
+
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-policy-parity",
+                registry=server,
+                max_frame_bytes=1024 * 1024,
+            )
+
+            responses = _decode_all_frames(bytes(stream.written))
+            self.assertEqual(len(responses), 2)
+            self.assertEqual(responses[1].get("id"), 2)
+            p2p_content = ((responses[1].get("result") or {}).get("content") or {})
+
+            self.assertTrue(p2p_content.get("ok"))
+            self.assertEqual((p2p_content.get("policy") or {}).get("decision"), "allow_with_obligations")
+            self.assertEqual((p2p_content.get("result") or {}).get("mode"), "policy-transport")
+            self.assertEqual((p2p_content.get("result") or {}).get("value"), "ok")
+
+            http_policy_decision = http_result.get("policy_decision") or {}
+            p2p_policy_decision = p2p_content.get("policy_decision") or {}
+            http_cid = str(http_policy_decision.get("decision_cid") or "")
+            p2p_cid = str(p2p_policy_decision.get("decision_cid") or "")
+
+            self.assertTrue(http_cid.startswith("cidv1-sha256-"))
+            self.assertEqual(http_cid, p2p_cid)
+            self.assertEqual((http_result.get("policy") or {}).get("obligations"), (p2p_content.get("policy") or {}).get("obligations"))
+
+            stored = server._unified_artifact_store.get(http_cid) or {}
+            self.assertEqual(stored.get("decision"), "allow_with_obligations")
+            self.assertEqual(stored.get("policy_cid"), "cid-policy-transport-v1")
+            self.assertEqual(stored.get("policy_version"), "v1")
+            self.assertEqual(((stored.get("obligations") or [])[0]).get("status"), "pending")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()
