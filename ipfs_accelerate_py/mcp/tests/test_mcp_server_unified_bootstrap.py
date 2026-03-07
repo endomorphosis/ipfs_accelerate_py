@@ -5238,6 +5238,85 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_event_dag_merge_fork_snapshot_is_deterministic(self, mock_wrapper):
+        """Fork/merge event DAG paths should replay and snapshot deterministically."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-event-dag-merge-fork")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            root = await dispatch("smoke", "echo", {"value": "root", "__emit_artifacts": True})
+            root_event = root["artifacts"]["event_cid"]
+
+            branch_z = await dispatch(
+                "smoke",
+                "echo",
+                {"value": "z", "__emit_artifacts": True, "__parent_event_cids": [root_event]},
+            )
+            branch_a = await dispatch(
+                "smoke",
+                "echo",
+                {"value": "a", "__emit_artifacts": True, "__parent_event_cids": [root_event]},
+            )
+            branch_z_event = branch_z["artifacts"]["event_cid"]
+            branch_a_event = branch_a["artifacts"]["event_cid"]
+
+            merge = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "merge",
+                    "__emit_artifacts": True,
+                    "__parent_event_cids": [branch_z_event, branch_a_event],
+                },
+            )
+            merge_event = merge["artifacts"]["event_cid"]
+
+            expected_branch = min(branch_a_event, branch_z_event)
+            self.assertEqual(merge["event_dag"]["lineage"], [root_event, expected_branch, merge_event])
+
+            replay = server._unified_event_dag.replay_from_root(root_event)
+            self.assertEqual(replay, [root_event, expected_branch, max(branch_a_event, branch_z_event), merge_event])
+            self.assertEqual(replay.count(merge_event), 1)
+
+            snapshot = server._unified_event_dag.export_snapshot()
+            rebuilt = type(server._unified_event_dag).from_snapshot(snapshot)
+            self.assertEqual(rebuilt.get_lineage(merge_event), [root_event, expected_branch, merge_event])
+            self.assertEqual(rebuilt.replay_from_root(root_event), replay)
+            self.assertEqual(rebuilt.rollback_path(merge_event), [merge_event, expected_branch, root_event])
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_risk_tracking_and_frontier(self, mock_wrapper):
         """Dispatch should expose risk metadata and frontier stats for deny/success flows."""
 
@@ -7049,6 +7128,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(
                 "unavailable_reasons contains unknown storage backends",
                 str(invalid_backend_alias_unknown_reason_backend.get("error", "")),
+            )
+
+            invalid_backend_alias_unknown_unavailable_backends = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "unavailable_backends": ["tape"],
+                    },
+                )
+            )
+            self.assertEqual(invalid_backend_alias_unknown_unavailable_backends.get("status"), "error")
+            self.assertIn(
+                "unavailable_backends contains unknown storage backends",
+                str(invalid_backend_alias_unknown_unavailable_backends.get("error", "")),
             )
 
             backend_status = self._assert_dispatch_success_envelope(

@@ -64,6 +64,49 @@ class TestMCPServerMCPPlusPlusEventDAG(unittest.TestCase):
                 }
             )
 
+    def test_merge_node_lineage_prefers_lexically_smallest_parent_path(self) -> None:
+        store = EventDAGStore()
+        store.add_event("cid-root", {"parents": [], "intent_cid": "root"})
+        store.add_event("cid-z-branch", {"parents": ["cid-root"], "intent_cid": "z"})
+        store.add_event("cid-a-branch", {"parents": ["cid-root"], "intent_cid": "a"})
+        store.add_event(
+            "cid-merge",
+            {
+                "parents": ["cid-z-branch", "cid-a-branch"],
+                "intent_cid": "merge",
+            },
+        )
+
+        self.assertEqual(store.get_lineage("cid-merge"), ["cid-root", "cid-a-branch", "cid-merge"])
+
+    def test_merge_replay_deduplicates_shared_merge_descendant(self) -> None:
+        store = EventDAGStore()
+        store.add_event("cid-root", {"parents": [], "intent_cid": "root"})
+        store.add_event("cid-a", {"parents": ["cid-root"], "intent_cid": "a"})
+        store.add_event("cid-b", {"parents": ["cid-root"], "intent_cid": "b"})
+        store.add_event("cid-merge", {"parents": ["cid-b", "cid-a"], "intent_cid": "merge"})
+
+        replay = store.replay_from_root("cid-root")
+        self.assertEqual(replay, ["cid-root", "cid-a", "cid-b", "cid-merge"])
+        self.assertEqual(replay.count("cid-merge"), 1)
+
+        rollback = store.rollback_path("cid-merge")
+        self.assertEqual(rollback, ["cid-merge", "cid-a", "cid-root"])
+
+    def test_snapshot_roundtrip_preserves_merge_fork_determinism(self) -> None:
+        store = EventDAGStore()
+        store.add_event("cid-root", {"parents": [], "intent_cid": "root"})
+        store.add_event("cid-branch-2", {"parents": ["cid-root"], "intent_cid": "b2"})
+        store.add_event("cid-branch-1", {"parents": ["cid-root"], "intent_cid": "b1"})
+        store.add_event(
+            "cid-merge",
+            {"parents": ["cid-branch-2", "cid-branch-1"], "intent_cid": "merge"},
+        )
+
+        rebuilt = EventDAGStore.from_snapshot(store.export_snapshot())
+        self.assertEqual(rebuilt.get_lineage("cid-merge"), ["cid-root", "cid-branch-1", "cid-merge"])
+        self.assertEqual(rebuilt.replay_from_root("cid-root"), ["cid-root", "cid-branch-1", "cid-branch-2", "cid-merge"])
+
     def test_rejects_conflicting_duplicate_event_payload(self) -> None:
         store = EventDAGStore()
         store.add_event("cid-root", {"parents": [], "intent_cid": "i1"})
