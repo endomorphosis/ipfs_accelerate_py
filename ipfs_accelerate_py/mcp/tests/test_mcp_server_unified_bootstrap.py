@@ -6660,6 +6660,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("get_storage_stats", names)
             self.assertIn("get_storage_lifecycle_report", names)
             self.assertIn("get_storage_backend_status", names)
+            self.assertIn("list_storage_collections", names)
             self.assertIn("delete_data", names)
 
             store_schema = await get_schema("storage_tools", "store_data")
@@ -6713,6 +6714,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             backend_alias_props = (backend_alias_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((backend_alias_props.get("availability_filter") or {}).get("default"), "all")
             self.assertEqual((backend_alias_props.get("include_capabilities") or {}).get("default"), False)
+
+            collections_alias_schema = await get_schema("storage_tools", "list_storage_collections")
+            collections_alias_props = (collections_alias_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((collections_alias_props.get("include_metadata") or {}).get("default"), True)
+            self.assertEqual((collections_alias_props.get("include_timestamps") or {}).get("default"), True)
 
             delete_schema = await get_schema("storage_tools", "delete_data")
             delete_props = (delete_schema.get("input_schema") or {}).get("properties", {})
@@ -6961,6 +6967,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(backend_alias.get("status"), "success")
             self.assertEqual(backend_alias.get("availability_filter"), "unavailable")
             self.assertEqual(backend_alias.get("backend_count"), 1)
+
+            collections_alias = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "list_storage_collections",
+                    {
+                        "include_metadata": False,
+                        "include_timestamps": False,
+                    },
+                )
+            )
+            self.assertEqual(collections_alias.get("status"), "success")
+            self.assertIn("collections", collections_alias)
+            self.assertIn("total_count", collections_alias)
 
             stored = self._assert_dispatch_success_envelope(
                 await dispatch(
