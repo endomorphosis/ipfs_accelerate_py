@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional
 
 
 def _error_result(message: str) -> Dict[str, Any]:
-    return {"status": "error", "error": message}
+    return {"status": "error", "success": False, "error": message}
 
 
 def _get_workflow_manager() -> Optional[Any]:
@@ -54,6 +54,7 @@ def get_workflow_templates() -> Dict[str, Any]:
 
     return {
         "status": "success",
+        "success": True,
         "templates": templates,
         "total": len(templates),
     }
@@ -68,6 +69,7 @@ def list_workflows(status: str | None = None) -> Dict[str, Any]:
     if not manager:
         return {
             "status": "error",
+            "success": False,
             "error": "Workflow manager not available",
         }
 
@@ -93,6 +95,7 @@ def list_workflows(status: str | None = None) -> Dict[str, Any]:
 
     return {
         "status": "success",
+        "success": True,
         "workflows": workflow_list,
         "total": len(workflow_list),
     }
@@ -107,6 +110,7 @@ def get_workflow(workflow_id: str) -> Dict[str, Any]:
     if not manager:
         return {
             "status": "error",
+            "success": False,
             "error": "Workflow manager not available",
         }
 
@@ -114,6 +118,7 @@ def get_workflow(workflow_id: str) -> Dict[str, Any]:
     if not workflow:
         return {
             "status": "error",
+            "success": False,
             "error": f"Workflow {workflow_id} not found",
         }
 
@@ -137,6 +142,7 @@ def get_workflow(workflow_id: str) -> Dict[str, Any]:
 
     return {
         "status": "success",
+        "success": True,
         "workflow": {
             "workflow_id": workflow.workflow_id,
             "name": workflow.name,
@@ -166,12 +172,14 @@ def create_workflow(name: str, description: str, tasks: List[Dict[str, Any]]) ->
     if not manager:
         return {
             "status": "error",
+            "success": False,
             "error": "Workflow manager not available",
         }
 
     workflow = manager.create_workflow(name.strip(), description.strip(), tasks)
     return {
         "status": "success",
+        "success": True,
         "workflow_id": workflow.workflow_id,
         "name": workflow.name,
         "description": workflow.description,
@@ -200,6 +208,7 @@ def update_workflow(
     if not manager:
         return {
             "status": "error",
+            "success": False,
             "error": "Workflow manager not available",
         }
 
@@ -211,6 +220,7 @@ def update_workflow(
     )
     return {
         "status": "success",
+        "success": True,
         "workflow_id": workflow.workflow_id,
         "name": workflow.name,
         "description": workflow.description,
@@ -228,12 +238,14 @@ def delete_workflow(workflow_id: str) -> Dict[str, Any]:
     if not manager:
         return {
             "status": "error",
+            "success": False,
             "error": "Workflow manager not available",
         }
 
     manager.delete_workflow(workflow_id.strip())
     return {
         "status": "success",
+        "success": True,
         "workflow_id": workflow_id,
         "message": "Workflow deleted successfully",
     }
@@ -248,12 +260,14 @@ def start_workflow(workflow_id: str) -> Dict[str, Any]:
     if not manager:
         return {
             "status": "error",
+            "success": False,
             "error": "Workflow manager not available",
         }
 
     manager.start_workflow(workflow_id.strip())
     return {
         "status": "success",
+        "success": True,
         "workflow_id": workflow_id,
         "message": "Workflow started successfully",
     }
@@ -268,12 +282,14 @@ def pause_workflow(workflow_id: str) -> Dict[str, Any]:
     if not manager:
         return {
             "status": "error",
+            "success": False,
             "error": "Workflow manager not available",
         }
 
     manager.pause_workflow(workflow_id.strip())
     return {
         "status": "success",
+        "success": True,
         "workflow_id": workflow_id,
         "message": "Workflow paused successfully",
     }
@@ -288,12 +304,14 @@ def stop_workflow(workflow_id: str) -> Dict[str, Any]:
     if not manager:
         return {
             "status": "error",
+            "success": False,
             "error": "Workflow manager not available",
         }
 
     manager.stop_workflow(workflow_id.strip())
     return {
         "status": "success",
+        "success": True,
         "workflow_id": workflow_id,
         "message": "Workflow stopped successfully",
     }

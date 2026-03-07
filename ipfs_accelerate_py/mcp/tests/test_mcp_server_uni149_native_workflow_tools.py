@@ -48,7 +48,7 @@ class TestMCPServerUNI149NativeWorkflowTools(unittest.TestCase):
         )
         self.assertEqual(
             workflow_mod.create_workflow("name", "desc", {}),  # type: ignore[arg-type]
-            {"status": "error", "error": "tasks must be a list"},
+            {"status": "error", "success": False, "error": "tasks must be a list"},
         )
         self.assertEqual(
             workflow_mod.update_workflow("wf-1", name="   ").get("error"),
@@ -106,13 +106,36 @@ class TestMCPServerUNI149NativeWorkflowTools(unittest.TestCase):
 
         with patch.object(workflow_mod, "_get_workflow_manager", return_value=_FakeManager()):
             self.assertEqual(workflow_mod.list_workflows().get("status"), "success")
+            self.assertTrue(workflow_mod.list_workflows().get("success"))
             self.assertEqual(workflow_mod.get_workflow("wf-1").get("status"), "success")
+            self.assertTrue(workflow_mod.get_workflow("wf-1").get("success"))
             self.assertEqual(workflow_mod.create_workflow("n", "d", []).get("status"), "success")
+            self.assertTrue(workflow_mod.create_workflow("n", "d", []).get("success"))
             self.assertEqual(workflow_mod.update_workflow("wf-1", name="n").get("status"), "success")
+            self.assertTrue(workflow_mod.update_workflow("wf-1", name="n").get("success"))
             self.assertEqual(workflow_mod.delete_workflow("wf-1").get("status"), "success")
+            self.assertTrue(workflow_mod.delete_workflow("wf-1").get("success"))
             self.assertEqual(workflow_mod.start_workflow("wf-1").get("status"), "success")
+            self.assertTrue(workflow_mod.start_workflow("wf-1").get("success"))
             self.assertEqual(workflow_mod.pause_workflow("wf-1").get("status"), "success")
+            self.assertTrue(workflow_mod.pause_workflow("wf-1").get("success"))
             self.assertEqual(workflow_mod.stop_workflow("wf-1").get("status"), "success")
+            self.assertTrue(workflow_mod.stop_workflow("wf-1").get("success"))
+
+    def test_templates_include_explicit_success(self) -> None:
+        result = workflow_mod.get_workflow_templates()
+        self.assertEqual(result.get("status"), "success")
+        self.assertTrue(result.get("success"))
+        self.assertIn("templates", result)
+        self.assertEqual(result.get("total"), len(result.get("templates", {})))
+
+    def test_manager_unavailable_error_has_success_false(self) -> None:
+        with patch.object(workflow_mod, "_get_workflow_manager", return_value=None):
+            result = workflow_mod.list_workflows()
+
+        self.assertEqual(result.get("status"), "error")
+        self.assertFalse(result.get("success"))
+        self.assertIn("Workflow manager not available", str(result.get("error", "")))
 
 
 if __name__ == "__main__":
