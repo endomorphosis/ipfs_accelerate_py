@@ -10383,12 +10383,25 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             listed = await tools_list("development_tools")
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("codebase_search", names)
+            self.assertIn("documentation_generator", names)
+            self.assertIn("lint_python_codebase", names)
+            self.assertIn("run_comprehensive_tests", names)
+            self.assertIn("test_generator", names)
+            self.assertIn("vscode_cli_execute", names)
             self.assertIn("vscode_cli_status", names)
 
             schema = await get_schema("development_tools", "codebase_search")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("context") or {}).get("minimum"), 0)
             self.assertIn("json", (props.get("format") or {}).get("enum", []))
+
+            docs_schema = await get_schema("development_tools", "documentation_generator")
+            docs_props = (docs_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("html", (docs_props.get("format_type") or {}).get("enum", []))
+
+            execute_schema = await get_schema("development_tools", "vscode_cli_execute")
+            execute_props = (execute_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((execute_props.get("timeout") or {}).get("maximum"), 300)
 
             invalid_pattern = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10424,6 +10437,60 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_context.get("error", ""))
             )
             self.assertIn("context must be an integer >= 0", invalid_context_text)
+
+            invalid_doc_format = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "development_tools",
+                    "documentation_generator",
+                    {
+                        "input_path": "src",
+                        "format_type": "pdf",
+                    },
+                )
+            )
+            self.assertEqual(invalid_doc_format.get("status"), "error")
+            invalid_doc_text = (
+                str(invalid_doc_format.get("message", ""))
+                + " "
+                + str(invalid_doc_format.get("error", ""))
+            )
+            self.assertIn("format_type must be one of", invalid_doc_text)
+
+            invalid_test_framework = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "development_tools",
+                    "run_comprehensive_tests",
+                    {
+                        "path": ".",
+                        "test_framework": "nose",
+                    },
+                )
+            )
+            self.assertEqual(invalid_test_framework.get("status"), "error")
+            invalid_test_framework_text = (
+                str(invalid_test_framework.get("message", ""))
+                + " "
+                + str(invalid_test_framework.get("error", ""))
+            )
+            self.assertIn("test_framework must be one of", invalid_test_framework_text)
+
+            invalid_cli_timeout = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "development_tools",
+                    "vscode_cli_execute",
+                    {
+                        "command": ["--version"],
+                        "timeout": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_cli_timeout.get("status"), "error")
+            invalid_cli_timeout_text = (
+                str(invalid_cli_timeout.get("message", ""))
+                + " "
+                + str(invalid_cli_timeout.get("error", ""))
+            )
+            self.assertIn("timeout must be an integer between 1 and 300", invalid_cli_timeout_text)
 
         anyio.run(_run_flow)
 
@@ -11359,12 +11426,25 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             listed = await tools_list("software_engineering_tools")
             names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("analyze_github_actions", names)
+            self.assertIn("parse_systemd_logs", names)
+            self.assertIn("parse_kubernetes_logs", names)
+            self.assertIn("detect_error_patterns", names)
+            self.assertIn("coordinate_auto_healing", names)
             self.assertIn("scrape_repository", names)
             self.assertIn("search_repositories", names)
 
             schema = await get_schema("software_engineering_tools", "scrape_repository")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("max_items") or {}).get("minimum"), 1)
+
+            actions_schema = await get_schema("software_engineering_tools", "analyze_github_actions")
+            actions_props = (actions_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((actions_props.get("max_runs") or {}).get("minimum"), 1)
+
+            systemd_schema = await get_schema("software_engineering_tools", "parse_systemd_logs")
+            systemd_props = (systemd_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("warning", (systemd_props.get("priority_filter") or {}).get("enum", []))
 
             invalid_url = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11400,6 +11480,59 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_max_results.get("error", ""))
             )
             self.assertIn("max_results must be an integer >= 1", invalid_max_results_text)
+
+            invalid_actions_runs = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "software_engineering_tools",
+                    "analyze_github_actions",
+                    {
+                        "repository_url": "https://github.com/example/repo",
+                        "max_runs": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_actions_runs.get("status"), "error")
+            invalid_actions_runs_text = (
+                str(invalid_actions_runs.get("message", ""))
+                + " "
+                + str(invalid_actions_runs.get("error", ""))
+            )
+            self.assertIn("max_runs must be an integer >= 1", invalid_actions_runs_text)
+
+            invalid_priority_filter = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "software_engineering_tools",
+                    "parse_systemd_logs",
+                    {
+                        "log_content": "svc log",
+                        "priority_filter": "panic",
+                    },
+                )
+            )
+            self.assertEqual(invalid_priority_filter.get("status"), "error")
+            invalid_priority_filter_text = (
+                str(invalid_priority_filter.get("message", ""))
+                + " "
+                + str(invalid_priority_filter.get("error", ""))
+            )
+            self.assertIn("priority_filter must be null or one of", invalid_priority_filter_text)
+
+            invalid_error_logs = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "software_engineering_tools",
+                    "detect_error_patterns",
+                    {
+                        "error_logs": "timeout",
+                    },
+                )
+            )
+            self.assertEqual(invalid_error_logs.get("status"), "error")
+            invalid_error_logs_text = (
+                str(invalid_error_logs.get("message", ""))
+                + " "
+                + str(invalid_error_logs.get("error", ""))
+            )
+            self.assertIn("error_logs must be a list of non-empty strings", invalid_error_logs_text)
 
         anyio.run(_run_flow)
 

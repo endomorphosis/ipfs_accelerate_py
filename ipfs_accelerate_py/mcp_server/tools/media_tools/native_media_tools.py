@@ -145,10 +145,11 @@ def _load_media_tools_api() -> Dict[str, Any]:
             url: str,
             download: bool = False,
             extract_flat: bool = False,
+            flat_playlist: Optional[bool] = None,
             include_subtitles: bool = False,
             include_thumbnails: bool = False,
         ) -> Dict[str, Any]:
-            _ = (download, extract_flat, include_subtitles, include_thumbnails)
+            _ = (download, extract_flat, flat_playlist, include_subtitles, include_thumbnails)
             return {
                 "status": "success",
                 "url": url,
@@ -484,6 +485,7 @@ async def ytdlp_extract_info(
     url: str,
     download: bool = False,
     extract_flat: bool = False,
+    flat_playlist: Optional[bool] = None,
     include_subtitles: bool = False,
     include_thumbnails: bool = False,
 ) -> Dict[str, Any]:
@@ -494,6 +496,8 @@ async def ytdlp_extract_info(
     normalized_url = url.strip()
     if not isinstance(download, bool):
         return {"status": "error", "error": "download must be a boolean", "url": normalized_url}
+    if flat_playlist is not None and not isinstance(flat_playlist, bool):
+        return {"status": "error", "error": "flat_playlist must be a boolean", "url": normalized_url}
     if not isinstance(extract_flat, bool):
         return {"status": "error", "error": "extract_flat must be a boolean", "url": normalized_url}
     if not isinstance(include_subtitles, bool):
@@ -501,12 +505,14 @@ async def ytdlp_extract_info(
     if not isinstance(include_thumbnails, bool):
         return {"status": "error", "error": "include_thumbnails must be a boolean", "url": normalized_url}
 
+    normalized_extract_flat = flat_playlist if isinstance(flat_playlist, bool) else extract_flat
+
     try:
         resolved = await _await_maybe(
             _API["ytdlp_extract_info"](
                 url=normalized_url,
                 download=download,
-                extract_flat=extract_flat,
+                extract_flat=normalized_extract_flat,
                 include_subtitles=include_subtitles,
                 include_thumbnails=include_thumbnails,
             )
@@ -693,6 +699,7 @@ def register_native_media_tools(manager: Any) -> None:
                 "url": {"type": "string", "minLength": 1},
                 "download": {"type": "boolean", "default": False},
                 "extract_flat": {"type": "boolean", "default": False},
+                "flat_playlist": {"type": ["boolean", "null"], "default": None},
                 "include_subtitles": {"type": "boolean", "default": False},
                 "include_thumbnails": {"type": "boolean", "default": False},
             },

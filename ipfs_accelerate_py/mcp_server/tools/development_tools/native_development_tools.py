@@ -626,6 +626,9 @@ async def test_generator(
     return payload
 
 
+test_generator.__test__ = False
+
+
 async def vscode_cli_status(install_dir: Optional[str] = None) -> Dict[str, Any]:
     """Get VS Code CLI installation and status details."""
     try:
