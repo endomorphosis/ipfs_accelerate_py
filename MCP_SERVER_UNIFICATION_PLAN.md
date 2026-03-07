@@ -492,14 +492,16 @@ Current posture: Implemented.
 Next plan:
 
 1. Expand DAG conflict and fork handling test scenarios. ✅
-2. Add deterministic replay and rollback tests for larger graphs.
-3. Add durability and snapshot compatibility tests.
+2. Add deterministic replay and rollback tests for larger graphs. ✅
+3. Add durability and snapshot compatibility tests. ✅
 
 Recent execution (2026-03-07):
 
 1. Expanded `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py` with deterministic fork/merge regressions covering lexical-parent lineage selection for multi-parent nodes, replay deduplication of shared merge descendants, and merge-fork snapshot roundtrip stability.
 2. Added unified-dispatch fork/merge coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to verify artifact-emitted event DAG snapshots preserve deterministic merge lineage, replay ordering, and rollback behavior when a merge node references two parents in non-lexical input order.
-3. Revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py` plus focused unified-bootstrap Event DAG coverage (`15 passed`).
+3. Added a larger layered unified-dispatch Event DAG regression in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to confirm repeated replay/rollback determinism, event-count accounting, and snapshot rebuild stability for a multi-level artifact-emitted graph.
+4. Added snapshot compatibility regressions in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to verify deterministic rebuild from reordered snapshot entries while ignoring malformed/noise payloads.
+5. Revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py` plus focused unified-bootstrap Event DAG coverage (`18 passed`).
 
 ### 6.8 Risk Scheduling (`risk-scheduling`)
 
@@ -508,7 +510,12 @@ Next plan:
 
 1. Strengthen frontier execution binding tests under load and retries.
 2. Add neighborhood consensus signal integration as optional enhancement.
-3. Validate risk-state lineage integrity with event/artifact linkage.
+3. Validate risk-state lineage integrity with event/artifact linkage. ✅
+
+Recent execution (2026-03-07):
+
+1. Added unified-dispatch risk lineage coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to verify the emitted artifact `event_cid` is the same value tracked in risk state, frontier metadata, Event DAG lineage, and workflow-scheduler execution binding.
+2. Revalidated with focused risk scheduling coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py` plus unified-bootstrap risk/frontier tests (`13 passed`).
 
 ## 7. Milestones and Timeline
 

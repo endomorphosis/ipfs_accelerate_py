@@ -64,6 +64,31 @@ class TestMCPServerMCPPlusPlusEventDAG(unittest.TestCase):
                 }
             )
 
+    def test_snapshot_rebuild_tolerates_reordered_and_invalid_entries(self) -> None:
+        store = EventDAGStore()
+        store.add_event("cid-root", {"parents": [], "intent_cid": "root"})
+        store.add_event("cid-a", {"parents": ["cid-root"], "intent_cid": "a"})
+        store.add_event("cid-leaf", {"parents": ["cid-a"], "intent_cid": "leaf"})
+
+        snapshot = store.export_snapshot()
+        events = list(reversed(snapshot.get("events") or []))
+        reordered_snapshot = {
+            "version": snapshot.get("version"),
+            "events": [
+                "ignored-entry",
+                {"event_cid": "", "payload": {"parents": []}},
+                {"event_cid": "cid-bad", "payload": None},
+                *events,
+            ],
+            "stats": {"event_count": 999},
+        }
+
+        rebuilt = EventDAGStore.from_snapshot(reordered_snapshot)
+        self.assertEqual(rebuilt.stats().get("event_count"), 3)
+        self.assertEqual(rebuilt.get_lineage("cid-leaf"), ["cid-root", "cid-a", "cid-leaf"])
+        self.assertEqual(rebuilt.replay_from_root("cid-root"), ["cid-root", "cid-a", "cid-leaf"])
+        self.assertEqual(rebuilt.rollback_path("cid-leaf"), ["cid-leaf", "cid-a", "cid-root"])
+
     def test_merge_node_lineage_prefers_lexically_smallest_parent_path(self) -> None:
         store = EventDAGStore()
         store.add_event("cid-root", {"parents": [], "intent_cid": "root"})

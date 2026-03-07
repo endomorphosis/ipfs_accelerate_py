@@ -5317,6 +5317,199 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_event_dag_large_graph_replay_and_rollback_are_deterministic(self, mock_wrapper):
+        """Larger dispatch-emitted event DAGs should replay and roll back deterministically."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-event-dag-large-graph")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            root = await dispatch("smoke", "echo", {"value": "root", "__emit_artifacts": True})
+            self.assertTrue(root["event_dag"]["persisted"])
+            root_event = root["artifacts"]["event_cid"]
+
+            layer1 = []
+            for i in range(4):
+                result = await dispatch(
+                    "smoke",
+                    "echo",
+                    {
+                        "value": f"l1-{i:02d}",
+                        "__emit_artifacts": True,
+                        "__parent_event_cids": [root_event],
+                    },
+                )
+                self.assertTrue(result["event_dag"]["persisted"])
+                layer1.append(result["artifacts"]["event_cid"])
+
+            layer2 = []
+            for parent in layer1:
+                for branch in ("a", "b"):
+                    result = await dispatch(
+                        "smoke",
+                        "echo",
+                        {
+                            "value": f"l2-{parent}-{branch}",
+                            "__emit_artifacts": True,
+                            "__parent_event_cids": [parent],
+                        },
+                    )
+                    self.assertTrue(result["event_dag"]["persisted"])
+                    layer2.append(result["artifacts"]["event_cid"])
+
+            layer3 = []
+            for parent in layer2:
+                result = await dispatch(
+                    "smoke",
+                    "echo",
+                    {
+                        "value": f"l3-{parent}",
+                        "__emit_artifacts": True,
+                        "__parent_event_cids": [parent],
+                    },
+                )
+                self.assertTrue(result["event_dag"]["persisted"])
+                layer3.append(result["artifacts"]["event_cid"])
+
+            expected_count = 1 + len(layer1) + len(layer2) + len(layer3)
+            self.assertEqual(server._unified_event_dag.stats()["event_count"], expected_count)
+
+            replay_first = server._unified_event_dag.replay_from_root(root_event)
+            replay_second = server._unified_event_dag.replay_from_root(root_event)
+            self.assertEqual(replay_first, replay_second)
+            self.assertEqual(replay_first[0], root_event)
+            self.assertEqual(len(replay_first), expected_count)
+
+            leaf_event = sorted(layer3)[-1]
+            lineage = server._unified_event_dag.get_lineage(leaf_event)
+            rollback_first = server._unified_event_dag.rollback_path(leaf_event)
+            rollback_second = server._unified_event_dag.rollback_path(leaf_event)
+            self.assertEqual(rollback_first, rollback_second)
+            self.assertEqual(rollback_first, list(reversed(lineage)))
+            self.assertEqual(rollback_first[0], leaf_event)
+            self.assertEqual(rollback_first[-1], root_event)
+
+            snapshot = server._unified_event_dag.export_snapshot()
+            rebuilt = type(server._unified_event_dag).from_snapshot(snapshot)
+            self.assertEqual(rebuilt.stats()["event_count"], expected_count)
+            self.assertEqual(rebuilt.replay_from_root(root_event), replay_first)
+            self.assertEqual(rebuilt.rollback_path(leaf_event), rollback_first)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_event_dag_snapshot_rebuild_is_compatible_with_reordered_snapshot_entries(
+        self, mock_wrapper
+    ):
+        """Dispatch-emitted DAG snapshots should rebuild deterministically despite ordering noise."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-event-dag-snapshot-compat")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            root = await dispatch("smoke", "echo", {"value": "root", "__emit_artifacts": True})
+            branch = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "branch",
+                    "__emit_artifacts": True,
+                    "__parent_event_cids": [root["artifacts"]["event_cid"]],
+                },
+            )
+            leaf = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "leaf",
+                    "__emit_artifacts": True,
+                    "__parent_event_cids": [branch["artifacts"]["event_cid"]],
+                },
+            )
+
+            root_event = root["artifacts"]["event_cid"]
+            leaf_event = leaf["artifacts"]["event_cid"]
+            expected_replay = server._unified_event_dag.replay_from_root(root_event)
+            expected_rollback = server._unified_event_dag.rollback_path(leaf_event)
+
+            snapshot = server._unified_event_dag.export_snapshot()
+            compatible_snapshot = {
+                "version": snapshot.get("version"),
+                "events": [
+                    {"event_cid": "", "payload": {"parents": []}},
+                    "ignored-entry",
+                    *list(reversed(snapshot.get("events") or [])),
+                ],
+                "stats": {"event_count": 0},
+            }
+
+            rebuilt = type(server._unified_event_dag).from_snapshot(compatible_snapshot)
+            self.assertEqual(rebuilt.stats()["event_count"], 3)
+            self.assertEqual(rebuilt.get_lineage(leaf_event), [root_event, branch["artifacts"]["event_cid"], leaf_event])
+            self.assertEqual(rebuilt.replay_from_root(root_event), expected_replay)
+            self.assertEqual(rebuilt.rollback_path(leaf_event), expected_rollback)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_risk_tracking_and_frontier(self, mock_wrapper):
         """Dispatch should expose risk metadata and frontier stats for deny/success flows."""
 
@@ -5576,6 +5769,200 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIsInstance(call["priority"], int)
             self.assertEqual(factory_calls["workflow_scheduler_factory"], 1)
             self.assertEqual(factory_calls["task_queue_factory"], 1)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_risk_lineage_matches_emitted_event_and_execution_binding(self, mock_wrapper):
+        """Risk lineage should reference the same emitted event CID used by frontier execution."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakeWorkflowScheduler:
+            def __init__(self):
+                self.calls = []
+
+            async def submit_workflow(self, workflow_name, tasks, metadata=None):
+                self.calls.append(
+                    {
+                        "workflow_name": workflow_name,
+                        "tasks": tasks,
+                        "metadata": metadata,
+                    }
+                )
+                return {"workflow_id": "wf-risk-lineage-1"}
+
+        fake_scheduler = FakeWorkflowScheduler()
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-risk-lineage-linkage")
+
+        server._unified_services["workflow_scheduler_factory"] = lambda **kwargs: fake_scheduler
+        server._unified_services["task_queue_factory"] = lambda **kwargs: None
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__emit_artifacts": True,
+                    "__risk_actor": "did:model:risk-lineage",
+                    "__execute_frontier": True,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            event_cid = response["artifacts"]["event_cid"]
+            frontier = response.get("frontier") or {}
+            execution = frontier.get("execution") or {}
+            risk = response.get("risk") or {}
+
+            self.assertEqual(risk.get("last_event_cid"), event_cid)
+            self.assertEqual(frontier.get("event_cid"), event_cid)
+            self.assertEqual(execution.get("event_cid"), event_cid)
+            self.assertEqual((response.get("event_dag") or {}).get("lineage"), [event_cid])
+            self.assertEqual(len(fake_scheduler.calls), 1)
+
+            call = fake_scheduler.calls[0]
+            self.assertEqual(call["workflow_name"], "risk_frontier_dispatch")
+            self.assertEqual(call["metadata"]["event_cid"], event_cid)
+            self.assertEqual(call["tasks"][0]["payload"]["event_cid"], event_cid)
+            self.assertEqual(execution.get("workflow_id"), "wf-risk-lineage-1")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_frontier_execution_under_load_prefers_fifo_before_retries(self, mock_wrapper):
+        """Frontier execution should pop older ready work first and leave retries behind fresh items."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakeWorkflowScheduler:
+            def __init__(self):
+                self.calls = []
+
+            async def submit_workflow(self, workflow_name, tasks, metadata=None):
+                self.calls.append(
+                    {
+                        "workflow_name": workflow_name,
+                        "tasks": tasks,
+                        "metadata": metadata,
+                    }
+                )
+                return {"workflow_id": "wf-risk-queue-1"}
+
+        fake_scheduler = FakeWorkflowScheduler()
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-frontier-load-retry")
+
+        server._unified_services["workflow_scheduler_factory"] = lambda **kwargs: fake_scheduler
+        server._unified_services["task_queue_factory"] = lambda **kwargs: None
+
+        risk_scheduler = server._unified_risk_scheduler
+        risk_scheduler.enqueue_frontier(
+            event_cid="cid-preloaded-fresh",
+            actor="did:model:risk-load",
+            expected_value=0.75,
+            dependency_ready=True,
+            retry_count=0,
+            metadata={"source": "preloaded", "kind": "fresh"},
+        )
+        risk_scheduler.enqueue_frontier(
+            event_cid="cid-preloaded-retry",
+            actor="did:model:risk-load",
+            expected_value=0.75,
+            dependency_ready=True,
+            retry_count=3,
+            metadata={"source": "preloaded", "kind": "retry"},
+        )
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__emit_artifacts": True,
+                    "__risk_actor": "did:model:risk-load",
+                    "__execute_frontier": True,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            frontier = response.get("frontier") or {}
+            execution = frontier.get("execution") or {}
+
+            self.assertEqual(frontier.get("event_cid"), response["artifacts"]["event_cid"])
+            self.assertEqual(execution.get("event_cid"), "cid-preloaded-fresh")
+            self.assertNotEqual(execution.get("event_cid"), frontier.get("event_cid"))
+            self.assertEqual(execution.get("workflow_id"), "wf-risk-queue-1")
+            self.assertEqual(len(fake_scheduler.calls), 1)
+            self.assertEqual(fake_scheduler.calls[0]["metadata"]["event_cid"], "cid-preloaded-fresh")
+            self.assertEqual(fake_scheduler.calls[0]["tasks"][0]["payload"]["event_cid"], "cid-preloaded-fresh")
+
+            self.assertEqual(frontier.get("stats", {}).get("frontier_size"), 2)
+
+            next_item = risk_scheduler.pop_next()
+            self.assertIsNotNone(next_item)
+            self.assertEqual(next_item.event_cid, response["artifacts"]["event_cid"])
+
+            final_item = risk_scheduler.pop_next()
+            self.assertIsNotNone(final_item)
+            self.assertEqual(final_item.event_cid, "cid-preloaded-retry")
 
         anyio.run(_run_flow)
 
@@ -7158,6 +7545,51 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(
                 "include_capabilities must be a boolean",
                 str(invalid_backend_alias_include_capabilities.get("error", "")),
+            )
+
+            invalid_backend_alias_include_breakdown = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "include_breakdown": "yes",
+                    },
+                )
+            )
+            self.assertEqual(invalid_backend_alias_include_breakdown.get("status"), "error")
+            self.assertIn(
+                "include_breakdown must be a boolean",
+                str(invalid_backend_alias_include_breakdown.get("error", "")),
+            )
+
+            invalid_backend_alias_backend_types_type = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": "memory",
+                    },
+                )
+            )
+            self.assertEqual(invalid_backend_alias_backend_types_type.get("status"), "error")
+            self.assertIn(
+                "backend_types must be an array of non-empty strings",
+                str(invalid_backend_alias_backend_types_type.get("error", "")),
+            )
+
+            invalid_backend_alias_unavailable_backends_entry = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "unavailable_backends": ["ipfs", " "],
+                    },
+                )
+            )
+            self.assertEqual(invalid_backend_alias_unavailable_backends_entry.get("status"), "error")
+            self.assertIn(
+                "unavailable_backends must be an array of non-empty strings",
+                str(invalid_backend_alias_unavailable_backends_entry.get("error", "")),
             )
 
             backend_status = self._assert_dispatch_success_envelope(
