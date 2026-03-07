@@ -11683,10 +11683,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("system_health", names)
             self.assertIn("cache_stats", names)
+            self.assertIn("system_status", names)
+            self.assertIn("execute_workflow", names)
+            self.assertIn("list_indices", names)
+            self.assertIn("delete_index", names)
+            self.assertIn("create_vector_store", names)
 
             schema = await get_schema("bespoke_tools", "cache_stats")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("namespace") or {}).get("minLength"), 1)
+
+            workflow_schema = await get_schema("bespoke_tools", "execute_workflow")
+            workflow_props = (workflow_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((workflow_props.get("timeout_seconds") or {}).get("minimum"), 1)
+
+            create_schema = await get_schema("bespoke_tools", "create_vector_store")
+            create_props = (create_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((create_props.get("dimension") or {}).get("minimum"), 1)
 
             invalid_namespace = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11704,6 +11717,54 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_namespace.get("error", ""))
             )
             self.assertIn("namespace must be null or a non-empty string", invalid_namespace_text)
+
+            invalid_workflow = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "bespoke_tools",
+                    "execute_workflow",
+                    {
+                        "workflow_id": "audit_report",
+                        "parameters": ["bad"],
+                    },
+                )
+            )
+            self.assertEqual(invalid_workflow.get("status"), "error")
+            invalid_workflow_text = (
+                str(invalid_workflow.get("message", ""))
+                + " "
+                + str(invalid_workflow.get("error", ""))
+            )
+            self.assertIn("parameters must be null or an object", invalid_workflow_text)
+
+            invalid_store_type = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "bespoke_tools",
+                    "list_indices",
+                    {
+                        "store_type": "sqlite",
+                    },
+                )
+            )
+            self.assertEqual(invalid_store_type.get("status"), "error")
+            invalid_store_type_text = (
+                str(invalid_store_type.get("message", ""))
+                + " "
+                + str(invalid_store_type.get("error", ""))
+            )
+            self.assertIn("store_type must be one of", invalid_store_type_text)
+
+            create_ok = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "bespoke_tools",
+                    "create_vector_store",
+                    {
+                        "store_name": "Demo Store",
+                        "dimension": 384,
+                    },
+                )
+            )
+            self.assertEqual(create_ok.get("status"), "success")
+            self.assertIn("store_info", create_ok)
 
         anyio.run(_run_flow)
 
@@ -11745,11 +11806,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             listed = await tools_list("cli")
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("execute_command", names)
+            self.assertIn("scrape_pubmed_cli", names)
+            self.assertIn("scrape_clinical_trials_cli", names)
+            self.assertIn("discover_protein_binders_cli", names)
+            self.assertIn("discover_enzyme_inhibitors_cli", names)
+            self.assertIn("discover_biomolecules_rag_cli", names)
 
             schema = await get_schema("cli", "execute_command")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("command") or {}).get("minLength"), 1)
             self.assertEqual((props.get("timeout_seconds") or {}).get("minimum"), 1)
+
+            biomolecule_schema = await get_schema("cli", "discover_biomolecules_rag_cli")
+            biomolecule_props = (biomolecule_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((biomolecule_props.get("type") or {}).get("enum"), ["binders", "inhibitors", "pathway"])
 
             invalid_command = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11767,6 +11837,52 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_command.get("error", ""))
             )
             self.assertIn("command must be a non-empty string", invalid_command_text)
+
+            invalid_pubmed = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cli",
+                    "scrape_pubmed_cli",
+                    {
+                        "query": "COVID-19",
+                        "research_type": "case_report",
+                    },
+                )
+            )
+            self.assertEqual(invalid_pubmed.get("status"), "error")
+            invalid_pubmed_text = (
+                str(invalid_pubmed.get("message", ""))
+                + " "
+                + str(invalid_pubmed.get("error", ""))
+            )
+            self.assertIn("research_type must be one of", invalid_pubmed_text)
+
+            invalid_trials = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cli",
+                    "scrape_clinical_trials_cli",
+                    {},
+                )
+            )
+            self.assertEqual(invalid_trials.get("status"), "error")
+            invalid_trials_text = (
+                str(invalid_trials.get("message", ""))
+                + " "
+                + str(invalid_trials.get("error", ""))
+            )
+            self.assertIn("query or condition is required", invalid_trials_text)
+
+            cli_ok = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "cli",
+                    "discover_biomolecules_rag_cli",
+                    {
+                        "target": "mTOR signaling",
+                        "type": "pathway",
+                    },
+                )
+            )
+            self.assertEqual(cli_ok.get("status"), "success")
+            self.assertEqual(cli_ok.get("type"), "pathway")
 
             invalid_timeout = self._assert_dispatch_success_envelope(
                 await dispatch(
