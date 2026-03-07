@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -116,6 +117,38 @@ class TestMCPServerUNI142CliTools(unittest.TestCase):
             rag = await discover_biomolecules_rag_cli(target="mTOR signaling", type="pathway")
             self.assertIn(rag.get("status"), ["success", "error"])
             self.assertEqual(rag.get("type"), "pathway")
+
+        anyio.run(_run)
+
+    def test_execute_command_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch("ipfs_accelerate_py.mcp_server.tools.cli.native_cli_tools._API") as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await execute_command(command="echo", args=["hello"], timeout_seconds=3)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("message"), "Command execution request processed")
+            self.assertEqual(result.get("command"), "echo")
+            self.assertEqual(result.get("args"), ["hello"])
+            self.assertEqual(result.get("timeout_seconds"), 3)
+
+        anyio.run(_run)
+
+    def test_scrape_pubmed_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch("ipfs_accelerate_py.mcp_server.tools.cli.native_cli_tools._API") as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"error": "pubmed unavailable"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await scrape_pubmed_cli(query="COVID-19")
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("pubmed unavailable", str(result.get("error", "")))
 
         anyio.run(_run)
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -101,6 +102,51 @@ class TestMCPServerUNI141BespokeTools(unittest.TestCase):
             delete_result = await delete_index("idx_embeddings_001", confirm=True)
             self.assertIn(delete_result.get("status"), ["success", "error"])
             self.assertEqual(delete_result.get("index_id"), "idx_embeddings_001")
+
+        anyio.run(_run)
+
+    def test_system_health_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch("ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools._API") as mock_api:
+                async def _impl() -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await system_health()
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("health_score"), 100.0)
+
+        anyio.run(_run)
+
+    def test_cache_stats_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch("ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools._API") as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await cache_stats(namespace="primary")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("namespace"), "primary")
+            self.assertEqual(result.get("global_stats"), {})
+
+        anyio.run(_run)
+
+    def test_system_status_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch("ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools._API") as mock_api:
+                async def _impl() -> dict:
+                    return {"error": "status probe failed"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await system_status()
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("status probe failed", str(result.get("error", "")))
 
         anyio.run(_run)
 

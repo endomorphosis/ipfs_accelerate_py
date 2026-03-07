@@ -907,6 +907,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     "audit": policy_audit.stats() if policy_audit.enabled else None,
                 }
 
+        ucan_verdict = None
         if enforce_ucan:
             verdict = validate_raw_delegation_chain(
                 raw_chain=ucan_proof_chain,
@@ -918,6 +919,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 revoked_proof_cids=ucan_revoked_proof_cids,
                 context_cids=ucan_context_cids,
             )
+            ucan_verdict = verdict
             if not verdict.allowed:
                 record = risk_scheduler.record_outcome(actor=risk_actor, allowed=False)
                 policy_audit.record(
@@ -941,6 +943,16 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     "risk": record.to_dict(),
                     "audit": policy_audit.stats() if policy_audit.enabled else None,
                 }
+
+        def _authorization_success_fields() -> dict[str, Any]:
+            if ucan_verdict is None:
+                return {}
+            return {
+                "authorization": {
+                    "scheme": "ucan",
+                    **ucan_verdict.to_dict(),
+                }
+            }
 
         policy_decision = None
         if enforce_policy:
@@ -1046,7 +1058,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                                     risk_record=record,
                                     risk_assessment_obj=risk_assessment,
                                     passthrough_result_fields=isinstance(cached, dict),
-                                    extra_fields=extra_fields,
+                                    extra_fields={
+                                        **extra_fields,
+                                        **_authorization_success_fields(),
+                                    },
                                 )
                             return _build_success_response(
                                 result=cached,
@@ -1054,7 +1069,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                                 risk_assessment_obj=risk_assessment,
                                 policy_obj=policy_decision,
                                 policy_decision_obj=policy_decision_binding,
-                                extra_fields=extra_fields,
+                                extra_fields={
+                                    **extra_fields,
+                                    **_authorization_success_fields(),
+                                },
                             )
                         cache_hit = True
                         result = cached
@@ -1109,6 +1127,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     risk_assessment_obj=risk_assessment,
                     passthrough_result_fields=isinstance(result, dict),
                     extra_fields={
+                        **_authorization_success_fields(),
                         **({"cache": dict(cache_meta)} if use_result_cache else {}),
                         **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                     },
@@ -1121,6 +1140,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 policy_obj=policy_decision,
                 policy_decision_obj=policy_decision_binding,
                 extra_fields={
+                    **_authorization_success_fields(),
                     **({"cache": dict(cache_meta)} if use_result_cache else {}),
                     **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
                 },
@@ -1262,6 +1282,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             policy_obj=policy_decision,
             policy_decision_obj=policy_decision_response,
             extra_fields={
+                **_authorization_success_fields(),
                 "artifacts": {
                     "input_cid": envelope["input_cid"],
                     "intent_cid": envelope["intent_cid"],

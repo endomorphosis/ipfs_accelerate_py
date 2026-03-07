@@ -10532,11 +10532,28 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             listed = await tools_list("media_tools")
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("ffmpeg_analyze", names)
+            self.assertIn("ffmpeg_mux", names)
+            self.assertIn("ffmpeg_batch_process", names)
+            self.assertIn("ytdlp_download_playlist", names)
+            self.assertIn("ytdlp_batch_download", names)
             self.assertIn("ytdlp_extract_info", names)
 
             schema = await get_schema("media_tools", "ytdlp_extract_info")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("url") or {}).get("minLength"), 1)
+
+            mux_schema = await get_schema("media_tools", "ffmpeg_mux")
+            mux_props = (mux_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((mux_props.get("output_file") or {}).get("minLength"), 1)
+
+            batch_schema = await get_schema("media_tools", "ffmpeg_batch_process")
+            batch_props = (batch_schema.get("input_schema") or {}).get("properties", {})
+            batch_one_of = (batch_props.get("input_files") or {}).get("oneOf", [])
+            self.assertEqual((batch_one_of[0] or {}).get("minItems"), 1)
+
+            playlist_schema = await get_schema("media_tools", "ytdlp_download_playlist")
+            playlist_props = (playlist_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((playlist_props.get("playlist_url") or {}).get("minLength"), 1)
 
             invalid_input = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10555,6 +10572,41 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn("input_file must be a non-empty string or object", invalid_input_text)
 
+            invalid_mux = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "media_tools",
+                    "ffmpeg_mux",
+                    {
+                        "output_file": "/tmp/output.mp4",
+                    },
+                )
+            )
+            self.assertEqual(invalid_mux.get("status"), "error")
+            invalid_mux_text = str(invalid_mux.get("message", "")) + " " + str(invalid_mux.get("error", ""))
+            self.assertIn("At least one input stream must be provided", invalid_mux_text)
+
+            invalid_batch_parallelism = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "media_tools",
+                    "ffmpeg_batch_process",
+                    {
+                        "input_files": ["/tmp/a.mp4"],
+                        "output_directory": "/tmp/out",
+                        "max_parallel": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_batch_parallelism.get("status"), "error")
+            invalid_batch_parallelism_text = (
+                str(invalid_batch_parallelism.get("message", ""))
+                + " "
+                + str(invalid_batch_parallelism.get("error", ""))
+            )
+            self.assertIn(
+                "max_parallel must be an integer greater than or equal to 1",
+                invalid_batch_parallelism_text,
+            )
+
             invalid_url = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "media_tools",
@@ -10571,6 +10623,28 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_url.get("error", ""))
             )
             self.assertIn("url must start with http:// or https://", invalid_url_text)
+
+            invalid_playlist_window = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "media_tools",
+                    "ytdlp_download_playlist",
+                    {
+                        "playlist_url": "https://example.com/playlist",
+                        "start_index": 4,
+                        "end_index": 2,
+                    },
+                )
+            )
+            self.assertEqual(invalid_playlist_window.get("status"), "error")
+            invalid_playlist_window_text = (
+                str(invalid_playlist_window.get("message", ""))
+                + " "
+                + str(invalid_playlist_window.get("error", ""))
+            )
+            self.assertIn(
+                "end_index must be an integer greater than or equal to start_index when provided",
+                invalid_playlist_window_text,
+            )
 
         anyio.run(_run_flow)
 

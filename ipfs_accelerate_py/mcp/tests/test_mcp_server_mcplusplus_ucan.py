@@ -101,6 +101,9 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
         self.assertTrue(result.allowed)
         self.assertEqual(result.reason, "allowed")
         self.assertEqual(result.chain_length, 2)
+        self.assertEqual(result.failure_hop, None)
+        self.assertEqual(len(result.proof_lineage), 2)
+        self.assertTrue(all(str(x).startswith("cidv1-sha256-") for x in result.proof_lineage))
 
     def test_allows_compact_token_envelope_with_att_claim(self) -> None:
         payload = {
@@ -280,6 +283,105 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
         )
         self.assertFalse(result.allowed)
         self.assertEqual(result.reason, "revoked_proof_at_hop_0")
+        self.assertEqual(result.failure_hop, 0)
+        self.assertEqual(result.proof_lineage, [proof_cid])
+
+    def test_dispatch_ucan_allow_includes_proof_lineage_telemetry(self) -> None:
+        server = self._create_unified_server(name="ucan-allow-proof-lineage")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_ucan": True,
+                    "__ucan_actor": "did:model:worker",
+                    "__ucan_proof_chain": [
+                        {
+                            "issuer": "did:user:alice",
+                            "audience": "did:model:planner",
+                            "capabilities": [{"resource": "*", "ability": "invoke"}],
+                        },
+                        {
+                            "issuer": "did:model:planner",
+                            "audience": "did:model:worker",
+                            "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                        },
+                    ],
+                },
+            )
+
+            self.assertEqual(response.get("echo"), "ok")
+            authorization = response.get("authorization") or {}
+            self.assertEqual(authorization.get("scheme"), "ucan")
+            self.assertTrue(authorization.get("allowed"))
+            self.assertEqual(authorization.get("reason"), "allowed")
+            self.assertEqual(authorization.get("failure_hop"), None)
+            self.assertEqual(len(authorization.get("proof_lineage") or []), 2)
+            self.assertTrue(all(str(x).startswith("cidv1-sha256-") for x in (authorization.get("proof_lineage") or [])))
+
+        anyio.run(_run_flow)
+
+    def test_dispatch_ucan_deny_includes_proof_lineage_telemetry(self) -> None:
+        server = self._create_unified_server(name="ucan-deny-proof-lineage")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            delegation = parse_delegation_chain(
+                [
+                    {
+                        "issuer": "did:user:alice",
+                        "audience": "did:model:worker",
+                        "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                    }
+                ]
+            )[0]
+            proof_cid = compute_delegation_proof_cid(delegation)
+            signature = compute_delegation_signature(delegation=delegation, issuer_key_hint="pk-alice")
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_ucan": True,
+                    "__ucan_actor": "did:model:worker",
+                    "__ucan_proof_chain": [
+                        {
+                            "issuer": delegation.issuer,
+                            "audience": delegation.audience,
+                            "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                            "proof_cid": proof_cid,
+                            "signature": signature,
+                        }
+                    ],
+                    "__ucan_require_signatures": True,
+                    "__ucan_issuer_public_keys": {"did:user:alice": "pk-alice"},
+                    "__ucan_revoked_proof_cids": [proof_cid],
+                },
+            )
+
+            self.assertFalse(response.get("ok"))
+            authorization = response.get("authorization") or {}
+            self.assertEqual(authorization.get("scheme"), "ucan")
+            self.assertFalse(authorization.get("allowed"))
+            self.assertEqual(authorization.get("reason"), "revoked_proof_at_hop_0")
+            self.assertEqual(authorization.get("failure_hop"), 0)
+            self.assertEqual(authorization.get("proof_lineage"), [proof_cid])
+
+        anyio.run(_run_flow)
 
     def test_denies_caveat_mismatch(self) -> None:
         result = validate_raw_delegation_chain(

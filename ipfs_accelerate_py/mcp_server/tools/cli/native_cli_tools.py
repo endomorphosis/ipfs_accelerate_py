@@ -172,10 +172,16 @@ _API = _load_cli_tools_api()
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
-        return payload
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
-        return {}
-    return {"result": payload}
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
@@ -272,6 +278,9 @@ async def execute_command(
         envelope.setdefault("command", clean_command)
         envelope.setdefault("args", clean_args)
         envelope.setdefault("timeout_seconds", timeout_seconds)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("message", "Command execution request processed")
         return envelope
     except Exception as exc:
         return _error_result(
@@ -332,6 +341,9 @@ async def scrape_pubmed_cli(
         envelope.setdefault("format", clean_format)
         envelope.setdefault("output", clean_output)
         envelope.setdefault("articles", [])
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("total_count", len(envelope.get("articles") or []))
         return envelope
     except Exception as exc:
         return _error_result(str(exc), query=clean_query, max_results=max_results)
@@ -396,6 +408,9 @@ async def scrape_clinical_trials_cli(
         envelope.setdefault("format", clean_format)
         envelope.setdefault("output", clean_output)
         envelope.setdefault("trials", [])
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("total_count", len(envelope.get("trials") or []))
         return envelope
     except Exception as exc:
         return _error_result(str(exc), query=effective_query, max_results=max_results)
@@ -453,6 +468,8 @@ async def discover_protein_binders_cli(
         envelope.setdefault("format", clean_format)
         envelope.setdefault("output", clean_output)
         envelope.setdefault("candidates", [])
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
         return envelope
     except Exception as exc:
         return _error_result(str(exc), target=clean_target, max_results=max_results)
@@ -510,6 +527,8 @@ async def discover_enzyme_inhibitors_cli(
         envelope.setdefault("format", clean_format)
         envelope.setdefault("output", clean_output)
         envelope.setdefault("candidates", [])
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
         return envelope
     except Exception as exc:
         return _error_result(str(exc), target=clean_target, max_results=max_results)
@@ -567,6 +586,8 @@ async def discover_biomolecules_rag_cli(
         envelope.setdefault("format", clean_format)
         envelope.setdefault("output", clean_output)
         envelope.setdefault("candidates", [])
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
         return envelope
     except Exception as exc:
         return _error_result(str(exc), target=clean_target, type=clean_type)

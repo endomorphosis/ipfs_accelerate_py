@@ -155,10 +155,16 @@ _API = _load_bespoke_tools_api()
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
-        return payload
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
-        return {}
-    return {"result": payload}
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
@@ -240,6 +246,9 @@ async def system_health() -> Dict[str, Any]:
             result = await result
         envelope = _normalize_payload(result)
         envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("health_score", 100.0)
         return envelope
     except Exception as exc:
         return _error_result(str(exc))
@@ -251,6 +260,10 @@ async def system_status() -> Dict[str, Any]:
         result = await _await_maybe(_API["system_status"]())
         envelope = _normalize_payload(result)
         envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("overall_status", "unknown")
+            envelope.setdefault("services", {})
         return envelope
     except Exception as exc:
         return _error_result(str(exc))
@@ -268,6 +281,9 @@ async def cache_stats(namespace: Optional[str] = None) -> Dict[str, Any]:
         envelope = _normalize_payload(result)
         envelope.setdefault("status", "success")
         envelope.setdefault("namespace", clean_namespace)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("global_stats", {})
         return envelope
     except Exception as exc:
         return _error_result(str(exc), namespace=clean_namespace)
@@ -310,6 +326,10 @@ async def execute_workflow(
         envelope.setdefault("workflow_id", clean_workflow_id)
         envelope.setdefault("parameters", clean_parameters)
         envelope.setdefault("dry_run", dry_run)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("timeout_seconds", timeout_seconds)
+            envelope.setdefault("execution_log", [])
         return envelope
     except Exception as exc:
         return _error_result(
@@ -354,6 +374,10 @@ async def list_indices(
         envelope["filters_applied"].setdefault("store_type", clean_store_type)
         envelope["filters_applied"].setdefault("include_stats", include_stats)
         envelope["filters_applied"].setdefault("namespace", clean_namespace)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("indices", [])
+            envelope.setdefault("count", len(envelope.get("indices") or []))
         return envelope
     except Exception as exc:
         return _error_result(
@@ -401,6 +425,8 @@ async def delete_index(
         envelope.setdefault("index_id", clean_index_id)
         envelope.setdefault("confirm", confirm)
         envelope.setdefault("backup_before_delete", backup_before_delete)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
         return envelope
     except Exception as exc:
         return _error_result(
@@ -466,6 +492,8 @@ async def create_vector_store(
         envelope["store_info"].setdefault("metric", clean_metric)
         envelope["store_info"].setdefault("namespace", clean_namespace or "default")
         envelope["store_info"].setdefault("configuration", clean_configuration)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
         return envelope
     except Exception as exc:
         return _error_result(

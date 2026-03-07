@@ -1,5 +1,43 @@
 """Media-tools category for unified mcp_server."""
 
-from .native_media_tools import register_native_media_tools
+from .native_media_tools import (
+	ffmpeg_analyze,
+	ffmpeg_apply_filters,
+	ffmpeg_batch_process,
+	ffmpeg_concat,
+	ffmpeg_convert,
+	ffmpeg_cut,
+	ffmpeg_demux,
+	ffmpeg_mux,
+	ffmpeg_probe,
+	ffmpeg_splice,
+	ffmpeg_stream_input,
+	ffmpeg_stream_output,
+	register_native_media_tools,
+	ytdlp_batch_download,
+	ytdlp_download_playlist,
+	ytdlp_download_video,
+	ytdlp_extract_info,
+	ytdlp_search_videos,
+)
 
-__all__ = ["register_native_media_tools"]
+__all__ = [
+	"ffmpeg_convert",
+	"ffmpeg_mux",
+	"ffmpeg_demux",
+	"ffmpeg_stream_input",
+	"ffmpeg_stream_output",
+	"ffmpeg_cut",
+	"ffmpeg_splice",
+	"ffmpeg_concat",
+	"ffmpeg_probe",
+	"ffmpeg_analyze",
+	"ffmpeg_apply_filters",
+	"ffmpeg_batch_process",
+	"ytdlp_download_video",
+	"ytdlp_download_playlist",
+	"ytdlp_extract_info",
+	"ytdlp_search_videos",
+	"ytdlp_batch_download",
+	"register_native_media_tools",
+]

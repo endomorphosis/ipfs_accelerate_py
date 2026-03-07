@@ -68,13 +68,27 @@ class UcanValidationResult:
     allowed: bool
     reason: str
     chain_length: int
+    proof_lineage: List[str]
+    failure_hop: int | None = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "allowed": self.allowed,
             "reason": self.reason,
             "chain_length": self.chain_length,
+            "proof_lineage": list(self.proof_lineage),
+            "failure_hop": self.failure_hop,
         }
+
+
+def _compute_proof_lineage(chain: Iterable[UcanDelegation]) -> list[str]:
+    """Return deterministic proof lineage for a parsed delegation chain."""
+
+    lineage: list[str] = []
+    for delegation in chain:
+        proof_cid = str(delegation.proof_cid or "").strip() or compute_delegation_proof_cid(delegation)
+        lineage.append(proof_cid)
+    return lineage
 
 
 def _parse_capabilities(raw: Iterable[Dict[str, Any]]) -> Tuple[UcanCapability, ...]:
@@ -559,21 +573,25 @@ def validate_delegation_chain(
     """Validate a root->leaf delegation chain for execution authorization."""
     parsed = list(chain)
     if not parsed:
-        return UcanValidationResult(False, "missing_delegation_chain", 0)
+        return UcanValidationResult(False, "missing_delegation_chain", 0, [], None)
 
     t = float(now if now is not None else time.time())
     revoked_set = {str(x or "").strip() for x in (revoked_proof_cids or []) if str(x or "").strip()}
     key_map = dict(issuer_public_keys or {})
+    proof_lineage = _compute_proof_lineage(parsed)
+
+    def _result(allowed: bool, reason: str, failure_hop: int | None = None) -> UcanValidationResult:
+        return UcanValidationResult(allowed, reason, len(parsed), list(proof_lineage), failure_hop)
 
     for idx, d in enumerate(parsed):
         if not d.issuer or not d.audience:
-            return UcanValidationResult(False, f"invalid_principal_at_hop_{idx}", len(parsed))
+            return _result(False, f"invalid_principal_at_hop_{idx}", idx)
         if d.revoked:
-            return UcanValidationResult(False, f"revoked_at_hop_{idx}", len(parsed))
+            return _result(False, f"revoked_at_hop_{idx}", idx)
         if d.is_expired(now=t):
-            return UcanValidationResult(False, f"expired_at_hop_{idx}", len(parsed))
+            return _result(False, f"expired_at_hop_{idx}", idx)
         if d.proof_cid and d.proof_cid in revoked_set:
-            return UcanValidationResult(False, f"revoked_proof_at_hop_{idx}", len(parsed))
+            return _result(False, f"revoked_proof_at_hop_{idx}", idx)
         if not _caveats_allow(
             d.caveats,
             resource=resource,
@@ -582,13 +600,13 @@ def validate_delegation_chain(
             context_cids=context_cids,
             now=t,
         ):
-            return UcanValidationResult(False, f"caveat_denied_at_hop_{idx}", len(parsed))
+            return _result(False, f"caveat_denied_at_hop_{idx}", idx)
         if require_signatures:
             if not d.proof_cid or not d.signature:
-                return UcanValidationResult(False, f"missing_signature_at_hop_{idx}", len(parsed))
+                return _result(False, f"missing_signature_at_hop_{idx}", idx)
             expected_proof = compute_delegation_proof_cid(d)
             if d.proof_cid != expected_proof:
-                return UcanValidationResult(False, f"invalid_proof_cid_at_hop_{idx}", len(parsed))
+                return _result(False, f"invalid_proof_cid_at_hop_{idx}", idx)
 
             issuer_key = key_map.get(d.issuer, "")
             sig_token = str(d.signature or "").strip()
@@ -601,40 +619,40 @@ def validate_delegation_chain(
 
             if is_crypto_sig:
                 if not HAVE_CRYPTO_ED25519:
-                    return UcanValidationResult(False, f"cryptography_unavailable_at_hop_{idx}", len(parsed))
+                    return _result(False, f"cryptography_unavailable_at_hop_{idx}", idx)
                 if not verify_delegation_signature_ed25519(
                     delegation=d,
                     signature=sig_token,
                     public_key_b64=_extract_ed25519_public_key_b64(issuer_key),
                 ):
-                    return UcanValidationResult(False, f"invalid_signature_at_hop_{idx}", len(parsed))
+                    return _result(False, f"invalid_signature_at_hop_{idx}", idx)
             else:
                 expected_sig = compute_delegation_signature(
                     delegation=d,
                     issuer_key_hint=str(issuer_key or ""),
                 )
                 if d.signature != expected_sig:
-                    return UcanValidationResult(False, f"invalid_signature_at_hop_{idx}", len(parsed))
+                    return _result(False, f"invalid_signature_at_hop_{idx}", idx)
 
     # issuer/audience continuity: audience(i) == issuer(i+1)
     for idx in range(len(parsed) - 1):
         if parsed[idx].audience != parsed[idx + 1].issuer:
-            return UcanValidationResult(False, f"broken_chain_at_hop_{idx}", len(parsed))
+            return _result(False, f"broken_chain_at_hop_{idx}", idx + 1)
 
     # attenuation: each child must be subset of parent capabilities
     for idx in range(len(parsed) - 1):
         if not _covers(parsed[idx], parsed[idx + 1]):
-            return UcanValidationResult(False, f"capability_escalation_at_hop_{idx+1}", len(parsed))
+            return _result(False, f"capability_escalation_at_hop_{idx+1}", idx + 1)
 
     leaf = parsed[-1]
     if actor and leaf.audience != actor:
-        return UcanValidationResult(False, "actor_mismatch", len(parsed))
+        return _result(False, "actor_mismatch", len(parsed) - 1)
 
     granted = any(cap.matches(resource=resource, ability=ability) for cap in leaf.capabilities)
     if not granted:
-        return UcanValidationResult(False, "capability_not_granted", len(parsed))
+        return _result(False, "capability_not_granted", len(parsed) - 1)
 
-    return UcanValidationResult(True, "allowed", len(parsed))
+    return _result(True, "allowed", None)
 
 
 def validate_raw_delegation_chain(
