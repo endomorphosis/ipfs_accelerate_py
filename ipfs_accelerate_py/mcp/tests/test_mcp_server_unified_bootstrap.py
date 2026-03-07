@@ -6740,6 +6740,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(get_collection_input.get("required"), ["collection_name"])
             self.assertEqual((get_collection_props.get("include_metadata") or {}).get("default"), True)
             self.assertEqual((get_collection_props.get("include_timestamps") or {}).get("default"), True)
+            self.assertEqual((create_collection_input.get("properties", {}).get("description") or {}).get("minLength"), 1)
 
             delete_collection_schema = await get_schema("storage_tools", "delete_storage_collection")
             delete_collection_input = delete_collection_schema.get("input_schema") or {}
@@ -7101,6 +7102,38 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(get_collection_alias.get("collection_name"), "bootstrap-alias-temp")
             self.assertIn("collection", get_collection_alias)
             self.assertNotIn("created_at", (get_collection_alias.get("collection") or {}))
+
+            invalid_create_description = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "create_storage_collection",
+                    {
+                        "collection_name": "bootstrap-invalid-desc",
+                        "description": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_create_description.get("status"), "error")
+            self.assertIn(
+                "description must be a non-empty string when provided",
+                str(invalid_create_description.get("error", "")),
+            )
+
+            invalid_get_include = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_collection",
+                    {
+                        "collection_name": "bootstrap-alias-temp",
+                        "include_metadata": "yes",
+                    },
+                )
+            )
+            self.assertEqual(invalid_get_include.get("status"), "error")
+            self.assertIn(
+                "include_metadata must be a boolean",
+                str(invalid_get_include.get("error", "")),
+            )
 
             delete_collection_alias = self._assert_dispatch_success_envelope(
                 await dispatch(

@@ -1220,8 +1220,8 @@ async def create_storage_collection(
     normalized_collection_name = str(collection_name or "").strip()
     if not normalized_collection_name:
         return _error_result("collection_name is required")
-    if description is not None and not isinstance(description, str):
-        return _error_result("description must be a string when provided")
+    if description is not None and (not isinstance(description, str) or not description.strip()):
+        return _error_result("description must be a non-empty string when provided")
     if metadata is not None and not isinstance(metadata, dict):
         return _error_result("metadata must be an object when provided")
 
@@ -1688,7 +1688,7 @@ def register_native_storage_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "collection_name": {"type": "string", "minLength": 1},
-                "description": {"type": ["string", "null"]},
+                "description": {"type": ["string", "null"], "minLength": 1},
                 "metadata": {"type": ["object", "null"]},
             },
             "required": ["collection_name"],
