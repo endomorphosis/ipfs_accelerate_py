@@ -37,6 +37,7 @@ This checklist tracks conformance of the canonical runtime in `ipfs_accelerate_p
 
 ## Maintenance Evidence Log
 
+- 2026-03-07: UCAN/policy combined denial matrix revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py` (`22 passed`) after adding cross-feature interaction coverage for `UCAN deny + policy allow` and `UCAN allow + policy deny` precedence cases.
 - 2026-03-07: CID-native artifact envelope-emission policy revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py` (`16 passed`) after fixing cache-hit artifact emission and adding explicit-off override coverage for config-default artifact mode.
 - 2026-03-07: CID-native artifact replayability coverage revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py` (`14 passed`) after adding dispatch-backed parent/child chain reconstruction from the JSON artifact backend across server reloads.
 - 2026-03-06: CID-native artifact durable-backend support revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py -k "artifact or unified_config"` (`17 passed`) after adding JSON-backed artifact-store configuration, persistence, and reload coverage alongside backend normalization checks.

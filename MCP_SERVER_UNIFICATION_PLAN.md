@@ -463,6 +463,10 @@ Next plan:
 2. Add policy + delegation combined denial matrix (cross-feature interactions).
 3. Add explicit proof lineage telemetry for deny/allow outcomes.
 
+Recent execution (2026-03-07):
+
+1. Expanded the policy + delegation interaction matrix in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py` to cover `UCAN deny + policy allow` and `UCAN allow + policy deny`, locking deterministic precedence and response-shape behavior across combined execution-time controls.
+
 ### 6.6 Temporal Policy (`temporal-deontic-policy`)
 
 Current posture: Implemented.

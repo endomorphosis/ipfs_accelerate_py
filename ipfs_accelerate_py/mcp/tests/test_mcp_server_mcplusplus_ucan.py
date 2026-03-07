@@ -727,6 +727,104 @@ class TestMCPServerMCPPlusPlusUCAN(unittest.TestCase):
 
         anyio.run(_run_flow)
 
+    def test_dispatch_combined_ucan_denial_overrides_policy_allow(self) -> None:
+        server = self._create_unified_server(name="ucan-policy-ucan-deny-policy-allow")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_ucan": True,
+                    "__ucan_actor": "did:model:worker",
+                    "__ucan_proof_chain": [],
+                    "__enforce_policy": True,
+                    "__policy_actor": "did:model:worker",
+                    "__policy_clauses": [
+                        {
+                            "clause_type": "permission",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                        },
+                        {
+                            "clause_type": "obligation",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                            "obligation_deadline": "2030-01-01T00:00:00Z",
+                        },
+                    ],
+                },
+            )
+
+            self.assertFalse(response.get("ok"))
+            self.assertEqual(response.get("error"), "authorization_denied")
+            self.assertEqual(((response.get("authorization") or {}).get("scheme")), "ucan")
+            self.assertEqual(((response.get("authorization") or {}).get("reason")), "missing_delegation_chain")
+            self.assertNotIn("policy", response)
+            self.assertNotIn("policy_decision", response)
+
+        anyio.run(_run_flow)
+
+    def test_dispatch_combined_policy_denial_applies_after_valid_ucan(self) -> None:
+        server = self._create_unified_server(name="ucan-policy-ucan-allow-policy-deny")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_ucan": True,
+                    "__ucan_actor": "did:model:worker",
+                    "__ucan_proof_chain": [
+                        {
+                            "issuer": "did:user:alice",
+                            "audience": "did:model:planner",
+                            "capabilities": [{"resource": "*", "ability": "invoke"}],
+                        },
+                        {
+                            "issuer": "did:model:planner",
+                            "audience": "did:model:worker",
+                            "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                        },
+                    ],
+                    "__enforce_policy": True,
+                    "__policy_actor": "did:model:worker",
+                    "__policy_clauses": [
+                        {
+                            "clause_type": "prohibition",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                        }
+                    ],
+                },
+            )
+
+            self.assertFalse(response.get("ok"))
+            self.assertEqual(response.get("error"), "policy_denied")
+            self.assertEqual(((response.get("policy") or {}).get("decision")), "deny")
+            self.assertNotIn("authorization", response)
+
+            decision_cid = str(((response.get("policy_decision") or {}).get("decision_cid")) or "")
+            self.assertTrue(decision_cid.startswith("cidv1-sha256-"))
+            stored = server._unified_artifact_store.get(decision_cid) or {}
+            self.assertEqual(stored.get("decision"), "deny")
+
+        anyio.run(_run_flow)
+
 
 if __name__ == "__main__":
     unittest.main()
