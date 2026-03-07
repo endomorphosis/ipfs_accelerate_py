@@ -1027,6 +1027,119 @@ async def get_storage_lifecycle_report(
     }
 
 
+async def get_storage_backend_status(
+    include_capabilities: bool = False,
+    backend_types: Optional[List[str]] = None,
+    unavailable_backends: Optional[List[str]] = None,
+    unavailable_reasons: Optional[Dict[str, str]] = None,
+    availability_filter: str = "all",
+    include_breakdown: bool = False,
+) -> Dict[str, Any]:
+    """Return normalized backend availability telemetry via manage_collections(backend_status)."""
+    if not isinstance(include_capabilities, bool):
+        return _error_result("include_capabilities must be a boolean")
+    if not isinstance(include_breakdown, bool):
+        return _error_result("include_breakdown must be a boolean")
+    if backend_types is not None and (
+        not isinstance(backend_types, list)
+        or not all(isinstance(item, str) and item.strip() for item in backend_types)
+    ):
+        return _error_result("backend_types must be an array of non-empty strings")
+    if unavailable_backends is not None and (
+        not isinstance(unavailable_backends, list)
+        or not all(isinstance(item, str) and item.strip() for item in unavailable_backends)
+    ):
+        return _error_result("unavailable_backends must be an array of non-empty strings")
+    if unavailable_reasons is not None and (
+        not isinstance(unavailable_reasons, dict)
+        or not all(
+            isinstance(key, str)
+            and key.strip()
+            and isinstance(value, str)
+            and value.strip()
+            for key, value in unavailable_reasons.items()
+        )
+    ):
+        return _error_result("unavailable_reasons must be an object with non-empty string keys/values")
+
+    normalized_availability_filter = str(availability_filter or "all").strip().lower() or "all"
+    if normalized_availability_filter not in _VALID_BACKEND_AVAILABILITY_FILTERS:
+        return _error_result(
+            (
+                "availability_filter must be one of: "
+                f"{sorted(_VALID_BACKEND_AVAILABILITY_FILTERS)}"
+            )
+        )
+
+    result = await manage_collections(
+        action="backend_status",
+        include_capabilities=include_capabilities,
+        backend_types=backend_types,
+        unavailable_backends=unavailable_backends,
+        unavailable_reasons=unavailable_reasons,
+        availability_filter=normalized_availability_filter,
+        include_breakdown=include_breakdown,
+    )
+    if result.get("status") == "error":
+        return result
+
+    backend_report = result.get("backend_report")
+    if not isinstance(backend_report, dict):
+        backend_report = {}
+
+    backends = backend_report.get("backends")
+    if not isinstance(backends, list):
+        backends = []
+
+    return {
+        "status": "success",
+        "availability_filter": backend_report.get("availability_filter", normalized_availability_filter),
+        "backend_count": int(backend_report.get("backend_count", len(backends)) or 0),
+        "backends": backends,
+        "breakdown": backend_report.get("breakdown", {}),
+        "backend_report": backend_report,
+        "generated_at": backend_report.get("generated_at"),
+    }
+
+
+async def list_storage_collections(
+    include_metadata: bool = True,
+    include_timestamps: bool = True,
+) -> Dict[str, Any]:
+    """Return normalized storage collection inventory via manage_collections(list)."""
+    if not isinstance(include_metadata, bool):
+        return _error_result("include_metadata must be a boolean")
+    if not isinstance(include_timestamps, bool):
+        return _error_result("include_timestamps must be a boolean")
+
+    result = await manage_collections(action="list")
+    if result.get("status") == "error":
+        return result
+
+    collections = result.get("collections")
+    if not isinstance(collections, list):
+        collections = []
+
+    normalized_collections: List[Dict[str, Any]] = []
+    for entry in collections:
+        if not isinstance(entry, dict):
+            continue
+        normalized = dict(entry)
+        if not include_metadata:
+            normalized.pop("metadata", None)
+        if not include_timestamps:
+            normalized.pop("created_at", None)
+            normalized.pop("updated_at", None)
+        normalized_collections.append(normalized)
+
+    return {
+        "status": "success",
+        "collections": normalized_collections,
+        "total_count": int(result.get("total_count", len(normalized_collections)) or 0),
+        "generated_at": datetime.now().isoformat(),
+    }
+
+
 async def delete_data(
     item_ids: List[str],
     missing_ok: bool = False,
@@ -1307,6 +1420,57 @@ def register_native_storage_tools(manager: Any) -> None:
                     "default": "detailed",
                 },
                 "include_breakdown": {"type": "boolean", "default": False},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="get_storage_backend_status",
+        func=get_storage_backend_status,
+        description="Return normalized backend availability telemetry.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "include_capabilities": {"type": "boolean", "default": False},
+                "backend_types": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "minLength": 1},
+                },
+                "unavailable_backends": {
+                    "type": ["array", "null"],
+                    "items": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "minLength": 1},
+                },
+                "unavailable_reasons": {
+                    "type": ["object", "null"],
+                    "additionalProperties": {"type": "string", "minLength": 1},
+                },
+                "availability_filter": {
+                    "type": "string",
+                    "enum": sorted(_VALID_BACKEND_AVAILABILITY_FILTERS),
+                    "default": "all",
+                },
+                "include_breakdown": {"type": "boolean", "default": False},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="list_storage_collections",
+        func=list_storage_collections,
+        description="Return normalized collection inventory from storage collections list operation.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "include_metadata": {"type": "boolean", "default": True},
+                "include_timestamps": {"type": "boolean", "default": True},
             },
             "required": [],
         },

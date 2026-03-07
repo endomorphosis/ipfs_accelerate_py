@@ -310,15 +310,23 @@ def _validate_repo_url(repository_url: Any) -> Optional[Dict[str, Any]]:
     return None
 
 
-def _validate_string_list(value: Any, field: str) -> Optional[Dict[str, Any]]:
-    if not isinstance(value, list) or any(not isinstance(item, str) or not item.strip() for item in value):
-        return _error_result(f"{field} must be a list of non-empty strings", **{field: value})
+def _validate_string_list(value: Any, field: str, *, minimum: int = 1) -> Optional[Dict[str, Any]]:
+    if (
+        not isinstance(value, list)
+        or len(value) < minimum
+        or any(not isinstance(item, str) or not item.strip() for item in value)
+    ):
+        return _error_result(
+            f"{field} must be a list of at least {minimum} non-empty strings",
+            **{field: value},
+        )
     return None
 
 
-def _validate_object_list(value: Any, field: str) -> Optional[Dict[str, Any]]:
-    if not isinstance(value, list) or any(not isinstance(item, dict) for item in value):
-        return _error_result(f"{field} must be a list of objects", **{field: value})
+def _validate_object_list(value: Any, field: str, *, minimum: int = 0) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, list) or len(value) < minimum or any(not isinstance(item, dict) for item in value):
+        qualifier = f"at least {minimum} " if minimum else ""
+        return _error_result(f"{field} must be a list of {qualifier}objects", **{field: value})
     return None
 
 
@@ -629,7 +637,7 @@ async def detect_error_patterns(
     pattern_library: Optional[Dict[str, str]] = None,
     min_occurrences: int = 2,
 ) -> Dict[str, Any]:
-    validation = _validate_string_list(error_logs, "error_logs")
+    validation = _validate_string_list(error_logs, "error_logs", minimum=1)
     if validation is not None:
         return validation
     if pattern_library is not None:
@@ -718,7 +726,7 @@ async def coordinate_auto_healing(
 
 
 async def monitor_healing_effectiveness(healing_history: List[Dict[str, Any]]) -> Dict[str, Any]:
-    validation = _validate_object_list(healing_history, "healing_history")
+    validation = _validate_object_list(healing_history, "healing_history", minimum=1)
     if validation is not None:
         return validation
 

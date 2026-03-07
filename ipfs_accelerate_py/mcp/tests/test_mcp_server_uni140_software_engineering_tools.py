@@ -10,14 +10,18 @@ import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools import (
     analyze_github_actions,
+    analyze_pod_health,
+    analyze_service_health,
     coordinate_auto_healing,
     detect_error_patterns,
+    monitor_healing_effectiveness,
     parse_kubernetes_logs,
     parse_systemd_logs,
     parse_workflow_logs,
     register_native_software_engineering_tools,
     scrape_repository,
     search_repositories,
+    suggest_fixes,
 )
 
 
@@ -37,8 +41,12 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
 
         self.assertIn("analyze_github_actions", by_name)
         self.assertIn("parse_systemd_logs", by_name)
+        self.assertIn("analyze_service_health", by_name)
+        self.assertIn("analyze_pod_health", by_name)
         self.assertIn("detect_error_patterns", by_name)
+        self.assertIn("suggest_fixes", by_name)
         self.assertIn("coordinate_auto_healing", by_name)
+        self.assertIn("monitor_healing_effectiveness", by_name)
 
         scrape_schema = by_name["scrape_repository"]["input_schema"]
         self.assertEqual(scrape_schema["properties"]["max_items"]["minimum"], 1)
@@ -48,6 +56,15 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
 
         systemd_schema = by_name["parse_systemd_logs"]["input_schema"]
         self.assertIn("warning", systemd_schema["properties"]["priority_filter"]["enum"])
+
+        service_schema = by_name["analyze_service_health"]["input_schema"]
+        self.assertEqual(service_schema["required"], ["log_data", "service_name"])
+
+        pod_schema = by_name["analyze_pod_health"]["input_schema"]
+        self.assertEqual(pod_schema["required"], ["log_data", "pod_name"])
+
+        monitor_schema = by_name["monitor_healing_effectiveness"]["input_schema"]
+        self.assertEqual(monitor_schema["properties"]["healing_history"]["minItems"], 1)
 
     def test_scrape_repository_validation(self) -> None:
         async def _run() -> None:
@@ -84,11 +101,50 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_service_and_kubernetes_validation(self) -> None:
+        async def _run() -> None:
+            result = await analyze_service_health(log_data={}, service_name="api")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("log_data must be a non-empty object", str(result.get("error", "")))
+
+            result = await parse_kubernetes_logs(
+                log_content="2026-01-01T00:00:00.000Z INFO [api] ok",
+                severity_filter="trace",
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("severity_filter must be null or one of", str(result.get("error", "")))
+
+            result = await analyze_pod_health(log_data={"entries": []}, pod_name="   ")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("pod_name", str(result.get("error", "")))
+
+        anyio.run(_run)
+
     def test_detect_error_patterns_validation(self) -> None:
         async def _run() -> None:
             result = await detect_error_patterns(error_logs="timeout")  # type: ignore[arg-type]
             self.assertEqual(result.get("status"), "error")
-            self.assertIn("error_logs must be a list of non-empty strings", str(result.get("error", "")))
+            self.assertIn("error_logs must be a list of at least 1 non-empty strings", str(result.get("error", "")))
+
+            result = await detect_error_patterns(error_logs=[])
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("error_logs must be a list of at least 1 non-empty strings", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_suggest_fixes_and_monitor_healing_validation(self) -> None:
+        async def _run() -> None:
+            result = await suggest_fixes("   ")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("error_pattern", str(result.get("error", "")))
+
+            result = await monitor_healing_effectiveness("bad")  # type: ignore[arg-type]
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("healing_history must be a list of at least 1 objects", str(result.get("error", "")))
+
+            result = await monitor_healing_effectiveness([])
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("healing_history must be a list of at least 1 objects", str(result.get("error", "")))
 
         anyio.run(_run)
 
@@ -113,6 +169,28 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
             self.assertIn(search_result.get("status"), ["success", "error"])
             self.assertEqual(search_result.get("query"), "mcp")
             self.assertEqual(search_result.get("max_results"), 1)
+
+            service_result = await analyze_service_health(
+                log_data={"entries": []},
+                service_name="api",
+            )
+            self.assertIn(service_result.get("status"), ["success", "error"])
+            self.assertEqual(service_result.get("service"), "api")
+
+            pod_result = await analyze_pod_health(
+                log_data={"entries": []},
+                pod_name="api-0",
+            )
+            self.assertIn(pod_result.get("status"), ["success", "error"])
+            self.assertEqual(pod_result.get("pod"), "api-0")
+
+            fixes_result = await suggest_fixes("timeout waiting for lock")
+            self.assertIn(fixes_result.get("status"), ["success", "error"])
+            self.assertEqual(fixes_result.get("pattern"), "timeout waiting for lock")
+
+            monitor_result = await monitor_healing_effectiveness([{"action": "restart-service"}])
+            self.assertIn(monitor_result.get("status"), ["success", "error"])
+            self.assertEqual(monitor_result.get("total_healing_actions"), 1)
 
         anyio.run(_run)
 
@@ -172,6 +250,30 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
             self.assertEqual(result.get("executed"), False)
             self.assertEqual(result.get("results"), [])
             self.assertEqual(result.get("recommendations"), [])
+
+        anyio.run(_run)
+
+    def test_service_pod_fix_and_monitor_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+                service_result = await analyze_service_health({"entries": []}, "api")
+                pod_result = await analyze_pod_health({"entries": []}, "api-0")
+                fixes_result = await suggest_fixes("timeout waiting for lock")
+                monitor_result = await monitor_healing_effectiveness([{"action": "restart-service"}])
+
+            self.assertEqual(service_result.get("health_status"), "healthy")
+            self.assertEqual((service_result.get("metrics") or {}).get("error_rate"), 0.0)
+            self.assertEqual(pod_result.get("health_status"), "healthy")
+            self.assertEqual(pod_result.get("issues"), [])
+            self.assertEqual(fixes_result.get("fixes"), [])
+            self.assertEqual(monitor_result.get("overall_success_rate"), 0.0)
+            self.assertEqual(monitor_result.get("successful_actions"), 0)
 
         anyio.run(_run)
 

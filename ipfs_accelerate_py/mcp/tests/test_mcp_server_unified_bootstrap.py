@@ -6659,6 +6659,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("list_storage", names)
             self.assertIn("get_storage_stats", names)
             self.assertIn("get_storage_lifecycle_report", names)
+            self.assertIn("get_storage_backend_status", names)
             self.assertIn("delete_data", names)
 
             store_schema = await get_schema("storage_tools", "store_data")
@@ -6707,6 +6708,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             lifecycle_alias_props = (lifecycle_alias_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((lifecycle_alias_props.get("report_format") or {}).get("default"), "detailed")
             self.assertEqual((lifecycle_alias_props.get("include_breakdown") or {}).get("default"), False)
+
+            backend_alias_schema = await get_schema("storage_tools", "get_storage_backend_status")
+            backend_alias_props = (backend_alias_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((backend_alias_props.get("availability_filter") or {}).get("default"), "all")
+            self.assertEqual((backend_alias_props.get("include_capabilities") or {}).get("default"), False)
 
             delete_schema = await get_schema("storage_tools", "delete_data")
             delete_props = (delete_schema.get("input_schema") or {}).get("properties", {})
@@ -6938,6 +6944,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(lifecycle_alias.get("scope"), "collection")
             self.assertEqual(lifecycle_alias.get("collection_name"), "default")
             self.assertIn("lifecycle_report", lifecycle_alias)
+
+            backend_alias = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                        "unavailable_reasons": {"ipfs": "dial timeout"},
+                        "availability_filter": "unavailable",
+                        "include_breakdown": True,
+                    },
+                )
+            )
+            self.assertEqual(backend_alias.get("status"), "success")
+            self.assertEqual(backend_alias.get("availability_filter"), "unavailable")
+            self.assertEqual(backend_alias.get("backend_count"), 1)
 
             stored = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11653,9 +11676,13 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("analyze_github_actions", names)
             self.assertIn("parse_systemd_logs", names)
+            self.assertIn("analyze_service_health", names)
             self.assertIn("parse_kubernetes_logs", names)
+            self.assertIn("analyze_pod_health", names)
             self.assertIn("detect_error_patterns", names)
+            self.assertIn("suggest_fixes", names)
             self.assertIn("coordinate_auto_healing", names)
+            self.assertIn("monitor_healing_effectiveness", names)
             self.assertIn("scrape_repository", names)
             self.assertIn("search_repositories", names)
 
@@ -11670,6 +11697,14 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             systemd_schema = await get_schema("software_engineering_tools", "parse_systemd_logs")
             systemd_props = (systemd_schema.get("input_schema") or {}).get("properties", {})
             self.assertIn("warning", (systemd_props.get("priority_filter") or {}).get("enum", []))
+
+            service_schema = await get_schema("software_engineering_tools", "analyze_service_health")
+            service_required = (service_schema.get("input_schema") or {}).get("required", [])
+            self.assertEqual(service_required, ["log_data", "service_name"])
+
+            monitor_schema = await get_schema("software_engineering_tools", "monitor_healing_effectiveness")
+            monitor_props = (monitor_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((monitor_props.get("healing_history") or {}).get("minItems"), 1)
 
             invalid_url = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -11742,12 +11777,48 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn("priority_filter must be null or one of", invalid_priority_filter_text)
 
+            invalid_service_log_data = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "software_engineering_tools",
+                    "analyze_service_health",
+                    {
+                        "log_data": {},
+                        "service_name": "api",
+                    },
+                )
+            )
+            self.assertEqual(invalid_service_log_data.get("status"), "error")
+            invalid_service_log_data_text = (
+                str(invalid_service_log_data.get("message", ""))
+                + " "
+                + str(invalid_service_log_data.get("error", ""))
+            )
+            self.assertIn("log_data must be a non-empty object", invalid_service_log_data_text)
+
+            invalid_k8s_severity = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "software_engineering_tools",
+                    "parse_kubernetes_logs",
+                    {
+                        "log_content": "2026-01-01T00:00:00.000Z INFO [api] ok",
+                        "severity_filter": "trace",
+                    },
+                )
+            )
+            self.assertEqual(invalid_k8s_severity.get("status"), "error")
+            invalid_k8s_severity_text = (
+                str(invalid_k8s_severity.get("message", ""))
+                + " "
+                + str(invalid_k8s_severity.get("error", ""))
+            )
+            self.assertIn("severity_filter must be null or one of", invalid_k8s_severity_text)
+
             invalid_error_logs = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "software_engineering_tools",
                     "detect_error_patterns",
                     {
-                        "error_logs": "timeout",
+                        "error_logs": [],
                     },
                 )
             )
@@ -11757,7 +11828,41 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + " "
                 + str(invalid_error_logs.get("error", ""))
             )
-            self.assertIn("error_logs must be a list of non-empty strings", invalid_error_logs_text)
+            self.assertIn("error_logs must be a list of at least 1 non-empty strings", invalid_error_logs_text)
+
+            invalid_fix_pattern = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "software_engineering_tools",
+                    "suggest_fixes",
+                    {
+                        "error_pattern": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_fix_pattern.get("status"), "error")
+            invalid_fix_pattern_text = (
+                str(invalid_fix_pattern.get("message", ""))
+                + " "
+                + str(invalid_fix_pattern.get("error", ""))
+            )
+            self.assertIn("error_pattern must be a non-empty string", invalid_fix_pattern_text)
+
+            invalid_healing_history = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "software_engineering_tools",
+                    "monitor_healing_effectiveness",
+                    {
+                        "healing_history": [],
+                    },
+                )
+            )
+            self.assertEqual(invalid_healing_history.get("status"), "error")
+            invalid_healing_history_text = (
+                str(invalid_healing_history.get("message", ""))
+                + " "
+                + str(invalid_healing_history.get("error", ""))
+            )
+            self.assertIn("healing_history must be a list of at least 1 objects", invalid_healing_history_text)
 
         anyio.run(_run_flow)
 
