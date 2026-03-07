@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -78,6 +79,63 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
             self.assertIn(search_result.get("status"), ["success", "error"])
             self.assertEqual(search_result.get("query"), "mcp")
             self.assertEqual(search_result.get("max_results"), 1)
+
+        anyio.run(_run)
+
+    def test_scrape_repository_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await scrape_repository(repository_url="https://github.com/example/repo")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("repository_url"), "https://github.com/example/repo")
+            self.assertEqual(result.get("data"), {})
+
+        anyio.run(_run)
+
+    def test_search_repositories_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await search_repositories(query="mcp", max_results=2)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("query"), "mcp")
+            self.assertEqual(result.get("max_results"), 2)
+            self.assertEqual(result.get("results"), [])
+            self.assertEqual(result.get("count"), 0)
+
+        anyio.run(_run)
+
+    def test_search_repositories_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"error": "github unavailable"}
+
+                mock_api.__getitem__.return_value = _impl
+
+                result = await search_repositories(query="mcp")
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("github unavailable", str(result.get("error", "")))
 
         anyio.run(_run)
 

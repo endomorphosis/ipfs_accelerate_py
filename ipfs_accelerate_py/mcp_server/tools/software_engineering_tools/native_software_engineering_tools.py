@@ -76,10 +76,16 @@ _API = _load_software_engineering_tools_api()
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
-        return payload
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
-        return {}
-    return {"result": payload}
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
@@ -146,6 +152,9 @@ async def scrape_repository(
         envelope = _normalize_payload(result)
         envelope.setdefault("status", "success")
         envelope.setdefault("repository_url", clean_repository_url)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("data", {})
         return envelope
     except Exception as exc:
         return _error_result(str(exc), repository_url=clean_repository_url)
@@ -179,6 +188,10 @@ async def search_repositories(
         envelope.setdefault("status", "success")
         envelope.setdefault("query", clean_query)
         envelope.setdefault("max_results", max_results)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("results", [])
+            envelope.setdefault("count", len(envelope.get("results") or []))
         return envelope
     except Exception as exc:
         return _error_result(str(exc), query=clean_query, max_results=max_results)

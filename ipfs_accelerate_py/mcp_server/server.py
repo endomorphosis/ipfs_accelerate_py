@@ -1000,6 +1000,8 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     "audit": policy_audit.stats() if policy_audit.enabled else None,
                 }
 
+        cache_hit = False
+        result: Any = None
         try:
             if result_cache is not None:
                 get_fn = getattr(result_cache, "get", None)
@@ -1011,52 +1013,56 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     )
                     if cached is not None:
                         cache_meta["hit"] = True
-                        peer_registry_meta = await _probe_peer_registry()
-                        obligations = len(policy_decision.obligations) if policy_decision is not None else 0
-                        record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
-                        policy_decision_label = "allow"
-                        policy_justification = ""
-                        policy_obligations: list[str] = []
-                        if policy_decision is not None:
-                            policy_decision_label = policy_decision.decision
-                            policy_justification = policy_decision.justification
-                            policy_obligations = [str(x.get("type") or "") for x in policy_decision.obligations]
-                        policy_audit.record(
-                            decision=policy_decision_label,
-                            tool=f"{category}.{tool_name}",
-                            actor=policy_actor or ucan_actor or risk_actor,
-                            intent_cid=dispatch_intent_cid,
-                            policy_cid=policy_cid,
-                            justification=policy_justification,
-                            obligations=policy_obligations,
-                            extra={"cache_hit": True},
-                        )
-                        _record_observability("success")
-                        extra_fields: dict[str, Any] = {}
-                        if use_result_cache:
-                            extra_fields["cache"] = dict(cache_meta)
-                        if peer_registry_meta is not None:
-                            extra_fields["peer_registry"] = dict(peer_registry_meta)
-                        if policy_decision is None:
+                        if not emit_artifacts:
+                            peer_registry_meta = await _probe_peer_registry()
+                            obligations = len(policy_decision.obligations) if policy_decision is not None else 0
+                            record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
+                            policy_decision_label = "allow"
+                            policy_justification = ""
+                            policy_obligations: list[str] = []
+                            if policy_decision is not None:
+                                policy_decision_label = policy_decision.decision
+                                policy_justification = policy_decision.justification
+                                policy_obligations = [str(x.get("type") or "") for x in policy_decision.obligations]
+                            policy_audit.record(
+                                decision=policy_decision_label,
+                                tool=f"{category}.{tool_name}",
+                                actor=policy_actor or ucan_actor or risk_actor,
+                                intent_cid=dispatch_intent_cid,
+                                policy_cid=policy_cid,
+                                justification=policy_justification,
+                                obligations=policy_obligations,
+                                extra={"cache_hit": True},
+                            )
+                            _record_observability("success")
+                            extra_fields: dict[str, Any] = {}
+                            if use_result_cache:
+                                extra_fields["cache"] = dict(cache_meta)
+                            if peer_registry_meta is not None:
+                                extra_fields["peer_registry"] = dict(peer_registry_meta)
+                            if policy_decision is None:
+                                return _build_success_response(
+                                    result=cached,
+                                    risk_record=record,
+                                    risk_assessment_obj=risk_assessment,
+                                    passthrough_result_fields=isinstance(cached, dict),
+                                    extra_fields=extra_fields,
+                                )
                             return _build_success_response(
                                 result=cached,
                                 risk_record=record,
                                 risk_assessment_obj=risk_assessment,
-                                passthrough_result_fields=isinstance(cached, dict),
+                                policy_obj=policy_decision,
+                                policy_decision_obj=policy_decision_binding,
                                 extra_fields=extra_fields,
                             )
-                        return _build_success_response(
-                            result=cached,
-                            risk_record=record,
-                            risk_assessment_obj=risk_assessment,
-                            policy_obj=policy_decision,
-                            policy_decision_obj=policy_decision_binding,
-                            extra_fields=extra_fields,
-                        )
+                        cache_hit = True
+                        result = cached
 
-            result = await manager.dispatch(category, tool_name, payload)
+            if not cache_hit:
+                result = await manager.dispatch(category, tool_name, payload)
 
-            if result_cache is not None:
+            if result_cache is not None and not cache_hit:
                 put_fn = getattr(result_cache, "put", None)
                 if callable(put_fn):
                     try:

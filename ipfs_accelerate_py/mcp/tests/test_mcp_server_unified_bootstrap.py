@@ -10783,7 +10783,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_finance_data_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
-        """finance_data_tools should expose schema contracts and deterministic validation envelopes."""
+        """finance_data_tools should expose expanded schema contracts and deterministic validation envelopes."""
 
         class DummyServer:
             def __init__(self):
@@ -10820,12 +10820,30 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("scrape_stock_data", names)
             self.assertIn("scrape_financial_news", names)
+            self.assertIn("fetch_stock_data", names)
+            self.assertIn("get_stock_quote", names)
+            self.assertIn("fetch_financial_news", names)
+            self.assertIn("search_archive_news", names)
+            self.assertIn("list_financial_theorems", names)
+            self.assertIn("analyze_embedding_market_correlation", names)
 
             schema = await get_schema("finance_data_tools", "scrape_stock_data")
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("symbols") or {}).get("minItems"), 1)
             self.assertEqual(((props.get("symbols") or {}).get("items") or {}).get("minLength"), 1)
             self.assertEqual((props.get("days") or {}).get("minimum"), 1)
+
+            fetch_stock_schema = await get_schema("finance_data_tools", "fetch_stock_data")
+            fetch_stock_props = (fetch_stock_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((fetch_stock_props.get("interval") or {}).get("enum"), ["1d", "1h", "5m"])
+            self.assertEqual((fetch_stock_props.get("source") or {}).get("enum"), ["yahoo"])
+
+            theorem_schema = await get_schema("finance_data_tools", "apply_financial_theorem")
+            theorem_required = (theorem_schema.get("input_schema") or {}).get("required", [])
+            self.assertEqual(
+                theorem_required,
+                ["theorem_id", "symbol", "event_date", "event_data"],
+            )
 
             invalid_symbols = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10861,6 +10879,108 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_max_articles.get("error", ""))
             )
             self.assertIn("max_articles must be an integer >= 1", invalid_max_articles_text)
+
+            invalid_interval = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "finance_data_tools",
+                    "fetch_stock_data",
+                    {
+                        "symbol": "AAPL",
+                        "start_date": "2026-02-01",
+                        "end_date": "2026-02-28",
+                        "interval": "15m",
+                    },
+                )
+            )
+            self.assertEqual(invalid_interval.get("status"), "error")
+            invalid_interval_text = (
+                str(invalid_interval.get("message", ""))
+                + " "
+                + str(invalid_interval.get("error", ""))
+            )
+            self.assertIn("interval must be one of", invalid_interval_text)
+
+            invalid_sources = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "finance_data_tools",
+                    "fetch_financial_news",
+                    {
+                        "topic": "inflation",
+                        "start_date": "2026-02-01",
+                        "end_date": "2026-02-28",
+                        "sources": "nyt",
+                    },
+                )
+            )
+            self.assertEqual(invalid_sources.get("status"), "error")
+            invalid_sources_text = (
+                str(invalid_sources.get("message", ""))
+                + " "
+                + str(invalid_sources.get("error", ""))
+            )
+            self.assertIn("sources must be a comma-separated list", invalid_sources_text)
+
+            invalid_correlation = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "finance_data_tools",
+                    "find_predictive_embedding_patterns",
+                    {
+                        "historical_embeddings_json": "[]",
+                        "min_correlation": 2,
+                    },
+                )
+            )
+            self.assertEqual(invalid_correlation.get("status"), "error")
+            invalid_correlation_text = (
+                str(invalid_correlation.get("message", ""))
+                + " "
+                + str(invalid_correlation.get("error", ""))
+            )
+            self.assertIn("min_correlation must be a number between 0 and 1", invalid_correlation_text)
+
+            stock_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "finance_data_tools",
+                    "fetch_corporate_actions",
+                    {
+                        "symbol": "AAPL",
+                        "start_date": "2026-02-01",
+                        "end_date": "2026-02-28",
+                    },
+                )
+            )
+            self.assertIn(stock_result.get("status"), ["success", "error"])
+            self.assertEqual(stock_result.get("symbol"), "AAPL")
+
+            theorem_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "finance_data_tools",
+                    "apply_financial_theorem",
+                    {
+                        "theorem_id": "split-theorem",
+                        "symbol": "AAPL",
+                        "event_date": "2026-02-01",
+                        "event_data": '{"ratio": "2:1"}',
+                    },
+                )
+            )
+            self.assertIn(theorem_result.get("status"), ["success", "error"])
+            self.assertEqual((theorem_result.get("theorem") or {}).get("theorem_id"), "split-theorem")
+
+            embedding_result = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "finance_data_tools",
+                    "analyze_embedding_market_correlation",
+                    {
+                        "news_articles_json": "[]",
+                        "stock_data_json": "[]",
+                        "time_window": 12,
+                        "n_clusters": 3,
+                    },
+                )
+            )
+            self.assertIn(embedding_result.get("status"), ["success", "error"])
+            self.assertEqual((embedding_result.get("analysis") or {}).get("time_window_hours"), 12)
 
         anyio.run(_run_flow)
 

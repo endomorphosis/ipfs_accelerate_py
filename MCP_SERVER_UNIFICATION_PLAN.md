@@ -451,6 +451,8 @@ Next plan:
 Recent execution (2026-03-06):
 
 1. Added config-driven artifact-store backend normalization in `ipfs_accelerate_py/mcp_server/configs.py` and JSON-backed artifact persistence/reload support in `ipfs_accelerate_py/mcp_server/server.py`, with focused coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to validate durable backend selection, on-disk persistence, and startup reload semantics.
+2. Added dispatch-backed replay coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py` to reconstruct persisted parent/child artifact chains from the JSON backend after server reload, verifying event -> receipt -> decision -> intent linkage without relying on live runtime state.
+3. Verified dispatch-mode envelope emission policy in `ipfs_accelerate_py/mcp_server/server.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py`, ensuring explicit `__emit_artifacts=False` suppresses artifact envelope fields even when config-default emission is enabled, while cache-hit dispatches still emit full artifact envelopes when `__emit_artifacts=True`.
 
 ### 6.5 UCAN Delegation (`ucan-delegation`)
 

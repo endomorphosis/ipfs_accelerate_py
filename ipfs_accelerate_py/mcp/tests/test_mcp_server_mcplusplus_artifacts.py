@@ -358,6 +358,107 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
 
         anyio.run(_run_flow)
 
+    def test_dispatch_artifact_explicit_false_overrides_enabled_default_policy(self) -> None:
+        server = self._create_unified_server(name="artifacts-default-policy-override", enable_cid_artifacts=True)
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__emit_artifacts": False,
+                    "__enforce_policy": True,
+                    "__policy_actor": "did:model:worker",
+                    "__policy_clauses": [
+                        {
+                            "clause_type": "permission",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                        }
+                    ],
+                },
+            )
+
+            self.assertTrue(response.get("ok"))
+            self.assertNotIn("artifacts", response)
+            self.assertNotIn("artifact_payloads", response)
+            self.assertNotIn("artifact_store", response)
+            self.assertNotIn("event_dag", response)
+            self.assertNotIn("frontier", response)
+
+            decision_cid = str(((response.get("policy_decision") or {}).get("decision_cid")) or "")
+            self.assertTrue(decision_cid.startswith("cidv1-sha256-"))
+            self.assertIsNotNone(server._unified_artifact_store.get(decision_cid))
+
+        anyio.run(_run_flow)
+
+    def test_dispatch_artifact_cache_hit_honors_emit_true(self) -> None:
+        server = self._create_unified_server(name="artifacts-cache-hit-emit")
+
+        class FakeResultCache:
+            def __init__(self) -> None:
+                self.get_calls = []
+                self.put_calls = []
+
+            async def get(self, task_id, inputs=None):
+                self.get_calls.append({"task_id": task_id, "inputs": dict(inputs or {})})
+                return {"echo": "from-cache"}
+
+            async def put(self, task_id, value, ttl=None, inputs=None):
+                self.put_calls.append(
+                    {
+                        "task_id": task_id,
+                        "value": value,
+                        "ttl": ttl,
+                        "inputs": dict(inputs or {}),
+                    }
+                )
+
+        fake_cache = FakeResultCache()
+        server._unified_services["result_cache_factory"] = lambda **kwargs: fake_cache
+
+        async def _run_flow() -> None:
+            dispatch_invocations = {"count": 0}
+
+            async def echo(value: str):
+                dispatch_invocations["count"] += 1
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ignored-by-cache",
+                    "__use_result_cache": True,
+                    "__emit_artifacts": True,
+                    "__correlation_id": "corr-cache-hit",
+                },
+            )
+
+            self.assertTrue(response.get("ok"))
+            self.assertEqual((response.get("result") or {}).get("echo"), "from-cache")
+            self.assertEqual(dispatch_invocations["count"], 0)
+            self.assertEqual(len(fake_cache.get_calls), 1)
+            self.assertEqual(len(fake_cache.put_calls), 0)
+            self.assertTrue((response.get("cache") or {}).get("hit"))
+            self.assertIn("artifacts", response)
+            self.assertIn("artifact_payloads", response)
+            self.assertTrue(((response.get("artifact_store") or {}).get("persisted")))
+            self.assertTrue(((response.get("event_dag") or {}).get("persisted")))
+
+            intent = (response.get("artifact_payloads") or {}).get("intent") or {}
+            self.assertEqual(intent.get("correlation_id"), "corr-cache-hit")
+
+        anyio.run(_run_flow)
+
     def test_dispatch_artifact_json_backend_persists_and_reloads_chain(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             artifact_path = f"{tmpdir}/cid-artifacts.json"
@@ -403,6 +504,87 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
                 )
                 self.assertIsNotNone(rehydrated_server._unified_artifact_store.get(event_cid))
                 self.assertEqual((rehydrated_server._unified_artifact_store_meta or {}).get("backend"), "json")
+
+            anyio.run(_run_flow)
+
+    def test_dispatch_replay_reconstructs_parent_child_chain_from_json_backend(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact_path = f"{tmpdir}/cid-artifacts-replay.json"
+            server = self._create_unified_server(
+                name="artifacts-json-replay-chain",
+                enable_cid_artifacts=True,
+                extra_env={
+                    "IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND": "json",
+                    "IPFS_MCP_SERVER_ARTIFACT_STORE_PATH": artifact_path,
+                },
+            )
+
+            async def _run_flow() -> None:
+                async def echo(value: str):
+                    return {"echo": value}
+
+                server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                root = await dispatch(
+                    "smoke",
+                    "echo",
+                    {
+                        "value": "root",
+                        "__correlation_id": "corr-replay-dispatch",
+                    },
+                )
+                self.assertTrue(root.get("ok"))
+                root_artifacts = root.get("artifacts") or {}
+                root_event_cid = str(root_artifacts.get("event_cid") or "")
+
+                leaf = await dispatch(
+                    "smoke",
+                    "echo",
+                    {
+                        "value": "leaf",
+                        "__correlation_id": "corr-replay-dispatch",
+                        "__parent_event_cids": [root_event_cid],
+                    },
+                )
+                self.assertTrue(leaf.get("ok"))
+                leaf_artifacts = leaf.get("artifacts") or {}
+                leaf_event_cid = str(leaf_artifacts.get("event_cid") or "")
+
+                rehydrated = self._create_unified_server(
+                    name="artifacts-json-replay-chain-rehydrated",
+                    enable_cid_artifacts=True,
+                    extra_env={
+                        "IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND": "json",
+                        "IPFS_MCP_SERVER_ARTIFACT_STORE_PATH": artifact_path,
+                    },
+                )
+                store = rehydrated._unified_artifact_store
+
+                root_event = store.get(root_event_cid) or {}
+                self.assertEqual(root_event.get("parents"), [])
+                self.assertEqual(root_event.get("intent_cid"), root_artifacts.get("intent_cid"))
+
+                leaf_event = store.get(leaf_event_cid) or {}
+                self.assertEqual(leaf_event.get("parents"), [root_event_cid])
+                self.assertEqual(leaf_event.get("receipt_cid"), leaf_artifacts.get("receipt_cid"))
+
+                leaf_receipt = store.get(str(leaf_event.get("receipt_cid") or "")) or {}
+                self.assertEqual(leaf_receipt.get("decision_cid"), leaf_artifacts.get("decision_cid"))
+                self.assertEqual(leaf_receipt.get("intent_cid"), leaf_artifacts.get("intent_cid"))
+
+                leaf_decision = store.get(str(leaf_receipt.get("decision_cid") or "")) or {}
+                self.assertEqual(leaf_decision.get("intent_cid"), leaf_artifacts.get("intent_cid"))
+                self.assertEqual(leaf_decision.get("decision"), "allow")
+
+                leaf_intent = store.get(str(leaf_decision.get("intent_cid") or "")) or {}
+                self.assertEqual(leaf_intent.get("correlation_id"), "corr-replay-dispatch")
+                self.assertEqual(leaf_intent.get("tool"), "smoke.echo")
+
+                self.assertGreaterEqual(
+                    int(((rehydrated._unified_artifact_store_meta or {}).get("loaded") or 0)),
+                    12,
+                )
 
             anyio.run(_run_flow)
 
