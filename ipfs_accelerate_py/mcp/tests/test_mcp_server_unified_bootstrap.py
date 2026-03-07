@@ -7145,6 +7145,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 str(invalid_backend_alias_unknown_unavailable_backends.get("error", "")),
             )
 
+            invalid_backend_alias_include_capabilities = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "include_capabilities": "yes",
+                    },
+                )
+            )
+            self.assertEqual(invalid_backend_alias_include_capabilities.get("status"), "error")
+            self.assertIn(
+                "include_capabilities must be a boolean",
+                str(invalid_backend_alias_include_capabilities.get("error", "")),
+            )
+
             backend_status = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",
