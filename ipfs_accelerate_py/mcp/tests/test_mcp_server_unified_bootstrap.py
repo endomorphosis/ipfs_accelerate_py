@@ -6761,6 +6761,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             manage_schema = await get_schema("storage_tools", "manage_collections")
             manage_input_schema = manage_schema.get("input_schema") or {}
             manage_props = manage_input_schema.get("properties", {})
+            self.assertEqual((manage_props.get("description") or {}).get("minLength"), 1)
+            self.assertEqual(
+                ((manage_props.get("metadata") or {}).get("propertyNames") or {}).get("minLength"),
+                1,
+            )
             report_enum = (manage_props.get("report_format") or {}).get("enum") or []
             self.assertIn("detailed", report_enum)
             self.assertIn("summary", report_enum)
@@ -6940,6 +6945,40 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_report_format.get("status"), "error")
             self.assertIn("report_format must be one of", str(invalid_report_format.get("error", "")))
+
+            invalid_manage_description = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "create",
+                        "collection_name": "bootstrap-manage-invalid-desc",
+                        "description": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_manage_description.get("status"), "error")
+            self.assertIn(
+                "description must be a non-empty string when provided",
+                str(invalid_manage_description.get("error", "")),
+            )
+
+            invalid_manage_metadata_key = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "create",
+                        "collection_name": "bootstrap-manage-invalid-meta",
+                        "metadata": {"": "invalid"},
+                    },
+                )
+            )
+            self.assertEqual(invalid_manage_metadata_key.get("status"), "error")
+            self.assertIn(
+                "metadata keys must be non-empty strings when provided",
+                str(invalid_manage_metadata_key.get("error", "")),
+            )
 
             invalid_stats_collection = self._assert_dispatch_success_envelope(
                 await dispatch(

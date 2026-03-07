@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -66,6 +67,38 @@ class TestMCPServerUNI150NativeP2PTools(unittest.TestCase):
             self.assertIn(result.get("ok"), [True, False])
             if result.get("ok") is False:
                 self.assertIn("error", result)
+
+        anyio.run(_run)
+
+    def test_status_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch.object(p2p_mod, "_request_status") as mock_request:
+                async def _impl(**_kwargs):
+                    return {"ok": True}
+
+                mock_request.side_effect = _impl
+                result = await p2p_mod.p2p_taskqueue_status(detail=True)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("ok"), True)
+            self.assertEqual(result.get("detail"), True)
+
+        anyio.run(_run)
+
+    def test_submit_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch.object(p2p_mod, "_submit_task_with_info") as mock_submit:
+                async def _impl(**_kwargs):
+                    return {"error": "remote queue unavailable"}
+
+                mock_submit.side_effect = _impl
+                result = await p2p_mod.p2p_taskqueue_submit("demo", "model", {})
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("success"), False)
+            self.assertEqual(result.get("ok"), False)
+            self.assertIn("remote queue unavailable", str(result.get("error", "")))
 
         anyio.run(_run)
 

@@ -488,8 +488,20 @@ async def manage_collections(
             action=normalized_action,
             success=False,
         )
+    if description is not None and (not isinstance(description, str) or not description.strip()):
+        return _error_result(
+            "description must be a non-empty string when provided",
+            action=normalized_action,
+            success=False,
+        )
     if metadata is not None and not isinstance(metadata, dict):
         return _error_result("metadata must be an object when provided", action=normalized_action, success=False)
+    if metadata is not None and not all(isinstance(key, str) and key.strip() for key in metadata.keys()):
+        return _error_result(
+            "metadata keys must be non-empty strings when provided",
+            action=normalized_action,
+            success=False,
+        )
     if not isinstance(delete_items, bool):
         return _error_result("delete_items must be a boolean", action=normalized_action, success=False)
     if not isinstance(include_breakdown, bool):
@@ -1421,7 +1433,10 @@ def register_native_storage_tools(manager: Any) -> None:
                 "storage_type": {"type": "string", "enum": sorted(_VALID_STORAGE_TYPES), "default": "memory"},
                 "compression": {"type": "string", "enum": sorted(_VALID_COMPRESSION_TYPES), "default": "none"},
                 "collection": {"type": "string", "minLength": 1, "default": "default"},
-                "metadata": {"type": ["object", "null"]},
+                "metadata": {
+                    "type": ["object", "null"],
+                    "propertyNames": {"type": "string", "minLength": 1},
+                },
                 "tags": {
                     "type": ["array", "null"],
                     "items": {"type": "string", "minLength": 1},
@@ -1465,8 +1480,11 @@ def register_native_storage_tools(manager: Any) -> None:
             "properties": {
                 "action": {"type": "string", "enum": sorted(_VALID_COLLECTION_ACTIONS)},
                 "collection_name": {"type": ["string", "null"], "minLength": 1},
-                "description": {"type": ["string", "null"]},
-                "metadata": {"type": ["object", "null"]},
+                "description": {"type": ["string", "null"], "minLength": 1},
+                "metadata": {
+                    "type": ["object", "null"],
+                    "propertyNames": {"type": "string", "minLength": 1},
+                },
                 "delete_items": {"type": "boolean", "default": False},
                 "include_breakdown": {"type": "boolean", "default": False},
                 "include_capabilities": {"type": "boolean", "default": False},

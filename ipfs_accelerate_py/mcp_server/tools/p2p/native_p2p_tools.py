@@ -6,7 +6,31 @@ from typing import Any, Dict, List, Optional
 
 
 def _error_result(message: str) -> Dict[str, Any]:
-    return {"ok": False, "error": message}
+    return {"ok": False, "status": "error", "success": False, "error": message}
+
+
+def _normalize_response(payload: Any, **defaults: Any) -> Dict[str, Any]:
+    """Normalize native p2p payloads to deterministic envelopes."""
+    if isinstance(payload, dict):
+        envelope = dict(payload)
+    elif payload is None:
+        envelope = {"ok": True}
+    else:
+        envelope = {"ok": True, "result": payload}
+
+    if "ok" not in envelope:
+        if envelope.get("error") or envelope.get("success") is False or envelope.get("status") == "error":
+            envelope["ok"] = False
+        else:
+            envelope["ok"] = True
+    if "status" not in envelope:
+        envelope["status"] = "success" if envelope.get("ok") else "error"
+    if "success" not in envelope:
+        envelope["success"] = bool(envelope.get("ok"))
+    if envelope.get("status") == "success":
+        for key, value in defaults.items():
+            envelope.setdefault(key, value)
+    return envelope
 
 
 async def _request_status(
@@ -47,9 +71,9 @@ async def p2p_taskqueue_status(
             timeout_s=timeout_s,
             detail=detail,
         )
-        return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+        return _normalize_response(resp, detail=detail)
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error_result(str(exc))
 
 
 async def _submit_task_with_info(
@@ -96,12 +120,9 @@ async def p2p_taskqueue_submit(
             remote_multiaddr=remote_multiaddr,
             peer_id=peer_id,
         )
-        out: Dict[str, Any] = {"ok": True}
-        if isinstance(info, dict):
-            out.update(info)
-        return out
+        return _normalize_response(info, task_type=task_type, model_name=model_name, payload=payload)
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error_result(str(exc))
 
 
 async def _claim_next(
@@ -145,9 +166,9 @@ async def p2p_taskqueue_claim_next(
             remote_multiaddr=remote_multiaddr,
             remote_peer_id=remote_peer_id,
         )
-        return {"ok": True, "task": task}
+        return _normalize_response({"task": task}, task=None)
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error_result(str(exc))
 
 
 async def _call_tool(
@@ -187,9 +208,9 @@ async def p2p_taskqueue_call_tool(
             remote_peer_id=remote_peer_id,
             timeout_s=timeout_s,
         )
-        return resp if isinstance(resp, dict) else {"ok": False, "error": "invalid_response"}
+        return _normalize_response(resp, args=args or {})
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error_result(str(exc))
 
 
 async def _list_tasks(
@@ -234,9 +255,9 @@ async def p2p_taskqueue_list_tasks(
             remote_multiaddr=remote_multiaddr,
             remote_peer_id=remote_peer_id,
         )
-        return {"ok": True, "tasks": tasks}
+        return _normalize_response({"tasks": tasks}, tasks=[])
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error_result(str(exc))
 
 
 async def _get_task(
@@ -271,9 +292,9 @@ async def p2p_taskqueue_get_task(
             remote_multiaddr=remote_multiaddr,
             remote_peer_id=remote_peer_id,
         )
-        return {"ok": True, "task": task}
+        return _normalize_response({"task": task}, task=None)
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error_result(str(exc))
 
 
 async def _wait_task(
@@ -314,9 +335,9 @@ async def p2p_taskqueue_wait_task(
             remote_multiaddr=remote_multiaddr,
             remote_peer_id=remote_peer_id,
         )
-        return {"ok": True, "task": task}
+        return _normalize_response({"task": task}, task=None)
     except Exception as exc:
-        return {"ok": False, "error": str(exc)}
+        return _error_result(str(exc))
 
 
 async def _complete_task(
