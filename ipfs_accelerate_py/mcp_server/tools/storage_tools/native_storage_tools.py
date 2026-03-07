@@ -1224,6 +1224,8 @@ async def create_storage_collection(
         return _error_result("description must be a non-empty string when provided")
     if metadata is not None and not isinstance(metadata, dict):
         return _error_result("metadata must be an object when provided")
+    if metadata is not None and not all(isinstance(key, str) and key.strip() for key in metadata.keys()):
+        return _error_result("metadata keys must be non-empty strings when provided")
 
     result = await manage_collections(
         action="create",
@@ -1689,7 +1691,10 @@ def register_native_storage_tools(manager: Any) -> None:
             "properties": {
                 "collection_name": {"type": "string", "minLength": 1},
                 "description": {"type": ["string", "null"], "minLength": 1},
-                "metadata": {"type": ["object", "null"]},
+                "metadata": {
+                    "type": ["object", "null"],
+                    "propertyNames": {"type": "string", "minLength": 1},
+                },
             },
             "required": ["collection_name"],
         },

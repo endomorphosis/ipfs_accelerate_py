@@ -6732,7 +6732,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             create_collection_schema = await get_schema("storage_tools", "create_storage_collection")
             create_collection_input = create_collection_schema.get("input_schema") or {}
+            create_collection_props = create_collection_input.get("properties", {})
             self.assertEqual(create_collection_input.get("required"), ["collection_name"])
+            self.assertEqual(
+                ((create_collection_props.get("metadata") or {}).get("propertyNames") or {}).get("minLength"),
+                1,
+            )
 
             get_collection_schema = await get_schema("storage_tools", "get_storage_collection")
             get_collection_input = get_collection_schema.get("input_schema") or {}
@@ -7117,6 +7122,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(
                 "description must be a non-empty string when provided",
                 str(invalid_create_description.get("error", "")),
+            )
+
+            invalid_create_metadata_key = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "create_storage_collection",
+                    {
+                        "collection_name": "bootstrap-invalid-meta",
+                        "metadata": {"": "invalid"},
+                    },
+                )
+            )
+            self.assertEqual(invalid_create_metadata_key.get("status"), "error")
+            self.assertIn(
+                "metadata keys must be non-empty strings when provided",
+                str(invalid_create_metadata_key.get("error", "")),
             )
 
             invalid_get_include = self._assert_dispatch_success_envelope(
