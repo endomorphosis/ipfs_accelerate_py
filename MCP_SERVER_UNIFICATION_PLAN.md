@@ -459,13 +459,15 @@ Recent execution (2026-03-06):
 Current posture: Implemented.
 Next plan:
 
-1. Expand cryptographic verification test vectors (`did:key`, signature encodings).
-2. Add policy + delegation combined denial matrix (cross-feature interactions).
-3. Add explicit proof lineage telemetry for deny/allow outcomes.
+1. Expand cryptographic verification test vectors (`did:key`, signature encodings). ✅
+2. Add policy + delegation combined denial matrix (cross-feature interactions). ✅
+3. Add explicit proof lineage telemetry for deny/allow outcomes. ✅
 
 Recent execution (2026-03-07):
 
 1. Expanded the policy + delegation interaction matrix in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py` to cover `UCAN deny + policy allow` and `UCAN allow + policy deny`, locking deterministic precedence and response-shape behavior across combined execution-time controls.
+2. Extended `ipfs_accelerate_py/mcp_server/mcplusplus/delegation.py` and `ipfs_accelerate_py/mcp_server/server.py` so UCAN validation results now emit deterministic `proof_lineage` and `failure_hop` telemetry for both allow and deny outcomes, and unified dispatch success responses now surface the same authorization telemetry shape as denial responses.
+3. Revalidated the focused UCAN lane with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py` (`24 passed`), including new dispatch assertions for proof-lineage telemetry on both allow and deny paths.
 
 ### 6.6 Temporal Policy (`temporal-deontic-policy`)
 
@@ -915,10 +917,10 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 
 4. `SPEC-204` UCAN Verification Vector Expansion
    - Chapter: `ucan-delegation.md`
-   - Status: COMPLETE (2026-03-06)
+   - Status: COMPLETE (2026-03-07)
    - Evidence:
       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_ucan.py`
-      - Targeted run result: `20 passed`.
+      - Targeted run result: `24 passed`.
    - Acceptance: expanded signature/caveat/proof-link vectors and deny/allow telemetry checks.
 
 5. `SPEC-205` Temporal Policy Lifecycle Hardening

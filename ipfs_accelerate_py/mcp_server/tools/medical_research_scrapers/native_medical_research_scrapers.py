@@ -72,10 +72,16 @@ _API = _load_medical_research_scrapers_api()
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
-        return payload
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
-        return {}
-    return {"result": payload}
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
@@ -125,6 +131,10 @@ async def scrape_pubmed_medical_research(
         envelope.setdefault("status", "success")
         envelope.setdefault("query", clean_query)
         envelope.setdefault("max_results", max_results)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("articles", [])
+            envelope.setdefault("total_count", len(envelope.get("articles") or []))
         return envelope
     except Exception as exc:
         return _error_result(
@@ -170,6 +180,10 @@ async def scrape_clinical_trials(
         envelope.setdefault("status", "success")
         envelope.setdefault("query", clean_query)
         envelope.setdefault("max_results", max_results)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("trials", [])
+            envelope.setdefault("total_count", len(envelope.get("trials") or []))
         return envelope
     except Exception as exc:
         return _error_result(

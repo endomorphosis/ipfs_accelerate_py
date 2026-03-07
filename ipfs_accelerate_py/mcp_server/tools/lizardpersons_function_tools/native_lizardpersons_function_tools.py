@@ -40,6 +40,21 @@ def _load_lizardpersons_function_api() -> Dict[str, Any]:
 _API = _load_lizardpersons_function_api()
 
 
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic dict envelopes."""
+    if isinstance(payload, dict):
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
+    if payload is None:
+        return {"status": "success"}
+    return {"status": "success", "value": payload}
+
+
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
     """Build consistent validation/error envelope for wrapper edge failures."""
     envelope: Dict[str, Any] = {
@@ -79,13 +94,14 @@ async def get_current_time(
         )
         if hasattr(result, "__await__"):
             result = await result
-        return {
-            "status": "success",
-            "value": result,
-            "format_type": clean_format_type,
-            "check_if_within_working_hours": check_if_within_working_hours,
-            "fallback": _API["get_current_time"].__name__.endswith("fallback"),
-        }
+        envelope = _normalize_payload(result)
+        envelope.setdefault("format_type", clean_format_type)
+        envelope.setdefault("check_if_within_working_hours", check_if_within_working_hours)
+        envelope.setdefault("fallback", _API["get_current_time"].__name__.endswith("fallback"))
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("value", "")
+        return envelope
     except Exception as exc:
         return _error_result(
             str(exc),

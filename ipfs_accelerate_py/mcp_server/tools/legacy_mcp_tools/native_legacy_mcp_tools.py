@@ -27,10 +27,16 @@ _API = _load_legacy_api()
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
-        return payload
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
-        return {}
-    return {"result": payload}
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _error_result(message: str, **context: Any) -> Dict[str, Any]:
@@ -57,6 +63,9 @@ async def legacy_tools_inventory() -> Dict[str, Any]:
         )
         envelope.setdefault("status", "success")
         envelope.setdefault("deprecated", True)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("temporal_deontic_tool_count", 0)
         return envelope
     except Exception as exc:
         return _error_result(str(exc), deprecated=True)

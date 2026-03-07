@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -87,6 +88,40 @@ class TestMCPServerUNI143MedicalResearchScrapers(unittest.TestCase):
             self.assertIn(trials_result.get("status"), ["success", "error"])
             self.assertEqual(trials_result.get("query"), "diabetes")
             self.assertEqual(trials_result.get("max_results"), 1)
+
+        anyio.run(_run)
+
+    def test_scrape_pubmed_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers.native_medical_research_scrapers._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await scrape_pubmed_medical_research(query="diabetes", max_results=3)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("articles"), [])
+            self.assertEqual(result.get("total_count"), 0)
+
+        anyio.run(_run)
+
+    def test_scrape_clinical_trials_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers.native_medical_research_scrapers._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"error": "clinical trials unavailable"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await scrape_clinical_trials(query="diabetes", max_results=3)
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("clinical trials unavailable", str(result.get("error", "")))
 
         anyio.run(_run)
 

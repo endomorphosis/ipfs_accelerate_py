@@ -52,6 +52,18 @@ class TestMCPServerUNI145LegacyMcpTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_inventory_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch.object(legacy_mod, "_normalize_payload", return_value={"status": "success", "deprecated": True}):
+                result = await legacy_mod.legacy_tools_inventory()
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("temporal_deontic_tool_count"), 0)
+            self.assertIs(result.get("deprecated"), True)
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

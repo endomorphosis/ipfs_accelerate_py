@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -58,6 +59,41 @@ class TestMCPServerUNI144LizardpersonsFunctionTools(unittest.TestCase):
             result = await get_current_time(format_type="iso")
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertEqual(result.get("format_type"), "iso")
+
+        anyio.run(_run)
+
+    def test_get_current_time_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.lizardpersons_function_tools.native_lizardpersons_function_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await get_current_time(format_type="human", check_if_within_working_hours=True)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("value"), "")
+            self.assertEqual(result.get("format_type"), "human")
+            self.assertEqual(result.get("check_if_within_working_hours"), True)
+
+        anyio.run(_run)
+
+    def test_get_current_time_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.lizardpersons_function_tools.native_lizardpersons_function_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"error": "clock unavailable"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await get_current_time(format_type="iso")
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("clock unavailable", str(result.get("error", "")))
 
         anyio.run(_run)
 

@@ -1,5 +1,47 @@
 """Graph-tools category for unified mcp_server."""
 
-from .native_graph_tools import register_native_graph_tools
+from .native_graph_tools import (
+	graph_add_entity,
+	graph_add_relationship,
+	graph_complete_suggestions,
+	graph_constraint_add,
+	graph_create,
+	graph_distributed_execute,
+	graph_explain,
+	graph_graphql_query,
+	graph_index_create,
+	graph_ontology_materialize,
+	graph_provenance_verify,
+	graph_query_cypher,
+	graph_search_hybrid,
+	graph_srl_extract,
+	graph_transaction_begin,
+	graph_transaction_commit,
+	graph_transaction_rollback,
+	graph_visualize,
+	query_knowledge_graph,
+	register_native_graph_tools,
+)
 
-__all__ = ["register_native_graph_tools"]
+__all__ = [
+	"query_knowledge_graph",
+	"graph_create",
+	"graph_add_entity",
+	"graph_add_relationship",
+	"graph_query_cypher",
+	"graph_search_hybrid",
+	"graph_transaction_begin",
+	"graph_transaction_commit",
+	"graph_transaction_rollback",
+	"graph_index_create",
+	"graph_constraint_add",
+	"graph_srl_extract",
+	"graph_ontology_materialize",
+	"graph_distributed_execute",
+	"graph_graphql_query",
+	"graph_visualize",
+	"graph_complete_suggestions",
+	"graph_explain",
+	"graph_provenance_verify",
+	"register_native_graph_tools",
+]
