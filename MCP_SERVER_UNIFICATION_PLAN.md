@@ -476,14 +476,15 @@ Next plan:
 
 1. Expand obligation lifecycle validation (deadline and fulfillment semantics). ✅
 2. Add policy version migration tests (`policy_cid` evolution). ✅
-3. Validate decision persistence and retrieval parity across transports.
+3. Validate decision persistence and retrieval parity across transports. ✅
 
 Recent execution (2026-03-07):
 
 1. Extended `ipfs_accelerate_py/mcp_server/mcplusplus/policy_engine.py` so outstanding obligations now expose deterministic deadline status (`pending` / `overdue`) while fulfilled obligations are treated as completed lifecycle entries that no longer force `allow_with_obligations` decisions.
 2. Added focused policy-engine coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py` for pending-vs-overdue deadline progression and fulfilled-obligation semantics.
 3. Expanded unified-dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to verify persisted policy decisions reflect fulfilled obligations as plain `allow` outcomes and that `decision_cid` changes deterministically when `policy_cid` evolves even if `policy_version` is unchanged.
-4. Revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py` (`7 passed`) and a focused unified-bootstrap temporal policy slice (`5 passed`).
+4. Added transport E2E coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py` to prove HTTP-style meta-tool dispatch and MCP+p2p `tools/call` return the same persisted temporal-policy `policy_decision` / `decision_cid` contract and artifact-store retrieval shape.
+5. Revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py` (`7 passed`), a focused unified-bootstrap temporal policy slice (`5 passed`), and `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py` (`6 passed`).
 
 ### 6.7 Event DAG (`event-dag-ordering`)
 
@@ -936,8 +937,10 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
    - Evidence:
       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_policy.py`
       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py`
       - Focused policy-engine run result: `7 passed`.
       - Focused unified-bootstrap temporal policy slice: `5 passed`.
+      - Focused transport matrix result: `6 passed`.
    - Acceptance: obligation/deadline/version migration tests and transport parity assertions.
 
 6. `SPEC-206` Event DAG Scale and Conflict Scenarios

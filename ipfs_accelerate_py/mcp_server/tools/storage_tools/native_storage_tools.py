@@ -1211,6 +1211,39 @@ async def list_storage_collections(
     }
 
 
+async def delete_storage_collection(
+    collection_name: str,
+    delete_items: bool = False,
+) -> Dict[str, Any]:
+    """Delete a storage collection via manage_collections(delete)."""
+    normalized_collection_name = str(collection_name or "").strip()
+    if not normalized_collection_name:
+        return _error_result("collection_name is required")
+    if not isinstance(delete_items, bool):
+        return _error_result("delete_items must be a boolean")
+
+    result = await manage_collections(
+        action="delete",
+        collection_name=normalized_collection_name,
+        delete_items=delete_items,
+    )
+    if result.get("status") == "error":
+        if "error" not in result:
+            result = {
+                **result,
+                "error": f"Collection '{normalized_collection_name}' could not be deleted",
+            }
+        return result
+
+    return {
+        "status": "success",
+        "collection_name": normalized_collection_name,
+        "deleted": bool(result.get("success", False)),
+        "delete_items": delete_items,
+        "action": "delete",
+    }
+
+
 async def delete_data(
     item_ids: List[str],
     missing_ok: bool = False,
@@ -1566,6 +1599,23 @@ def register_native_storage_tools(manager: Any) -> None:
                 "include_timestamps": {"type": "boolean", "default": True},
             },
             "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="delete_storage_collection",
+        func=delete_storage_collection,
+        description="Delete a storage collection with optional cascading item deletion.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "collection_name": {"type": "string", "minLength": 1},
+                "delete_items": {"type": "boolean", "default": False},
+            },
+            "required": ["collection_name"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "storage"],
