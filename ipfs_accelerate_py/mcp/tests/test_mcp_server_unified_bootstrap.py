@@ -4617,12 +4617,127 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIsNotNone(stored)
             self.assertEqual((stored or {}).get("decision"), "allow_with_obligations")
             self.assertEqual(len((stored or {}).get("obligations") or []), 1)
+            self.assertEqual(((stored or {}).get("obligations") or [])[0].get("status"), "pending")
 
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_tools_dispatch_policy_decision_cid_stable_across_emit_modes_and_versions(self, mock_wrapper):
-        """Policy decision CID should remain stable across artifact emit modes and change deterministically when policy version changes."""
+    def test_tools_dispatch_policy_fulfilled_obligation_returns_allow(self, mock_wrapper):
+        """Fulfilled obligations should not remain outstanding in dispatch responses or persisted decisions."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-policy-fulfilled-obligations")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            outstanding = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_policy": True,
+                    "__policy_actor": "did:model:worker",
+                    "__policy_cid": "cid-policy-v1",
+                    "__policy_version": "v1",
+                    "__policy_clauses": [
+                        {
+                            "clause_type": "permission",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                        },
+                        {
+                            "clause_type": "obligation",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                            "obligation_deadline": "2030-01-01T00:00:00Z",
+                            "metadata": {"ticket": "obl-1"},
+                        },
+                    ],
+                },
+            )
+
+            fulfilled = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_policy": True,
+                    "__policy_actor": "did:model:worker",
+                    "__policy_cid": "cid-policy-v1",
+                    "__policy_version": "v1",
+                    "__policy_clauses": [
+                        {
+                            "clause_type": "permission",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                        },
+                        {
+                            "clause_type": "obligation",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                            "obligation_deadline": "2030-01-01T00:00:00Z",
+                            "metadata": {
+                                "ticket": "obl-1",
+                                "fulfilled": True,
+                                "fulfilled_at": "2026-02-01T00:00:00Z",
+                            },
+                        },
+                    ],
+                },
+            )
+
+            self.assertTrue(outstanding["ok"])
+            self.assertEqual(outstanding["policy"]["decision"], "allow_with_obligations")
+            self.assertEqual(len(outstanding["policy"]["obligations"]), 1)
+
+            self.assertTrue(fulfilled["ok"])
+            self.assertEqual(fulfilled["policy"]["decision"], "allow")
+            self.assertEqual(fulfilled["policy"]["obligations"], [])
+            self.assertIn("already fulfilled", fulfilled["policy"]["justification"])
+
+            outstanding_cid = str((outstanding.get("policy_decision") or {}).get("decision_cid") or "")
+            fulfilled_cid = str((fulfilled.get("policy_decision") or {}).get("decision_cid") or "")
+            self.assertTrue(outstanding_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(fulfilled_cid.startswith("cidv1-sha256-"))
+            self.assertNotEqual(outstanding_cid, fulfilled_cid)
+
+            stored_fulfilled = server._unified_artifact_store.get(fulfilled_cid) or {}
+            self.assertEqual(stored_fulfilled.get("decision"), "allow")
+            self.assertEqual(stored_fulfilled.get("obligations"), [])
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_policy_decision_cid_stable_across_emit_modes_and_policy_evolution(self, mock_wrapper):
+        """Policy decision CID should remain stable across emit modes and change deterministically when policy identity evolves."""
 
         class DummyServer:
             def __init__(self):
@@ -4687,6 +4802,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(cid_no_emit, cid_emit)
 
             stored_v1 = server._unified_artifact_store.get(cid_no_emit) or {}
+            self.assertEqual(stored_v1.get("policy_cid"), "")
             self.assertEqual(stored_v1.get("policy_version"), "v1")
             self.assertEqual(stored_v1.get("decision"), "allow_with_obligations")
 
@@ -4701,6 +4817,19 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             stored_v2 = server._unified_artifact_store.get(cid_v2) or {}
             self.assertEqual(stored_v2.get("policy_version"), "v2")
+
+            response_policy_cid = await dispatch(
+                "smoke",
+                "echo",
+                dict(base_payload, **{"__policy_cid": "cid-policy-v3", "__emit_artifacts": False}),
+            )
+            cid_policy_cid = str((response_policy_cid.get("policy_decision") or {}).get("decision_cid") or "")
+            self.assertTrue(cid_policy_cid.startswith("cidv1-sha256-"))
+            self.assertNotEqual(cid_no_emit, cid_policy_cid)
+
+            stored_policy_cid = server._unified_artifact_store.get(cid_policy_cid) or {}
+            self.assertEqual(stored_policy_cid.get("policy_cid"), "cid-policy-v3")
+            self.assertEqual(stored_policy_cid.get("policy_version"), "v1")
 
         anyio.run(_run_flow)
 
@@ -6529,6 +6658,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("query_storage", names)
             self.assertIn("list_storage", names)
             self.assertIn("get_storage_stats", names)
+            self.assertIn("get_storage_lifecycle_report", names)
             self.assertIn("delete_data", names)
 
             store_schema = await get_schema("storage_tools", "store_data")
@@ -6572,6 +6702,11 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             stats_schema = await get_schema("storage_tools", "get_storage_stats")
             stats_props = (stats_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((stats_props.get("report_format") or {}).get("default"), "summary")
+
+            lifecycle_alias_schema = await get_schema("storage_tools", "get_storage_lifecycle_report")
+            lifecycle_alias_props = (lifecycle_alias_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((lifecycle_alias_props.get("report_format") or {}).get("default"), "detailed")
+            self.assertEqual((lifecycle_alias_props.get("include_breakdown") or {}).get("default"), False)
 
             delete_schema = await get_schema("storage_tools", "delete_data")
             delete_props = (delete_schema.get("input_schema") or {}).get("properties", {})
@@ -6787,6 +6922,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(lifecycle_payload.get("collection_name"), "default")
             self.assertIn("collections_total", lifecycle_payload)
             self.assertIn("totals", lifecycle_payload)
+
+            lifecycle_alias = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_lifecycle_report",
+                    {
+                        "collection_name": "default",
+                        "report_format": "analytics",
+                        "include_breakdown": True,
+                    },
+                )
+            )
+            self.assertEqual(lifecycle_alias.get("status"), "success")
+            self.assertEqual(lifecycle_alias.get("scope"), "collection")
+            self.assertEqual(lifecycle_alias.get("collection_name"), "default")
+            self.assertIn("lifecycle_report", lifecycle_alias)
 
             stored = self._assert_dispatch_success_envelope(
                 await dispatch(

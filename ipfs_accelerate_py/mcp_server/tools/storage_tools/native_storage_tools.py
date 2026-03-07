@@ -970,6 +970,63 @@ async def get_storage_stats(
     }
 
 
+async def get_storage_lifecycle_report(
+    collection_name: Optional[str] = None,
+    report_format: str = "detailed",
+    include_breakdown: bool = False,
+) -> Dict[str, Any]:
+    """Return normalized storage lifecycle telemetry via manage_collections(lifecycle_report)."""
+    if collection_name is not None and (not isinstance(collection_name, str) or not collection_name.strip()):
+        return _error_result("collection_name must be a non-empty string when provided")
+    if not isinstance(include_breakdown, bool):
+        return _error_result("include_breakdown must be a boolean")
+
+    normalized_report_format = str(report_format or "detailed").strip().lower()
+    if normalized_report_format not in _VALID_REPORT_FORMATS:
+        return _error_result(
+            (
+                "report_format must be one of: "
+                f"{sorted(_VALID_REPORT_FORMATS)}"
+            )
+        )
+
+    result = await manage_collections(
+        action="lifecycle_report",
+        collection_name=collection_name,
+        report_format=normalized_report_format,
+        include_breakdown=include_breakdown,
+    )
+    if result.get("status") == "error":
+        return result
+
+    lifecycle_report = result.get("lifecycle_report")
+    if not isinstance(lifecycle_report, dict):
+        lifecycle_report = {}
+
+    totals = lifecycle_report.get("totals")
+    if not isinstance(totals, dict):
+        totals = {"total_items": 0, "total_size_bytes": 0}
+
+    collection_names = lifecycle_report.get("collection_names")
+    if not isinstance(collection_names, list):
+        collection_names = []
+
+    return {
+        "status": "success",
+        "collection_name": collection_name,
+        "report_format": lifecycle_report.get("stats_report_format", normalized_report_format),
+        "scope": lifecycle_report.get("scope", "global"),
+        "collections_total": int(lifecycle_report.get("collections_total", len(collection_names)) or 0),
+        "collection_names": collection_names,
+        "totals": {
+            "total_items": int(totals.get("total_items", 0) or 0),
+            "total_size_bytes": int(totals.get("total_size_bytes", 0) or 0),
+        },
+        "lifecycle_report": lifecycle_report,
+        "generated_at": lifecycle_report.get("generated_at"),
+    }
+
+
 async def delete_data(
     item_ids: List[str],
     missing_ok: bool = False,
@@ -1226,6 +1283,28 @@ def register_native_storage_tools(manager: Any) -> None:
                     "type": "string",
                     "enum": sorted(_VALID_REPORT_FORMATS),
                     "default": "summary",
+                },
+                "include_breakdown": {"type": "boolean", "default": False},
+            },
+            "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="get_storage_lifecycle_report",
+        func=get_storage_lifecycle_report,
+        description="Return normalized storage lifecycle telemetry for all collections or a specific collection.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "collection_name": {"type": ["string", "null"], "minLength": 1},
+                "report_format": {
+                    "type": "string",
+                    "enum": sorted(_VALID_REPORT_FORMATS),
+                    "default": "detailed",
                 },
                 "include_breakdown": {"type": "boolean", "default": False},
             },

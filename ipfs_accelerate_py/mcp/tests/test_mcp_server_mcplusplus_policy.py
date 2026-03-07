@@ -101,6 +101,67 @@ class TestMCPServerMCPPlusPlusPolicy(unittest.TestCase):
         self.assertEqual(after.decision, "deny")
         self.assertEqual(after.obligations, [])
 
+    def test_obligation_deadline_status_is_pending_then_overdue(self) -> None:
+        raw_clauses = [
+            {
+                "clause_type": "permission",
+                "actor": "did:model:worker",
+                "action": "smoke.echo",
+            },
+            {
+                "clause_type": "obligation",
+                "actor": "did:model:worker",
+                "action": "smoke.echo",
+                "obligation_deadline": "2026-06-01T00:00:00Z",
+            },
+        ]
+
+        pending = evaluate_raw_policy(
+            raw_clauses=raw_clauses,
+            actor="did:model:worker",
+            action="smoke.echo",
+            now=datetime(2026, 5, 1, 12, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(pending.decision, "allow_with_obligations")
+        self.assertEqual(pending.obligations[0].get("status"), "pending")
+
+        overdue = evaluate_raw_policy(
+            raw_clauses=raw_clauses,
+            actor="did:model:worker",
+            action="smoke.echo",
+            now=datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(overdue.decision, "allow_with_obligations")
+        self.assertEqual(overdue.obligations[0].get("status"), "overdue")
+
+    def test_fulfilled_obligation_no_longer_requires_outstanding_work(self) -> None:
+        decision = evaluate_raw_policy(
+            raw_clauses=[
+                {
+                    "clause_type": "permission",
+                    "actor": "did:model:worker",
+                    "action": "smoke.echo",
+                },
+                {
+                    "clause_type": "obligation",
+                    "actor": "did:model:worker",
+                    "action": "smoke.echo",
+                    "obligation_deadline": "2030-01-01T00:00:00Z",
+                    "metadata": {
+                        "fulfilled": True,
+                        "fulfilled_at": "2026-02-01T00:00:00Z",
+                        "ticket": "obl-7",
+                    },
+                },
+            ],
+            actor="did:model:worker",
+            action="smoke.echo",
+            now=datetime(2026, 3, 1, 12, 0, tzinfo=timezone.utc),
+        )
+        self.assertEqual(decision.decision, "allow")
+        self.assertEqual(decision.obligations, [])
+        self.assertIn("already fulfilled", decision.justification)
+
     def test_policy_version_metadata_is_preserved_in_obligations(self) -> None:
         decision = evaluate_raw_policy(
             raw_clauses=[

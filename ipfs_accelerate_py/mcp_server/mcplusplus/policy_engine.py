@@ -24,6 +24,25 @@ def _parse_iso8601(ts: str | None) -> datetime | None:
         return None
 
 
+def _coerce_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        return value.strip().lower() in {"1", "true", "yes", "y", "on", "fulfilled"}
+    return False
+
+
+def _obligation_is_fulfilled(metadata: Dict[str, Any], now: datetime) -> bool:
+    fulfilled_at = _parse_iso8601(str(metadata.get("fulfilled_at", "") or ""))
+    if fulfilled_at is not None and fulfilled_at <= now:
+        return True
+    if fulfilled_at is not None and fulfilled_at > now:
+        return False
+    return _coerce_bool(metadata.get("fulfilled", False))
+
+
 @dataclass(frozen=True)
 class PolicyClause:
     """One temporal deontic clause."""
@@ -104,6 +123,7 @@ def evaluate_policy(
     denial_reasons: List[str] = []
     has_permission = False
     obligations: List[Dict[str, Any]] = []
+    fulfilled_obligations = 0
 
     for clause in clauses:
         if not clause.applies(actor=actor, action=action, resource=resource, now=eval_time):
@@ -114,12 +134,20 @@ def evaluate_policy(
         elif clause.clause_type == "permission":
             has_permission = True
         elif clause.clause_type == "obligation":
+            metadata = dict(clause.metadata or {})
+            if _obligation_is_fulfilled(metadata, eval_time):
+                fulfilled_obligations += 1
+                continue
+
+            deadline = clause.obligation_deadline or ""
+            deadline_dt = _parse_iso8601(deadline)
             obligations.append(
                 {
                     "type": "obligation",
                     "action": clause.action,
-                    "deadline": clause.obligation_deadline or "",
-                    "metadata": dict(clause.metadata or {}),
+                    "deadline": deadline,
+                    "status": "overdue" if deadline_dt is not None and eval_time > deadline_dt else "pending",
+                    "metadata": metadata,
                 }
             )
 
@@ -138,6 +166,12 @@ def evaluate_policy(
         )
 
     if has_permission:
+        if fulfilled_obligations:
+            return PolicyDecision(
+                decision="allow",
+                justification=f"permission matched; {fulfilled_obligations} obligation(s) already fulfilled",
+                obligations=[],
+            )
         return PolicyDecision(
             decision="allow",
             justification="permission matched",
