@@ -8,6 +8,7 @@ import unittest
 import anyio
 
 from ipfs_accelerate_py.mcp_server.tools.storage_tools.native_storage_tools import (
+    get_storage_stats,
     manage_collections,
     query_storage,
     register_native_storage_tools,
@@ -31,6 +32,10 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
             self.assertEqual(result.get("stored"), False)
             self.assertIn("Invalid storage type", str(result.get("error", "")))
 
+            result = await store_data(data={"x": 1}, collection="")
+            self.assertEqual(result.get("stored"), False)
+            self.assertIn("collection must be a non-empty string when provided", str(result.get("error", "")))
+
         anyio.run(_run)
 
     def test_retrieve_data_requires_item_ids(self) -> None:
@@ -39,6 +44,10 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
             self.assertEqual(result.get("retrieved_count"), 0)
             self.assertIn("At least one item ID", str(result.get("error", "")))
 
+            result = await retrieve_data(item_ids=["item-1"], format_type="")
+            self.assertEqual(result.get("retrieved_count"), 0)
+            self.assertIn("format_type must be a non-empty string", str(result.get("error", "")))
+
         anyio.run(_run)
 
     def test_manage_collections_rejects_unknown_action(self) -> None:
@@ -46,6 +55,18 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
             result = await manage_collections(action="rename", collection_name="a")
             self.assertEqual(result.get("success"), False)
             self.assertIn("Unknown action", str(result.get("error", "")))
+
+            result = await manage_collections(action="stats", collection_name="")
+            self.assertEqual(result.get("success"), False)
+            self.assertIn("collection_name must be a non-empty string when provided", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_get_storage_stats_rejects_empty_collection_name(self) -> None:
+        async def _run() -> None:
+            result = await get_storage_stats(collection_name="")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("collection_name must be a non-empty string when provided", str(result.get("error", "")))
 
         anyio.run(_run)
 
@@ -61,7 +82,7 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
         manager = _DummyManager()
         register_native_storage_tools(manager)
 
-        self.assertEqual(len(manager.calls), 7)
+        self.assertEqual(len(manager.calls), 10)
 
         schemas = {call["name"]: call["input_schema"]["properties"] for call in manager.calls}
         self.assertEqual(
@@ -73,6 +94,9 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
                 "query_storage",
                 "list_storage",
                 "get_storage_stats",
+                "get_storage_lifecycle_report",
+                "get_storage_backend_status",
+                "list_storage_collections",
                 "delete_data",
             },
         )

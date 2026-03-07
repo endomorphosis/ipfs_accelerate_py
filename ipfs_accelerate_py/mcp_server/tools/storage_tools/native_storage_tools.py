@@ -331,7 +331,12 @@ async def store_data(
     """Store data in the configured storage backend."""
     normalized_storage_type = str(storage_type or "memory").strip().lower() or "memory"
     normalized_compression = str(compression or "none").strip().lower() or "none"
-    normalized_collection = str(collection or "").strip() or "default"
+    if collection is None:
+        normalized_collection = "default"
+    elif not isinstance(collection, str) or not collection.strip():
+        return _error_result("collection must be a non-empty string when provided", stored=False)
+    else:
+        normalized_collection = collection.strip()
 
     if normalized_storage_type not in _VALID_STORAGE_TYPES:
         return _error_result(
@@ -409,12 +414,22 @@ async def retrieve_data(
         )
     if not isinstance(include_content, bool):
         return _error_result("include_content must be a boolean")
+    if not isinstance(format_type, str) or not format_type.strip():
+        return _error_result(
+            "format_type must be a non-empty string",
+            retrieved_count=0,
+            not_found_count=0,
+            results=[],
+            not_found=[],
+            format=format_type,
+            include_content=include_content,
+        )
 
     try:
         payload = await _API["retrieve_data"](
             item_ids=item_ids,
             include_content=include_content,
-            format_type=format_type,
+            format_type=format_type.strip(),
         )
     except Exception as exc:
         return _error_result(
@@ -456,7 +471,16 @@ async def manage_collections(
             success=False,
         )
 
-    normalized_collection_name = str(collection_name or "").strip() if collection_name is not None else None
+    if collection_name is None:
+        normalized_collection_name = None
+    elif not isinstance(collection_name, str) or not collection_name.strip():
+        return _error_result(
+            "collection_name must be a non-empty string when provided",
+            action=normalized_action,
+            success=False,
+        )
+    else:
+        normalized_collection_name = collection_name.strip()
 
     if normalized_action in {"create", "get", "delete"} and not normalized_collection_name:
         return _error_result(
@@ -927,6 +951,9 @@ async def get_storage_stats(
     include_breakdown: bool = False,
 ) -> Dict[str, Any]:
     """Return normalized storage statistics via manage_collections(stats)."""
+    if collection_name is not None and (not isinstance(collection_name, str) or not collection_name.strip()):
+        return _error_result("collection_name must be a non-empty string when provided")
+
     result = await manage_collections(
         action="stats",
         collection_name=collection_name,
