@@ -7624,6 +7624,105 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 str(invalid_backend_alias_unavailable_reason_type.get("error", "")),
             )
 
+            invalid_backend_alias_backend_type_entry = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", 1],
+                    },
+                )
+            )
+            self.assertEqual(invalid_backend_alias_backend_type_entry.get("status"), "error")
+            self.assertIn(
+                "backend_types must be an array of non-empty strings",
+                str(invalid_backend_alias_backend_type_entry.get("error", "")),
+            )
+
+            normalized_backend_alias_lists = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": [" Memory ", " IPFS "],
+                        "unavailable_backends": [" IpFs "],
+                        "availability_filter": " unavailable ",
+                    },
+                )
+            )
+            self.assertEqual(normalized_backend_alias_lists.get("status"), "success")
+            self.assertEqual(normalized_backend_alias_lists.get("availability_filter"), "unavailable")
+            self.assertEqual(normalized_backend_alias_lists.get("backend_count"), 1)
+            normalized_backends = normalized_backend_alias_lists.get("backends") or []
+            self.assertEqual(len(normalized_backends), 1)
+            self.assertEqual((normalized_backends[0] or {}).get("storage_type"), "ipfs")
+            self.assertEqual((normalized_backends[0] or {}).get("available"), False)
+
+            normalized_backend_alias_reason = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                        "unavailable_reasons": {" IpFs ": " dial timeout "},
+                        "availability_filter": " unavailable ",
+                    },
+                )
+            )
+            self.assertEqual(normalized_backend_alias_reason.get("status"), "success")
+            self.assertEqual(normalized_backend_alias_reason.get("availability_filter"), "unavailable")
+            self.assertEqual(normalized_backend_alias_reason.get("backend_count"), 1)
+            normalized_reason_backends = normalized_backend_alias_reason.get("backends") or []
+            self.assertEqual(len(normalized_reason_backends), 1)
+            self.assertEqual((normalized_reason_backends[0] or {}).get("storage_type"), "ipfs")
+            self.assertEqual((normalized_reason_backends[0] or {}).get("unavailable_reason"), "dial timeout")
+
+            scoped_backend_alias_reasons = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                        "unavailable_reasons": {
+                            "memory": "should not appear",
+                            "ipfs": "dial timeout",
+                        },
+                    },
+                )
+            )
+            self.assertEqual(scoped_backend_alias_reasons.get("status"), "success")
+            self.assertEqual(scoped_backend_alias_reasons.get("backend_count"), 2)
+            scoped_backends = {
+                (entry or {}).get("storage_type"): entry
+                for entry in (scoped_backend_alias_reasons.get("backends") or [])
+            }
+            self.assertEqual((scoped_backends.get("ipfs") or {}).get("unavailable_reason"), "dial timeout")
+            self.assertIsNone((scoped_backends.get("memory") or {}).get("unavailable_reason"))
+
+            normalized_empty_backend_alias_filter = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                        "availability_filter": "",
+                    },
+                )
+            )
+            self.assertEqual(normalized_empty_backend_alias_filter.get("status"), "success")
+            self.assertEqual(normalized_empty_backend_alias_filter.get("availability_filter"), "all")
+            self.assertEqual(normalized_empty_backend_alias_filter.get("backend_count"), 2)
+            empty_filter_backends = {
+                (entry or {}).get("storage_type"): entry
+                for entry in (normalized_empty_backend_alias_filter.get("backends") or [])
+            }
+            self.assertEqual(set(empty_filter_backends.keys()), {"memory", "ipfs"})
+            self.assertEqual((empty_filter_backends.get("memory") or {}).get("available"), True)
+            self.assertEqual((empty_filter_backends.get("ipfs") or {}).get("available"), False)
+
             backend_status = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",
