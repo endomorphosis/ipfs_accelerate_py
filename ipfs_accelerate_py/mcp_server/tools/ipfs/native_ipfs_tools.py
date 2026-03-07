@@ -8,7 +8,21 @@ from ipfs_accelerate_py.kit.ipfs_files_kit import get_ipfs_files_kit
 
 
 def _error_result(message: str) -> Dict[str, Any]:
-    return {"success": False, "data": None, "error": message}
+    return {"status": "error", "success": False, "data": None, "error": message}
+
+
+def _normalize_kit_result(result: Any) -> Dict[str, Any]:
+    """Normalize kit result objects to deterministic envelopes."""
+    success = bool(getattr(result, "success", False))
+    data = getattr(result, "data", None)
+    error = getattr(result, "error", None)
+    envelope = {
+        "status": "success" if success and not error else "error",
+        "success": success,
+        "data": {} if success and data is None else data,
+        "error": error,
+    }
+    return envelope
 
 
 def ipfs_files_validate_cid(cid: str) -> Dict[str, Any]:
@@ -23,11 +37,7 @@ def ipfs_files_validate_cid(cid: str) -> Dict[str, Any]:
     kit = get_ipfs_files_kit()
     try:
         result = kit.validate_cid(cid=cid.strip())
-        return {
-            "success": result.success,
-            "data": result.data,
-            "error": result.error,
-        }
+        return _normalize_kit_result(result)
     except Exception as exc:
         return _error_result(str(exc))
 
@@ -44,11 +54,7 @@ def ipfs_files_list_files(path: str = "/") -> Dict[str, Any]:
     kit = get_ipfs_files_kit()
     try:
         result = kit.list_files(path=path)
-        return {
-            "success": result.success,
-            "data": result.data,
-            "error": result.error,
-        }
+        return _normalize_kit_result(result)
     except Exception as exc:
         return _error_result(str(exc))
 
@@ -67,11 +73,7 @@ def ipfs_files_add_file(path: str, pin: bool = True) -> Dict[str, Any]:
     kit = get_ipfs_files_kit()
     try:
         result = kit.add_file(path=path, pin=pin)
-        return {
-            "success": result.success,
-            "data": result.data,
-            "error": result.error,
-        }
+        return _normalize_kit_result(result)
     except Exception as exc:
         return _error_result(str(exc))
 
@@ -88,11 +90,7 @@ def ipfs_files_pin_file(cid: str) -> Dict[str, Any]:
     kit = get_ipfs_files_kit()
     try:
         result = kit.pin_file(cid=cid.strip())
-        return {
-            "success": result.success,
-            "data": result.data,
-            "error": result.error,
-        }
+        return _normalize_kit_result(result)
     except Exception as exc:
         return _error_result(str(exc))
 
@@ -109,11 +107,7 @@ def ipfs_files_unpin_file(cid: str) -> Dict[str, Any]:
     kit = get_ipfs_files_kit()
     try:
         result = kit.unpin_file(cid=cid.strip())
-        return {
-            "success": result.success,
-            "data": result.data,
-            "error": result.error,
-        }
+        return _normalize_kit_result(result)
     except Exception as exc:
         return _error_result(str(exc))
 
@@ -132,11 +126,7 @@ def ipfs_files_get_file(cid: str, output_path: str) -> Dict[str, Any]:
     kit = get_ipfs_files_kit()
     try:
         result = kit.get_file(cid=cid.strip(), output_path=output_path)
-        return {
-            "success": result.success,
-            "data": result.data,
-            "error": result.error,
-        }
+        return _normalize_kit_result(result)
     except Exception as exc:
         return _error_result(str(exc))
 
@@ -153,11 +143,7 @@ def ipfs_files_cat(cid: str) -> Dict[str, Any]:
     kit = get_ipfs_files_kit()
     try:
         result = kit.cat_file(cid=cid.strip())
-        return {
-            "success": result.success,
-            "data": result.data,
-            "error": result.error,
-        }
+        return _normalize_kit_result(result)
     except Exception as exc:
         return _error_result(str(exc))
 

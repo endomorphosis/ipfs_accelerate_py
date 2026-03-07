@@ -13,10 +13,12 @@ from ipfs_accelerate_py.mcp_server.tools.media_tools.native_media_tools import (
     ffmpeg_batch_process,
     ffmpeg_cut,
     ffmpeg_mux,
+    ffmpeg_stream_output,
     register_native_media_tools,
     ytdlp_batch_download,
     ytdlp_download_playlist,
     ytdlp_extract_info,
+    ytdlp_search_videos,
 )
 
 
@@ -33,6 +35,29 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
         manager = _DummyManager()
         register_native_media_tools(manager)
         by_name = {c["name"]: c for c in manager.calls}
+
+        self.assertEqual(
+            set(by_name),
+            {
+                "ffmpeg_probe",
+                "ffmpeg_analyze",
+                "ffmpeg_convert",
+                "ffmpeg_mux",
+                "ffmpeg_demux",
+                "ffmpeg_stream_input",
+                "ffmpeg_stream_output",
+                "ffmpeg_cut",
+                "ffmpeg_splice",
+                "ffmpeg_concat",
+                "ffmpeg_apply_filters",
+                "ffmpeg_batch_process",
+                "ytdlp_download_video",
+                "ytdlp_download_playlist",
+                "ytdlp_extract_info",
+                "ytdlp_search_videos",
+                "ytdlp_batch_download",
+            },
+        )
 
         ffmpeg_schema = by_name["ffmpeg_analyze"]["input_schema"]
         input_one_of = ffmpeg_schema["properties"]["input_file"]["oneOf"]
@@ -56,6 +81,12 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
 
         batch_download_schema = by_name["ytdlp_batch_download"]["input_schema"]
         self.assertEqual((batch_download_schema["properties"]["urls"] or {}).get("minItems"), 1)
+
+        stream_output_schema = by_name["ffmpeg_stream_output"]["input_schema"]
+        self.assertEqual((stream_output_schema["properties"]["stream_url"] or {}).get("minLength"), 1)
+
+        search_schema = by_name["ytdlp_search_videos"]["input_schema"]
+        self.assertEqual((search_schema["properties"]["query"] or {}).get("minLength"), 1)
 
     def test_ffmpeg_analyze_rejects_blank_string(self) -> None:
         async def _run() -> None:
@@ -138,6 +169,25 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_ffmpeg_stream_output_rejects_blank_stream_url(self) -> None:
+        async def _run() -> None:
+            result = await ffmpeg_stream_output(
+                input_file="/tmp/video.mp4",
+                stream_url="   ",
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("stream_url must be a non-empty string", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_ytdlp_search_videos_rejects_blank_query(self) -> None:
+        async def _run() -> None:
+            result = await ytdlp_search_videos(query="   ")
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("query must be a non-empty string", str(result.get("error", "")))
+
+        anyio.run(_run)
+
     def test_ytdlp_extract_info_success_envelope_shape(self) -> None:
         async def _run() -> None:
             result = await ytdlp_extract_info(url="https://example.com/video")
@@ -204,6 +254,21 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
 
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("urls"), ["https://example.com/video"])
+            self.assertEqual(result.get("results"), [])
+
+        anyio.run(_run)
+
+    def test_ytdlp_search_videos_minimal_success_payload_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.media_tools.native_media_tools._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda **_: {"status": "success"}
+
+                result = await ytdlp_search_videos(query="unit test")
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("query"), "unit test")
             self.assertEqual(result.get("results"), [])
 
         anyio.run(_run)

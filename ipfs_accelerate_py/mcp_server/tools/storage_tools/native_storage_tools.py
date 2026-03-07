@@ -1211,6 +1211,81 @@ async def list_storage_collections(
     }
 
 
+async def create_storage_collection(
+    collection_name: str,
+    description: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Create a storage collection via manage_collections(create)."""
+    normalized_collection_name = str(collection_name or "").strip()
+    if not normalized_collection_name:
+        return _error_result("collection_name is required")
+    if description is not None and not isinstance(description, str):
+        return _error_result("description must be a string when provided")
+    if metadata is not None and not isinstance(metadata, dict):
+        return _error_result("metadata must be an object when provided")
+
+    result = await manage_collections(
+        action="create",
+        collection_name=normalized_collection_name,
+        description=description,
+        metadata=metadata,
+    )
+    if result.get("status") == "error":
+        return result
+
+    collection_payload = result.get("collection")
+    if not isinstance(collection_payload, dict):
+        collection_payload = {}
+
+    return {
+        "status": "success",
+        "action": "create",
+        "collection_name": normalized_collection_name,
+        "created": bool(result.get("success", True)),
+        "collection": collection_payload,
+    }
+
+
+async def get_storage_collection(
+    collection_name: str,
+    include_metadata: bool = True,
+    include_timestamps: bool = True,
+) -> Dict[str, Any]:
+    """Return collection metadata via manage_collections(get)."""
+    normalized_collection_name = str(collection_name or "").strip()
+    if not normalized_collection_name:
+        return _error_result("collection_name is required")
+    if not isinstance(include_metadata, bool):
+        return _error_result("include_metadata must be a boolean")
+    if not isinstance(include_timestamps, bool):
+        return _error_result("include_timestamps must be a boolean")
+
+    result = await manage_collections(
+        action="get",
+        collection_name=normalized_collection_name,
+    )
+    if result.get("status") == "error":
+        return result
+
+    collection_payload = result.get("collection")
+    if not isinstance(collection_payload, dict):
+        collection_payload = {}
+    normalized_collection = dict(collection_payload)
+    if not include_metadata:
+        normalized_collection.pop("metadata", None)
+    if not include_timestamps:
+        normalized_collection.pop("created_at", None)
+        normalized_collection.pop("updated_at", None)
+
+    return {
+        "status": "success",
+        "action": "get",
+        "collection_name": normalized_collection_name,
+        "collection": normalized_collection,
+    }
+
+
 async def delete_storage_collection(
     collection_name: str,
     delete_items: bool = False,
@@ -1599,6 +1674,42 @@ def register_native_storage_tools(manager: Any) -> None:
                 "include_timestamps": {"type": "boolean", "default": True},
             },
             "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="create_storage_collection",
+        func=create_storage_collection,
+        description="Create a storage collection with optional description and metadata.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "collection_name": {"type": "string", "minLength": 1},
+                "description": {"type": ["string", "null"]},
+                "metadata": {"type": ["object", "null"]},
+            },
+            "required": ["collection_name"],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="get_storage_collection",
+        func=get_storage_collection,
+        description="Return normalized metadata for a specific storage collection.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "collection_name": {"type": "string", "minLength": 1},
+                "include_metadata": {"type": "boolean", "default": True},
+                "include_timestamps": {"type": "boolean", "default": True},
+            },
+            "required": ["collection_name"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "storage"],

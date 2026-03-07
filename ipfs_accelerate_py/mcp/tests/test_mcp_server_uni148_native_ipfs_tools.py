@@ -102,6 +102,41 @@ class TestMCPServerUNI148NativeIPFSTools(unittest.TestCase):
         self.assertFalse(result.get("success"))
         self.assertIn("boom:bafy-demo", str(result.get("error", "")))
 
+    def test_minimal_success_defaults_with_sparse_kit_result(self) -> None:
+        class _SparseResult:
+            success = True
+            data = None
+            error = None
+
+        class _SparseKit:
+            def validate_cid(self, cid: str):
+                return _SparseResult()
+
+        with patch.object(ipfs_mod, "get_ipfs_files_kit", return_value=_SparseKit()):
+            result = ipfs_mod.ipfs_files_validate_cid("bafy-demo")
+
+        self.assertEqual(result.get("status"), "success")
+        self.assertTrue(result.get("success"))
+        self.assertEqual(result.get("data"), {})
+        self.assertIsNone(result.get("error"))
+
+    def test_error_status_inferred_from_failed_kit_result(self) -> None:
+        class _FailedResult:
+            success = False
+            data = None
+            error = "invalid cid"
+
+        class _FailedKit:
+            def validate_cid(self, cid: str):
+                return _FailedResult()
+
+        with patch.object(ipfs_mod, "get_ipfs_files_kit", return_value=_FailedKit()):
+            result = ipfs_mod.ipfs_files_validate_cid("bafy-demo")
+
+        self.assertEqual(result.get("status"), "error")
+        self.assertFalse(result.get("success"))
+        self.assertEqual(result.get("error"), "invalid cid")
+
 
 if __name__ == "__main__":
     unittest.main()

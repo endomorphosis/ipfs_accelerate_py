@@ -6662,6 +6662,9 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("get_storage_lifecycle_report", names)
             self.assertIn("get_storage_backend_status", names)
             self.assertIn("list_storage_collections", names)
+            self.assertIn("create_storage_collection", names)
+            self.assertIn("get_storage_collection", names)
+            self.assertIn("delete_storage_collection", names)
             self.assertIn("delete_data", names)
 
             store_schema = await get_schema("storage_tools", "store_data")
@@ -6726,6 +6729,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             collections_alias_props = (collections_alias_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((collections_alias_props.get("include_metadata") or {}).get("default"), True)
             self.assertEqual((collections_alias_props.get("include_timestamps") or {}).get("default"), True)
+
+            create_collection_schema = await get_schema("storage_tools", "create_storage_collection")
+            create_collection_input = create_collection_schema.get("input_schema") or {}
+            self.assertEqual(create_collection_input.get("required"), ["collection_name"])
+
+            get_collection_schema = await get_schema("storage_tools", "get_storage_collection")
+            get_collection_input = get_collection_schema.get("input_schema") or {}
+            get_collection_props = get_collection_input.get("properties", {})
+            self.assertEqual(get_collection_input.get("required"), ["collection_name"])
+            self.assertEqual((get_collection_props.get("include_metadata") or {}).get("default"), True)
+            self.assertEqual((get_collection_props.get("include_timestamps") or {}).get("default"), True)
+
+            delete_collection_schema = await get_schema("storage_tools", "delete_storage_collection")
+            delete_collection_input = delete_collection_schema.get("input_schema") or {}
+            delete_collection_props = delete_collection_input.get("properties", {})
+            self.assertEqual(delete_collection_input.get("required"), ["collection_name"])
+            self.assertEqual((delete_collection_props.get("delete_items") or {}).get("default"), False)
 
             delete_schema = await get_schema("storage_tools", "delete_data")
             delete_props = (delete_schema.get("input_schema") or {}).get("properties", {})
@@ -7051,6 +7071,76 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(collections_alias.get("status"), "success")
             self.assertIn("collections", collections_alias)
             self.assertIn("total_count", collections_alias)
+
+            create_collection_alias = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "create_storage_collection",
+                    {
+                        "collection_name": "bootstrap-alias-temp",
+                        "description": "bootstrap alias temp collection",
+                    },
+                )
+            )
+            self.assertEqual(create_collection_alias.get("status"), "success")
+            self.assertEqual(create_collection_alias.get("collection_name"), "bootstrap-alias-temp")
+            self.assertTrue(create_collection_alias.get("created"))
+
+            get_collection_alias = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_collection",
+                    {
+                        "collection_name": "bootstrap-alias-temp",
+                        "include_metadata": True,
+                        "include_timestamps": False,
+                    },
+                )
+            )
+            self.assertEqual(get_collection_alias.get("status"), "success")
+            self.assertEqual(get_collection_alias.get("collection_name"), "bootstrap-alias-temp")
+            self.assertIn("collection", get_collection_alias)
+            self.assertNotIn("created_at", (get_collection_alias.get("collection") or {}))
+
+            delete_collection_alias = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "delete_storage_collection",
+                    {
+                        "collection_name": "bootstrap-alias-temp",
+                        "delete_items": True,
+                    },
+                )
+            )
+            self.assertEqual(delete_collection_alias.get("status"), "success")
+            self.assertEqual(delete_collection_alias.get("collection_name"), "bootstrap-alias-temp")
+            self.assertTrue(delete_collection_alias.get("deleted"))
+
+            create_temp_collection = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "create",
+                        "collection_name": "bootstrap-delete-temp",
+                    },
+                )
+            )
+            self.assertEqual(create_temp_collection.get("status"), "success")
+
+            delete_collection_alias = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "delete_storage_collection",
+                    {
+                        "collection_name": "bootstrap-delete-temp",
+                        "delete_items": True,
+                    },
+                )
+            )
+            self.assertEqual(delete_collection_alias.get("status"), "success")
+            self.assertEqual(delete_collection_alias.get("collection_name"), "bootstrap-delete-temp")
+            self.assertTrue(delete_collection_alias.get("deleted"))
 
             stored = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10812,10 +10902,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             names = [tool.get("name") for tool in listed.get("tools", [])]
             self.assertIn("ffmpeg_analyze", names)
             self.assertIn("ffmpeg_mux", names)
+            self.assertIn("ffmpeg_stream_output", names)
             self.assertIn("ffmpeg_batch_process", names)
             self.assertIn("ytdlp_download_playlist", names)
             self.assertIn("ytdlp_batch_download", names)
             self.assertIn("ytdlp_extract_info", names)
+            self.assertIn("ytdlp_search_videos", names)
 
             schema = await get_schema("media_tools", "ytdlp_extract_info")
             props = (schema.get("input_schema") or {}).get("properties", {})
@@ -10825,6 +10917,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             mux_props = (mux_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((mux_props.get("output_file") or {}).get("minLength"), 1)
 
+            stream_output_schema = await get_schema("media_tools", "ffmpeg_stream_output")
+            stream_output_props = (stream_output_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((stream_output_props.get("stream_url") or {}).get("minLength"), 1)
+
             batch_schema = await get_schema("media_tools", "ffmpeg_batch_process")
             batch_props = (batch_schema.get("input_schema") or {}).get("properties", {})
             batch_one_of = (batch_props.get("input_files") or {}).get("oneOf", [])
@@ -10833,6 +10929,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             playlist_schema = await get_schema("media_tools", "ytdlp_download_playlist")
             playlist_props = (playlist_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((playlist_props.get("playlist_url") or {}).get("minLength"), 1)
+
+            search_schema = await get_schema("media_tools", "ytdlp_search_videos")
+            search_props = (search_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((search_props.get("query") or {}).get("minLength"), 1)
 
             invalid_input = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10886,6 +10986,24 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 invalid_batch_parallelism_text,
             )
 
+            invalid_stream_url = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "media_tools",
+                    "ffmpeg_stream_output",
+                    {
+                        "input_file": "/tmp/video.mp4",
+                        "stream_url": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_stream_url.get("status"), "error")
+            invalid_stream_url_text = (
+                str(invalid_stream_url.get("message", ""))
+                + " "
+                + str(invalid_stream_url.get("error", ""))
+            )
+            self.assertIn("stream_url must be a non-empty string", invalid_stream_url_text)
+
             invalid_url = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "media_tools",
@@ -10924,6 +11042,23 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "end_index must be an integer greater than or equal to start_index when provided",
                 invalid_playlist_window_text,
             )
+
+            invalid_search_query = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "media_tools",
+                    "ytdlp_search_videos",
+                    {
+                        "query": "   ",
+                    },
+                )
+            )
+            self.assertEqual(invalid_search_query.get("status"), "error")
+            invalid_search_query_text = (
+                str(invalid_search_query.get("message", ""))
+                + " "
+                + str(invalid_search_query.get("error", ""))
+            )
+            self.assertIn("query must be a non-empty string", invalid_search_query_text)
 
         anyio.run(_run_flow)
 
