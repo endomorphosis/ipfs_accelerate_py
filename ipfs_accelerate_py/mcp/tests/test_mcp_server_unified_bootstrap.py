@@ -6658,6 +6658,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("query_storage", names)
             self.assertIn("list_storage", names)
             self.assertIn("get_storage_stats", names)
+            self.assertIn("get_storage_collection_stats", names)
             self.assertIn("get_storage_lifecycle_report", names)
             self.assertIn("get_storage_backend_status", names)
             self.assertIn("list_storage_collections", names)
@@ -6704,6 +6705,12 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             stats_schema = await get_schema("storage_tools", "get_storage_stats")
             stats_props = (stats_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((stats_props.get("report_format") or {}).get("default"), "summary")
+
+            collection_stats_schema = await get_schema("storage_tools", "get_storage_collection_stats")
+            collection_stats_input = collection_stats_schema.get("input_schema") or {}
+            collection_stats_props = collection_stats_input.get("properties", {})
+            self.assertEqual(collection_stats_input.get("required"), ["collection_name"])
+            self.assertEqual((collection_stats_props.get("report_format") or {}).get("default"), "summary")
 
             lifecycle_alias_schema = await get_schema("storage_tools", "get_storage_lifecycle_report")
             lifecycle_alias_props = (lifecycle_alias_schema.get("input_schema") or {}).get("properties", {})
@@ -6767,6 +6774,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(invalid_tags.get("status"), "error")
             self.assertIn("tags must be an array of non-empty strings", str(invalid_tags.get("error", "")))
 
+            invalid_collection = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "store_data",
+                    {
+                        "data": {"x": 1},
+                        "collection": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_collection.get("status"), "error")
+            self.assertIn(
+                "collection must be a non-empty string when provided",
+                str(invalid_collection.get("error", "")),
+            )
+
             invalid_item_ids = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",
@@ -6795,6 +6818,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(
                 "At least one item ID must be provided",
                 str(missing_item_ids.get("error", "")),
+            )
+
+            invalid_format_type = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "retrieve_data",
+                    {
+                        "item_ids": ["item-1"],
+                        "format_type": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_format_type.get("status"), "error")
+            self.assertIn(
+                "format_type must be a non-empty string",
+                str(invalid_format_type.get("error", "")),
             )
 
             invalid_range = self._assert_dispatch_success_envelope(
@@ -6875,6 +6914,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_report_format.get("status"), "error")
             self.assertIn("report_format must be one of", str(invalid_report_format.get("error", "")))
+
+            invalid_stats_collection = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "manage_collections",
+                    {
+                        "action": "stats",
+                        "collection_name": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_stats_collection.get("status"), "error")
+            self.assertIn(
+                "collection_name must be a non-empty string when provided",
+                str(invalid_stats_collection.get("error", "")),
+            )
 
             invalid_availability_filter = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -6968,6 +7023,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(backend_alias.get("availability_filter"), "unavailable")
             self.assertEqual(backend_alias.get("backend_count"), 1)
 
+            collection_stats_alias = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_collection_stats",
+                    {
+                        "collection_name": "default",
+                        "report_format": "summary",
+                        "include_breakdown": True,
+                    },
+                )
+            )
+            self.assertEqual(collection_stats_alias.get("status"), "success")
+            self.assertEqual(collection_stats_alias.get("scope"), "collection")
+            self.assertEqual(collection_stats_alias.get("collection_name"), "default")
+
             collections_alias = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",
@@ -7019,6 +7089,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(storage_stats.get("status"), "success")
             self.assertIn("total_objects", storage_stats)
             self.assertIn("total_bytes", storage_stats)
+
+            invalid_stats_alias_collection = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_stats",
+                    {
+                        "collection_name": "",
+                    },
+                )
+            )
+            self.assertEqual(invalid_stats_alias_collection.get("status"), "error")
+            self.assertIn(
+                "collection_name must be a non-empty string when provided",
+                str(invalid_stats_alias_collection.get("error", "")),
+            )
 
             deleted = self._assert_dispatch_success_envelope(
                 await dispatch(

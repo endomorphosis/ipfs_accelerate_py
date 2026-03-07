@@ -997,6 +997,50 @@ async def get_storage_stats(
     }
 
 
+async def get_storage_collection_stats(
+    collection_name: str,
+    report_format: str = "summary",
+    include_breakdown: bool = False,
+) -> Dict[str, Any]:
+    """Return normalized collection-scoped storage statistics."""
+    normalized_collection_name = str(collection_name or "").strip()
+    if not normalized_collection_name:
+        return _error_result("collection_name is required")
+    if not isinstance(include_breakdown, bool):
+        return _error_result("include_breakdown must be a boolean")
+
+    normalized_report_format = str(report_format or "summary").strip().lower()
+    if normalized_report_format not in _VALID_REPORT_FORMATS:
+        return _error_result(
+            (
+                "report_format must be one of: "
+                f"{sorted(_VALID_REPORT_FORMATS)}"
+            )
+        )
+
+    result = await get_storage_stats(
+        collection_name=normalized_collection_name,
+        report_format=normalized_report_format,
+        include_breakdown=include_breakdown,
+    )
+    if result.get("status") == "error":
+        return result
+
+    return {
+        "status": "success",
+        "scope": "collection",
+        "collection_name": normalized_collection_name,
+        "report_format": result.get("report_format", normalized_report_format),
+        "total_objects": int(result.get("total_objects", 0) or 0),
+        "total_bytes": int(result.get("total_bytes", 0) or 0),
+        "backends": result.get("backends", {}),
+        "details": result.get("details", {}),
+        "analytics": result.get("analytics", {}),
+        "breakdown": result.get("breakdown", {}),
+        "generated_at": result.get("generated_at"),
+    }
+
+
 async def get_storage_lifecycle_report(
     collection_name: Optional[str] = None,
     report_format: str = "detailed",
@@ -1427,6 +1471,28 @@ def register_native_storage_tools(manager: Any) -> None:
                 "include_breakdown": {"type": "boolean", "default": False},
             },
             "required": [],
+        },
+        runtime="fastapi",
+        tags=["native", "mcpp", "storage"],
+    )
+
+    manager.register_tool(
+        category="storage_tools",
+        name="get_storage_collection_stats",
+        func=get_storage_collection_stats,
+        description="Return normalized collection-scoped storage statistics.",
+        input_schema={
+            "type": "object",
+            "properties": {
+                "collection_name": {"type": "string", "minLength": 1},
+                "report_format": {
+                    "type": "string",
+                    "enum": sorted(_VALID_REPORT_FORMATS),
+                    "default": "summary",
+                },
+                "include_breakdown": {"type": "boolean", "default": False},
+            },
+            "required": ["collection_name"],
         },
         runtime="fastapi",
         tags=["native", "mcpp", "storage"],
