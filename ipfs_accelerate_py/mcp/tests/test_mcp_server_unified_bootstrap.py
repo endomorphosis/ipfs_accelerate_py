@@ -7156,6 +7156,20 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 str(invalid_get_include.get("error", "")),
             )
 
+            missing_collection_get = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_collection",
+                    {
+                        "collection_name": "bootstrap-missing-collection",
+                    },
+                )
+            )
+            self.assertEqual(missing_collection_get.get("status"), "error")
+            self.assertEqual(missing_collection_get.get("collection_name"), "bootstrap-missing-collection")
+            self.assertEqual(missing_collection_get.get("found"), False)
+            self.assertIn("not found", str(missing_collection_get.get("error", "")).lower())
+
             delete_collection_alias = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",

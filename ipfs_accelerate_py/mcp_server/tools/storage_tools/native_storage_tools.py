@@ -1268,6 +1268,13 @@ async def get_storage_collection(
         collection_name=normalized_collection_name,
     )
     if result.get("status") == "error":
+        if "error" not in result:
+            result = {
+                **result,
+                "error": f"Collection '{normalized_collection_name}' not found",
+            }
+        result.setdefault("collection_name", normalized_collection_name)
+        result.setdefault("found", False)
         return result
 
     collection_payload = result.get("collection")
@@ -1284,6 +1291,7 @@ async def get_storage_collection(
         "status": "success",
         "action": "get",
         "collection_name": normalized_collection_name,
+        "found": True,
         "collection": normalized_collection,
     }
 
