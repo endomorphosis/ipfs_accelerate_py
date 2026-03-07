@@ -7592,6 +7592,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 str(invalid_backend_alias_unavailable_backends_entry.get("error", "")),
             )
 
+            invalid_backend_alias_unavailable_reason_value = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["ipfs"],
+                        "unavailable_reasons": {"ipfs": " "},
+                    },
+                )
+            )
+            self.assertEqual(invalid_backend_alias_unavailable_reason_value.get("status"), "error")
+            self.assertIn(
+                "unavailable_reasons must be an object with non-empty string keys/values",
+                str(invalid_backend_alias_unavailable_reason_value.get("error", "")),
+            )
+
             backend_status = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",
