@@ -148,11 +148,11 @@ def register_tools(mcp: Any) -> None:
             >>> gh_create_workflow_queues(owner="my-org", since_days=7)
         """
         try:
-            from ipfs_accelerate_py.github_cli import GitHubCLI, WorkflowManager, RunnerManager
+            from ipfs_accelerate_py.github_cli import GitHubCLI, WorkflowQueue, RunnerManager
             
             # Initialize with P2P caching enabled
             gh = GitHubCLI(enable_cache=True)
-            workflow_mgr = WorkflowManager(gh_cli=gh)
+            workflow_mgr = WorkflowQueue(gh_cli=gh)
             runner_mgr = RunnerManager(gh_cli=gh)
             
             # Detect system architecture for filtering
@@ -282,11 +282,11 @@ def register_tools(mcp: Any) -> None:
             >>> gh_list_workflow_runs(repo="owner/repo", branch="main", limit=10)
         """
         try:
-            from ipfs_accelerate_py.github_cli import GitHubCLI, WorkflowManager
+            from ipfs_accelerate_py.github_cli import GitHubCLI, WorkflowQueue
             
             # Initialize with P2P caching enabled
             gh = GitHubCLI(enable_cache=True)
-            workflow_mgr = WorkflowManager(gh_cli=gh)
+            workflow_mgr = WorkflowQueue(gh_cli=gh)
             
             # List workflow runs (uses cache automatically)
             runs = workflow_mgr.list_workflow_runs(

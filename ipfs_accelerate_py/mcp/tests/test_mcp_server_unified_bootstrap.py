@@ -7221,6 +7221,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(backend_alias.get("availability_filter"), "unavailable")
             self.assertEqual(backend_alias.get("backend_count"), 1)
 
+            backend_alias_normalized_filter = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                        "availability_filter": " UnAvAiLaBlE ",
+                    },
+                )
+            )
+            self.assertEqual(backend_alias_normalized_filter.get("status"), "success")
+            self.assertEqual(backend_alias_normalized_filter.get("availability_filter"), "unavailable")
+            self.assertEqual(backend_alias_normalized_filter.get("backend_count"), 1)
+
             collection_stats_alias = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",
