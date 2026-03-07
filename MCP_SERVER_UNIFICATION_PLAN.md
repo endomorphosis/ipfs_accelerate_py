@@ -491,9 +491,15 @@ Recent execution (2026-03-07):
 Current posture: Implemented.
 Next plan:
 
-1. Expand DAG conflict and fork handling test scenarios.
+1. Expand DAG conflict and fork handling test scenarios. ✅
 2. Add deterministic replay and rollback tests for larger graphs.
 3. Add durability and snapshot compatibility tests.
+
+Recent execution (2026-03-07):
+
+1. Expanded `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py` with deterministic fork/merge regressions covering lexical-parent lineage selection for multi-parent nodes, replay deduplication of shared merge descendants, and merge-fork snapshot roundtrip stability.
+2. Added unified-dispatch fork/merge coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to verify artifact-emitted event DAG snapshots preserve deterministic merge lineage, replay ordering, and rollback behavior when a merge node references two parents in non-lexical input order.
+3. Revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py` plus focused unified-bootstrap Event DAG coverage (`15 passed`).
 
 ### 6.8 Risk Scheduling (`risk-scheduling`)
 
@@ -945,10 +951,11 @@ Use this section as the canonical issue queue for implementation. Issue IDs are 
 
 6. `SPEC-206` Event DAG Scale and Conflict Scenarios
    - Chapter: `event-dag-ordering.md`
-   - Status: COMPLETE (2026-03-06)
+   - Status: COMPLETE (2026-03-07)
    - Evidence:
       - `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_event_dag.py`
-      - Combined targeted SPEC-205/SPEC-206/SPEC-207 run result: `20 passed`.
+      - `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py`
+      - Focused Event DAG run result: `15 passed`.
    - Acceptance: large-DAG replay/rollback and fork/conflict handling tests.
 
 7. `SPEC-207` Risk Frontier + Consensus Enhancements
