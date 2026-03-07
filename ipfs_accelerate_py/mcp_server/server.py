@@ -195,7 +195,20 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     runtime_router = RuntimeRouter(default_runtime="fastapi")
     manager = HierarchicalToolManager(runtime_router=runtime_router)
     event_store = EventDAGStore()
-    artifact_store = ArtifactStore()
+    artifact_store_backend = str(config.artifact_store_backend or "memory")
+    artifact_store_path = str(config.artifact_store_path or "")
+    if artifact_store_backend == "json" and artifact_store_path:
+        artifact_store = ArtifactStore.load_json(artifact_store_path)
+    else:
+        artifact_store = ArtifactStore()
+    artifact_store_runtime_meta: dict[str, Any] = {
+        "backend": artifact_store_backend,
+        "path": artifact_store_path,
+        "durable": artifact_store_backend == "json" and bool(artifact_store_path),
+        "loaded": int((artifact_store.stats() or {}).get("artifact_count") or 0),
+    }
+    if artifact_store_backend == "json" and not artifact_store_path:
+        artifact_store_runtime_meta["warning"] = "artifact_store_path_required"
     risk_scheduler = RiskScheduler()
     risk_scorer = RiskScorer()
     policy_audit = PolicyAuditLog(enabled=config.enable_policy_audit)
@@ -678,6 +691,18 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 response.update(extra_fields)
             return response
 
+        def _persist_artifact_store_snapshot() -> dict[str, Any]:
+            meta = dict(artifact_store_runtime_meta)
+            if meta.get("backend") != "json":
+                meta["saved"] = 0
+                return meta
+            path = str(meta.get("path") or "")
+            if not path:
+                raise ValueError("artifact_store_path_required")
+            meta["saved"] = int(artifact_store.save_json(path))
+            meta["loaded"] = int((artifact_store.stats() or {}).get("artifact_count") or 0)
+            return meta
+
         dispatch_intent_cid = compute_dispatch_intent_cid(category, tool_name, payload)
 
         try:
@@ -941,6 +966,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     "decision_cid": policy_decision_cid,
                     "persisted": True,
                     "stats": artifact_store.stats(),
+                    **_persist_artifact_store_snapshot(),
                 }
             except Exception as exc:
                 policy_decision_binding = {
@@ -948,6 +974,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     "persisted": False,
                     "error": str(exc),
                     "stats": artifact_store.stats(),
+                    **dict(artifact_store_runtime_meta),
                 }
 
             if policy_decision.decision == "deny":
@@ -1134,6 +1161,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 "persisted": True,
                 "written": int(written),
                 "stats": artifact_store.stats(),
+                **_persist_artifact_store_snapshot(),
             }
         except Exception as exc:
             persisted_artifacts_meta = {
@@ -1141,6 +1169,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 "written": 0,
                 "error": str(exc),
                 "stats": artifact_store.stats(),
+                **dict(artifact_store_runtime_meta),
             }
 
         event_dag_meta: dict[str, Any]
@@ -1295,6 +1324,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_server_context", unified_context)
     setattr(server, "_unified_server_context_snapshot", unified_context.snapshot())
     setattr(server, "_unified_artifact_store", artifact_store)
+    setattr(server, "_unified_artifact_store_meta", dict(artifact_store_runtime_meta))
     setattr(server, "_unified_event_dag", event_store)
     setattr(server, "_unified_risk_scheduler", risk_scheduler)
     setattr(server, "_unified_risk_scorer", risk_scorer)

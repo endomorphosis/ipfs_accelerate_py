@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -193,6 +194,61 @@ class TestMCPServerUNI139InvestigationTools(unittest.TestCase):
             )
             self.assertIn(geo_result.get("status"), ["success", "error"])
             self.assertEqual(geo_result.get("query"), "incident near river")
+
+        anyio.run(_run)
+
+    def test_analyze_entities_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.investigation_tools.native_investigation_tools._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda **_: {"status": "success"}
+
+                result = await analyze_entities(corpus_data='{"documents": []}')
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("analysis_type"), "comprehensive")
+            self.assertEqual(result.get("entities"), [])
+            self.assertEqual(result.get("relationships"), [])
+            self.assertEqual(result.get("clusters"), [])
+            self.assertEqual(result.get("statistics"), {})
+
+        anyio.run(_run)
+
+    def test_map_relationships_minimal_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.investigation_tools.native_investigation_tools._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda **_: {"status": "success"}
+
+                result = await map_relationships(corpus_data='{"documents": []}', max_depth=2)
+
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("success"), True)
+            self.assertEqual(result.get("max_depth"), 2)
+            self.assertEqual(result.get("entities"), [])
+            self.assertEqual(result.get("relationships"), [])
+            self.assertEqual(result.get("graph_metrics"), {})
+
+        anyio.run(_run)
+
+    def test_query_geographic_context_error_only_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.investigation_tools.native_investigation_tools._API"
+            ) as mock_api:
+                mock_api.__getitem__.return_value = lambda **_: {"error": "geo backend unavailable"}
+
+                result = await query_geographic_context(
+                    query="incident near river",
+                    corpus_data='{"documents": []}',
+                    radius_km=25,
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("geo backend unavailable", str(result.get("error", "")))
 
         anyio.run(_run)
 

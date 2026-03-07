@@ -349,6 +349,53 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_shard_chunk_and_endpoint_success_defaults_are_preserved(self) -> None:
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch.dict(native_embedding_tools._API, {"shard_embeddings": _minimal}, clear=False):
+                shard_result = await native_embedding_tools.shard_embeddings(
+                    embeddings=[[0.1, 0.2], [0.3, 0.4]],
+                    shard_count=2,
+                    strategy="balanced",
+                )
+                self.assertEqual(shard_result.get("status"), "success")
+                self.assertEqual(shard_result.get("shard_count"), 2)
+                self.assertEqual(shard_result.get("total_embeddings"), 2)
+                self.assertEqual(shard_result.get("strategy"), "balanced")
+                self.assertEqual(shard_result.get("shards"), [])
+
+            with patch.dict(native_embedding_tools._API, {"chunk_text": _minimal}, clear=False):
+                chunk_result = await native_embedding_tools.chunk_text_for_embeddings(text="hello world")
+                self.assertEqual(chunk_result.get("status"), "success")
+                self.assertEqual(chunk_result.get("original_length"), len("hello world"))
+                self.assertEqual(chunk_result.get("chunks"), [])
+                self.assertEqual(chunk_result.get("chunk_count"), 0)
+
+            with patch.dict(native_embedding_tools._API, {"manage_endpoints": _minimal}, clear=False):
+                list_result = await native_embedding_tools.manage_embedding_endpoints(
+                    action="list",
+                    model="all-MiniLM",
+                )
+                self.assertEqual(list_result.get("status"), "success")
+                self.assertEqual(list_result.get("action"), "list")
+                self.assertEqual(list_result.get("model"), "all-MiniLM")
+                self.assertEqual(list_result.get("endpoints"), [])
+
+                test_result = await native_embedding_tools.manage_embedding_endpoints(
+                    action="test",
+                    model="all-MiniLM",
+                    endpoint="https://example.invalid/embed",
+                )
+                self.assertEqual(test_result.get("status"), "success")
+                self.assertEqual(test_result.get("action"), "test")
+                self.assertEqual(test_result.get("endpoint"), "https://example.invalid/embed")
+                self.assertEqual(test_result.get("available"), False)
+
+        anyio.run(_run)
+
+
 
 if __name__ == "__main__":
     unittest.main()

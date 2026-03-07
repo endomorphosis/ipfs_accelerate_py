@@ -255,15 +255,23 @@ def _error(message: str, **extra: Any) -> Dict[str, Any]:
 
 def _normalize_payload(payload: Any) -> Dict[str, Any]:
     if isinstance(payload, dict):
-        return dict(payload)
+        envelope = dict(payload)
+        if "status" not in envelope:
+            if envelope.get("error") or envelope.get("success") is False:
+                envelope["status"] = "error"
+            else:
+                envelope["status"] = "success"
+        return envelope
     if payload is None:
-        return {}
-    return {"result": payload}
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
 
 
 def _normalize_success(payload: Any, **defaults: Any) -> Dict[str, Any]:
     envelope = _normalize_payload(payload)
     envelope.setdefault("status", "success")
+    if envelope.get("status") == "success":
+        envelope.setdefault("success", True)
     for key, value in defaults.items():
         envelope.setdefault(key, value)
     return envelope
@@ -343,7 +351,14 @@ async def analyze_entities(
             confidence_threshold=normalized_threshold,
             user_context=clean_user_context,
         )
-        return _normalize_success(payload, analysis_type=normalized_analysis_type)
+        return _normalize_success(
+            payload,
+            analysis_type=normalized_analysis_type,
+            entities=[],
+            relationships=[],
+            clusters=[],
+            statistics={},
+        )
     except Exception as exc:
         return _error(str(exc), analysis_type=normalized_analysis_type)
 
@@ -416,7 +431,13 @@ async def map_relationships(
             max_depth=max_depth,
             focus_entity=clean_focus_entity,
         )
-        return _normalize_success(payload, max_depth=max_depth)
+        return _normalize_success(
+            payload,
+            max_depth=max_depth,
+            entities=[],
+            relationships=[],
+            graph_metrics={},
+        )
     except Exception as exc:
         return _error(str(exc), max_depth=max_depth)
 
@@ -925,7 +946,7 @@ async def query_geographic_context(
             include_related_entities=include_related_entities,
             temporal_context=temporal_context,
         )
-        return _normalize_success(payload, query=normalized_query, radius_km=normalized_radius)
+        return _normalize_success(payload, query=normalized_query, radius_km=normalized_radius, results=[])
     except Exception as exc:
         return _error(str(exc), query=normalized_query)
 

@@ -34,6 +34,15 @@ def env_text(name: str, default: str = "") -> str:
     return str(value).strip()
 
 
+def normalize_artifact_store_backend(value: str | None) -> str:
+    """Normalize artifact store backend selection."""
+
+    text = str(value or "").strip().lower()
+    if text == "json":
+        return "json"
+    return "memory"
+
+
 def parse_preload_categories(value: str | None, allowed: List[str]) -> List[str]:
     """Parse preload categories from env/config string.
 
@@ -61,6 +70,8 @@ class UnifiedMCPServerConfig:
     enable_unified_bridge: bool = False
     enable_unified_bootstrap: bool = False
     enable_cid_artifact_emission: bool = False
+    artifact_store_backend: str = "memory"
+    artifact_store_path: str = ""
     enable_ucan_validation: bool = False
     enable_policy_evaluation: bool = False
     enable_policy_audit: bool = False
@@ -88,6 +99,8 @@ class UnifiedMCPServerConfig:
         - `IPFS_MCP_ENABLE_UNIFIED_BRIDGE`
         - `IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP`
         - `IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS`
+        - `IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND`
+        - `IPFS_MCP_SERVER_ARTIFACT_STORE_PATH`
         - `IPFS_MCP_SERVER_ENABLE_UCAN_VALIDATION`
         - `IPFS_MCP_SERVER_ENABLE_POLICY_EVALUATION`
         - `IPFS_MCP_SERVER_ENABLE_POLICY_AUDIT`
@@ -111,6 +124,10 @@ class UnifiedMCPServerConfig:
             enable_unified_bridge=env_enabled("IPFS_MCP_ENABLE_UNIFIED_BRIDGE", default=False),
             enable_unified_bootstrap=env_enabled("IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP", default=False),
             enable_cid_artifact_emission=env_enabled("IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS", default=False),
+            artifact_store_backend=normalize_artifact_store_backend(
+                env_text("IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND", "memory")
+            ),
+            artifact_store_path=env_text("IPFS_MCP_SERVER_ARTIFACT_STORE_PATH", ""),
             enable_ucan_validation=env_enabled("IPFS_MCP_SERVER_ENABLE_UCAN_VALIDATION", default=False),
             enable_policy_evaluation=env_enabled("IPFS_MCP_SERVER_ENABLE_POLICY_EVALUATION", default=False),
             enable_policy_audit=env_enabled("IPFS_MCP_SERVER_ENABLE_POLICY_AUDIT", default=False),
@@ -146,5 +163,6 @@ __all__ = [
     "env_enabled",
     "env_int",
     "env_text",
+    "normalize_artifact_store_backend",
     "parse_preload_categories",
 ]

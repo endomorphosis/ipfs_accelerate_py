@@ -1,5 +1,41 @@
 """Investigation-tools category for unified mcp_server."""
 
-from .native_investigation_tools import register_native_investigation_tools
+from .native_investigation_tools import (
+	analyze_deontological_conflicts,
+	analyze_entities,
+	analyze_entity_timeline,
+	detect_patterns,
+	explore_entity,
+	extract_geographic_entities,
+	ingest_document_collection,
+	ingest_news_article,
+	ingest_news_feed,
+	ingest_website,
+	map_relationships,
+	map_spatiotemporal_events,
+	query_deontic_conflicts,
+	query_deontic_statements,
+	query_geographic_context,
+	register_native_investigation_tools,
+	track_provenance,
+)
 
-__all__ = ["register_native_investigation_tools"]
+__all__ = [
+	"register_native_investigation_tools",
+	"analyze_entities",
+	"explore_entity",
+	"map_relationships",
+	"analyze_entity_timeline",
+	"detect_patterns",
+	"track_provenance",
+	"ingest_news_article",
+	"ingest_news_feed",
+	"ingest_website",
+	"ingest_document_collection",
+	"analyze_deontological_conflicts",
+	"query_deontic_statements",
+	"query_deontic_conflicts",
+	"extract_geographic_entities",
+	"map_spatiotemporal_events",
+	"query_geographic_context",
+]

@@ -37,6 +37,8 @@ This checklist tracks conformance of the canonical runtime in `ipfs_accelerate_p
 
 ## Maintenance Evidence Log
 
+- 2026-03-06: CID-native artifact durable-backend support revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py -k "artifact or unified_config"` (`17 passed`) after adding JSON-backed artifact-store configuration, persistence, and reload coverage alongside backend normalization checks.
+- 2026-03-06: MCP-IDL compatibility regression corpus revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` (`15 passed`) after adding deterministic `interfaces/compat` coverage for missing-capability ordering, unknown-interface handling, and stable suggested-alternative selection.
 - 2026-03-06: MCP-IDL canonicalization stability revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` (`13 passed`) after adding subprocess verification that canonical descriptor bytes and interface CIDs remain stable across isolated Python runtimes with different `PYTHONHASHSEED` values.
 - 2026-03-06: MCP-IDL loaded-category descriptor generation coverage revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` (`12 passed`) after adding deterministic descriptor coverage for all loaded migrated categories in the manager.
 - 2026-03-06: HTTP/process-level additive profile negotiation coverage revalidated with `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py` (`4 passed`) after adding mounted standalone-app verification for unified supported-profile and normalized negotiation metadata preservation.

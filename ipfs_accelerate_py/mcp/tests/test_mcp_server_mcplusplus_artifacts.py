@@ -41,13 +41,14 @@ class _DummyServer:
 class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
     """Validate Profile B helper determinism and chain integrity."""
 
-    def _create_unified_server(self, *, name: str, enable_cid_artifacts: bool = False):
+    def _create_unified_server(self, *, name: str, enable_cid_artifacts: bool = False, extra_env: dict[str, str] | None = None):
         env = {
             "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
             "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
         }
         if enable_cid_artifacts:
             env["IPFS_MCP_SERVER_ENABLE_CID_ARTIFACTS"] = "1"
+        env.update({str(k): str(v) for k, v in (extra_env or {}).items()})
 
         with patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", return_value=_DummyServer()):
             with patch.dict(os.environ, env, clear=False):
@@ -356,6 +357,54 @@ class TestMCPServerMCPPlusPlusArtifacts(unittest.TestCase):
             self.assertTrue(((response.get("artifact_store") or {}).get("persisted")))
 
         anyio.run(_run_flow)
+
+    def test_dispatch_artifact_json_backend_persists_and_reloads_chain(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            artifact_path = f"{tmpdir}/cid-artifacts.json"
+            server = self._create_unified_server(
+                name="artifacts-json-backend",
+                enable_cid_artifacts=True,
+                extra_env={
+                    "IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND": "json",
+                    "IPFS_MCP_SERVER_ARTIFACT_STORE_PATH": artifact_path,
+                },
+            )
+
+            async def _run_flow() -> None:
+                async def echo(value: str):
+                    return {"echo": value}
+
+                server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+                dispatch = server.tools["tools_dispatch"]["function"]
+                response = await dispatch("smoke", "echo", {"value": "ok", "__correlation_id": "corr-json"})
+
+                self.assertTrue(response.get("ok"))
+                artifact_store = response.get("artifact_store") or {}
+                self.assertTrue(artifact_store.get("persisted"))
+                self.assertEqual(artifact_store.get("backend"), "json")
+                self.assertEqual(artifact_store.get("path"), artifact_path)
+                self.assertTrue(artifact_store.get("durable"))
+                self.assertGreaterEqual(int(artifact_store.get("saved") or 0), 6)
+
+                event_cid = str(((response.get("artifacts") or {}).get("event_cid")) or "")
+                self.assertTrue(event_cid.startswith("cidv1-sha256-"))
+
+                reloaded = ArtifactStore.load_json(artifact_path)
+                stored_event = reloaded.get(event_cid) or {}
+                self.assertEqual(stored_event.get("receipt_cid"), (response.get("artifacts") or {}).get("receipt_cid"))
+
+                rehydrated_server = self._create_unified_server(
+                    name="artifacts-json-backend-reloaded",
+                    enable_cid_artifacts=True,
+                    extra_env={
+                        "IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND": "json",
+                        "IPFS_MCP_SERVER_ARTIFACT_STORE_PATH": artifact_path,
+                    },
+                )
+                self.assertIsNotNone(rehydrated_server._unified_artifact_store.get(event_cid))
+                self.assertEqual((rehydrated_server._unified_artifact_store_meta or {}).get("backend"), "json")
+
+            anyio.run(_run_flow)
 
 
 if __name__ == "__main__":

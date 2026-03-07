@@ -437,6 +437,7 @@ Recent execution (2026-03-06):
 
 1. Added descriptor-generation coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` to verify all loaded migrated categories registered in the manager produce consistent MCP-IDL descriptors with deterministic names, method surfaces, and capability requirements.
 2. Added cross-runtime canonicalization stability coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` to verify canonical descriptor bytes and computed interface CIDs remain stable across isolated Python processes with different runtime hash seeds.
+3. Added an `interfaces/compat` regression corpus in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_idl.py` to lock deterministic compatibility verdicts for missing-capability ordering, unknown-interface handling, and sorted suggested-alternative selection.
 
 ### 6.4 CID Artifacts (`cid-native-artifacts`)
 
@@ -446,6 +447,10 @@ Next plan:
 1. Add durable backend option validation beyond in-memory storage.
 2. Add replayability tests for artifact chain reconstruction.
 3. Verify envelope emission policy across all dispatch modes.
+
+Recent execution (2026-03-06):
+
+1. Added config-driven artifact-store backend normalization in `ipfs_accelerate_py/mcp_server/configs.py` and JSON-backed artifact persistence/reload support in `ipfs_accelerate_py/mcp_server/server.py`, with focused coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_artifacts.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to validate durable backend selection, on-disk persistence, and startup reload semantics.
 
 ### 6.5 UCAN Delegation (`ucan-delegation`)
 

@@ -870,6 +870,10 @@ async def shard_embeddings(
 
     normalized = dict(payload or {})
     normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("shard_count", normalized_shard_count)
+    normalized.setdefault("total_embeddings", len(embeddings))
+    normalized.setdefault("strategy", normalized_strategy)
+    normalized.setdefault("shards", [])
     return normalized
 
 
@@ -949,6 +953,9 @@ async def chunk_text_for_embeddings(
 
     normalized = dict(payload or {})
     normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("original_length", len(text))
+    normalized.setdefault("chunks", [])
+    normalized.setdefault("chunk_count", len(normalized.get("chunks") or []))
     return normalized
 
 
@@ -1002,6 +1009,14 @@ async def manage_embedding_endpoints(
 
     normalized = dict(payload or {})
     normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("action", normalized_action)
+    normalized.setdefault("model", model_name)
+    if endpoint_value:
+        normalized.setdefault("endpoint", endpoint_value)
+    if normalized_action == "test":
+        normalized.setdefault("available", False)
+    if normalized_action in {"list", "status"}:
+        normalized.setdefault("endpoints", [])
     return normalized
 
 
@@ -1030,7 +1045,6 @@ def register_native_embedding_tools(manager: Any) -> None:
         runtime="fastapi",
         tags=["native", "mcpp", "embedding"],
     )
-
     manager.register_tool(
         category="embedding_tools",
         name="generate_embeddings_from_file",
@@ -1251,3 +1265,9 @@ def register_native_embedding_tools(manager: Any) -> None:
         runtime="fastapi",
         tags=["native", "mcpp", "embedding"],
     )
+
+
+# Source-compatible alias surface from enhanced_embedding_tools.
+create_embeddings = generate_embedding
+index_dataset = generate_embeddings
+search_embeddings = generate_embeddings_from_file

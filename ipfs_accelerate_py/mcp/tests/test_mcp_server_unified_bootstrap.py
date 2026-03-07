@@ -111,6 +111,35 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertTrue(config.enable_risk_frontier_execution)
         self.assertEqual(config.preload_categories, ["workflow", "p2p"])
 
+    def test_unified_config_normalizes_artifact_store_backend(self):
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND": " JSON ",
+                "IPFS_MCP_SERVER_ARTIFACT_STORE_PATH": " /tmp/cid-artifacts.json ",
+            },
+            clear=False,
+        ):
+            config = UnifiedMCPServerConfig.from_env(
+                allowed_preload_categories=["ipfs", "workflow", "p2p"]
+            )
+
+        self.assertEqual(config.artifact_store_backend, "json")
+        self.assertEqual(config.artifact_store_path, "/tmp/cid-artifacts.json")
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_SERVER_ARTIFACT_STORE_BACKEND": "sqlite",
+            },
+            clear=False,
+        ):
+            invalid = UnifiedMCPServerConfig.from_env(
+                allowed_preload_categories=["ipfs", "workflow", "p2p"]
+            )
+
+        self.assertEqual(invalid.artifact_store_backend, "memory")
+
     def test_runtime_router_resolves_metadata_runtime(self):
         """RuntimeRouter should use registered metadata when available."""
         router = RuntimeRouter(default_runtime="fastapi")
@@ -10199,14 +10228,32 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             listed = await tools_list("file_converter_tools")
             names = [tool.get("name") for tool in listed.get("tools", [])]
+            self.assertIn("batch_convert_tool", names)
             self.assertIn("convert_file_tool", names)
+            self.assertIn("extract_knowledge_graph_tool", names)
             self.assertIn("file_info_tool", names)
+            self.assertIn("generate_summary_tool", names)
+            self.assertIn("generate_embeddings_tool", names)
+            self.assertIn("extract_archive_tool", names)
             self.assertIn("download_url_tool", names)
 
-            schema = await get_schema("file_converter_tools", "download_url_tool")
-            props = (schema.get("input_schema") or {}).get("properties", {})
-            self.assertEqual((props.get("timeout") or {}).get("minimum"), 1)
-            self.assertEqual((props.get("max_size_mb") or {}).get("minimum"), 1)
+            download_schema = await get_schema("file_converter_tools", "download_url_tool")
+            download_props = (download_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((download_props.get("timeout") or {}).get("minimum"), 1)
+            self.assertEqual((download_props.get("max_size_mb") or {}).get("minimum"), 1)
+
+            batch_schema = await get_schema("file_converter_tools", "batch_convert_tool")
+            batch_props = (batch_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((batch_props.get("input_paths") or {}).get("minItems"), 1)
+            self.assertEqual((batch_props.get("max_concurrent") or {}).get("minimum"), 1)
+
+            embedding_schema = await get_schema("file_converter_tools", "generate_embeddings_tool")
+            embedding_props = (embedding_schema.get("input_schema") or {}).get("properties", {})
+            self.assertIn("qdrant", (embedding_props.get("vector_store") or {}).get("enum", []))
+
+            archive_schema = await get_schema("file_converter_tools", "extract_archive_tool")
+            archive_props = (archive_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((archive_props.get("max_depth") or {}).get("minimum"), 0)
 
             invalid_path = self._assert_dispatch_success_envelope(
                 await dispatch(
@@ -10242,6 +10289,59 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_timeout.get("error", ""))
             )
             self.assertIn("timeout must be an integer >= 1", invalid_timeout_text)
+
+            invalid_batch = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "file_converter_tools",
+                    "batch_convert_tool",
+                    {
+                        "input_paths": ["ok.txt", "   "],
+                    },
+                )
+            )
+            self.assertEqual(invalid_batch.get("status"), "error")
+            invalid_batch_text = (
+                str(invalid_batch.get("message", ""))
+                + " "
+                + str(invalid_batch.get("error", ""))
+            )
+            self.assertIn("input_paths must be a non-empty list of strings", invalid_batch_text)
+
+            invalid_vector_store = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "file_converter_tools",
+                    "generate_embeddings_tool",
+                    {
+                        "input_path": "document.pdf",
+                        "vector_store": "sqlite",
+                    },
+                )
+            )
+            self.assertEqual(invalid_vector_store.get("status"), "error")
+            invalid_vector_store_text = (
+                str(invalid_vector_store.get("message", ""))
+                + " "
+                + str(invalid_vector_store.get("error", ""))
+            )
+            self.assertIn("vector_store must be one of", invalid_vector_store_text)
+
+            invalid_archive = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "file_converter_tools",
+                    "extract_archive_tool",
+                    {
+                        "archive_path": "archive.zip",
+                        "max_depth": -1,
+                    },
+                )
+            )
+            self.assertEqual(invalid_archive.get("status"), "error")
+            invalid_archive_text = (
+                str(invalid_archive.get("message", ""))
+                + " "
+                + str(invalid_archive.get("error", ""))
+            )
+            self.assertIn("max_depth must be an integer >= 0", invalid_archive_text)
 
         anyio.run(_run_flow)
 
