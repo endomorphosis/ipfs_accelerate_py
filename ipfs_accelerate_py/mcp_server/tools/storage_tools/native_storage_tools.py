@@ -1498,6 +1498,7 @@ def register_native_storage_tools(manager: Any) -> None:
                 },
                 "unavailable_reasons": {
                     "type": ["object", "null"],
+                    "propertyNames": {"type": "string", "minLength": 1},
                     "additionalProperties": {"type": "string", "minLength": 1},
                 },
                 "availability_filter": {
@@ -1675,6 +1676,7 @@ def register_native_storage_tools(manager: Any) -> None:
                 },
                 "unavailable_reasons": {
                     "type": ["object", "null"],
+                    "propertyNames": {"type": "string", "minLength": 1},
                     "additionalProperties": {"type": "string", "minLength": 1},
                 },
                 "availability_filter": {

@@ -6724,6 +6724,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             backend_alias_props = (backend_alias_schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((backend_alias_props.get("availability_filter") or {}).get("default"), "all")
             self.assertEqual((backend_alias_props.get("include_capabilities") or {}).get("default"), False)
+            self.assertEqual(
+                ((backend_alias_props.get("unavailable_reasons") or {}).get("propertyNames") or {}).get("minLength"),
+                1,
+            )
 
             collections_alias_schema = await get_schema("storage_tools", "list_storage_collections")
             collections_alias_props = (collections_alias_schema.get("input_schema") or {}).get("properties", {})
@@ -6774,6 +6778,10 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn("backend_types", manage_props)
             self.assertIn("unavailable_backends", manage_props)
             self.assertIn("unavailable_reasons", manage_props)
+            self.assertEqual(
+                ((manage_props.get("unavailable_reasons") or {}).get("propertyNames") or {}).get("minLength"),
+                1,
+            )
             availability_filter_schema = manage_props.get("availability_filter") or {}
             self.assertIn("available", availability_filter_schema.get("enum") or [])
             self.assertIn("unavailable", availability_filter_schema.get("enum") or [])
@@ -7010,6 +7018,22 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(
                 "availability_filter must be one of",
                 str(invalid_availability_filter.get("error", "")),
+            )
+
+            invalid_backend_alias_unavailable_reasons = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory"],
+                        "unavailable_reasons": {"": "invalid"},
+                    },
+                )
+            )
+            self.assertEqual(invalid_backend_alias_unavailable_reasons.get("status"), "error")
+            self.assertIn(
+                "unavailable_reasons must be an object with non-empty string keys/values",
+                str(invalid_backend_alias_unavailable_reasons.get("error", "")),
             )
 
             backend_status = self._assert_dispatch_success_envelope(

@@ -9,14 +9,14 @@ def _error_result(message: str) -> Dict[str, Any]:
     return {"ok": False, "status": "error", "success": False, "error": message}
 
 
-def _normalize_response(payload: Any, **defaults: Any) -> Dict[str, Any]:
+def _normalize_response(response_payload: Any, **defaults: Any) -> Dict[str, Any]:
     """Normalize native p2p payloads to deterministic envelopes."""
-    if isinstance(payload, dict):
-        envelope = dict(payload)
-    elif payload is None:
+    if isinstance(response_payload, dict):
+        envelope = dict(response_payload)
+    elif response_payload is None:
         envelope = {"ok": True}
     else:
-        envelope = {"ok": True, "result": payload}
+        envelope = {"ok": True, "result": response_payload}
 
     if "ok" not in envelope:
         if envelope.get("error") or envelope.get("success") is False or envelope.get("status") == "error":
