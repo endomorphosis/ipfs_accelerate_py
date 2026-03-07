@@ -7036,6 +7036,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 str(invalid_backend_alias_unavailable_reasons.get("error", "")),
             )
 
+            invalid_backend_alias_unknown_reason_backend = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "unavailable_reasons": {"tape": "unsupported"},
+                    },
+                )
+            )
+            self.assertEqual(invalid_backend_alias_unknown_reason_backend.get("status"), "error")
+            self.assertIn(
+                "unavailable_reasons contains unknown storage backends",
+                str(invalid_backend_alias_unknown_reason_backend.get("error", "")),
+            )
+
             backend_status = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",
