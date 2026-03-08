@@ -86,6 +86,7 @@ class TestCLIErrorHandler:
     def test_capture_error_basic(self):
         """Test basic error capture without auto-features."""
         handler = CLIErrorHandler(repo='test/repo')
+        handler._get_error_aggregator = Mock(return_value=None)
         
         try:
             raise ValueError("Test error")
@@ -106,6 +107,7 @@ class TestCLIErrorHandler:
     def test_capture_error_with_context(self):
         """Test error capture with additional context."""
         handler = CLIErrorHandler(repo='test/repo')
+        handler._get_error_aggregator = Mock(return_value=None)
         
         custom_context = {
             'operation': 'test_operation',
@@ -128,10 +130,38 @@ class TestCLIErrorHandler:
     def test_capture_log_context_no_logs_module(self, mock_logger):
         """Test log context capture when logs module is unavailable."""
         handler = CLIErrorHandler(repo='test/repo')
-        
+
+        handler._get_logs_module = Mock(return_value=None)
+
         # Should return empty string when logs module is unavailable
         log_context = handler._capture_log_context()
         assert log_context == ""
+
+    @patch('ipfs_accelerate_py.github_cli.error_aggregator.ErrorAggregator')
+    @patch('ipfs_accelerate_py.github_cli.p2p_peer_registry.P2PPeerRegistry')
+    def test_get_error_aggregator_passes_repo_to_peer_registry(self, mock_peer_registry, mock_aggregator):
+        """Test error aggregator initialization uses the configured repo for peer registry setup."""
+        handler = CLIErrorHandler(repo='test/repo')
+
+        aggregator = handler._get_error_aggregator()
+
+        mock_peer_registry.assert_called_once_with(repo='test/repo')
+        mock_aggregator.assert_called_once()
+        assert aggregator is mock_aggregator.return_value
+
+    @patch('ipfs_accelerate_py.error_handler.CLIErrorHandler._get_error_aggregator')
+    def test_capture_error_uses_aware_utc_timestamp(self, mock_get_error_aggregator):
+        """Test captured error context stores timezone-aware UTC timestamps."""
+        mock_get_error_aggregator.return_value = None
+        handler = CLIErrorHandler(repo='test/repo')
+
+        try:
+            raise ValueError("Test error")
+        except Exception as e:
+            handler.capture_error(e)
+
+        error_data = handler._captured_errors[0]
+        assert error_data['context']['timestamp'].endswith('+00:00')
     
     def test_wrap_cli_main_success(self):
         """Test wrapping CLI main function - success case."""
@@ -164,6 +194,7 @@ class TestCLIErrorHandler:
     def test_wrap_cli_main_exception(self):
         """Test wrapping CLI main function - exception handling."""
         handler = CLIErrorHandler(repo='test/repo')
+        handler._get_error_aggregator = Mock(return_value=None)
         
         # Create a test function that raises an exception
         def test_main():

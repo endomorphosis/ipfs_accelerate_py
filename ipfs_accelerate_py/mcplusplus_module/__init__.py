@@ -54,45 +54,13 @@ For more information, see:
 __version__ = "0.1.0"
 __author__ = "endomorphosis"
 
-import os
-import socket
-import urllib.request
-from typing import Optional
-
 from ipfs_accelerate_py.mcp_server.compatibility import (
     _create_storage_wrapper,
+    _detect_public_ip,
+    _detect_runner_name,
     _missing_dependency_stub,
     _resolve_storage_wrapper_factory,
 )
-
-
-def _detect_runner_name() -> str:
-    """Detect runner identity from environment with hostname fallback."""
-    runner_name = str(os.environ.get("RUNNER_NAME") or "").strip()
-    if runner_name:
-        return runner_name
-    try:
-        return socket.gethostname()
-    except Exception:
-        return "unknown-runner"
-
-
-def _detect_public_ip() -> Optional[str]:
-    """Best-effort public IP detection using multiple redundant services."""
-    services = (
-        "https://api.ipify.org",
-        "https://ifconfig.me/ip",
-        "https://icanhazip.com",
-    )
-    for service in services:
-        try:
-            with urllib.request.urlopen(service, timeout=5) as response:
-                value = response.read().decode("utf-8").strip()
-                if value:
-                    return value
-        except Exception:
-            continue
-    return None
 
 # Import key components
 try:

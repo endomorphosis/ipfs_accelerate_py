@@ -401,9 +401,11 @@ def test_create_storage_wrapper_returns_none_on_factory_error(monkeypatch):
 def test_shared_detect_runner_name_prefers_env(monkeypatch):
     """Runner-name helper should prefer RUNNER_NAME and fallback to hostname."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
+    assert mcplusplus_module._detect_runner_name is canonical_compat._detect_runner_name
     monkeypatch.setenv("RUNNER_NAME", "runner-env")
-    monkeypatch.setattr(mcplusplus_module.socket, "gethostname", lambda: "runner-host")
+    monkeypatch.setattr(canonical_compat.socket, "gethostname", lambda: "runner-host")
     assert mcplusplus_module._detect_runner_name() == "runner-env"
 
     monkeypatch.delenv("RUNNER_NAME", raising=False)
@@ -413,6 +415,7 @@ def test_shared_detect_runner_name_prefers_env(monkeypatch):
 def test_shared_detect_public_ip_tries_fallback_services(monkeypatch):
     """Public IP helper should continue to fallback services when one fails."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
     class _Response:
         def __init__(self, payload: bytes):
@@ -436,7 +439,8 @@ def test_shared_detect_public_ip_tries_fallback_services(monkeypatch):
             raise RuntimeError("simulated primary failure")
         return _Response(b"203.0.113.10\n")
 
-    monkeypatch.setattr(mcplusplus_module.urllib.request, "urlopen", _fake_urlopen)
+    assert mcplusplus_module._detect_public_ip is canonical_compat._detect_public_ip
+    monkeypatch.setattr(canonical_compat.urllib.request, "urlopen", _fake_urlopen)
 
     assert mcplusplus_module._detect_public_ip() == "203.0.113.10"
     assert len(calls) >= 2
