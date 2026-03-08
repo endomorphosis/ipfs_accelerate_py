@@ -570,6 +570,11 @@ Exit:
 2. Run release candidate matrix across transport and profile features.
 3. Freeze migration deltas and publish cutover checklist.
 
+Recent execution (2026-03-08):
+
+1. Extended `ipfs_accelerate_py/mcp/server.py` with compatibility-facade usage telemetry so legacy-wrapper fallback, unified-bridge handoff, dry-run validation, rollback forcing, and bridge-failure fallback all emit deterministic `_mcp_facade_telemetry` metadata.
+2. Expanded `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py` to validate facade telemetry snapshots and aggregate counters for dry-run success, dry-run failure, force-rollback, and unified-bridge handoff paths (`4 passed`).
+
 Exit:
 
 1. Cutover gate approved.
@@ -578,7 +583,7 @@ Exit:
 
 1. Default startup path points to `mcp_server`.
 2. Keep `mcp` facade for one release window.
-3. Instrument facade usage telemetry.
+3. Instrument facade usage telemetry. ✅
 4. Deprecate shim runtime behavior in phases:
    - Phase D1: warn-only,
    - Phase D2: opt-in only,
