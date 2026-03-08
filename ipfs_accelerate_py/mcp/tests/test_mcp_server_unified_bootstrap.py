@@ -5271,6 +5271,111 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_policy_audit_and_observability_stay_aligned(self, mock_wrapper):
+        """Policy audit, audit-metrics bridge, and monitoring counters should stay aligned across deny/allow flows."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_SERVER_ENABLE_POLICY_AUDIT": "1",
+                "IPFS_MCP_SERVER_ENABLE_MONITORING": "1",
+                "IPFS_MCP_SERVER_ENABLE_PROMETHEUS_EXPORTER": "1",
+                "IPFS_MCP_SERVER_PROMETHEUS_NAMESPACE": "mcp_test",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-policy-observability")
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+            runtime_metrics = server.tools["tools_runtime_metrics"]["function"]
+
+            denied = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "blocked",
+                    "__enforce_policy": True,
+                    "__policy_actor": "did:model:worker",
+                    "__policy_clauses": [
+                        {
+                            "clause_type": "prohibition",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                        }
+                    ],
+                },
+            )
+
+            allowed = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_policy": True,
+                    "__policy_actor": "did:model:worker",
+                    "__policy_clauses": [
+                        {
+                            "clause_type": "permission",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                        }
+                    ],
+                },
+            )
+
+            self.assertFalse(denied["ok"])
+            self.assertEqual(denied["error"], "policy_denied")
+            self.assertTrue(allowed["ok"])
+            self.assertEqual((allowed.get("result") or {}).get("echo"), "ok")
+
+            entries = server._unified_policy_audit.recent(10)
+            self.assertGreaterEqual(len(entries), 2)
+            self.assertEqual(entries[-2].decision, "policy_denied")
+            self.assertEqual(entries[-1].decision, "allow")
+
+            bridge_info = server._unified_audit_metrics_bridge.get_info()
+            self.assertTrue(bridge_info.get("attached"))
+            self.assertGreaterEqual(int(bridge_info.get("forwarded_count", 0)), 2)
+
+            metrics_payload = await runtime_metrics()
+            self.assertIn("observability", metrics_payload)
+            monitoring_snapshot = metrics_payload["observability"]["monitoring"]["snapshot"]
+            tool_metrics = monitoring_snapshot.get("tool_metrics", {})
+            self.assertIn("smoke.echo", tool_metrics)
+            self.assertGreaterEqual(int(tool_metrics["smoke.echo"].get("total_calls", 0)), 2)
+            self.assertGreaterEqual(int(tool_metrics["smoke.echo"].get("error_count", 0)), 1)
+
+            audit_metrics = metrics_payload["observability"]["audit_metrics"]
+            self.assertTrue(audit_metrics.get("enabled"))
+            self.assertTrue(audit_metrics.get("attached"))
+            self.assertEqual(audit_metrics.get("category"), "policy")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_event_dag_persistence_with_parent_lineage(self, mock_wrapper):
         """Artifact emission should persist event nodes and expose deterministic lineage metadata."""
 
@@ -12539,6 +12644,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             props = (schema.get("input_schema") or {}).get("properties", {})
             self.assertEqual((props.get("peers_limit") or {}).get("minimum"), 1)
 
+            invalid_peers_limit = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "p2p_tools",
+                    "p2p_service_status",
+                    {
+                        "peers_limit": 0,
+                    },
+                )
+            )
+            self.assertEqual(invalid_peers_limit.get("status"), "error")
+            self.assertIn(
+                "peers_limit must be a positive integer",
+                str(invalid_peers_limit.get("error", "")),
+            )
+
             invalid_key = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "p2p_tools",
@@ -14148,6 +14268,24 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             remote_call_schema = await get_schema("p2p_tools", "p2p_remote_call_tool")
             self.assertIn("tool_name", (remote_call_schema.get("input_schema") or {}).get("properties", {}))
+
+            remote_cache_schema = await get_schema("p2p_tools", "p2p_remote_cache_get")
+            remote_cache_props = (remote_cache_schema.get("input_schema") or {}).get("properties", {})
+            self.assertEqual((remote_cache_props.get("key") or {}).get("minLength"), 1)
+            self.assertEqual((remote_cache_props.get("timeout_s") or {}).get("exclusiveMinimum"), 0)
+
+            invalid_remote_cache = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "p2p_tools",
+                    "p2p_remote_cache_get",
+                    {"key": "smoke", "timeout_s": 0},
+                )
+            )
+            self.assertEqual(invalid_remote_cache.get("status"), "error")
+            self.assertIn(
+                "timeout_s must be a number > 0",
+                str(invalid_remote_cache.get("error", "")),
+            )
 
             calls = [
                 ("p2p_cache_has", {"key": "smoke"}),

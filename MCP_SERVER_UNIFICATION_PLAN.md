@@ -562,6 +562,8 @@ Recent execution (2026-03-08):
 4. Extended focused auth parity coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni111_auth_tools.py` and revalidated unified bootstrap dispatch behavior in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`10 passed, 148 deselected`).
 5. Hardened enhanced `session_tools` response normalization in `ipfs_accelerate_py/mcp_server/tools/session_tools/native_session_tools.py` so sparse success payloads preserve deterministic source-like session metadata for `create_session`, `manage_session`, and `get_session_state`, including a normalized nested `session` payload plus stable timestamps, config/resources, metadata, tags, and request counters.
 6. Extended focused session parity coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni109_session_tools.py`, revalidated cleanup-option contracts in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni164_session_tools.py`, and confirmed unified bootstrap dispatch behavior in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`13 passed, 149 deselected`; `1 passed, 148 deselected`).
+7. Hardened `p2p_tools` remote cache, remote submit, and service-status wrappers in `ipfs_accelerate_py/mcp_server/tools/p2p_tools/native_p2p_tools.py` so `p2p_remote_cache_get` / `set` / `has` / `delete`, `p2p_remote_submit_task`, and `p2p_service_status` now enforce canonical validation contracts and preserve deterministic sparse-success defaults for key/peer addressing, timeout handling, cache hit/delete fields, task submission metadata, and service/peer status envelopes.
+8. Extended focused P2P parity coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni135_p2p_tools.py` and revalidated unified bootstrap discovery/dispatch behavior in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`16 passed, 148 deselected`).
 
 Exit:
 
@@ -572,6 +574,12 @@ Exit:
 1. Profile chapter hardening pass across 8 chapters.
 2. Transport abuse and interop expansion.
 3. Observability and security interaction tests.
+
+Recent execution (2026-03-08):
+
+1. Expanded `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py` with a focused mixed-version transport regression proving malformed registry negotiation metadata is sanitized during `initialize` while preserving follow-on alias `tools.list` and `tools.call` compatibility in the same session.
+2. Revalidated the focused transport compatibility slice in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py` (`2 passed, 17 deselected`).
+3. Added a focused unified-dispatch observability/security interaction regression in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` proving policy-audit allow/deny outcomes remain aligned with audit-metrics bridge forwarding and monitoring counters in `tools_runtime_metrics` (`3 passed, 147 deselected`).
 
 Exit:
 
@@ -587,10 +595,12 @@ Recent execution (2026-03-08):
 
 1. Extended `ipfs_accelerate_py/mcp/server.py` with compatibility-facade usage telemetry so legacy-wrapper fallback, unified-bridge handoff, dry-run validation, rollback forcing, and bridge-failure fallback all emit deterministic `_mcp_facade_telemetry` metadata.
 2. Expanded `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py` to validate facade telemetry snapshots and aggregate counters for dry-run success, dry-run failure, force-rollback, and unified-bridge handoff paths (`4 passed`).
-3. Revalidated process-level and direct-entry startup behavior after the canonical-default startup flip with focused subprocess, p2p bridge, standalone-app, direct component, and script-style initialization coverage (`3 passed, 6 deselected`; `5 passed, 5 deselected`; script smoke paths completed successfully with populated tool/resource/prompt inventories).
-4. Added focused FastAPI integration/helper coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py` for `initialize_mcp_server()` and `integrate_mcp_with_fastapi()`, then revalidated those helpers plus canonical FastAPI facade delegation in `ipfs_accelerate_py/mcp/tests/test_mcp_server_fastapi_service.py` (`9 passed, 2 deselected`).
-5. Added focused CLI startup coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_cli.py`, confirming the CLI still constructs the compatibility facade and delegates to `mcp_server.run()` with the parsed host/port contract in normal and `--dev` modes after the canonical-default startup change (`2 passed`).
-6. Ran an aggregate post-cutover validation bundle across rollback telemetry, legacy bootstrap compatibility, subprocess/FastAPI entrypoints, process helpers, p2p bridge dispatch, and CLI startup (`28 passed, 148 deselected`), confirming the canonical-default startup change remains stable across the main compatibility-facade entry surfaces.
+3. Added a focused cutover precedence regression in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py` proving force-rollback takes precedence even when cutover dry-run is enabled, while still preserving deterministic dry-run intent telemetry and legacy-fallback metadata (`4 passed, 3 deselected`).
+4. Revalidated process-level and direct-entry startup behavior after the canonical-default startup flip with focused subprocess, p2p bridge, standalone-app, direct component, and script-style initialization coverage (`3 passed, 6 deselected`; `5 passed, 5 deselected`; script smoke paths completed successfully with populated tool/resource/prompt inventories).
+5. Added focused FastAPI integration/helper coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py` for `initialize_mcp_server()` and `integrate_mcp_with_fastapi()`, then revalidated those helpers plus canonical FastAPI facade delegation in `ipfs_accelerate_py/mcp/tests/test_mcp_server_fastapi_service.py` (`9 passed, 2 deselected`).
+6. Added focused CLI startup coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_cli.py`, confirming the CLI still constructs the compatibility facade and delegates to `mcp_server.run()` with the parsed host/port contract in normal and `--dev` modes after the canonical-default startup change (`2 passed`).
+7. Ran an aggregate post-cutover validation bundle across rollback telemetry, legacy bootstrap compatibility, subprocess/FastAPI entrypoints, process helpers, p2p bridge dispatch, and CLI startup (`28 passed, 148 deselected`), confirming the canonical-default startup change remains stable across the main compatibility-facade entry surfaces.
+8. Ran a focused release-candidate matrix across cutover, transport entrypoints, MCP+p2p handler interop, and representative MCP++ profile chapters (`test_mcp_server_uni007_cutover_rollback.py`, `test_mcp_transport_process_level.py`, `test_mcp_transport_mcp_p2p_handler_limits.py`, `test_mcp_server_transport_e2e_matrix.py`, `test_mcp_server_mcplusplus_idl.py`, `test_mcp_server_mcplusplus_artifacts.py`, `test_mcp_server_mcplusplus_ucan.py`, `test_mcp_server_mcplusplus_policy.py`, `test_mcp_server_mcplusplus_event_dag.py`, `test_mcp_server_mcplusplus_risk_scheduler.py`), with the matrix completing successfully (`120 passed`).
 
 Exit:
 
@@ -647,8 +657,8 @@ Sprint S2:
 
 1. Harden chapter interaction tests:
    - UCAN + temporal policy + artifacts + risk scheduler. ✅
-2. Expand transport abuse and mixed-peer compatibility tests.
-3. Run cutover dry-run with compatibility facade rollback scenario.
+2. Expand transport abuse and mixed-peer compatibility tests. ✅
+3. Run cutover dry-run with compatibility facade rollback scenario. ✅
 
 ## 12. Definition of Done
 

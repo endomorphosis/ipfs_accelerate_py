@@ -389,7 +389,7 @@ async def mcplusplus_taskqueue_list(
             method="list_tasks",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "list_tasks",
         status_filter=status_filter.strip() if isinstance(status_filter, str) and status_filter.strip() else None,
@@ -399,6 +399,11 @@ async def mcplusplus_taskqueue_list(
         limit=limit,
         offset=offset,
     )
+    if result.get("status") == "success":
+        result.setdefault("tasks", [])
+        result.setdefault("limit", limit)
+        result.setdefault("offset", offset)
+    return result
 
 
 async def mcplusplus_taskqueue_set_priority(
@@ -432,12 +437,17 @@ async def mcplusplus_taskqueue_stats(
             method="get_stats",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "get_stats",
         include_worker_stats=include_worker_stats,
         include_historical=include_historical,
     )
+    if result.get("status") == "success":
+        result.setdefault("stats", {})
+        result.setdefault("include_worker_stats", include_worker_stats)
+        result.setdefault("include_historical", include_historical)
+    return result
 
 
 async def mcplusplus_taskqueue_retry(
@@ -870,7 +880,7 @@ async def mcplusplus_workflow_list(
             method="list_workflows",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "WorkflowEngine",
         "list_workflows",
         status_filter=status_filter.strip() if isinstance(status_filter, str) and status_filter.strip() else None,
@@ -879,6 +889,11 @@ async def mcplusplus_workflow_list(
         limit=limit,
         offset=offset,
     )
+    if result.get("status") == "success":
+        result.setdefault("workflows", [])
+        result.setdefault("limit", limit)
+        result.setdefault("offset", offset)
+    return result
 
 
 async def mcplusplus_workflow_dependencies(
@@ -993,7 +1008,7 @@ async def mcplusplus_peer_list(
 
     normalized_status_filter = (status_filter or "").strip()
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "PeerEngine",
         "list_peers",
         status_filter=(normalized_status_filter or None),
@@ -1002,6 +1017,12 @@ async def mcplusplus_peer_list(
         limit=limit,
         offset=offset,
     )
+    if result.get("status") == "success":
+        result.setdefault("peers", [])
+        result.setdefault("limit", limit)
+        result.setdefault("offset", offset)
+        result.setdefault("sort_by", sort_by.strip())
+    return result
 
 
 async def mcplusplus_peer_discover(

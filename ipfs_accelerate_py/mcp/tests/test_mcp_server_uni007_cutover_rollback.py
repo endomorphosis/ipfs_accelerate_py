@@ -171,6 +171,52 @@ class TestUNI007CutoverRollback(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
+    def test_force_rollback_takes_precedence_over_cutover_dry_run(self, mock_unified_create, mock_wrapper):
+        mock_wrapper.return_value = _DummyLegacyServer()
+
+        with self.assertLogs("ipfs_accelerate_mcp.server", level="WARNING") as captured:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_FORCE_LEGACY_ROLLBACK": "1",
+                    "IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN": "1",
+                },
+                clear=False,
+            ):
+                server = create_mcp_server(name="force-rollback-with-dry-run")
+
+        self.assertIs(server, mock_wrapper.return_value)
+        mock_unified_create.assert_not_called()
+        mock_wrapper.assert_called_once()
+        self.assertTrue(any("D1 warn-only" in line for line in captured.output))
+
+        status = getattr(server, "_unified_cutover_dry_run", {})
+        self.assertTrue(status.get("enabled"))
+        self.assertFalse(status.get("ok"))
+        self.assertEqual(status.get("error"), "")
+
+        telemetry = getattr(server, "_mcp_facade_telemetry", {})
+        self.assertTrue(telemetry.get("bridge_requested"))
+        self.assertTrue(telemetry.get("used_legacy_wrapper"))
+        self.assertTrue(telemetry.get("force_legacy_rollback"))
+        self.assertTrue(telemetry.get("cutover_dry_run"))
+        self.assertFalse(telemetry.get("dry_run_ok"))
+        self.assertFalse(telemetry.get("bridge_active"))
+        self.assertEqual(telemetry.get("bridge_error"), "")
+        self.assertEqual(telemetry.get("reason"), "force_legacy_rollback")
+
+        counts = get_mcp_facade_telemetry()
+        self.assertEqual(counts.get("facade_calls"), 1)
+        self.assertEqual(counts.get("rollback_calls"), 1)
+        self.assertEqual(counts.get("dry_run_calls"), 1)
+        self.assertEqual(counts.get("unified_bridge_calls"), 0)
+        self.assertEqual(counts.get("legacy_wrapper_calls"), 1)
+        self.assertEqual(counts.get("warning_emissions"), 1)
+        self.assertEqual((counts.get("reason_counts") or {}).get("force_legacy_rollback"), 1)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    @patch("ipfs_accelerate_py.mcp_server.server.create_server")
     def test_legacy_warning_is_deduplicated_until_reset(self, mock_unified_create, mock_wrapper):
         mock_wrapper.return_value = _DummyLegacyServer()
 

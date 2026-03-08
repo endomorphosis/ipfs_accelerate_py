@@ -145,12 +145,46 @@ def _error_result(message: str, **context: Any) -> Dict[str, Any]:
     return envelope
 
 
+def _validate_remote_cache_args(
+    *,
+    key: Any,
+    remote_multiaddr: Any,
+    remote_peer_id: Any,
+    timeout_s: Any,
+) -> tuple[Optional[Dict[str, Any]], Optional[str], str, str, float]:
+    """Validate common remote cache wrapper arguments."""
+    if not isinstance(key, str) or not key.strip():
+        return _error_result("key must be a non-empty string", key=key), None, "", "", 0.0
+    if not isinstance(remote_multiaddr, str):
+        return _error_result("remote_multiaddr must be a string", remote_multiaddr=remote_multiaddr), None, "", "", 0.0
+    if not isinstance(remote_peer_id, str):
+        return _error_result("remote_peer_id must be a string", remote_peer_id=remote_peer_id), None, "", "", 0.0
+    if not isinstance(timeout_s, (int, float)) or float(timeout_s) <= 0:
+        return _error_result("timeout_s must be a number > 0", timeout_s=timeout_s), None, "", "", 0.0
+    return None, key.strip(), remote_multiaddr.strip(), remote_peer_id.strip(), float(timeout_s)
+
+
 async def p2p_service_status(include_peers: bool = True, peers_limit: int = 50) -> Dict[str, Any]:
     """Return local P2P service status and peers."""
-    result = _API["p2p_service_status"](include_peers=include_peers, peers_limit=peers_limit)
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(include_peers, bool):
+        return _error_result("include_peers must be a boolean", include_peers=include_peers)
+    if not isinstance(peers_limit, int) or peers_limit <= 0:
+        return _error_result("peers_limit must be a positive integer", peers_limit=peers_limit)
+    try:
+        result = _API["p2p_service_status"](include_peers=include_peers, peers_limit=peers_limit)
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("ok", envelope.get("status") == "success")
+        envelope.setdefault("service", {})
+        envelope.setdefault("peers", [])
+        envelope.setdefault("include_peers", include_peers)
+        envelope.setdefault("peers_limit", peers_limit)
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), include_peers=include_peers, peers_limit=peers_limit)
 
 
 async def p2p_cache_get(key: str) -> Dict[str, Any]:
@@ -370,15 +404,35 @@ async def p2p_remote_cache_get(
     timeout_s: float = 10.0,
 ) -> Dict[str, Any]:
     """Get cache value from remote peer."""
-    result = _API["p2p_remote_cache_get"](
+    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = _validate_remote_cache_args(
         key=key,
         remote_multiaddr=remote_multiaddr,
         remote_peer_id=remote_peer_id,
         timeout_s=timeout_s,
     )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if error is not None:
+        return error
+    try:
+        result = _API["p2p_remote_cache_get"](
+            key=normalized_key,
+            remote_multiaddr=normalized_multiaddr,
+            remote_peer_id=normalized_peer_id,
+            timeout_s=normalized_timeout,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("hit", False)
+            envelope.setdefault("value", None)
+        envelope.setdefault("key", normalized_key)
+        envelope.setdefault("remote_multiaddr", normalized_multiaddr)
+        envelope.setdefault("remote_peer_id", normalized_peer_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), key=normalized_key)
 
 
 async def p2p_remote_cache_set(
@@ -389,16 +443,34 @@ async def p2p_remote_cache_set(
     timeout_s: float = 10.0,
 ) -> Dict[str, Any]:
     """Set cache value on remote peer."""
-    result = _API["p2p_remote_cache_set"](
+    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = _validate_remote_cache_args(
         key=key,
-        value=value,
         remote_multiaddr=remote_multiaddr,
         remote_peer_id=remote_peer_id,
         timeout_s=timeout_s,
     )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if error is not None:
+        return error
+    try:
+        result = _API["p2p_remote_cache_set"](
+            key=normalized_key,
+            value=value,
+            remote_multiaddr=normalized_multiaddr,
+            remote_peer_id=normalized_peer_id,
+            timeout_s=normalized_timeout,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+        envelope.setdefault("key", normalized_key)
+        envelope.setdefault("remote_multiaddr", normalized_multiaddr)
+        envelope.setdefault("remote_peer_id", normalized_peer_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), key=normalized_key)
 
 
 async def p2p_remote_cache_has(
@@ -408,15 +480,34 @@ async def p2p_remote_cache_has(
     timeout_s: float = 10.0,
 ) -> Dict[str, Any]:
     """Check cache key existence on remote peer."""
-    result = _API["p2p_remote_cache_has"](
+    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = _validate_remote_cache_args(
         key=key,
         remote_multiaddr=remote_multiaddr,
         remote_peer_id=remote_peer_id,
         timeout_s=timeout_s,
     )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if error is not None:
+        return error
+    try:
+        result = _API["p2p_remote_cache_has"](
+            key=normalized_key,
+            remote_multiaddr=normalized_multiaddr,
+            remote_peer_id=normalized_peer_id,
+            timeout_s=normalized_timeout,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("hit", False)
+        envelope.setdefault("key", normalized_key)
+        envelope.setdefault("remote_multiaddr", normalized_multiaddr)
+        envelope.setdefault("remote_peer_id", normalized_peer_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), key=normalized_key)
 
 
 async def p2p_remote_cache_delete(
@@ -426,15 +517,34 @@ async def p2p_remote_cache_delete(
     timeout_s: float = 10.0,
 ) -> Dict[str, Any]:
     """Delete cache key on remote peer."""
-    result = _API["p2p_remote_cache_delete"](
+    error, normalized_key, normalized_multiaddr, normalized_peer_id, normalized_timeout = _validate_remote_cache_args(
         key=key,
         remote_multiaddr=remote_multiaddr,
         remote_peer_id=remote_peer_id,
         timeout_s=timeout_s,
     )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if error is not None:
+        return error
+    try:
+        result = _API["p2p_remote_cache_delete"](
+            key=normalized_key,
+            remote_multiaddr=normalized_multiaddr,
+            remote_peer_id=normalized_peer_id,
+            timeout_s=normalized_timeout,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("deleted", False)
+        envelope.setdefault("key", normalized_key)
+        envelope.setdefault("remote_multiaddr", normalized_multiaddr)
+        envelope.setdefault("remote_peer_id", normalized_peer_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), key=normalized_key)
 
 
 async def p2p_remote_submit_task(
@@ -445,16 +555,44 @@ async def p2p_remote_submit_task(
     remote_peer_id: str = "",
 ) -> Dict[str, Any]:
     """Submit task to remote peer queue."""
-    result = _API["p2p_remote_submit_task"](
-        task_type=task_type,
-        model_name=model_name,
-        payload=payload,
-        remote_multiaddr=remote_multiaddr,
-        remote_peer_id=remote_peer_id,
-    )
-    if hasattr(result, "__await__"):
-        return await result
-    return result
+    if not isinstance(task_type, str) or not task_type.strip():
+        return _error_result("task_type must be a non-empty string", task_type=task_type)
+    if not isinstance(model_name, str):
+        return _error_result("model_name must be a string", model_name=model_name)
+    if not isinstance(payload, dict):
+        return _error_result("payload must be an object", payload=payload)
+    if not isinstance(remote_multiaddr, str):
+        return _error_result("remote_multiaddr must be a string", remote_multiaddr=remote_multiaddr)
+    if not isinstance(remote_peer_id, str):
+        return _error_result("remote_peer_id must be a string", remote_peer_id=remote_peer_id)
+
+    normalized_task_type = task_type.strip()
+    normalized_model_name = model_name.strip()
+    normalized_multiaddr = remote_multiaddr.strip()
+    normalized_peer_id = remote_peer_id.strip()
+    try:
+        result = _API["p2p_remote_submit_task"](
+            task_type=normalized_task_type,
+            model_name=normalized_model_name,
+            payload=payload,
+            remote_multiaddr=normalized_multiaddr,
+            remote_peer_id=normalized_peer_id,
+        )
+        if hasattr(result, "__await__"):
+            result = await result
+        envelope = _normalize_payload(result)
+        envelope.setdefault("status", "success")
+        if envelope.get("status") == "success":
+            envelope.setdefault("success", True)
+            envelope.setdefault("task", None)
+        envelope.setdefault("task_type", normalized_task_type)
+        envelope.setdefault("model_name", normalized_model_name)
+        envelope.setdefault("payload", payload)
+        envelope.setdefault("remote_multiaddr", normalized_multiaddr)
+        envelope.setdefault("remote_peer_id", normalized_peer_id)
+        return envelope
+    except Exception as exc:
+        return _error_result(str(exc), task_type=normalized_task_type)
 
 
 def register_native_p2p_tools_category(manager: Any) -> None:
@@ -629,10 +767,10 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "key": {"type": "string"},
+                "key": {"type": "string", "minLength": 1},
                 "remote_multiaddr": {"type": "string"},
                 "remote_peer_id": {"type": "string"},
-                "timeout_s": {"type": "number"},
+                "timeout_s": {"type": "number", "exclusiveMinimum": 0, "default": 10.0},
             },
             "required": ["key"],
         },
@@ -648,11 +786,11 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "key": {"type": "string"},
+                "key": {"type": "string", "minLength": 1},
                 "value": {},
                 "remote_multiaddr": {"type": "string"},
                 "remote_peer_id": {"type": "string"},
-                "timeout_s": {"type": "number"},
+                "timeout_s": {"type": "number", "exclusiveMinimum": 0, "default": 10.0},
             },
             "required": ["key", "value"],
         },
@@ -668,10 +806,10 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "key": {"type": "string"},
+                "key": {"type": "string", "minLength": 1},
                 "remote_multiaddr": {"type": "string"},
                 "remote_peer_id": {"type": "string"},
-                "timeout_s": {"type": "number"},
+                "timeout_s": {"type": "number", "exclusiveMinimum": 0, "default": 10.0},
             },
             "required": ["key"],
         },
@@ -687,10 +825,10 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "key": {"type": "string"},
+                "key": {"type": "string", "minLength": 1},
                 "remote_multiaddr": {"type": "string"},
                 "remote_peer_id": {"type": "string"},
-                "timeout_s": {"type": "number"},
+                "timeout_s": {"type": "number", "exclusiveMinimum": 0, "default": 10.0},
             },
             "required": ["key"],
         },
@@ -706,7 +844,7 @@ def register_native_p2p_tools_category(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "task_type": {"type": "string"},
+                "task_type": {"type": "string", "minLength": 1},
                 "model_name": {"type": "string"},
                 "payload": {"type": "object"},
                 "remote_multiaddr": {"type": "string"},

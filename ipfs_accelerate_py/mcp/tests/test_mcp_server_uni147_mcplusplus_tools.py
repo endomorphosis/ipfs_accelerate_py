@@ -563,6 +563,60 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_list_and_stats_wrappers_apply_sparse_success_defaults(self) -> None:
+        async def _run() -> None:
+            class _TaskQueueEngine:
+                def list_tasks(self, **_kwargs):
+                    return {"status": "success"}
+
+                def get_stats(self, **_kwargs):
+                    return {"status": "success"}
+
+            class _WorkflowEngine:
+                def list_workflows(self, **_kwargs):
+                    return {"status": "success"}
+
+            class _PeerEngine:
+                def list_peers(self, **_kwargs):
+                    return {"status": "success"}
+
+            with patch.object(
+                mcpp_mod,
+                "_API",
+                new={
+                    "TaskQueueEngine": _TaskQueueEngine,
+                    "WorkflowEngine": _WorkflowEngine,
+                    "PeerEngine": _PeerEngine,
+                },
+            ):
+                task_list = await mcpp_mod.mcplusplus_taskqueue_list(limit=5, offset=2)
+                task_stats = await mcpp_mod.mcplusplus_taskqueue_stats(include_worker_stats=True)
+                workflow_list = await mcpp_mod.mcplusplus_workflow_list(limit=4, offset=1)
+                peer_list = await mcpp_mod.mcplusplus_peer_list(limit=3, offset=1, sort_by="latency")
+
+            self.assertEqual(task_list.get("status"), "success")
+            self.assertEqual(task_list.get("tasks"), [])
+            self.assertEqual(task_list.get("limit"), 5)
+            self.assertEqual(task_list.get("offset"), 2)
+
+            self.assertEqual(task_stats.get("status"), "success")
+            self.assertEqual(task_stats.get("stats"), {})
+            self.assertEqual(task_stats.get("include_worker_stats"), True)
+            self.assertEqual(task_stats.get("include_historical"), False)
+
+            self.assertEqual(workflow_list.get("status"), "success")
+            self.assertEqual(workflow_list.get("workflows"), [])
+            self.assertEqual(workflow_list.get("limit"), 4)
+            self.assertEqual(workflow_list.get("offset"), 1)
+
+            self.assertEqual(peer_list.get("status"), "success")
+            self.assertEqual(peer_list.get("peers"), [])
+            self.assertEqual(peer_list.get("limit"), 3)
+            self.assertEqual(peer_list.get("offset"), 1)
+            self.assertEqual(peer_list.get("sort_by"), "latency")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()
