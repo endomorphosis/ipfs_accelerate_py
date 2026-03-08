@@ -1149,6 +1149,7 @@ _MCP_FACADE_USAGE_TELEMETRY = {
     "rollback_calls": 0,
     "bridge_failure_calls": 0,
 }
+_MCP_FACADE_WARNED_REASONS: set[str] = set()
 
 
 def _env_flag_enabled(name: str) -> bool:
@@ -1173,6 +1174,21 @@ def _record_mcp_facade_usage(telemetry: dict) -> None:
         _MCP_FACADE_USAGE_TELEMETRY["bridge_failure_calls"] += 1
 
 
+def _warn_legacy_facade_usage(reason: str) -> bool:
+    """Emit the D1 warn-only deprecation notice once per reason."""
+    normalized_reason = str(reason or "legacy_fallback")
+    if normalized_reason in _MCP_FACADE_WARNED_REASONS:
+        return False
+
+    logger.warning(
+        "Legacy MCP facade runtime path is deprecated (D1 warn-only); reason=%s. "
+        "Canonical mcp_server startup is now the default and legacy routing should be reserved for rollback/testing.",
+        normalized_reason,
+    )
+    _MCP_FACADE_WARNED_REASONS.add(normalized_reason)
+    return True
+
+
 def get_mcp_facade_telemetry() -> dict:
     """Return a snapshot of compatibility-facade usage telemetry."""
     return dict(_MCP_FACADE_USAGE_TELEMETRY)
@@ -1182,6 +1198,7 @@ def _reset_mcp_facade_telemetry() -> None:
     """Reset compatibility-facade usage telemetry for deterministic tests."""
     for key in _MCP_FACADE_USAGE_TELEMETRY:
         _MCP_FACADE_USAGE_TELEMETRY[key] = 0
+    _MCP_FACADE_WARNED_REASONS.clear()
 
 
 def set_mcp_like_instance(mcp_like: Any) -> None:
@@ -1210,7 +1227,9 @@ def create_mcp_server(
     global _MCP_SERVER_INSTANCE
     cutover_dry_run_enabled = _env_flag_enabled("IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN")
     force_legacy_rollback = _env_flag_enabled("IPFS_MCP_FORCE_LEGACY_ROLLBACK")
+    bridge_env_value = os.environ.get("IPFS_MCP_ENABLE_UNIFIED_BRIDGE")
     bridge_requested = _env_flag_enabled("IPFS_MCP_ENABLE_UNIFIED_BRIDGE")
+    bridge_explicit = bridge_env_value is not None
     cutover_dry_run_status = {
         "enabled": bool(cutover_dry_run_enabled),
         "ok": False,
@@ -1219,21 +1238,24 @@ def create_mcp_server(
     facade_telemetry = {
         "facade": "ipfs_accelerate_py.mcp.server.create_mcp_server",
         "bridge_requested": bool(bridge_requested),
+        "bridge_defaulted": not bool(bridge_explicit),
         "bridge_active": False,
         "used_legacy_wrapper": False,
         "force_legacy_rollback": bool(force_legacy_rollback),
         "cutover_dry_run": bool(cutover_dry_run_enabled),
         "dry_run_ok": False,
+        "deprecation_phase": "D1_warn_only",
+        "deprecation_warning_emitted": False,
         "selected_runtime": "legacy",
-        "reason": "bridge_disabled",
+        "reason": "legacy_fallback",
         "bridge_error": "",
     }
 
-    # Optional migration bridge: route creation through the new unified package
-    # when explicitly enabled. The private skip flag prevents recursion.
+    # Route creation through the unified canonical package by default.
+    # The private skip flag prevents recursion.
     if not _skip_unified_bridge:
         try:
-            bridge_enabled = bool(bridge_requested)
+            bridge_enabled = True if not bridge_explicit else bool(bridge_requested)
             if force_legacy_rollback:
                 bridge_enabled = False
                 facade_telemetry["reason"] = "force_legacy_rollback"
@@ -1275,7 +1297,7 @@ def create_mcp_server(
                     )
                     facade_telemetry["bridge_active"] = True
                     facade_telemetry["selected_runtime"] = "unified"
-                    facade_telemetry["reason"] = "unified_bridge"
+                    facade_telemetry["reason"] = "unified_default" if not bridge_explicit else "unified_bridge"
                     _MCP_SERVER_INSTANCE = server
                     try:
                         set_mcp_like_instance(getattr(server, "mcp", None) or server)
@@ -1309,6 +1331,9 @@ def create_mcp_server(
         set_mcp_like_instance(getattr(server, "mcp", None) or server)
     except Exception:
         pass
+    facade_telemetry["deprecation_warning_emitted"] = _warn_legacy_facade_usage(
+        str(facade_telemetry.get("reason") or "legacy_fallback")
+    )
     if cutover_dry_run_enabled:
         try:
             setattr(server, "_unified_cutover_dry_run", dict(cutover_dry_run_status))

@@ -100,7 +100,7 @@ def test_package_import():
 def test_cli_entry_points():
     """Test CLI entry points"""
     print("\n🔍 Testing CLI entry points...")
-    
+
     # Test main CLI
     success, stdout, stderr = run_command(CLI_COMMAND + ["--help"])
     if success:
@@ -108,7 +108,7 @@ def test_cli_entry_points():
     else:
         print(f"❌ Main CLI entry point: FAILED - {stderr}")
         return False
-    
+
     # Test MCP commands
     success, stdout, stderr = run_command(CLI_COMMAND + ["mcp", "start", "--help"])
     if success:
@@ -122,15 +122,15 @@ def test_cli_entry_points():
 def test_mcp_server():
     """Test MCP server functionality"""
     print("\n🔍 Testing MCP server...")
-    
+
     # Find available port
     port = 9010
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         while s.connect_ex(('127.0.0.1', port)) == 0:
             port += 1
-    
+
     print(f"   Starting MCP server on port {port}...")
-    
+
     stdout_log = tempfile.TemporaryFile(mode="w+t")
     stderr_log = tempfile.TemporaryFile(mode="w+t")
 
@@ -146,9 +146,9 @@ def test_mcp_server():
         cwd=REPO_ROOT,
         text=True,
     )
-    
+
     base_url = f"http://127.0.0.1:{port}"
-    
+
     try:
         ready, error = wait_for_http_ready(base_url, process, timeout=30.0)
         if not ready:
@@ -183,7 +183,7 @@ def test_mcp_server():
             process.kill()
         stdout_log.close()
         stderr_log.close()
-    
+
     return success
 
 
@@ -194,15 +194,15 @@ def test_docker_functionality():
     if not shutil.which("docker"):
         print("⏭️  Docker functionality: SKIPPED - docker is not installed")
         return None
-    
+
     # Test Docker access
     success, stdout, stderr = run_command(["docker", "ps"], timeout=10)
     if not success:
         print(f"⏭️  Docker functionality: SKIPPED - {stderr.strip() or 'docker is not accessible'}")
         return None
-    
+
     print("✅ Docker access: PASSED")
-    
+
     # Test Docker build (quick test)
     print("   Testing Docker build...")
     success, stdout, stderr = run_command(
@@ -212,10 +212,10 @@ def test_docker_functionality():
         ],
         timeout=120,
     )
-    
+
     if success:
         print("✅ Docker build: PASSED")
-        
+
         # Test container run
         print("   Testing container execution...")
         success, stdout, stderr = run_command(
@@ -225,10 +225,10 @@ def test_docker_functionality():
             ],
             timeout=30,
         )
-        
+
         if success:
             print("✅ Docker container execution: PASSED")
-            
+
             # Clean up test image
             run_command(["docker", "rmi", "ipfs-accelerate-py:setup-test"])
             return True
@@ -247,7 +247,7 @@ def test_github_actions_readiness():
     if not shutil.which("sudo") or not shutil.which("systemctl"):
         print("⏭️  GitHub Actions readiness: SKIPPED - sudo/systemctl unavailable")
         return None
-    
+
     # Test sudo access
     success, stdout, stderr = run_command(["sudo", "-n", "whoami"])
     if success and "root" in stdout:
@@ -255,7 +255,7 @@ def test_github_actions_readiness():
     else:
         print("⏭️  GitHub Actions readiness: SKIPPED - passwordless sudo unavailable")
         return None
-    
+
     # Test GitHub Actions runner service
     success, stdout, stderr = run_command(
         [
@@ -268,7 +268,7 @@ def test_github_actions_readiness():
     else:
         print("❌ GitHub Actions runner service: FAILED")
         return False
-    
+
     # Test Docker group membership
     success, stdout, stderr = run_command(["groups", os.getenv("USER", "")])
     if success and "docker" in stdout:
@@ -283,25 +283,25 @@ def main():
     """Main validation function"""
     print("🚀 IPFS Accelerate Python Package - Setup Validation")
     print("=" * 60)
-    
+
     print(f"User: {os.getenv('USER', 'unknown')}")
     print(f"Architecture: {os.uname().machine}")
     print(f"Python: {sys.version.split()[0]}")
     print(f"Working Directory: {os.getcwd()}")
     print()
-    
+
     tests = [
         ("Package Import", test_package_import),
-        ("CLI Entry Points", test_cli_entry_points), 
+        ("CLI Entry Points", test_cli_entry_points),
         ("MCP Server", test_mcp_server),
         ("Docker Functionality", test_docker_functionality),
         ("GitHub Actions Readiness", test_github_actions_readiness),
     ]
-    
+
     passed = 0
     failed = 0
     skipped = 0
-    
+
     for test_name, test_func in tests:
         try:
             result = test_func()
@@ -314,10 +314,10 @@ def main():
         except Exception as e:
             print(f"❌ {test_name}: FAILED - Exception: {e}")
             failed += 1
-    
+
     print("\n" + "=" * 60)
     print(f"📊 VALIDATION SUMMARY: {passed} passed, {failed} failed, {skipped} skipped")
-    
+
     if failed == 0:
         print("🎉 ALL TESTS PASSED - Package setup is complete and functional!")
         if skipped:

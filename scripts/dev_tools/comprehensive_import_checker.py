@@ -5,10 +5,14 @@ Python Import Checker for ipfs_accelerate_py
 Validates import statements in Python files.
 """
 
-import os
 import sys
 import argparse
 import ast
+import contextlib
+import io
+import logging
+import warnings
+from functools import lru_cache
 from pathlib import Path
 from typing import List, Tuple
 import importlib.util
@@ -40,10 +44,31 @@ OPTIONAL_MODULE_PREFIXES = {
 }
 
 
+@contextlib.contextmanager
+def _suppress_import_noise():
+    """Mute incidental logs/warnings while probing optional module availability."""
+    stdout_buffer = io.StringIO()
+    stderr_buffer = io.StringIO()
+    previous_disable = logging.root.manager.disable
+    logging.disable(logging.CRITICAL)
+    try:
+        with (
+            warnings.catch_warnings(),
+            contextlib.redirect_stdout(stdout_buffer),
+            contextlib.redirect_stderr(stderr_buffer),
+        ):
+            warnings.simplefilter("ignore")
+            yield
+    finally:
+        logging.disable(previous_disable)
+
+
+@lru_cache(maxsize=None)
 def _module_exists(module_name: str) -> bool:
     """Return whether an importable module exists."""
     try:
-        return importlib.util.find_spec(module_name) is not None
+        with _suppress_import_noise():
+            return importlib.util.find_spec(module_name) is not None
     except (ImportError, ValueError, ModuleNotFoundError):
         return False
 
@@ -159,10 +184,10 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             source = f.read()
-        
+
         tree = ast.parse(source, filename=str(file_path))
         _annotate_parents(tree)
-        
+
         errors = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
@@ -171,15 +196,14 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
                     if not (
                         _is_optional_module(alias.name)
                         or _is_optional_module(alias.name.split('.')[0])
-                        or
-                        _module_exists(alias.name)
+                        or _module_exists(alias.name)
                         or _module_exists(alias.name.split('.')[0])
                         or _local_module_exists(file_path, alias.name)
                         or _is_guarded_optional_import(node)
                         or (_is_nested_import(node) and not _module_exists(alias.name.split('.')[0]))
                     ):
                         errors.append(f"Cannot import '{alias.name}'")
-            
+
             elif isinstance(node, ast.ImportFrom):
                 if node.level > 0:
                     if not _relative_import_exists(file_path, node) and not _is_guarded_optional_import(node):
@@ -191,17 +215,16 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
                     if not (
                         _is_optional_module(node.module)
                         or _is_optional_module(node.module.split('.')[0])
-                        or
-                        _module_exists(node.module)
+                        or _module_exists(node.module)
                         or _module_exists(node.module.split('.')[0])
                         or _local_module_exists(file_path, node.module)
                         or _is_guarded_optional_import(node)
                         or (_is_nested_import(node) and not _module_exists(node.module.split('.')[0]))
                     ):
                         errors.append(f"Cannot import from '{node.module}'")
-        
+
         return len(errors) == 0, errors
-        
+
     except SyntaxError as e:
         return False, [f"SyntaxError: {e.msg}"]
     except Exception as e:
@@ -211,7 +234,7 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
 def find_python_files(directory: Path, exclude_patterns: List[str]) -> List[Path]:
     """Find all Python files in directory."""
     python_files = []
-    
+
     for py_file in directory.glob('**/*.py'):
         if py_file.is_file():
             should_exclude = False
@@ -219,10 +242,10 @@ def find_python_files(directory: Path, exclude_patterns: List[str]) -> List[Path
                 if pattern in str(py_file):
                     should_exclude = True
                     break
-            
+
             if not should_exclude:
                 python_files.append(py_file)
-    
+
     return python_files
 
 
@@ -230,36 +253,39 @@ def main():
     parser = argparse.ArgumentParser(description="Check Python imports")
     parser.add_argument('--directory', required=True, help='Directory to scan')
     parser.add_argument('--verbose', '-v', action='store_true', help='Verbose output')
-    parser.add_argument('--exclude', nargs='*',
-                       default=['__pycache__', '.venv', 'venv', '.git', 'build', 'dist'],
-                       help='Patterns to exclude')
-    
+    parser.add_argument(
+        '--exclude',
+        nargs='*',
+        default=['__pycache__', '.venv', 'venv', '.git', 'build', 'dist'],
+        help='Patterns to exclude',
+    )
+
     args = parser.parse_args()
-    
+
     directory = Path(args.directory).resolve()
-    
+
     if not directory.exists():
         print(f"Error: Directory '{directory}' does not exist", file=sys.stderr)
         sys.exit(1)
-    
+
     print(f"Checking imports in: {directory}")
     print(f"Excluding: {', '.join(args.exclude)}")
     print()
-    
+
     python_files = find_python_files(directory, args.exclude)
-    
+
     if not python_files:
         print("No Python files found")
         return 0
-    
+
     print(f"Found {len(python_files)} Python files to check\n")
-    
+
     successful = 0
     failed = 0
-    
+
     for py_file in sorted(python_files):
         success, errors = check_imports(py_file)
-        
+
         if success:
             successful += 1
             if args.verbose:
@@ -269,7 +295,7 @@ def main():
             print(f"✗ {py_file.relative_to(directory)}")
             for error in errors:
                 print(f"  {error}")
-    
+
     print("\n" + "="*60)
     print("IMPORT CHECK SUMMARY")
     print("="*60)
@@ -278,7 +304,7 @@ def main():
     print(f"Failed: {failed}")
     if len(python_files) > 0:
         print(f"Success rate: {successful/len(python_files)*100:.1f}%")
-    
+
     return 0 if failed == 0 else 1
 
 
