@@ -73,7 +73,7 @@ pip install "libp2p @ git+https://github.com/libp2p/py-libp2p@main" cryptography
 ## Two-Laptop Quickstart (Smoke Test)
 
 For a practical end-to-end validation (writer broadcasts, reader receives), use:
-- Runbook: [GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
+- Runbook: [GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md](../github/GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
 - Smoke tool: [tools/github_p2p_cache_smoke.py](tools/github_p2p_cache_smoke.py)
 
 The smoke test supports both:

@@ -1,3 +1,8 @@
+# Installation
+
+This document moved.
+
+Use [installation.md](installation.md) for the maintained installation guide.
 # IPFS Accelerate Python - Installation & Setup Guide
 
 This guide provides comprehensive installation and setup instructions for the IPFS Accelerate Python framework.
@@ -681,7 +686,7 @@ accelerator = ipfs_accelerate_py(config, {})
 If you encounter issues:
 
 1. Check the [GitHub Issues](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
-2. Review the [documentation](../README.md)
+2. Review the [documentation](../../README.md)
 3. Join our [community discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
 4. Contact support with debug logs and system information
 
@@ -717,7 +722,7 @@ black ipfs_accelerate_py/
 5. Ensure all tests pass
 6. Submit a pull request
 
-For detailed contribution guidelines, see [CONTRIBUTING.md](../CONTRIBUTING.md).
+For detailed contribution guidelines, see [CONTRIBUTING.md](../../../CONTRIBUTING.md).
 
 ## Next Steps
 

@@ -1,6 +1,6 @@
 # HuggingFace Model Server - Executive Summary
 
-> **Quick Reference Guide** for the comprehensive review in [`HF_MODEL_SERVER_REVIEW.md`](./HF_MODEL_SERVER_REVIEW.md)
+> **Quick Reference Guide** for the comprehensive review in [`review.md`](./review.md)
 
 ---
 
@@ -216,8 +216,8 @@ print(response.json()["data"][0]["embedding"])
 
 | Document | Purpose |
 |----------|---------|
-| [HF_MODEL_SERVER_REVIEW.md](./HF_MODEL_SERVER_REVIEW.md) | Full technical review (45+ pages) |
-| [HF_MODEL_SERVER_SUMMARY.md](./HF_MODEL_SERVER_SUMMARY.md) | This quick reference |
+| [review.md](./review.md) | Full technical review (45+ pages) |
+| [summary.md](./summary.md) | This quick reference |
 
 ---
 

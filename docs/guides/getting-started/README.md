@@ -242,7 +242,7 @@ docker build -t my-ml-service .
 docker run -p 8000:8000 my-ml-service
 ```
 
-For GPU support, see [Docker GPU Guide](guides/docker/DOCKER_CONTAINER_GUIDE.md).
+For GPU support, see [Docker GPU Guide](../docker/DOCKER_CONTAINER_GUIDE.md).
 
 ### Step 4: Monitoring
 
@@ -260,8 +260,8 @@ print(f"Cache hit rate: {metrics['cache_hit_rate']}%")
 ```
 
 **Production Guides**:
-- [Deployment Guide](guides/deployment/DEPLOYMENT_GUIDE.md)
-- [Monitoring Setup](guides/infrastructure/README.md)
+- [Deployment Guide](../deployment/DEPLOYMENT_GUIDE.md)
+- [Monitoring Setup](../infrastructure/README.md)
 - [Security Best Practices](ARCHITECTURE.md#security)
 
 ---
@@ -408,8 +408,8 @@ ipfs-accelerate mcp start --port 8080
 
 ### Get Support
 
-- 📖 **Documentation**: [docs/](README.md)
-- ❓ **FAQ**: [FAQ.md](FAQ.md)
+- 📖 **Documentation**: [docs/](../../README.md)
+- ❓ **FAQ**: [FAQ.md](../troubleshooting/faq.md)
 - 🐛 **Issues**: [GitHub Issues](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
 - 💬 **Community**: [Discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
 - 📧 **Email**: starworks5@gmail.com

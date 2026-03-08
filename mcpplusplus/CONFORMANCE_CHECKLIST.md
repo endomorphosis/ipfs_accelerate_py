@@ -37,7 +37,7 @@ This checklist tracks conformance of the canonical runtime in `ipfs_accelerate_p
 
 ## Maintenance Evidence Log
 
-- 2026-03-08: Milestone M4 cutover publication advanced by freezing the migration delta set and publishing [MCP_CUTOVER_CHECKLIST.md](../MCP_CUTOVER_CHECKLIST.md), tying canonical-default startup approval to rollback telemetry, transport/profile release-candidate coverage, and synchronized conformance evidence.
+- 2026-03-08: Milestone M4 cutover publication advanced by freezing the migration delta set and publishing [CUTOVER_CHECKLIST.md](CUTOVER_CHECKLIST.md), tying canonical-default startup approval to rollback telemetry, transport/profile release-candidate coverage, and synchronized conformance evidence.
 - 2026-03-08: Milestone M4 release-candidate validation advanced with a focused matrix spanning cutover rollback telemetry, process-level transport/FastAPI helpers, MCP+p2p handler interop, transport E2E parity, and representative MCP++ profile chapter suites for IDL, artifacts, UCAN, temporal policy, Event DAG, and risk scheduling (`120 passed`).
 - 2026-03-08: Milestone M3 observability/security interaction hardening advanced with a focused unified-bootstrap regression proving policy-audit allow/deny outcomes stay aligned with audit-metrics bridge forwarding and runtime monitoring counters in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`3 passed, 147 deselected`).
 - 2026-03-08: Sprint S2 cutover hardening advanced with a focused compatibility-facade regression proving force-rollback takes precedence over cutover dry-run while preserving deterministic dry-run-intent telemetry and legacy fallback metadata in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py` (`4 passed, 3 deselected`).

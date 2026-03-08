@@ -88,8 +88,8 @@ Integrated error handling into the main CLI:
 ### 4. Documentation
 
 Created comprehensive documentation:
-- ✅ `docs/AUTO_HEALING_CONFIGURATION.md` - Full configuration guide
-- ✅ `IMPLEMENTATION_SUMMARY.md` - Technical implementation details
+- ✅ `AUTO_HEALING_CONFIGURATION.md` - Full configuration guide
+- ✅ `../../development_history/COMPLETE_AUTO_HEALING_SUMMARY.md` - Technical implementation details
 - ✅ This README - Quick start and overview
 
 ### 5. Examples (`examples/auto_healing_demo.py`)
@@ -192,10 +192,10 @@ Labels: auto-generated, bug, priority (if high/critical)
 1. **`ipfs_accelerate_py/error_handler.py`** (530 lines)
    - Main error handling implementation
    
-2. **`docs/AUTO_HEALING_CONFIGURATION.md`** (300 lines)
+2. **`AUTO_HEALING_CONFIGURATION.md`** (300 lines)
    - User-facing configuration guide
    
-3. **`IMPLEMENTATION_SUMMARY.md`** (400 lines)
+3. **`../../development_history/COMPLETE_AUTO_HEALING_SUMMARY.md`**
    - Technical implementation details
    
 4. **`examples/auto_healing_demo.py`** (230 lines)
@@ -442,8 +442,8 @@ When `IPFS_AUTO_PR=true` (in addition to auto-issue):
 
 ## See Also
 
-- [Configuration Guide](docs/AUTO_HEALING_CONFIGURATION.md) - Detailed configuration
-- [Implementation Summary](IMPLEMENTATION_SUMMARY.md) - Technical details
+- [Configuration Guide](AUTO_HEALING_CONFIGURATION.md) - Detailed configuration
+- [Implementation Summary](../../development_history/COMPLETE_AUTO_HEALING_SUMMARY.md) - Technical details
 - [Demo Example](examples/auto_healing_demo.py) - Working example
 - [Test Suite](test/test_error_handler.py) - Unit tests
 
@@ -451,7 +451,7 @@ When `IPFS_AUTO_PR=true` (in addition to auto-issue):
 
 For questions or issues:
 
-1. Check the [Configuration Guide](docs/AUTO_HEALING_CONFIGURATION.md)
+1. Check the [Configuration Guide](AUTO_HEALING_CONFIGURATION.md)
 2. Run the [Demo](examples/auto_healing_demo.py)
 3. Run the [Test Suite](test_auto_healing.py)
 4. Create a GitHub issue (which might auto-create itself! 😄)

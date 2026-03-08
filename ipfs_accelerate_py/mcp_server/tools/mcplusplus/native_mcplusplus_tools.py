@@ -649,13 +649,24 @@ async def mcplusplus_worker_status(
             method="get_worker_status",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "get_worker_status",
         worker_id=worker_id.strip(),
         include_tasks=include_tasks,
         include_metrics=include_metrics,
     )
+    if result.get("status") == "success":
+        result.setdefault("worker_id", worker_id.strip())
+        result.setdefault("status", "unknown")
+        result.setdefault("running_tasks", 0)
+        result.setdefault("completed_tasks", 0)
+        result.setdefault("failed_tasks", 0)
+        result.setdefault("tasks", [] if include_tasks else None)
+        result.setdefault("metrics", {} if include_metrics else None)
+        result.setdefault("include_tasks", include_tasks)
+        result.setdefault("include_metrics", include_metrics)
+    return result
 
 
 async def mcplusplus_taskqueue_result(
@@ -683,13 +694,22 @@ async def mcplusplus_taskqueue_result(
             method="get_result",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "get_result",
         task_id=task_id.strip(),
         include_output=include_output,
         include_logs=include_logs,
     )
+    if result.get("status") == "success":
+        result.setdefault("task_id", task_id.strip())
+        result.setdefault("result", None)
+        result.setdefault("output", None if include_output else None)
+        result.setdefault("logs", [] if include_logs else None)
+        result.setdefault("execution_time", 0)
+        result.setdefault("include_output", include_output)
+        result.setdefault("include_logs", include_logs)
+    return result
 
 
 async def mcplusplus_workflow_get_status(
@@ -717,13 +737,25 @@ async def mcplusplus_workflow_get_status(
             method="get_status",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "WorkflowEngine",
         "get_status",
         workflow_id=workflow_id.strip(),
         include_steps=include_steps,
         include_metrics=include_metrics,
     )
+    if result.get("status") == "success":
+        result.setdefault("workflow_id", workflow_id.strip())
+        result.setdefault("progress", 0)
+        result.setdefault("current_step", None)
+        result.setdefault("peer_id", None)
+        result.setdefault("start_time", None)
+        result.setdefault("end_time", None)
+        result.setdefault("steps", [] if include_steps else None)
+        result.setdefault("metrics", {} if include_metrics else None)
+        result.setdefault("include_steps", include_steps)
+        result.setdefault("include_metrics", include_metrics)
+    return result
 
 
 async def mcplusplus_workflow_submit(
@@ -922,12 +954,20 @@ async def mcplusplus_workflow_dependencies(
             method="get_dependencies",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "WorkflowEngine",
         "get_dependencies",
         workflow_id=workflow_id.strip(),
         fmt=normalized_fmt,
     )
+    if result.get("status") == "success":
+        result.setdefault("workflow_id", workflow_id.strip())
+        result.setdefault("dag", None)
+        result.setdefault("nodes", [])
+        result.setdefault("edges", [])
+        result.setdefault("critical_path", [])
+        result.setdefault("fmt", normalized_fmt)
+    return result
 
 
 async def mcplusplus_workflow_result(
@@ -955,13 +995,22 @@ async def mcplusplus_workflow_result(
             method="get_result",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "WorkflowEngine",
         "get_result",
         workflow_id=workflow_id.strip(),
         include_outputs=include_outputs,
         include_logs=include_logs,
     )
+    if result.get("status") == "success":
+        result.setdefault("workflow_id", workflow_id.strip())
+        result.setdefault("result", None)
+        result.setdefault("execution_time", None)
+        result.setdefault("outputs", [] if include_outputs else None)
+        result.setdefault("logs", [] if include_logs else None)
+        result.setdefault("include_outputs", include_outputs)
+        result.setdefault("include_logs", include_logs)
+    return result
 
 
 async def mcplusplus_peer_list(
@@ -1060,7 +1109,7 @@ async def mcplusplus_peer_discover(
             method="discover",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "PeerEngine",
         "discover",
         capability_filter=[str(item).strip() for item in (capability_filter or [])] or None,
@@ -1068,6 +1117,15 @@ async def mcplusplus_peer_discover(
         timeout=timeout,
         include_metrics=include_metrics,
     )
+    if result.get("status") == "success":
+        result.setdefault("peers", [])
+        result.setdefault("discovered_count", 0)
+        result.setdefault("search_time", 0)
+        result.setdefault("capability_filter", [str(item).strip() for item in (capability_filter or [])] or None)
+        result.setdefault("max_peers", max_peers)
+        result.setdefault("timeout", timeout)
+        result.setdefault("include_metrics", include_metrics)
+    return result
 
 
 async def mcplusplus_peer_connect(
@@ -1179,13 +1237,23 @@ async def mcplusplus_peer_metrics(
             method="get_metrics",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "PeerEngine",
         "get_metrics",
         peer_id=peer_id.strip(),
         include_history=include_history,
         history_hours=history_hours,
     )
+    if result.get("status") == "success":
+        result.setdefault("peer_id", peer_id.strip())
+        result.setdefault("current_metrics", {})
+        result.setdefault("connection_info", {})
+        result.setdefault("timestamp", None)
+        if include_history:
+            result.setdefault("history", [])
+            result.setdefault("history_hours", history_hours)
+        result.setdefault("include_history", include_history)
+    return result
 
 
 async def mcplusplus_peer_bootstrap_network(

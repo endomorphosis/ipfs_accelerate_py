@@ -376,6 +376,6 @@ gh auth status
 
 ## See Also
 
-- [AUTO_HEALING_README.md](AUTO_HEALING_README.md) - CLI error handling
-- [MCP_ERROR_HANDLING_VERIFICATION.md](development_history/MCP_ERROR_HANDLING_VERIFICATION.md) - MCP verification
-- [QUICK_START_MCP.md](guides/QUICK_START_MCP.md) - Quick start guide
+- [README.md](README.md) - CLI error handling
+- [MCP_ERROR_HANDLING_VERIFICATION.md](../../development_history/MCP_ERROR_HANDLING_VERIFICATION.md) - MCP verification
+- [QUICK_START_MCP.md](../../guides/QUICK_START_MCP.md) - Quick start guide

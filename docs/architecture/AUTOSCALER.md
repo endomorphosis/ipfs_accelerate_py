@@ -358,5 +358,5 @@ A: Yes, each can monitor different orgs or with different settings.
 
 - [GitHub CLI Documentation](https://cli.github.com/manual/)
 - [Self-Hosted Runners Guide](https://docs.github.com/en/actions/hosting-your-own-runners)
-- [README_GITHUB_COPILOT.md](README_GITHUB_COPILOT.md) - Full integration guide
-- [QUICKSTART.md](QUICKSTART.md) - Quick verification guide
+- [README_GITHUB_COPILOT.md](../guides/github/README_GITHUB_COPILOT.md) - Full integration guide
+- [QUICKSTART_VSCODE_INTEGRATION.md](../guides/QUICKSTART_VSCODE_INTEGRATION.md) - Quick verification guide

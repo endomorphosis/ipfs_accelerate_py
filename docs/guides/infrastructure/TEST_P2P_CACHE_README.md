@@ -259,10 +259,10 @@ After tests pass:
 3. ⏳ **Monitor workflow runs** - Check logs for P2P connections
 4. ⏳ **Verify API reduction** - Compare API usage before/after
 
-See `MCP_P2P_SETUP_GUIDE.md` for complete setup instructions.
+See `../p2p/MCP_P2P_SETUP_GUIDE.md` for complete setup instructions.
 
 ## References
 
 - [MCP P2P Setup Guide](./MCP_P2P_SETUP_GUIDE.md)
 - [GitHub Actions P2P Setup](./GITHUB_ACTIONS_P2P_SETUP.md)
-- [libp2p Fix Summary](./LIBP2P_FIX_SUMMARY.md)
+- [libp2p Fix Summary](../p2p/LIBP2P_FIX_SUMMARY.md)

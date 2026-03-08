@@ -542,7 +542,7 @@ Planned enhancements when ipfs_kit_py is fully integrated:
 
 ## See Also
 
-- [ipfs_kit_py Documentation](../external/ipfs_kit_py/README.md)
+- [ipfs_kit_py Documentation](../../ipfs_kit_py/README.md)
 - [IPFS Documentation](https://docs.ipfs.tech/)
 - [Content Addressing Guide](https://proto.school/content-addressing)
 - [Model Manager Integration](./model_manager_integration.md)

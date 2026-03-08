@@ -22,7 +22,7 @@ This prevents:
 
 ### 2. Docker Container Isolation 🐳
 
-All GitHub Actions workflows in this repository run inside **isolated Docker containers** on the runners. See [CONTAINERIZED_CI_SECURITY.md](../CONTAINERIZED_CI_SECURITY.md) for full details.
+All GitHub Actions workflows in this repository run inside **isolated Docker containers** on the runners. See [CONTAINERIZED_CI_SECURITY.md](CONTAINERIZED_CI_SECURITY.md) for full details.
 
 **Security Benefits:**
 - **Process Isolation**: Tests cannot affect host system processes
@@ -466,8 +466,8 @@ sleep 310
 
 ## See Also
 
-- [CONTAINERIZED_CI_SECURITY.md](../CONTAINERIZED_CI_SECURITY.md) - Docker isolation details
-- [AUTOSCALER.md](../AUTOSCALER.md) - General autoscaler documentation
+- [CONTAINERIZED_CI_SECURITY.md](CONTAINERIZED_CI_SECURITY.md) - Docker isolation details
+- [AUTOSCALER.md](AUTOSCALER.md) - General autoscaler documentation
 - [GitHub Self-Hosted Runners](https://docs.github.com/en/actions/hosting-your-own-runners)
 - [GitHub Actions Security](https://docs.github.com/en/actions/security-guides/security-hardening-for-github-actions)
 

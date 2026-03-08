@@ -575,10 +575,10 @@ Expected improvements with caching:
 
 ## Related Documentation
 
-- [GitHub API Cache](../GITHUB_API_CACHE.md) - GitHub-specific caching
-- [CLI Retry and Cache](../CLI_RETRY_AND_CACHE.md) - CLI wrapper caching
-- [Distributed Cache](../DISTRIBUTED_CACHE.md) - P2P cache sharing
-- [Caching Infrastructure Alignment](../CACHING_INFRASTRUCTURE_ALIGNMENT.md) - Cross-repo caching
+- [GitHub API Cache](../guides/github/GITHUB_API_CACHE.md) - GitHub-specific caching
+- [CLI Retry and Cache](../guides/cli/CLI_RETRY_AND_CACHE.md) - CLI wrapper caching
+- [Distributed Cache](../guides/infrastructure/DISTRIBUTED_CACHE.md) - P2P cache sharing
+- [Caching Infrastructure Alignment](../guides/infrastructure/CACHING_INFRASTRUCTURE_ALIGNMENT.md) - Cross-repo caching
 
 ## Future Enhancements
 

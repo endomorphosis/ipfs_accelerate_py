@@ -433,7 +433,7 @@ The platform provides **immediate Fortune 500 enterprise deployment capability**
 - **Community**: [Developer Community Forum](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
 
 ### **Contribution Guidelines**
-- **Development**: See [CONTRIBUTING.md](CONTRIBUTING.md) for development guidelines
+- **Development**: See [CONTRIBUTING.md](../../CONTRIBUTING.md) for development guidelines
 - **Issues**: Use GitHub issues for bug reports and feature requests
 - **Pull Requests**: All contributions welcome with comprehensive testing
 - **Documentation**: Help improve documentation and examples

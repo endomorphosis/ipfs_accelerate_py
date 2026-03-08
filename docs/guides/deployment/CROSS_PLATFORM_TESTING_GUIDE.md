@@ -324,7 +324,7 @@ python test_cross_platform_cache.py
 
 Use the dedicated two-machine smoke tool:
 - [tools/github_p2p_cache_smoke.py](tools/github_p2p_cache_smoke.py)
-- Runbook: [GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md](GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
+- Runbook: [GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md](../github/GITHUB_P2P_CACHE_TWO_LAPTOP_RUNBOOK.md)
 
 Quickstart (recommended):
 

@@ -82,8 +82,8 @@ ipfs_accelerate_py/
 
 **Issue 1: Incorrect README path**
 - **File**: docs/DOCKER_EXECUTION.md
-- **Before**: `[IPFS Accelerate Documentation](../../README.md)`
-- **After**: `[IPFS Accelerate Documentation](../README.md)`
+- **Before**: `[IPFS Accelerate Documentation](../README.md)`
+- **After**: `[IPFS Accelerate Documentation](README.md)`
 - **Fix**: Changed to correct relative path (one level up)
 
 **Issue 2: Incorrect examples/test paths**
@@ -231,7 +231,7 @@ Reviewed all 21 root-level documents:
 
 1. **docs/DOCKER_EXECUTION.md**
    - Fixed README relative path
-   - Change: `../../README.md` → `../README.md`
+   - Change: `../README.md` → `README.md`
 
 2. **docs/architecture/IPFS_KIT_ARCHITECTURE.md**
    - Fixed examples path

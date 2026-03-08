@@ -11,7 +11,7 @@ Comprehensive guides for Docker deployment, caching, and containerized runners.
 
 ## Cache Guides
 
-- **[Docker Cache README](DOCKER_CACHE_README.md)** - Overview of Docker cache system
+- **[Docker Cache README](../infrastructure/DOCKER_CACHE_README.md)** - Overview of Docker cache system
 - **[Docker Cache Quick Start](DOCKER_CACHE_QUICK_START.md)** - Quick setup guide
 - **[Docker Runner Cache Plan](DOCKER_RUNNER_CACHE_PLAN.md)** - Cache architecture for runners
 

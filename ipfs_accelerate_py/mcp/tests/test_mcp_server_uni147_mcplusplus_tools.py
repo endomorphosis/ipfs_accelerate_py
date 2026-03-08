@@ -617,6 +617,131 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_status_result_and_peer_wrappers_apply_sparse_success_defaults(self) -> None:
+        async def _run() -> None:
+            class _TaskQueueEngine:
+                def get_worker_status(self, **_kwargs):
+                    return {"status": "success"}
+
+                def get_result(self, **_kwargs):
+                    return {"status": "success"}
+
+            class _WorkflowEngine:
+                def get_status(self, **_kwargs):
+                    return {"status": "success"}
+
+                def get_dependencies(self, **_kwargs):
+                    return {"status": "success"}
+
+                def get_result(self, **_kwargs):
+                    return {"status": "success"}
+
+            class _PeerEngine:
+                def discover(self, **_kwargs):
+                    return {"status": "success"}
+
+                def get_metrics(self, **_kwargs):
+                    return {"status": "success"}
+
+            with patch.object(
+                mcpp_mod,
+                "_API",
+                new={
+                    "TaskQueueEngine": _TaskQueueEngine,
+                    "WorkflowEngine": _WorkflowEngine,
+                    "PeerEngine": _PeerEngine,
+                },
+            ):
+                worker_status = await mcpp_mod.mcplusplus_worker_status(
+                    "worker-1",
+                    include_tasks=True,
+                    include_metrics=True,
+                )
+                task_result = await mcpp_mod.mcplusplus_taskqueue_result(
+                    "task-1",
+                    include_output=True,
+                    include_logs=True,
+                )
+                workflow_status = await mcpp_mod.mcplusplus_workflow_get_status(
+                    "wf-1",
+                    include_steps=True,
+                    include_metrics=True,
+                )
+                workflow_dependencies = await mcpp_mod.mcplusplus_workflow_dependencies(
+                    "wf-1",
+                    fmt="mermaid",
+                )
+                workflow_result = await mcpp_mod.mcplusplus_workflow_result(
+                    "wf-1",
+                    include_outputs=True,
+                    include_logs=True,
+                )
+                peer_discover = await mcpp_mod.mcplusplus_peer_discover(
+                    capability_filter=["inference"],
+                    max_peers=2,
+                    timeout=15,
+                    include_metrics=True,
+                )
+                peer_metrics = await mcpp_mod.mcplusplus_peer_metrics(
+                    "peer-1",
+                    include_history=True,
+                    history_hours=12,
+                )
+
+            self.assertEqual(worker_status.get("status"), "success")
+            self.assertEqual(worker_status.get("worker_id"), "worker-1")
+            self.assertEqual(worker_status.get("running_tasks"), 0)
+            self.assertEqual(worker_status.get("completed_tasks"), 0)
+            self.assertEqual(worker_status.get("failed_tasks"), 0)
+            self.assertEqual(worker_status.get("tasks"), [])
+            self.assertEqual(worker_status.get("metrics"), {})
+
+            self.assertEqual(task_result.get("status"), "success")
+            self.assertEqual(task_result.get("task_id"), "task-1")
+            self.assertIsNone(task_result.get("result"))
+            self.assertIsNone(task_result.get("output"))
+            self.assertEqual(task_result.get("logs"), [])
+            self.assertEqual(task_result.get("execution_time"), 0)
+
+            self.assertEqual(workflow_status.get("status"), "success")
+            self.assertEqual(workflow_status.get("workflow_id"), "wf-1")
+            self.assertEqual(workflow_status.get("progress"), 0)
+            self.assertEqual(workflow_status.get("steps"), [])
+            self.assertEqual(workflow_status.get("metrics"), {})
+
+            self.assertEqual(workflow_dependencies.get("status"), "success")
+            self.assertEqual(workflow_dependencies.get("workflow_id"), "wf-1")
+            self.assertIsNone(workflow_dependencies.get("dag"))
+            self.assertEqual(workflow_dependencies.get("nodes"), [])
+            self.assertEqual(workflow_dependencies.get("edges"), [])
+            self.assertEqual(workflow_dependencies.get("critical_path"), [])
+            self.assertEqual(workflow_dependencies.get("fmt"), "mermaid")
+
+            self.assertEqual(workflow_result.get("status"), "success")
+            self.assertEqual(workflow_result.get("workflow_id"), "wf-1")
+            self.assertIsNone(workflow_result.get("result"))
+            self.assertIsNone(workflow_result.get("execution_time"))
+            self.assertEqual(workflow_result.get("outputs"), [])
+            self.assertEqual(workflow_result.get("logs"), [])
+
+            self.assertEqual(peer_discover.get("status"), "success")
+            self.assertEqual(peer_discover.get("peers"), [])
+            self.assertEqual(peer_discover.get("discovered_count"), 0)
+            self.assertEqual(peer_discover.get("search_time"), 0)
+            self.assertEqual(peer_discover.get("capability_filter"), ["inference"])
+            self.assertEqual(peer_discover.get("max_peers"), 2)
+            self.assertEqual(peer_discover.get("timeout"), 15)
+
+            self.assertEqual(peer_metrics.get("status"), "success")
+            self.assertEqual(peer_metrics.get("peer_id"), "peer-1")
+            self.assertEqual(peer_metrics.get("current_metrics"), {})
+            self.assertEqual(peer_metrics.get("connection_info"), {})
+            self.assertIsNone(peer_metrics.get("timestamp"))
+            self.assertEqual(peer_metrics.get("history"), [])
+            self.assertEqual(peer_metrics.get("history_hours"), 12)
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

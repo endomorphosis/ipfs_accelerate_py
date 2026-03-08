@@ -324,5 +324,5 @@ All features have been tested:
 
 For more information, see:
 - [CLI Endpoint Integration Guide](CLI_ENDPOINT_INTEGRATION.md)
-- [Complete Documentation](docs/CLI_ENDPOINT_ADAPTERS.md)
+- [Complete Documentation](../../features/cli/CLI_ENDPOINT_ADAPTERS.md)
 - [Usage Examples](examples/cli_endpoint_usage.py)

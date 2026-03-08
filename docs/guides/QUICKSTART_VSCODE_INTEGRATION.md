@@ -616,4 +616,4 @@ After completing VSCode integration:
 
 **Questions?** Create an issue with the `vscode` label or contact the development team.
 
-**Ready for more automation?** Check out [AUTOMATION_INTEGRATION_PLAN.md](./AUTOMATION_INTEGRATION_PLAN.md) for the complete roadmap!
+**Ready for more automation?** Check out [AUTOMATION_INTEGRATION_PLAN.md](../summaries/AUTOMATION_INTEGRATION_PLAN.md) for the complete roadmap!

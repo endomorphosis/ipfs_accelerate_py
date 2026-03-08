@@ -317,7 +317,7 @@ This fix includes the following files:
 ## Related Documentation
 
 - [RUNNER_PERMISSION_FIX.md](RUNNER_PERMISSION_FIX.md) - Original issue documentation
-- [.github/workflows/README_DOCUMENTATION_MAINTENANCE.md](.github/workflows/README_DOCUMENTATION_MAINTENANCE.md)
+- [.github/workflows/README_DOCUMENTATION_MAINTENANCE.md](../../../.github/workflows/README_DOCUMENTATION_MAINTENANCE.md)
 - [GitHub Actions Documentation](https://docs.github.com/en/actions)
 - [Self-hosted Runner Troubleshooting](https://docs.github.com/en/actions/hosting-your-own-runners/managing-self-hosted-runners/about-self-hosted-runners)
 

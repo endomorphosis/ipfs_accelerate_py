@@ -514,4 +514,4 @@ These diagrams illustrate:
 6. **Monitoring:** Observability stack
 7. **Security:** Multi-layer protection
 
-**Next:** Review the full technical document [`HF_MODEL_SERVER_REVIEW.md`](./HF_MODEL_SERVER_REVIEW.md) for implementation details.
+**Next:** Review the full technical document [`review.md`](./review.md) for implementation details.

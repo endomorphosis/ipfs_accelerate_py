@@ -838,9 +838,9 @@ ipfs-accelerate mcp start
 
 - [../../architecture/overview.md](../../architecture/overview.md) - Overall system architecture
 - [../../api/overview.md](../../api/overview.md) - Complete API reference
-- [../p2p/P2P_SETUP_GUIDE.md](../p2p/P2P_SETUP_GUIDE.md) - P2P network setup
-- [../MCP_SETUP_GUIDE.md](../MCP_SETUP_GUIDE.md) - MCP server configuration
-- [../testing/TESTING_README.md](../testing/TESTING_README.md) - Testing framework and best practices
+- [../../guides/p2p/P2P_SETUP_GUIDE.md](../../guides/p2p/P2P_SETUP_GUIDE.md) - P2P network setup
+- [../../guides/MCP_SETUP_GUIDE.md](../../guides/MCP_SETUP_GUIDE.md) - MCP server configuration
+- [../../guides/testing/TESTING_README.md](../../guides/testing/TESTING_README.md) - Testing framework and best practices
 
 ---
 

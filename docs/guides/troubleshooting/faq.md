@@ -74,7 +74,7 @@ Use quantization to reduce memory by 50-75%.
 - ONNX models
 - TensorFlow (with conversion)
 
-See [Supported Models](README.md#model-support) for complete list.
+See [Getting Started](../getting-started/README.md) for complete setup and usage guidance.
 
 ### Q: Can I use my own custom model?
 
@@ -196,7 +196,7 @@ accelerator = IPFSAccelerator()
 
 ### Q: Can I use with Docker?
 
-**A:** Yes! See [Docker Guide](guides/docker/DOCKER_CONTAINER_GUIDE.md) for:
+**A:** Yes! See [Docker Guide](../docker/DOCKER_CONTAINER_GUIDE.md) for:
 - Pre-built images
 - Custom Dockerfile examples
 - Kubernetes deployment
@@ -276,7 +276,7 @@ It automatically:
 - Scales down when idle
 - Manages P2P cache distribution
 
-See [Autoscaler Guide](architecture/AUTOSCALER.md) for full setup.
+See [Autoscaler Guide](../../architecture/AUTOSCALER.md) for full setup.
 
 ### Q: How does the GitHub Actions cache work?
 
@@ -286,7 +286,7 @@ See [Autoscaler Guide](architecture/AUTOSCALER.md) for full setup.
 3. Automatically synchronizes
 4. Falls back to GitHub cache
 
-Setup: [GitHub Actions Guide](guides/github/GITHUB_CACHE_COMPREHENSIVE.md)
+Setup: [GitHub Actions Guide](../github/GITHUB_CACHE_COMPREHENSIVE.md)
 
 ---
 
@@ -301,12 +301,12 @@ Setup: [GitHub Actions Guide](guides/github/GITHUB_CACHE_COMPREHENSIVE.md)
 - 💡 Suggest features
 - 🌍 Translate docs
 
-See [Contributing Guide](../CONTRIBUTING.md) for details.
+See [Contributing Guide](../../../CONTRIBUTING.md) for details.
 
 ### Q: Where can I get help?
 
 **A:** Multiple channels:
-- 📖 [Documentation](README.md)
+- 📖 [Documentation](../../README.md)
 - 🐛 [GitHub Issues](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
 - 💬 [Discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
 - 📧 Email: starworks5@gmail.com
@@ -336,7 +336,7 @@ See [LICENSE](../LICENSE) for full terms.
 5. ✅ Use containerization
 6. ✅ Set up CI/CD pipeline
 
-See [Production Deployment Guide](guides/deployment/DEPLOYMENT_GUIDE.md).
+See [Production Deployment Guide](../deployment/DEPLOYMENT_GUIDE.md).
 
 ### Q: Can I run multiple models simultaneously?
 
@@ -371,7 +371,7 @@ Optimize with: `IPFSAccelerator(enable_cache=True)`
 
 ## Still Have Questions?
 
-- 📖 **Check the docs**: [Complete Documentation](README.md)
+- 📖 **Check the docs**: [Complete Documentation](../../README.md)
 - 💬 **Ask the community**: [GitHub Discussions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
 - 🐛 **Report an issue**: [Issue Tracker](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
 - 📧 **Email us**: starworks5@gmail.com
