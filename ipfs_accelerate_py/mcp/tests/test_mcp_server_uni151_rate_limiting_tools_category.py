@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -87,6 +88,38 @@ class TestMCPServerUNI151RateLimitingToolsCategory(unittest.TestCase):
                 "limit_name must be a non-empty string when provided for stats",
                 str(result.get("error", "")),
             )
+
+        anyio.run(_run)
+
+    def test_rate_limiting_tools_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                __import__(
+                    "ipfs_accelerate_py.mcp_server.tools.rate_limiting_tools.native_rate_limiting_tools_category",
+                    fromlist=["_API"],
+                )._API,
+                {
+                    "configure_rate_limits": _contradictory_failure,
+                    "check_rate_limit": _contradictory_failure,
+                    "manage_rate_limits": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                configured = await configure_rate_limits(limits=[{"name": "api", "requests": 10}])
+                checked = await check_rate_limit(limit_name="api", identifier="client-a")
+                managed = await manage_rate_limits(action="stats", limit_name="api")
+
+            self.assertEqual(configured.get("status"), "error")
+            self.assertEqual(configured.get("error"), "delegate failed")
+
+            self.assertEqual(checked.get("status"), "error")
+            self.assertEqual(checked.get("error"), "delegate failed")
+
+            self.assertEqual(managed.get("status"), "error")
+            self.assertEqual(managed.get("error"), "delegate failed")
 
         anyio.run(_run)
 

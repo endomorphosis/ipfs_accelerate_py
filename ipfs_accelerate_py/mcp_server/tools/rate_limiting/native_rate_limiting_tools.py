@@ -17,6 +17,17 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     return payload
 
 
+def _normalize_delegate_payload(result: Any, *, default_status: str) -> Dict[str, Any]:
+    """Normalize delegated rate-limiter payloads into deterministic status envelopes."""
+    payload = dict(result or {})
+    failed = payload.get("success") is False or bool(payload.get("error")) or bool(payload.get("errors"))
+    if failed:
+        payload["status"] = "error"
+    else:
+        payload.setdefault("status", default_status)
+    return payload
+
+
 def _load_rate_limiter_api() -> Dict[str, Any]:
     """Resolve rate limiting engine from source package with compatibility fallback."""
     candidates = [
@@ -243,10 +254,13 @@ async def check_rate_limit(
             identifier=normalized_identifier,
         )
 
-    payload = dict(result or {})
+    payload = _normalize_delegate_payload(
+        result,
+        default_status="success" if (result or {}).get("allowed", True) else "error",
+    )
     payload.update(
         {
-            "status": payload.get("status", "success" if payload.get("allowed", True) else "error"),
+            "status": payload.get("status"),
             "limit_name": normalized_limit_name,
             "identifier": normalized_identifier,
             "check_time": datetime.now().isoformat(),
@@ -384,19 +398,17 @@ async def manage_rate_limits(
         }
 
     if act == "stats":
-        payload = dict(_rate_limiter.get_stats(name or None) or {})
-        if "error" in payload:
-            payload.setdefault("status", "error")
-        else:
-            payload.setdefault("status", "success")
+        payload = _normalize_delegate_payload(
+            _rate_limiter.get_stats(name or None),
+            default_status="success",
+        )
         return payload
 
     if act == "reset":
-        payload = dict(_rate_limiter.reset_limits(name or None) or {})
-        if "error" in payload:
-            payload.setdefault("status", "error")
-        else:
-            payload.setdefault("status", "success")
+        payload = _normalize_delegate_payload(
+            _rate_limiter.reset_limits(name or None),
+            default_status="success",
+        )
         return payload
 
     return _error_result(f"Unknown action: {act}")

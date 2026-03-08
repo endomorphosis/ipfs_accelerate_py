@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.rate_limiting import native_rate_limiting_tools
 from ipfs_accelerate_py.mcp_server.tools.rate_limiting.native_rate_limiting_tools import (
     check_rate_limit,
     configure_rate_limits,
@@ -89,6 +91,41 @@ class TestMCPServerUNI152NativeRateLimitingTools(unittest.TestCase):
             invalid_action = await manage_rate_limits(action="bad-action")
             self.assertEqual(invalid_action.get("status"), "error")
             self.assertIn("Unknown action", str(invalid_action.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_native_rate_limiting_tools_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _run() -> None:
+            contradictory = {"status": "success", "success": False, "error": "delegate failed"}
+
+            with patch.object(
+                native_rate_limiting_tools._rate_limiter,
+                "check_rate_limit",
+                return_value=contradictory,
+            ), patch.object(
+                native_rate_limiting_tools._rate_limiter,
+                "get_stats",
+                return_value=contradictory,
+            ), patch.object(
+                native_rate_limiting_tools._rate_limiter,
+                "reset_limits",
+                return_value=contradictory,
+            ):
+                checked = await check_rate_limit(limit_name="api", identifier="client-a")
+                stats = await manage_rate_limits(action="stats", limit_name="api")
+                reset = await manage_rate_limits(action="reset", limit_name="api")
+
+            self.assertEqual(checked.get("status"), "error")
+            self.assertEqual(checked.get("error"), "delegate failed")
+
+            self.assertEqual(stats.get("status"), "error")
+            self.assertEqual(stats.get("error"), "delegate failed")
+
+            self.assertEqual(reset.get("status"), "error")
+            self.assertEqual(
+                reset.get("error"),
+                "delegate failed",
+            )
 
         anyio.run(_run)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from importlib import import_module
 from typing import Any, Dict, Optional
 
 logger = logging.getLogger(__name__)
@@ -14,14 +15,30 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     return payload
 
 
+def _normalize_delegate_payload(result: Any, *, default_status: str) -> Dict[str, Any]:
+    """Normalize delegate payloads into deterministic status envelopes."""
+    payload = dict(result or {})
+    failed = (
+        payload.get("success") is False
+        or bool(payload.get("error"))
+        or bool(payload.get("errors"))
+    )
+    if failed:
+        payload["status"] = "error"
+    else:
+        payload.setdefault("status", default_status)
+    return payload
+
+
 def _load_rate_limiting_tools_api() -> Dict[str, Any]:
     """Resolve source rate-limiting-tools APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.rate_limiting_tools.rate_limiting_tools import (  # type: ignore
-            check_rate_limit as _check_rate_limit,
-            configure_rate_limits as _configure_rate_limits,
-            manage_rate_limits as _manage_rate_limits,
+        rate_limiting_tools_module = import_module(
+            "ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.rate_limiting_tools.rate_limiting_tools"
         )
+        _check_rate_limit = getattr(rate_limiting_tools_module, "check_rate_limit")
+        _configure_rate_limits = getattr(rate_limiting_tools_module, "configure_rate_limits")
+        _manage_rate_limits = getattr(rate_limiting_tools_module, "manage_rate_limits")
 
         return {
             "configure_rate_limits": _configure_rate_limits,
@@ -141,9 +158,10 @@ async def configure_rate_limits(
     except Exception as exc:
         return _error_result(f"configure_rate_limits failed: {exc}")
 
-    payload = dict(result or {})
-    if "status" not in payload:
-        payload["status"] = "error" if payload.get("errors") else "success"
+    payload = _normalize_delegate_payload(
+        result,
+        default_status="error" if bool((result or {}).get("errors")) else "success",
+    )
     return payload
 
 
@@ -195,8 +213,10 @@ async def check_rate_limit(
             identifier=normalized_identifier,
         )
 
-    payload = dict(result or {})
-    payload.setdefault("status", "success" if payload.get("allowed", True) else "error")
+    payload = _normalize_delegate_payload(
+        result,
+        default_status="success" if (result or {}).get("allowed", True) else "error",
+    )
     payload.setdefault("limit_name", normalized_limit_name)
     payload.setdefault("identifier", normalized_identifier)
     return payload
@@ -244,12 +264,11 @@ async def manage_rate_limits(
     except Exception as exc:
         return _error_result(f"manage_rate_limits failed: {exc}", action=normalized_action)
 
-    payload = dict(result or {})
+    payload = _normalize_delegate_payload(
+        result,
+        default_status="error" if "error" in dict(result or {}) else "success",
+    )
     payload.setdefault("action", normalized_action)
-    if "error" in payload:
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
     return payload
 
 
