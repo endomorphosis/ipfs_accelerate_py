@@ -618,6 +618,8 @@ Recent execution (2026-03-08):
 60. Revalidated focused `email_tools` direct and unified bootstrap coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni120_email_tools.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`3 passed, 178 deselected`).
 61. Revalidated `discord_tools` contradictory failed-delegate normalization in `ipfs_accelerate_py/mcp_server/tools/discord_tools/native_discord_tools.py` and added the missing unified bootstrap dispatch regression for `discord_list_guilds` so contradictory failed payloads now stay covered through canonical `tools_dispatch`.
 62. Revalidated focused `discord_tools` direct and unified bootstrap coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni130_discord_tools.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`3 passed, 176 deselected`).
+63. Revalidated `vector_store_tools` contradictory failed-delegate normalization in `ipfs_accelerate_py/mcp_server/tools/vector_store_tools/native_vector_store_tools.py` and added the missing unified bootstrap dispatch regression for `vector_index` so contradictory failed payloads now stay covered through canonical `tools_dispatch`.
+64. Revalidated focused `vector_store_tools` direct and unified bootstrap coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni128_vector_store_tools.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`3 passed, 178 deselected`).
 
 Exit:
 

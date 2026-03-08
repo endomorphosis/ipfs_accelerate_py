@@ -12552,6 +12552,65 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_vector_store_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """vector_store_tools dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="vector-store-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.vector_store_tools import native_vector_store_tools
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_vector_store_tools._API,
+                {"vector_index": _contradictory_failure},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "vector_store_tools",
+                        "vector_index",
+                        {
+                            "action": "create",
+                            "index_name": "idx",
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_function_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """functions should expose source-compatible schema and deterministic validation envelopes."""
 
