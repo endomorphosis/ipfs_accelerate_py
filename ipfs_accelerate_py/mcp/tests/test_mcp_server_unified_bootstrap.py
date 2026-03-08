@@ -5967,6 +5967,107 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_frontier_consensus_signal_can_prioritize_execution(self, mock_wrapper):
+        """Consensus signals should optionally prioritize the dispatched frontier item."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakeWorkflowScheduler:
+            def __init__(self):
+                self.calls = []
+
+            async def submit_workflow(self, workflow_name, tasks, metadata=None):
+                self.calls.append(
+                    {
+                        "workflow_name": workflow_name,
+                        "tasks": tasks,
+                        "metadata": metadata,
+                    }
+                )
+                return {"workflow_id": "wf-risk-consensus-1"}
+
+        fake_scheduler = FakeWorkflowScheduler()
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-frontier-consensus")
+
+        server._unified_services["workflow_scheduler_factory"] = lambda **kwargs: fake_scheduler
+        server._unified_services["task_queue_factory"] = lambda **kwargs: None
+
+        risk_scheduler = server._unified_risk_scheduler
+        risk_scheduler.enqueue_frontier(
+            event_cid="cid-preloaded-baseline",
+            actor="did:model:risk-consensus",
+            expected_value=0.75,
+            dependency_ready=True,
+            metadata={"source": "preloaded", "kind": "baseline"},
+        )
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__emit_artifacts": True,
+                    "__risk_actor": "did:model:risk-consensus",
+                    "__execute_frontier": True,
+                    "__enable_frontier_consensus_signal": True,
+                    "__frontier_consensus_signal": {"confidence": 1.0, "disputed": False},
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            frontier = response.get("frontier") or {}
+            execution = frontier.get("execution") or {}
+
+            self.assertEqual(frontier.get("event_cid"), response["artifacts"]["event_cid"])
+            self.assertEqual(execution.get("event_cid"), response["artifacts"]["event_cid"])
+            self.assertEqual(execution.get("workflow_id"), "wf-risk-consensus-1")
+            self.assertEqual(len(fake_scheduler.calls), 1)
+
+            call = fake_scheduler.calls[0]
+            self.assertEqual(call["metadata"]["event_cid"], response["artifacts"]["event_cid"])
+            self.assertEqual(call["tasks"][0]["payload"]["event_cid"], response["artifacts"]["event_cid"])
+            self.assertEqual(
+                call["tasks"][0]["payload"]["metadata"].get("consensus_signal"),
+                {"confidence": 1.0, "disputed": False},
+            )
+            self.assertTrue(call["tasks"][0]["payload"]["metadata"].get("enable_consensus_signal"))
+
+            remaining = risk_scheduler.pop_next()
+            self.assertIsNotNone(remaining)
+            self.assertEqual(remaining.event_cid, "cid-preloaded-baseline")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_result_cache_factory_consumed_on_cache_hit(self, mock_wrapper):
         """tools_dispatch should consume result_cache_factory and short-circuit on cache hit."""
 
@@ -7757,6 +7858,41 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual(default_backend_alias_breakdown.get("backend_count"), 2)
             self.assertNotIn("breakdown", default_backend_alias_breakdown.get("backend_report") or {})
             self.assertEqual(default_backend_alias_breakdown.get("breakdown"), {})
+
+            default_backend_alias_generated_at = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                    },
+                )
+            )
+            self.assertEqual(default_backend_alias_generated_at.get("status"), "success")
+            self.assertEqual(default_backend_alias_generated_at.get("backend_count"), 2)
+            self.assertIsInstance(default_backend_alias_generated_at.get("generated_at"), str)
+            self.assertEqual(
+                default_backend_alias_generated_at.get("generated_at"),
+                (default_backend_alias_generated_at.get("backend_report") or {}).get("generated_at"),
+            )
+
+            default_backend_alias_backend_count = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                    },
+                )
+            )
+            self.assertEqual(default_backend_alias_backend_count.get("status"), "success")
+            self.assertEqual(default_backend_alias_backend_count.get("backend_count"), 2)
+            self.assertEqual(
+                default_backend_alias_backend_count.get("backend_count"),
+                (default_backend_alias_backend_count.get("backend_report") or {}).get("backend_count"),
+            )
 
             backend_status = self._assert_dispatch_success_envelope(
                 await dispatch(

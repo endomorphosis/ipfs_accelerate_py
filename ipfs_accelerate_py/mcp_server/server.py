@@ -764,6 +764,14 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 payload.pop("__risk_policy", {}),
                 field_name="__risk_policy",
             )
+            frontier_consensus_signal = coerce_dispatch_dict(
+                payload.pop("__frontier_consensus_signal", {}),
+                field_name="__frontier_consensus_signal",
+            )
+            enable_frontier_consensus_signal = coerce_dispatch_bool(
+                payload.pop("__enable_frontier_consensus_signal", False),
+                field_name="__enable_frontier_consensus_signal",
+            )
             execute_frontier = coerce_dispatch_bool(
                 payload.pop("__execute_frontier", config.enable_risk_frontier_execution),
                 field_name="__execute_frontier",
@@ -1213,7 +1221,14 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 actor=risk_actor,
                 expected_value=0.75,
                 dependency_ready=True,
-                metadata={"category": category, "tool_name": tool_name},
+                consensus_signal=frontier_consensus_signal,
+                enable_consensus_signal=enable_frontier_consensus_signal,
+                metadata={
+                    "category": category,
+                    "tool_name": tool_name,
+                    "consensus_signal": dict(frontier_consensus_signal),
+                    "enable_consensus_signal": enable_frontier_consensus_signal,
+                },
             )
             event_dag_meta = {
                 "persisted": True,
