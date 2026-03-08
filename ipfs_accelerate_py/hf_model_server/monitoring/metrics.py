@@ -4,8 +4,40 @@ Prometheus metrics integration.
 
 import time
 import logging
-from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 from typing import Dict, Any
+
+try:
+    from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
+    HAVE_PROMETHEUS_CLIENT = True
+except ImportError:
+    HAVE_PROMETHEUS_CLIENT = False
+
+    class _NoopMetric:
+        def labels(self, **_kwargs):
+            return self
+
+        def inc(self, *_args, **_kwargs):
+            return None
+
+        def observe(self, *_args, **_kwargs):
+            return None
+
+        def set(self, *_args, **_kwargs):
+            return None
+
+    def Counter(*_args, **_kwargs):
+        return _NoopMetric()
+
+    def Histogram(*_args, **_kwargs):
+        return _NoopMetric()
+
+    def Gauge(*_args, **_kwargs):
+        return _NoopMetric()
+
+    def generate_latest() -> bytes:
+        return b""
+
+    CONTENT_TYPE_LATEST = "text/plain; version=0.0.4"
 
 logger = logging.getLogger(__name__)
 

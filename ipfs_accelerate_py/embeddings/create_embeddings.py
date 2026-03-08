@@ -3,8 +3,14 @@ import os
 
 
 from aiohttp import ClientSession
-import datasets
-from datasets import load_dataset, Dataset
+
+try:
+    import datasets
+    from datasets import load_dataset, Dataset
+except ImportError:  # pragma: no cover
+    datasets = None  # type: ignore[assignment]
+    load_dataset = None  # type: ignore[assignment]
+    Dataset = None  # type: ignore[assignment]
 
 
 try:

@@ -172,6 +172,9 @@ def _build_unified_services() -> dict[str, Any]:
         "peer_registry_factory": lambda **kwargs: __import__(
             "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["create_peer_registry"]
         ).create_peer_registry(**kwargs),
+        "peer_bootstrap_factory": lambda **kwargs: __import__(
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["create_peer_bootstrap"]
+        ).create_peer_bootstrap(**kwargs),
         "peer_discovery_factory": lambda **kwargs: __import__(
             "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["PeerDiscoveryManager"]
         ).PeerDiscoveryManager(**kwargs),
@@ -790,6 +793,10 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 payload.pop("__discover_peers", False),
                 field_name="__discover_peers",
             )
+            resolve_bootstrap_addrs = coerce_dispatch_bool(
+                payload.pop("__resolve_bootstrap_addrs", False),
+                field_name="__resolve_bootstrap_addrs",
+            )
             peer_probe_limit_raw = payload.pop("__peer_probe_limit", 25)
             peer_probe_limit = int(peer_probe_limit_raw)
             if peer_probe_limit < 1:
@@ -816,6 +823,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             "key": f"{category}.{tool_name}",
         }
         peer_registry_meta: dict[str, Any] | None = None
+        peer_bootstrap_meta: dict[str, Any] | None = None
 
         if use_result_cache and isinstance(services, dict):
             cache_factory = services.get("result_cache_factory")
@@ -873,6 +881,56 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                         peers = [p for p in maybe_peers if isinstance(p, dict)]
                 response["peers"] = peers[:peer_probe_limit]
                 response["peer_count"] = len(response["peers"])
+            except Exception as exc:
+                response["error"] = str(exc)
+
+            return response
+
+        async def _probe_peer_bootstrap() -> dict[str, Any] | None:
+            if not resolve_bootstrap_addrs:
+                return None
+
+            response: dict[str, Any] = {
+                "enabled": True,
+                "factory_used": False,
+                "address_count": 0,
+                "addresses": [],
+                "error": "",
+            }
+
+            if not isinstance(services, dict):
+                response["error"] = "services_unavailable"
+                return response
+
+            bootstrap_factory = services.get("peer_bootstrap_factory")
+            if not callable(bootstrap_factory):
+                response["error"] = "peer_bootstrap_factory_unavailable"
+                return response
+
+            try:
+                response["factory_used"] = True
+                bootstrap = bootstrap_factory()
+                if bootstrap is None:
+                    response["error"] = "peer_bootstrap_unavailable"
+                    return response
+
+                addrs_fn = getattr(bootstrap, "get_bootstrap_addrs", None)
+                if not callable(addrs_fn):
+                    addrs_fn = getattr(bootstrap, "get_bootstrap_nodes", None)
+                if not callable(addrs_fn):
+                    response["error"] = "peer_bootstrap_resolution_unavailable"
+                    return response
+
+                try:
+                    addrs_result = await _invoke_maybe_async(addrs_fn, max_peers=peer_probe_limit)
+                except TypeError:
+                    addrs_result = await _invoke_maybe_async(addrs_fn)
+
+                if isinstance(addrs_result, list):
+                    response["addresses"] = [
+                        item for item in addrs_result[:peer_probe_limit] if isinstance(item, str) and item
+                    ]
+                    response["address_count"] = len(response["addresses"])
             except Exception as exc:
                 response["error"] = str(exc)
 
@@ -1035,6 +1093,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                         cache_meta["hit"] = True
                         if not emit_artifacts:
                             peer_registry_meta = await _probe_peer_registry()
+                            peer_bootstrap_meta = await _probe_peer_bootstrap()
                             obligations = len(policy_decision.obligations) if policy_decision is not None else 0
                             record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
                             policy_decision_label = "allow"
@@ -1060,6 +1119,8 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                                 extra_fields["cache"] = dict(cache_meta)
                             if peer_registry_meta is not None:
                                 extra_fields["peer_registry"] = dict(peer_registry_meta)
+                            if peer_bootstrap_meta is not None:
+                                extra_fields["peer_bootstrap"] = dict(peer_bootstrap_meta)
                             if policy_decision is None:
                                 return _build_success_response(
                                     result=cached,
@@ -1107,6 +1168,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             raise
 
         peer_registry_meta = await _probe_peer_registry()
+        peer_bootstrap_meta = await _probe_peer_bootstrap()
         if not emit_artifacts:
             obligations = len(policy_decision.obligations) if policy_decision is not None else 0
             record = risk_scheduler.record_outcome(actor=risk_actor, allowed=True, obligations=obligations)
@@ -1138,6 +1200,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                         **_authorization_success_fields(),
                         **({"cache": dict(cache_meta)} if use_result_cache else {}),
                         **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
+                        **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
                     },
                 )
             _record_observability("success")
@@ -1151,6 +1214,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                     **_authorization_success_fields(),
                     **({"cache": dict(cache_meta)} if use_result_cache else {}),
                     **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
+                    **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
                 },
             )
 
@@ -1323,6 +1387,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 },
                 **({"cache": dict(cache_meta)} if use_result_cache else {}),
                 **({"peer_registry": dict(peer_registry_meta)} if peer_registry_meta is not None else {}),
+                **({"peer_bootstrap": dict(peer_bootstrap_meta)} if peer_bootstrap_meta is not None else {}),
             },
         )
 

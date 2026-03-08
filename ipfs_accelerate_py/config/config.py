@@ -1,11 +1,16 @@
 import os
 import tempfile
+import importlib
 from tempfile import mkdtemp
 from os import path
 from os import listdir
 from os.path import isfile, join
 from os import walk
-import toml
+
+try:
+    import tomllib as toml
+except ImportError:  # pragma: no cover
+    toml = importlib.import_module("toml")  # type: ignore[assignment]
 
 try:
     from ...common.storage_wrapper import get_storage_wrapper, HAVE_STORAGE_WRAPPER

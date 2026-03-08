@@ -539,6 +539,7 @@ Recent execution (2026-03-08):
 4. Moved shared peer-registration payload construction (`_build_peer_registration_record`) into canonical `ipfs_accelerate_py/mcp_server/compatibility.py`, eliminating duplicate peer-info/timestamp shaping across `mcplusplus_module.p2p.bootstrap` and `mcplusplus_module.p2p.peer_registry` while preserving backend-specific persistence.
 5. Revalidated shim convergence with focused helper/peer-registration coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py -k "missing_dependency_stub or storage_wrapper or detect_runner_name or detect_public_ip or peer_registration_record or register_peer"` (`12 passed, 16 deselected`) plus broader trio/tool adapter regression coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py ipfs_accelerate_py/mcplusplus_module/tests/test_trio_server.py -k "resolve_p2p_registrars or missing_dependency_stub or storage_wrapper or register_p2p_tools or register_peer"` (`14 passed, 31 deselected`).
 6. Added canonical `ipfs_accelerate_py.mcp_server.mcplusplus.peer_bootstrap` wrapper ownership (`PeerBootstrapWrapper`, `create_peer_bootstrap`) so bootstrap discovery/cleanup/address retrieval can be consumed through canonical async-friendly runtime primitives instead of only through the shim helper class.
+7. Wired unified bootstrap service ownership through `peer_bootstrap_factory` and `tools_dispatch` bootstrap-address probing so canonical runtime consumers can resolve bootstrap addresses without direct shim imports, validated by targeted unified-bootstrap coverage (`2 passed`).
 
 Exit:
 
@@ -574,6 +575,7 @@ Recent execution (2026-03-08):
 
 1. Extended `ipfs_accelerate_py/mcp/server.py` with compatibility-facade usage telemetry so legacy-wrapper fallback, unified-bridge handoff, dry-run validation, rollback forcing, and bridge-failure fallback all emit deterministic `_mcp_facade_telemetry` metadata.
 2. Expanded `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py` to validate facade telemetry snapshots and aggregate counters for dry-run success, dry-run failure, force-rollback, and unified-bridge handoff paths (`4 passed`).
+3. Revalidated a focused release-candidate transport/profile matrix across runtime-router dispatch, transport entrypoints, and MCP+p2p profile negotiation with `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_parity.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py`, and `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py -k "profile or initialize or fastapi_runtime or trio_runtime or auto_runtime or direct_manager_dispatch or http_style_meta_tool_dispatch or tools_list_alias or tools_call_alias"` (`18 passed, 12 deselected`).
 
 Exit:
 

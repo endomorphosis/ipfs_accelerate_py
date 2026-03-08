@@ -3,10 +3,16 @@ import time
 import threading
 import hashlib
 import uuid
-import boto3
 import logging
 from concurrent.futures import Future
 from dotenv import load_dotenv
+
+try:
+    import boto3
+    HAVE_BOTO3 = True
+except ImportError:
+    boto3 = None
+    HAVE_BOTO3 = False
 
 # Try to import storage wrapper
 try:

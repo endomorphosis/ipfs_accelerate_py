@@ -289,6 +289,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertIn("workflow_engine_factory", server._unified_services)
         self.assertIn("workflow_dag_executor_factory", server._unified_services)
         self.assertIn("peer_registry_factory", server._unified_services)
+        self.assertIn("peer_bootstrap_factory", server._unified_services)
         self.assertIn("peer_discovery_factory", server._unified_services)
         self.assertIn("result_cache_factory", server._unified_services)
         self.assertIs(server._unified_server_context.services, server._unified_services)
@@ -420,6 +421,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertTrue(callable(services["workflow_engine_factory"]))
         self.assertTrue(callable(services["workflow_dag_executor_factory"]))
         self.assertTrue(callable(services["peer_registry_factory"]))
+        self.assertTrue(callable(services["peer_bootstrap_factory"]))
         self.assertTrue(callable(services["peer_discovery_factory"]))
         self.assertTrue(callable(services["result_cache_factory"]))
 
@@ -433,6 +435,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertTrue(hasattr(workflow_engine, "execute_workflow"))
         self.assertTrue(hasattr(dag_executor, "execute_workflow"))
         self.assertTrue(hasattr(result_cache, "get"))
+        self.assertTrue(hasattr(services["peer_bootstrap_factory"](), "get_bootstrap_addrs"))
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
     def test_unified_bootstrap_attaches_secrets_vault_when_enabled(self, mock_create):
@@ -6231,6 +6234,85 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertTrue(response["peer_registry"]["factory_used"])
             self.assertEqual(response["peer_registry"]["peer_count"], 1)
             self.assertEqual(len(response["peer_registry"]["peers"]), 1)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_peer_bootstrap_factory_consumed_for_addresses(self, mock_wrapper):
+        """tools_dispatch should consume peer_bootstrap_factory when bootstrap resolution is requested."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakePeerBootstrap:
+            def __init__(self):
+                self.calls = []
+
+            async def get_bootstrap_addrs(self, max_peers=5):
+                self.calls.append({"max_peers": max_peers})
+                return [
+                    "/ip4/127.0.0.1/tcp/4001/p2p/peer-a",
+                    "/ip4/127.0.0.1/tcp/4002/p2p/peer-b",
+                ]
+
+        fake_bootstrap = FakePeerBootstrap()
+        factory_calls = {"peer_bootstrap_factory": 0}
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-peer-bootstrap-probe")
+
+        def _peer_bootstrap_factory(**kwargs):
+            _ = kwargs
+            factory_calls["peer_bootstrap_factory"] += 1
+            return fake_bootstrap
+
+        server._unified_services["peer_bootstrap_factory"] = _peer_bootstrap_factory
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__resolve_bootstrap_addrs": True,
+                    "__peer_probe_limit": 1,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            self.assertEqual(factory_calls["peer_bootstrap_factory"], 1)
+            self.assertEqual(len(fake_bootstrap.calls), 1)
+            self.assertEqual(fake_bootstrap.calls[0]["max_peers"], 1)
+            self.assertIn("peer_bootstrap", response)
+            self.assertTrue(response["peer_bootstrap"]["enabled"])
+            self.assertTrue(response["peer_bootstrap"]["factory_used"])
+            self.assertEqual(response["peer_bootstrap"]["address_count"], 1)
+            self.assertEqual(len(response["peer_bootstrap"]["addresses"]), 1)
 
         anyio.run(_run_flow)
 

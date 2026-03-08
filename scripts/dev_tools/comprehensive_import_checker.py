@@ -14,12 +14,46 @@ from typing import List, Tuple
 import importlib.util
 
 
+OPTIONAL_MODULE_PREFIXES = {
+    "TTS",
+    "cloudkit_worker",
+    "datasets",
+    "faster_whisper",
+    "gguf",
+    "joblib",
+    "librosa",
+    "nncf",
+    "openvino",
+    "openvino_genai",
+    "optimum",
+    "playwright",
+    "prometheus_client",
+    "pydub",
+    "pysbd",
+    "sentence_transformers",
+    "selenium",
+    "sentencepiece",
+    "sklearn",
+    "soundfile",
+    "tiktoken",
+    "toml",
+}
+
+
 def _module_exists(module_name: str) -> bool:
     """Return whether an importable module exists."""
     try:
         return importlib.util.find_spec(module_name) is not None
     except (ImportError, ValueError, ModuleNotFoundError):
         return False
+
+
+def _is_optional_module(module_name: str) -> bool:
+    """Return whether a module belongs to a known optional dependency family."""
+    return any(
+        module_name == prefix or module_name.startswith(f"{prefix}.")
+        for prefix in OPTIONAL_MODULE_PREFIXES
+    )
 
 
 def _annotate_parents(tree: ast.AST) -> None:
@@ -135,6 +169,9 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
                 for alias in node.names:
                     # Check if module exists
                     if not (
+                        _is_optional_module(alias.name)
+                        or _is_optional_module(alias.name.split('.')[0])
+                        or
                         _module_exists(alias.name)
                         or _module_exists(alias.name.split('.')[0])
                         or _local_module_exists(file_path, alias.name)
@@ -145,13 +182,16 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
             
             elif isinstance(node, ast.ImportFrom):
                 if node.level > 0:
-                    if not _relative_import_exists(file_path, node):
+                    if not _relative_import_exists(file_path, node) and not _is_guarded_optional_import(node):
                         module_name = node.module or ""
                         errors.append(f"Cannot import from relative module '{'.' * node.level}{module_name}'")
                     continue
 
                 if node.module:
                     if not (
+                        _is_optional_module(node.module)
+                        or _is_optional_module(node.module.split('.')[0])
+                        or
                         _module_exists(node.module)
                         or _module_exists(node.module.split('.')[0])
                         or _local_module_exists(file_path, node.module)

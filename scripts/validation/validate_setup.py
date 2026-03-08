@@ -10,6 +10,8 @@ import os
 import time
 import socket
 import shutil
+import tempfile
+from typing import Optional
 import requests
 from pathlib import Path
 
@@ -37,6 +39,30 @@ def _resolve_cli_command():
 
 
 CLI_COMMAND = _resolve_cli_command()
+
+
+def wait_for_http_ready(base_url: str, process: subprocess.Popen, timeout: float = 30.0) -> tuple[bool, Optional[str]]:
+    """Poll the MCP HTTP surface until it is ready or the process exits."""
+    deadline = time.time() + timeout
+    urls = [f"{base_url}/", f"{base_url}/health", f"{base_url}/dashboard"]
+    last_error: Optional[str] = None
+
+    while time.time() < deadline:
+        if process.poll() is not None:
+            return False, f"server process exited early with code {process.returncode}"
+
+        for url in urls:
+            try:
+                response = requests.get(url, timeout=2)
+                if response.status_code == 200:
+                    return True, None
+                last_error = f"{url} returned HTTP {response.status_code}"
+            except requests.RequestException as exc:
+                last_error = str(exc)
+
+        time.sleep(0.5)
+
+    return False, last_error or f"server did not become ready within {timeout:.0f}s"
 
 
 def run_command(cmd, timeout=30):
@@ -105,19 +131,40 @@ def test_mcp_server():
     
     print(f"   Starting MCP server on port {port}...")
     
-    # Start MCP server in background
-    process = subprocess.Popen(CLI_COMMAND + [
-        "mcp", "start", 
-        "--dashboard", "--host", "127.0.0.1", 
-        "--port", str(port), "--keep-running"
-    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=REPO_ROOT)
+    stdout_log = tempfile.TemporaryFile(mode="w+t")
+    stderr_log = tempfile.TemporaryFile(mode="w+t")
+
+    # Start MCP server in background without blocking on verbose startup logs.
+    process = subprocess.Popen(
+        CLI_COMMAND + [
+            "mcp", "start",
+            "--dashboard", "--host", "127.0.0.1",
+            "--port", str(port), "--keep-running",
+        ],
+        stdout=stdout_log,
+        stderr=stderr_log,
+        cwd=REPO_ROOT,
+        text=True,
+    )
     
-    # Wait for server to start
-    time.sleep(5)
+    base_url = f"http://127.0.0.1:{port}"
     
     try:
-        # Test server response
-        response = requests.get(f"http://127.0.0.1:{port}/", timeout=10)
+        ready, error = wait_for_http_ready(base_url, process, timeout=30.0)
+        if not ready:
+            stdout_log.seek(0)
+            stderr_log.seek(0)
+            stdout_data = stdout_log.read()
+            stderr_data = stderr_log.read()
+            details = error or "unknown startup failure"
+            if stderr_data.strip():
+                details = f"{details} | stderr: {stderr_data.strip()}"
+            elif stdout_data.strip():
+                details = f"{details} | stdout: {stdout_data.strip()}"
+            print(f"❌ MCP server: FAILED - {details}")
+            return False
+
+        response = requests.get(f"{base_url}/", timeout=10)
         if response.status_code == 200:
             print("✅ MCP server: PASSED")
             success = True
@@ -134,6 +181,8 @@ def test_mcp_server():
             process.wait(timeout=5)
         except subprocess.TimeoutExpired:
             process.kill()
+        stdout_log.close()
+        stderr_log.close()
     
     return success
 

@@ -1,4 +1,3 @@
-from ipfs_accelerate_py.worker.anyio_queue import AnyioQueue
 from __future__ import annotations
 
 import threading
