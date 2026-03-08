@@ -9,6 +9,7 @@ import anyio
 
 from ipfs_accelerate_py.mcp_server.mcplusplus.peer_discovery import PeerDiscoveryManager
 from ipfs_accelerate_py.mcp_server.mcplusplus.peer_bootstrap import create_peer_bootstrap
+from ipfs_accelerate_py.mcp_server.mcplusplus.peer_discovery import create_peer_discovery
 from ipfs_accelerate_py.mcp_server.mcplusplus.peer_registry import create_peer_registry
 
 
@@ -98,6 +99,22 @@ class TestPeerPrimitives(unittest.TestCase):
         async def _run() -> None:
             manager = PeerDiscoveryManager(registry=cast(Any, _FakeRegistry()))
             peers = await manager.discover_peers(capability_filter=["compute"])
+            self.assertEqual(len(peers), 1)
+            self.assertEqual(peers[0].peer_id, "peer-a")
+
+        anyio.run(_run)
+
+    def test_create_peer_discovery_uses_service_bundle_registry(self) -> None:
+        async def _run() -> None:
+            fake_registry = cast(Any, _FakeRegistry())
+            with patch(
+                "ipfs_accelerate_py.mcp_server.mcplusplus.peer_discovery.create_peer_service_bundle",
+                return_value=cast(Any, type("Bundle", (), {"peer_registry": fake_registry})()),
+            ):
+                manager = create_peer_discovery()
+                peers = await manager.discover_peers(max_peers=1)
+
+            self.assertIs(manager.registry, fake_registry)
             self.assertEqual(len(peers), 1)
             self.assertEqual(peers[0].peer_id, "peer-a")
 

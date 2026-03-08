@@ -436,6 +436,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertTrue(hasattr(dag_executor, "execute_workflow"))
         self.assertTrue(hasattr(result_cache, "get"))
         self.assertTrue(hasattr(services["peer_bootstrap_factory"](), "get_bootstrap_addrs"))
+        self.assertTrue(hasattr(services["peer_discovery_factory"](), "discover_peers"))
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
     def test_unified_bootstrap_attaches_secrets_vault_when_enabled(self, mock_create):

@@ -38,15 +38,18 @@ _OPTIONAL_FALLBACK_FILTER = _ExpectedOptionalFallbackFilter()
 def _install_optional_fallback_filter() -> None:
     """Attach the optional-fallback warning filter once to root logging sinks."""
     root_logger = logging.getLogger()
-    if any(existing is _OPTIONAL_FALLBACK_FILTER for existing in root_logger.filters):
+    root_filters = list(getattr(root_logger, "filters", []) or [])
+    if any(existing is _OPTIONAL_FALLBACK_FILTER for existing in root_filters):
         pass
-    else:
+    elif hasattr(root_logger, "addFilter"):
         root_logger.addFilter(_OPTIONAL_FALLBACK_FILTER)
 
-    for handler in root_logger.handlers:
-        if any(existing is _OPTIONAL_FALLBACK_FILTER for existing in handler.filters):
+    for handler in list(getattr(root_logger, "handlers", []) or []):
+        handler_filters = list(getattr(handler, "filters", []) or [])
+        if any(existing is _OPTIONAL_FALLBACK_FILTER for existing in handler_filters):
             continue
-        handler.addFilter(_OPTIONAL_FALLBACK_FILTER)
+        if hasattr(handler, "addFilter"):
+            handler.addFilter(_OPTIONAL_FALLBACK_FILTER)
 
 
 def configure_root_logging(level: int = logging.INFO) -> None:

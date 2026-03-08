@@ -578,6 +578,7 @@ Recent execution (2026-03-08):
 2. Expanded `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py` to validate facade telemetry snapshots and aggregate counters for dry-run success, dry-run failure, force-rollback, and unified-bridge handoff paths (`4 passed`).
 3. Revalidated process-level and direct-entry startup behavior after the canonical-default startup flip with focused subprocess, p2p bridge, standalone-app, direct component, and script-style initialization coverage (`3 passed, 6 deselected`; `5 passed, 5 deselected`; script smoke paths completed successfully with populated tool/resource/prompt inventories).
 4. Added focused FastAPI integration/helper coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py` for `initialize_mcp_server()` and `integrate_mcp_with_fastapi()`, then revalidated those helpers plus canonical FastAPI facade delegation in `ipfs_accelerate_py/mcp/tests/test_mcp_server_fastapi_service.py` (`9 passed, 2 deselected`).
+5. Added focused CLI startup coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_cli.py`, confirming the CLI still constructs the compatibility facade and delegates to `mcp_server.run()` with the parsed host/port contract in normal and `--dev` modes after the canonical-default startup change (`2 passed`).
 
 Exit:
 

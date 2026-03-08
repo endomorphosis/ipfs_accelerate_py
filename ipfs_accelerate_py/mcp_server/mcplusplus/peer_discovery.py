@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
 from .peer_registry import PeerRegistryWrapper, create_peer_registry
+from .peer_services import PeerServiceBundle, create_peer_service_bundle
 
 
 @dataclass
@@ -36,8 +37,25 @@ class PeerInfo:
 class PeerDiscoveryManager:
     """Aggregate and normalize peers from registry backends."""
 
-    def __init__(self, registry: Optional[PeerRegistryWrapper] = None):
-        self.registry = registry or create_peer_registry()
+    def __init__(
+        self,
+        registry: Optional[PeerRegistryWrapper] = None,
+        *,
+        service_bundle: Optional[PeerServiceBundle] = None,
+        repo: str = "endomorphosis/ipfs_accelerate_py",
+        bootstrap_nodes: Optional[List[str]] = None,
+    ):
+        bundle = service_bundle
+        if registry is None and bundle is None:
+            bundle = create_peer_service_bundle(
+                repo=repo,
+                bootstrap_nodes=bootstrap_nodes,
+                enable_bootstrap=False,
+            )
+        self.registry = registry or (bundle.peer_registry if bundle is not None else None) or create_peer_registry(
+            repo=repo,
+            bootstrap_nodes=bootstrap_nodes,
+        )
 
     async def discover_peers(
         self,
@@ -78,7 +96,24 @@ class PeerDiscoveryManager:
         return peers
 
 
+def create_peer_discovery(
+    registry: Optional[PeerRegistryWrapper] = None,
+    *,
+    service_bundle: Optional[PeerServiceBundle] = None,
+    repo: str = "endomorphosis/ipfs_accelerate_py",
+    bootstrap_nodes: Optional[List[str]] = None,
+) -> PeerDiscoveryManager:
+    """Create peer discovery manager through the canonical peer-service path."""
+    return PeerDiscoveryManager(
+        registry=registry,
+        service_bundle=service_bundle,
+        repo=repo,
+        bootstrap_nodes=bootstrap_nodes,
+    )
+
+
 __all__ = [
     "PeerInfo",
     "PeerDiscoveryManager",
+    "create_peer_discovery",
 ]

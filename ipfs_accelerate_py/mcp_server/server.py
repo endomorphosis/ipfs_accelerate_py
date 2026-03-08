@@ -176,8 +176,8 @@ def _build_unified_services() -> dict[str, Any]:
             "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["create_peer_bootstrap"]
         ).create_peer_bootstrap(**kwargs),
         "peer_discovery_factory": lambda **kwargs: __import__(
-            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["PeerDiscoveryManager"]
-        ).PeerDiscoveryManager(**kwargs),
+            "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["create_peer_discovery"]
+        ).create_peer_discovery(**kwargs),
         "result_cache_factory": lambda **kwargs: __import__(
             "ipfs_accelerate_py.mcp_server.mcplusplus", fromlist=["ResultCache", "MemoryCacheBackend"]
         ).ResultCache(backend=__import__(
