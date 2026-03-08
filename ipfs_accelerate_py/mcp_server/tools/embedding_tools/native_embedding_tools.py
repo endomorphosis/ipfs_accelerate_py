@@ -420,6 +420,13 @@ async def generate_embeddings(
 
     normalized = dict(payload or {})
     normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized.setdefault("model_name", normalized_model_name)
+    normalized.setdefault("embeddings", [])
+    normalized.setdefault("count", len(texts))
+    if "dimension" not in normalized:
+        embeddings = normalized.get("embeddings") or []
+        first_embedding = embeddings[0] if embeddings and isinstance(embeddings[0], list) else []
+        normalized["dimension"] = len(first_embedding)
     return normalized
 
 

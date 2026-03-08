@@ -73,6 +73,27 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_text_to_fol_success_defaults_are_source_like(self) -> None:
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch.dict(native_dataset_tools._API, {"text_to_fol": _minimal}, clear=False):
+                result = await native_dataset_tools.text_to_fol(
+                    text_input="All humans are mortal",
+                    output_format="json",
+                    confidence_threshold=0.75,
+                )
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("fol_formulas"), [])
+                self.assertEqual(result.get("summary", {}).get("total_statements"), 0)
+                self.assertEqual(result.get("summary", {}).get("unique_predicates"), [])
+                self.assertEqual(result.get("metadata", {}).get("tool"), "text_to_fol")
+                self.assertEqual(result.get("metadata", {}).get("output_format"), "json")
+                self.assertEqual(result.get("metadata", {}).get("confidence_threshold"), 0.75)
+
+        anyio.run(_run)
+
     def test_legal_text_to_deontic_validates_flags_and_wraps_exceptions(self) -> None:
         async def _boom(**_: object) -> dict:
             raise RuntimeError("deontic boom")
@@ -94,6 +115,31 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_legal_text_to_deontic_success_defaults_are_source_like(self) -> None:
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch.dict(native_dataset_tools._API, {"legal_text_to_deontic": _minimal}, clear=False):
+                result = await native_dataset_tools.legal_text_to_deontic(
+                    text_input="Drivers must stop at red lights",
+                    jurisdiction="us",
+                    document_type="statute",
+                    output_format="json",
+                )
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("deontic_formulas"), [])
+                self.assertEqual(result.get("normative_structure", {}).get("obligations"), [])
+                self.assertEqual(result.get("legal_entities"), [])
+                self.assertEqual(result.get("actions"), [])
+                self.assertEqual(result.get("conflicts"), [])
+                self.assertEqual(result.get("summary", {}).get("total_normative_statements"), 0)
+                self.assertEqual(result.get("metadata", {}).get("tool"), "legal_text_to_deontic")
+                self.assertEqual(result.get("metadata", {}).get("jurisdiction"), "us")
+                self.assertEqual(result.get("metadata", {}).get("document_type"), "statute")
+
+        anyio.run(_run)
+
     def test_dataset_tools_claudes_success_defaults_and_exception_wrapping(self) -> None:
         async def _minimal() -> dict:
             return {"status": "success"}
@@ -112,6 +158,58 @@ class TestMCPServerUNI157DatasetTools(unittest.TestCase):
                 failed = await native_dataset_tools.dataset_tools_claudes()
                 self.assertEqual(failed.get("status"), "error")
                 self.assertIn("dataset_tools_claudes failed", str(failed.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_delegate_payloads_with_success_false_infer_error_status(self) -> None:
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _failed_noargs() -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_dataset_tools._API,
+                {
+                    "load_dataset": _failed,
+                    "save_dataset": _failed,
+                    "process_dataset": _failed,
+                    "convert_dataset_format": _failed,
+                    "text_to_fol": _failed,
+                    "legal_text_to_deontic": _failed,
+                    "dataset_tools_claudes": _failed_noargs,
+                },
+                clear=False,
+            ):
+                load_result = await native_dataset_tools.load_dataset(source="dataset://demo")
+                self.assertEqual(load_result.get("status"), "error")
+
+                save_result = await native_dataset_tools.save_dataset(dataset_data={"rows": []}, destination="/tmp/out.json")
+                self.assertEqual(save_result.get("status"), "error")
+
+                process_result = await native_dataset_tools.process_dataset(
+                    dataset_source="dataset://demo",
+                    operations=[{"type": "filter"}],
+                )
+                self.assertEqual(process_result.get("status"), "error")
+
+                convert_result = await native_dataset_tools.convert_dataset_format(
+                    dataset_id="dataset-1",
+                    target_format="json",
+                )
+                self.assertEqual(convert_result.get("status"), "error")
+
+                fol_result = await native_dataset_tools.text_to_fol(text_input="All humans are mortal")
+                self.assertEqual(fol_result.get("status"), "error")
+
+                deontic_result = await native_dataset_tools.legal_text_to_deontic(
+                    text_input="Drivers must stop at red lights",
+                )
+                self.assertEqual(deontic_result.get("status"), "error")
+
+                claudes_result = await native_dataset_tools.dataset_tools_claudes()
+                self.assertEqual(claudes_result.get("status"), "error")
 
         anyio.run(_run)
 

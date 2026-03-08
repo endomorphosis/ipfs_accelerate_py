@@ -118,6 +118,31 @@ class TestMCPServerUNI165SearchTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_faceted_search_success_applies_deterministic_result_defaults(self) -> None:
+        async def _faceted_minimal(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch.dict(native_search_tools._API, {"faceted": _faceted_minimal}, clear=False):
+                result = await native_search_tools.faceted_search(
+                    query="hello",
+                    facets={"category": ["news"]},
+                    aggregations=["category"],
+                    top_k=4,
+                    collection="demo-collection",
+                )
+            self.assertEqual(result.get("status"), "success")
+            self.assertEqual(result.get("query"), "hello")
+            self.assertEqual(result.get("facets"), {"category": ["news"]})
+            self.assertEqual(result.get("aggregations"), ["category"])
+            self.assertEqual(result.get("top_k"), 4)
+            self.assertEqual(result.get("collection"), "demo-collection")
+            self.assertEqual(result.get("results"), [])
+            self.assertEqual(result.get("facet_counts"), {})
+            self.assertEqual(result.get("total_found"), 0)
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

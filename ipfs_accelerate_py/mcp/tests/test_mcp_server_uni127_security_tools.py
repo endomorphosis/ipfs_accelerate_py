@@ -130,11 +130,54 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_check_access_permission_error_only_delegate_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
+            ) as mock_impl:
+                async def _impl(**kwargs):
+                    _ = kwargs
+                    return {"error": "backend denied"}
+
+                mock_impl.side_effect = _impl
+
+                result = await check_access_permission(
+                    resource_id="resource-1",
+                    user_id="user-1",
+                    permission_type="read",
+                )
+
+                self.assertEqual(result.get("status"), "error")
+                self.assertEqual(result.get("allowed"), False)
+                self.assertEqual(result.get("resource_id"), "resource-1")
+                self.assertEqual(result.get("user_id"), "user-1")
+                self.assertIn("backend denied", str(result.get("error", "")))
+
+        anyio.run(_run)
+
     def test_check_access_permissions_batch_requires_non_empty_array(self) -> None:
         async def _run() -> None:
             result = await check_access_permissions_batch(requests=[])
             self.assertEqual(result.get("status"), "error")
             self.assertIn("non-empty array", str(result.get("error", "")))
+            self.assertEqual(result.get("processed"), 0)
+            self.assertEqual(result.get("requested"), 0)
+            self.assertEqual(result.get("all_allowed"), False)
+            self.assertEqual(result.get("fail_fast"), False)
+
+        anyio.run(_run)
+
+    def test_check_access_permissions_batch_rejects_non_boolean_fail_fast(self) -> None:
+        async def _run() -> None:
+            result = await check_access_permissions_batch(
+                requests=[{"resource_id": "resource-1", "user_id": "user-1"}],
+                fail_fast="yes",  # type: ignore[arg-type]
+            )
+            self.assertEqual(result.get("status"), "error")
+            self.assertIn("fail_fast must be a boolean", str(result.get("error", "")))
+            self.assertEqual(result.get("processed"), 0)
+            self.assertEqual(result.get("requested"), 1)
+            self.assertEqual(result.get("all_allowed"), False)
 
         anyio.run(_run)
 
@@ -169,6 +212,36 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
             self.assertEqual(result.get("processed"), 1)
             self.assertEqual(result.get("requested"), 2)
             self.assertGreaterEqual(int(result.get("error_count", 0)), 1)
+
+        anyio.run(_run)
+
+    def test_check_access_permissions_batch_counts_error_only_delegate_payloads(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
+            ) as mock_impl:
+                async def _impl(**kwargs):
+                    if kwargs.get("resource_id") == "resource-1":
+                        return {"error": "backend denied"}
+                    return {"allowed": True}
+
+                mock_impl.side_effect = _impl
+
+                result = await check_access_permissions_batch(
+                    requests=[
+                        {"resource_id": "resource-1", "user_id": "user-1", "permission_type": "read"},
+                        {"resource_id": "resource-2", "user_id": "user-2", "permission_type": "read"},
+                    ],
+                    fail_fast=False,
+                )
+
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("processed"), 2)
+                self.assertEqual(result.get("requested"), 2)
+                self.assertEqual(result.get("error_count"), 1)
+                self.assertEqual(result.get("allowed_count"), 1)
+                self.assertEqual(result.get("denied_count"), 0)
+                self.assertEqual(result.get("all_allowed"), False)
 
         anyio.run(_run)
 

@@ -48,3 +48,13 @@ def test_safe_subpackages_import_from_repo_checkout(monkeypatch) -> None:
     assert Path(duckdb_schema.__file__).is_file()
     assert importlib.util.find_spec("data.duckdb.core") is not None
     assert importlib.util.find_spec("data.duckdb.utils") is not None
+
+
+def test_legacy_generator_template_database_import_surface(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(REPO_ROOT / "scripts" / "generators"))
+
+    legacy_template_db = _import_module("hardware_test_templates.template_database")
+
+    assert hasattr(legacy_template_db, "TemplateDatabase")
+    assert hasattr(legacy_template_db, "get_template")
+    assert hasattr(legacy_template_db, "list_templates")

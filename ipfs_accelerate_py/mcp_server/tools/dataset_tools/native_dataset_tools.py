@@ -225,6 +225,45 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     return payload
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic error-status inference."""
+    normalized = dict(payload or {})
+    has_error = bool(normalized.get("error"))
+    failed = normalized.get("success") is False or has_error
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
+def _default_fol_summary() -> Dict[str, Any]:
+    """Return an empty source-like FOL summary envelope."""
+    return {
+        "total_statements": 0,
+        "successful_conversions": 0,
+        "conversion_rate": 0.0,
+        "average_confidence": 0.0,
+        "unique_predicates": [],
+        "quantifier_distribution": {"∀": 0, "∃": 0},
+        "operator_distribution": {"∧": 0, "∨": 0, "→": 0, "↔": 0, "¬": 0},
+    }
+
+
+def _default_deontic_summary() -> Dict[str, Any]:
+    """Return an empty source-like deontic summary envelope."""
+    return {
+        "total_normative_statements": 0,
+        "successful_conversions": 0,
+        "conversion_rate": 0.0,
+        "average_confidence": 0.0,
+        "normative_distribution": {"obligations": 0, "permissions": 0, "prohibitions": 0},
+        "conflicts_detected": 0,
+        "unique_entities": 0,
+        "unique_actions": 0,
+    }
+
+
 async def _await_maybe(result: Any) -> Dict[str, Any]:
     """Await coroutine-like API results while supporting direct return values."""
     if hasattr(result, "__await__"):
@@ -272,8 +311,7 @@ async def load_dataset(
     except Exception as exc:
         return _error_result(f"load_dataset failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -327,8 +365,7 @@ async def save_dataset(
     except Exception as exc:
         return _error_result(f"save_dataset failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -374,8 +411,7 @@ async def process_dataset(
     except Exception as exc:
         return _error_result(f"process_dataset failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -427,8 +463,7 @@ async def convert_dataset_format(
     except Exception as exc:
         return _error_result(f"convert_dataset_format failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -482,8 +517,17 @@ async def text_to_fol(
     except Exception as exc:
         return _error_result(f"text_to_fol failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
+    normalized.setdefault("fol_formulas", [])
+    normalized.setdefault("summary", _default_fol_summary())
+    normalized.setdefault(
+        "metadata",
+        {
+            "tool": "text_to_fol",
+            "output_format": normalized_output_format,
+            "confidence_threshold": normalized_confidence,
+        },
+    )
     return normalized
 
 
@@ -534,8 +578,26 @@ async def legal_text_to_deontic(
     except Exception as exc:
         return _error_result(f"legal_text_to_deontic failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
+    normalized.setdefault("deontic_formulas", [])
+    normalized.setdefault(
+        "normative_structure",
+        {"obligations": [], "permissions": [], "prohibitions": []},
+    )
+    normalized.setdefault("legal_entities", [])
+    normalized.setdefault("actions", [])
+    normalized.setdefault("temporal_constraints", [])
+    normalized.setdefault("conflicts", [])
+    normalized.setdefault("summary", _default_deontic_summary())
+    normalized.setdefault(
+        "metadata",
+        {
+            "tool": "legal_text_to_deontic",
+            "jurisdiction": normalized_jurisdiction,
+            "document_type": normalized_document_type,
+            "output_format": normalized_output_format,
+        },
+    )
     return normalized
 
 
@@ -548,8 +610,7 @@ async def dataset_tools_claudes() -> Dict[str, Any]:
     except Exception as exc:
         return _error_result(f"dataset_tools_claudes failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("message", "ClaudesDatasetTool initialized successfully")
     normalized.setdefault("tool_type", "Dataset processing tool")
     normalized.setdefault("available_methods", ["process_data"])

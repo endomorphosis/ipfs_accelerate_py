@@ -11557,6 +11557,26 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn("requests must be a non-empty array", invalid_batch_text)
 
+            invalid_fail_fast = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "security_tools",
+                    "check_access_permissions_batch",
+                    {
+                        "requests": [
+                            {"resource_id": "resource-1", "user_id": "user-1", "permission_type": "read"}
+                        ],
+                        "fail_fast": "yes",
+                    },
+                )
+            )
+            self.assertEqual(invalid_fail_fast.get("status"), "error")
+            invalid_fail_fast_text = (
+                str(invalid_fail_fast.get("message", ""))
+                + " "
+                + str(invalid_fail_fast.get("error", ""))
+            )
+            self.assertIn("fail_fast must be a boolean", invalid_fail_fast_text)
+
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")

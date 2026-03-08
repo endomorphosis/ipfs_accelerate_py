@@ -406,7 +406,7 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                 task_type="demo",
                 payload={"x": 1},
             )
-            self.assertIn(submit.get("status"), ["success", "error"])
+            self.assertIn(submit.get("status"), ["queued", "success", "error"])
 
             task_priority = await mcpp_mod.mcplusplus_taskqueue_priority(
                 task_id="task-1",
@@ -437,19 +437,19 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
             self.assertIn(task_retry.get("status"), ["success", "error"])
 
             task_pause = await mcpp_mod.mcplusplus_taskqueue_pause(reason="maintenance")
-            self.assertIn(task_pause.get("status"), ["success", "error"])
+            self.assertIn(task_pause.get("status"), ["paused", "success", "error"])
 
             task_resume = await mcpp_mod.mcplusplus_taskqueue_resume(reorder_by_priority=True)
-            self.assertIn(task_resume.get("status"), ["success", "error"])
+            self.assertIn(task_resume.get("status"), ["active", "success", "error"])
 
             task_clear = await mcpp_mod.mcplusplus_taskqueue_clear(confirm=False)
             self.assertIn(task_clear.get("status"), ["success", "error"])
 
             task_pause = await mcpp_mod.mcplusplus_taskqueue_pause()
-            self.assertIn(task_pause.get("status"), ["success", "error"])
+            self.assertIn(task_pause.get("status"), ["paused", "success", "error"])
 
             task_resume = await mcpp_mod.mcplusplus_taskqueue_resume()
-            self.assertIn(task_resume.get("status"), ["success", "error"])
+            self.assertIn(task_resume.get("status"), ["active", "success", "error"])
 
             task_clear = await mcpp_mod.mcplusplus_taskqueue_clear(confirm=True)
             self.assertIn(task_clear.get("status"), ["success", "error"])
@@ -483,7 +483,7 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
             self.assertIn(workflow_list.get("status"), ["success", "error"])
 
             task_cancel = await mcpp_mod.mcplusplus_taskqueue_cancel(task_id="task-1")
-            self.assertIn(task_cancel.get("status"), ["success", "error"])
+            self.assertIn(task_cancel.get("status"), ["cancelled", "success", "error"])
 
             task_list = await mcpp_mod.mcplusplus_taskqueue_list(limit=5)
             self.assertIn(task_list.get("status"), ["success", "error"])
@@ -520,13 +520,13 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
                 worker_id="worker-1",
                 capabilities=["inference"],
             )
-            self.assertIn(worker_register.get("status"), ["success", "error"])
+            self.assertIn(worker_register.get("status"), ["active", "success", "error"])
 
             worker_status = await mcpp_mod.mcplusplus_worker_status(worker_id="worker-1")
             self.assertIn(worker_status.get("status"), ["success", "error"])
 
             worker_unregister = await mcpp_mod.mcplusplus_worker_unregister(worker_id="worker-1")
-            self.assertIn(worker_unregister.get("status"), ["success", "error"])
+            self.assertIn(worker_unregister.get("status"), ["unregistered", "success", "error"])
 
         anyio.run(_run)
 
@@ -739,6 +739,177 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
             self.assertIsNone(peer_metrics.get("timestamp"))
             self.assertEqual(peer_metrics.get("history"), [])
             self.assertEqual(peer_metrics.get("history_hours"), 12)
+
+        anyio.run(_run)
+
+    def test_taskqueue_mutation_wrappers_apply_sparse_success_defaults(self) -> None:
+        async def _run() -> None:
+            class _TaskQueueEngine:
+                def submit(self, **_kwargs):
+                    return {"status": "success"}
+
+                def cancel(self, **_kwargs):
+                    return {"status": "success"}
+
+                def retry(self, **_kwargs):
+                    return {"status": "success"}
+
+                def pause(self, **_kwargs):
+                    return {"status": "success"}
+
+                def resume(self, **_kwargs):
+                    return {"status": "success"}
+
+                def clear(self, **_kwargs):
+                    return {"status": "success"}
+
+                def register_worker(self, **_kwargs):
+                    return {"status": "success"}
+
+                def unregister_worker(self, **_kwargs):
+                    return {"status": "success"}
+
+                def set_priority(self, **_kwargs):
+                    return {"status": "success"}
+
+            class _WorkflowEngine:
+                def submit(self, **_kwargs):
+                    return {"status": "success"}
+
+                def cancel(self, **_kwargs):
+                    return {"status": "success"}
+
+            class _PeerEngine:
+                def connect(self, **_kwargs):
+                    return {"status": "success"}
+
+                def disconnect(self, **_kwargs):
+                    return {"status": "success"}
+
+                def bootstrap(self, **_kwargs):
+                    return {"status": "success"}
+
+            with patch.object(
+                mcpp_mod,
+                "_API",
+                new={
+                    "TaskQueueEngine": _TaskQueueEngine,
+                    "WorkflowEngine": _WorkflowEngine,
+                    "PeerEngine": _PeerEngine,
+                },
+            ):
+                submit = await mcpp_mod.mcplusplus_taskqueue_submit(
+                    task_id="task-1",
+                    task_type="demo",
+                    payload={"x": 1},
+                )
+                priority = await mcpp_mod.mcplusplus_taskqueue_priority("task-1", 2.5, requeue=False)
+                cancel = await mcpp_mod.mcplusplus_taskqueue_cancel("task-1")
+                retry = await mcpp_mod.mcplusplus_taskqueue_retry("task-1")
+                pause = await mcpp_mod.mcplusplus_taskqueue_pause()
+                resume = await mcpp_mod.mcplusplus_taskqueue_resume(reorder_by_priority=True)
+                clear = await mcpp_mod.mcplusplus_taskqueue_clear(confirm=True)
+                register = await mcpp_mod.mcplusplus_worker_register(
+                    worker_id="worker-1",
+                    capabilities=["inference"],
+                )
+                unregister = await mcpp_mod.mcplusplus_worker_unregister("worker-1")
+                workflow_submit = await mcpp_mod.mcplusplus_workflow_submit(
+                    workflow_id="wf-1",
+                    name="demo",
+                    steps=[{"step_id": "s1", "action": "noop"}],
+                )
+                workflow_cancel = await mcpp_mod.mcplusplus_workflow_cancel("wf-1")
+                peer_connect = await mcpp_mod.mcplusplus_peer_connect(
+                    "peer-1",
+                    "/ip4/127.0.0.1/tcp/4001",
+                    persist=False,
+                )
+                peer_disconnect = await mcpp_mod.mcplusplus_peer_disconnect("peer-1", graceful=False)
+                peer_bootstrap = await mcpp_mod.mcplusplus_peer_bootstrap_network(max_connections=5)
+
+            self.assertEqual(submit.get("status"), "queued")
+            self.assertEqual(submit.get("task_id"), "task-1")
+            self.assertEqual(submit.get("queue_position"), 0)
+            self.assertIsNone(submit.get("estimated_start_time"))
+            self.assertIsNone(submit.get("assigned_worker"))
+
+            self.assertEqual(priority.get("status"), "success")
+            self.assertEqual(priority.get("task_id"), "task-1")
+            self.assertEqual(priority.get("old_priority"), 1.0)
+            self.assertEqual(priority.get("new_priority"), 2.5)
+            self.assertIsNone(priority.get("new_queue_position"))
+            self.assertEqual(priority.get("requeue"), False)
+
+            self.assertEqual(cancel.get("status"), "cancelled")
+            self.assertEqual(cancel.get("task_id"), "task-1")
+            self.assertIsNone(cancel.get("cancelled_at"))
+            self.assertEqual(cancel.get("cleanup_required"), False)
+
+            self.assertEqual(retry.get("status"), "success")
+            self.assertEqual(retry.get("task_id"), "task-1")
+            self.assertIsNone(retry.get("retry_task_id"))
+            self.assertEqual(retry.get("retry_count"), 1)
+
+            self.assertEqual(pause.get("status"), "paused")
+            self.assertIsNone(pause.get("paused_at"))
+            self.assertEqual(pause.get("queued_tasks"), 0)
+            self.assertEqual(pause.get("running_tasks"), 0)
+
+            self.assertEqual(resume.get("status"), "active")
+            self.assertIsNone(resume.get("resumed_at"))
+            self.assertEqual(resume.get("queued_tasks"), 0)
+            self.assertEqual(resume.get("reordered"), False)
+            self.assertEqual(resume.get("reorder_by_priority"), True)
+
+            self.assertEqual(clear.get("status"), "success")
+            self.assertEqual(clear.get("cleared_count"), 0)
+            self.assertEqual(clear.get("remaining_count"), 0)
+            self.assertIsNone(clear.get("cleared_at"))
+            self.assertEqual(clear.get("confirm"), True)
+
+            self.assertEqual(register.get("status"), "active")
+            self.assertEqual(register.get("worker_id"), "worker-1")
+            self.assertIsNone(register.get("registered_at"))
+            self.assertEqual(register.get("assigned_peers"), [])
+
+            self.assertEqual(unregister.get("status"), "unregistered")
+            self.assertEqual(unregister.get("worker_id"), "worker-1")
+            self.assertIsNone(unregister.get("unregistered_at"))
+            self.assertEqual(unregister.get("completed_tasks"), 0)
+            self.assertEqual(unregister.get("abandoned_tasks"), 0)
+
+            self.assertEqual(workflow_submit.get("status"), "submitted")
+            self.assertEqual(workflow_submit.get("workflow_id"), "wf-1")
+            self.assertIsNone(workflow_submit.get("peer_assigned"))
+            self.assertIsNone(workflow_submit.get("estimated_start_time"))
+
+            self.assertEqual(workflow_cancel.get("status"), "cancelled")
+            self.assertEqual(workflow_cancel.get("workflow_id"), "wf-1")
+            self.assertEqual(workflow_cancel.get("cancelled_steps"), 0)
+
+            self.assertEqual(peer_connect.get("status"), "success")
+            self.assertEqual(peer_connect.get("peer_id"), "peer-1")
+            self.assertEqual(peer_connect.get("multiaddr"), "/ip4/127.0.0.1/tcp/4001")
+            self.assertIsNone(peer_connect.get("connection_id"))
+            self.assertEqual(peer_connect.get("peer_capabilities"), [])
+            self.assertEqual(peer_connect.get("persist"), False)
+            self.assertEqual(peer_connect.get("attempts"), 1)
+
+            self.assertEqual(peer_disconnect.get("status"), "success")
+            self.assertEqual(peer_disconnect.get("peer_id"), "peer-1")
+            self.assertEqual(peer_disconnect.get("was_connected"), True)
+            self.assertEqual(peer_disconnect.get("graceful"), False)
+            self.assertEqual(peer_disconnect.get("cleanup_performed"), True)
+            self.assertEqual(peer_disconnect.get("disconnection_time"), 0.0)
+
+            self.assertEqual(peer_bootstrap.get("status"), "success")
+            self.assertEqual(peer_bootstrap.get("connected_count"), 0)
+            self.assertEqual(peer_bootstrap.get("failed_count"), 0)
+            self.assertEqual(peer_bootstrap.get("bootstrap_nodes_used"), [])
+            self.assertEqual(peer_bootstrap.get("connected_peers"), [])
+            self.assertEqual(peer_bootstrap.get("network_ready"), False)
+            self.assertEqual(peer_bootstrap.get("max_connections"), 5)
 
         anyio.run(_run)
 

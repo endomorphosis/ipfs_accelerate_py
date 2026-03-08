@@ -224,10 +224,45 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
 
             self.assertEqual(health_result.get("status"), "success")
             self.assertIn("timestamp", health_result)
-            self.assertEqual(health_result.get("diagnostics"), {})
+            self.assertEqual(
+                health_result.get("health_check"),
+                {
+                    "overall_status": "healthy",
+                    "services": [],
+                    "system_metrics": {},
+                },
+            )
+            self.assertEqual(health_result.get("recommendations"), ["System is healthy, continue monitoring"])
+            self.assertEqual(
+                health_result.get("diagnostics"),
+                {
+                    "performance_score": 85.2,
+                    "availability_percent": 99.8,
+                    "reliability_index": 0.95,
+                    "recent_incidents": 0,
+                    "mttr_minutes": 0.0,
+                    "mtbf_hours": 0.0,
+                },
+            )
 
             self.assertEqual(metrics_result.get("status"), "success")
-            self.assertEqual(metrics_result.get("trend_analysis"), {})
+            self.assertEqual(
+                metrics_result.get("metrics_collection"),
+                {
+                    "metrics": {},
+                    "time_window": "1h",
+                    "aggregation": "average",
+                },
+            )
+            self.assertEqual(
+                metrics_result.get("trend_analysis"),
+                {
+                    "cpu_trend": "stable",
+                    "memory_trend": "stable",
+                    "overall_trend": "stable",
+                    "trend_confidence": 0.0,
+                },
+            )
             self.assertEqual(metrics_result.get("anomaly_detection"), {"anomalies_found": 0, "anomalies": []})
             self.assertEqual(metrics_result.get("export_info"), {"format": "csv"})
 

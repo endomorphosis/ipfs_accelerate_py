@@ -53,10 +53,24 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
         async def _boom(**_: object) -> dict:
             raise RuntimeError("embedding boom")
 
+        async def _minimal(**_: object) -> dict:
+            return {"status": "success"}
+
         async def _run() -> None:
             invalid_texts = await native_embedding_tools.generate_embeddings(texts=["ok", ""])
             self.assertEqual(invalid_texts.get("status"), "error")
             self.assertIn("non-empty strings", str(invalid_texts.get("error", "")))
+
+            with patch.dict(native_embedding_tools._API, {"generate_embeddings": _minimal}, clear=False):
+                result = await native_embedding_tools.generate_embeddings(
+                    texts=["hello", "world"],
+                    model_name="all-MiniLM",
+                )
+                self.assertEqual(result.get("status"), "success")
+                self.assertEqual(result.get("model_name"), "all-MiniLM")
+                self.assertEqual(result.get("embeddings"), [])
+                self.assertEqual(result.get("count"), 2)
+                self.assertEqual(result.get("dimension"), 0)
 
             with patch.dict(native_embedding_tools._API, {"generate_embeddings": _boom}, clear=False):
                 result = await native_embedding_tools.generate_embeddings(texts=["hello"])

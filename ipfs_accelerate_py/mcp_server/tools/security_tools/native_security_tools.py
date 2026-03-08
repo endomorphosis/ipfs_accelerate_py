@@ -181,7 +181,11 @@ async def check_access_permission(
 
     if isinstance(result, dict):
         normalized = dict(result)
-        normalized.setdefault("status", "success")
+        if "status" not in normalized:
+            if normalized.get("error") or normalized.get("success") is False:
+                normalized["status"] = "error"
+            else:
+                normalized["status"] = "success"
         normalized.setdefault("allowed", False)
         normalized.setdefault("user_id", normalized_user_id)
         normalized.setdefault("resource_id", normalized_resource_id)
@@ -205,14 +209,33 @@ async def check_access_permissions_batch(
     fail_fast: bool = False,
 ) -> Dict[str, Any]:
     """Evaluate multiple access checks with deterministic aggregate envelope."""
+    if not isinstance(fail_fast, bool):
+        requested = len(requests) if isinstance(requests, list) else 0
+        return {
+            "status": "error",
+            "error": "fail_fast must be a boolean",
+            "results": [],
+            "processed": 0,
+            "requested": requested,
+            "all_allowed": False,
+            "allowed_count": 0,
+            "denied_count": 0,
+            "error_count": 0,
+            "fail_fast": fail_fast,
+        }
+
     if not isinstance(requests, list) or not requests:
         return {
             "status": "error",
             "error": "requests must be a non-empty array",
             "results": [],
+            "processed": 0,
+            "requested": len(requests) if isinstance(requests, list) else 0,
+            "all_allowed": False,
             "allowed_count": 0,
             "denied_count": 0,
             "error_count": 0,
+            "fail_fast": fail_fast,
         }
 
     results: List[Dict[str, Any]] = []

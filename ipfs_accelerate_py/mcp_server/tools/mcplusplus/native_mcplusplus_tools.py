@@ -252,10 +252,11 @@ async def mcplusplus_taskqueue_submit(
             method="submit",
         )
 
-    return await _invoke_engine_method(
+    normalized_task_id = task_id.strip()
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "submit",
-        task_id=task_id.strip(),
+        task_id=normalized_task_id,
         task_type=task_type.strip(),
         payload=dict(payload),
         priority=float(priority),
@@ -264,6 +265,13 @@ async def mcplusplus_taskqueue_submit(
         retry_policy=dict(retry_policy or {}),
         metadata=dict(metadata or {}),
     )
+    if result.get("status") == "success":
+        result.setdefault("task_id", normalized_task_id)
+        result["status"] = "queued"
+        result.setdefault("queue_position", 0)
+        result.setdefault("estimated_start_time", None)
+        result.setdefault("assigned_worker", None)
+    return result
 
 
 async def mcplusplus_taskqueue_priority(
@@ -297,13 +305,21 @@ async def mcplusplus_taskqueue_priority(
             method="set_priority",
         )
 
-    return await _invoke_engine_method(
+    normalized_task_id = task_id.strip()
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "set_priority",
-        task_id=task_id.strip(),
+        task_id=normalized_task_id,
         new_priority=float(new_priority),
         requeue=requeue,
     )
+    if result.get("status") == "success":
+        result.setdefault("task_id", normalized_task_id)
+        result.setdefault("old_priority", 1.0)
+        result.setdefault("new_priority", float(new_priority))
+        result.setdefault("new_queue_position", None)
+        result.setdefault("requeue", requeue)
+    return result
 
 
 async def mcplusplus_taskqueue_cancel(
@@ -331,13 +347,20 @@ async def mcplusplus_taskqueue_cancel(
             method="cancel",
         )
 
-    return await _invoke_engine_method(
+    normalized_task_id = task_id.strip()
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "cancel",
-        task_id=task_id.strip(),
+        task_id=normalized_task_id,
         reason=reason.strip() if isinstance(reason, str) else None,
         force=force,
     )
+    if result.get("status") == "success":
+        result.setdefault("task_id", normalized_task_id)
+        result["status"] = "cancelled"
+        result.setdefault("cancelled_at", None)
+        result.setdefault("cleanup_required", False)
+    return result
 
 
 async def mcplusplus_taskqueue_list(
@@ -468,12 +491,19 @@ async def mcplusplus_taskqueue_retry(
             method="retry",
         )
 
-    return await _invoke_engine_method(
+    normalized_task_id = task_id.strip()
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "retry",
-        task_id=task_id.strip(),
+        task_id=normalized_task_id,
         retry_config=dict(retry_config or {}),
     )
+    if result.get("status") == "success":
+        result.setdefault("task_id", normalized_task_id)
+        result.setdefault("retry_task_id", None)
+        result.setdefault("retry_count", 1)
+        result.setdefault("queue_position", None)
+    return result
 
 
 async def mcplusplus_taskqueue_pause(
@@ -487,11 +517,17 @@ async def mcplusplus_taskqueue_pause(
             method="pause",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "pause",
         reason=(reason.strip() if isinstance(reason, str) else None),
     )
+    if result.get("status") == "success":
+        result["status"] = "paused"
+        result.setdefault("paused_at", None)
+        result.setdefault("queued_tasks", 0)
+        result.setdefault("running_tasks", 0)
+    return result
 
 
 async def mcplusplus_taskqueue_resume(
@@ -505,11 +541,18 @@ async def mcplusplus_taskqueue_resume(
             method="resume",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "resume",
         reorder_by_priority=reorder_by_priority,
     )
+    if result.get("status") == "success":
+        result["status"] = "active"
+        result.setdefault("resumed_at", None)
+        result.setdefault("queued_tasks", 0)
+        result.setdefault("reordered", False)
+        result.setdefault("reorder_by_priority", reorder_by_priority)
+    return result
 
 
 async def mcplusplus_taskqueue_clear(
@@ -530,12 +573,18 @@ async def mcplusplus_taskqueue_clear(
             method="clear",
         )
 
-    return await _invoke_engine_method(
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "clear",
         status_filter=(status_filter.strip() if isinstance(status_filter, str) and status_filter.strip() else None),
         confirm=confirm,
     )
+    if result.get("status") == "success":
+        result.setdefault("cleared_count", 0)
+        result.setdefault("remaining_count", 0)
+        result.setdefault("cleared_at", None)
+        result.setdefault("confirm", confirm)
+    return result
 
 
 async def mcplusplus_worker_register(
@@ -579,15 +628,22 @@ async def mcplusplus_worker_register(
             method="register_worker",
         )
 
-    return await _invoke_engine_method(
+    normalized_worker_id = worker_id.strip()
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "register_worker",
-        worker_id=worker_id.strip(),
+        worker_id=normalized_worker_id,
         capabilities=[str(item).strip() for item in capabilities],
         max_concurrent_tasks=max_concurrent_tasks,
         resource_limits=dict(resource_limits or {}),
         metadata=dict(metadata or {}),
     )
+    if result.get("status") == "success":
+        result.setdefault("worker_id", normalized_worker_id)
+        result["status"] = "active"
+        result.setdefault("registered_at", None)
+        result.setdefault("assigned_peers", [])
+    return result
 
 
 async def mcplusplus_worker_unregister(
@@ -615,13 +671,21 @@ async def mcplusplus_worker_unregister(
             method="unregister_worker",
         )
 
-    return await _invoke_engine_method(
+    normalized_worker_id = worker_id.strip()
+    result = await _invoke_engine_method(
         "TaskQueueEngine",
         "unregister_worker",
-        worker_id=worker_id.strip(),
+        worker_id=normalized_worker_id,
         graceful=graceful,
         timeout=timeout,
     )
+    if result.get("status") == "success":
+        result.setdefault("worker_id", normalized_worker_id)
+        result["status"] = "unregistered"
+        result.setdefault("unregistered_at", None)
+        result.setdefault("completed_tasks", 0)
+        result.setdefault("abandoned_tasks", 0)
+    return result
 
 
 async def mcplusplus_worker_status(
@@ -823,10 +887,11 @@ async def mcplusplus_workflow_submit(
             method="submit",
         )
 
-    return await _invoke_engine_method(
+    normalized_workflow_id = workflow_id.strip()
+    result = await _invoke_engine_method(
         "WorkflowEngine",
         "submit",
-        workflow_id=workflow_id.strip(),
+        workflow_id=normalized_workflow_id,
         name=name.strip(),
         steps=list(steps),
         priority=float(priority),
@@ -834,6 +899,13 @@ async def mcplusplus_workflow_submit(
         dependencies=[str(item).strip() for item in (dependencies or [])],
         metadata=dict(metadata or {}),
     )
+    if result.get("status") == "success":
+        result.setdefault("workflow_id", normalized_workflow_id)
+        result["status"] = "submitted"
+        result.setdefault("peer_assigned", None)
+        result.setdefault("estimated_start_time", None)
+        result.setdefault("message", f"Workflow {normalized_workflow_id} submitted to P2P network")
+    return result
 
 
 async def mcplusplus_workflow_cancel(
@@ -861,13 +933,20 @@ async def mcplusplus_workflow_cancel(
             method="cancel",
         )
 
-    return await _invoke_engine_method(
+    normalized_workflow_id = workflow_id.strip()
+    result = await _invoke_engine_method(
         "WorkflowEngine",
         "cancel",
-        workflow_id=workflow_id.strip(),
+        workflow_id=normalized_workflow_id,
         reason=reason.strip() if isinstance(reason, str) else None,
         force=force,
     )
+    if result.get("status") == "success":
+        result.setdefault("workflow_id", normalized_workflow_id)
+        result["status"] = "cancelled"
+        result.setdefault("cancelled_steps", 0)
+        result.setdefault("message", f"Workflow {normalized_workflow_id} cancelled successfully")
+    return result
 
 
 async def mcplusplus_workflow_list(
@@ -1167,15 +1246,27 @@ async def mcplusplus_peer_connect(
             method="connect",
         )
 
-    return await _invoke_engine_method(
+    normalized_peer_id = peer_id.strip()
+    normalized_multiaddr = multiaddr.strip()
+    result = await _invoke_engine_method(
         "PeerEngine",
         "connect",
-        peer_id=peer_id.strip(),
-        multiaddr=multiaddr.strip(),
+        peer_id=normalized_peer_id,
+        multiaddr=normalized_multiaddr,
         timeout=timeout,
         retry_count=retry_count,
         persist=persist,
     )
+    if result.get("status") == "success":
+        result.setdefault("peer_id", normalized_peer_id)
+        result.setdefault("multiaddr", normalized_multiaddr)
+        result.setdefault("connection_id", None)
+        result.setdefault("connection_time", None)
+        result.setdefault("protocol_version", None)
+        result.setdefault("peer_capabilities", [])
+        result.setdefault("persist", persist)
+        result.setdefault("attempts", 1)
+    return result
 
 
 async def mcplusplus_peer_disconnect(
@@ -1203,13 +1294,22 @@ async def mcplusplus_peer_disconnect(
             method="disconnect",
         )
 
-    return await _invoke_engine_method(
+    normalized_peer_id = peer_id.strip()
+    result = await _invoke_engine_method(
         "PeerEngine",
         "disconnect",
-        peer_id=peer_id.strip(),
+        peer_id=normalized_peer_id,
         reason=reason.strip() if isinstance(reason, str) else None,
         graceful=graceful,
     )
+    if result.get("status") == "success":
+        result.setdefault("peer_id", normalized_peer_id)
+        result.setdefault("was_connected", True)
+        result.setdefault("graceful", graceful)
+        result.setdefault("reason", reason.strip() if isinstance(reason, str) else None)
+        result.setdefault("cleanup_performed", True)
+        result.setdefault("disconnection_time", 0.0)
+    return result
 
 
 async def mcplusplus_peer_metrics(
@@ -1297,14 +1397,25 @@ async def mcplusplus_peer_bootstrap_network(
             method="bootstrap",
         )
 
-    return await _invoke_engine_method(
+    normalized_bootstrap_nodes = [str(item).strip() for item in (bootstrap_nodes or [])] or None
+    result = await _invoke_engine_method(
         "PeerEngine",
         "bootstrap",
-        bootstrap_nodes=[str(item).strip() for item in (bootstrap_nodes or [])] or None,
+        bootstrap_nodes=normalized_bootstrap_nodes,
         timeout=timeout,
         min_connections=min_connections,
         max_connections=max_connections,
     )
+    if result.get("status") == "success":
+        result.setdefault("connected_count", 0)
+        result.setdefault("failed_count", 0)
+        result.setdefault("bootstrap_nodes_used", normalized_bootstrap_nodes or [])
+        result.setdefault("connected_peers", [])
+        result.setdefault("network_ready", False)
+        result.setdefault("bootstrap_time", 0)
+        result.setdefault("min_connections", min_connections)
+        result.setdefault("max_connections", max_connections)
+    return result
 
 
 def register_native_mcplusplus_tools(manager: Any) -> None:

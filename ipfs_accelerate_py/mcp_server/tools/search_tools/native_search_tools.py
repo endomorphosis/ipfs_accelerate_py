@@ -258,18 +258,28 @@ async def faceted_search(
         normalized_aggregations = [item.strip() for item in aggregations]
 
     try:
+        normalized_query = str(query or "")
+        normalized_collection = str(collection or "default")
         result = await _API["faceted"](
             vector_service=vector_service,
-            query=str(query or ""),
+            query=normalized_query,
             facets=normalized_facets,
             aggregations=normalized_aggregations,
             top_k=normalized_top_k,
-            collection=str(collection or "default"),
+            collection=normalized_collection,
         )
     except Exception as exc:
         return _error_result("faceted search failed", error=str(exc))
     payload = dict(result or {})
     payload.setdefault("status", "success")
+    payload.setdefault("query", normalized_query)
+    payload.setdefault("facets", normalized_facets)
+    payload.setdefault("aggregations", normalized_aggregations)
+    payload.setdefault("top_k", normalized_top_k)
+    payload.setdefault("collection", normalized_collection)
+    payload.setdefault("results", [])
+    payload.setdefault("facet_counts", {})
+    payload.setdefault("total_found", len(payload.get("results") or []))
     return payload
 
 

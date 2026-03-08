@@ -22,7 +22,7 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
         return response["result"]
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_embedding_dispatch_preserves_success_defaults_for_chunk_and_endpoint_tools(self, mock_wrapper) -> None:
+    def test_embedding_dispatch_preserves_success_defaults_for_embedding_chunk_and_endpoint_tools(self, mock_wrapper) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
@@ -53,6 +53,7 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
             ), patch.dict(
                 native_embedding_tools._API,
                 {
+                    "generate_embeddings": _minimal,
                     "chunk_text": _minimal,
                     "manage_endpoints": _minimal,
                     "shard_embeddings": _minimal,
@@ -62,6 +63,19 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
                 server = create_mcp_server(name="embedding-dispatch-compat")
 
                 dispatch = server.tools["tools_dispatch"]["function"]
+
+                generated = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "embedding_tools",
+                        "generate_embeddings",
+                        {"texts": ["hello", "world"], "model_name": "all-MiniLM"},
+                    )
+                )
+                self.assertEqual(generated.get("status"), "success")
+                self.assertEqual(generated.get("model_name"), "all-MiniLM")
+                self.assertEqual(generated.get("embeddings"), [])
+                self.assertEqual(generated.get("count"), 2)
+                self.assertEqual(generated.get("dimension"), 0)
 
                 chunked = self._assert_dispatch_success_envelope(
                     await dispatch(
