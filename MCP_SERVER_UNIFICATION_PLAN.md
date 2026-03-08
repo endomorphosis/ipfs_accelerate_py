@@ -541,6 +541,7 @@ Recent execution (2026-03-08):
 6. Added canonical `ipfs_accelerate_py.mcp_server.mcplusplus.peer_bootstrap` wrapper ownership (`PeerBootstrapWrapper`, `create_peer_bootstrap`) so bootstrap discovery/cleanup/address retrieval can be consumed through canonical async-friendly runtime primitives instead of only through the shim helper class.
 7. Wired unified bootstrap service ownership through `peer_bootstrap_factory` and `tools_dispatch` bootstrap-address probing so canonical runtime consumers can resolve bootstrap addresses without direct shim imports, validated by targeted unified-bootstrap coverage (`2 passed`).
 8. Added canonical `create_peer_service_bundle` ownership in `ipfs_accelerate_py/mcp_server/mcplusplus/peer_services.py` and wired `P2PServiceManager` to initialize peer-registry/bootstrap wrappers through that shared construction path, validated by `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni013_p2p_adapters.py` (`6 passed`) and focused unified-bootstrap revalidation (`2 passed, 148 deselected`).
+9. Added canonical `create_peer_discovery` ownership in `ipfs_accelerate_py/mcp_server/mcplusplus/peer_discovery.py` and wired unified bootstrap `peer_discovery_factory` through that shared peer-service construction path, validated by focused peer primitive and unified-bootstrap coverage (`3 passed, 152 deselected`).
 
 Exit:
 
@@ -579,6 +580,7 @@ Recent execution (2026-03-08):
 3. Revalidated process-level and direct-entry startup behavior after the canonical-default startup flip with focused subprocess, p2p bridge, standalone-app, direct component, and script-style initialization coverage (`3 passed, 6 deselected`; `5 passed, 5 deselected`; script smoke paths completed successfully with populated tool/resource/prompt inventories).
 4. Added focused FastAPI integration/helper coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py` for `initialize_mcp_server()` and `integrate_mcp_with_fastapi()`, then revalidated those helpers plus canonical FastAPI facade delegation in `ipfs_accelerate_py/mcp/tests/test_mcp_server_fastapi_service.py` (`9 passed, 2 deselected`).
 5. Added focused CLI startup coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_cli.py`, confirming the CLI still constructs the compatibility facade and delegates to `mcp_server.run()` with the parsed host/port contract in normal and `--dev` modes after the canonical-default startup change (`2 passed`).
+6. Ran an aggregate post-cutover validation bundle across rollback telemetry, legacy bootstrap compatibility, subprocess/FastAPI entrypoints, process helpers, p2p bridge dispatch, and CLI startup (`28 passed, 148 deselected`), confirming the canonical-default startup change remains stable across the main compatibility-facade entry surfaces.
 
 Exit:
 

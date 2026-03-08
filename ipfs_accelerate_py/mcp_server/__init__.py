@@ -5,187 +5,115 @@ During migration, public entry points delegate to `ipfs_accelerate_py.mcp`
 for compatibility while internals are progressively ported.
 """
 
-from .server import (
-    create_server,
-    get_unified_meta_tool_names,
-    get_unified_supported_profiles,
-    get_unified_wave_a_categories,
-    main,
-)
-from .runtime_router import RuntimeRouter
-from .hierarchical_tool_manager import HierarchicalToolManager
-from .registration_adapter import register_legacy_tools_into_manager
-from .configs import UnifiedMCPServerConfig, parse_preload_categories
-from .tool_metadata import (
-    ToolMetadata,
-    get_tool_metadata,
-    register_tool_metadata,
-    tool_metadata,
-)
-from .tool_registry import ToolRegistry, get_global_registry
-from .wave_a_loaders import configure_wave_a_loaders
-from .dispatch_pipeline import (
-    coerce_dispatch_bool,
-    coerce_dispatch_dict,
-    coerce_dispatch_list,
-    compute_dispatch_intent_cid,
-    normalize_dispatch_parameters,
-)
-from .server_context import UnifiedServerContext
-from .fastapi_config import UnifiedFastAPIConfig
-from .fastapi_service import create_fastapi_app, run_fastapi_server
-from .standalone_server import run_server as run_standalone_server
-from .mcp_p2p_transport import (
-    PROTOCOL_MCP_P2P_V1,
-    get_mcp_p2p_stats,
-    handle_mcp_p2p_stream,
-    read_u32_framed_json,
-    reset_mcp_p2p_stats,
-    write_u32_framed_json,
-)
-from .trio_adapter import TRIO_AVAILABLE, TrioMCPServerAdapter, TrioServerConfig
-from .register_p2p_tools import (
-    P2P_TOOL_MODULES,
-    discover_p2p_tool_modules,
-    get_p2p_tool_summary,
-    register_p2p_category_loaders,
-)
-from .monitoring import (
-    EnhancedMetricsCollector,
-    HealthCheckResult,
-    MetricData,
-    P2PMetricsCollector,
-    get_metrics_collector,
-    get_p2p_metrics_collector,
-)
-from .otel_tracing import MCPTracer, configure_tracing
-from .prometheus_exporter import PrometheusExporter
-from .ucan_delegation import (
-    Capability,
-    Delegation,
-    DelegationEvaluator,
-    InvocationContext,
-    add_delegation,
-    get_delegation,
-    get_delegation_evaluator,
-)
-from .temporal_policy import (
-    PolicyClause,
-    PolicyEvaluator,
-    PolicyObject,
-    make_simple_permission_policy,
-)
-from .temporal_deontic_mcp_server import TemporalDeonticMCPServer
-from .cid_artifacts import artifact_cid
-from .interface_descriptor import (
-    InterfaceRepository,
-    get_interface_repository,
-)
-from .mcp_interfaces import MCPClientProtocol, MCPServerProtocol, ToolManagerProtocol
-from .event_dag import EventDAG
-from .p2p_service_manager import P2PServiceManager, P2PServiceState
-from .p2p_mcp_registry_adapter import (
-    P2PMCPRegistryAdapter,
-    RUNTIME_FASTAPI,
-    RUNTIME_TRIO,
-    RUNTIME_UNKNOWN,
-)
-from .simple_server import (
-    SimpleCallResult,
-    SimpleIPFSDatasetsMCPServer,
-    start_simple_server,
-)
-from .client import IPFSDatasetsMCPClient
-from .did_key_manager import DIDKeyManager, get_did_key_manager
-from .validators import EnhancedParameterValidator, validate_dispatch_inputs, validator
-from .logger import configure_root_logging, get_logger, logger, mcp_logger
+from __future__ import annotations
 
-__all__ = [
-    "create_server",
-    "get_unified_meta_tool_names",
-    "get_unified_supported_profiles",
-    "get_unified_wave_a_categories",
-    "main",
-    "RuntimeRouter",
-    "HierarchicalToolManager",
-    "register_legacy_tools_into_manager",
-    "UnifiedMCPServerConfig",
-    "parse_preload_categories",
-    "ToolMetadata",
-    "tool_metadata",
-    "register_tool_metadata",
-    "get_tool_metadata",
-    "configure_wave_a_loaders",
-    "ToolRegistry",
-    "get_global_registry",
-    "normalize_dispatch_parameters",
-    "coerce_dispatch_bool",
-    "coerce_dispatch_list",
-    "coerce_dispatch_dict",
-    "compute_dispatch_intent_cid",
-    "UnifiedServerContext",
-    "UnifiedFastAPIConfig",
-    "create_fastapi_app",
-    "run_fastapi_server",
-    "run_standalone_server",
-    "PROTOCOL_MCP_P2P_V1",
-    "get_mcp_p2p_stats",
-    "reset_mcp_p2p_stats",
-    "read_u32_framed_json",
-    "write_u32_framed_json",
-    "handle_mcp_p2p_stream",
-    "TRIO_AVAILABLE",
-    "TrioServerConfig",
-    "TrioMCPServerAdapter",
-    "P2P_TOOL_MODULES",
-    "discover_p2p_tool_modules",
-    "register_p2p_category_loaders",
-    "get_p2p_tool_summary",
-    "MetricData",
-    "HealthCheckResult",
-    "EnhancedMetricsCollector",
-    "P2PMetricsCollector",
-    "get_metrics_collector",
-    "get_p2p_metrics_collector",
-    "MCPTracer",
-    "configure_tracing",
-    "PrometheusExporter",
-    "Capability",
-    "Delegation",
-    "DelegationEvaluator",
-    "InvocationContext",
-    "add_delegation",
-    "get_delegation",
-    "get_delegation_evaluator",
-    "PolicyClause",
-    "PolicyObject",
-    "PolicyEvaluator",
-    "make_simple_permission_policy",
-    "TemporalDeonticMCPServer",
-    "artifact_cid",
-    "InterfaceRepository",
-    "get_interface_repository",
-    "MCPServerProtocol",
-    "ToolManagerProtocol",
-    "MCPClientProtocol",
-    "EventDAG",
-    "P2PServiceState",
-    "P2PServiceManager",
-    "P2PMCPRegistryAdapter",
-    "RUNTIME_FASTAPI",
-    "RUNTIME_TRIO",
-    "RUNTIME_UNKNOWN",
-    "SimpleCallResult",
-    "SimpleIPFSDatasetsMCPServer",
-    "start_simple_server",
-    "IPFSDatasetsMCPClient",
-    "DIDKeyManager",
-    "get_did_key_manager",
-    "EnhancedParameterValidator",
-    "validate_dispatch_inputs",
-    "validator",
-    "configure_root_logging",
-    "get_logger",
-    "logger",
-    "mcp_logger",
-]
+from importlib import import_module
+from typing import Any
+
+_EXPORT_MAP: dict[str, tuple[str, str]] = {
+    "create_server": (".server", "create_server"),
+    "get_unified_meta_tool_names": (".server", "get_unified_meta_tool_names"),
+    "get_unified_supported_profiles": (".server", "get_unified_supported_profiles"),
+    "get_unified_wave_a_categories": (".server", "get_unified_wave_a_categories"),
+    "main": (".server", "main"),
+    "RuntimeRouter": (".runtime_router", "RuntimeRouter"),
+    "HierarchicalToolManager": (".hierarchical_tool_manager", "HierarchicalToolManager"),
+    "register_legacy_tools_into_manager": (".registration_adapter", "register_legacy_tools_into_manager"),
+    "UnifiedMCPServerConfig": (".configs", "UnifiedMCPServerConfig"),
+    "parse_preload_categories": (".configs", "parse_preload_categories"),
+    "ToolMetadata": (".tool_metadata", "ToolMetadata"),
+    "get_tool_metadata": (".tool_metadata", "get_tool_metadata"),
+    "register_tool_metadata": (".tool_metadata", "register_tool_metadata"),
+    "tool_metadata": (".tool_metadata", "tool_metadata"),
+    "ToolRegistry": (".tool_registry", "ToolRegistry"),
+    "get_global_registry": (".tool_registry", "get_global_registry"),
+    "configure_wave_a_loaders": (".wave_a_loaders", "configure_wave_a_loaders"),
+    "coerce_dispatch_bool": (".dispatch_pipeline", "coerce_dispatch_bool"),
+    "coerce_dispatch_dict": (".dispatch_pipeline", "coerce_dispatch_dict"),
+    "coerce_dispatch_list": (".dispatch_pipeline", "coerce_dispatch_list"),
+    "compute_dispatch_intent_cid": (".dispatch_pipeline", "compute_dispatch_intent_cid"),
+    "normalize_dispatch_parameters": (".dispatch_pipeline", "normalize_dispatch_parameters"),
+    "UnifiedServerContext": (".server_context", "UnifiedServerContext"),
+    "UnifiedFastAPIConfig": (".fastapi_config", "UnifiedFastAPIConfig"),
+    "create_fastapi_app": (".fastapi_service", "create_fastapi_app"),
+    "run_fastapi_server": (".fastapi_service", "run_fastapi_server"),
+    "run_standalone_server": (".standalone_server", "run_server"),
+    "PROTOCOL_MCP_P2P_V1": (".mcp_p2p_transport", "PROTOCOL_MCP_P2P_V1"),
+    "get_mcp_p2p_stats": (".mcp_p2p_transport", "get_mcp_p2p_stats"),
+    "handle_mcp_p2p_stream": (".mcp_p2p_transport", "handle_mcp_p2p_stream"),
+    "read_u32_framed_json": (".mcp_p2p_transport", "read_u32_framed_json"),
+    "reset_mcp_p2p_stats": (".mcp_p2p_transport", "reset_mcp_p2p_stats"),
+    "write_u32_framed_json": (".mcp_p2p_transport", "write_u32_framed_json"),
+    "TRIO_AVAILABLE": (".trio_adapter", "TRIO_AVAILABLE"),
+    "TrioMCPServerAdapter": (".trio_adapter", "TrioMCPServerAdapter"),
+    "TrioServerConfig": (".trio_adapter", "TrioServerConfig"),
+    "P2P_TOOL_MODULES": (".register_p2p_tools", "P2P_TOOL_MODULES"),
+    "discover_p2p_tool_modules": (".register_p2p_tools", "discover_p2p_tool_modules"),
+    "get_p2p_tool_summary": (".register_p2p_tools", "get_p2p_tool_summary"),
+    "register_p2p_category_loaders": (".register_p2p_tools", "register_p2p_category_loaders"),
+    "EnhancedMetricsCollector": (".monitoring", "EnhancedMetricsCollector"),
+    "HealthCheckResult": (".monitoring", "HealthCheckResult"),
+    "MetricData": (".monitoring", "MetricData"),
+    "P2PMetricsCollector": (".monitoring", "P2PMetricsCollector"),
+    "get_metrics_collector": (".monitoring", "get_metrics_collector"),
+    "get_p2p_metrics_collector": (".monitoring", "get_p2p_metrics_collector"),
+    "MCPTracer": (".otel_tracing", "MCPTracer"),
+    "configure_tracing": (".otel_tracing", "configure_tracing"),
+    "PrometheusExporter": (".prometheus_exporter", "PrometheusExporter"),
+    "Capability": (".ucan_delegation", "Capability"),
+    "Delegation": (".ucan_delegation", "Delegation"),
+    "DelegationEvaluator": (".ucan_delegation", "DelegationEvaluator"),
+    "InvocationContext": (".ucan_delegation", "InvocationContext"),
+    "add_delegation": (".ucan_delegation", "add_delegation"),
+    "get_delegation": (".ucan_delegation", "get_delegation"),
+    "get_delegation_evaluator": (".ucan_delegation", "get_delegation_evaluator"),
+    "PolicyClause": (".temporal_policy", "PolicyClause"),
+    "PolicyEvaluator": (".temporal_policy", "PolicyEvaluator"),
+    "PolicyObject": (".temporal_policy", "PolicyObject"),
+    "make_simple_permission_policy": (".temporal_policy", "make_simple_permission_policy"),
+    "TemporalDeonticMCPServer": (".temporal_deontic_mcp_server", "TemporalDeonticMCPServer"),
+    "artifact_cid": (".cid_artifacts", "artifact_cid"),
+    "InterfaceRepository": (".interface_descriptor", "InterfaceRepository"),
+    "get_interface_repository": (".interface_descriptor", "get_interface_repository"),
+    "MCPClientProtocol": (".mcp_interfaces", "MCPClientProtocol"),
+    "MCPServerProtocol": (".mcp_interfaces", "MCPServerProtocol"),
+    "ToolManagerProtocol": (".mcp_interfaces", "ToolManagerProtocol"),
+    "EventDAG": (".event_dag", "EventDAG"),
+    "P2PServiceManager": (".p2p_service_manager", "P2PServiceManager"),
+    "P2PServiceState": (".p2p_service_manager", "P2PServiceState"),
+    "P2PMCPRegistryAdapter": (".p2p_mcp_registry_adapter", "P2PMCPRegistryAdapter"),
+    "RUNTIME_FASTAPI": (".p2p_mcp_registry_adapter", "RUNTIME_FASTAPI"),
+    "RUNTIME_TRIO": (".p2p_mcp_registry_adapter", "RUNTIME_TRIO"),
+    "RUNTIME_UNKNOWN": (".p2p_mcp_registry_adapter", "RUNTIME_UNKNOWN"),
+    "SimpleCallResult": (".simple_server", "SimpleCallResult"),
+    "SimpleIPFSDatasetsMCPServer": (".simple_server", "SimpleIPFSDatasetsMCPServer"),
+    "start_simple_server": (".simple_server", "start_simple_server"),
+    "IPFSDatasetsMCPClient": (".client", "IPFSDatasetsMCPClient"),
+    "DIDKeyManager": (".did_key_manager", "DIDKeyManager"),
+    "get_did_key_manager": (".did_key_manager", "get_did_key_manager"),
+    "EnhancedParameterValidator": (".validators", "EnhancedParameterValidator"),
+    "validate_dispatch_inputs": (".validators", "validate_dispatch_inputs"),
+    "validator": (".validators", "validator"),
+    "configure_root_logging": (".logger", "configure_root_logging"),
+    "get_logger": (".logger", "get_logger"),
+    "logger": (".logger", "logger"),
+    "mcp_logger": (".logger", "mcp_logger"),
+}
+
+__all__ = list(_EXPORT_MAP)
+
+
+def __getattr__(name: str) -> Any:
+    try:
+        module_name, attr_name = _EXPORT_MAP[name]
+    except KeyError as exc:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from exc
+
+    module = import_module(module_name, __name__)
+    value = getattr(module, attr_name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
