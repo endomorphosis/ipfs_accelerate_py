@@ -6,6 +6,22 @@
 
 **Status**: ✅ **COMPLETE** - All phases implemented and tested
 
+## 2026-03-08 Cutover Status
+
+Canonical-default cutover is now approved.
+
+- Default runtime: `ipfs_accelerate_py.mcp_server`
+- Legacy facade status: compatibility-only, deprecation phase `D1_warn_only`
+- Rollback controls retained: `IPFS_MCP_FORCE_LEGACY_ROLLBACK`, `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN`
+- Focused release-candidate matrix result: `120 passed`
+- Published cutover checklist: `MCP_CUTOVER_CHECKLIST.md`
+
+Primary evidence now lives in:
+- `MCP_SERVER_UNIFICATION_PLAN.md`
+- `mcpplusplus/CONFORMANCE_CHECKLIST.md`
+- `mcpplusplus/SPEC_GAP_MATRIX.md`
+- `MCP_CUTOVER_CHECKLIST.md`
+
 ## Implementation Statistics
 
 | Metric | Value |

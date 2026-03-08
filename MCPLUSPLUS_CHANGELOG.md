@@ -1,5 +1,19 @@
 # MCP++ Implementation Changelog
 
+## 2026-03-08 - Canonical Default Cutover Approved
+
+### Added
+
+- Published `MCP_CUTOVER_CHECKLIST.md` to freeze migration deltas and document cutover gates.
+
+### Validated
+
+- Compatibility-facade rollback, dry-run, and precedence telemetry via `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py`
+- Focused release-candidate matrix across transport and representative profile chapters (`120 passed`)
+- Ongoing conformance synchronization in `MCP_SERVER_UNIFICATION_PLAN.md`, `mcpplusplus/CONFORMANCE_CHECKLIST.md`, and `mcpplusplus/SPEC_GAP_MATRIX.md`
+
+---
+
 ## Version 0.1.0 - Initial Release (2026-02-13)
 
 ### Overview
