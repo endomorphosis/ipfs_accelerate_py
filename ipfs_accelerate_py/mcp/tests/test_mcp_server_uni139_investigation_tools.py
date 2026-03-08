@@ -27,6 +27,7 @@ from ipfs_accelerate_py.mcp_server.tools.investigation_tools.native_investigatio
     register_native_investigation_tools,
     track_provenance,
 )
+from ipfs_accelerate_py.mcp_server.tools.investigation_tools import native_investigation_tools
 
 
 class _DummyManager:
@@ -249,6 +250,40 @@ class TestMCPServerUNI139InvestigationTools(unittest.TestCase):
 
             self.assertEqual(result.get("status"), "error")
             self.assertIn("geo backend unavailable", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_investigation_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_investigation_tools._API,
+                {
+                    "analyze_entities": _contradictory_failure,
+                    "map_relationships": _contradictory_failure,
+                    "query_geographic_context": _contradictory_failure,
+                    "ingest_news_article": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                analyzed = await analyze_entities(corpus_data='{"documents": []}')
+                mapped = await map_relationships(corpus_data='{"documents": []}')
+                geo = await query_geographic_context(query="incident", corpus_data='{"documents": []}')
+                article = await ingest_news_article(url="https://example.com/article")
+
+            self.assertEqual(analyzed.get("status"), "error")
+            self.assertEqual(analyzed.get("error"), "delegate failed")
+
+            self.assertEqual(mapped.get("status"), "error")
+            self.assertEqual(mapped.get("error"), "delegate failed")
+
+            self.assertEqual(geo.get("status"), "error")
+            self.assertEqual(geo.get("error"), "delegate failed")
+
+            self.assertEqual(article.get("status"), "error")
+            self.assertEqual(article.get("error"), "delegate failed")
 
         anyio.run(_run)
 

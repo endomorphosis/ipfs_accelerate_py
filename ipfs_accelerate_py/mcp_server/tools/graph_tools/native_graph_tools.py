@@ -325,6 +325,17 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     return payload
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 async def _await_maybe(result: Any) -> Dict[str, Any]:
     """Await coroutine-like API results while supporting direct return values."""
     if hasattr(result, "__await__"):
@@ -343,8 +354,7 @@ async def graph_create(driver_url: Optional[str] = None) -> Dict[str, Any]:
     except Exception as exc:
         return _error_result(f"graph_create failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -382,8 +392,7 @@ async def graph_add_entity(
     except Exception as exc:
         return _error_result(f"graph_add_entity failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -425,8 +434,7 @@ async def graph_add_relationship(
     except Exception as exc:
         return _error_result(f"graph_add_relationship failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -456,8 +464,7 @@ async def graph_query_cypher(
     except Exception as exc:
         return _error_result(f"graph_query_cypher failed: {exc}", query=normalized_query)
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -470,8 +477,7 @@ async def graph_transaction_begin(driver_url: Optional[str] = None) -> Dict[str,
         payload = await _await_maybe(_API["graph_transaction_begin"](driver_url=normalized_driver_url))
     except Exception as exc:
         return _error_result(f"graph_transaction_begin failed: {exc}")
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -495,8 +501,7 @@ async def graph_transaction_commit(
         )
     except Exception as exc:
         return _error_result(f"graph_transaction_commit failed: {exc}", transaction_id=normalized_transaction_id)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("transaction_id", normalized_transaction_id)
     return normalized
 
@@ -521,8 +526,7 @@ async def graph_transaction_rollback(
         )
     except Exception as exc:
         return _error_result(f"graph_transaction_rollback failed: {exc}", transaction_id=normalized_transaction_id)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("transaction_id", normalized_transaction_id)
     return normalized
 
@@ -539,7 +543,11 @@ async def graph_index_create(
     normalized_driver_url = None if driver_url is None else str(driver_url).strip()
     if not normalized_index_name or not normalized_entity_type:
         return _error_result("index_name and entity_type must be provided")
-    if not isinstance(properties, list) or not properties or any(not isinstance(item, str) or not item.strip() for item in properties):
+    if (
+        not isinstance(properties, list)
+        or not properties
+        or any(not isinstance(item, str) or not item.strip() for item in properties)
+    ):
         return _error_result("properties must be a non-empty array of non-empty strings")
     if normalized_driver_url is not None and not normalized_driver_url:
         return _error_result("driver_url must be a non-empty string when provided")
@@ -554,8 +562,7 @@ async def graph_index_create(
         )
     except Exception as exc:
         return _error_result(f"graph_index_create failed: {exc}", index_name=normalized_index_name)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("index_name", normalized_index_name)
     return normalized
 
@@ -576,7 +583,11 @@ async def graph_constraint_add(
         return _error_result("constraint_name and entity_type must be provided")
     if normalized_constraint_type not in _VALID_CONSTRAINT_TYPES:
         return _error_result("constraint_type must be one of: exists, node_key, unique")
-    if not isinstance(properties, list) or not properties or any(not isinstance(item, str) or not item.strip() for item in properties):
+    if (
+        not isinstance(properties, list)
+        or not properties
+        or any(not isinstance(item, str) or not item.strip() for item in properties)
+    ):
         return _error_result("properties must be a non-empty array of non-empty strings")
     if normalized_driver_url is not None and not normalized_driver_url:
         return _error_result("driver_url must be a non-empty string when provided")
@@ -592,8 +603,7 @@ async def graph_constraint_add(
         )
     except Exception as exc:
         return _error_result(f"graph_constraint_add failed: {exc}", constraint_name=normalized_constraint_name)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("constraint_name", normalized_constraint_name)
     return normalized
 
@@ -620,11 +630,18 @@ async def query_knowledge_graph(
         return _error_result("max_results must be an integer >= 1", max_results=max_results)
     if not isinstance(include_metadata, bool):
         return _error_result("include_metadata must be a boolean", include_metadata=include_metadata)
-    if ir_ops is not None and (not isinstance(ir_ops, list) or not all(isinstance(item, dict) for item in ir_ops)):
+    if ir_ops is not None and (
+        not isinstance(ir_ops, list) or not all(isinstance(item, dict) for item in ir_ops)
+    ):
         return _error_result("ir_ops must be null or a list of objects", ir_ops=ir_ops)
     if budgets is not None and not isinstance(budgets, dict):
         return _error_result("budgets must be an object when provided", budgets=budgets)
-    for field, value in (("graph_id", graph_id), ("manifest_cid", manifest_cid), ("budget_preset", budget_preset), ("ipfs_backend", ipfs_backend)):
+    for field, value in (
+        ("graph_id", graph_id),
+        ("manifest_cid", manifest_cid),
+        ("budget_preset", budget_preset),
+        ("ipfs_backend", ipfs_backend),
+    ):
         if value is not None and not str(value).strip():
             return _error_result(f"{field} must be a non-empty string when provided", **{field: value})
     if not isinstance(car_fetch_mode, str) or not car_fetch_mode.strip():
@@ -647,8 +664,7 @@ async def query_knowledge_graph(
         )
     except Exception as exc:
         return _error_result(f"query_knowledge_graph failed: {exc}", query=normalized_query)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("query", normalized_query)
     normalized.setdefault("results", [])
     return normalized
@@ -682,8 +698,7 @@ async def graph_search_hybrid(
         )
     except Exception as exc:
         return _error_result(f"graph_search_hybrid failed: {exc}", query=normalized_query)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("query", normalized_query)
     normalized.setdefault("results", [])
     return normalized
@@ -715,8 +730,7 @@ async def graph_srl_extract(
         )
     except Exception as exc:
         return _error_result(f"graph_srl_extract failed: {exc}")
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("text", normalized_text)
     return normalized
 
@@ -752,8 +766,7 @@ async def graph_ontology_materialize(
         )
     except Exception as exc:
         return _error_result(f"graph_ontology_materialize failed: {exc}", graph_name=normalized_graph_name)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("graph_name", normalized_graph_name)
     return normalized
 
@@ -794,8 +807,7 @@ async def graph_distributed_execute(
         )
     except Exception as exc:
         return _error_result(f"graph_distributed_execute failed: {exc}", query=normalized_query)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("query", normalized_query)
     normalized.setdefault("results", [])
     return normalized
@@ -811,8 +823,7 @@ async def graph_graphql_query(query: str, kg_data: Optional[Dict[str, Any]] = No
         payload = await _await_maybe(_API["graph_graphql_query"](query=normalized_query, kg_data=kg_data))
     except Exception as exc:
         return _error_result(f"graph_graphql_query failed: {exc}", query=normalized_query)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("query", normalized_query)
     return normalized
 
@@ -848,8 +859,7 @@ async def graph_visualize(
         )
     except Exception as exc:
         return _error_result(f"graph_visualize failed: {exc}", format=normalized_format)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("format", normalized_format)
     return normalized
 
@@ -885,8 +895,7 @@ async def graph_complete_suggestions(
         )
     except Exception as exc:
         return _error_result(f"graph_complete_suggestions failed: {exc}")
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("suggestions", [])
     return normalized
 
@@ -907,7 +916,10 @@ async def graph_explain(
     normalized_end = None if end_entity_id is None else str(end_entity_id).strip()
     normalized_relationship_id = None if relationship_id is None else str(relationship_id).strip()
     if normalized_explain_type not in _VALID_GRAPH_EXPLAIN_TYPES:
-        return _error_result("explain_type must be one of: entity, relationship, path, why_connected", explain_type=explain_type)
+        return _error_result(
+            "explain_type must be one of: entity, relationship, path, why_connected",
+            explain_type=explain_type,
+        )
     if not isinstance(depth, str) or not depth.strip():
         return _error_result("depth must be a non-empty string", depth=depth)
     if not isinstance(max_hops, int) or max_hops < 1:
@@ -918,7 +930,9 @@ async def graph_explain(
         return _error_result("entity_id is required for entity explain_type")
     if normalized_explain_type == "relationship" and not normalized_relationship_id:
         return _error_result("relationship_id is required for relationship explain_type")
-    if normalized_explain_type in {"path", "why_connected"} and (not normalized_start or not normalized_end):
+    if normalized_explain_type in {"path", "why_connected"} and (
+        not normalized_start or not normalized_end
+    ):
         return _error_result("start_entity_id and end_entity_id are required for path-based explain_type")
     try:
         payload = await _await_maybe(
@@ -935,8 +949,7 @@ async def graph_explain(
         )
     except Exception as exc:
         return _error_result(f"graph_explain failed: {exc}", explain_type=normalized_explain_type)
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("explain_type", normalized_explain_type)
     return normalized
 
@@ -945,9 +958,14 @@ async def graph_provenance_verify(
     provenance_jsonl: Optional[str] = None,
     kg_data: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    normalized_provenance_jsonl = None if provenance_jsonl is None else str(provenance_jsonl).strip()
+    normalized_provenance_jsonl = (
+        None if provenance_jsonl is None else str(provenance_jsonl).strip()
+    )
     if provenance_jsonl is not None and not normalized_provenance_jsonl:
-        return _error_result("provenance_jsonl must be a non-empty string when provided", provenance_jsonl=provenance_jsonl)
+        return _error_result(
+            "provenance_jsonl must be a non-empty string when provided",
+            provenance_jsonl=provenance_jsonl,
+        )
     if kg_data is not None and not isinstance(kg_data, dict):
         return _error_result("kg_data must be an object when provided", kg_data=kg_data)
     try:
@@ -959,8 +977,7 @@ async def graph_provenance_verify(
         )
     except Exception as exc:
         return _error_result(f"graph_provenance_verify failed: {exc}")
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("provenance_jsonl", normalized_provenance_jsonl)
     return normalized
 

@@ -115,6 +115,17 @@ def _load_email_api() -> Dict[str, Any]:
 _API = _load_email_api()
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 async def email_test_connection(
     protocol: str = "imap",
     server: Optional[str] = None,
@@ -182,11 +193,7 @@ async def email_test_connection(
         use_ssl=use_ssl,
         timeout=timeout,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("protocol", normalized_protocol)
     payload.setdefault("use_ssl", use_ssl)
     payload.setdefault("timeout", timeout)
@@ -252,11 +259,7 @@ async def email_list_folders(
         use_ssl=use_ssl,
         timeout=timeout,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("folders", [])
     payload.setdefault("folder_count", len(payload.get("folders") or []))
     payload.setdefault("use_ssl", use_ssl)
@@ -277,11 +280,7 @@ async def email_analyze_export(**kwargs: Any) -> Dict[str, Any]:
             "file_path": file_path,
         }
     result = await _API["email_analyze_export"](file_path=normalized_file_path)
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("file_path", normalized_file_path)
     payload.setdefault("analysis", {})
     return payload
@@ -321,11 +320,7 @@ async def email_search_export(**kwargs: Any) -> Dict[str, Any]:
         query=normalized_query,
         field=normalized_field,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("file_path", normalized_file_path)
     payload.setdefault("query", normalized_query)
     payload.setdefault("field", normalized_field)
@@ -357,11 +352,7 @@ async def email_parse_eml(
         file_path=normalized_file_path,
         include_attachments=include_attachments,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("file_path", normalized_file_path)
     payload.setdefault("include_attachments", include_attachments)
     payload.setdefault("email", {})

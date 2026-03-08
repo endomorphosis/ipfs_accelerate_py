@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.admin_tools import native_admin_tools
 from ipfs_accelerate_py.mcp_server.tools.admin_tools.native_admin_tools import (
     cleanup_resources,
     configure_system,
@@ -184,6 +186,36 @@ class TestMCPServerUNI116AdminTools(unittest.TestCase):
             cleanup_result = await cleanup_resources(cleanup_type="basic")
             self.assertEqual(cleanup_result.get("status"), "success")
             self.assertIn("cleanup_options", cleanup_result)
+
+        anyio.run(_run)
+
+    def test_failed_delegate_payloads_infer_error_status(self) -> None:
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_admin_tools._API,
+                {
+                    "manage_endpoints": _failed,
+                    "system_maintenance": _failed,
+                    "configure_system": _failed,
+                    "system_health": _failed,
+                    "get_system_status": _failed,
+                    "manage_service": _failed,
+                    "update_configuration": _failed,
+                    "cleanup_resources": _failed,
+                },
+                clear=False,
+            ):
+                self.assertEqual((await manage_endpoints(action="list")).get("status"), "error")
+                self.assertEqual((await system_maintenance(operation="status")).get("status"), "error")
+                self.assertEqual((await configure_system(action="get")).get("status"), "error")
+                self.assertEqual((await system_health(component="all")).get("status"), "error")
+                self.assertEqual((await get_system_status()).get("status"), "error")
+                self.assertEqual((await manage_service(service_name="all", action="status")).get("status"), "error")
+                self.assertEqual((await update_configuration(action="get")).get("status"), "error")
+                self.assertEqual((await cleanup_resources(cleanup_type="basic")).get("status"), "error")
 
         anyio.run(_run)
 

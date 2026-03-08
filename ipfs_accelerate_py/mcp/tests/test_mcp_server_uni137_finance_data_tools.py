@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.finance_data_tools import native_finance_data_tools
 from ipfs_accelerate_py.mcp_server.tools.finance_data_tools.native_finance_data_tools import (
     analyze_embedding_market_correlation,
     apply_financial_theorem,
@@ -293,6 +294,48 @@ class TestUni137FinanceDataTools(unittest.TestCase):
 
             self.assertEqual(error_result.get("status"), "error")
             self.assertIn("backend unavailable", str(error_result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_finance_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_async(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        def _contradictory_json(**_: object) -> str:
+            return json.dumps({"status": "success", "success": False, "error": "delegate failed"})
+
+        async def _run() -> None:
+            with patch.dict(
+                native_finance_data_tools._API,
+                {
+                    "scrape_stock_data": _contradictory_async,
+                    "search_financial_news": _contradictory_async,
+                    "fetch_stock_data": _contradictory_json,
+                    "apply_financial_theorem": _contradictory_json,
+                },
+                clear=False,
+            ):
+                scraped = await scrape_stock_data(symbols=["aapl"], days=1)
+                searched = await search_financial_news("inflation", max_results=2)
+                fetched = fetch_stock_data("aapl", "2026-02-01", "2026-02-28")
+                applied = apply_financial_theorem(
+                    "split-theorem",
+                    "aapl",
+                    "2026-02-01",
+                    json.dumps({"ratio": "2:1"}),
+                )
+
+            self.assertEqual(scraped.get("status"), "error")
+            self.assertEqual(scraped.get("error"), "delegate failed")
+
+            self.assertEqual(searched.get("status"), "error")
+            self.assertEqual(searched.get("error"), "delegate failed")
+
+            self.assertEqual(fetched.get("status"), "error")
+            self.assertEqual(fetched.get("error"), "delegate failed")
+
+            self.assertEqual(applied.get("status"), "error")
+            self.assertEqual(applied.get("error"), "delegate failed")
 
         anyio.run(_run)
 

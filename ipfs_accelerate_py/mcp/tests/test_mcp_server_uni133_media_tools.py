@@ -273,6 +273,43 @@ class TestMCPServerUNI133MediaTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_media_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                __import__(
+                    "ipfs_accelerate_py.mcp_server.tools.media_tools.native_media_tools",
+                    fromlist=["_API"],
+                )._API,
+                {
+                    "ffmpeg_analyze": _contradictory_failure,
+                    "ffmpeg_mux": _contradictory_failure,
+                    "ytdlp_extract_info": _contradictory_failure,
+                    "ytdlp_batch_download": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                analyzed = await ffmpeg_analyze(input_file="/tmp/video.mp4")
+                muxed = await ffmpeg_mux(video_input="/tmp/video.mp4", output_file="/tmp/output.mp4")
+                extracted = await ytdlp_extract_info(url="https://example.com/video")
+                batched = await ytdlp_batch_download(urls=["https://example.com/video"])
+
+            self.assertEqual(analyzed.get("status"), "error")
+            self.assertEqual(analyzed.get("error"), "delegate failed")
+
+            self.assertEqual(muxed.get("status"), "error")
+            self.assertEqual(muxed.get("error"), "delegate failed")
+
+            self.assertEqual(extracted.get("status"), "error")
+            self.assertEqual(extracted.get("error"), "delegate failed")
+
+            self.assertEqual(batched.get("status"), "error")
+            self.assertEqual(batched.get("error"), "delegate failed")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

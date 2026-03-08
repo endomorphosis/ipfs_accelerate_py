@@ -126,6 +126,35 @@ class TestMCPServerUNI156StorageTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_failed_delegate_payloads_infer_error_status(self) -> None:
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_storage_tools._API,
+                {
+                    "store_data": _failed,
+                    "retrieve_data": _failed,
+                    "manage_collections": _failed,
+                    "query_storage": _failed,
+                },
+                clear=False,
+            ):
+                stored = await native_storage_tools.store_data(data={"x": 1})
+                self.assertEqual(stored.get("status"), "error")
+
+                retrieved = await native_storage_tools.retrieve_data(item_ids=["item-1"])
+                self.assertEqual(retrieved.get("status"), "error")
+
+                managed = await native_storage_tools.manage_collections(action="list")
+                self.assertEqual(managed.get("status"), "error")
+
+                queried = await native_storage_tools.query_storage(limit=5)
+                self.assertEqual(queried.get("status"), "error")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

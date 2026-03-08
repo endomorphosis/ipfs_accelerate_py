@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.web_scraping_tools import native_web_scraping_tools
 from ipfs_accelerate_py.mcp_server.tools.web_scraping_tools.native_web_scraping_tools import (
     check_scraper_methods_tool,
     register_native_web_scraping_tools,
@@ -138,6 +139,31 @@ class TestMCPServerUNI123WebScrapingTools(unittest.TestCase):
             self.assertEqual(methods_result.get("recommended_installs"), [])
             self.assertEqual(methods_result.get("all_methods"), [])
             self.assertEqual(methods_result.get("fallback_sequence"), [])
+
+        anyio.run(_run)
+
+    def test_failed_delegate_payloads_infer_error_status(self) -> None:
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_web_scraping_tools._API,
+                {
+                    "scrape_url_tool": _failed,
+                    "scrape_multiple_urls_tool": _failed,
+                    "check_scraper_methods_tool": _failed,
+                },
+                clear=False,
+            ):
+                scraped = await scrape_url_tool(url="https://example.com")
+                self.assertEqual(scraped.get("status"), "error")
+
+                scraped_many = await scrape_multiple_urls_tool(urls=["https://example.com"])
+                self.assertEqual(scraped_many.get("status"), "error")
+
+                methods = await check_scraper_methods_tool()
+                self.assertEqual(methods.get("status"), "error")
 
         anyio.run(_run)
 

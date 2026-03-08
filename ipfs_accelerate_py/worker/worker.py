@@ -1,18 +1,8 @@
 import os
 import sys
-# import subprocess
-import requests
+
 sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
-from PIL import Image
 import tempfile
-from install_depends import install_depends_py
-import anyio
-import platform
-from io import BytesIO
-import os
-from PIL import Image
-import requests
-from pathlib import Path
 import json
 import hashlib
 
@@ -42,18 +32,21 @@ except (ImportError, ValueError):
         HAVE_DATASETS_INTEGRATION = True
     except ImportError:
         HAVE_DATASETS_INTEGRATION = False
-        is_datasets_available = lambda: False
+
+        def is_datasets_available():
+            return False
+
         ProvenanceLogger = None
         DatasetsManager = None
 
 try:
     from ipfs_multiformats import ipfs_multiformats_py
-except:
+except Exception:
     from .ipfs_multiformats import ipfs_multiformats_py
-    
+
 sys.path.append(os.path.join(os.path.dirname(__file__)))
 skillset_folder_files = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
-filter_skillset_folder_files = [ x for x in skillset_folder_files if x.endswith(".py") and "hf_" in x]
+filter_skillset_folder_files = [x for x in skillset_folder_files if x.endswith(".py") and "hf_" in x]
 for file in filter_skillset_folder_files:
     if file.endswith(".py"):
         file_name = file.split(".")[0]
@@ -75,7 +68,7 @@ class should_abort:
     def __init__(self, resources, metadata):
         self.abort = False
         return None
-    
+
     async def should_abort(self):
         return self.abort
 
@@ -83,21 +76,21 @@ class TaskAbortion:
     def __init__(self, resources, metadata):
         self.abort = False
         return None
-    
+
     async def TaskAbortion(self):
         self.abort = True
         return self.abort
 
 class dispatch_result:
-    def __init__(self, resources, metadata):        
+    def __init__(self, resources, metadata):
         self.inbox = {}
         self.outbox = {}
         self.queue = {}
         return None
-    
+
     async def dispatch_result(self, result):
-        return None    
-    
+        return None
+
 class worker_py:
     def __init__(self, resources=None, metadata=None):
         self.metadata = metadata
@@ -122,12 +115,13 @@ class worker_py:
                 self._storage = None
         else:
             self._storage = None
+        self.storage = self._storage
 
         self.hardware_backends = ["llama_cpp", "qualcomm", "apple", "cpu", "gpu", "openvino", "optimum", "optimum_intel", "optimum_openvino", "optimum_ipex", "optimum_neural_compressor", "webnn"]
         # self.hwtest = self.test_ipfs_accelerate
         # if "install_depends" not in globals():
         #     self.install_depends = install_depends_py(resources, metadata)
-        
+
         if "ipfs_multiformats_py" not in globals() and "ipfs_multiformats_py" not in list(self.resources.keys()):
             ipfs_multiformats = ipfs_multiformats_py(resources, metadata)
             self.ipfs_multiformats = ipfs_multiformats
@@ -145,25 +139,25 @@ class worker_py:
         else:
             self.dispatch_result = dispatch_result
             pass
-        
+
         # if "default" not in globals() and "default" not in list(self.resources.keys()):
         #     self.default = default
         # elif "default" in list(self.resources.keys()):
         #     self.default = self.resources["default"]
         # elif "default" in globals():
         #     self.default = default
-        
+
         # self.create_cuda_default_endpoint_handler = self.default.create_cuda_default_endpoint_handler
         # self.create_openvino_default_endpoint_handler = self.default.create_openvino_default_endpoint_handler
         # self.create_cpu_default_endpoint_handler = self.default.create_cpu_default_endpoint_handler
-        
+
         # if "should_abort" not in globals() and "should_abort" not in list(self.resources.keys()):
         #     self.should_abort = should_abort(resources, metadata)
         # elif "should_abort" in list(self.resources.keys()):
         #     self.should_abort = self.resources["should_abort"]
         # elif "should_abort" in globals():
         #     self.should_abort = should_abort(resources, metadata)
-        
+
         # if "TaskAbortion" not in globals() and "TaskAbortion" not in list(self.resources.keys()):
         #     self.TaskAbortion = TaskAbortion(resources, metadata)
         # elif "TaskAbortion" in list(self.resources.keys()):
@@ -173,26 +167,26 @@ class worker_py:
 
         for endpoint in self.endpoint_types:
             if endpoint not in dir(self):
-                self.__dict__[endpoint] = {}        
+                    self.__dict__[endpoint] = {}
             for backend in self.hardware_backends:
                 if backend not in list(self.__dict__[endpoint].keys()):
                     self.__dict__[endpoint][backend] = {}
         return None
-    
+
     def init(self):
         if "transformers" not in globals() and "transformers" not in list(self.resources.keys()):
             import transformers
             self.transformers = transformers
-            self.resources["transformers"] = self.transformers   
+            self.resources["transformers"] = self.transformers
         elif "transformers" in list(self.resources.keys()):
             self.transformers = self.resources["transformers"]
         elif "transformers" in globals():
             import transformers
             self.transformers = transformers
             self.resources["transformers"] = self.transformers
-            
+
         self.resources["transformers"] = self.transformers
-            
+
         if "torch" not in globals() and "torch" not in list(self.resources.keys()):
             import torch
             self.torch = torch
@@ -203,7 +197,7 @@ class worker_py:
             import torch
             self.torch = torch
             self.resources["torch"] = self.torch
-                    
+
         if "np" not in globals() and "np" not in list(self.resources.keys()):
             import numpy as np
             self.np = np
@@ -211,17 +205,17 @@ class worker_py:
         elif "np" in list(self.resources.keys()):
             self.np = self.resources["np"]
         elif "np" in globals():
-            import numpy as np 
+            import numpy as np
             self.np = np
             self.resources["np"] = self.np
-        
+
         import importlib.util
         classes_to_load = [ self.get_model_type(x) for x in self.metadata["models"]]
         files_in_skills_folder = os.listdir(os.path.join(os.path.dirname(__file__), 'skillset'))
         filter_files_for_hf_prefix = [x for x in files_in_skills_folder if x.startswith("hf_")]
         filer_files_remove_suffix = [x.split(".")[0] for x in filter_files_for_hf_prefix]
         filter_files_remove_prefix = [x.replace("hf_", "") for x in filer_files_remove_suffix]
-        filter_files_classes_to_load = [x for x in filter_files_remove_prefix if x in classes_to_load]   
+        filter_files_classes_to_load = [x for x in filter_files_remove_prefix if x in classes_to_load]
         for class_name in filter_files_classes_to_load:
             file = "hf_" + class_name + ".py"
             file_name = "hf_" + class_name
@@ -246,42 +240,38 @@ class worker_py:
                 self.resources[file_name] = this_class(self.resources, self.metadata)
             else:
                 pass
-            
+
         return None
-    
+
     def init_cuda(self):
         # self.init()
         return None
-    
+
     def init_qualcomm(self):
         # self.init()
         return None
-    
-    def init_qualcomm(self):
-        # self.init()
-        return None
-    
+
     def init_cpu(self):
         # self.init()
         return None
-    
+
     def init_networking(self, model, device, networking_label):
         if "ipfs_transformers_py" not in globals() and "ipfs_transformers_py" not in list(self.resources.keys()):
             from ipfs_transformers_py import ipfs_transformers
             self.resources["ipfs_transformers"] = ipfs_transformers
-            self.ipfs_transformers = { 
+            self.ipfs_transformers = {
                 # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
-            }        
+            }
         elif "ipfs_transformers" in list(self.resources.keys()):
             self.ipfs_transformers = self.resources["ipfs_transformers"]
         elif "ipfs_transformers" in globals():
             from ipfs_transformers_py import ipfs_transformers
             self.resources["ipfs_transformers"] = ipfs_transformers
-            self.ipfs_transformers = { 
+            self.ipfs_transformers = {
                 # "AutoDownloadModel" : ipfs_transformers.AutoDownloadModel()
             }
         return None
-    
+
     def init_openvino(self):
         self.init()
         import optimum
@@ -292,18 +282,18 @@ class worker_py:
         self.ov = self.resources["ov"]
         try:
             from openvino_utils import openvino_utils
-        except:
+        except Exception:
             from .openvino_utils import openvino_utils
         self.resources["openvino_utils"] = openvino_utils
         self.openvino_utils = openvino_utils(self.resources, self.metadata)
         self.resources["openvino_utils"] = self.openvino_utils
-        
+
         return None
-    
+
     async def dispatch_result(self, result):
 
         return None
-    
+
     def get_model_type(self, model_name=None, model_type=None):
         if model_name is not None:
             if os.path.exists(model_name):
@@ -313,7 +303,7 @@ class worker_py:
                 config = self.transformers.AutoConfig.from_pretrained(model_name, trust_remote_code=True)
                 model_type = config.__class__.model_type
         return model_type
-    
+
     # def get_openvino_genai_pipeline(self, model_name, model_type=None):
     #     return self.openvino_utils.get_openvino_genai_pipeline(model_name, model_type)
 
@@ -324,7 +314,7 @@ class worker_py:
         if os.path.exists(install_depends_filename):
             ## get the sha256 hash of the file
             sha256 = hashlib.sha256()
-            
+
             # Try distributed storage first
             if self.storage:
                 try:
@@ -339,7 +329,7 @@ class worker_py:
                                 sha256.update(file_content[i:i+4096])
                         # Cache for future use
                         self.storage.store_file(install_depends_filename, file_content, pin=False)
-                except:
+                except Exception:
                     # Fallback to local filesystem
                     with open(install_depends_filename, "rb") as f:
                         for byte_block in iter(lambda: f.read(4096),b""):
@@ -348,7 +338,7 @@ class worker_py:
                 with open(install_depends_filename, "rb") as f:
                     for byte_block in iter(lambda: f.read(4096),b""):
                         sha256.update(byte_block)
-            
+
             install_file_hash = sha256.hexdigest()
             test_results_file = os.path.join(tempfile.gettempdir(), install_file_hash + ".json")
             test_results = {"cuda": True, "openvino" : True, "llama_cpp": False, "ipex": False}
@@ -365,7 +355,7 @@ class worker_py:
                                     test_results = json.load(f)
                                 # Cache for future use
                                 self.storage.store_file(test_results_file, json.dumps(test_results), pin=False)
-                        except:
+                        except Exception:
                             with open(test_results_file, "r") as f:
                                 test_results = json.load(f)
                     else:
@@ -384,7 +374,7 @@ class worker_py:
                         if self.storage:
                             try:
                                 self.storage.store_file(test_results_file, test_results_json, pin=False)
-                            except:
+                            except Exception:
                                 pass
                         return test_results
                     except Exception as e:
@@ -401,16 +391,16 @@ class worker_py:
                     if self.storage:
                         try:
                             self.storage.store_file(test_results_file, test_results_json, pin=False)
-                        except:
+                        except Exception:
                             pass
                     return test_results
                 except Exception as e:
                     print(e)
                     return e
-        else: 
+        else:
             raise ValueError("install_depends.py not found")
         return test_results
-    
+
     async def get_huggingface_model_types(self):
         if "transformers" not in dir(self):
             if "transformers" not in list(self.resources.keys()):
@@ -428,11 +418,11 @@ class worker_py:
 
         # Add model types from the AutoModel registry
         model_types.extend(list(self.transformers.MODEL_MAPPING._model_mapping.keys()))
-        
+
         # Remove duplicates and sort
         model_types = sorted(list(set(model_types)))
         return model_types
-    
+
     async def generate_hf_skill(model_type):
         ## search hf documentation for the model type
         ## get the data from the class in huggingface transformers
@@ -441,7 +431,7 @@ class worker_py:
         ## generate the skill
         ## write to disk
         return None
-    
+
     async def init_worker(self, models, local_endpoints, hwtest):
         if "torch" not in dir(self):
             if "torch" not in list(self.resources.keys()):
@@ -450,7 +440,7 @@ class worker_py:
                 self.torch = self.resources["torch"]
             else:
                 self.torch = self.resources["torch"]
-        
+
         if local_endpoints is None or len(local_endpoints) == 0:
             if "local_endpoints" in list(self.__dict__.keys()):
                 local_endpoints = self.local_endpoints
@@ -477,7 +467,7 @@ class worker_py:
                 endpoint_type = endpoint[1]
                 if endpoint_type not in list(new_endpoints_list[model].keys()):
                     new_endpoints_list[model][endpoint_type] = endpoint[2]
-        
+
         print(new_endpoints_list)
         self.local_endpoints = new_endpoints_list
 
@@ -485,7 +475,7 @@ class worker_py:
         self.local_endpoint_types = local_endpoint_types
         self.local_endpoint_models = local_endpoint_models
         local = len(local_endpoints) > 0 if isinstance(self.local_endpoints, dict) and len(list(self.local_endpoints.keys())) > 0 else False
-        
+
         if hwtest is None:
             if "hwtest" in list(self.__dict__.keys()):
                 hwtest = await self.test_hardware()
@@ -495,7 +485,7 @@ class worker_py:
                 hwtest = await self.test_hardware()
         self.hwtest = hwtest
         self.resources["hwtest"] = hwtest
-        
+
         if "cuda" in list(self.hwtest.keys()) and self.hwtest["cuda"] is True:
             try:
                 self.init_cuda()
@@ -525,7 +515,7 @@ class worker_py:
                 self.init_webnn()
             except Exception as e:
                 print(e)
-                pass        
+                pass
         cuda_test = self.hwtest["cuda"]
         openvino_test = self.hwtest["openvino"]
         llama_cpp_test = self.hwtest["llama_cpp"]
@@ -537,13 +527,13 @@ class worker_py:
         torch_gpus = 0
         if cuda == True and self.torch.cuda.is_available():
             torch_gpus = self.torch.cuda.device_count()
-        else:    
+        else:
             torch_gpus = 0
         if openvino_test == True:
             from openvino import Core
             openvino_gpus = 1 if "GPU" in Core().available_devices else 0
             del Core
-        gpus = torch_gpus if cuda == True else openvino_gpus if openvino_test == True else 0        
+        gpus = torch_gpus if cuda == True else openvino_gpus if openvino_test == True else 0
         # cpus = os.cpu_count()
         # cuda = torch.cuda.is_available()
         # gpus = torch.cuda.device_count()
@@ -552,7 +542,7 @@ class worker_py:
             model_type = self.get_model_type(model)
             if model_type not in huggingface_model_types:
                 print("model type not found in huggingface model types")
-                continue 
+                continue
             if "hf_" + model_type not in list(dir(self)):
                 print("model type not found in worker skills but it is a huggingface model type")
                 print("generate the skill for this model type")
@@ -704,8 +694,8 @@ class worker_py:
                 pass
 
         resources = {"local_endpoints": self.local_endpoints, "tokenizer": self.tokenizer, "queues": self.queues, "batch_sizes": self.batch_sizes, "endpoint_handler": self.endpoint_handler , "local_endpoint_types": list(worker_endpoint_types), "local_endpoint_models": list(worker_model_types), "hwtest": self.hwtest}
-        return resources    
-            
+        return resources
+
 # if __name__ == '__main__':
 #     # run(skillset=os.path.join(os.path.dirname(__file__), 'skillset'))
 #     resources = {}
@@ -716,5 +706,5 @@ class worker_py:
 #     except Exception as e:
 #         print(e)
 #         pass
-    
-    
+
+

@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 def _load_audit_api() -> Dict[str, Any]:
     """Resolve source audit APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.audit_tools.generate_audit_report import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.audit_tools.generate_audit_report import (
+            # type: ignore
             generate_audit_report as _generate_audit_report,
         )
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.audit_tools.record_audit_event import (  # type: ignore
@@ -91,6 +92,17 @@ def _load_audit_api() -> Dict[str, Any]:
 
 
 _API = _load_audit_api()
+
+
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
 
 
 def _is_iso8601(value: str) -> bool:
@@ -192,11 +204,7 @@ async def record_audit_event(
         severity=normalized_severity,
         tags=normalized_tags,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("action", normalized_action)
     payload.setdefault("severity", normalized_severity)
     return payload
@@ -276,11 +284,7 @@ async def generate_audit_report(
         output_path=normalized_output_path,
         include_details=include_details,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("report_type", normalized_report_type)
     payload.setdefault("output_format", normalized_output_format)
     return payload
@@ -327,11 +331,7 @@ async def audit_tools(
         user=normalized_user,
         details=details,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("target", normalized_target)
     payload.setdefault("action", normalized_action)
     return payload

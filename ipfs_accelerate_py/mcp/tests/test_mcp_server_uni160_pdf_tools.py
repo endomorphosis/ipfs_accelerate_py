@@ -258,6 +258,59 @@ class TestMCPServerUNI160PdfTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_pdf_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "pdf delegate failure"}
+
+        async def _run() -> None:
+            with patch.dict(
+                pdf_tools._API,
+                {
+                    "pdf_query_corpus": _contradictory_failure,
+                    "pdf_analyze_relationships": _contradictory_failure,
+                    "pdf_extract_entities": _contradictory_failure,
+                    "pdf_ingest_to_graphrag": _contradictory_failure,
+                    "pdf_batch_process": _contradictory_failure,
+                    "pdf_cross_document_analysis": _contradictory_failure,
+                    "pdf_optimize_for_llm": _contradictory_failure,
+                    "pdf_query_knowledge_graph": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                queried = await pdf_tools.pdf_query_corpus("find docs")
+                self.assertEqual(queried.get("status"), "error")
+                self.assertEqual(queried.get("error"), "pdf delegate failure")
+
+                relationships = await pdf_tools.pdf_analyze_relationships("doc-1")
+                self.assertEqual(relationships.get("status"), "error")
+                self.assertEqual(relationships.get("error"), "pdf delegate failure")
+
+                extracted = await pdf_tools.pdf_extract_entities(pdf_source="file.pdf")
+                self.assertEqual(extracted.get("status"), "error")
+                self.assertEqual(extracted.get("error"), "pdf delegate failure")
+
+                ingested = await pdf_tools.pdf_ingest_to_graphrag("file.pdf")
+                self.assertEqual(ingested.get("status"), "error")
+                self.assertEqual(ingested.get("error"), "pdf delegate failure")
+
+                batched = await pdf_tools.pdf_batch_process(pdf_sources=["a.pdf"])
+                self.assertEqual(batched.get("status"), "error")
+                self.assertEqual(batched.get("error"), "pdf delegate failure")
+
+                cross = await pdf_tools.pdf_cross_document_analysis(document_ids=["doc-1", "doc-2"])
+                self.assertEqual(cross.get("status"), "error")
+                self.assertEqual(cross.get("error"), "pdf delegate failure")
+
+                optimized = await pdf_tools.pdf_optimize_for_llm(pdf_source="file.pdf")
+                self.assertEqual(optimized.get("status"), "error")
+                self.assertEqual(optimized.get("error"), "pdf delegate failure")
+
+                graph = await pdf_tools.pdf_query_knowledge_graph(graph_id="graph-1", query="MATCH (n) RETURN n")
+                self.assertEqual(graph.get("status"), "error")
+                self.assertEqual(graph.get("error"), "pdf delegate failure")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

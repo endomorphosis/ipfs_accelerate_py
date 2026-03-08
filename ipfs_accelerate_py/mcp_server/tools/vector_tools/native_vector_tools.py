@@ -16,11 +16,13 @@ _VALID_OPTIMIZATION_TYPES = {"index", "memory", "disk"}
 def _load_vector_tools_api() -> Dict[str, Any]:
     """Resolve source vector-tools APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.vector_tools import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.vector_tools import (
+            # type: ignore
             create_vector_index as _create_vector_index,
             search_vector_index as _search_vector_index,
         )
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.vector_tools.vector_store_management import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.vector_tools.vector_store_management import (
+            # type: ignore
             delete_vector_index as _delete_vector_index,
             list_vector_indexes as _list_vector_indexes,
         )
@@ -282,6 +284,18 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     return payload
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic error-status inference."""
+    normalized = dict(payload or {})
+    has_error = bool(normalized.get("error"))
+    failed = normalized.get("success") is False or has_error
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 def _is_numeric_vector(value: Any) -> bool:
     return isinstance(value, list) and bool(value) and all(isinstance(item, (int, float)) for item in value)
 
@@ -349,8 +363,7 @@ async def create_vector_index(
     except Exception as exc:
         return _error_result(f"create_vector_index failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -397,8 +410,7 @@ async def search_vector_index(
     except Exception as exc:
         return _error_result(f"search_vector_index failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("index_id", normalized_index_id)
     return normalized
 
@@ -528,8 +540,7 @@ async def list_vector_indexes(backend: str = "all") -> Dict[str, Any]:
     except Exception as exc:
         return _error_result(f"list_vector_indexes failed: {exc}", backend=normalized_backend)
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("backend", normalized_backend)
     normalized.setdefault("indexes", {})
     return normalized
@@ -565,8 +576,7 @@ async def delete_vector_index(
             backend=normalized_backend,
         )
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("index_name", normalized_index_name)
     normalized.setdefault("backend", normalized_backend)
     return normalized
@@ -651,8 +661,7 @@ async def manage_vector_store(
             collection_name=normalized_collection,
         )
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("operation", normalized_operation)
     normalized.setdefault("store_type", normalized_backend)
     normalized.setdefault("collection_name", normalized_collection)
@@ -692,8 +701,7 @@ async def optimize_vector_store(
             collection_name=normalized_collection,
         )
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("store_type", normalized_backend)
     normalized.setdefault("collection_name", normalized_collection)
     normalized.setdefault("optimization_type", normalized_optimization)
@@ -811,8 +819,12 @@ async def list_stores(
             if include_details:
                 entry.update(
                     {
-                        "vector_count": len(registry_entry.get("vectors", [])) if isinstance(registry_entry, dict) else 0,
-                        "persist_path": registry_entry.get("persist_path") if isinstance(registry_entry, dict) else None,
+                        "vector_count": (
+                            len(registry_entry.get("vectors", [])) if isinstance(registry_entry, dict) else 0
+                        ),
+                        "persist_path": (
+                            registry_entry.get("persist_path") if isinstance(registry_entry, dict) else None
+                        ),
                         "metadata": registry_entry.get("metadata", {}) if isinstance(registry_entry, dict) else {},
                     }
                 )

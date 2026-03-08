@@ -207,6 +207,18 @@ def _error_result(message: str, context: Optional[Dict[str, Any]] = None) -> Dic
     return payload
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic error inference."""
+    normalized = dict(payload or {})
+    has_error = bool(normalized.get("error"))
+    failed = normalized.get("success") is False or has_error
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 async def _await_maybe(result: Any) -> Any:
     """Await coroutine-like values while preserving sync fallback behavior."""
     if hasattr(result, "__await__"):
@@ -261,8 +273,7 @@ async def pdf_query_corpus(
     except Exception as exc:
         return _error_result(f"pdf_query_corpus failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -309,8 +320,7 @@ async def pdf_analyze_relationships(
     except Exception as exc:
         return _error_result(f"pdf_analyze_relationships failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -364,8 +374,7 @@ async def pdf_extract_entities(
     except Exception as exc:
         return _error_result(f"pdf_extract_entities failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -423,8 +432,7 @@ async def pdf_batch_process(
     except Exception as exc:
         return _error_result(f"pdf_batch_process failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -484,8 +492,7 @@ async def pdf_ingest_to_graphrag(
     except Exception as exc:
         return _error_result(f"pdf_ingest_to_graphrag failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -538,8 +545,7 @@ async def pdf_cross_document_analysis(
     except Exception as exc:
         return _error_result(f"pdf_cross_document_analysis failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -589,8 +595,7 @@ async def pdf_optimize_for_llm(
     except Exception as exc:
         return _error_result(f"pdf_optimize_for_llm failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -638,8 +643,7 @@ async def pdf_query_knowledge_graph(
     except Exception as exc:
         return _error_result(f"pdf_query_knowledge_graph failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 

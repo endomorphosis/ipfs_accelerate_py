@@ -203,6 +203,38 @@ class TestMCPServerUNI159GraphTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_graph_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_graph_tools._API,
+                {
+                    "graph_add_entity": _contradictory_failure,
+                    "query_knowledge_graph": _contradictory_failure,
+                    "graph_visualize": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                added = await native_graph_tools.graph_add_entity(
+                    entity_id="alice",
+                    entity_type="Person",
+                )
+                searched = await native_graph_tools.query_knowledge_graph(query="find people")
+                visualized = await native_graph_tools.graph_visualize(format="dot")
+
+            self.assertEqual(added.get("status"), "error")
+            self.assertEqual(added.get("error"), "delegate failed")
+
+            self.assertEqual(searched.get("status"), "error")
+            self.assertEqual(searched.get("error"), "delegate failed")
+
+            self.assertEqual(visualized.get("status"), "error")
+            self.assertEqual(visualized.get("error"), "delegate failed")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

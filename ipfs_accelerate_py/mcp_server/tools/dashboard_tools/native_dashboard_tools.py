@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 def _load_dashboard_api() -> Dict[str, Any]:
     """Resolve source dashboard APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.dashboard_tools.tdfol_performance_tool import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.dashboard_tools.tdfol_performance_tool import (
+            # type: ignore
             check_tdfol_performance_regression as _check_tdfol_performance_regression,
             compare_tdfol_strategies as _compare_tdfol_strategies,
             export_tdfol_statistics as _export_tdfol_statistics,
@@ -131,8 +132,10 @@ _API = _load_dashboard_api()
 def _normalize_payload(result: Any) -> Dict[str, Any]:
     """Normalize result to a deterministic dict envelope."""
     payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
+    has_error = bool(payload.get("error"))
+    failed = payload.get("success") is False or has_error
+    if failed:
+        payload["status"] = "error"
     elif "warning" in payload and payload.get("warning"):
         payload.setdefault("status", "warning")
     else:

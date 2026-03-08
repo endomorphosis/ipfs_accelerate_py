@@ -24,7 +24,8 @@ def _should_fallback_to_local_provenance(payload: Dict[str, Any]) -> bool:
 def _load_provenance_api() -> Dict[str, Any]:
     """Resolve source provenance APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.provenance_tools.record_provenance import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.provenance_tools.record_provenance import (
+            # type: ignore
             record_provenance as _record_provenance,
         )
 
@@ -70,6 +71,17 @@ def _load_provenance_api() -> Dict[str, Any]:
 
 
 _API = _load_provenance_api()
+
+
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
 
 
 async def record_provenance(
@@ -167,7 +179,7 @@ async def record_provenance(
         timestamp=normalized_timestamp,
         tags=tags,
     )
-    payload = dict(result or {})
+    payload = _normalize_delegate_payload(result)
 
     # If the source provenance backend is present but missing optional runtime
     # modules, keep this wrapper deterministic by returning a local success shape.
@@ -181,7 +193,6 @@ async def record_provenance(
             "fallback": True,
         }
 
-    payload.setdefault("status", "success")
     payload.setdefault("dataset_id", normalized_dataset_id)
     payload.setdefault("operation", normalized_operation)
     return payload

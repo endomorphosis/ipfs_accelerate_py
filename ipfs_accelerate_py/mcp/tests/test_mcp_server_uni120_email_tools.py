@@ -105,7 +105,10 @@ class TestMCPServerUNI120EmailTools(unittest.TestCase):
 
     def test_email_parse_eml_rejects_non_boolean_include_attachments(self) -> None:
         async def _run() -> None:
-            result = await email_parse_eml(file_path="/tmp/mail.eml", include_attachments="yes")  # type: ignore[arg-type]
+            result = await email_parse_eml(  # type: ignore[arg-type]
+                file_path="/tmp/mail.eml",
+                include_attachments="yes",
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("must be a boolean", str(result.get("message", "")))
 
@@ -211,6 +214,44 @@ class TestMCPServerUNI120EmailTools(unittest.TestCase):
             self.assertEqual(result.get("file_path"), "/tmp/mail.eml")
             self.assertEqual(result.get("include_attachments"), False)
             self.assertEqual(result.get("email"), {})
+
+        anyio.run(_run)
+
+    def test_email_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.email_tools.native_email_tools._API",
+                {
+                    "email_test_connection": _contradictory_failure,
+                    "email_list_folders": _contradictory_failure,
+                    "email_analyze_export": _contradictory_failure,
+                    "email_search_export": _contradictory_failure,
+                    "email_parse_eml": _contradictory_failure,
+                },
+            ):
+                tested = await email_test_connection(protocol="imap", server="mail.example")
+                listed = await email_list_folders(server="mail.example")
+                analyzed = await email_analyze_export(file_path="/tmp/email.json")
+                searched = await email_search_export(file_path="/tmp/email.json", query="invoice")
+                parsed = await email_parse_eml(file_path="/tmp/mail.eml")
+
+            self.assertEqual(tested.get("status"), "error")
+            self.assertEqual(tested.get("error"), "delegate failed")
+
+            self.assertEqual(listed.get("status"), "error")
+            self.assertEqual(listed.get("error"), "delegate failed")
+
+            self.assertEqual(analyzed.get("status"), "error")
+            self.assertEqual(analyzed.get("error"), "delegate failed")
+
+            self.assertEqual(searched.get("status"), "error")
+            self.assertEqual(searched.get("error"), "delegate failed")
+
+            self.assertEqual(parsed.get("status"), "error")
+            self.assertEqual(parsed.get("error"), "delegate failed")
 
         anyio.run(_run)
 

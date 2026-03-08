@@ -4,14 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
-from ipfs_accelerate_py.mcp_server.tools.provenance_tools.native_provenance_tools import (
-    record_provenance_batch,
-    record_provenance,
-    register_native_provenance_tools,
-)
+from ipfs_accelerate_py.mcp_server.tools.provenance_tools import native_provenance_tools
 
 
 class _DummyManager:
@@ -25,14 +22,14 @@ class _DummyManager:
 class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
     def test_register_includes_provenance_tool(self) -> None:
         manager = _DummyManager()
-        register_native_provenance_tools(manager)
+        native_provenance_tools.register_native_provenance_tools(manager)
         names = [c["name"] for c in manager.calls]
         self.assertIn("record_provenance", names)
         self.assertIn("record_provenance_batch", names)
 
     def test_register_schema_contract(self) -> None:
         manager = _DummyManager()
-        register_native_provenance_tools(manager)
+        native_provenance_tools.register_native_provenance_tools(manager)
         by_name = {c["name"]: c for c in manager.calls}
 
         schema = by_name["record_provenance"]["input_schema"]
@@ -50,7 +47,7 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_rejects_missing_dataset_id(self) -> None:
         async def _run() -> None:
-            result = await record_provenance(dataset_id="", operation="transform")
+            result = await native_provenance_tools.record_provenance(dataset_id="", operation="transform")
             self.assertEqual(result.get("status"), "error")
             self.assertIn("dataset_id is required", str(result.get("message", "")))
 
@@ -58,7 +55,7 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_rejects_missing_operation(self) -> None:
         async def _run() -> None:
-            result = await record_provenance(dataset_id="dataset-1", operation=" ")
+            result = await native_provenance_tools.record_provenance(dataset_id="dataset-1", operation=" ")
             self.assertEqual(result.get("status"), "error")
             self.assertIn("operation is required", str(result.get("message", "")))
 
@@ -66,7 +63,11 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_rejects_invalid_inputs_shape(self) -> None:
         async def _run() -> None:
-            result = await record_provenance(dataset_id="dataset-1", operation="transform", inputs=["ok", 1])  # type: ignore[list-item]
+            result = await native_provenance_tools.record_provenance(
+                dataset_id="dataset-1",
+                operation="transform",
+                inputs=["ok", 1],  # type: ignore[list-item]
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("array of strings", str(result.get("message", "")))
 
@@ -74,7 +75,11 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_rejects_invalid_parameters(self) -> None:
         async def _run() -> None:
-            result = await record_provenance(dataset_id="dataset-1", operation="transform", parameters=["bad"])  # type: ignore[arg-type]
+            result = await native_provenance_tools.record_provenance(
+                dataset_id="dataset-1",
+                operation="transform",
+                parameters=["bad"],  # type: ignore[arg-type]
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("must be an object", str(result.get("message", "")))
 
@@ -82,7 +87,7 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_rejects_invalid_timestamp(self) -> None:
         async def _run() -> None:
-            result = await record_provenance(
+            result = await native_provenance_tools.record_provenance(
                 dataset_id="dataset-1",
                 operation="transform",
                 timestamp="not-a-timestamp",
@@ -94,7 +99,7 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_rejects_empty_tag(self) -> None:
         async def _run() -> None:
-            result = await record_provenance(
+            result = await native_provenance_tools.record_provenance(
                 dataset_id="dataset-1",
                 operation="transform",
                 tags=["ok", " "],
@@ -106,7 +111,10 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_success_shape(self) -> None:
         async def _run() -> None:
-            result = await record_provenance(dataset_id="dataset-1", operation="transform")
+            result = await native_provenance_tools.record_provenance(
+                dataset_id="dataset-1",
+                operation="transform",
+            )
             self.assertIn(result.get("status"), ["success", "error"])
             if result.get("status") == "success":
                 self.assertIn("dataset_id", result)
@@ -114,9 +122,28 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_record_provenance_infers_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_provenance_tools._API,
+                {"record_provenance": _failed},
+                clear=False,
+            ):
+                result = await native_provenance_tools.record_provenance(
+                    dataset_id="dataset-1",
+                    operation="transform",
+                )
+                self.assertEqual(result.get("status"), "error")
+                self.assertEqual(result.get("error"), "delegate failed")
+
+        anyio.run(_run)
+
     def test_record_provenance_batch_rejects_empty_records(self) -> None:
         async def _run() -> None:
-            result = await record_provenance_batch(records=[])
+            result = await native_provenance_tools.record_provenance_batch(records=[])
             self.assertEqual(result.get("status"), "error")
             self.assertIn("non-empty array", str(result.get("message", "")))
 
@@ -124,7 +151,7 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_batch_fail_fast_stops_on_error(self) -> None:
         async def _run() -> None:
-            result = await record_provenance_batch(
+            result = await native_provenance_tools.record_provenance_batch(
                 records=[
                     {"dataset_id": "dataset-1", "operation": "transform"},
                     {"dataset_id": "", "operation": "ingest"},
@@ -141,7 +168,7 @@ class TestMCPServerUNI115ProvenanceTools(unittest.TestCase):
 
     def test_record_provenance_batch_success_shape(self) -> None:
         async def _run() -> None:
-            result = await record_provenance_batch(
+            result = await native_provenance_tools.record_provenance_batch(
                 records=[
                     {"dataset_id": "dataset-1", "operation": "transform"},
                     {"dataset_id": "dataset-2", "operation": "index"},

@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.discord_tools import native_discord_tools
 from ipfs_accelerate_py.mcp_server.tools.discord_tools.native_discord_tools import (
     discord_analyze_export,
     discord_batch_convert_exports,
@@ -134,6 +136,55 @@ class TestMCPServerUNI130DiscordTools(unittest.TestCase):
             result = await discord_batch_convert_exports(input_dir="/tmp/in", output_dir="/tmp/out", file_pattern="   ")
             self.assertEqual(result.get("status"), "error")
             self.assertIn("file_pattern must be a non-empty string", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_discord_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_discord_tools._API,
+                {
+                    "discord_list_guilds": _contradictory_failure,
+                    "discord_list_channels": _contradictory_failure,
+                    "discord_list_dm_channels": _contradictory_failure,
+                    "discord_export_channel": _contradictory_failure,
+                    "discord_analyze_export": _contradictory_failure,
+                    "discord_convert_export": _contradictory_failure,
+                    "discord_batch_convert_exports": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                guilds = await discord_list_guilds()
+                channels = await discord_list_channels(guild_id="g-1")
+                dms = await discord_list_dm_channels()
+                exported = await discord_export_channel(channel_id="c-1")
+                analyzed = await discord_analyze_export(export_path="/tmp/export.json")
+                converted = await discord_convert_export(input_path="in.json", output_path="out.json")
+                batched = await discord_batch_convert_exports(input_dir="/tmp/in", output_dir="/tmp/out")
+
+            self.assertEqual(guilds.get("status"), "error")
+            self.assertEqual(guilds.get("error"), "delegate failed")
+
+            self.assertEqual(channels.get("status"), "error")
+            self.assertEqual(channels.get("error"), "delegate failed")
+
+            self.assertEqual(dms.get("status"), "error")
+            self.assertEqual(dms.get("error"), "delegate failed")
+
+            self.assertEqual(exported.get("status"), "error")
+            self.assertEqual(exported.get("error"), "delegate failed")
+
+            self.assertEqual(analyzed.get("status"), "error")
+            self.assertEqual(analyzed.get("error"), "delegate failed")
+
+            self.assertEqual(converted.get("status"), "error")
+            self.assertEqual(converted.get("error"), "delegate failed")
+
+            self.assertEqual(batched.get("status"), "error")
+            self.assertEqual(batched.get("error"), "delegate failed")
 
         anyio.run(_run)
 

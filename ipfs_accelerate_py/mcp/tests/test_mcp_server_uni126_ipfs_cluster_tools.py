@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.ipfs_cluster_tools import native_ipfs_cluster_tools
 from ipfs_accelerate_py.mcp_server.tools.ipfs_cluster_tools.native_ipfs_cluster_tools import (
     manage_ipfs_cluster,
     manage_ipfs_content,
@@ -131,6 +132,27 @@ class TestMCPServerUNI126IPFSClusterTools(unittest.TestCase):
             self.assertEqual(result.get("metadata"), {"source": "unit"})
             self.assertEqual(result.get("content"), "hello")
             self.assertEqual(result.get("result"), {})
+
+        anyio.run(_run)
+
+    def test_failed_delegate_payloads_infer_error_status(self) -> None:
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_ipfs_cluster_tools._API,
+                {
+                    "manage_ipfs_cluster": _failed,
+                    "manage_ipfs_content": _failed,
+                },
+                clear=False,
+            ):
+                cluster = await manage_ipfs_cluster(action="status")
+                self.assertEqual(cluster.get("status"), "error")
+
+                content = await manage_ipfs_content(action="list_content")
+                self.assertEqual(content.get("status"), "error")
 
         anyio.run(_run)
 

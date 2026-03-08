@@ -181,6 +181,53 @@ class TestMCPServerUNI128VectorStoreTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_vector_store_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                __import__(
+                    "ipfs_accelerate_py.mcp_server.tools.vector_store_tools.native_vector_store_tools",
+                    fromlist=["_API"],
+                )._API,
+                {
+                    "vector_index": _contradictory_failure,
+                    "vector_retrieval": _contradictory_failure,
+                    "vector_metadata": _contradictory_failure,
+                    "enhanced_vector_index": _contradictory_failure,
+                    "enhanced_vector_search": _contradictory_failure,
+                    "enhanced_vector_storage": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                indexed = await vector_index(action="create", index_name="idx")
+                retrieved = await vector_retrieval(collection="docs")
+                metadata = await vector_metadata(action="get", collection="docs")
+                enhanced_indexed = await enhanced_vector_index(action="list")
+                searched = await enhanced_vector_search(collection="docs", query_vector=[0.1, 0.2])
+                stored = await enhanced_vector_storage(action="list", collection="docs")
+
+            self.assertEqual(indexed.get("status"), "error")
+            self.assertEqual(indexed.get("error"), "delegate failed")
+
+            self.assertEqual(retrieved.get("status"), "error")
+            self.assertEqual(retrieved.get("error"), "delegate failed")
+
+            self.assertEqual(metadata.get("status"), "error")
+            self.assertEqual(metadata.get("error"), "delegate failed")
+
+            self.assertEqual(enhanced_indexed.get("status"), "error")
+            self.assertEqual(enhanced_indexed.get("error"), "delegate failed")
+
+            self.assertEqual(searched.get("status"), "error")
+            self.assertEqual(searched.get("error"), "delegate failed")
+
+            self.assertEqual(stored.get("status"), "error")
+            self.assertEqual(stored.get("error"), "delegate failed")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

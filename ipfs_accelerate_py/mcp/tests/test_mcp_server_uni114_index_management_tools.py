@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.index_management_tools import native_index_management_tools
 from ipfs_accelerate_py.mcp_server.tools.index_management_tools.native_index_management_tools import (
     load_index,
     manage_index_configuration,
@@ -136,6 +138,35 @@ class TestMCPServerUNI114IndexManagementTools(unittest.TestCase):
             self.assertIn("load", result)
             self.assertIn("shards", result)
             self.assertIn("configuration", result)
+
+        anyio.run(_run)
+
+    def test_failed_delegate_payloads_infer_error_status(self) -> None:
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_index_management_tools._API,
+                {
+                    "load_index": _failed,
+                    "manage_shards": _failed,
+                    "monitor_index_status": _failed,
+                    "manage_index_configuration": _failed,
+                },
+                clear=False,
+            ):
+                loaded = await load_index(action="load")
+                self.assertEqual(loaded.get("status"), "error")
+
+                shards = await manage_shards(action="list_shards")
+                self.assertEqual(shards.get("status"), "error")
+
+                monitored = await monitor_index_status(time_range="24h")
+                self.assertEqual(monitored.get("status"), "error")
+
+                configured = await manage_index_configuration(action="get_config")
+                self.assertEqual(configured.get("status"), "error")
 
         anyio.run(_run)
 

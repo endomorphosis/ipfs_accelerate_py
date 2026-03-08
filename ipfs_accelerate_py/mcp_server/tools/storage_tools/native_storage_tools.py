@@ -195,7 +195,11 @@ def _load_storage_api() -> Dict[str, Any]:
                 if action == "get":
                     collection = fallback_manager.get_collection(str(collection_name))
                     if collection is None:
-                        return {"action": action, "success": False, "error": f"Collection '{collection_name}' not found"}
+                        return {
+                            "action": action,
+                            "success": False,
+                            "error": f"Collection '{collection_name}' not found",
+                        }
                     return {"action": action, "success": True, "collection": collection}
                 if action == "list":
                     collections = fallback_manager.list_collections()
@@ -217,7 +221,11 @@ def _load_storage_api() -> Dict[str, Any]:
                     if collection_name:
                         collection = fallback_manager.get_collection(str(collection_name))
                         if collection is None:
-                            return {"action": action, "success": False, "error": f"Collection '{collection_name}' not found"}
+                            return {
+                                "action": action,
+                                "success": False,
+                                "error": f"Collection '{collection_name}' not found",
+                            }
                         return {"action": action, "success": True, "collection_stats": collection}
                     return {
                         "action": action,
@@ -250,7 +258,11 @@ def _load_storage_api() -> Dict[str, Any]:
             if fallback_manager is not None:
                 items = fallback_manager.list_items(
                     collection_name=collection,
-                    storage_type=(fallback_storage_enum(storage_type) if storage_type and fallback_storage_enum is not None else None),
+                    storage_type=(
+                        fallback_storage_enum(storage_type)
+                        if storage_type and fallback_storage_enum is not None
+                        else None
+                    ),
                     tags=tags,
                     limit=max(limit * 2, limit),
                     offset=offset,
@@ -259,7 +271,9 @@ def _load_storage_api() -> Dict[str, Any]:
                 filtered_items = items
                 if size_range is not None:
                     size_min, size_max = size_range
-                    filtered_items = [item for item in filtered_items if size_min <= int(item.get("size_bytes", 0)) <= size_max]
+                    filtered_items = [
+                        item for item in filtered_items if size_min <= int(item.get("size_bytes", 0)) <= size_max
+                    ]
                 if date_range is not None:
                     start_raw, end_raw = date_range
                     start_dt = datetime.fromisoformat(start_raw.replace("Z", "+00:00"))
@@ -318,6 +332,25 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     payload: Dict[str, Any] = {"status": "error", "error": message}
     payload.update(extra)
     return payload
+
+
+def _normalize_delegate_payload(
+    payload: Any,
+    *,
+    default_status: str = "success",
+    error_when_false_field: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = bool(normalized.get("error")) or normalized.get("success") is False
+    if failed:
+        normalized["status"] = "error"
+    elif "status" not in normalized:
+        if error_when_false_field is not None and not bool(normalized.get(error_when_false_field, False)):
+            normalized["status"] = "error"
+        else:
+            normalized["status"] = default_status
+    return normalized
 
 
 async def store_data(
@@ -380,8 +413,7 @@ async def store_data(
     except Exception as exc:
         return _error_result(f"store_data failed: {exc}", stored=False)
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "success" if normalized.get("stored", False) else "error")
+    normalized = _normalize_delegate_payload(payload, error_when_false_field="stored")
     normalized.setdefault("collection", normalized_collection)
     return normalized
 
@@ -442,9 +474,7 @@ async def retrieve_data(
             include_content=include_content,
         )
 
-    normalized = dict(payload or {})
-    if "status" not in normalized:
-        normalized["status"] = "error" if "error" in normalized else "success"
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -512,7 +542,11 @@ async def manage_collections(
         not isinstance(backend_types, list)
         or not all(isinstance(item, str) and item.strip() for item in backend_types)
     ):
-        return _error_result("backend_types must be an array of non-empty strings", action=normalized_action, success=False)
+        return _error_result(
+            "backend_types must be an array of non-empty strings",
+            action=normalized_action,
+            success=False,
+        )
     if unavailable_backends is not None and (
         not isinstance(unavailable_backends, list)
         or not all(isinstance(item, str) and item.strip() for item in unavailable_backends)
@@ -728,8 +762,7 @@ async def manage_collections(
     except Exception as exc:
         return _error_result(f"manage_collections failed: {exc}", action=normalized_action, success=False)
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "success" if normalized.get("success", True) else "error")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("action", normalized_action)
 
     if normalized_action == "stats" and normalized.get("status") == "success":
@@ -902,8 +935,7 @@ async def query_storage(
             pagination={"limit": normalized_limit, "offset": normalized_offset, "has_more": False},
         )
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     return normalized
 
 
@@ -992,8 +1024,12 @@ async def get_storage_stats(
         breakdown = {}
 
     totals = {
-        "total_objects": int(summary.get("total_items", analytics.get("totals", {}).get("total_items", 0)) or 0),
-        "total_bytes": int(summary.get("total_size_bytes", analytics.get("totals", {}).get("total_size_bytes", 0)) or 0),
+        "total_objects": int(
+            summary.get("total_items", analytics.get("totals", {}).get("total_items", 0)) or 0
+        ),
+        "total_bytes": int(
+            summary.get("total_size_bytes", analytics.get("totals", {}).get("total_size_bytes", 0)) or 0
+        ),
     }
 
     return {

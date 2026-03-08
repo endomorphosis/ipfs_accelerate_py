@@ -40,6 +40,7 @@ import functools
 import ipaddress
 import json
 import os
+import tempfile
 import socket
 import sys
 import threading
@@ -2391,14 +2392,30 @@ async def serve_task_queue(
         announce_file = _announce_file_path()
         if announce_file:
             try:
-                os.makedirs(os.path.dirname(announce_file) or ".", exist_ok=True)
-                with open(announce_file, "w", encoding="utf-8") as handle:
-                    handle.write(
-                        json.dumps(
-                            {"peer_id": peer_id, "multiaddr": announced},
-                            ensure_ascii=False,
-                        )
-                    )
+                announce_dir = os.path.dirname(announce_file) or "."
+                os.makedirs(announce_dir, exist_ok=True)
+                announce_payload = json.dumps(
+                    {"peer_id": peer_id, "multiaddr": announced},
+                    ensure_ascii=False,
+                )
+                fd, tmp_announce_file = tempfile.mkstemp(
+                    prefix=".task_p2p_announce.",
+                    suffix=".json.tmp",
+                    dir=announce_dir,
+                    text=True,
+                )
+                try:
+                    with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                        handle.write(announce_payload)
+                        handle.flush()
+                        os.fsync(handle.fileno())
+                    os.replace(tmp_announce_file, announce_file)
+                except Exception:
+                    try:
+                        os.unlink(tmp_announce_file)
+                    except Exception:
+                        pass
+                    raise
                 print(
                     f"ipfs_accelerate_py task queue p2p service: wrote announce file {announce_file}",
                     file=sys.stderr,

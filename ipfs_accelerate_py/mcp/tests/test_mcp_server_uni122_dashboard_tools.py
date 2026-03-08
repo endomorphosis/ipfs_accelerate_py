@@ -19,6 +19,7 @@ from ipfs_accelerate_py.mcp_server.tools.dashboard_tools.native_dashboard_tools 
     reset_tdfol_metrics,
     register_native_dashboard_tools,
 )
+from ipfs_accelerate_py.mcp_server.tools.dashboard_tools import native_dashboard_tools
 
 
 class _DummyManager:
@@ -185,6 +186,59 @@ class TestMCPServerUNI122DashboardTools(unittest.TestCase):
 
             self.assertEqual(reset.get("status"), "success")
             self.assertEqual(reset.get("reset"), True)
+
+        anyio.run(_run)
+
+    def test_dashboard_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        def _contradictory_failure(*_: object, **__: object) -> dict:
+            return {"status": "success", "success": False, "error": "dashboard delegate failure"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_dashboard_tools._API,
+                {
+                    "get_tdfol_metrics": _contradictory_failure,
+                    "profile_tdfol_operation": _contradictory_failure,
+                    "generate_tdfol_dashboard": _contradictory_failure,
+                    "export_tdfol_statistics": _contradictory_failure,
+                    "get_tdfol_profiler_report": _contradictory_failure,
+                    "compare_tdfol_strategies": _contradictory_failure,
+                    "check_tdfol_performance_regression": _contradictory_failure,
+                    "reset_tdfol_metrics": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                metrics = await get_tdfol_metrics()
+                self.assertEqual(metrics.get("status"), "error")
+                self.assertEqual(metrics.get("error"), "dashboard delegate failure")
+
+                profiled = await profile_tdfol_operation(formula_str="P(a)", runs=1)
+                self.assertEqual(profiled.get("status"), "error")
+                self.assertEqual(profiled.get("error"), "dashboard delegate failure")
+
+                dashboard = await generate_tdfol_dashboard(include_profiling=True)
+                self.assertEqual(dashboard.get("status"), "error")
+                self.assertEqual(dashboard.get("error"), "dashboard delegate failure")
+
+                exported = await export_tdfol_statistics(format="json")
+                self.assertEqual(exported.get("status"), "error")
+                self.assertEqual(exported.get("error"), "dashboard delegate failure")
+
+                report = await get_tdfol_profiler_report(report_format="text", top_n=5)
+                self.assertEqual(report.get("status"), "error")
+                self.assertEqual(report.get("error"), "dashboard delegate failure")
+
+                compared = await compare_tdfol_strategies(formula_str="P(a)", runs_per_strategy=2)
+                self.assertEqual(compared.get("status"), "error")
+                self.assertEqual(compared.get("error"), "dashboard delegate failure")
+
+                regression = await check_tdfol_performance_regression(threshold_percent=10.0)
+                self.assertEqual(regression.get("status"), "error")
+                self.assertEqual(regression.get("error"), "dashboard delegate failure")
+
+                reset = await reset_tdfol_metrics()
+                self.assertEqual(reset.get("status"), "error")
+                self.assertEqual(reset.get("error"), "dashboard delegate failure")
 
         anyio.run(_run)
 

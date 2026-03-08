@@ -20,10 +20,41 @@ def _make_default_registry(supported_capabilities: Iterable[str]) -> InterfaceDe
             namespace="ipfs_accelerate_py.mcp_server",
             version="1.0.0",
             methods=[
-                {"name": "interfaces/list", "input_schema": {"type": "object", "properties": {}, "required": []}, "output_schema": {"type": "array", "items": {"type": "string"}}},
-                {"name": "interfaces/get", "input_schema": {"type": "object", "properties": {"interface_cid": {"type": "string"}}, "required": ["interface_cid"]}, "output_schema": {"type": "object"}},
-                {"name": "interfaces/compat", "input_schema": {"type": "object", "properties": {"interface_cid": {"type": "string"}}, "required": ["interface_cid"]}, "output_schema": {"type": "object"}},
-                {"name": "interfaces/select", "input_schema": {"type": "object", "properties": {"task_hint_cid": {"type": "string"}, "budget": {"type": "integer", "default": 20}}, "required": []}, "output_schema": {"type": "array", "items": {"type": "string"}}},
+                {
+                    "name": "interfaces/list",
+                    "input_schema": {"type": "object", "properties": {}, "required": []},
+                    "output_schema": {"type": "array", "items": {"type": "string"}},
+                },
+                {
+                    "name": "interfaces/get",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {"interface_cid": {"type": "string"}},
+                        "required": ["interface_cid"],
+                    },
+                    "output_schema": {"type": "object"},
+                },
+                {
+                    "name": "interfaces/compat",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {"interface_cid": {"type": "string"}},
+                        "required": ["interface_cid"],
+                    },
+                    "output_schema": {"type": "object"},
+                },
+                {
+                    "name": "interfaces/select",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "task_hint_cid": {"type": "string"},
+                            "budget": {"type": "integer", "default": 20},
+                        },
+                        "required": [],
+                    },
+                    "output_schema": {"type": "array", "items": {"type": "string"}},
+                },
             ],
             errors=[{"name": "NotFound"}, {"name": "ValidationError"}],
             requires=["mcp++/profile-a-idl"],

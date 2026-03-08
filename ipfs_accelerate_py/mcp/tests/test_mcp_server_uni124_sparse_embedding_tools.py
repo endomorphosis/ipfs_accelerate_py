@@ -167,6 +167,39 @@ class TestMCPServerUNI124SparseEmbeddingTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_sparse_embedding_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.sparse_embedding_tools.native_sparse_embedding_tools._API",
+                {
+                    "generate_sparse_embedding": _contradictory_failure,
+                    "index_sparse_collection": _contradictory_failure,
+                    "sparse_search": _contradictory_failure,
+                    "manage_sparse_models": _contradictory_failure,
+                },
+            ):
+                generated = await generate_sparse_embedding(text="hello")
+                indexed = await index_sparse_collection(collection_name="docs", dataset="sample")
+                searched = await sparse_search(query="hello", collection_name="docs")
+                managed = await manage_sparse_models(action="list")
+
+            self.assertEqual(generated.get("status"), "error")
+            self.assertEqual(generated.get("error"), "delegate failed")
+
+            self.assertEqual(indexed.get("status"), "error")
+            self.assertEqual(indexed.get("error"), "delegate failed")
+
+            self.assertEqual(searched.get("status"), "error")
+            self.assertEqual(searched.get("error"), "delegate failed")
+
+            self.assertEqual(managed.get("status"), "error")
+            self.assertEqual(managed.get("error"), "delegate failed")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -385,6 +385,73 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_embedding_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "embedding delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_embedding_tools._API,
+                {
+                    "generate_embedding": _contradictory_failure,
+                    "generate_embeddings_from_file": _contradictory_failure,
+                    "hybrid_search": _contradictory_failure,
+                    "search_with_filters": _contradictory_failure,
+                    "multi_modal_search": _contradictory_failure,
+                    "shard_embeddings": _contradictory_failure,
+                    "chunk_text": _contradictory_failure,
+                    "manage_endpoints": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                single = await native_embedding_tools.generate_embedding(text="hello")
+                self.assertEqual(single.get("status"), "error")
+
+                self.assertEqual(single.get("error"), "embedding delegate failed")
+
+                from_file = await native_embedding_tools.generate_embeddings_from_file(file_path="input.txt")
+                self.assertEqual(from_file.get("status"), "error")
+                self.assertEqual(from_file.get("error"), "embedding delegate failed")
+
+                hybrid = await native_embedding_tools.hybrid_search(query="hello", vector_store_id="vs-1")
+                self.assertEqual(hybrid.get("status"), "error")
+                self.assertEqual(hybrid.get("error"), "embedding delegate failed")
+
+                filtered = await native_embedding_tools.search_with_filters(
+                    query="hello",
+                    vector_store_id="vs-1",
+                    filters={"category": "tech"},
+                )
+                self.assertEqual(filtered.get("status"), "error")
+                self.assertEqual(filtered.get("error"), "embedding delegate failed")
+
+                multimodal = await native_embedding_tools.multi_modal_search(
+                    query="hello",
+                    vector_store_id="vs-1",
+                )
+                self.assertEqual(multimodal.get("status"), "error")
+                self.assertEqual(multimodal.get("error"), "embedding delegate failed")
+
+                sharded = await native_embedding_tools.shard_embeddings(
+                    embeddings=[[0.1, 0.2]],
+                    shard_count=1,
+                )
+                self.assertEqual(sharded.get("status"), "error")
+                self.assertEqual(sharded.get("error"), "embedding delegate failed")
+
+                chunked = await native_embedding_tools.chunk_text_for_embeddings(text="hello world")
+                self.assertEqual(chunked.get("status"), "error")
+                self.assertEqual(chunked.get("error"), "embedding delegate failed")
+
+                endpoints = await native_embedding_tools.manage_embedding_endpoints(
+                    action="list",
+                    model="all-MiniLM",
+                )
+                self.assertEqual(endpoints.get("status"), "error")
+                self.assertEqual(endpoints.get("error"), "embedding delegate failed")
+
+        anyio.run(_run)
+
     def test_shard_chunk_and_endpoint_success_defaults_are_preserved(self) -> None:
         async def _minimal(**_: object) -> dict:
             return {"status": "success"}
@@ -428,9 +495,7 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 self.assertEqual(test_result.get("action"), "test")
                 self.assertEqual(test_result.get("endpoint"), "https://example.invalid/embed")
                 self.assertEqual(test_result.get("available"), False)
-
         anyio.run(_run)
-
 
 
 if __name__ == "__main__":

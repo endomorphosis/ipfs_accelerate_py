@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.p2p_tools import native_p2p_tools
 from ipfs_accelerate_py.mcp_server.tools.p2p_tools.native_p2p_tools import (
     p2p_cache_get,
     p2p_remote_cache_get,
@@ -232,6 +233,42 @@ class TestMCPServerUNI135P2PTools(unittest.TestCase):
             self.assertEqual(result.get("payload"), {"x": 1})
             self.assertEqual(result.get("remote_peer_id"), "peer-a")
             self.assertIn("task", result)
+
+        anyio.run(_run)
+
+    def test_failed_delegate_payloads_infer_error_status(self) -> None:
+        async def _failed_async(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        def _failed_sync(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_p2p_tools._API,
+                {
+                    "p2p_cache_get": _failed_sync,
+                    "p2p_service_status": _failed_sync,
+                    "p2p_remote_status": _failed_async,
+                    "p2p_remote_cache_get": _failed_async,
+                },
+                clear=False,
+            ):
+                cached = await p2p_cache_get(key="smoke")
+                self.assertEqual(cached.get("status"), "error")
+                self.assertEqual(cached.get("error"), "delegate failed")
+
+                service = await p2p_service_status()
+                self.assertEqual(service.get("status"), "error")
+                self.assertEqual(service.get("error"), "delegate failed")
+
+                remote_status = await p2p_remote_status()
+                self.assertEqual(remote_status.get("status"), "error")
+                self.assertEqual(remote_status.get("error"), "delegate failed")
+
+                remote_cache = await p2p_remote_cache_get(key="smoke")
+                self.assertEqual(remote_cache.get("status"), "error")
+                self.assertEqual(remote_cache.get("error"), "delegate failed")
 
         anyio.run(_run)
 

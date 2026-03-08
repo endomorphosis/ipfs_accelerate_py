@@ -24,34 +24,43 @@ def _load_embedding_api() -> Dict[str, Any]:
         }
 
         try:
-            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.embedding_tools.enhanced_embedding_tools import (  # type: ignore
-                generate_embedding as _generate_embedding,
-                chunk_text as _chunk_text,
-                manage_endpoints as _manage_endpoints,
+            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.embedding_tools import (  # type: ignore
+                enhanced_embedding_tools,
             )
+            _generate_embedding = enhanced_embedding_tools.generate_embedding
+            _chunk_text = enhanced_embedding_tools.chunk_text
+            _manage_endpoints = enhanced_embedding_tools.manage_endpoints
 
             api["generate_embedding"] = _generate_embedding
             api["chunk_text"] = _chunk_text
             api["manage_endpoints"] = _manage_endpoints
         except Exception:
-            logger.warning("Source enhanced_embedding_tools import unavailable, using fallback endpoint/chunk functions")
+            logger.warning(
+                "Source enhanced_embedding_tools import unavailable, using fallback endpoint/chunk functions"
+            )
 
         try:
-            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.embedding_tools.advanced_embedding_generation import (  # type: ignore
-                generate_embeddings_from_file as _generate_embeddings_from_file,
+            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.embedding_tools import (  # type: ignore
+                advanced_embedding_generation,
             )
+
+            _generate_embeddings_from_file = advanced_embedding_generation.generate_embeddings_from_file
 
             api["generate_embeddings_from_file"] = _generate_embeddings_from_file
         except Exception:
-            logger.warning("Source advanced_embedding_generation import unavailable, using fallback file-embedding function")
+            logger.warning(
+                "Source advanced_embedding_generation import unavailable, using fallback file-embedding function"
+            )
 
         try:
-            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.embedding_tools.advanced_search import (  # type: ignore
-                hybrid_search as _hybrid_search,
-                multi_modal_search as _multi_modal_search,
-                search_with_filters as _search_with_filters,
-                semantic_search as _semantic_search,
+            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.embedding_tools import (  # type: ignore
+                advanced_search,
             )
+
+            _hybrid_search = advanced_search.hybrid_search
+            _multi_modal_search = advanced_search.multi_modal_search
+            _search_with_filters = advanced_search.search_with_filters
+            _semantic_search = advanced_search.semantic_search
 
             api["semantic_search"] = _semantic_search
             api["hybrid_search"] = _hybrid_search

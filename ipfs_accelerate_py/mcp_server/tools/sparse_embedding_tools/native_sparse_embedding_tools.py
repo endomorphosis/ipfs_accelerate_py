@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 def _load_sparse_api() -> Dict[str, Any]:
     """Resolve source sparse-embedding APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.sparse_embedding_tools.sparse_embedding_tools import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.sparse_embedding_tools.sparse_embedding_tools import (
+            # type: ignore
             generate_sparse_embedding as _generate_sparse_embedding,
             index_sparse_collection as _index_sparse_collection,
             manage_sparse_models as _manage_sparse_models,
@@ -111,8 +112,9 @@ _API = _load_sparse_api()
 def _normalize_payload(result: Any) -> Dict[str, Any]:
     """Normalize backend results to deterministic envelope."""
     payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
+    failed = payload.get("success") is False or bool(payload.get("error"))
+    if failed:
+        payload["status"] = "error"
     else:
         payload.setdefault("status", "success")
     return payload

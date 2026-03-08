@@ -112,6 +112,49 @@ class TestMCPServerUNI155VectorTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_delegate_payloads_infer_error_status_when_success_flag_is_false(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_vector_tools._API,
+                {
+                    "create_vector_index": _contradictory_failure,
+                    "search_vector_index": _contradictory_failure,
+                    "list_vector_indexes": _contradictory_failure,
+                    "delete_vector_index": _contradictory_failure,
+                    "manage_vector_store": _contradictory_failure,
+                    "optimize_vector_store": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                created = await native_vector_tools.create_vector_index(vectors=[[1.0, 2.0]])
+                self.assertEqual(created.get("status"), "error")
+                self.assertEqual(created.get("error"), "delegate failure")
+
+                searched = await native_vector_tools.search_vector_index(index_id="idx", query_vector=[0.1, 0.2])
+                self.assertEqual(searched.get("status"), "error")
+                self.assertEqual(searched.get("error"), "delegate failure")
+
+                listed = await native_vector_tools.list_vector_indexes()
+                self.assertEqual(listed.get("status"), "error")
+                self.assertEqual(listed.get("error"), "delegate failure")
+
+                deleted = await native_vector_tools.delete_vector_index(index_name="idx")
+                self.assertEqual(deleted.get("status"), "error")
+                self.assertEqual(deleted.get("error"), "delegate failure")
+
+                managed = await native_vector_tools.manage_vector_store(operation="create")
+                self.assertEqual(managed.get("status"), "error")
+                self.assertEqual(managed.get("error"), "delegate failure")
+
+                optimized = await native_vector_tools.optimize_vector_store()
+                self.assertEqual(optimized.get("status"), "error")
+                self.assertEqual(optimized.get("error"), "delegate failure")
+
+        anyio.run(_run)
+
     def test_vector_store_management_aliases_validate_and_normalize(self) -> None:
         async def _run() -> None:
             invalid_backend = await native_vector_tools.list_vector_indexes(backend="sqlite")
@@ -131,7 +174,10 @@ class TestMCPServerUNI155VectorTools(unittest.TestCase):
             self.assertEqual(invalid_index_ids.get("status"), "error")
             self.assertIn("same length as vectors", str(invalid_index_ids.get("error", "")))
 
-            invalid_load_flag = await native_vector_tools.load_store(name="legal", create_if_missing="yes")  # type: ignore[arg-type]
+            invalid_load_flag = await native_vector_tools.load_store(
+                name="legal",
+                create_if_missing="yes",  # type: ignore[arg-type]
+            )
             self.assertEqual(invalid_load_flag.get("status"), "error")
             self.assertIn("create_if_missing must be a boolean", str(invalid_load_flag.get("error", "")))
 

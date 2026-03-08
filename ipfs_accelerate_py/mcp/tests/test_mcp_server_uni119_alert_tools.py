@@ -39,7 +39,10 @@ class TestMCPServerUNI119AlertTools(unittest.TestCase):
         manager = _DummyManager()
         register_native_alert_tools(manager)
         by_name = {c["name"]: c for c in manager.calls}
-        self.assertEqual(by_name["list_alert_rules"]["input_schema"]["properties"]["enabled_only"].get("default"), False)
+        self.assertEqual(
+            by_name["list_alert_rules"]["input_schema"]["properties"]["enabled_only"].get("default"),
+            False,
+        )
         self.assertEqual(by_name["remove_alert_rule"]["input_schema"]["required"], ["rule_id"])
 
     def test_send_discord_message_rejects_empty_text(self) -> None:
@@ -169,6 +172,39 @@ class TestMCPServerUNI119AlertTools(unittest.TestCase):
 
             self.assertEqual(result.get("status"), "success")
             self.assertEqual(result.get("rule_id"), "rule-1")
+
+        anyio.run(_run)
+
+    def test_alert_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.alert_tools.native_alert_tools._API",
+                {
+                    "send_discord_message": _contradictory_failure,
+                    "evaluate_alert_rules": _contradictory_failure,
+                    "list_alert_rules": _contradictory_failure,
+                    "remove_alert_rule": _contradictory_failure,
+                },
+            ):
+                sent = await send_discord_message(text="hello")
+                evaluated = await evaluate_alert_rules(event={"severity": "warning"})
+                listed = await list_alert_rules(enabled_only=True)
+                removed = await remove_alert_rule(rule_id="rule-1")
+
+            self.assertEqual(sent.get("status"), "error")
+            self.assertEqual(sent.get("error"), "delegate failed")
+
+            self.assertEqual(evaluated.get("status"), "error")
+            self.assertEqual(evaluated.get("error"), "delegate failed")
+
+            self.assertEqual(listed.get("status"), "error")
+            self.assertEqual(listed.get("error"), "delegate failed")
+
+            self.assertEqual(removed.get("status"), "error")
+            self.assertEqual(removed.get("error"), "delegate failed")
 
         anyio.run(_run)
 

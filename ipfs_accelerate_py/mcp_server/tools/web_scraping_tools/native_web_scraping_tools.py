@@ -96,8 +96,8 @@ _API = _load_web_scraping_api()
 def _normalize_payload(result: Any) -> Dict[str, Any]:
     """Normalize backend result to deterministic envelope."""
     payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
+    if payload.get("success") is False or ("error" in payload and payload.get("error")):
+        payload["status"] = "error"
     else:
         payload.setdefault("status", "success")
     return payload

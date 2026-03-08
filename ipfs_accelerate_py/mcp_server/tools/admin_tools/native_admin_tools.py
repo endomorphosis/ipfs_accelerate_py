@@ -9,6 +9,17 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 def _load_admin_api() -> Dict[str, Any]:
     """Resolve source admin APIs with compatibility fallback."""
     try:
@@ -309,8 +320,7 @@ async def manage_endpoints(
         endpoint_type=endpoint_type,
         ctx_length=normalized_ctx_length,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("action", normalized_action)
     return payload
 
@@ -346,8 +356,7 @@ async def system_maintenance(
         force=force,
         action=normalized_operation,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("operation", normalized_operation)
     return payload
 
@@ -392,8 +401,7 @@ async def configure_system(
         settings=settings,
         validate_only=validate_only,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("action", normalized_action)
     return payload
 
@@ -421,8 +429,7 @@ async def system_health(
         component=normalized_component,
         detailed=detailed,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("component", normalized_component)
     payload.setdefault("detailed", detailed)
     payload.setdefault("health", "unknown")
@@ -459,7 +466,7 @@ async def get_system_status(
             include_resources=include_resources,
             format=normalized_format,
         )
-        payload = dict(result or {})
+        payload = _normalize_delegate_payload(result)
     else:
         base_health = await system_health(component="all", detailed=normalized_format == "detailed")
         payload = {
@@ -527,7 +534,7 @@ async def manage_service(
             force=force,
             timeout_seconds=timeout_seconds,
         )
-        payload = dict(result or {})
+        payload = _normalize_delegate_payload(result)
     else:
         payload = {
             "single_operation": normalized_service_name != "all",
@@ -593,7 +600,7 @@ async def update_configuration(
             create_backup=create_backup,
             validate_config=validate_config,
         )
-        payload = dict(result or {})
+        payload = _normalize_delegate_payload(result)
     else:
         payload = {
             "action": normalized_action,
@@ -649,7 +656,7 @@ async def cleanup_resources(
             cleanup_logs=cleanup_logs,
             max_log_age_days=max_log_age_days,
         )
-        payload = dict(result or {})
+        payload = _normalize_delegate_payload(result)
     else:
         payload = {
             "success": True,

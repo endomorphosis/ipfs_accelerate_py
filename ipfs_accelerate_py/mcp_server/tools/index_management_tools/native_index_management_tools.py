@@ -100,6 +100,17 @@ def _load_index_management_api() -> Dict[str, Any]:
 _API = _load_index_management_api()
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 async def load_index(
     action: str,
     dataset: Optional[str] = None,
@@ -140,8 +151,7 @@ async def load_index(
         columns=columns,
         index_config=index_config,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("action", normalized_action)
     return payload
 
@@ -200,8 +210,7 @@ async def manage_shards(
         models=models,
         shard_ids=shard_ids,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("action", normalized_action)
     return payload
 
@@ -240,8 +249,7 @@ async def monitor_index_status(
         time_range=normalized_time_range,
         include_details=include_details,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("time_range", normalized_time_range)
     return payload
 
@@ -288,8 +296,7 @@ async def manage_index_configuration(
         config_updates=config_updates,
         optimization_level=normalized_optimization_level,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("action", normalized_action)
     payload.setdefault("optimization_level", normalized_optimization_level)
     return payload

@@ -87,6 +87,17 @@ def _load_alert_api() -> Dict[str, Any]:
 _API = _load_alert_api()
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 async def send_discord_message(
     text: str,
     role_names: Optional[List[str]] = None,
@@ -148,11 +159,7 @@ async def send_discord_message(
         thread_id=normalized_thread_id,
         config_file=normalized_config_file,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("text", normalized_text)
     payload.setdefault("role_names", normalized_role_names or [])
     payload.setdefault("channel_id", normalized_channel_id)
@@ -202,11 +209,7 @@ async def evaluate_alert_rules(
         rule_ids=normalized_rule_ids,
         config_file=normalized_config_file,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("event", event)
     payload.setdefault("rule_ids", normalized_rule_ids or [])
     payload.setdefault("results", [])
@@ -239,13 +242,9 @@ async def list_alert_rules(
         config_file=normalized_config_file,
     )
     if hasattr(result, "__await__"):
-        payload = dict(await result or {})
+        payload = _normalize_delegate_payload(await result)
     else:
-        payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+        payload = _normalize_delegate_payload(result)
     payload.setdefault("enabled_only", enabled_only)
     payload.setdefault("rules", [])
     payload.setdefault("count", len(payload.get("rules") or []))
@@ -278,14 +277,9 @@ async def remove_alert_rule(
         config_file=normalized_config_file,
     )
     if hasattr(result, "__await__"):
-        payload = dict(await result or {})
+        payload = _normalize_delegate_payload(await result)
     else:
-        payload = dict(result or {})
-
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+        payload = _normalize_delegate_payload(result)
     payload.setdefault("rule_id", normalized_rule_id)
     return payload
 

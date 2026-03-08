@@ -22,7 +22,9 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
         return response["result"]
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_embedding_dispatch_preserves_success_defaults_for_embedding_search_chunk_and_endpoint_tools(self, mock_wrapper) -> None:
+    def test_embedding_dispatch_preserves_success_defaults_for_embedding_tools(
+        self, mock_wrapper
+    ) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
@@ -133,7 +135,7 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
-    def test_embedding_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+    def test_embedding_dispatch_infers_error_status(self, mock_wrapper) -> None:
         class DummyServer:
             def __init__(self):
                 self.tools = {}
@@ -180,6 +182,59 @@ class TestMCPServerUNI184EmbeddingDispatchCompat(unittest.TestCase):
                 )
                 self.assertEqual(semantic.get("status"), "error")
                 self.assertEqual(semantic.get("error"), "semantic upstream failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_embedding_dispatch_infers_error_status_for_endpoint_management_delegate_payloads(
+        self, mock_wrapper
+    ) -> None:
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "endpoint upstream failed"}
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.dict(
+                native_embedding_tools._API,
+                {
+                    "manage_endpoints": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                server = create_mcp_server(name="embedding-dispatch-endpoint-errors")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                endpoint_result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "embedding_tools",
+                        "manage_embedding_endpoints",
+                        {"action": "list", "model": "all-MiniLM"},
+                    )
+                )
+                self.assertEqual(endpoint_result.get("status"), "error")
+                self.assertEqual(endpoint_result.get("error"), "endpoint upstream failed")
 
         anyio.run(_run_flow)
 

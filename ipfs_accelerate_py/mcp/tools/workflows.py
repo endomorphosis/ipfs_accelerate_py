@@ -12,7 +12,7 @@ logger = logging.getLogger("ipfs_accelerate_mcp.tools.workflows")
 
 # Import workflow manager
 try:
-    from ipfs_accelerate_py.workflow_manager import WorkflowManager, Workflow, WorkflowTask
+    from ipfs_accelerate_py.workflow_manager import WorkflowManager
     HAVE_WORKFLOW_MANAGER = True
 except ImportError as e:
     logger.warning(f"Workflow manager not available: {e}")
@@ -33,7 +33,7 @@ def get_workflow_manager():
 
 def register_tools(mcp):
     """Register workflow management tools with the MCP server"""
-    
+
     @mcp.tool()
     def create_workflow(
         name: str,
@@ -42,13 +42,13 @@ def register_tools(mcp):
     ) -> Dict[str, Any]:
         """
         Create a new AI model pipeline workflow
-        
+
         Args:
             name: Workflow name
             description: Workflow description
             tasks: List of task definitions. Each task should have:
                 - name: Task name
-                - type: HuggingFace pipeline_tag (e.g., 'text-generation', 'text-to-image', 
+                - type: HuggingFace pipeline_tag (e.g., 'text-generation', 'text-to-image',
                        'image-to-video', 'automatic-speech-recognition', etc.)
                        This allows automatic model classification without human intervention.
                        See: https://huggingface.co/docs/hub/models-tasks
@@ -56,7 +56,7 @@ def register_tools(mcp):
                 - dependencies: Optional list of task indices that must complete first
                 - input_mapping: Optional dict mapping dependency outputs to task inputs
                 - output_keys: Optional list of keys to expose for downstream tasks
-        
+
         Returns:
             Dictionary with workflow details
         """
@@ -67,9 +67,9 @@ def register_tools(mcp):
                     'status': 'error',
                     'error': 'Workflow manager not available'
                 }
-            
+
             workflow = manager.create_workflow(name, description, tasks)
-            
+
             return {
                 'status': 'success',
                 'workflow_id': workflow.workflow_id,
@@ -78,7 +78,7 @@ def register_tools(mcp):
                 'task_count': len(workflow.tasks),
                 'created_at': workflow.created_at
             }
-        
+
         except Exception as e:
             logger.error(f"Error creating workflow: {e}")
             logger.debug(traceback.format_exc())
@@ -86,15 +86,15 @@ def register_tools(mcp):
                 'status': 'error',
                 'error': str(e)
             }
-    
+
     @mcp.tool()
     def list_workflows(status: Optional[str] = None) -> Dict[str, Any]:
         """
         List all workflows, optionally filtered by status
-        
+
         Args:
             status: Optional status filter ('pending', 'running', 'paused', 'completed', 'failed', 'stopped')
-        
+
         Returns:
             Dictionary with list of workflows
         """
@@ -105,9 +105,9 @@ def register_tools(mcp):
                     'status': 'error',
                     'error': 'Workflow manager not available'
                 }
-            
+
             workflows = manager.list_workflows(status=status)
-            
+
             workflow_list = []
             for wf in workflows:
                 progress = wf.get_progress()
@@ -123,13 +123,13 @@ def register_tools(mcp):
                     'task_count': len(wf.tasks),
                     'error': wf.error
                 })
-            
+
             return {
                 'status': 'success',
                 'workflows': workflow_list,
                 'total': len(workflow_list)
             }
-        
+
         except Exception as e:
             logger.error(f"Error listing workflows: {e}")
             logger.debug(traceback.format_exc())
@@ -137,15 +137,15 @@ def register_tools(mcp):
                 'status': 'error',
                 'error': str(e)
             }
-    
+
     @mcp.tool()
     def get_workflow(workflow_id: str) -> Dict[str, Any]:
         """
         Get detailed information about a workflow
-        
+
         Args:
             workflow_id: The workflow ID
-        
+
         Returns:
             Dictionary with workflow details including tasks
         """
@@ -156,16 +156,16 @@ def register_tools(mcp):
                     'status': 'error',
                     'error': 'Workflow manager not available'
                 }
-            
+
             workflow = manager.get_workflow(workflow_id)
             if not workflow:
                 return {
                     'status': 'error',
                     'error': f'Workflow {workflow_id} not found'
                 }
-            
+
             progress = workflow.get_progress()
-            
+
             tasks_data = []
             for task in workflow.tasks:
                 tasks_data.append({
@@ -180,7 +180,7 @@ def register_tools(mcp):
                     'completed_at': task.completed_at,
                     'dependencies': task.dependencies
                 })
-            
+
             return {
                 'status': 'success',
                 'workflow': {
@@ -197,7 +197,7 @@ def register_tools(mcp):
                     'metadata': workflow.metadata
                 }
             }
-        
+
         except Exception as e:
             logger.error(f"Error getting workflow: {e}")
             logger.debug(traceback.format_exc())
@@ -205,15 +205,15 @@ def register_tools(mcp):
                 'status': 'error',
                 'error': str(e)
             }
-    
+
     @mcp.tool()
     def start_workflow(workflow_id: str) -> Dict[str, Any]:
         """
         Start executing a workflow
-        
+
         Args:
             workflow_id: The workflow ID to start
-        
+
         Returns:
             Dictionary with operation result
         """
@@ -224,15 +224,15 @@ def register_tools(mcp):
                     'status': 'error',
                     'error': 'Workflow manager not available'
                 }
-            
+
             manager.start_workflow(workflow_id)
-            
+
             return {
                 'status': 'success',
                 'workflow_id': workflow_id,
                 'message': 'Workflow started successfully'
             }
-        
+
         except Exception as e:
             logger.error(f"Error starting workflow: {e}")
             logger.debug(traceback.format_exc())
@@ -240,15 +240,15 @@ def register_tools(mcp):
                 'status': 'error',
                 'error': str(e)
             }
-    
+
     @mcp.tool()
     def pause_workflow(workflow_id: str) -> Dict[str, Any]:
         """
         Pause a running workflow
-        
+
         Args:
             workflow_id: The workflow ID to pause
-        
+
         Returns:
             Dictionary with operation result
         """
@@ -259,15 +259,15 @@ def register_tools(mcp):
                     'status': 'error',
                     'error': 'Workflow manager not available'
                 }
-            
+
             manager.pause_workflow(workflow_id)
-            
+
             return {
                 'status': 'success',
                 'workflow_id': workflow_id,
                 'message': 'Workflow paused successfully'
             }
-        
+
         except Exception as e:
             logger.error(f"Error pausing workflow: {e}")
             logger.debug(traceback.format_exc())
@@ -275,15 +275,15 @@ def register_tools(mcp):
                 'status': 'error',
                 'error': str(e)
             }
-    
+
     @mcp.tool()
     def stop_workflow(workflow_id: str) -> Dict[str, Any]:
         """
         Stop a workflow
-        
+
         Args:
             workflow_id: The workflow ID to stop
-        
+
         Returns:
             Dictionary with operation result
         """
@@ -294,15 +294,15 @@ def register_tools(mcp):
                     'status': 'error',
                     'error': 'Workflow manager not available'
                 }
-            
+
             manager.stop_workflow(workflow_id)
-            
+
             return {
                 'status': 'success',
                 'workflow_id': workflow_id,
                 'message': 'Workflow stopped successfully'
             }
-        
+
         except Exception as e:
             logger.error(f"Error stopping workflow: {e}")
             logger.debug(traceback.format_exc())
@@ -310,7 +310,7 @@ def register_tools(mcp):
                 'status': 'error',
                 'error': str(e)
             }
-    
+
     @mcp.tool()
     def update_workflow(
         workflow_id: str,
@@ -320,16 +320,16 @@ def register_tools(mcp):
     ) -> Dict[str, Any]:
         """
         Update an existing workflow
-        
+
         Args:
             workflow_id: The workflow ID to update
             name: Optional new name
             description: Optional new description
             tasks: Optional new task list (replaces all tasks). Same format as create_workflow.
-        
+
         Returns:
             Dictionary with updated workflow details
-        
+
         Note:
             Cannot update workflows that are currently running. Pause or stop them first.
         """
@@ -340,14 +340,14 @@ def register_tools(mcp):
                     'status': 'error',
                     'error': 'Workflow manager not available'
                 }
-            
+
             workflow = manager.update_workflow(
                 workflow_id=workflow_id,
                 name=name,
                 description=description,
                 tasks=tasks
             )
-            
+
             return {
                 'status': 'success',
                 'workflow_id': workflow.workflow_id,
@@ -356,7 +356,7 @@ def register_tools(mcp):
                 'task_count': len(workflow.tasks),
                 'message': 'Workflow updated successfully'
             }
-        
+
         except Exception as e:
             logger.error(f"Error updating workflow: {e}")
             logger.debug(traceback.format_exc())
@@ -364,15 +364,15 @@ def register_tools(mcp):
                 'status': 'error',
                 'error': str(e)
             }
-    
+
     @mcp.tool()
     def delete_workflow(workflow_id: str) -> Dict[str, Any]:
         """
         Delete a workflow
-        
+
         Args:
             workflow_id: The workflow ID to delete
-        
+
         Returns:
             Dictionary with operation result
         """
@@ -383,15 +383,15 @@ def register_tools(mcp):
                     'status': 'error',
                     'error': 'Workflow manager not available'
                 }
-            
+
             manager.delete_workflow(workflow_id)
-            
+
             return {
                 'status': 'success',
                 'workflow_id': workflow_id,
                 'message': 'Workflow deleted successfully'
             }
-        
+
         except Exception as e:
             logger.error(f"Error deleting workflow: {e}")
             logger.debug(traceback.format_exc())
@@ -399,12 +399,12 @@ def register_tools(mcp):
                 'status': 'error',
                 'error': str(e)
             }
-    
+
     @mcp.tool()
     def get_workflow_templates() -> Dict[str, Any]:
         """
         Get pre-built workflow templates for common AI pipelines
-        
+
         Returns:
             Dictionary with available templates
         """
@@ -435,20 +435,20 @@ def register_tools(mcp):
                     'models': ['gpt-4', 'dalle-3', 'tts-1', 'video-composer']
                 }
             }
-            
+
             return {
                 'status': 'success',
                 'templates': templates,
                 'total': len(templates)
             }
-        
+
         except Exception as e:
             logger.error(f"Error getting templates: {e}")
             return {
                 'status': 'error',
                 'error': str(e)
             }
-    
+
     @mcp.tool()
     def create_workflow_from_template(
         template_name: str,
@@ -456,11 +456,11 @@ def register_tools(mcp):
     ) -> Dict[str, Any]:
         """
         Create a workflow from a pre-built template
-        
+
         Args:
             template_name: Name of the template ('image_generation', 'video_generation', 'safe_image', 'multimodal')
             custom_config: Optional custom configuration to override template defaults
-        
+
         Returns:
             Dictionary with created workflow details
         """
@@ -471,7 +471,7 @@ def register_tools(mcp):
                     'status': 'error',
                     'error': 'Workflow manager not available'
                 }
-            
+
             # Get template
             template_map = {
                 'image_generation': WorkflowManager.create_image_generation_pipeline,
@@ -479,15 +479,15 @@ def register_tools(mcp):
                 'safe_image': WorkflowManager.create_safe_image_pipeline,
                 'multimodal': WorkflowManager.create_multimodal_pipeline
             }
-            
+
             if template_name not in template_map:
                 return {
                     'status': 'error',
                     'error': f'Unknown template: {template_name}. Available: {list(template_map.keys())}'
                 }
-            
+
             template = template_map[template_name]()
-            
+
             # Apply custom config if provided
             if custom_config:
                 if 'name' in custom_config:
@@ -495,14 +495,14 @@ def register_tools(mcp):
                 if 'description' in custom_config:
                     template['description'] = custom_config['description']
                 # Can extend to support task-level customization
-            
+
             # Create workflow from template
             workflow = manager.create_workflow(
                 name=template['name'],
                 description=template['description'],
                 tasks=template['tasks']
             )
-            
+
             return {
                 'status': 'success',
                 'workflow_id': workflow.workflow_id,
@@ -511,7 +511,7 @@ def register_tools(mcp):
                 'task_count': len(workflow.tasks),
                 'template_used': template_name
             }
-        
+
         except Exception as e:
             logger.error(f"Error creating workflow from template: {e}")
             logger.debug(traceback.format_exc())
@@ -540,7 +540,8 @@ def register_tools(mcp):
             entry = tools_dict.get(tool_name)
             if isinstance(entry, dict):
                 entry["execution_context"] = "server"
-    
-    logger.info("Workflow management tools registered successfully (10 tools: create, list, get, update, start, pause, stop, delete, templates, create_from_template)")
 
-
+    logger.info(
+        "Workflow management tools registered successfully "
+        "(10 tools: create, list, get, update, start, pause, stop, delete, templates, create_from_template)"
+    )

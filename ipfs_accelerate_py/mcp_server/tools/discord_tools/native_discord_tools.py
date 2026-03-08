@@ -163,8 +163,9 @@ def _normalize_payload(result: Any) -> Dict[str, Any]:
     """Normalize backend output into deterministic status envelopes."""
     if isinstance(result, dict):
         payload = dict(result)
-        if payload.get("error"):
-            payload.setdefault("status", "error")
+        failed = payload.get("success") is False or bool(payload.get("error"))
+        if failed:
+            payload["status"] = "error"
         else:
             payload.setdefault("status", "success")
         return payload
