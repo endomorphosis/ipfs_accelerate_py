@@ -286,6 +286,9 @@ def test_p2p_missing_dependency_stub_contract():
 def test_mcplusplus_module_missing_dependency_stub_contract():
     """Top-level MCP++ compatibility stub should be falsy and explicit."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
+
+    assert mcplusplus_module._missing_dependency_stub is canonical_compat._missing_dependency_stub
 
     stub = mcplusplus_module._missing_dependency_stub("TopLevelSymbol")
     assert not stub
@@ -301,6 +304,7 @@ def test_mcplusplus_module_missing_dependency_stub_contract():
 def test_storage_wrapper_resolver_prefers_primary_module(monkeypatch):
     """Storage wrapper resolver should prefer the canonical primary module."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
     calls = []
 
@@ -313,7 +317,8 @@ def test_storage_wrapper_resolver_prefers_primary_module(monkeypatch):
             return SimpleNamespace(HAVE_STORAGE_WRAPPER=True, get_storage_wrapper=_factory)
         raise AssertionError(f"Unexpected import: {name}")
 
-    monkeypatch.setattr(mcplusplus_module, "import_module", _fake_import_module)
+    assert mcplusplus_module._resolve_storage_wrapper_factory is canonical_compat._resolve_storage_wrapper_factory
+    monkeypatch.setattr(canonical_compat, "import_module", _fake_import_module)
 
     factory = mcplusplus_module._resolve_storage_wrapper_factory()
     assert factory is _factory
@@ -323,6 +328,7 @@ def test_storage_wrapper_resolver_prefers_primary_module(monkeypatch):
 def test_storage_wrapper_resolver_fallbacks_to_legacy_module(monkeypatch):
     """Storage wrapper resolver should fall back when primary import fails."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
     calls = []
 
@@ -337,7 +343,7 @@ def test_storage_wrapper_resolver_fallbacks_to_legacy_module(monkeypatch):
             return SimpleNamespace(HAVE_STORAGE_WRAPPER=True, get_storage_wrapper=_factory)
         raise AssertionError(f"Unexpected import: {name}")
 
-    monkeypatch.setattr(mcplusplus_module, "import_module", _fake_import_module)
+    monkeypatch.setattr(canonical_compat, "import_module", _fake_import_module)
 
     factory = mcplusplus_module._resolve_storage_wrapper_factory()
     assert factory is _factory
@@ -350,11 +356,12 @@ def test_storage_wrapper_resolver_fallbacks_to_legacy_module(monkeypatch):
 def test_storage_wrapper_resolver_returns_none_when_unavailable(monkeypatch):
     """Storage wrapper resolver should return None when no module is usable."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
     def _fake_import_module(_name: str):
         raise ImportError("simulated unavailable")
 
-    monkeypatch.setattr(mcplusplus_module, "import_module", _fake_import_module)
+    monkeypatch.setattr(canonical_compat, "import_module", _fake_import_module)
 
     assert mcplusplus_module._resolve_storage_wrapper_factory() is None
 
@@ -362,6 +369,7 @@ def test_storage_wrapper_resolver_returns_none_when_unavailable(monkeypatch):
 def test_create_storage_wrapper_uses_resolved_factory(monkeypatch):
     """Shared storage helper should instantiate from resolved factory."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
     calls = []
 
@@ -369,7 +377,8 @@ def test_create_storage_wrapper_uses_resolved_factory(monkeypatch):
         calls.append(kwargs)
         return {"ok": True, **kwargs}
 
-    monkeypatch.setattr(mcplusplus_module, "_resolve_storage_wrapper_factory", lambda: _factory)
+    assert mcplusplus_module._create_storage_wrapper is canonical_compat._create_storage_wrapper
+    monkeypatch.setattr(canonical_compat, "_resolve_storage_wrapper_factory", lambda: _factory)
 
     wrapper = mcplusplus_module._create_storage_wrapper(auto_detect_ci=True)
     assert wrapper == {"ok": True, "auto_detect_ci": True}
@@ -379,11 +388,12 @@ def test_create_storage_wrapper_uses_resolved_factory(monkeypatch):
 def test_create_storage_wrapper_returns_none_on_factory_error(monkeypatch):
     """Shared storage helper should return None when factory instantiation fails."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
     def _factory(**_kwargs):
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(mcplusplus_module, "_resolve_storage_wrapper_factory", lambda: _factory)
+    monkeypatch.setattr(canonical_compat, "_resolve_storage_wrapper_factory", lambda: _factory)
 
     assert mcplusplus_module._create_storage_wrapper(auto_detect_ci=True) is None
 

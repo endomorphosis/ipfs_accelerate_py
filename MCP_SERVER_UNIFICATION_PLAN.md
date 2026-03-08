@@ -527,6 +527,11 @@ Recent execution (2026-03-08):
 2. Lock deterministic optional-dependency contract behavior.
 3. Add integration assertions proving canonical runtime ownership of behavior.
 
+Recent execution (2026-03-08):
+
+1. Moved shared shim compatibility helpers (`_missing_dependency_stub`, `_resolve_storage_wrapper_factory`, `_create_storage_wrapper`) into canonical `ipfs_accelerate_py/mcp_server/compatibility.py` and reduced `mcplusplus_module.__init__` to thin aliasing for those behaviors.
+2. Revalidated shim convergence with focused helper/resolver coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py` (`9 passed`) plus broader trio/tool adapter regression coverage (`12 passed`).
+
 Exit:
 
 1. No remaining high-risk duplicated runtime logic between shim and canonical paths.

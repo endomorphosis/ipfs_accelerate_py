@@ -57,63 +57,13 @@ __author__ = "endomorphosis"
 import os
 import socket
 import urllib.request
-from importlib import import_module
-from typing import Callable, Optional
+from typing import Optional
 
-
-class _MissingDependencyStub:
-    """Compatibility stub for optional symbols unavailable at import time."""
-
-    def __init__(self, symbol_name: str):
-        self._symbol_name = str(symbol_name)
-
-    def __repr__(self) -> str:
-        return f"<Unavailable {self._symbol_name}>"
-
-    def __bool__(self) -> bool:
-        return False
-
-    def __call__(self, *args, **kwargs):
-        _ = args, kwargs
-        raise RuntimeError(f"{self._symbol_name} is unavailable in this environment")
-
-    def __getattr__(self, _name: str):
-        raise RuntimeError(f"{self._symbol_name} is unavailable in this environment")
-
-
-def _missing_dependency_stub(symbol_name: str):
-    """Create a consistent compatibility stub for an optional symbol."""
-    return _MissingDependencyStub(symbol_name)
-
-
-def _resolve_storage_wrapper_factory() -> Optional[Callable[..., object]]:
-    """Resolve a storage-wrapper factory across historical import locations."""
-    module_candidates = (
-        "ipfs_accelerate_py.common.storage_wrapper",
-        "ipfs_accelerate_py.mcplusplus_module.common.storage_wrapper",
-        "test.common.storage_wrapper",
-    )
-    for module_name in module_candidates:
-        try:
-            module = import_module(module_name)
-        except Exception:
-            continue
-        have_wrapper = bool(getattr(module, "HAVE_STORAGE_WRAPPER", False))
-        factory = getattr(module, "get_storage_wrapper", None)
-        if have_wrapper and callable(factory):
-            return factory
-    return None
-
-
-def _create_storage_wrapper(**kwargs) -> Optional[object]:
-    """Create a storage wrapper instance using the canonical resolver contract."""
-    factory = _resolve_storage_wrapper_factory()
-    if not callable(factory):
-        return None
-    try:
-        return factory(**kwargs)
-    except Exception:
-        return None
+from ipfs_accelerate_py.mcp_server.compatibility import (
+    _create_storage_wrapper,
+    _missing_dependency_stub,
+    _resolve_storage_wrapper_factory,
+)
 
 
 def _detect_runner_name() -> str:

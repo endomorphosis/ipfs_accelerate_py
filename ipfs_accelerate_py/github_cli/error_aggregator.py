@@ -13,7 +13,7 @@ import os
 import subprocess
 import time
 from typing import Dict, List, Optional, Set, Tuple
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from collections import defaultdict
 import threading
 
@@ -124,7 +124,7 @@ class ErrorAggregator:
         
         # Bundling
         self.bundle_interval = timedelta(minutes=bundle_interval_minutes)
-        self.last_bundle_time = datetime.utcnow()
+        self.last_bundle_time = datetime.now(UTC)
         self.bundling_thread = None
         self.bundling_active = False
         self.stop_bundling = threading.Event()
@@ -228,7 +228,7 @@ class ErrorAggregator:
             "stack_trace": stack_trace,
             "context": context or {},
             "severity": severity,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "peer_id": self.peer_registry.runner_name,
             "repo": self.repo
         }
@@ -417,7 +417,7 @@ class ErrorAggregator:
         try:
             # Check if cache is still valid
             if (self.issues_cache_timestamp and 
-                datetime.utcnow() - self.issues_cache_timestamp < self.issues_cache_ttl):
+                datetime.now(UTC) - self.issues_cache_timestamp < self.issues_cache_ttl):
                 return
             
             # Use cached GitHub CLI wrapper if available
@@ -455,7 +455,7 @@ class ErrorAggregator:
                                         self.existing_issues_cache[sig] = issue
                                         break
                         
-                        self.issues_cache_timestamp = datetime.utcnow()
+                        self.issues_cache_timestamp = datetime.now(UTC)
                         logger.info(f"✓ Refreshed issues cache (P2P/IPFS cached): {len(self.existing_issues_cache)} issues")
                         return
                     else:
@@ -472,7 +472,7 @@ class ErrorAggregator:
                                     self.existing_issues_cache[sig] = issue
                                     break
                     
-                    self.issues_cache_timestamp = datetime.utcnow()
+                    self.issues_cache_timestamp = datetime.now(UTC)
                     logger.info(f"✓ Refreshed issues cache (P2P/IPFS cached): {len(self.existing_issues_cache)} issues")
                     return
                 except Exception as e:
@@ -507,7 +507,7 @@ class ErrorAggregator:
                                 self.existing_issues_cache[sig] = issue
                                 break
                 
-                self.issues_cache_timestamp = datetime.utcnow()
+                self.issues_cache_timestamp = datetime.now(UTC)
                 logger.info(f"✓ Refreshed issues cache: {len(self.existing_issues_cache)} issues")
                 
         except Exception as e:
@@ -550,7 +550,7 @@ class ErrorAggregator:
             # Clear processed errors
             self.local_errors = []
             self.aggregated_errors.clear()
-            self.last_bundle_time = datetime.utcnow()
+            self.last_bundle_time = datetime.now(UTC)
             
             summary = {
                 "timestamp": self.last_bundle_time.isoformat(),

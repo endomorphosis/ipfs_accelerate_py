@@ -302,7 +302,7 @@ class CredentialManager:
     def _audit_log(self, action: str, credential_name: str, details: Dict[str, Any]) -> None:
         """Write to audit log."""
         try:
-            timestamp = datetime.utcnow().isoformat()
+            timestamp = datetime.now(UTC).isoformat()
             log_entry = {
                 'timestamp': timestamp,
                 'action': action,

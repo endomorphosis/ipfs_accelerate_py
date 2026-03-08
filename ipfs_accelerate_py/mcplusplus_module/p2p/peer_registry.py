@@ -301,7 +301,7 @@ class P2PPeerRegistry:
                 "public_ip": self.public_ip,
                 "listen_port": listen_port,
                 "multiaddr": multiaddr,
-                "last_seen": datetime.utcnow().isoformat(),
+                "last_seen": datetime.now(UTC).isoformat(),
                 "metadata": metadata or {}
             }
 
@@ -369,7 +369,7 @@ class P2PPeerRegistry:
                     last_seen = datetime.fromisoformat(peer_info.get("last_seen", ""))
                 except Exception:
                     continue
-                if datetime.utcnow() - last_seen < self.peer_ttl:
+                if datetime.now(UTC) - last_seen < self.peer_ttl:
                     peers.append(peer_info)
 
             peers = peers[:max_peers]
@@ -428,7 +428,7 @@ class P2PPeerRegistry:
                 except Exception:
                     continue
 
-                if datetime.utcnow() - last_seen > self.peer_ttl:
+                if datetime.now(UTC) - last_seen > self.peer_ttl:
                     if self._delete_registry_comment(comment_id):
                         cleaned += 1
 

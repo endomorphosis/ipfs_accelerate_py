@@ -119,7 +119,7 @@ class SimplePeerBootstrap:
                 "public_ip": self.public_ip,
                 "listen_port": listen_port,
                 "multiaddr": multiaddr,
-                "last_seen": datetime.utcnow().isoformat(),
+                "last_seen": datetime.now(UTC).isoformat(),
                 "metadata": metadata or {}
             }
             
@@ -171,7 +171,7 @@ class SimplePeerBootstrap:
                     
                     # Check if peer is still active (within TTL)
                     last_seen = datetime.fromisoformat(peer_info["last_seen"])
-                    if datetime.utcnow() - last_seen < self.peer_ttl:
+                    if datetime.now(UTC) - last_seen < self.peer_ttl:
                         peers.append(peer_info)
                     else:
                         logger.debug(f"Peer {peer_info.get('peer_id', 'unknown')[:16]}... expired")
@@ -265,7 +265,7 @@ class SimplePeerBootstrap:
                         peer_info = json.load(f)
                     
                     last_seen = datetime.fromisoformat(peer_info["last_seen"])
-                    if datetime.utcnow() - last_seen > self.peer_ttl:
+                    if datetime.now(UTC) - last_seen > self.peer_ttl:
                         peer_file.unlink()
                         cleaned += 1
                         logger.debug(f"Cleaned up stale peer: {peer_file.name}")
