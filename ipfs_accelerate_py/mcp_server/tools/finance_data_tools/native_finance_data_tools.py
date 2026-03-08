@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ def _load_finance_data_tools_api() -> Dict[str, Any]:
                 "status": "success",
                 "data": {
                     "symbol": kwargs.get("symbol"),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "price": 101.25,
                     "change": 0.45,
                     "percent_change": 0.45,
@@ -504,7 +504,7 @@ async def get_stock_quote(symbol: str) -> Dict[str, Any]:
                 "data",
                 {
                     "symbol": clean_symbol.upper(),
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                     "price": 101.25,
                     "change": 0.45,
                     "percent_change": 0.45,

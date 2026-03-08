@@ -8,6 +8,7 @@ and skipping tests on unsupported platforms.
 
 import logging
 import platform
+import warnings
 from typing import Dict, Any
 
 logging.basicConfig(
@@ -15,6 +16,34 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+def _collect_cuda_devices(torch_module: Any, device_count: int) -> list[dict[str, Any]]:
+    """Collect CUDA device metadata for already-probed CUDA devices."""
+    return [
+        {
+            "name": torch_module.cuda.get_device_name(i),
+            "capability": torch_module.cuda.get_device_capability(i),
+        }
+        for i in range(device_count)
+    ]
+
+
+def _detect_cuda_platform(torch_module: Any) -> dict[str, Any]:
+    """Detect CUDA availability while suppressing known unsupported-capability noise."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*cuda capability.*",
+            category=UserWarning,
+        )
+        cuda_available = torch_module.cuda.is_available()
+        cuda_info: dict[str, Any] = {"available": cuda_available}
+        if cuda_available:
+            device_count = torch_module.cuda.device_count()
+            cuda_info["device_count"] = device_count
+            cuda_info["devices"] = _collect_cuda_devices(torch_module, device_count)
+        return cuda_info
 
 
 def detect_hardware() -> Dict[str, Any]:
@@ -44,16 +73,7 @@ def detect_hardware() -> Dict[str, Any]:
     try:
         import torch
 
-        result["platforms"]["cuda"]["available"] = torch.cuda.is_available()
-        if result["platforms"]["cuda"]["available"]:
-            result["platforms"]["cuda"]["device_count"] = torch.cuda.device_count()
-            result["platforms"]["cuda"]["devices"] = [
-                {
-                    "name": torch.cuda.get_device_name(i),
-                    "capability": torch.cuda.get_device_capability(i),
-                }
-                for i in range(torch.cuda.device_count())
-            ]
+        result["platforms"]["cuda"].update(_detect_cuda_platform(torch))
     except ImportError:
         logger.debug("PyTorch not available, skipping CUDA detection")
 

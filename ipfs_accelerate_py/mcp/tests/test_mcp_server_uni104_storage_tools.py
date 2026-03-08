@@ -82,7 +82,7 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
         manager = _DummyManager()
         register_native_storage_tools(manager)
 
-        self.assertEqual(len(manager.calls), 10)
+        self.assertEqual(len(manager.calls), 14)
 
         schemas = {call["name"]: call["input_schema"]["properties"] for call in manager.calls}
         self.assertEqual(
@@ -94,9 +94,13 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
                 "query_storage",
                 "list_storage",
                 "get_storage_stats",
+                "get_storage_collection_stats",
                 "get_storage_lifecycle_report",
                 "get_storage_backend_status",
                 "list_storage_collections",
+                "create_storage_collection",
+                "get_storage_collection",
+                "delete_storage_collection",
                 "delete_data",
             },
         )
@@ -111,6 +115,10 @@ class TestMCPServerUNI104StorageTools(unittest.TestCase):
 
         self.assertIn("storage_type", schemas["query_storage"])
         self.assertIn("report_format", schemas["get_storage_stats"])
+        self.assertIn("report_format", schemas["get_storage_collection_stats"])
+        self.assertIn("collection_name", schemas["create_storage_collection"])
+        self.assertIn("include_metadata", schemas["get_storage_collection"])
+        self.assertIn("delete_items", schemas["delete_storage_collection"])
         self.assertIn("item_ids", schemas["delete_data"])
 
 

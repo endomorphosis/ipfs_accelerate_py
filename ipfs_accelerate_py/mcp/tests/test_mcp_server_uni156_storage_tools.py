@@ -70,7 +70,10 @@ class TestMCPServerUNI156StorageTools(unittest.TestCase):
 
             invalid_collection = await native_storage_tools.manage_collections(action="delete", collection_name="   ")
             self.assertEqual(invalid_collection.get("status"), "error")
-            self.assertIn("collection_name required", str(invalid_collection.get("error", "")))
+            self.assertIn(
+                "collection_name must be a non-empty string when provided",
+                str(invalid_collection.get("error", "")),
+            )
 
         anyio.run(_run)
 

@@ -9,10 +9,24 @@ import sys
 import json
 import logging
 import platform
+import warnings
+from contextlib import contextmanager
 from typing import Dict, Any, Optional, List, Union
 
 # Set up logging
 logger = logging.getLogger("ipfs_accelerate_mcp.tools.hardware")
+
+
+@contextmanager
+def _suppress_torch_cuda_capability_warning():
+    """Suppress a noisy PyTorch warning for GPUs newer than the installed wheel supports."""
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=r".*cuda capability.*",
+            category=UserWarning,
+        )
+        yield
 
 def register_hardware_tools(mcp: Any) -> None:
     """
@@ -199,23 +213,24 @@ def get_basic_hardware_info(include_detailed: bool = False) -> Dict[str, Any]:
     cuda_info = {"available": False}
     try:
         import torch
-        cuda_info["available"] = torch.cuda.is_available()
-        if cuda_info["available"]:
-            cuda_info["device_count"] = torch.cuda.device_count()
-            cuda_info["current_device"] = torch.cuda.current_device()
-            cuda_info["device_name"] = torch.cuda.get_device_name(0)
-            cuda_info["cuda_version"] = torch.version.cuda
-            
-            # Add detailed CUDA information if requested
-            if include_detailed and cuda_info["available"]:
-                cuda_info["devices"] = []
-                for i in range(cuda_info["device_count"]):
-                    device_info = {
-                        "index": i,
-                        "name": torch.cuda.get_device_name(i),
-                        "total_memory": torch.cuda.get_device_properties(i).total_memory / (1024 ** 3)  # GB
-                    }
-                    cuda_info["devices"].append(device_info)
+        with _suppress_torch_cuda_capability_warning():
+            cuda_info["available"] = torch.cuda.is_available()
+            if cuda_info["available"]:
+                cuda_info["device_count"] = torch.cuda.device_count()
+                cuda_info["current_device"] = torch.cuda.current_device()
+                cuda_info["device_name"] = torch.cuda.get_device_name(0)
+                cuda_info["cuda_version"] = torch.version.cuda
+
+                # Add detailed CUDA information if requested.
+                if include_detailed:
+                    cuda_info["devices"] = []
+                    for i in range(cuda_info["device_count"]):
+                        device_info = {
+                            "index": i,
+                            "name": torch.cuda.get_device_name(i),
+                            "total_memory": torch.cuda.get_device_properties(i).total_memory / (1024 ** 3),  # GB
+                        }
+                        cuda_info["devices"].append(device_info)
     except ImportError:
         pass
     
