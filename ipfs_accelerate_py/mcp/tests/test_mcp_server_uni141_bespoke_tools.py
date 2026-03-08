@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.bespoke_tools import native_bespoke_tools
 from ipfs_accelerate_py.mcp_server.tools.bespoke_tools.native_bespoke_tools import (
     cache_stats,
     create_vector_store,
@@ -147,6 +148,50 @@ class TestMCPServerUNI141BespokeTools(unittest.TestCase):
 
             self.assertEqual(result.get("status"), "error")
             self.assertIn("status probe failed", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_bespoke_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_bespoke_tools._API,
+                {
+                    "system_health": _contradictory_failure,
+                    "system_status": _contradictory_failure,
+                    "cache_stats": _contradictory_failure,
+                    "execute_workflow": _contradictory_failure,
+                    "create_vector_store": _contradictory_failure,
+                    "delete_index": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                health = await system_health()
+                status = await system_status()
+                cache = await cache_stats(namespace="primary")
+                workflow = await execute_workflow("audit_report")
+                created = await create_vector_store("demo")
+                deleted = await delete_index("idx_embeddings_001", confirm=True)
+
+            self.assertEqual(health.get("status"), "error")
+            self.assertEqual(health.get("error"), "delegate failed")
+
+            self.assertEqual(status.get("status"), "error")
+            self.assertEqual(status.get("error"), "delegate failed")
+
+            self.assertEqual(cache.get("status"), "error")
+            self.assertEqual(cache.get("error"), "delegate failed")
+
+            self.assertEqual(workflow.get("status"), "error")
+            self.assertEqual(workflow.get("error"), "delegate failed")
+
+            self.assertEqual(created.get("status"), "error")
+            self.assertEqual(created.get("error"), "delegate failed")
+
+            self.assertEqual(deleted.get("status"), "error")
+            self.assertEqual(deleted.get("error"), "delegate failed")
 
         anyio.run(_run)
 

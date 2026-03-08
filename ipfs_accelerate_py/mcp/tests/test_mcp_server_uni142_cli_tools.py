@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.cli import native_cli_tools
 from ipfs_accelerate_py.mcp_server.tools.cli.native_cli_tools import (
     discover_biomolecules_rag_cli,
     discover_enzyme_inhibitors_cli,
@@ -149,6 +150,45 @@ class TestMCPServerUNI142CliTools(unittest.TestCase):
 
             self.assertEqual(result.get("status"), "error")
             self.assertIn("pubmed unavailable", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_cli_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_cli_tools._API,
+                {
+                    "execute_command": _contradictory_failure,
+                    "scrape_pubmed_cli": _contradictory_failure,
+                    "scrape_clinical_trials_cli": _contradictory_failure,
+                    "discover_protein_binders_cli": _contradictory_failure,
+                    "discover_biomolecules_rag_cli": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                executed = await execute_command(command="echo", args=["hello"], timeout_seconds=3)
+                pubmed = await scrape_pubmed_cli(query="COVID-19")
+                trials = await scrape_clinical_trials_cli(condition="diabetes")
+                binders = await discover_protein_binders_cli(target="PD-L1")
+                rag = await discover_biomolecules_rag_cli(target="mTOR signaling", type="pathway")
+
+            self.assertEqual(executed.get("status"), "error")
+            self.assertEqual(executed.get("error"), "delegate failed")
+
+            self.assertEqual(pubmed.get("status"), "error")
+            self.assertEqual(pubmed.get("error"), "delegate failed")
+
+            self.assertEqual(trials.get("status"), "error")
+            self.assertEqual(trials.get("error"), "delegate failed")
+
+            self.assertEqual(binders.get("status"), "error")
+            self.assertEqual(binders.get("error"), "delegate failed")
+
+            self.assertEqual(rag.get("status"), "error")
+            self.assertEqual(rag.get("error"), "delegate failed")
 
         anyio.run(_run)
 

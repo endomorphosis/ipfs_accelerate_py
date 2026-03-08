@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools import native_p2p_workflow_tools
 from ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools import (
     get_assigned_workflows,
     get_next_p2p_workflow,
@@ -147,6 +148,49 @@ class TestMCPServerUNI136P2PWorkflowTools(unittest.TestCase):
 
             self.assertEqual(result.get("status"), "error")
             self.assertIn("scheduler unavailable", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_p2p_workflow_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_p2p_workflow_tools._API,
+                {
+                    "initialize_p2p_scheduler": _contradictory_failure,
+                    "schedule_p2p_workflow": _contradictory_failure,
+                    "get_next_p2p_workflow": _contradictory_failure,
+                    "get_p2p_scheduler_status": _contradictory_failure,
+                    "get_assigned_workflows": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                initialized = await initialize_p2p_scheduler(peer_id="peer-1")
+                scheduled = await schedule_p2p_workflow(
+                    workflow_id="wf-1",
+                    name="workflow",
+                    tags=["p2p_eligible"],
+                )
+                next_workflow = await get_next_p2p_workflow()
+                status = await get_p2p_scheduler_status()
+                assigned = await get_assigned_workflows()
+
+            self.assertEqual(initialized.get("status"), "error")
+            self.assertEqual(initialized.get("error"), "delegate failed")
+
+            self.assertEqual(scheduled.get("status"), "error")
+            self.assertEqual(scheduled.get("error"), "delegate failed")
+
+            self.assertEqual(next_workflow.get("status"), "error")
+            self.assertEqual(next_workflow.get("error"), "delegate failed")
+
+            self.assertEqual(status.get("status"), "error")
+            self.assertEqual(status.get("error"), "delegate failed")
+
+            self.assertEqual(assigned.get("status"), "error")
+            self.assertEqual(assigned.get("error"), "delegate failed")
 
         anyio.run(_run)
 

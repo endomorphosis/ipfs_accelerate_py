@@ -164,7 +164,8 @@ def _normalize_payload(
     if isinstance(payload, dict):
         merged: Dict[str, Any] = dict(default_fields)
         merged.update(payload)
-        if merged.get("error") and not merged.get("status"):
+        failed = bool(merged.get("error")) or merged.get("success") is False
+        if failed:
             merged["status"] = "error"
         else:
             merged.setdefault("status", "success")

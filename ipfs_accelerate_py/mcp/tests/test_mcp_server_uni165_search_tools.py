@@ -143,6 +143,35 @@ class TestMCPServerUNI165SearchTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_search_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_search_tools._API,
+                {
+                    "semantic": _contradictory_failure,
+                    "similarity": _contradictory_failure,
+                    "faceted": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                semantic = await native_search_tools.semantic_search(query="hello")
+                similarity = await native_search_tools.similarity_search(embedding=[0.1, 0.2])
+                faceted = await native_search_tools.faceted_search(query="hello")
+
+            self.assertEqual(semantic.get("status"), "error")
+            self.assertEqual(semantic.get("error"), "delegate failed")
+
+            self.assertEqual(similarity.get("status"), "error")
+            self.assertEqual(similarity.get("error"), "delegate failed")
+
+            self.assertEqual(faceted.get("status"), "error")
+            self.assertEqual(faceted.get("error"), "delegate failed")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

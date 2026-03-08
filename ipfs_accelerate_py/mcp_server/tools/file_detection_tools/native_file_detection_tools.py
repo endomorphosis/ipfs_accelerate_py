@@ -11,13 +11,16 @@ logger = logging.getLogger(__name__)
 def _load_file_detection_api() -> Dict[str, Any]:
     """Resolve source file-detection APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.file_detection_tools.analyze_detection_accuracy import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.file_detection_tools.analyze_detection_accuracy import (
+            # type: ignore
             analyze_detection_accuracy as _analyze_detection_accuracy,
         )
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.file_detection_tools.batch_detect_file_types import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.file_detection_tools.batch_detect_file_types import (
+            # type: ignore
             batch_detect_file_types as _batch_detect_file_types,
         )
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.file_detection_tools.detect_file_type import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.file_detection_tools.detect_file_type import (
+            # type: ignore
             detect_file_type as _detect_file_type,
         )
 
@@ -83,6 +86,17 @@ def _load_file_detection_api() -> Dict[str, Any]:
 _API = _load_file_detection_api()
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 async def detect_file_type(
     file_path: str,
     methods: Optional[List[str]] = None,
@@ -135,11 +149,7 @@ async def detect_file_type(
         methods=normalized_methods,
         strategy=normalized_strategy,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("file_path", normalized_file_path)
     return payload
 
@@ -247,11 +257,7 @@ async def batch_detect_file_types(
         strategy=normalized_strategy,
         export_path=normalized_export_path,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     return payload
 
 
@@ -287,11 +293,7 @@ async def analyze_detection_accuracy(
         recursive=recursive,
         pattern=normalized_pattern,
     )
-    payload = dict(result or {})
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("directory", normalized_directory)
     return payload
 

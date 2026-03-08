@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.analysis_tools import native_analysis_tools
 from ipfs_accelerate_py.mcp_server.tools.analysis_tools.native_analysis_tools import (
     analyze_data_distribution,
     cluster_analysis,
@@ -121,6 +123,45 @@ class TestMCPServerUNI112AnalysisTools(unittest.TestCase):
             bad_components = await dimensionality_reduction(method="pca", n_components="bad")  # type: ignore[arg-type]
             self.assertEqual(bad_components.get("status"), "error")
             self.assertIn("n_components must be a positive integer", str(bad_components.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_analysis_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_analysis_tools._API,
+                {
+                    "analyze_data_distribution": _contradictory_failure,
+                    "cluster_analysis": _contradictory_failure,
+                    "quality_assessment": _contradictory_failure,
+                    "detect_outliers": _contradictory_failure,
+                    "dimensionality_reduction": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                distribution = await analyze_data_distribution()
+                clusters = await cluster_analysis()
+                quality = await quality_assessment()
+                outliers = await detect_outliers(data=[[0.1, 0.2], [0.2, 0.3]])
+                reduced = await dimensionality_reduction()
+
+            self.assertEqual(distribution.get("status"), "error")
+            self.assertEqual(distribution.get("error"), "delegate failed")
+
+            self.assertEqual(clusters.get("status"), "error")
+            self.assertEqual(clusters.get("error"), "delegate failed")
+
+            self.assertEqual(quality.get("status"), "error")
+            self.assertEqual(quality.get("error"), "delegate failed")
+
+            self.assertEqual(outliers.get("status"), "error")
+            self.assertEqual(outliers.get("error"), "delegate failed")
+
+            self.assertEqual(reduced.get("status"), "error")
+            self.assertEqual(reduced.get("error"), "delegate failed")
 
         anyio.run(_run)
 

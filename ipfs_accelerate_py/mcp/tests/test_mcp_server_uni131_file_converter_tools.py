@@ -237,6 +237,44 @@ class TestMCPServerUNI131FileConverterTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_file_converter_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                nfc._API,
+                {
+                    "convert_file_tool": _contradictory_failure,
+                    "batch_convert_tool": _contradictory_failure,
+                    "file_info_tool": _contradictory_failure,
+                    "extract_knowledge_graph_tool": _contradictory_failure,
+                    "download_url_tool": _contradictory_failure,
+                },
+            ):
+                converted = await nfc.convert_file_tool(input_path="/tmp/example.txt")
+                batched = await nfc.batch_convert_tool(input_paths=["/tmp/example.txt"])
+                info = await nfc.file_info_tool(input_path="/tmp/example.txt")
+                knowledge_graph = await nfc.extract_knowledge_graph_tool(input_path="/tmp/example.txt")
+                downloaded = await nfc.download_url_tool(url="https://example.com")
+
+            self.assertEqual(converted.get("status"), "error")
+            self.assertEqual(converted.get("error"), "delegate failed")
+
+            self.assertEqual(batched.get("status"), "error")
+            self.assertEqual(batched.get("error"), "delegate failed")
+
+            self.assertEqual(info.get("status"), "error")
+            self.assertEqual(info.get("error"), "delegate failed")
+
+            self.assertEqual(knowledge_graph.get("status"), "error")
+            self.assertEqual(knowledge_graph.get("error"), "delegate failed")
+
+            self.assertEqual(downloaded.get("status"), "error")
+            self.assertEqual(downloaded.get("error"), "delegate failed")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

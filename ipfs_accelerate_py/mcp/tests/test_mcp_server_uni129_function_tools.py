@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.functions import native_function_tools
 from ipfs_accelerate_py.mcp_server.tools.functions.native_function_tools import (
     execute_python_snippet,
     register_native_function_tools,
@@ -89,6 +90,24 @@ class TestMCPServerUNI129FunctionTools(unittest.TestCase):
                 self.assertEqual(result.get("timeout_seconds"), 7)
                 self.assertEqual(result.get("message"), "Execution request processed")
                 self.assertEqual(result.get("execution_time_ms"), 0)
+
+        anyio.run(_run)
+
+    def test_execute_infers_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_function_tools._API,
+                {"execute_python_snippet": _contradictory_failure},
+                clear=False,
+            ):
+                result = await execute_python_snippet(code="print('ok')", timeout_seconds=5)
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
+            self.assertEqual(result.get("timeout_seconds"), 5)
 
         anyio.run(_run)
 

@@ -173,5 +173,5 @@ all = [
 ]
 
 [tool.setuptools.packages.find]
-include = ["ipfs_accelerate_py*"]
+include = ["ipfs_accelerate_py*", "scripts", "scripts.*"]
 exclude = ["test*", "benchmarks*"]

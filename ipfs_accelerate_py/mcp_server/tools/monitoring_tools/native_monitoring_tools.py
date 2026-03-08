@@ -32,7 +32,8 @@ def _default_metrics_collection_payload(time_window: str, aggregation: str) -> D
 def _load_monitoring_api() -> Dict[str, Any]:
     """Resolve source monitoring APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.monitoring_tools.monitoring_tools import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.monitoring_tools.monitoring_tools import (
+            # type: ignore
             generate_monitoring_report as _generate_monitoring_report,
             get_performance_metrics as _get_performance_metrics,
             health_check as _health_check,
@@ -40,7 +41,8 @@ def _load_monitoring_api() -> Dict[str, Any]:
         )
 
         try:
-            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.monitoring_tools.enhanced_monitoring_tools import (  # type: ignore
+            from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.monitoring_tools.enhanced_monitoring_tools import (
+                # type: ignore
                 check_health as _check_health,
                 collect_metrics as _collect_metrics,
                 manage_alerts as _manage_alerts,
@@ -207,8 +209,9 @@ def _normalize_payload(result: Any) -> Dict[str, Any]:
     """Normalize backend output into deterministic status envelope."""
     payload = dict(result or {})
     status_value = str(payload.get("status", "")).lower()
-    if "error" in payload and payload.get("error"):
-        payload.setdefault("status", "error")
+    failed = payload.get("success") is False or bool(payload.get("error"))
+    if failed:
+        payload["status"] = "error"
     elif status_value in {"healthy", "ok"}:
         payload["status"] = "success"
     else:
@@ -453,8 +456,14 @@ async def check_health(
             "check_depth": check_depth,
         }
     if services is not None:
-        if not isinstance(services, list) or not all(isinstance(item, str) and item.strip() for item in services):
-            return {"status": "error", "message": "services must be a list of non-empty strings when provided", "services": services}
+        if not isinstance(services, list) or not all(
+            isinstance(item, str) and item.strip() for item in services
+        ):
+            return {
+                "status": "error",
+                "message": "services must be a list of non-empty strings when provided",
+                "services": services,
+            }
 
     result = _API["check_health"](
         include_services=include_services,
@@ -506,19 +515,37 @@ async def collect_metrics(
     """Expose enhanced metrics collection and trend/anomaly analysis."""
     normalized_window = str(time_window or "1h").strip().lower()
     if normalized_window not in _VALID_TIME_RANGES:
-        return {"status": "error", "message": "time_window must be one of: 5m, 15m, 1h, 6h, 24h, 7d", "time_window": time_window}
+        return {
+            "status": "error",
+            "message": "time_window must be one of: 5m, 15m, 1h, 6h, 24h, 7d",
+            "time_window": time_window,
+        }
     if metrics is not None:
-        if not isinstance(metrics, list) or not all(isinstance(item, str) and item.strip() for item in metrics):
-            return {"status": "error", "message": "metrics must be a list of non-empty strings when provided", "metrics": metrics}
+        if not isinstance(metrics, list) or not all(
+            isinstance(item, str) and item.strip() for item in metrics
+        ):
+            return {
+                "status": "error",
+                "message": "metrics must be a list of non-empty strings when provided",
+                "metrics": metrics,
+            }
     normalized_aggregation = str(aggregation or "average").strip().lower()
     if normalized_aggregation not in {"average", "min", "max", "sum"}:
-        return {"status": "error", "message": "aggregation must be one of: average, min, max, sum", "aggregation": aggregation}
+        return {
+            "status": "error",
+            "message": "aggregation must be one of: average, min, max, sum",
+            "aggregation": aggregation,
+        }
     for name, value in {"include_trends": include_trends, "include_anomalies": include_anomalies}.items():
         if not isinstance(value, bool):
             return {"status": "error", "message": f"{name} must be a boolean", name: value}
     normalized_export = str(export_format or "json").strip().lower()
     if normalized_export not in {"json", "csv", "parquet"}:
-        return {"status": "error", "message": "export_format must be one of: json, csv, parquet", "export_format": export_format}
+        return {
+            "status": "error",
+            "message": "export_format must be one of: json, csv, parquet",
+            "export_format": export_format,
+        }
 
     result = _API["collect_metrics"](
         time_window=normalized_window,
@@ -542,7 +569,11 @@ async def collect_metrics(
         payload["metrics_collection"].setdefault("aggregation", normalized_aggregation)
     payload.setdefault(
         "collection_config",
-        {"time_window": normalized_window, "metrics_requested": list(metrics or []), "aggregation": normalized_aggregation},
+        {
+            "time_window": normalized_window,
+            "metrics_requested": list(metrics or []),
+            "aggregation": normalized_aggregation,
+        },
     )
     if include_trends:
         payload.setdefault(
@@ -574,25 +605,53 @@ async def manage_alerts(
     normalized_action = str(action or "").strip().lower()
     valid_actions = {"list", "acknowledge", "resolve", "configure_thresholds"}
     if normalized_action not in valid_actions:
-        return {"status": "error", "message": "action must be one of: acknowledge, configure_thresholds, list, resolve", "action": action}
+        return {
+            "status": "error",
+            "message": "action must be one of: acknowledge, configure_thresholds, list, resolve",
+            "action": action,
+        }
     if severity_filter is not None:
         normalized_severity = str(severity_filter).strip().lower()
         if normalized_severity not in {"info", "warning", "critical"}:
-            return {"status": "error", "message": "severity_filter must be one of: info, warning, critical", "severity_filter": severity_filter}
+            return {
+                "status": "error",
+                "message": "severity_filter must be one of: info, warning, critical",
+                "severity_filter": severity_filter,
+            }
     else:
         normalized_severity = None
     if resolved_filter is not None and not isinstance(resolved_filter, bool):
-        return {"status": "error", "message": "resolved_filter must be a boolean when provided", "resolved_filter": resolved_filter}
+        return {
+            "status": "error",
+            "message": "resolved_filter must be a boolean when provided",
+            "resolved_filter": resolved_filter,
+        }
     normalized_time_range = str(time_range or "24h").strip().lower()
     if normalized_time_range not in _VALID_TIME_RANGES:
-        return {"status": "error", "message": "time_range must be one of: 5m, 15m, 1h, 6h, 24h, 7d", "time_range": time_range}
+        return {
+            "status": "error",
+            "message": "time_range must be one of: 5m, 15m, 1h, 6h, 24h, 7d",
+            "time_range": time_range,
+        }
     if not isinstance(include_metrics, bool):
-        return {"status": "error", "message": "include_metrics must be a boolean", "include_metrics": include_metrics}
+        return {
+            "status": "error",
+            "message": "include_metrics must be a boolean",
+            "include_metrics": include_metrics,
+        }
     normalized_alert_id = str(alert_id).strip() if alert_id is not None else None
     if normalized_action in {"acknowledge", "resolve"} and not normalized_alert_id:
-        return {"status": "error", "message": f"alert_id required for {normalized_action} action", "alert_id": alert_id}
+        return {
+            "status": "error",
+            "message": f"alert_id required for {normalized_action} action",
+            "alert_id": alert_id,
+        }
     if threshold_config is not None and not isinstance(threshold_config, dict):
-        return {"status": "error", "message": "threshold_config must be an object when provided", "threshold_config": threshold_config}
+        return {
+            "status": "error",
+            "message": "threshold_config must be an object when provided",
+            "threshold_config": threshold_config,
+        }
 
     result = _API["manage_alerts"](
         action=normalized_action,
@@ -702,8 +761,16 @@ def register_native_monitoring_tools(manager: Any) -> None:
         input_schema={
             "type": "object",
             "properties": {
-                "report_type": {"type": "string", "enum": ["summary", "detailed", "alerts", "performance"], "default": "summary"},
-                "time_period": {"type": "string", "enum": ["5m", "15m", "1h", "6h", "24h", "7d"], "default": "24h"},
+                "report_type": {
+                    "type": "string",
+                    "enum": ["summary", "detailed", "alerts", "performance"],
+                    "default": "summary",
+                },
+                "time_period": {
+                    "type": "string",
+                    "enum": ["5m", "15m", "1h", "6h", "24h", "7d"],
+                    "default": "24h",
+                },
             },
             "required": [],
         },
@@ -721,7 +788,11 @@ def register_native_monitoring_tools(manager: Any) -> None:
             "properties": {
                 "include_services": {"type": "boolean", "default": True},
                 "include_metrics": {"type": "boolean", "default": True},
-                "check_depth": {"type": "string", "enum": ["basic", "standard", "comprehensive"], "default": "standard"},
+                "check_depth": {
+                    "type": "string",
+                    "enum": ["basic", "standard", "comprehensive"],
+                    "default": "standard",
+                },
                 "services": {"type": ["array", "null"], "items": {"type": "string", "minLength": 1}},
                 "include_recommendations": {"type": "boolean", "default": True},
             },

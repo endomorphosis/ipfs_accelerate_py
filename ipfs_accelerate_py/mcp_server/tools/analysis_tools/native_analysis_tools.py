@@ -123,6 +123,20 @@ def _load_analysis_api() -> Dict[str, Any]:
 _API = _load_analysis_api()
 
 
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    if isinstance(payload, dict):
+        normalized = dict(payload)
+        failed = bool(normalized.get("error")) or normalized.get("success") is False
+        if failed:
+            normalized["status"] = "error"
+        else:
+            normalized.setdefault("status", "success")
+        return normalized
+    if payload is None:
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
+
+
 async def analyze_data_distribution(
     data_source: str = "mock",
     analysis_type: str = "comprehensive",
@@ -155,8 +169,7 @@ async def analyze_data_distribution(
         data_params=data_params,
         visualization_config=visualization_config,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_payload(result)
     payload.setdefault("data_source", normalized_source)
     payload.setdefault("analysis_type", normalized_analysis_type)
     return payload
@@ -204,8 +217,7 @@ async def cluster_analysis(
         data_params=data_params,
         clustering_params=clustering_params,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_payload(result)
     payload.setdefault("algorithm", normalized_algorithm)
     return payload
 
@@ -243,8 +255,7 @@ async def quality_assessment(
         data_params=data_params,
         outlier_detection=outlier_detection,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_payload(result)
     payload.setdefault("assessment_type", normalized_assessment_type)
     return payload
 
@@ -287,10 +298,14 @@ async def detect_outliers(
     if hasattr(result, "__await__"):
         result = await result  # type: ignore[misc]
 
-    if isinstance(result, list):
+    if isinstance(result, dict):
+        payload = _normalize_payload(result)
+        if payload.get("status") == "error":
+            payload.setdefault("threshold", normalized_threshold)
+            return payload
+        outlier_indices = [int(idx) for idx in (payload.get("outlier_indices") or [])]
+    elif isinstance(result, list):
         outlier_indices = [int(idx) for idx in result]
-    elif isinstance(result, dict):
-        outlier_indices = [int(idx) for idx in (result.get("outlier_indices") or [])]
     else:
         outlier_indices = []
 
@@ -342,8 +357,7 @@ async def dimensionality_reduction(
         data_params=data_params,
         method_params=method_params,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_payload(result)
     payload.setdefault("method", normalized_method)
     payload.setdefault("reduced_dimensions", normalized_components)
     return payload

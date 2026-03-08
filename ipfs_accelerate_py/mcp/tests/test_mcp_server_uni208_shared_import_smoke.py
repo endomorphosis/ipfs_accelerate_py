@@ -9,6 +9,7 @@ def test_shared_core_and_github_operations_import_smoke() -> None:
 
     assert core is not None
     assert ops is not None
+    assert type(ops).__name__ == "GitHubOperations"
 
 
 def test_entrypoint_modules_import_smoke() -> None:

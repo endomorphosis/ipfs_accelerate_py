@@ -4,7 +4,8 @@ include pyproject.toml
 include WEBGPU_WEBNN_MIGRATION_PLAN.md
 
 recursive-include ipfs_accelerate_py *.py
-recursive-include shared *.py
+include scripts/__init__.py
+recursive-include scripts/shared *.py
 recursive-include mcp *.py
 recursive-include docs *.md *.html *.py
 include ipfs_accelerate_py/api_backends/model_list/.gitkeep

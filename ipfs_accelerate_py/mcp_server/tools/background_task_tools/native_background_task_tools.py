@@ -8,6 +8,22 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger(__name__)
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    status = normalized.get("status")
+    if status == "not_found":
+        normalized.setdefault("status", "not_found")
+        return normalized
+
+    failed = normalized.get("success") is False or bool(normalized.get("error")) or status == "error"
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 def _load_background_task_api() -> Dict[str, Any]:
     """Resolve source background-task APIs with compatibility fallback."""
     try:
@@ -230,13 +246,9 @@ async def check_task_status(
         limit=limit,
     )
     if hasattr(result, "__await__"):
-        payload = dict(await result or {})
+        payload = _normalize_delegate_payload(await result)
     else:
-        payload = dict(result or {})
-    if payload.get("status") in {"error", "not_found"} or ("error" in payload and payload.get("error")):
-        payload.setdefault("status", "error" if payload.get("status") != "not_found" else "not_found")
-    else:
-        payload.setdefault("status", "success")
+        payload = _normalize_delegate_payload(result)
     payload.setdefault("task_type", normalized_task_type)
     payload.setdefault("status_filter", normalized_status_filter)
     payload.setdefault("limit", limit)
@@ -309,13 +321,9 @@ async def manage_background_tasks(
         task_config=task_config,
     )
     if hasattr(result, "__await__"):
-        payload = dict(await result or {})
+        payload = _normalize_delegate_payload(await result)
     else:
-        payload = dict(result or {})
-    if payload.get("status") in {"error", "not_found"} or ("error" in payload and payload.get("error")):
-        payload.setdefault("status", "error" if payload.get("status") != "not_found" else "not_found")
-    else:
-        payload.setdefault("status", "success")
+        payload = _normalize_delegate_payload(result)
     payload.setdefault("action", normalized_action)
     if normalized_task_id is not None:
         payload.setdefault("task_id", normalized_task_id)
@@ -372,13 +380,9 @@ async def manage_task_queue(
         max_concurrent=max_concurrent,
     )
     if hasattr(result, "__await__"):
-        payload = dict(await result or {})
+        payload = _normalize_delegate_payload(await result)
     else:
-        payload = dict(result or {})
-    if payload.get("status") in {"error", "not_found"} or ("error" in payload and payload.get("error")):
-        payload.setdefault("status", "error" if payload.get("status") != "not_found" else "not_found")
-    else:
-        payload.setdefault("status", "success")
+        payload = _normalize_delegate_payload(result)
     payload.setdefault("action", normalized_action)
     if normalized_priority is not None:
         payload.setdefault("priority", normalized_priority)
@@ -445,11 +449,7 @@ async def get_task_status(
             log_limit=log_limit,
         )
 
-    payload = dict(result or {})
-    if payload.get("status") in {"error", "not_found"} or ("error" in payload and payload.get("error")):
-        payload.setdefault("status", "error" if payload.get("status") != "not_found" else "not_found")
-    else:
-        payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     if normalized_task_id is not None:
         payload.setdefault("task_id", normalized_task_id)
     payload.setdefault("include_logs", include_logs)

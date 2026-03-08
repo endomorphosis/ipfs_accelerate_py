@@ -23,7 +23,15 @@ def _load_search_api() -> Dict[str, Any]:
             "faceted": faceted_search_from_parameters,
         }
     except Exception:
-        async def _semantic_fallback(*, vector_service: Any, query: str, model: str = "sentence-transformers/all-MiniLM-L6-v2", top_k: int = 5, collection: str = "default", filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+        async def _semantic_fallback(
+            *,
+            vector_service: Any,
+            query: str,
+            model: str = "sentence-transformers/all-MiniLM-L6-v2",
+            top_k: int = 5,
+            collection: str = "default",
+            filters: Optional[Dict[str, Any]] = None,
+        ) -> Dict[str, Any]:
             _ = vector_service, filters
             results = [
                 {
@@ -43,7 +51,14 @@ def _load_search_api() -> Dict[str, Any]:
                 "total_found": len(results),
             }
 
-        async def _similarity_fallback(*, vector_service: Any, embedding: List[float], top_k: int = 10, threshold: float = 0.5, collection: str = "default") -> Dict[str, Any]:
+        async def _similarity_fallback(
+            *,
+            vector_service: Any,
+            embedding: List[float],
+            top_k: int = 10,
+            threshold: float = 0.5,
+            collection: str = "default",
+        ) -> Dict[str, Any]:
             _ = vector_service
             results = [
                 {
@@ -63,7 +78,15 @@ def _load_search_api() -> Dict[str, Any]:
                 "total_found": len(results),
             }
 
-        async def _faceted_fallback(*, vector_service: Any, query: str = "", facets: Optional[Dict[str, List[str]]] = None, aggregations: Optional[List[str]] = None, top_k: int = 20, collection: str = "default") -> Dict[str, Any]:
+        async def _faceted_fallback(
+            *,
+            vector_service: Any,
+            query: str = "",
+            facets: Optional[Dict[str, List[str]]] = None,
+            aggregations: Optional[List[str]] = None,
+            top_k: int = 20,
+            collection: str = "default",
+        ) -> Dict[str, Any]:
             _ = vector_service
             facets = facets or {}
             aggregations = aggregations or []
@@ -113,6 +136,17 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     return payload
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 async def semantic_search(
     query: str,
     model: str = "sentence-transformers/all-MiniLM-L6-v2",
@@ -150,8 +184,7 @@ async def semantic_search(
         )
     except Exception as exc:
         return _error_result("semantic search failed", error=str(exc))
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("query", normalized_query)
     payload.setdefault("model", normalized_model)
     payload.setdefault("top_k", normalized_top_k)
@@ -200,8 +233,7 @@ async def similarity_search(
         )
     except Exception as exc:
         return _error_result("similarity search failed", error=str(exc))
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("embedding_dimension", len(embedding))
     payload.setdefault("top_k", normalized_top_k)
     payload.setdefault("threshold", normalized_threshold)
@@ -270,8 +302,7 @@ async def faceted_search(
         )
     except Exception as exc:
         return _error_result("faceted search failed", error=str(exc))
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     payload.setdefault("query", normalized_query)
     payload.setdefault("facets", normalized_facets)
     payload.setdefault("aggregations", normalized_aggregations)

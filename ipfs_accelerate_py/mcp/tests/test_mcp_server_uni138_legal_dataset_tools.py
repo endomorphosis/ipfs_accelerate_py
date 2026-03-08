@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools import native_legal_dataset_tools
 from ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools.native_legal_dataset_tools import (
     expand_legal_query,
     get_legal_relationships,
@@ -224,6 +225,45 @@ class TestMCPServerUNI138LegalDatasetTools(unittest.TestCase):
 
             self.assertEqual(result.get("status"), "error")
             self.assertIn("backend unavailable", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_legal_dataset_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_legal_dataset_tools._API,
+                {
+                    "list_state_jurisdictions": _contradictory_failure,
+                    "scrape_state_laws": _contradictory_failure,
+                    "expand_legal_query": _contradictory_failure,
+                    "get_legal_synonyms": _contradictory_failure,
+                    "get_legal_relationships": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                jurisdictions = await list_state_jurisdictions()
+                scraped = await scrape_state_laws(states=["ca"], output_format="json")
+                expanded = await expand_legal_query(query="epa water rules")
+                synonyms = await get_legal_synonyms(term="regulation")
+                relationships = await get_legal_relationships(term="regulation")
+
+            self.assertEqual(jurisdictions.get("status"), "error")
+            self.assertEqual(jurisdictions.get("error"), "delegate failed")
+
+            self.assertEqual(scraped.get("status"), "error")
+            self.assertEqual(scraped.get("error"), "delegate failed")
+
+            self.assertEqual(expanded.get("status"), "error")
+            self.assertEqual(expanded.get("error"), "delegate failed")
+
+            self.assertEqual(synonyms.get("status"), "error")
+            self.assertEqual(synonyms.get("error"), "delegate failed")
+
+            self.assertEqual(relationships.get("status"), "error")
+            self.assertEqual(relationships.get("error"), "delegate failed")
 
         anyio.run(_run)
 

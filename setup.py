@@ -188,7 +188,7 @@ extras_require = _read_optional_deps(this_directory / "pyproject.toml")
 setup(
     name="ipfs_accelerate_py",
     version="0.0.45",
-    packages=find_packages(include=["ipfs_accelerate_py", "ipfs_accelerate_py.*"]),
+    packages=find_packages(include=["ipfs_accelerate_py", "ipfs_accelerate_py.*", "scripts", "scripts.*"]),
     include_package_data=True,
     description="A comprehensive framework for hardware-accelerated machine learning inference with IPFS network-based distribution",
     long_description=long_description,

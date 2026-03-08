@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.workflow_tools import native_workflow_tools_category
 from ipfs_accelerate_py.mcp_server.tools.workflow_tools.native_workflow_tools_category import (
     calculate_peer_distance,
     create_template,
@@ -237,6 +238,49 @@ class TestMCPServerUNI134WorkflowTools(unittest.TestCase):
             )
             self.assertEqual(pipeline_result.get("status"), "success")
             self.assertIn("pipeline_name", pipeline_result)
+
+        anyio.run(_run)
+
+    def test_workflow_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_workflow_tools_category._API,
+                {
+                    "create_template": _contradictory_failure,
+                    "schedule_p2p_workflow": _contradictory_failure,
+                    "calculate_peer_distance": _contradictory_failure,
+                    "merge_merkle_clock": _contradictory_failure,
+                    "get_workflow_tags": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                created = await create_template(template={"name": "demo"})
+                scheduled = await schedule_p2p_workflow(
+                    workflow_id="wf-1",
+                    name="demo",
+                    tags=["smoke"],
+                )
+                distance = await calculate_peer_distance(hash1="abc", hash2="def")
+                merged = await merge_merkle_clock(other_peer_id="peer-a", other_counter=1)
+                tags = await get_workflow_tags()
+
+            self.assertEqual(created.get("status"), "error")
+            self.assertEqual(created.get("error"), "delegate failed")
+
+            self.assertEqual(scheduled.get("status"), "error")
+            self.assertEqual(scheduled.get("error"), "delegate failed")
+
+            self.assertEqual(distance.get("status"), "error")
+            self.assertEqual(distance.get("error"), "delegate failed")
+
+            self.assertEqual(merged.get("status"), "error")
+            self.assertEqual(merged.get("error"), "delegate failed")
+
+            self.assertEqual(tags.get("status"), "error")
+            self.assertEqual(tags.get("error"), "delegate failed")
 
         anyio.run(_run)
 

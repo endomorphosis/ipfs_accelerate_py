@@ -1,14 +1,14 @@
 """Shared core + operations.
 
-Historically, the project kept the shared implementation under `scripts/shared/`
-and imported it as a top-level `shared` package by tweaking `PYTHONPATH`.
+Historically, the richer shared implementation lived under `scripts/shared/`
+and was imported as a top-level `shared` package by tweaking `PYTHONPATH`.
 
 For service/runtime usage we expose a stable import path:
 `ipfs_accelerate_py.shared`.
 
-When running from a repository checkout (like the systemd service in
-`deployments/systemd/`), we prefer the canonical implementation from
-`scripts/shared/` to avoid code duplication.
+Installed environments should prefer the packaged `scripts.shared` module when
+available, while repository checkouts keep a best-effort fallback that can load
+the legacy top-level `shared` import path.
 """
 
 from __future__ import annotations
@@ -17,20 +17,8 @@ from pathlib import Path
 from typing import Any, Dict
 
 
-def _try_import_scripts_shared() -> Dict[str, Any]:
-    repo_root = Path(__file__).resolve().parents[2]
-    scripts_dir = repo_root / "scripts"
-    if scripts_dir.exists():
-        import sys
-
-        scripts_path = str(scripts_dir)
-        if scripts_path not in sys.path:
-            sys.path.insert(0, scripts_path)
-
-    # If `scripts/` is on sys.path, then `scripts/shared/` becomes importable as
-    # a top-level package named `shared`.
-    import shared as scripts_shared  # type: ignore
-
+def _extract_exports(scripts_shared: Any) -> Dict[str, Any]:
+    """Collect the public shared exports from the canonical implementation."""
     exported = {
         name: getattr(scripts_shared, name)
         for name in getattr(scripts_shared, "__all__", [])
@@ -55,6 +43,28 @@ def _try_import_scripts_shared() -> Dict[str, Any]:
                 exported[name] = getattr(scripts_shared, name)
 
     return exported
+
+
+def _try_import_scripts_shared() -> Dict[str, Any]:
+    try:
+        from scripts import shared as scripts_shared  # type: ignore
+
+        return _extract_exports(scripts_shared)
+    except Exception:
+        repo_root = Path(__file__).resolve().parents[2]
+        scripts_dir = repo_root / "scripts"
+        if scripts_dir.exists():
+            import sys
+
+            scripts_path = str(scripts_dir)
+            if scripts_path not in sys.path:
+                sys.path.insert(0, scripts_path)
+
+        # If `scripts/` is on sys.path, then `scripts/shared/` becomes
+        # importable as a top-level package named `shared`.
+        import shared as scripts_shared  # type: ignore
+
+        return _extract_exports(scripts_shared)
 
 
 try:

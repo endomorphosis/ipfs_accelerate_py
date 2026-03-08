@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.data_processing_tools import native_data_processing_tools
 from ipfs_accelerate_py.mcp_server.tools.data_processing_tools.native_data_processing_tools import (
     chunk_text,
     convert_format,
@@ -103,6 +105,40 @@ class TestMCPServerUNI111DataProcessingTools(unittest.TestCase):
             result = await validate_data(data={"x": 1}, validation_type="schema", rules=[{"ok": True}, "bad"])  # type: ignore[list-item]
             self.assertEqual(result.get("status"), "error")
             self.assertIn("rules entries must be objects", str(result.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_data_processing_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_data_processing_tools._API,
+                {
+                    "chunk_text": _contradictory_failure,
+                    "transform_data": _contradictory_failure,
+                    "convert_format": _contradictory_failure,
+                    "validate_data": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                chunked = await chunk_text(text="abcdef")
+                transformed = await transform_data(data={"x": 1}, transformation="normalize")
+                converted = await convert_format(data={"x": 1}, source_format="json", target_format="yaml")
+                validated = await validate_data(data={"x": 1}, validation_type="schema")
+
+            self.assertEqual(chunked.get("status"), "error")
+            self.assertEqual(chunked.get("error"), "delegate failed")
+
+            self.assertEqual(transformed.get("status"), "error")
+            self.assertEqual(transformed.get("error"), "delegate failed")
+
+            self.assertEqual(converted.get("status"), "error")
+            self.assertEqual(converted.get("error"), "delegate failed")
+
+            self.assertEqual(validated.get("status"), "error")
+            self.assertEqual(validated.get("error"), "delegate failed")
 
         anyio.run(_run)
 

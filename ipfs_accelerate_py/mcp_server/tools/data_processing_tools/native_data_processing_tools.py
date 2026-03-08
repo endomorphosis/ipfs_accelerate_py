@@ -90,6 +90,20 @@ def _load_data_processing_api() -> Dict[str, Any]:
 _API = _load_data_processing_api()
 
 
+def _normalize_payload(payload: Any) -> Dict[str, Any]:
+    if isinstance(payload, dict):
+        envelope = dict(payload)
+        failed = bool(envelope.get("error")) or envelope.get("success") is False
+        if failed:
+            envelope["status"] = "error"
+        else:
+            envelope.setdefault("status", "success")
+        return envelope
+    if payload is None:
+        return {"status": "success"}
+    return {"status": "success", "result": payload}
+
+
 async def chunk_text(
     text: str,
     strategy: str = "fixed_size",
@@ -149,8 +163,7 @@ async def chunk_text(
         overlap=normalized_overlap,
         max_chunks=normalized_max_chunks,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_payload(result)
     return payload
 
 
@@ -191,8 +204,7 @@ async def transform_data(
         transformation=normalized_transformation,
         **merged_parameters,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_payload(result)
     return payload
 
 
@@ -231,8 +243,7 @@ async def convert_format(
         target_format=normalized_target,
         options=options,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success" if payload.get("status") != "error" else "error")
+    payload = _normalize_payload(result)
     return payload
 
 
@@ -281,8 +292,7 @@ async def validate_data(
         schema=schema,
         rules=rules,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_payload(result)
     return payload
 
 

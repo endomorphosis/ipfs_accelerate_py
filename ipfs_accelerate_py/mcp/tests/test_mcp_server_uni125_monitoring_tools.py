@@ -267,7 +267,10 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
             self.assertEqual(metrics_result.get("export_info"), {"format": "csv"})
 
             self.assertEqual(alerts_list_result.get("status"), "success")
-            self.assertEqual(alerts_list_result.get("filters_applied"), {"severity": None, "resolved": None, "time_range": "1h"})
+            self.assertEqual(
+                alerts_list_result.get("filters_applied"),
+                {"severity": None, "resolved": None, "time_range": "1h"},
+            )
             self.assertEqual(alerts_list_result.get("alert_metrics"), {})
 
             self.assertEqual(alerts_resolve_result.get("status"), "success")
@@ -279,6 +282,42 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
             self.assertEqual(alerts_config_result.get("updated_thresholds"), {"cpu": 90})
             self.assertEqual(alerts_config_result.get("current_thresholds"), {"cpu": 90})
             self.assertFalse(alerts_config_result.get("restart_required"))
+
+        anyio.run(_run)
+
+    def test_base_monitoring_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.monitoring_tools.native_monitoring_tools._API",
+                {
+                    "health_check": _contradictory_failure,
+                    "get_performance_metrics": _contradictory_failure,
+                    "monitor_services": _contradictory_failure,
+                    "generate_monitoring_report": _contradictory_failure,
+                    "check_health": None,
+                    "collect_metrics": None,
+                    "manage_alerts": None,
+                },
+            ):
+                health = await health_check(check_type="basic")
+                metrics = await get_performance_metrics(time_range="1h")
+                services = await monitor_services(action="status")
+                report = await generate_monitoring_report(report_type="summary", time_period="24h")
+
+            self.assertEqual(health.get("status"), "error")
+            self.assertEqual(health.get("error"), "delegate failed")
+
+            self.assertEqual(metrics.get("status"), "error")
+            self.assertEqual(metrics.get("error"), "delegate failed")
+
+            self.assertEqual(services.get("status"), "error")
+            self.assertEqual(services.get("error"), "delegate failed")
+
+            self.assertEqual(report.get("status"), "error")
+            self.assertEqual(report.get("error"), "delegate failed")
 
         anyio.run(_run)
 

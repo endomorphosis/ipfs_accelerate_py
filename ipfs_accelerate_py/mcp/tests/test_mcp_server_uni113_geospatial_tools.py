@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.geospatial_tools import native_geospatial_tools
 from ipfs_accelerate_py.mcp_server.tools.geospatial_tools.native_geospatial_tools import (
     analyze_geospatial_corpus,
     extract_geographic_entities,
@@ -132,6 +134,35 @@ class TestMCPServerUNI113GeospatialTools(unittest.TestCase):
             self.assertIn("summary", result)
             self.assertIn("entity_analysis", result)
             self.assertIn("spatiotemporal_analysis", result)
+
+        anyio.run(_run)
+
+    def test_geospatial_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_geospatial_tools._API,
+                {
+                    "extract_geographic_entities": _contradictory_failure,
+                    "map_spatiotemporal_events": _contradictory_failure,
+                    "query_geographic_context": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                extracted = await extract_geographic_entities(corpus_data="sample")
+                mapped = await map_spatiotemporal_events(corpus_data="sample")
+                queried = await query_geographic_context(query="city", corpus_data="sample")
+
+            self.assertEqual(extracted.get("status"), "error")
+            self.assertEqual(extracted.get("error"), "delegate failed")
+
+            self.assertEqual(mapped.get("status"), "error")
+            self.assertEqual(mapped.get("error"), "delegate failed")
+
+            self.assertEqual(queried.get("status"), "error")
+            self.assertEqual(queried.get("error"), "delegate failed")
 
         anyio.run(_run)
 

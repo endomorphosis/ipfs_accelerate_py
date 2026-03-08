@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.background_task_tools import native_background_task_tools
 from ipfs_accelerate_py.mcp_server.tools.background_task_tools.native_background_task_tools import (
     check_task_status,
     get_task_status,
@@ -203,6 +204,28 @@ class TestMCPServerUNI121BackgroundTaskTools(unittest.TestCase):
             self.assertEqual(detailed_result.get("include_logs"), False)
             self.assertEqual(detailed_result.get("system_status"), {})
             self.assertEqual(detailed_result.get("queue_status"), {})
+
+        anyio.run(_run)
+
+    def test_failed_delegate_payloads_infer_error_status(self) -> None:
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_background_task_tools._API,
+                {
+                    "check_task_status": _failed,
+                    "manage_background_tasks": _failed,
+                    "manage_task_queue": _failed,
+                    "get_task_status": _failed,
+                },
+                clear=False,
+            ):
+                self.assertEqual((await check_task_status()).get("status"), "error")
+                self.assertEqual((await manage_background_tasks(action="list")).get("status"), "error")
+                self.assertEqual((await manage_task_queue(action="get_stats")).get("status"), "error")
+                self.assertEqual((await get_task_status()).get("status"), "error")
 
         anyio.run(_run)
 

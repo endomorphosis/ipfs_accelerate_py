@@ -4,16 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
-from ipfs_accelerate_py.mcp_server.tools.file_detection_tools.native_file_detection_tools import (
-    analyze_detection_accuracy,
-    batch_detect_file_types,
-    detect_file_type,
-    generate_detection_report,
-    register_native_file_detection_tools,
-)
+from ipfs_accelerate_py.mcp_server.tools.file_detection_tools import native_file_detection_tools
 
 
 class _DummyManager:
@@ -27,7 +22,7 @@ class _DummyManager:
 class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
     def test_register_includes_file_detection_tools(self) -> None:
         manager = _DummyManager()
-        register_native_file_detection_tools(manager)
+        native_file_detection_tools.register_native_file_detection_tools(manager)
         names = [c["name"] for c in manager.calls]
         self.assertIn("detect_file_type", names)
         self.assertIn("batch_detect_file_types", names)
@@ -36,7 +31,7 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
     def test_register_schema_contracts(self) -> None:
         manager = _DummyManager()
-        register_native_file_detection_tools(manager)
+        native_file_detection_tools.register_native_file_detection_tools(manager)
         by_name = {c["name"]: c for c in manager.calls}
 
         detect_schema = by_name["detect_file_type"]["input_schema"]
@@ -52,7 +47,10 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
     def test_detect_file_type_rejects_invalid_method(self) -> None:
         async def _run() -> None:
-            result = await detect_file_type(file_path="/tmp/x.txt", methods=["bad"])
+            result = await native_file_detection_tools.detect_file_type(
+                file_path="/tmp/x.txt",
+                methods=["bad"],
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("methods entries must be one of", str(result.get("message", "")))
 
@@ -60,7 +58,7 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
     def test_batch_detect_file_types_requires_directory_or_file_paths(self) -> None:
         async def _run() -> None:
-            result = await batch_detect_file_types()
+            result = await native_file_detection_tools.batch_detect_file_types()
             self.assertEqual(result.get("status"), "error")
             self.assertIn("either directory or file_paths must be provided", str(result.get("message", "")))
 
@@ -68,7 +66,10 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
     def test_batch_detect_file_types_rejects_invalid_strategy(self) -> None:
         async def _run() -> None:
-            result = await batch_detect_file_types(file_paths=["/tmp/a.txt"], strategy="slow")
+            result = await native_file_detection_tools.batch_detect_file_types(
+                file_paths=["/tmp/a.txt"],
+                strategy="slow",
+            )
             self.assertEqual(result.get("status"), "error")
             self.assertIn("strategy must be one of", str(result.get("message", "")))
 
@@ -76,7 +77,7 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
     def test_analyze_detection_accuracy_rejects_empty_directory(self) -> None:
         async def _run() -> None:
-            result = await analyze_detection_accuracy(directory=" ")
+            result = await native_file_detection_tools.analyze_detection_accuracy(directory=" ")
             self.assertEqual(result.get("status"), "error")
             self.assertIn("directory is required", str(result.get("message", "")))
 
@@ -84,7 +85,10 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
     def test_detect_file_type_success_envelope_shape(self) -> None:
         async def _run() -> None:
-            result = await detect_file_type(file_path="/tmp/x.txt", strategy="accurate")
+            result = await native_file_detection_tools.detect_file_type(
+                file_path="/tmp/x.txt",
+                strategy="accurate",
+            )
             self.assertIn(result.get("status"), ["success", "error"])
             self.assertIn("file_path", result)
 
@@ -92,7 +96,7 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
     def test_generate_detection_report_rejects_empty_results(self) -> None:
         async def _run() -> None:
-            result = await generate_detection_report(results={})
+            result = await native_file_detection_tools.generate_detection_report(results={})
             self.assertEqual(result.get("status"), "error")
             self.assertIn("non-empty object", str(result.get("message", "")))
 
@@ -100,7 +104,7 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
     def test_generate_detection_report_rejects_invalid_top_mime_types(self) -> None:
         async def _run() -> None:
-            result = await generate_detection_report(
+            result = await native_file_detection_tools.generate_detection_report(
                 results={"/tmp/a.txt": {"mime_type": "text/plain", "confidence": 0.8}},
                 top_mime_types=0,
             )
@@ -111,7 +115,7 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
 
     def test_generate_detection_report_success_shape(self) -> None:
         async def _run() -> None:
-            result = await generate_detection_report(
+            result = await native_file_detection_tools.generate_detection_report(
                 results={
                     "/tmp/a.txt": {"mime_type": "text/plain", "confidence": 0.9},
                     "/tmp/b.pdf": {"mime_type": "application/pdf", "confidence": 0.8},
@@ -124,6 +128,35 @@ class TestMCPServerUNI117FileDetectionTools(unittest.TestCase):
             self.assertEqual(report.get("successful"), 2)
             self.assertEqual(report.get("failed"), 1)
             self.assertIn("common_mime_types", report)
+
+        anyio.run(_run)
+
+    def test_file_detection_wrappers_infer_error_status_from_contradictory_delegate_payload(self) -> None:
+        def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_file_detection_tools._API,
+                {
+                    "detect_file_type": _contradictory_failure,
+                    "batch_detect_file_types": _contradictory_failure,
+                    "analyze_detection_accuracy": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                detected = await native_file_detection_tools.detect_file_type(file_path="/tmp/x.txt")
+                batched = await native_file_detection_tools.batch_detect_file_types(file_paths=["/tmp/x.txt"])
+                analyzed = await native_file_detection_tools.analyze_detection_accuracy(directory="/tmp")
+
+            self.assertEqual(detected.get("status"), "error")
+            self.assertEqual(detected.get("error"), "delegate failed")
+
+            self.assertEqual(batched.get("status"), "error")
+            self.assertEqual(batched.get("error"), "delegate failed")
+
+            self.assertEqual(analyzed.get("status"), "error")
+            self.assertEqual(analyzed.get("error"), "delegate failed")
 
         anyio.run(_run)
 

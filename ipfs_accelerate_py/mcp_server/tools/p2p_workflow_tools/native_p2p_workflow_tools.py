@@ -26,11 +26,11 @@ def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic status envelopes."""
     if isinstance(payload, dict):
         normalized = dict(payload)
-        if "status" not in normalized:
-            if normalized.get("error") or normalized.get("success") is False:
-                normalized["status"] = "error"
-            else:
-                normalized["status"] = "success"
+        failed = bool(normalized.get("error")) or normalized.get("success") is False
+        if failed:
+            normalized["status"] = "error"
+        elif "status" not in normalized:
+            normalized["status"] = "success"
         return normalized
     if payload is None:
         return {"status": "success"}

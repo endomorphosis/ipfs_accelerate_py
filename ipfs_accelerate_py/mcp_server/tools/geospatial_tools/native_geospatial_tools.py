@@ -12,7 +12,8 @@ logger = logging.getLogger(__name__)
 def _load_geospatial_api() -> Dict[str, Any]:
     """Resolve source geospatial APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.geospatial_tools.geospatial_tools import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.geospatial_tools.geospatial_tools import (
+            # type: ignore
             extract_geographic_entities as _extract_geographic_entities,
             map_spatiotemporal_events as _map_spatiotemporal_events,
             query_geographic_context as _query_geographic_context,
@@ -95,6 +96,17 @@ def _load_geospatial_api() -> Dict[str, Any]:
 _API = _load_geospatial_api()
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    normalized = dict(payload or {})
+    failed = normalized.get("success") is False or bool(normalized.get("error"))
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 async def extract_geographic_entities(
     corpus_data: str,
     confidence_threshold: float = 0.7,
@@ -134,8 +146,7 @@ async def extract_geographic_entities(
         confidence_threshold=normalized_threshold,
         include_coordinates=include_coordinates,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     return payload
 
 
@@ -189,8 +200,7 @@ async def map_spatiotemporal_events(
         clustering_distance=normalized_distance,
         temporal_resolution=normalized_resolution,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     return payload
 
 
@@ -258,8 +268,7 @@ async def query_geographic_context(
         include_related_entities=include_related_entities,
         temporal_context=temporal_context,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success")
+    payload = _normalize_delegate_payload(result)
     return payload
 
 
