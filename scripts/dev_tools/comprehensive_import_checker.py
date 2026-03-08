@@ -10,8 +10,36 @@ import sys
 import argparse
 import ast
 from pathlib import Path
-from typing import List, Set, Tuple
+from typing import List, Tuple
 import importlib.util
+
+
+def _module_exists(module_name: str) -> bool:
+    """Return whether an importable module exists."""
+    try:
+        return importlib.util.find_spec(module_name) is not None
+    except (ImportError, ValueError, ModuleNotFoundError):
+        return False
+
+
+def _relative_import_exists(file_path: Path, node: ast.ImportFrom) -> bool:
+    """Best-effort resolve a relative import against the current file path."""
+    base_dir = file_path.parent
+
+    # level=1 means current package, so only ascend for deeper relative imports.
+    for _ in range(max(node.level - 1, 0)):
+        base_dir = base_dir.parent
+
+    if node.module:
+        target = base_dir.joinpath(*node.module.split('.'))
+        return target.with_suffix('.py').exists() or (target / '__init__.py').exists()
+
+    # `from . import foo` may refer to a sibling module or a package attribute.
+    # Treat an existing package context as sufficient to avoid false positives.
+    return (base_dir / '__init__.py').exists() or any(
+        (base_dir / alias.name).with_suffix('.py').exists() or (base_dir / alias.name / '__init__.py').exists()
+        for alias in node.names
+    )
 
 
 def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
@@ -27,15 +55,18 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     # Check if module exists
-                    spec = importlib.util.find_spec(alias.name.split('.')[0])
-                    if spec is None:
+                    if not (_module_exists(alias.name) or _module_exists(alias.name.split('.')[0])):
                         errors.append(f"Cannot import '{alias.name}'")
             
             elif isinstance(node, ast.ImportFrom):
+                if node.level > 0:
+                    if not _relative_import_exists(file_path, node):
+                        module_name = node.module or ""
+                        errors.append(f"Cannot import from relative module '{'.' * node.level}{module_name}'")
+                    continue
+
                 if node.module:
-                    module_name = node.module.split('.')[0]
-                    spec = importlib.util.find_spec(module_name)
-                    if spec is None:
+                    if not (_module_exists(node.module) or _module_exists(node.module.split('.')[0])):
                         errors.append(f"Cannot import from '{node.module}'")
         
         return len(errors) == 0, errors
