@@ -1,70 +1,38 @@
-#\!/usr/bin/env python3
-"""
-Test the import functionality of migrated modules
-"""
+#!/usr/bin/env python3
+"""Smoke tests for deeper migrated module import surfaces."""
 
-import sys
-import os
-import traceback
+from __future__ import annotations
 
-def test_generator_imports():
-    """Test imports from generators package"""
-    print("Testing generators imports...")
-    try:
-        # Add the parent directory to the Python path so we can import generators
-        sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        
-        # Test importing from generators
-        from generators import utils
-        print("✅ Successfully imported generators.utils")
-        
-        from scripts.generators.test_generators import sample_test_generator
-        print("✅ Successfully imported generators.test_generators.sample_test_generator")
-        
-        from scripts.generators.models import skill_hf_bert
-        print("✅ Successfully imported generators.models.skill_hf_bert")
-        
-        from scripts.generators.templates.model_templates import template_bert
-        print("✅ Successfully imported generators.templates.model_templates.template_bert")
-        
-    return True
-    except Exception as e:
-        print(f"\1{e}\3")
-        traceback.print_exc()
-    return False
+import importlib
+from pathlib import Path
 
-def test_duckdb_api_imports():
-    """Test imports from duckdb_api package"""
-    print("\nTesting duckdb_api imports...")
-    try:
-        # Test importing from duckdb_api
-        from duckdb_api import data.duckdb.core.benchmark_db_api as benchmark_db_api
-        print("✅ Successfully imported duckdb_api.benchmark_db_api")
-        
-        from data.duckdb.schema import check_database_schema
-        print("✅ Successfully imported duckdb_api.schema.check_database_schema")
-        
-        from data.duckdb.core import data.duckdb.core.benchmark_db_query as benchmark_db_query
-        print("✅ Successfully imported duckdb_api.core.benchmark_db_query")
-        
-        from data.duckdb.utils import cleanup_stale_reports
-        print("✅ Successfully imported duckdb_api.utils.cleanup_stale_reports")
-        
-    return True
-    except Exception as e:
-        print(f"\1{e}\3")
-        traceback.print_exc()
-    return False
 
-if __name__ == "__main__":
-    print("Testing module imports for reorganized structure...")
-    
-    generators_success = test_generator_imports()
-    duckdb_api_success = test_duckdb_api_imports()
-    
-    if generators_success and duckdb_api_success:
-        print("\n✅ All import tests passed successfully\!")
-        sys.exit(0)
-    else:
-        print("\n❌ Some import tests failed.")
-        sys.exit(1)
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _import_module(name: str):
+    return importlib.import_module(name)
+
+
+def test_generator_module_imports(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(REPO_ROOT))
+
+    sample_test_generator = _import_module("scripts.generators.test_generators.sample_test_generator")
+    skill_hf_bert = _import_module("scripts.generators.models.skill_hf_bert")
+    model_templates = _import_module("scripts.generators.templates.model_templates")
+
+    assert Path(sample_test_generator.__file__).is_file()
+    assert Path(skill_hf_bert.__file__).is_file()
+    assert Path(model_templates.__file__).is_file()
+
+
+def test_duckdb_support_module_imports(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(REPO_ROOT))
+
+    duckdb_schema = _import_module("data.duckdb.schema")
+    duckdb_schema_creation = _import_module("data.duckdb.schema.creation")
+    cleanup_stale_reports = _import_module("data.duckdb.utils.cleanup_stale_reports")
+
+    assert Path(duckdb_schema.__file__).is_file()
+    assert Path(duckdb_schema_creation.__file__).is_file()
+    assert Path(cleanup_stale_reports.__file__).is_file()

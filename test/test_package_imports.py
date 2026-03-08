@@ -1,78 +1,50 @@
 #!/usr/bin/env python3
-"""
-Tests that Python package imports work correctly for the reorganized code structure.
-This script tests imports with different PYTHONPATH configurations.
-"""
+"""Smoke tests for stable package import surfaces in a repository checkout."""
 
-import os
+from __future__ import annotations
+
+import importlib
+import importlib.util
 import sys
 from pathlib import Path
 
-def test_imports():
-    """Test package imports with various configurations."""
-    project_root = Path(__file__).parent.parent.absolute()
-    print(f"\1{project_root}\3")
-    
-    # Absolute path to simplify imports
-    sys.path.insert(0, str(project_root))
-    
-    print("\n==== Testing root package imports ====")
-    try:
-        import scripts.generators
-        print(f"\1{generators.__file__}\3")
-    except ImportError as e:
-        print(f"\1{str(e)}\3")
-    
-    try:
-        import data.duckdb
-        print(f"\1{duckdb_api.__file__}\3")
-    except ImportError as e:
-        print(f"\1{str(e)}\3")
-    
-        print("\n==== Testing subpackage imports ====")
-    try:
-        from scripts.generators.test_generators import scripts.generators.test_generators.simple_test_generator as simple_test_generator
-        print(f"\1{simple_test_generator.__file__}\3")
-    except ImportError as e:
-        print(f"\1{str(e)}\3")
-    
-    try:
-        from scripts.generators.utils import utils
-        print(f"\1{utils.__file__}\3")
-    except ImportError as e:
-        print(f"\1{str(e)}\3")
-        
-    try:
-        from data.duckdb.core import data.duckdb.core.benchmark_db_api as benchmark_db_api
-        print(f"\1{benchmark_db_api.__file__}\3")
-    except ImportError as e:
-        print(f"\1{str(e)}\3")
-        
-    try:
-        from data.duckdb.utils import cleanup_stale_reports
-        print(f"\1{cleanup_stale_reports.__file__}\3")
-    except ImportError as e:
-        print(f"\1{str(e)}\3")
-    
-        print("\n==== Testing deep imports ====")
-    try:
-        from scripts.generators.templates.model_templates import text_model_template
-        print(f"✅ Imported text_model_template module")
-    except ImportError as e:
-        print(f"\1{str(e)}\3")
-    
-    try:
-        from data.duckdb.schema.creation import create_benchmark_schema
-        print(f"✅ Imported create_benchmark_schema module")
-    except ImportError as e:
-        print(f"\1{str(e)}\3")
-    
-        print("\n==== Import test summary ====")
-        print("If you see any failures, check that:")
-        print("1. The module exists in the correct location")
-        print("2. All directories have proper __init__.py files")
-        print("3. Your PYTHONPATH includes the project root")
-        print(f"\1{os.environ.get('PYTHONPATH', 'Not set')}\3")
-    
-if __name__ == "__main__":
-    test_imports()
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _import_module(name: str):
+    return importlib.import_module(name)
+
+
+def test_top_level_repo_packages_import_with_repo_root_on_syspath(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(REPO_ROOT))
+
+    scripts_generators = _import_module("scripts.generators")
+    data_duckdb = _import_module("data.duckdb")
+
+    assert Path(scripts_generators.__file__).is_file()
+    assert Path(data_duckdb.__file__).is_file()
+
+
+def test_canonical_package_import_surfaces_are_available(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(REPO_ROOT))
+
+    shared_pkg = _import_module("ipfs_accelerate_py.shared")
+    github_cli_pkg = _import_module("ipfs_accelerate_py.github_cli")
+
+    assert hasattr(shared_pkg, "SharedCore")
+    assert hasattr(shared_pkg, "GitHubOperations")
+    assert hasattr(github_cli_pkg, "GitHubCLI")
+    assert hasattr(github_cli_pkg, "WorkflowManager")
+
+
+def test_safe_subpackages_import_from_repo_checkout(monkeypatch) -> None:
+    monkeypatch.syspath_prepend(str(REPO_ROOT))
+
+    generators_utils = _import_module("scripts.generators.utils")
+    duckdb_schema = _import_module("data.duckdb.schema.creation")
+
+    assert Path(generators_utils.__file__).is_file()
+    assert Path(duckdb_schema.__file__).is_file()
+    assert importlib.util.find_spec("data.duckdb.core") is not None
+    assert importlib.util.find_spec("data.duckdb.utils") is not None

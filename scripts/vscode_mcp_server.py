@@ -23,7 +23,7 @@ def run_mcp_server():
     script_dir = os.path.dirname(os.path.abspath(__file__))
     
     # Path to the comprehensive MCP server
-    server_path = os.path.join(script_dir, "tools", "comprehensive_mcp_server.py")
+    server_path = os.path.join(script_dir, "comprehensive_mcp_server.py")
     
     # Build the command
     cmd = [
