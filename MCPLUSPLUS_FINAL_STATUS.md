@@ -6,6 +6,23 @@
 
 All items from the implementation checklist have been successfully completed, tested, and documented. The MCP++ (Model Context Protocol Plus Plus) implementation is production-ready.
 
+## 2026-03-08 Cutover Addendum
+
+Canonical-default cutover is now approved and frozen.
+
+**Latest cutover state**:
+- Canonical startup defaults to `ipfs_accelerate_py.mcp_server`
+- Legacy `ipfs_accelerate_py.mcp.server` remains compatibility-only in deprecation phase `D1_warn_only`
+- Rollback and dry-run controls remain available through `IPFS_MCP_FORCE_LEGACY_ROLLBACK` and `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN`
+- Focused release-candidate transport/profile matrix completed successfully: `120 passed`
+- Published cutover checklist: `MCP_CUTOVER_CHECKLIST.md`
+
+**Primary evidence**:
+- `MCP_SERVER_UNIFICATION_PLAN.md`
+- `mcpplusplus/CONFORMANCE_CHECKLIST.md`
+- `mcpplusplus/SPEC_GAP_MATRIX.md`
+- `MCP_CUTOVER_CHECKLIST.md`
+
 ## Checklist Status
 
 ### ✅ Create module structure and add Mcp-Plus-Plus submodule

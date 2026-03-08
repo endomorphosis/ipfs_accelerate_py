@@ -564,6 +564,8 @@ Recent execution (2026-03-08):
 6. Extended focused session parity coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni109_session_tools.py`, revalidated cleanup-option contracts in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni164_session_tools.py`, and confirmed unified bootstrap dispatch behavior in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`13 passed, 149 deselected`; `1 passed, 148 deselected`).
 7. Hardened `p2p_tools` remote cache, remote submit, and service-status wrappers in `ipfs_accelerate_py/mcp_server/tools/p2p_tools/native_p2p_tools.py` so `p2p_remote_cache_get` / `set` / `has` / `delete`, `p2p_remote_submit_task`, and `p2p_service_status` now enforce canonical validation contracts and preserve deterministic sparse-success defaults for key/peer addressing, timeout handling, cache hit/delete fields, task submission metadata, and service/peer status envelopes.
 8. Extended focused P2P parity coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni135_p2p_tools.py` and revalidated unified bootstrap discovery/dispatch behavior in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`16 passed, 148 deselected`).
+9. Hardened `mcplusplus` list/stats wrapper normalization in `ipfs_accelerate_py/mcp_server/tools/mcplusplus/native_mcplusplus_tools.py` so `mcplusplus_taskqueue_list`, `mcplusplus_taskqueue_stats`, `mcplusplus_workflow_list`, and `mcplusplus_peer_list` preserve deterministic sparse-success defaults for empty collections, pagination fields, stats payloads, and peer sort metadata when delegates return minimal success envelopes.
+10. Extended focused `mcplusplus` parity coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni147_mcplusplus_tools.py` and revalidated unified bootstrap `mcplusplus` dispatch behavior in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` (`7 passed, 149 deselected`).
 
 Exit:
 
@@ -589,7 +591,7 @@ Exit:
 
 1. Validate compatibility facade rollback path.
 2. Run release candidate matrix across transport and profile features.
-3. Freeze migration deltas and publish cutover checklist.
+3. Freeze migration deltas and publish cutover checklist. ✅
 
 Recent execution (2026-03-08):
 
@@ -601,6 +603,7 @@ Recent execution (2026-03-08):
 6. Added focused CLI startup coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_cli.py`, confirming the CLI still constructs the compatibility facade and delegates to `mcp_server.run()` with the parsed host/port contract in normal and `--dev` modes after the canonical-default startup change (`2 passed`).
 7. Ran an aggregate post-cutover validation bundle across rollback telemetry, legacy bootstrap compatibility, subprocess/FastAPI entrypoints, process helpers, p2p bridge dispatch, and CLI startup (`28 passed, 148 deselected`), confirming the canonical-default startup change remains stable across the main compatibility-facade entry surfaces.
 8. Ran a focused release-candidate matrix across cutover, transport entrypoints, MCP+p2p handler interop, and representative MCP++ profile chapters (`test_mcp_server_uni007_cutover_rollback.py`, `test_mcp_transport_process_level.py`, `test_mcp_transport_mcp_p2p_handler_limits.py`, `test_mcp_server_transport_e2e_matrix.py`, `test_mcp_server_mcplusplus_idl.py`, `test_mcp_server_mcplusplus_artifacts.py`, `test_mcp_server_mcplusplus_ucan.py`, `test_mcp_server_mcplusplus_policy.py`, `test_mcp_server_mcplusplus_event_dag.py`, `test_mcp_server_mcplusplus_risk_scheduler.py`), with the matrix completing successfully (`120 passed`).
+9. Published [MCP_CUTOVER_CHECKLIST.md](MCP_CUTOVER_CHECKLIST.md) to freeze the cutover delta set, record the approved operational gates, and anchor the release-candidate evidence bundle used for canonical-default startup approval.
 
 Exit:
 
@@ -611,7 +614,8 @@ Exit:
 1. Default startup path points to `mcp_server`.
 2. Keep `mcp` facade for one release window.
 3. Instrument facade usage telemetry. ✅
-4. Deprecate shim runtime behavior in phases:
+4. Published cutover checklist: [MCP_CUTOVER_CHECKLIST.md](MCP_CUTOVER_CHECKLIST.md). ✅
+5. Deprecate shim runtime behavior in phases:
    - Phase D1: warn-only,
    - Phase D2: opt-in only,
    - Phase D3: remove runtime duplication.
