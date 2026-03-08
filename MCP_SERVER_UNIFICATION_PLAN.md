@@ -179,9 +179,9 @@ This maps known shim functions/surfaces to canonical ownership targets.
 | `_missing_dependency_stub` contract | `ipfs_accelerate_py/mcplusplus_module/__init__.py` + subpackages | canonical optional-dependency helper (shared) | Eliminate duplicate stub classes across shim subpackages |
 | `_detect_runner_name` | `ipfs_accelerate_py/mcplusplus_module/__init__.py` | `ipfs_accelerate_py/mcp_server` shared compatibility utility module | Keep one runner-identity detection helper and alias from shim |
 | `_detect_public_ip` | `ipfs_accelerate_py/mcplusplus_module/__init__.py` | `ipfs_accelerate_py/mcp_server` shared compatibility utility module | Keep one public-IP detection helper and alias from shim |
+| Trio registrar resolution (`_resolve_p2p_registrars`) | `ipfs_accelerate_py/mcplusplus_module/trio/server.py` and `.../tools/__init__.py` | `ipfs_accelerate_py/mcp_server` shared compatibility utility module | Preserve a single shared resolver owned canonically; shim should alias/delegate |
 | `register_p2p_taskqueue_tools` | `ipfs_accelerate_py/mcplusplus_module/tools/taskqueue_tools.py` | `ipfs_accelerate_py/mcp_server/tools/p2p_tools/native_p2p_tools.py` | maintain delegation-only shim; no unique business logic |
 | `register_p2p_workflow_tools` | `ipfs_accelerate_py/mcplusplus_module/tools/workflow_tools.py` | `ipfs_accelerate_py/mcp_server/tools/p2p_workflow_tools/native_p2p_workflow_tools.py` | move scheduler semantics to canonical runtime; keep compatibility names in shim |
-| Trio registrar resolution (`_resolve_p2p_registrars`) | `ipfs_accelerate_py/mcplusplus_module/trio/server.py` and `.../tools/__init__.py` | canonical registration path in `mcp_server` | preserve shared resolver, prohibit duplicate registrar logic |
 | Peer/bootstrap adapters (`SimplePeerBootstrap`, `P2PPeerRegistry`) | `ipfs_accelerate_py/mcplusplus_module/p2p/bootstrap.py`, `.../peer_registry.py` | canonical p2p service integration boundary (`mcp_server` + `p2p_tasks`) | converge on canonical-first service calls and transport-neutral persistence |
 
 Integration acceptance for each row:
@@ -533,7 +533,8 @@ Recent execution (2026-03-08):
 
 1. Moved shared shim compatibility helpers (`_missing_dependency_stub`, `_resolve_storage_wrapper_factory`, `_create_storage_wrapper`) into canonical `ipfs_accelerate_py/mcp_server/compatibility.py` and reduced `mcplusplus_module.__init__` to thin aliasing for those behaviors.
 2. Moved shared runner/public-IP detection helpers (`_detect_runner_name`, `_detect_public_ip`) into canonical `ipfs_accelerate_py/mcp_server/compatibility.py`, keeping `mcplusplus_module.__init__` as a thin alias layer for P2P bootstrap/peer-registry consumers.
-3. Revalidated shim convergence with focused helper/resolver coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py` (`9 passed`) plus broader trio/tool adapter regression coverage (`12 passed`).
+3. Moved shared Trio/P2P registrar resolution (`_resolve_p2p_registrars`) into canonical `ipfs_accelerate_py/mcp_server/compatibility.py`, reducing `mcplusplus_module.tools` to aliasing while preserving Trio server delegation through the same shared resolver.
+4. Revalidated shim convergence with focused helper/resolver coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py` (`9 passed`) plus broader trio/tool adapter regression coverage (`12 passed`).
 
 Exit:
 

@@ -64,6 +64,28 @@ def _create_storage_wrapper(**kwargs) -> Optional[object]:
         return None
 
 
+def _resolve_p2p_registrars():
+    """Resolve MCP++ P2P registrars with canonical shared fallback behavior."""
+    try:
+        taskqueue_module = import_module(
+            "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools"
+        )
+        workflow_module = import_module(
+            "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools"
+        )
+        return (
+            taskqueue_module.register_p2p_taskqueue_tools,
+            workflow_module.register_p2p_workflow_tools,
+        )
+    except (ImportError, AttributeError):
+        from ipfs_accelerate_py.mcplusplus_module.tools import (
+            register_p2p_taskqueue_tools,
+            register_p2p_workflow_tools,
+        )
+
+        return register_p2p_taskqueue_tools, register_p2p_workflow_tools
+
+
 def _detect_runner_name() -> str:
     """Detect runner identity from environment with hostname fallback."""
     runner_name = str(os.environ.get("RUNNER_NAME") or "").strip()
@@ -98,6 +120,7 @@ __all__ = [
     "_missing_dependency_stub",
     "_resolve_storage_wrapper_factory",
     "_create_storage_wrapper",
+    "_resolve_p2p_registrars",
     "_detect_runner_name",
     "_detect_public_ip",
 ]

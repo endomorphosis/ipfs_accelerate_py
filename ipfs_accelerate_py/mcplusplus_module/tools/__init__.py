@@ -5,29 +5,12 @@ This module provides MCP tool registrations for P2P taskqueue and workflow opera
 refactored from the original MCP implementation to work natively with Trio.
 """
 
-from importlib import import_module
 from typing import Any
+
+from ipfs_accelerate_py.mcp_server.compatibility import _resolve_p2p_registrars
 
 from .taskqueue_tools import register_p2p_taskqueue_tools
 from .workflow_tools import register_p2p_workflow_tools
-
-
-def _resolve_p2p_registrars():
-    """Resolve taskqueue/workflow registrars with canonical-first behavior."""
-    try:
-        taskqueue_module = import_module(
-            "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools"
-        )
-        workflow_module = import_module(
-            "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools"
-        )
-        return (
-            taskqueue_module.register_p2p_taskqueue_tools,
-            workflow_module.register_p2p_workflow_tools,
-        )
-    except (ImportError, AttributeError):
-        # Fallback to already-imported package-level symbols.
-        return register_p2p_taskqueue_tools, register_p2p_workflow_tools
 
 
 def register_all_p2p_tools(mcp: Any) -> None:
