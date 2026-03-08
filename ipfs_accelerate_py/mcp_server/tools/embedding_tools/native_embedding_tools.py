@@ -389,6 +389,18 @@ def _error_result(message: str, **extra: Any) -> Dict[str, Any]:
     return payload
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic error-status inference."""
+    normalized = dict(payload or {})
+    has_error = bool(normalized.get("error"))
+    failed = normalized.get("success") is False or has_error
+    if failed:
+        normalized["status"] = "error"
+    else:
+        normalized.setdefault("status", "success")
+    return normalized
+
+
 async def _await_maybe(result: Any) -> Dict[str, Any]:
     """Await coroutine-like API results while supporting direct return values."""
     if hasattr(result, "__await__"):
@@ -418,8 +430,7 @@ async def generate_embeddings(
     except Exception as exc:
         return _error_result(f"generate_embeddings failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("model_name", normalized_model_name)
     normalized.setdefault("embeddings", [])
     normalized.setdefault("count", len(texts))
@@ -476,8 +487,7 @@ async def generate_embedding(
     except Exception as exc:
         return _error_result(f"generate_embedding failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("model_name", normalized_model_name)
     normalized.setdefault("normalize", normalize)
     normalized.setdefault("batch_size", normalized_batch_size)
@@ -556,8 +566,7 @@ async def generate_embeddings_from_file(
     except Exception as exc:
         return _error_result(f"generate_embeddings_from_file failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("file_path", normalized_file_path)
     normalized.setdefault("model_name", normalized_model_name)
     normalized.setdefault("batch_size", normalized_batch_size)
@@ -625,13 +634,13 @@ async def semantic_search(
     except Exception as exc:
         return _error_result(f"semantic_search failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("query", normalized_query)
     normalized.setdefault("vector_store_id", normalized_store)
     normalized.setdefault("model_used", normalized_model_name)
     normalized.setdefault("top_k", normalized_top_k)
     normalized.setdefault("similarity_threshold", normalized_similarity_threshold)
+    normalized.setdefault("include_metadata", include_metadata)
     normalized.setdefault("results", [])
     normalized.setdefault("total_results", len(normalized.get("results") or []))
     return normalized
@@ -692,8 +701,7 @@ async def hybrid_search(
     except Exception as exc:
         return _error_result(f"hybrid_search failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("query", normalized_query)
     normalized.setdefault("vector_store_id", normalized_store)
     normalized.setdefault(
@@ -757,8 +765,7 @@ async def search_with_filters(
     except Exception as exc:
         return _error_result(f"search_with_filters failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("query", normalized_query)
     normalized.setdefault("vector_store_id", normalized_store)
     normalized.setdefault("filters_applied", filters)
@@ -829,8 +836,7 @@ async def multi_modal_search(
     except Exception as exc:
         return _error_result(f"multi_modal_search failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("text_query", normalized_query)
     normalized.setdefault("image_query", normalized_image_query)
     normalized.setdefault("vector_store_id", normalized_store)
@@ -875,8 +881,7 @@ async def shard_embeddings(
     except Exception as exc:
         return _error_result(f"shard_embeddings failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("shard_count", normalized_shard_count)
     normalized.setdefault("total_embeddings", len(embeddings))
     normalized.setdefault("strategy", normalized_strategy)
@@ -958,8 +963,7 @@ async def chunk_text_for_embeddings(
     except Exception as exc:
         return _error_result(f"chunk_text_for_embeddings failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("original_length", len(text))
     normalized.setdefault("chunks", [])
     normalized.setdefault("chunk_count", len(normalized.get("chunks") or []))
@@ -1014,8 +1018,7 @@ async def manage_embedding_endpoints(
     except Exception as exc:
         return _error_result(f"manage_embedding_endpoints failed: {exc}")
 
-    normalized = dict(payload or {})
-    normalized.setdefault("status", "error" if "error" in normalized else "success")
+    normalized = _normalize_delegate_payload(payload)
     normalized.setdefault("action", normalized_action)
     normalized.setdefault("model", model_name)
     if endpoint_value:

@@ -56,6 +56,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
         async def _minimal(**_: object) -> dict:
             return {"status": "success"}
 
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "embedding upstream failed"}
+
         async def _run() -> None:
             invalid_texts = await native_embedding_tools.generate_embeddings(texts=["ok", ""])
             self.assertEqual(invalid_texts.get("status"), "error")
@@ -76,6 +79,11 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 result = await native_embedding_tools.generate_embeddings(texts=["hello"])
                 self.assertEqual(result.get("status"), "error")
                 self.assertIn("generate_embeddings failed", str(result.get("error", "")))
+
+            with patch.dict(native_embedding_tools._API, {"generate_embeddings": _contradictory_failure}, clear=False):
+                result = await native_embedding_tools.generate_embeddings(texts=["hello"])
+                self.assertEqual(result.get("status"), "error")
+                self.assertEqual(result.get("error"), "embedding upstream failed")
 
         anyio.run(_run)
 
@@ -152,6 +160,9 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
         async def _minimal(**_: object) -> dict:
             return {"status": "success"}
 
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "semantic upstream failed"}
+
         async def _run() -> None:
             invalid_query = await native_embedding_tools.semantic_search(
                 query=" ",
@@ -172,11 +183,14 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 result = await native_embedding_tools.semantic_search(
                     query="hello",
                     vector_store_id="vs-1",
+                    include_metadata=False,
                 )
                 self.assertEqual(result.get("status"), "success")
                 self.assertEqual(result.get("query"), "hello")
                 self.assertEqual(result.get("vector_store_id"), "vs-1")
+                self.assertEqual(result.get("include_metadata"), False)
                 self.assertEqual(result.get("results"), [])
+                self.assertEqual(result.get("total_results"), 0)
 
             with patch.dict(native_embedding_tools._API, {"semantic_search": _boom}, clear=False):
                 failed = await native_embedding_tools.semantic_search(
@@ -185,6 +199,14 @@ class TestMCPServerUNI158EmbeddingTools(unittest.TestCase):
                 )
                 self.assertEqual(failed.get("status"), "error")
                 self.assertIn("semantic_search failed", str(failed.get("error", "")))
+
+            with patch.dict(native_embedding_tools._API, {"semantic_search": _contradictory_failure}, clear=False):
+                failed = await native_embedding_tools.semantic_search(
+                    query="hello",
+                    vector_store_id="vs-1",
+                )
+                self.assertEqual(failed.get("status"), "error")
+                self.assertEqual(failed.get("error"), "semantic upstream failed")
 
         anyio.run(_run)
 
