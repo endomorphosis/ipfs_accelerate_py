@@ -1141,6 +1141,14 @@ class MCPServerWrapper:
 
 _MCP_SERVER_INSTANCE: Optional[MCPServerWrapper] = None
 _MCP_LIKE_INSTANCE: Optional[Any] = None
+_MCP_FACADE_USAGE_TELEMETRY = {
+    "facade_calls": 0,
+    "legacy_wrapper_calls": 0,
+    "unified_bridge_calls": 0,
+    "dry_run_calls": 0,
+    "rollback_calls": 0,
+    "bridge_failure_calls": 0,
+}
 
 
 def _env_flag_enabled(name: str) -> bool:
@@ -1148,6 +1156,32 @@ def _env_flag_enabled(name: str) -> bool:
         return os.environ.get(name, "").strip().lower() in {"1", "true", "yes", "on"}
     except Exception:
         return False
+
+
+def _record_mcp_facade_usage(telemetry: dict) -> None:
+    """Track compatibility-facade usage for cutover/deprecation telemetry."""
+    _MCP_FACADE_USAGE_TELEMETRY["facade_calls"] += 1
+    if telemetry.get("used_legacy_wrapper"):
+        _MCP_FACADE_USAGE_TELEMETRY["legacy_wrapper_calls"] += 1
+    if telemetry.get("bridge_active"):
+        _MCP_FACADE_USAGE_TELEMETRY["unified_bridge_calls"] += 1
+    if telemetry.get("cutover_dry_run"):
+        _MCP_FACADE_USAGE_TELEMETRY["dry_run_calls"] += 1
+    if telemetry.get("force_legacy_rollback"):
+        _MCP_FACADE_USAGE_TELEMETRY["rollback_calls"] += 1
+    if telemetry.get("bridge_error"):
+        _MCP_FACADE_USAGE_TELEMETRY["bridge_failure_calls"] += 1
+
+
+def get_mcp_facade_telemetry() -> dict:
+    """Return a snapshot of compatibility-facade usage telemetry."""
+    return dict(_MCP_FACADE_USAGE_TELEMETRY)
+
+
+def _reset_mcp_facade_telemetry() -> None:
+    """Reset compatibility-facade usage telemetry for deterministic tests."""
+    for key in _MCP_FACADE_USAGE_TELEMETRY:
+        _MCP_FACADE_USAGE_TELEMETRY[key] = 0
 
 
 def set_mcp_like_instance(mcp_like: Any) -> None:
@@ -1176,19 +1210,33 @@ def create_mcp_server(
     global _MCP_SERVER_INSTANCE
     cutover_dry_run_enabled = _env_flag_enabled("IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN")
     force_legacy_rollback = _env_flag_enabled("IPFS_MCP_FORCE_LEGACY_ROLLBACK")
+    bridge_requested = _env_flag_enabled("IPFS_MCP_ENABLE_UNIFIED_BRIDGE")
     cutover_dry_run_status = {
         "enabled": bool(cutover_dry_run_enabled),
         "ok": False,
         "error": "",
+    }
+    facade_telemetry = {
+        "facade": "ipfs_accelerate_py.mcp.server.create_mcp_server",
+        "bridge_requested": bool(bridge_requested),
+        "bridge_active": False,
+        "used_legacy_wrapper": False,
+        "force_legacy_rollback": bool(force_legacy_rollback),
+        "cutover_dry_run": bool(cutover_dry_run_enabled),
+        "dry_run_ok": False,
+        "selected_runtime": "legacy",
+        "reason": "bridge_disabled",
+        "bridge_error": "",
     }
 
     # Optional migration bridge: route creation through the new unified package
     # when explicitly enabled. The private skip flag prevents recursion.
     if not _skip_unified_bridge:
         try:
-            bridge_enabled = _env_flag_enabled("IPFS_MCP_ENABLE_UNIFIED_BRIDGE")
+            bridge_enabled = bool(bridge_requested)
             if force_legacy_rollback:
                 bridge_enabled = False
+                facade_telemetry["reason"] = "force_legacy_rollback"
             if bridge_enabled:
                 from ipfs_accelerate_py.mcp_server.server import create_server as create_unified_server
 
@@ -1204,9 +1252,13 @@ def create_mcp_server(
                             debug=debug,
                         )
                         cutover_dry_run_status["ok"] = True
+                        facade_telemetry["dry_run_ok"] = True
+                        facade_telemetry["reason"] = "dry_run_legacy_fallback"
                         logger.info("Unified cutover dry-run validation succeeded; continuing on legacy path")
                     except Exception as dry_run_exc:
                         cutover_dry_run_status["error"] = str(dry_run_exc)
+                        facade_telemetry["bridge_error"] = str(dry_run_exc)
+                        facade_telemetry["reason"] = "dry_run_failure_fallback"
                         logger.warning(
                             "Unified cutover dry-run validation failed, continuing on legacy path: %s",
                             dry_run_exc,
@@ -1221,13 +1273,23 @@ def create_mcp_server(
                         mount_path=mount_path,
                         debug=debug,
                     )
+                    facade_telemetry["bridge_active"] = True
+                    facade_telemetry["selected_runtime"] = "unified"
+                    facade_telemetry["reason"] = "unified_bridge"
                     _MCP_SERVER_INSTANCE = server
                     try:
                         set_mcp_like_instance(getattr(server, "mcp", None) or server)
                     except Exception:
                         pass
+                    try:
+                        setattr(server, "_mcp_facade_telemetry", dict(facade_telemetry))
+                    except Exception:
+                        pass
+                    _record_mcp_facade_usage(facade_telemetry)
                     return server
         except Exception as e:
+            facade_telemetry["bridge_error"] = str(e)
+            facade_telemetry["reason"] = "bridge_error_fallback"
             logger.warning(f"Unified MCP bridge unavailable, falling back to legacy wrapper: {e}")
 
     server = MCPServerWrapper(
@@ -1239,6 +1301,7 @@ def create_mcp_server(
         mount_path=mount_path,
         debug=debug,
     )
+    facade_telemetry["used_legacy_wrapper"] = True
     _MCP_SERVER_INSTANCE = server
     try:
         # Also expose the underlying MCP registry for callers that only
@@ -1251,6 +1314,11 @@ def create_mcp_server(
             setattr(server, "_unified_cutover_dry_run", dict(cutover_dry_run_status))
         except Exception:
             pass
+    try:
+        setattr(server, "_mcp_facade_telemetry", dict(facade_telemetry))
+    except Exception:
+        pass
+    _record_mcp_facade_usage(facade_telemetry)
     return server
 
 

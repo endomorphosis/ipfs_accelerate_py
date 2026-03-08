@@ -39,6 +39,44 @@ def _is_nested_import(node: ast.AST) -> bool:
     return False
 
 
+def _node_in_statements(node: ast.AST, statements: List[ast.stmt]) -> bool:
+    """Return whether a node is contained within one of the provided statements."""
+    for statement in statements:
+        if statement is node:
+            return True
+        for child in ast.walk(statement):
+            if child is node:
+                return True
+    return False
+
+
+def _handler_catches_import_error(handler: ast.ExceptHandler) -> bool:
+    """Return whether an except handler catches import-resolution failures."""
+    if handler.type is None:
+        return True
+
+    names: List[str] = []
+    if isinstance(handler.type, ast.Name):
+        names.append(handler.type.id)
+    elif isinstance(handler.type, ast.Tuple):
+        names.extend(element.id for element in handler.type.elts if isinstance(element, ast.Name))
+
+    return any(name in {"ImportError", "ModuleNotFoundError"} for name in names)
+
+
+def _is_guarded_optional_import(node: ast.AST) -> bool:
+    """Return whether an import sits in a try block guarded by import-related handlers."""
+    child = node
+    parent = getattr(node, "parent", None)
+    while parent is not None:
+        if isinstance(parent, ast.Try) and _node_in_statements(child, parent.body):
+            if any(_handler_catches_import_error(handler) for handler in parent.handlers):
+                return True
+        child = parent
+        parent = getattr(parent, "parent", None)
+    return False
+
+
 def _local_module_exists(file_path: Path, module_name: str) -> bool:
     """Check for bare-module fallbacks resolved from the current file's package ancestry."""
     module_parts = module_name.split('.')
@@ -100,6 +138,7 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
                         _module_exists(alias.name)
                         or _module_exists(alias.name.split('.')[0])
                         or _local_module_exists(file_path, alias.name)
+                        or _is_guarded_optional_import(node)
                         or (_is_nested_import(node) and not _module_exists(alias.name.split('.')[0]))
                     ):
                         errors.append(f"Cannot import '{alias.name}'")
@@ -116,6 +155,7 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
                         _module_exists(node.module)
                         or _module_exists(node.module.split('.')[0])
                         or _local_module_exists(file_path, node.module)
+                        or _is_guarded_optional_import(node)
                         or (_is_nested_import(node) and not _module_exists(node.module.split('.')[0]))
                     ):
                         errors.append(f"Cannot import from '{node.module}'")
