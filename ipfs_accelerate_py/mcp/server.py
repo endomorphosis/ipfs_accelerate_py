@@ -1148,6 +1148,8 @@ _MCP_FACADE_USAGE_TELEMETRY = {
     "dry_run_calls": 0,
     "rollback_calls": 0,
     "bridge_failure_calls": 0,
+    "warning_emissions": 0,
+    "reason_counts": {},
 }
 _MCP_FACADE_WARNED_REASONS: set[str] = set()
 
@@ -1162,6 +1164,9 @@ def _env_flag_enabled(name: str) -> bool:
 def _record_mcp_facade_usage(telemetry: dict) -> None:
     """Track compatibility-facade usage for cutover/deprecation telemetry."""
     _MCP_FACADE_USAGE_TELEMETRY["facade_calls"] += 1
+    reason = str(telemetry.get("reason") or "legacy_fallback")
+    reason_counts = _MCP_FACADE_USAGE_TELEMETRY["reason_counts"]
+    reason_counts[reason] = int(reason_counts.get(reason, 0)) + 1
     if telemetry.get("used_legacy_wrapper"):
         _MCP_FACADE_USAGE_TELEMETRY["legacy_wrapper_calls"] += 1
     if telemetry.get("bridge_active"):
@@ -1172,6 +1177,8 @@ def _record_mcp_facade_usage(telemetry: dict) -> None:
         _MCP_FACADE_USAGE_TELEMETRY["rollback_calls"] += 1
     if telemetry.get("bridge_error"):
         _MCP_FACADE_USAGE_TELEMETRY["bridge_failure_calls"] += 1
+    if telemetry.get("deprecation_warning_emitted"):
+        _MCP_FACADE_USAGE_TELEMETRY["warning_emissions"] += 1
 
 
 def _warn_legacy_facade_usage(reason: str) -> bool:
@@ -1191,13 +1198,15 @@ def _warn_legacy_facade_usage(reason: str) -> bool:
 
 def get_mcp_facade_telemetry() -> dict:
     """Return a snapshot of compatibility-facade usage telemetry."""
-    return dict(_MCP_FACADE_USAGE_TELEMETRY)
+    snapshot = dict(_MCP_FACADE_USAGE_TELEMETRY)
+    snapshot["reason_counts"] = dict(_MCP_FACADE_USAGE_TELEMETRY["reason_counts"])
+    return snapshot
 
 
 def _reset_mcp_facade_telemetry() -> None:
     """Reset compatibility-facade usage telemetry for deterministic tests."""
     for key in _MCP_FACADE_USAGE_TELEMETRY:
-        _MCP_FACADE_USAGE_TELEMETRY[key] = 0
+        _MCP_FACADE_USAGE_TELEMETRY[key] = {} if key == "reason_counts" else 0
     _MCP_FACADE_WARNED_REASONS.clear()
 
 

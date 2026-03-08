@@ -6,7 +6,9 @@ import types
 import unittest
 from unittest.mock import MagicMock, patch
 
+from ipfs_accelerate_py.mcp.fastapi_integration import integrate_mcp_with_fastapi
 from ipfs_accelerate_py.mcp.integration import create_standalone_app, run_standalone_app
+from ipfs_accelerate_py.mcp.integration import initialize_mcp_server
 
 
 class _DummyServer:
@@ -23,6 +25,18 @@ class _DummyServer:
             "execution_context": execution_context,
             "tags": tags,
         }
+
+
+class _DummyApp:
+    def __init__(self) -> None:
+        self.mount = MagicMock()
+
+
+class _DummyModelServer:
+    def __init__(self, accelerate_instance=None) -> None:
+        self.resources = {}
+        if accelerate_instance is not None:
+            self.resources["ipfs_accelerate_py"] = accelerate_instance
 
 
 class TestMCPTransportProcessLevel(unittest.TestCase):
@@ -98,6 +112,40 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
         self.assertEqual(kwargs["host"], "127.0.0.1")
         self.assertEqual(kwargs["port"], 8899)
         self.assertEqual(kwargs["log_level"], "debug")
+
+    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server", return_value=_DummyServer())
+    def test_initialize_mcp_server_mounts_blank_internal_prefix(self, mock_create_server: MagicMock) -> None:
+        app = _DummyApp()
+        accelerate = object()
+
+        server = initialize_mcp_server(app, accelerate, mount_path="/api/mcp")
+
+        self.assertIs(server, mock_create_server.return_value)
+        mock_create_server.assert_called_once_with(accelerate_instance=accelerate, mount_path="")
+        app.mount.assert_called_once_with("/api/mcp", server.app, name="mcp_server")
+
+    @patch("ipfs_accelerate_py.mcp.fastapi_integration.create_mcp_server", return_value=_DummyServer())
+    def test_integrate_mcp_with_fastapi_mounts_and_records_server(self, mock_create_server: MagicMock) -> None:
+        app = _DummyApp()
+        accelerate = object()
+        model_server = _DummyModelServer(accelerate)
+
+        integrate_mcp_with_fastapi(app, model_server)
+
+        mock_create_server.assert_called_once_with(accelerate_instance=accelerate, mount_path="")
+        app.mount.assert_called_once_with("/mcp", mock_create_server.return_value.app, name="mcp_server")
+        self.assertIs(model_server.resources["mcp_server"], mock_create_server.return_value)
+
+    @patch("ipfs_accelerate_py.mcp.fastapi_integration.create_mcp_server")
+    def test_integrate_mcp_with_fastapi_without_accelerate_is_noop(self, mock_create_server: MagicMock) -> None:
+        app = _DummyApp()
+        model_server = _DummyModelServer()
+
+        integrate_mcp_with_fastapi(app, model_server)
+
+        mock_create_server.assert_not_called()
+        app.mount.assert_not_called()
+        self.assertNotIn("mcp_server", model_server.resources)
 
 
 if __name__ == "__main__":

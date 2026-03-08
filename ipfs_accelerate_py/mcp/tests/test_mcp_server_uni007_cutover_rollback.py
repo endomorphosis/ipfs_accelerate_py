@@ -96,6 +96,8 @@ class TestUNI007CutoverRollback(unittest.TestCase):
         self.assertEqual(counts.get("legacy_wrapper_calls"), 1)
         self.assertEqual(counts.get("dry_run_calls"), 1)
         self.assertEqual(counts.get("unified_bridge_calls"), 0)
+        self.assertEqual(counts.get("warning_emissions"), 1)
+        self.assertEqual((counts.get("reason_counts") or {}).get("dry_run_legacy_fallback"), 1)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
@@ -130,6 +132,8 @@ class TestUNI007CutoverRollback(unittest.TestCase):
 
         counts = get_mcp_facade_telemetry()
         self.assertEqual(counts.get("bridge_failure_calls"), 1)
+        self.assertEqual(counts.get("warning_emissions"), 1)
+        self.assertEqual((counts.get("reason_counts") or {}).get("dry_run_failure_fallback"), 1)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
@@ -162,6 +166,8 @@ class TestUNI007CutoverRollback(unittest.TestCase):
         counts = get_mcp_facade_telemetry()
         self.assertEqual(counts.get("rollback_calls"), 1)
         self.assertEqual(counts.get("legacy_wrapper_calls"), 1)
+        self.assertEqual(counts.get("warning_emissions"), 1)
+        self.assertEqual((counts.get("reason_counts") or {}).get("force_legacy_rollback"), 1)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
@@ -213,6 +219,8 @@ class TestUNI007CutoverRollback(unittest.TestCase):
         self.assertTrue(any("D1 warn-only" in line for line in after_reset_logs.output))
         self.assertTrue(getattr(third_server, "_mcp_facade_telemetry", {}).get("deprecation_warning_emitted"))
         self.assertEqual(get_mcp_facade_telemetry().get("facade_calls"), 1)
+        self.assertEqual(get_mcp_facade_telemetry().get("warning_emissions"), 1)
+        self.assertEqual((get_mcp_facade_telemetry().get("reason_counts") or {}).get("legacy_fallback"), 1)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
@@ -245,6 +253,8 @@ class TestUNI007CutoverRollback(unittest.TestCase):
         self.assertEqual(counts.get("facade_calls"), 1)
         self.assertEqual(counts.get("unified_bridge_calls"), 1)
         self.assertEqual(counts.get("legacy_wrapper_calls"), 0)
+        self.assertEqual(counts.get("warning_emissions"), 0)
+        self.assertEqual((counts.get("reason_counts") or {}).get("unified_bridge"), 1)
 
 
 if __name__ == "__main__":

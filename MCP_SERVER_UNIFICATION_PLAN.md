@@ -540,6 +540,7 @@ Recent execution (2026-03-08):
 5. Revalidated shim convergence with focused helper/peer-registration coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py -k "missing_dependency_stub or storage_wrapper or detect_runner_name or detect_public_ip or peer_registration_record or register_peer"` (`12 passed, 16 deselected`) plus broader trio/tool adapter regression coverage in `ipfs_accelerate_py/mcplusplus_module/tests/test_tool_adapters.py ipfs_accelerate_py/mcplusplus_module/tests/test_trio_server.py -k "resolve_p2p_registrars or missing_dependency_stub or storage_wrapper or register_p2p_tools or register_peer"` (`14 passed, 31 deselected`).
 6. Added canonical `ipfs_accelerate_py.mcp_server.mcplusplus.peer_bootstrap` wrapper ownership (`PeerBootstrapWrapper`, `create_peer_bootstrap`) so bootstrap discovery/cleanup/address retrieval can be consumed through canonical async-friendly runtime primitives instead of only through the shim helper class.
 7. Wired unified bootstrap service ownership through `peer_bootstrap_factory` and `tools_dispatch` bootstrap-address probing so canonical runtime consumers can resolve bootstrap addresses without direct shim imports, validated by targeted unified-bootstrap coverage (`2 passed`).
+8. Added canonical `create_peer_service_bundle` ownership in `ipfs_accelerate_py/mcp_server/mcplusplus/peer_services.py` and wired `P2PServiceManager` to initialize peer-registry/bootstrap wrappers through that shared construction path, validated by `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni013_p2p_adapters.py` (`6 passed`) and focused unified-bootstrap revalidation (`2 passed, 148 deselected`).
 
 Exit:
 
@@ -569,19 +570,14 @@ Exit:
 
 1. Validate compatibility facade rollback path.
 2. Run release candidate matrix across transport and profile features.
-3. Freeze migration deltas and publish cutover checklist. ✅
+3. Freeze migration deltas and publish cutover checklist.
 
 Recent execution (2026-03-08):
 
 1. Extended `ipfs_accelerate_py/mcp/server.py` with compatibility-facade usage telemetry so legacy-wrapper fallback, unified-bridge handoff, dry-run validation, rollback forcing, and bridge-failure fallback all emit deterministic `_mcp_facade_telemetry` metadata.
 2. Expanded `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py` to validate facade telemetry snapshots and aggregate counters for dry-run success, dry-run failure, force-rollback, and unified-bridge handoff paths (`4 passed`).
-3. Revalidated a focused release-candidate transport/profile matrix across runtime-router dispatch, transport entrypoints, and MCP+p2p profile negotiation with `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_parity.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py`, and `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py -k "profile or initialize or fastapi_runtime or trio_runtime or auto_runtime or direct_manager_dispatch or http_style_meta_tool_dispatch or tools_list_alias or tools_call_alias"` (`18 passed, 12 deselected`).
-4. Published the cutover readiness checklist below and froze the current migration delta summary against the executable conformance baseline (`51/51` source categories represented; `MCPP-001` through `MCPP-023` marked `PASS`; latest rollback, bootstrap-service, and release-candidate transport/profile evidence linked in-place).
-5. Flipped `ipfs_accelerate_py.mcp.server.create_mcp_server()` to canonical-startup-by-default while preserving `IPFS_MCP_FORCE_LEGACY_ROLLBACK` and dry-run behavior, and activated D1 warn-only deprecation notices for any legacy-wrapper fallback path (`5 passed`).
-6. Revalidated compatibility-entry bootstrap coverage after the startup flip with `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py -k "legacy_create_mcp_server or legacy_bridge_plus_bootstrap_meta_tool_flow"`, confirming explicit legacy opt-out still works and hierarchical bootstrap meta-tools remain functional under the warn-only D1 facade path (`3 passed, 145 deselected`).
-7. Revalidated broader post-flip process and direct p2p bridge entrypoints with `ipfs_accelerate_py/mcp/tests/test_mcp_transport_subprocess_contracts.py` and `ipfs_accelerate_py/mcp/tests/test_p2p_call_tool_bridge.py -k "run_server_contract or trio_runtime_path_in_subprocess or call_tool_dispatches_to_mcp_registry"`, confirming canonical and standalone subprocess contracts plus direct registry dispatch remain stable after the default-startup cutover (`3 passed, 6 deselected`).
-8. Revalidated process-level mounting helpers and a direct compatibility-facade component smoke path with `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_components.py -k "create_standalone_app or run_standalone_app or server_creation"`, confirming mounted standalone app creation, additive profile metadata propagation, uvicorn launch wiring, and direct server construction remain stable after the canonical-default startup change (`5 passed, 5 deselected`).
-9. Revalidated script-style initialization smoke paths by executing `ipfs_accelerate_py/mcp/tests/test_mcp_init.py` and `ipfs_accelerate_py/mcp/tests/test_init.py` directly under `.venv`, confirming direct `create_mcp_server()` startup still completes end-to-end with populated tool/resource/prompt inventories after the canonical-default startup change.
+3. Revalidated process-level and direct-entry startup behavior after the canonical-default startup flip with focused subprocess, p2p bridge, standalone-app, direct component, and script-style initialization coverage (`3 passed, 6 deselected`; `5 passed, 5 deselected`; script smoke paths completed successfully with populated tool/resource/prompt inventories).
+4. Added focused FastAPI integration/helper coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py` for `initialize_mcp_server()` and `integrate_mcp_with_fastapi()`, then revalidated those helpers plus canonical FastAPI facade delegation in `ipfs_accelerate_py/mcp/tests/test_mcp_server_fastapi_service.py` (`9 passed, 2 deselected`).
 
 Exit:
 
@@ -596,68 +592,6 @@ Exit:
    - Phase D1: warn-only,
    - Phase D2: opt-in only,
    - Phase D3: remove runtime duplication.
-
-### 8.1 Migration Delta Freeze (2026-03-08)
-
-Frozen baseline for cutover review:
-
-1. Source tool-category presence parity remains at `51/51` represented in canonical runtime.
-2. Requirement-level conformance remains `PASS` for `MCPP-001` through `MCPP-023` in `mcpplusplus/CONFORMANCE_CHECKLIST.md`.
-3. Shim convergence freeze includes canonical ownership for shared compatibility helpers, peer-registration payload shaping, Trio registrar resolution, canonical peer-bootstrap service wrappers, and unified bootstrap `peer_bootstrap_factory` service consumption.
-4. Cutover evidence freeze includes:
-   - compatibility-facade rollback and dry-run telemetry coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py` (`4 passed`),
-   - focused release-candidate transport/profile matrix coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_parity.py`, `ipfs_accelerate_py/mcp/tests/test_mcp_server_transport_e2e_matrix.py`, and `ipfs_accelerate_py/mcp/tests/test_mcp_transport_mcp_p2p_handler_limits.py` (`18 passed, 12 deselected`),
-   - unified bootstrap service-factory smoke and `peer_bootstrap_factory` consumption coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py -k "peer_bootstrap_factory or unified_bootstrap_service_factories_smoke"` (`2 passed, 146 deselected`),
-   - post-startup-flip subprocess and direct p2p bridge validation in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_subprocess_contracts.py` and `ipfs_accelerate_py/mcp/tests/test_p2p_call_tool_bridge.py -k "run_server_contract or trio_runtime_path_in_subprocess or call_tool_dispatches_to_mcp_registry"` (`3 passed, 6 deselected`),
-   - process-level standalone-app helper plus direct compatibility-facade component smoke validation in `ipfs_accelerate_py/mcp/tests/test_mcp_transport_process_level.py` and `ipfs_accelerate_py/mcp/tests/test_mcp_components.py -k "create_standalone_app or run_standalone_app or server_creation"` (`5 passed, 5 deselected`),
-   - script-style direct initialization smoke validation by executing `ipfs_accelerate_py/mcp/tests/test_mcp_init.py` and `ipfs_accelerate_py/mcp/tests/test_init.py`, both of which completed successfully with populated tool/resource/prompt inventories.
-
-### 8.2 Published Cutover Readiness Checklist
-
-- [x] Canonical runtime parity baseline frozen in `mcpplusplus/SPEC_GAP_MATRIX.md` and `mcpplusplus/CONFORMANCE_CHECKLIST.md`.
-- [x] Compatibility-facade rollback controls validated (`IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN`, `IPFS_MCP_FORCE_LEGACY_ROLLBACK`).
-- [x] Compatibility-facade usage telemetry published via `_mcp_facade_telemetry` and aggregate facade counters.
-- [x] Focused release-candidate transport/profile matrix revalidated.
-- [x] Unified bootstrap service factories, including `peer_bootstrap_factory`, revalidated.
-- [x] Conformance docs synchronized with latest March 8 cutover evidence.
-- [x] Default startup path flip to canonical `mcp_server` approved for release.
-- [x] One-release compatibility-facade window and D1/D2/D3 deprecation timeline scheduled.
-
-### 8.3 Startup-Flip Approval Gate
-
-Current operational state:
-
-1. `ipfs_accelerate_py.mcp.server.create_mcp_server()` now defaults to canonical `mcp_server` startup.
-2. Legacy wrapper routing remains available for rollback/testing via `IPFS_MCP_FORCE_LEGACY_ROLLBACK=1` and cutover dry-run validation.
-
-Approval criteria for the default-startup flip:
-
-1. Completed 2026-03-08: latest frozen cutover evidence remained green (`UNI-007`, focused M4 transport/profile matrix, unified bootstrap service-factory smoke).
-2. Completed 2026-03-08: no blocking regressions were identified in the cutover target band (`MCPP-012`, `MCPP-013`, `MCPP-014`, `MCPP-015`) during this documentation/validation tranche.
-3. Completed 2026-03-08: compatibility-facade telemetry and focused cutover tests proved canonical startup can be the default while retaining deterministic rollback/fallback telemetry.
-4. Completed 2026-03-08: rollback controls (`IPFS_MCP_FORCE_LEGACY_ROLLBACK`) remain documented and verified in the plan and focused tests.
-5. Completed 2026-03-08: broader subprocess startup contracts and direct p2p registry dispatch remained green after the startup flip, reducing residual regression risk outside the narrow cutover suite.
-6. Completed 2026-03-08: process-level mounting helpers and direct compatibility-facade component creation remained green after the startup flip, reducing residual regression risk for mounted app integration and basic in-process construction paths.
-7. Completed 2026-03-08: script-style initialization smoke paths remained green after the startup flip, reducing residual regression risk for direct non-pytest entry flows that construct the compatibility facade end-to-end.
-
-### 8.4 Deprecation Timeline (Scheduled)
-
-Planned release sequence after the startup-flip approval:
-
-1. Phase D1 (`warn-only`, first release after flip approval)
-   - Default startup path flips to canonical `mcp_server`. ✅
-   - Legacy `mcp` facade remains fully functional.
-   - Facade entrypoints emit deprecation warnings while preserving rollback controls and telemetry. ✅
-2. Phase D2 (`opt-in only`, second release after flip approval)
-   - Legacy compatibility routing requires explicit opt-in (`IPFS_MCP_FORCE_LEGACY_ROLLBACK=1` or equivalent documented override).
-   - Release notes call out migration expectations and removal target.
-3. Phase D3 (`remove runtime duplication`, third release after flip approval)
-   - Legacy runtime-ownership branches are removed.
-   - `mcp` remains, if still needed, as a thin compatibility facade over canonical `mcp_server` only.
-
-Scheduling note:
-
-1. The exact version numbers are intentionally left to release management, but the phase ordering and one-release facade window are now fixed for cutover planning.
 
 ## 9. Testing and CI Gate Matrix
 

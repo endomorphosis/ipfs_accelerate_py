@@ -66,6 +66,7 @@ class P2PServiceManager:
 
         self._workflow_scheduler = None
         self._peer_registry = None
+        self._peer_bootstrap = None
         self._mcplusplus_available = False
 
         self._connection_pool: Dict[str, Any] = {}
@@ -118,13 +119,35 @@ class P2PServiceManager:
                 self._handle.started.wait(timeout=max(0.0, self.startup_timeout_s))
             except Exception:
                 pass
+
         except Exception:
             self._handle = None
             self._restore_env()
             return False
 
         started = bool(getattr(self._runtime, "running", False))
-        if not started:
+        if started:
+            try:
+                from ipfs_accelerate_py.mcp_server.mcplusplus import create_peer_service_bundle
+
+                bundle = create_peer_service_bundle(
+                    bootstrap_nodes=self.bootstrap_nodes,
+                    enable_peer_registry=self.enable_peer_registry,
+                    enable_bootstrap=self.enable_bootstrap,
+                )
+                self._peer_registry = bundle.peer_registry
+                self._peer_bootstrap = bundle.peer_bootstrap
+                self._mcplusplus_available = bool(
+                    self._peer_registry is not None or self._peer_bootstrap is not None
+                )
+            except Exception:
+                self._peer_registry = None
+                self._peer_bootstrap = None
+                self._mcplusplus_available = False
+        else:
+            self._peer_registry = None
+            self._peer_bootstrap = None
+            self._mcplusplus_available = False
             self._restore_env()
         return started
 
@@ -133,9 +156,15 @@ class P2PServiceManager:
             return True
         try:
             ok = bool(self._runtime.stop(timeout_s=2.0))
+            self._peer_registry = None
+            self._peer_bootstrap = None
+            self._mcplusplus_available = False
             self._restore_env()
             return ok
         except Exception:
+            self._peer_registry = None
+            self._peer_bootstrap = None
+            self._mcplusplus_available = False
             self._restore_env()
             return False
 
@@ -174,7 +203,7 @@ class P2PServiceManager:
             last_error=str(getattr(self._runtime, "last_error", "") or "") if self._runtime is not None else "",
             workflow_scheduler_available=self._workflow_scheduler is not None,
             peer_registry_available=self._peer_registry is not None,
-            bootstrap_available=bool(self._mcplusplus_available and self.enable_bootstrap),
+            bootstrap_available=self._peer_bootstrap is not None,
             connected_peers=connected_peers,
             active_workflows=0,
         )
@@ -184,6 +213,9 @@ class P2PServiceManager:
 
     def get_peer_registry(self) -> Optional[Any]:
         return self._peer_registry
+
+    def get_peer_bootstrap(self) -> Optional[Any]:
+        return self._peer_bootstrap
 
     def has_advanced_features(self) -> bool:
         return self._mcplusplus_available
@@ -231,7 +263,7 @@ class P2PServiceManager:
             "mcplusplus_available": self._mcplusplus_available,
             "workflow_scheduler": self._workflow_scheduler is not None,
             "peer_registry": self._peer_registry is not None,
-            "bootstrap": bool(self.enable_bootstrap and self._mcplusplus_available),
+            "bootstrap": self._peer_bootstrap is not None,
             "tools_enabled": self.enable_tools,
             "cache_enabled": self.enable_cache,
             "connection_pool_max_size": self._pool_max_size,

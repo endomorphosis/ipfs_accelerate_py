@@ -28,6 +28,7 @@ from .workflow_engine import (
 )
 from .peer_registry import HAVE_PEER_REGISTRY, PeerRegistryWrapper, create_peer_registry
 from .peer_bootstrap import HAVE_PEER_BOOTSTRAP, PeerBootstrapWrapper, create_peer_bootstrap
+from .peer_services import PeerServiceBundle, create_peer_service_bundle
 from .peer_discovery import PeerDiscoveryManager, PeerInfo
 from .result_cache import (
     CacheBackend,
@@ -108,6 +109,8 @@ __all__ = [
     "HAVE_PEER_BOOTSTRAP",
     "PeerBootstrapWrapper",
     "create_peer_bootstrap",
+    "PeerServiceBundle",
+    "create_peer_service_bundle",
     "PeerInfo",
     "PeerDiscoveryManager",
     "EvictionPolicy",

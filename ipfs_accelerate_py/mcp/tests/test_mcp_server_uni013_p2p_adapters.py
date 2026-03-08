@@ -88,12 +88,18 @@ class TestMCPServerUNI013P2PAdapters(unittest.TestCase):
         mgr = P2PServiceManager(enabled=True)
         dummy_runtime = _DummyRuntime()
 
+        bundle = types.SimpleNamespace(peer_registry=object(), peer_bootstrap=object())
+
         with patch(
             "ipfs_accelerate_py.p2p_tasks.runtime.TaskQueueP2PServiceRuntime",
             return_value=dummy_runtime,
         ):
-            started = mgr.start(accelerate_instance=object())
-            self.assertTrue(started)
+            with patch(
+                "ipfs_accelerate_py.mcp_server.mcplusplus.create_peer_service_bundle",
+                return_value=bundle,
+            ):
+                started = mgr.start(accelerate_instance=object())
+                self.assertTrue(started)
 
             with patch(
                 "ipfs_accelerate_py.p2p_tasks.service.get_local_service_state",
@@ -110,6 +116,12 @@ class TestMCPServerUNI013P2PAdapters(unittest.TestCase):
             self.assertTrue(state.running)
             self.assertEqual(state.peer_id, "peer-1")
             self.assertEqual(state.connected_peers, 1)
+            self.assertIs(mgr.get_peer_registry(), bundle.peer_registry)
+            self.assertIs(mgr.get_peer_bootstrap(), bundle.peer_bootstrap)
+            self.assertTrue(mgr.has_advanced_features())
+            self.assertTrue(state.peer_registry_available)
+            self.assertTrue(state.bootstrap_available)
+            self.assertTrue(mgr.get_capabilities()["bootstrap"])
             self.assertTrue(mgr.stop())
 
     def test_service_manager_start_restores_env_when_start_raises(self) -> None:
@@ -133,10 +145,17 @@ class TestMCPServerUNI013P2PAdapters(unittest.TestCase):
             "ipfs_accelerate_py.p2p_tasks.runtime.TaskQueueP2PServiceRuntime",
             return_value=_NotRunningRuntime(),
         ):
-            started = mgr.start(accelerate_instance=object())
+            with patch(
+                "ipfs_accelerate_py.mcp_server.mcplusplus.create_peer_service_bundle",
+                return_value=types.SimpleNamespace(peer_registry=object(), peer_bootstrap=object()),
+            ):
+                started = mgr.start(accelerate_instance=object())
 
         self.assertFalse(started)
         self.assertNotIn("IPFS_ACCELERATE_PY_MCP_P2P_SERVICE", os.environ)
+        self.assertIsNone(mgr.get_peer_registry())
+        self.assertIsNone(mgr.get_peer_bootstrap())
+        self.assertFalse(mgr.has_advanced_features())
 
     def test_registry_adapter_runtime_metadata_and_filtering(self) -> None:
         adapter = P2PMCPRegistryAdapter(_Host())
