@@ -141,6 +141,10 @@ async def authenticate_user(
         payload["expires_in"] = 86400 * 7
     if payload.get("status") == "success":
         payload.setdefault("message", "Authentication successful")
+        payload.setdefault("username", normalized_username)
+        payload.setdefault("token_type", "bearer")
+        payload.setdefault("role", "user")
+        payload.setdefault("expires_in", 86400 * 7 if remember_me else 3600)
         payload.setdefault(
             "authentication",
             _compat_subset(
@@ -203,6 +207,8 @@ async def validate_token(
     if payload.get("status") == "success":
         if normalized_action == "refresh":
             payload.setdefault("message", "Token refreshed successfully")
+            payload.setdefault("token_type", "bearer")
+            payload.setdefault("expires_in", 3600)
             payload.setdefault(
                 "refresh_result",
                 _compat_subset(payload, ("access_token", "refresh_token", "expires_in", "token_type")),
@@ -214,6 +220,8 @@ async def validate_token(
                 _compat_subset(payload, ("user_id", "username", "exp", "iat", "permissions", "role")),
             )
         else:
+            payload.setdefault("valid", True)
+            payload.setdefault("permissions", [])
             payload.setdefault("message", "Token is valid")
             payload.setdefault(
                 "validation_result",
@@ -263,6 +271,8 @@ async def get_user_info(
     payload = dict(result or {})
     if payload.get("status") == "success":
         payload.setdefault("message", "User information retrieved successfully")
+        payload.setdefault("permissions", [])
+        payload.setdefault("profile", {})
         user_info: Dict[str, Any] = {
             "username": payload.get("username"),
             "role": payload.get("role"),

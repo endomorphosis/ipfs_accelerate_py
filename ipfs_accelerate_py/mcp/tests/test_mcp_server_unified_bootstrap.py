@@ -4550,6 +4550,158 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_combined_ucan_policy_artifacts_and_risk_frontier_allow_path(self, mock_wrapper):
+        """Combined UCAN/policy/artifact/risk execution should preserve aligned decision and event lineage."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakeWorkflowScheduler:
+            def __init__(self):
+                self.calls = []
+
+            async def submit_workflow(self, workflow_name, tasks, metadata=None):
+                self.calls.append(
+                    {
+                        "workflow_name": workflow_name,
+                        "tasks": tasks,
+                        "metadata": metadata,
+                    }
+                )
+                return {"workflow_id": "wf-combined-1"}
+
+        fake_scheduler = FakeWorkflowScheduler()
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_SERVER_ENABLE_RISK_SCORING": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-combined-chapter-interaction")
+
+        server._unified_services["workflow_scheduler_factory"] = lambda **kwargs: fake_scheduler
+        server._unified_services["task_queue_factory"] = lambda **kwargs: None
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__enforce_ucan": True,
+                    "__ucan_actor": "did:model:worker",
+                    "__ucan_proof_chain": [
+                        {
+                            "issuer": "did:user:alice",
+                            "audience": "did:model:planner",
+                            "capabilities": [{"resource": "*", "ability": "invoke"}],
+                        },
+                        {
+                            "issuer": "did:model:planner",
+                            "audience": "did:model:worker",
+                            "capabilities": [{"resource": "smoke.echo", "ability": "invoke"}],
+                        },
+                    ],
+                    "__enforce_policy": True,
+                    "__policy_actor": "did:model:worker",
+                    "__policy_cid": "cid-policy-combined",
+                    "__policy_version": "v1",
+                    "__policy_clauses": [
+                        {
+                            "clause_type": "permission",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                        },
+                        {
+                            "clause_type": "obligation",
+                            "actor": "did:model:worker",
+                            "action": "smoke.echo",
+                            "obligation_deadline": "2030-01-01T00:00:00Z",
+                            "metadata": {"ticket": "combined-obl-1"},
+                        },
+                    ],
+                    "__emit_artifacts": True,
+                    "__risk_actor": "did:model:worker",
+                    "__risk_policy": {
+                        "tool_risk_overrides": {"smoke.echo": 0.05},
+                        "max_acceptable_risk": 0.95,
+                    },
+                    "__execute_frontier": True,
+                },
+            )
+
+            result = self._assert_dispatch_success_envelope(response)
+            self.assertEqual(result["echo"], "ok")
+
+            policy = response.get("policy") or {}
+            self.assertEqual(policy.get("decision"), "allow_with_obligations")
+            self.assertEqual(len(policy.get("obligations") or []), 1)
+
+            policy_decision = response.get("policy_decision") or {}
+            decision_cid = str(policy_decision.get("decision_cid") or "")
+            self.assertTrue(decision_cid.startswith("cidv1-sha256-"))
+            self.assertTrue(policy_decision.get("persisted"))
+
+            artifacts = response.get("artifacts") or {}
+            event_cid = str(artifacts.get("event_cid") or "")
+            self.assertTrue(event_cid.startswith("cidv1-sha256-"))
+            artifact_decision_cid = str(artifacts.get("decision_cid") or "")
+            self.assertTrue(artifact_decision_cid.startswith("cidv1-sha256-"))
+            self.assertNotEqual(artifact_decision_cid, decision_cid)
+
+            assessment = response.get("risk_assessment") or {}
+            self.assertTrue(assessment.get("is_acceptable", False))
+            self.assertEqual(assessment.get("tool"), "smoke.echo")
+
+            risk = response.get("risk") or {}
+            self.assertEqual(risk.get("last_event_cid"), event_cid)
+
+            frontier = response.get("frontier") or {}
+            execution = frontier.get("execution") or {}
+            self.assertTrue(frontier.get("enqueued"))
+            self.assertEqual(frontier.get("event_cid"), event_cid)
+            self.assertEqual(execution.get("event_cid"), event_cid)
+            self.assertEqual(execution.get("workflow_id"), "wf-combined-1")
+            self.assertEqual((response.get("event_dag") or {}).get("lineage"), [event_cid])
+
+            self.assertEqual(len(fake_scheduler.calls), 1)
+            call = fake_scheduler.calls[0]
+            self.assertEqual(call.get("workflow_name"), "risk_frontier_dispatch")
+            self.assertEqual((call.get("metadata") or {}).get("event_cid"), event_cid)
+            self.assertEqual(((call.get("tasks") or [{}])[0].get("payload") or {}).get("event_cid"), event_cid)
+
+            stored_decision = server._unified_artifact_store.get(decision_cid) or {}
+            self.assertEqual(stored_decision.get("decision"), "allow_with_obligations")
+            self.assertEqual(stored_decision.get("policy_cid"), "cid-policy-combined")
+
+            stored_event = server._unified_artifact_store.get(event_cid) or {}
+            self.assertEqual(stored_event.get("decision_cid"), artifact_decision_cid)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_policy_allows_with_obligations(self, mock_wrapper):
         """`tools_dispatch` should return policy details when allowed with obligations."""
 

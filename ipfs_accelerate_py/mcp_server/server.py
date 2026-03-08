@@ -10,6 +10,10 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from .logger import configure_root_logging, get_logger
+
+configure_root_logging()
+
 from .configs import UnifiedMCPServerConfig, parse_preload_categories
 from .hierarchical_tool_manager import HierarchicalToolManager
 from .runtime_router import RuntimeRouter
@@ -87,7 +91,6 @@ from .secrets_vault import SecretsVault
 from .monitoring import EnhancedMetricsCollector, P2PMetricsCollector
 from .otel_tracing import MCPTracer, configure_tracing
 from .prometheus_exporter import PrometheusExporter
-from .logger import get_logger
 from .validators import validate_dispatch_inputs
 from .exceptions import ValidationError
 

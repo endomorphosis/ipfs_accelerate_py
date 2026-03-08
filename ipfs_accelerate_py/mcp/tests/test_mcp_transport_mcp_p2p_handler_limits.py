@@ -101,6 +101,22 @@ class _ToolRegistry:
         return dict(kwargs)
 
 
+class _MalformedNegotiationToolRegistry(_ToolRegistry):
+    def __init__(self) -> None:
+        super().__init__()
+        self._unified_supported_profiles = [
+            "mcp++/profile-a-idl",
+            "",
+            "mcp++/profile-a-idl",
+            "mcp++/profile-e-mcp-p2p",
+        ]
+        self._unified_profile_negotiation = {
+            "supports_profile_negotiation": "false",
+            "mode": "   ",
+            "profiles": ["mcp++/profile-z-ignored"],
+        }
+
+
 class _FailingWriteStream(_FakeStream):
     async def write(self, _data: bytes) -> None:
         raise RuntimeError("write_failed")
@@ -813,6 +829,78 @@ class TestMCPP2PHandlerLimits(unittest.TestCase):
         self.assertEqual(
             (responses[2].get("result") or {}).get("content"),
             {"value": "ok", "count": 2},
+        )
+
+    def test_mixed_version_flow_sanitizes_malformed_negotiation_and_preserves_alias_calls(self) -> None:
+        init = encode_jsonrpc_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocol_version": "/mcp+p2p/0.9.0",
+                    "client_version": "0.9.9",
+                    "profile": "mcp++/profile-z-next",
+                    "profiles": [
+                        "mcp++/profile-z-next",
+                        "mcp++/profile-e-mcp-p2p",
+                    ],
+                },
+            }
+        )
+        tools_list = encode_jsonrpc_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 2,
+                "method": "tools.list",
+                "params": {},
+            }
+        )
+        tools_call = encode_jsonrpc_frame(
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools.call",
+                "params": {
+                    "name": "echo",
+                    "arguments": {"value": "ok", "count": 3},
+                },
+            }
+        )
+        stream = _FakeStream(init + tools_list + tools_call)
+
+        async def _run() -> None:
+            await handle_mcp_p2p_stream(
+                stream,
+                local_peer_id="peer-a",
+                registry=_MalformedNegotiationToolRegistry(),
+                max_frame_bytes=1024 * 1024,
+            )
+
+        anyio.run(_run)
+
+        responses = _decode_all_frames(bytes(stream.written))
+        self.assertEqual(len(responses), 3)
+
+        init_result = responses[0].get("result", {})
+        self.assertEqual(init_result.get("active_profile"), "mcp++/profile-e-mcp-p2p")
+        self.assertEqual(
+            (init_result.get("profile_negotiation") or {}).get("profiles"),
+            ["mcp++/profile-a-idl", "mcp++/profile-e-mcp-p2p"],
+        )
+        self.assertEqual(
+            (init_result.get("profile_negotiation") or {}).get("mode"),
+            "optional_additive",
+        )
+        self.assertFalse((init_result.get("profile_negotiation") or {}).get("supports_profile_negotiation"))
+
+        self.assertEqual(responses[1].get("id"), 2)
+        self.assertEqual((responses[1].get("result") or {}).get("tools")[0].get("name"), "echo")
+
+        self.assertEqual(responses[2].get("id"), 3)
+        self.assertEqual(
+            (responses[2].get("result") or {}).get("content"),
+            {"value": "ok", "count": 3},
         )
 
     def test_handler_rejects_non_object_json_payload_as_invalid_message(self) -> None:

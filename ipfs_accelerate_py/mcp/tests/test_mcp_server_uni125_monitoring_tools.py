@@ -173,14 +173,77 @@ class TestMCPServerUNI125MonitoringTools(unittest.TestCase):
             health_result = await check_health(check_depth="comprehensive")
             self.assertEqual(health_result.get("status"), "success")
             self.assertIn("health_check", health_result)
+            self.assertIn("timestamp", health_result)
+            self.assertIn("diagnostics", health_result)
 
             metrics_result = await collect_metrics(include_anomalies=True)
             self.assertEqual(metrics_result.get("status"), "success")
             self.assertIn("metrics_collection", metrics_result)
+            self.assertIn("trend_analysis", metrics_result)
+            self.assertIn("anomaly_detection", metrics_result)
 
             alerts_result = await manage_alerts(action="list", include_metrics=True)
             self.assertEqual(alerts_result.get("status"), "success")
             self.assertIn("alerts", alerts_result)
+            self.assertIn("filters_applied", alerts_result)
+            self.assertIn("alert_metrics", alerts_result)
+
+        anyio.run(_run)
+
+    def test_enhanced_success_defaults_applied_for_minimal_payloads(self) -> None:
+        async def _minimal_check_health(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _minimal_collect_metrics(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _minimal_manage_alerts(**_: object) -> dict:
+            return {"status": "success"}
+
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.monitoring_tools.native_monitoring_tools._API",
+                {
+                    "health_check": None,
+                    "get_performance_metrics": None,
+                    "monitor_services": None,
+                    "generate_monitoring_report": None,
+                    "check_health": _minimal_check_health,
+                    "collect_metrics": _minimal_collect_metrics,
+                    "manage_alerts": _minimal_manage_alerts,
+                },
+            ):
+                health_result = await check_health(check_depth="comprehensive")
+                metrics_result = await collect_metrics(include_anomalies=True, export_format="csv")
+                alerts_list_result = await manage_alerts(action="list", include_metrics=True, time_range="1h")
+                alerts_resolve_result = await manage_alerts(action="resolve", alert_id="alert-1")
+                alerts_config_result = await manage_alerts(
+                    action="configure_thresholds",
+                    threshold_config={"cpu": 90},
+                )
+
+            self.assertEqual(health_result.get("status"), "success")
+            self.assertIn("timestamp", health_result)
+            self.assertEqual(health_result.get("diagnostics"), {})
+
+            self.assertEqual(metrics_result.get("status"), "success")
+            self.assertEqual(metrics_result.get("trend_analysis"), {})
+            self.assertEqual(metrics_result.get("anomaly_detection"), {"anomalies_found": 0, "anomalies": []})
+            self.assertEqual(metrics_result.get("export_info"), {"format": "csv"})
+
+            self.assertEqual(alerts_list_result.get("status"), "success")
+            self.assertEqual(alerts_list_result.get("filters_applied"), {"severity": None, "resolved": None, "time_range": "1h"})
+            self.assertEqual(alerts_list_result.get("alert_metrics"), {})
+
+            self.assertEqual(alerts_resolve_result.get("status"), "success")
+            self.assertEqual(alerts_resolve_result.get("alert_id"), "alert-1")
+            self.assertTrue(alerts_resolve_result.get("success"))
+            self.assertIn("timestamp", alerts_resolve_result)
+
+            self.assertEqual(alerts_config_result.get("status"), "success")
+            self.assertEqual(alerts_config_result.get("updated_thresholds"), {"cpu": 90})
+            self.assertEqual(alerts_config_result.get("current_thresholds"), {"cpu": 90})
+            self.assertFalse(alerts_config_result.get("restart_required"))
 
         anyio.run(_run)
 

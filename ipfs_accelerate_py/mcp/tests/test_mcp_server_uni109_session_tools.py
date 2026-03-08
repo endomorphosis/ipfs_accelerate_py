@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
 
@@ -96,6 +97,57 @@ class TestMCPServerUNI109SessionTools(unittest.TestCase):
             )
             self.assertEqual(created.get("status"), "error")
             self.assertIn("tags must be a list of non-empty strings", str(created.get("message", "")))
+
+        anyio.run(_run)
+
+    def test_session_wrappers_apply_sparse_success_defaults(self) -> None:
+        class _SparseManager:
+            async def create_session(self, **kwargs):
+                return {"session_id": "11111111-1111-1111-1111-111111111111", **kwargs}
+
+            async def get_session(self, session_id: str):
+                return {"session_id": session_id}
+
+            async def update_session(self, session_id: str, **kwargs):
+                return {"session_id": session_id, **kwargs}
+
+        async def _run() -> None:
+            created = await create_session(
+                session_name="uni109-sparse",
+                user_id="uni109-user",
+                session_type="batch",
+                metadata={"purpose": "sparse"},
+                tags=["uni109"],
+                session_manager=_SparseManager(),
+            )
+            self.assertEqual(created.get("status"), "success")
+            self.assertIn("session", created)
+            self.assertEqual(created["session"].get("session_name"), "uni109-sparse")
+            self.assertEqual(created["session"].get("session_type"), "batch")
+            self.assertEqual(created["session"].get("metadata", {}).get("purpose"), "sparse")
+            self.assertEqual(created["session"].get("tags"), ["uni109"])
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.session_tools.native_session_tools._get_session_manager",
+                return_value=_SparseManager(),
+            ):
+                managed = await manage_session(
+                    action="get",
+                    session_id="11111111-1111-1111-1111-111111111111",
+                )
+                self.assertEqual(managed.get("status"), "success")
+                self.assertEqual(managed["session"].get("session_id"), "11111111-1111-1111-1111-111111111111")
+                self.assertEqual(managed["session"].get("status"), "unknown")
+                self.assertIn("created_at", managed["session"])
+                self.assertIn("last_activity", managed["session"])
+
+                state = await get_session_state(session_id="11111111-1111-1111-1111-111111111111")
+                self.assertEqual(state.get("status"), "success")
+                session_state = state.get("session_state", {})
+                self.assertEqual(session_state.get("session_id"), "11111111-1111-1111-1111-111111111111")
+                self.assertIn("metrics", session_state)
+                self.assertIn("resource_usage", session_state)
+                self.assertIn("health_info", session_state)
 
         anyio.run(_run)
 

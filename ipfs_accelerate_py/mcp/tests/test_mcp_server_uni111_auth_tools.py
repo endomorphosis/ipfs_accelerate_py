@@ -197,6 +197,60 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_auth_tools_apply_sparse_success_defaults(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools._API"
+            ) as mock_api:
+                async def _authenticate(**_kwargs):
+                    return {"status": "success"}
+
+                async def _validate(**kwargs):
+                    return {"status": "success"}
+
+                async def _user_info(**_kwargs):
+                    return {"status": "success", "username": "demo", "role": "admin"}
+
+                mock_api.__getitem__.side_effect = {
+                    "authenticate_user": _authenticate,
+                    "validate_token": _validate,
+                    "get_user_info": _user_info,
+                }.__getitem__
+
+                auth_result = await authenticate_user(username="demo", password="pw", remember_me=True)
+                refresh_result = await validate_token(token="tok", action="refresh")
+                decode_result = await validate_token(token="tok", action="decode")
+                validate_result = await validate_token(token="tok", action="validate")
+                user_info_result = await get_user_info(token="tok", include_permissions=True, include_profile=True)
+
+            self.assertEqual(auth_result.get("status"), "success")
+            self.assertEqual(auth_result.get("username"), "demo")
+            self.assertEqual(auth_result.get("token_type"), "bearer")
+            self.assertEqual(auth_result.get("role"), "user")
+            self.assertEqual(auth_result.get("expires_in"), 86400 * 7)
+            self.assertEqual((auth_result.get("authentication") or {}).get("username"), "demo")
+
+            self.assertEqual(refresh_result.get("status"), "success")
+            self.assertEqual(refresh_result.get("message"), "Token refreshed successfully")
+            self.assertEqual(refresh_result.get("token_type"), "bearer")
+            self.assertEqual(refresh_result.get("expires_in"), 3600)
+            self.assertEqual(refresh_result.get("refresh_result"), {"expires_in": 3600, "token_type": "bearer"})
+
+            self.assertEqual(decode_result.get("status"), "success")
+            self.assertEqual(decode_result.get("message"), "Token decoded successfully")
+            self.assertEqual(decode_result.get("decoded_token"), {})
+
+            self.assertEqual(validate_result.get("status"), "success")
+            self.assertTrue(validate_result.get("valid"))
+            self.assertEqual(validate_result.get("permissions"), [])
+            self.assertEqual((validate_result.get("validation_result") or {}).get("valid"), True)
+
+            self.assertEqual(user_info_result.get("status"), "success")
+            self.assertEqual((user_info_result.get("user_info") or {}).get("permissions"), [])
+            self.assertEqual((user_info_result.get("user_info") or {}).get("profile"), {})
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

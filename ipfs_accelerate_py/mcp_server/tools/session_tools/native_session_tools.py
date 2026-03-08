@@ -115,6 +115,72 @@ def _is_valid_uuid(value: str) -> bool:
         return False
 
 
+def _normalize_datetime_value(value: Any, fallback: datetime) -> tuple[str, datetime]:
+    """Return a stable ISO timestamp string and datetime object."""
+    if isinstance(value, str) and value:
+        try:
+            return value, datetime.fromisoformat(value)
+        except Exception:
+            return value, fallback
+    if hasattr(value, "isoformat"):
+        try:
+            return value.isoformat(), value
+        except Exception:
+            return fallback.isoformat(), fallback
+    return fallback.isoformat(), fallback
+
+
+def _normalize_session_payload(
+    session: Optional[Dict[str, Any]],
+    *,
+    session_id: Optional[str] = None,
+    session_name: str = "",
+    user_id: str = "",
+    session_type: str = "interactive",
+    status: str = "active",
+    config: Optional[Dict[str, Any]] = None,
+    resources: Optional[Dict[str, Any]] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+    tags: Optional[list[str]] = None,
+) -> Dict[str, Any]:
+    """Apply source-like defaults to sparse session payloads."""
+    payload = dict(session or {})
+    now = datetime.now()
+
+    created_at_str, created_at_dt = _normalize_datetime_value(payload.get("created_at"), now)
+    timeout_seconds = 3600
+    raw_timeout = (payload.get("config") or payload.get("configuration") or config or {}).get("timeout_seconds", 3600)
+    try:
+        timeout_seconds = int(raw_timeout or 3600)
+    except Exception:
+        timeout_seconds = 3600
+    expires_at_str, _ = _normalize_datetime_value(
+        payload.get("expires_at"),
+        created_at_dt + timedelta(seconds=timeout_seconds),
+    )
+    last_activity_str, _ = _normalize_datetime_value(payload.get("last_activity"), created_at_dt)
+
+    normalized_config = payload.get("config", payload.get("configuration", config or {}))
+    normalized_resources = payload.get("resources", payload.get("resource_limits", resources or {}))
+
+    return {
+        **payload,
+        "session_id": str(payload.get("session_id") or session_id or ""),
+        "session_name": payload.get("session_name", session_name),
+        "user_id": payload.get("user_id", user_id),
+        "session_type": payload.get("session_type", session_type),
+        "status": payload.get("status", status),
+        "created_at": created_at_str,
+        "expires_at": expires_at_str,
+        "last_activity": last_activity_str,
+        "config": normalized_config,
+        "resources": normalized_resources,
+        "metadata": payload.get("metadata", metadata or {}),
+        "tags": payload.get("tags", tags or []),
+        "request_count": int(payload.get("request_count", 0) or 0),
+    }
+
+
 async def create_session(
     session_name: str,
     user_id: str = "default_user",
@@ -169,41 +235,30 @@ async def create_session(
             timeout_seconds=config.get("timeout_seconds", 3600),
         )
 
-        created_at = session.get("created_at")
-        if isinstance(created_at, str):
-            created_at_str = created_at
-            try:
-                created_at_dt = datetime.fromisoformat(created_at)
-            except Exception:
-                created_at_dt = datetime.now()
-        elif hasattr(created_at, "isoformat"):
-            created_at_str = created_at.isoformat()
-            created_at_dt = created_at
-        else:
-            created_at_dt = datetime.now()
-            created_at_str = created_at_dt.isoformat()
-
-        expires_at = session.get("expires_at")
-        if isinstance(expires_at, str):
-            expires_at_str = expires_at
-        elif hasattr(expires_at, "isoformat"):
-            expires_at_str = expires_at.isoformat()
-        else:
-            timeout_seconds = int(config.get("timeout_seconds", 3600) or 3600)
-            expires_at_str = (created_at_dt + timedelta(seconds=timeout_seconds)).isoformat()
+        normalized_session = _normalize_session_payload(
+            session,
+            session_name=session_name,
+            user_id=user_id,
+            session_type=session_type,
+            config=config,
+            resources=resources,
+            metadata=metadata,
+            tags=tags,
+        )
 
         return {
             "status": "success",
-            "session_id": session["session_id"],
-            "session_name": session.get("session_name", session_name),
-            "user_id": session.get("user_id", user_id),
-            "session_type": session.get("session_type", session_type),
-            "created_at": created_at_str,
-            "expires_at": expires_at_str,
-            "config": session.get("config", session.get("configuration", config)),
-            "resources": session.get("resources", session.get("resource_limits", resources)),
-            "metadata": session.get("metadata", metadata or {}),
-            "tags": session.get("tags", tags or []),
+            "session_id": normalized_session["session_id"],
+            "session_name": normalized_session["session_name"],
+            "user_id": normalized_session["user_id"],
+            "session_type": normalized_session["session_type"],
+            "created_at": normalized_session["created_at"],
+            "expires_at": normalized_session["expires_at"],
+            "config": normalized_session["config"],
+            "resources": normalized_session["resources"],
+            "metadata": normalized_session["metadata"],
+            "tags": normalized_session["tags"],
+            "session": normalized_session,
             "message": f"Session '{session_name}' created successfully",
         }
     except Exception as exc:
@@ -409,9 +464,14 @@ async def manage_session(
                     "error": "Session not found",
                     "code": "SESSION_NOT_FOUND",
                 }
+            normalized_session = _normalize_session_payload(
+                session,
+                session_id=str(session_id),
+                status="unknown",
+            )
             return {
                 "status": "success",
-                "session": session,
+                "session": normalized_session,
                 "message": "Session retrieved successfully",
             }
 
@@ -435,9 +495,14 @@ async def manage_session(
                     "error": "Session not found",
                     "code": "SESSION_NOT_FOUND",
                 }
+            normalized_session = _normalize_session_payload(
+                session,
+                session_id=str(session_id),
+                status="unknown",
+            )
             return {
                 "status": "success",
-                "session": session,
+                "session": normalized_session,
                 "message": "Session updated successfully",
             }
 
@@ -557,41 +622,47 @@ async def get_session_state(
                 "code": "SESSION_NOT_FOUND",
             }
 
+        normalized_session = _normalize_session_payload(
+            session,
+            session_id=str(session_id),
+            status="unknown",
+        )
+
         state_data: Dict[str, Any] = {
             "session_id": str(session_id),
             "basic_info": {
-                "session_name": session.get("session_name"),
-                "user_id": session.get("user_id"),
-                "session_type": session.get("session_type"),
-                "status": session.get("status"),
-                "created_at": session.get("created_at"),
-                "last_activity": session.get("last_activity"),
+                "session_name": normalized_session.get("session_name"),
+                "user_id": normalized_session.get("user_id"),
+                "session_type": normalized_session.get("session_type"),
+                "status": normalized_session.get("status"),
+                "created_at": normalized_session.get("created_at"),
+                "last_activity": normalized_session.get("last_activity"),
             },
         }
 
         if include_metrics:
             state_data["metrics"] = {
-                "total_requests": session.get("request_count", 0),
-                "successful_requests": session.get("success_count", 0),
-                "failed_requests": session.get("error_count", 0),
-                "average_response_time": session.get("avg_response_time", 0.0),
-                "data_processed_mb": session.get("data_processed_mb", 0.0),
+                "total_requests": normalized_session.get("request_count", 0),
+                "successful_requests": normalized_session.get("success_count", 0),
+                "failed_requests": normalized_session.get("error_count", 0),
+                "average_response_time": normalized_session.get("avg_response_time", 0.0),
+                "data_processed_mb": normalized_session.get("data_processed_mb", 0.0),
             }
 
         if include_resources:
             state_data["resource_usage"] = {
-                "memory_mb": session.get("memory_mb", 0),
-                "cpu_percent": session.get("cpu_percent", 0.0),
-                "active_connections": session.get("active_connections", 0),
-                "storage_mb": session.get("storage_mb", 0),
+                "memory_mb": normalized_session.get("memory_mb", 0),
+                "cpu_percent": normalized_session.get("cpu_percent", 0.0),
+                "active_connections": normalized_session.get("active_connections", 0),
+                "storage_mb": normalized_session.get("storage_mb", 0),
             }
 
         if include_health:
             health_status = "healthy"
             health_issues: list[str] = []
-            if session.get("status") != "active":
+            if normalized_session.get("status") != "active":
                 health_status = "warning"
-                health_issues.append(f"Session status is {session.get('status')}")
+                health_issues.append(f"Session status is {normalized_session.get('status')}")
             state_data["health_info"] = {
                 "status": health_status,
                 "issues": health_issues,
@@ -599,10 +670,10 @@ async def get_session_state(
                 "checks_passed": len(health_issues) == 0,
             }
 
-        if "metadata" in session:
-            state_data["metadata"] = session["metadata"]
-        if "tags" in session:
-            state_data["tags"] = session["tags"]
+        if "metadata" in normalized_session:
+            state_data["metadata"] = normalized_session["metadata"]
+        if "tags" in normalized_session:
+            state_data["tags"] = normalized_session["tags"]
 
         return {
             "status": "success",

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -450,8 +451,11 @@ async def check_health(
         payload = _normalize_payload(result)
     payload.setdefault("check_depth", normalized_depth)
     payload.setdefault("health_check", {})
+    payload.setdefault("timestamp", datetime.now().isoformat())
     if include_recommendations:
         payload.setdefault("recommendations", [])
+    if normalized_depth == "comprehensive":
+        payload.setdefault("diagnostics", {})
     return payload
 
 
@@ -497,6 +501,12 @@ async def collect_metrics(
         "collection_config",
         {"time_window": normalized_window, "metrics_requested": list(metrics or []), "aggregation": normalized_aggregation},
     )
+    if include_trends:
+        payload.setdefault("trend_analysis", {})
+    if include_anomalies:
+        payload.setdefault("anomaly_detection", {"anomalies_found": 0, "anomalies": []})
+    if normalized_export != "json":
+        payload.setdefault("export_info", {"format": normalized_export})
     return payload
 
 
@@ -550,6 +560,25 @@ async def manage_alerts(
     if normalized_action == "list":
         payload.setdefault("alerts", [])
         payload.setdefault("total_count", len(payload.get("alerts") or []))
+        payload.setdefault(
+            "filters_applied",
+            {
+                "severity": normalized_severity,
+                "resolved": resolved_filter,
+                "time_range": normalized_time_range,
+            },
+        )
+        if include_metrics:
+            payload.setdefault("alert_metrics", {})
+    elif normalized_action in {"acknowledge", "resolve"}:
+        payload.setdefault("alert_id", normalized_alert_id)
+        payload.setdefault("success", True)
+        payload.setdefault("timestamp", datetime.now().isoformat())
+        payload.setdefault("message", f"Alert {normalized_alert_id} {normalized_action}d successfully")
+    elif normalized_action == "configure_thresholds":
+        payload.setdefault("updated_thresholds", threshold_config or {})
+        payload.setdefault("current_thresholds", threshold_config or {})
+        payload.setdefault("restart_required", False)
     return payload
 
 
