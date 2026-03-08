@@ -10,7 +10,7 @@ import sys
 import traceback
 import functools
 from typing import Any, Callable, Optional, Dict, List
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -63,7 +63,7 @@ class CLIErrorHandler:
                 from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry
                 
                 # Initialize peer registry
-                peer_registry = P2PPeerRegistry()
+                peer_registry = P2PPeerRegistry(repo=self.repo)
                 
                 # Initialize error aggregator
                 self._error_aggregator = ErrorAggregator(
@@ -187,7 +187,7 @@ class CLIErrorHandler:
         full_context = {
             "command": " ".join(sys.argv),
             "python_version": sys.version,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "working_directory": str(Path.cwd()),
         }
         
@@ -296,7 +296,7 @@ class CLIErrorHandler:
             "",
             f"**Error Type:** `{error_type}`",
             f"**Command:** `{' '.join(sys.argv)}`",
-            f"**Timestamp:** {datetime.utcnow().isoformat()}",
+            f"**Timestamp:** {datetime.now(UTC).isoformat()}",
             "",
             "## Error Message",
             "```",

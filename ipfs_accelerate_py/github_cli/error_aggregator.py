@@ -115,6 +115,7 @@ class ErrorAggregator:
         # Error storage
         self.local_errors = []  # Errors captured locally
         self.aggregated_errors = defaultdict(list)  # Errors from all peers
+        self.error_signatures: Set[str] = set()
         
         # Issue tracking
         self.existing_issues_cache = {}  # Map signature -> issue info
@@ -122,9 +123,11 @@ class ErrorAggregator:
         self.issues_cache_timestamp = None
         
         # Bundling
+        self.bundle_interval = timedelta(minutes=bundle_interval_minutes)
         self.last_bundle_time = datetime.utcnow()
         self.bundling_thread = None
         self.bundling_active = False
+        self.stop_bundling = threading.Event()
         
         # Initialize cached GitHub CLI wrapper with P2P/IPFS caching
         self._github_cli = None

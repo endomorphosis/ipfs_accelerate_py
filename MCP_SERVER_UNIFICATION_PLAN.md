@@ -509,14 +509,15 @@ Current posture: Implemented.
 Next plan:
 
 1. Strengthen frontier execution binding tests under load and retries. ✅
-2. Add neighborhood consensus signal integration as optional enhancement.
+2. Add neighborhood consensus signal integration as optional enhancement. ✅
 3. Validate risk-state lineage integrity with event/artifact linkage. ✅
 
 Recent execution (2026-03-08):
 
 1. Added unified-dispatch risk lineage coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to verify the emitted artifact `event_cid` is the same value tracked in risk state, frontier metadata, Event DAG lineage, and workflow-scheduler execution binding.
 2. Added a frontier load/retry regression in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` to verify `__execute_frontier` pops older ready work first while keeping a penalized retry item queued behind both the executed item and the newly emitted event.
-3. Revalidated with focused risk scheduling coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py` plus unified-bootstrap risk/frontier tests (`14 passed`).
+3. Wired optional frontier consensus inputs through `ipfs_accelerate_py/mcp_server/server.py` and added unified-dispatch coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_unified_bootstrap.py` proving a high-confidence consensus signal can prioritize the dispatched frontier item and propagates through execution metadata.
+4. Revalidated with focused risk scheduling coverage in `ipfs_accelerate_py/mcp/tests/test_mcp_server_mcplusplus_risk_scheduler.py` plus unified-bootstrap risk/frontier tests (`15 passed`).
 
 ## 7. Milestones and Timeline
 
