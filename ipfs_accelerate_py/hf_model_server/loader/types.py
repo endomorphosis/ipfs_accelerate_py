@@ -5,7 +5,7 @@ Type definitions for model loader.
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Optional
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 class ModelStatus(Enum):
@@ -24,8 +24,8 @@ class LoadedModel:
     skill_instance: Any
     hardware: str
     status: ModelStatus = ModelStatus.LOADED
-    loaded_at: datetime = field(default_factory=datetime.utcnow)
-    last_used_at: datetime = field(default_factory=datetime.utcnow)
+    loaded_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    last_used_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     use_count: int = 0
     memory_mb: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
@@ -33,7 +33,7 @@ class LoadedModel:
     
     def mark_used(self):
         """Mark this model as recently used."""
-        self.last_used_at = datetime.utcnow()
+        self.last_used_at = datetime.now(UTC)
         self.use_count += 1
     
     def to_dict(self) -> Dict[str, Any]:

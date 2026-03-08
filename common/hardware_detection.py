@@ -34,7 +34,7 @@ def _detect_cuda_platform(torch_module: Any) -> dict[str, Any]:
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
-            message=r".*cuda capability.*",
+            message=r"(?s).*cuda capability.*",
             category=UserWarning,
         )
         cuda_available = torch_module.cuda.is_available()

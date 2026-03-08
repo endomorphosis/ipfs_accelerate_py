@@ -7,7 +7,7 @@ import hashlib
 import logging
 from dataclasses import dataclass, field
 from typing import Dict, Optional, List
-from datetime import datetime
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +18,7 @@ class APIKey:
     key_id: str
     key_hash: str
     name: str
-    created_at: datetime = field(default_factory=datetime.utcnow)
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_used_at: Optional[datetime] = None
     is_active: bool = True
     rate_limit: int = 100  # requests per minute
@@ -90,7 +90,7 @@ class APIKeyManager:
         
         if api_key and api_key.is_active:
             # Update last used
-            api_key.last_used_at = datetime.utcnow()
+            api_key.last_used_at = datetime.now(UTC)
             return api_key
         
         return None

@@ -4,7 +4,7 @@ Health check system.
 
 import logging
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import UTC, datetime
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +22,7 @@ class HealthChecker:
         """
         self.model_loader = model_loader
         self.hardware_detector = hardware_detector
-        self.start_time = datetime.utcnow()
+        self.start_time = datetime.now(UTC)
     
     async def check_health(self) -> Dict[str, Any]:
         """
@@ -31,10 +31,11 @@ class HealthChecker:
         Returns:
             Health status dictionary
         """
+        now = datetime.now(UTC)
         return {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "uptime_seconds": (datetime.utcnow() - self.start_time).total_seconds(),
+            "timestamp": now.isoformat(),
+            "uptime_seconds": (now - self.start_time).total_seconds(),
         }
     
     async def check_readiness(self) -> Dict[str, Any]:
@@ -46,7 +47,7 @@ class HealthChecker:
         """
         checks = {
             "status": "ready",
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": datetime.now(UTC).isoformat(),
             "checks": {},
         }
         
@@ -88,10 +89,11 @@ class HealthChecker:
         Returns:
             Detailed health status
         """
+        now = datetime.now(UTC)
         detailed = {
             "status": "healthy",
-            "timestamp": datetime.utcnow().isoformat(),
-            "uptime_seconds": (datetime.utcnow() - self.start_time).total_seconds(),
+            "timestamp": now.isoformat(),
+            "uptime_seconds": (now - self.start_time).total_seconds(),
             "components": {},
         }
         

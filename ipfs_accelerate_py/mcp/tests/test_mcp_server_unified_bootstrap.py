@@ -7723,6 +7723,41 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertEqual((empty_filter_backends.get("memory") or {}).get("available"), True)
             self.assertEqual((empty_filter_backends.get("ipfs") or {}).get("available"), False)
 
+            default_backend_alias_capabilities = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                    },
+                )
+            )
+            self.assertEqual(default_backend_alias_capabilities.get("status"), "success")
+            self.assertEqual(default_backend_alias_capabilities.get("backend_count"), 2)
+            default_capability_backends = {
+                (entry or {}).get("storage_type"): entry
+                for entry in (default_backend_alias_capabilities.get("backends") or [])
+            }
+            self.assertEqual(set(default_capability_backends.keys()), {"memory", "ipfs"})
+            self.assertNotIn("capabilities", default_capability_backends.get("memory") or {})
+            self.assertNotIn("capabilities", default_capability_backends.get("ipfs") or {})
+
+            default_backend_alias_breakdown = self._assert_dispatch_success_envelope(
+                await dispatch(
+                    "storage_tools",
+                    "get_storage_backend_status",
+                    {
+                        "backend_types": ["memory", "ipfs"],
+                        "unavailable_backends": ["ipfs"],
+                    },
+                )
+            )
+            self.assertEqual(default_backend_alias_breakdown.get("status"), "success")
+            self.assertEqual(default_backend_alias_breakdown.get("backend_count"), 2)
+            self.assertNotIn("breakdown", default_backend_alias_breakdown.get("backend_report") or {})
+            self.assertEqual(default_backend_alias_breakdown.get("breakdown"), {})
+
             backend_status = self._assert_dispatch_success_envelope(
                 await dispatch(
                     "storage_tools",

@@ -23,7 +23,7 @@ def _suppress_torch_cuda_capability_warning():
     with warnings.catch_warnings():
         warnings.filterwarnings(
             "ignore",
-            message=r".*cuda capability.*",
+            message=r"(?s).*cuda capability.*",
             category=UserWarning,
         )
         yield

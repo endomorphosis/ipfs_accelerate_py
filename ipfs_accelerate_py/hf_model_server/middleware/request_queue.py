@@ -7,7 +7,7 @@ import logging
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -28,13 +28,13 @@ class QueuedRequest:
     model_id: str
     data: Dict[str, Any]
     priority: RequestPriority = RequestPriority.NORMAL
-    queued_at: datetime = field(default_factory=datetime.utcnow)
+    queued_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     timeout_seconds: float = 30.0
     callback: Optional[Callable] = None
     
     def is_expired(self) -> bool:
         """Check if request has expired."""
-        elapsed = (datetime.utcnow() - self.queued_at).total_seconds()
+        elapsed = (datetime.now(UTC) - self.queued_at).total_seconds()
         return elapsed > self.timeout_seconds
     
     def __lt__(self, other):

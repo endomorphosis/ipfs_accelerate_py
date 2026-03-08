@@ -9,7 +9,7 @@ import json
 import time
 from typing import Optional, Dict, Any, List
 from pathlib import Path
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 class ProvenanceLogger:
@@ -100,7 +100,7 @@ class ProvenanceLogger:
             ... })
         """
         record = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(UTC).isoformat(),
             'type': 'inference',
             'model': model_name,
             'data': data,
@@ -152,7 +152,7 @@ class ProvenanceLogger:
             ... }, input_cid="Qm...", output_cid="Qm...")
         """
         record = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(UTC).isoformat(),
             'type': 'transformation',
             'operation': operation,
             'data': data,
@@ -201,7 +201,7 @@ class ProvenanceLogger:
             ... })
         """
         record = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(UTC).isoformat(),
             'type': 'worker_execution',
             'worker_id': worker_id,
             'task_id': task_id,
@@ -252,7 +252,7 @@ class ProvenanceLogger:
             ... })
         """
         record = {
-            'timestamp': datetime.utcnow().isoformat(),
+            'timestamp': datetime.now(UTC).isoformat(),
             'type': 'pr_activity',
             'pr_number': pr_number,
             'activity_type': activity_type,
