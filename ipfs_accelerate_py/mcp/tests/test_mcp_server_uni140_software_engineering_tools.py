@@ -293,6 +293,25 @@ class TestMCPServerUNI140SoftwareEngineeringTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_software_engineering_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.software_engineering_tools.native_software_engineering_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success", "success": False, "error": "delegate failure"}
+
+                mock_api.__getitem__.return_value = _impl
+                search_result = await search_repositories(query="mcp")
+                workflow_result = await parse_workflow_logs(log_content="error: boom")
+
+            self.assertEqual(search_result.get("status"), "error")
+            self.assertEqual(search_result.get("error"), "delegate failure")
+            self.assertEqual(workflow_result.get("status"), "error")
+            self.assertEqual(workflow_result.get("error"), "delegate failure")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

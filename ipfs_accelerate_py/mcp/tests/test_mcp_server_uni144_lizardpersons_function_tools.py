@@ -97,6 +97,22 @@ class TestMCPServerUNI144LizardpersonsFunctionTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_get_current_time_infers_error_status_from_contradictory_delegate_payload(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.lizardpersons_function_tools.native_lizardpersons_function_tools._API"
+            ) as mock_api:
+                async def _impl(**_: object) -> dict:
+                    return {"status": "success", "success": False, "error": "delegate failure"}
+
+                mock_api.__getitem__.return_value = _impl
+                result = await get_current_time(format_type="timestamp")
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failure")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -11,7 +11,8 @@ logger = logging.getLogger(__name__)
 def _load_lizardperson_argparse_api() -> Dict[str, Any]:
     """Resolve source lizardperson argparse APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.processors.legal_scrapers.bluebook_citation_validator.cli import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.processors.legal_scrapers.bluebook_citation_validator.cli import (
+            # type: ignore
             main as _validator_main,
         )
 
@@ -39,11 +40,11 @@ def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
         envelope = dict(payload)
-        if "status" not in envelope:
-            if envelope.get("error") or envelope.get("success") is False:
-                envelope["status"] = "error"
-            else:
-                envelope["status"] = "success"
+        failed = bool(envelope.get("error")) or envelope.get("success") is False
+        if failed:
+            envelope["status"] = "error"
+        elif "status" not in envelope:
+            envelope["status"] = "success"
         return envelope
     if payload is None:
         return {"status": "success"}
@@ -107,15 +108,20 @@ async def municipal_bluebook_validator_invoke(
             envelope.setdefault("argv", normalized_argv)
             return envelope
 
-        exit_code = entrypoint(normalized_argv)
-        envelope = _normalize_payload({
-            "status": "success",
-            "entrypoint": "municipal_bluebook_citation_validator.main",
-            "invoked": True,
-            "dry_run": False,
-            "argv": normalized_argv,
-            "exit_code": int(exit_code) if isinstance(exit_code, int) else 0,
-        })
+        invocation_result = entrypoint(normalized_argv)
+        if isinstance(invocation_result, dict):
+            envelope = _normalize_payload(invocation_result)
+        else:
+            envelope = _normalize_payload(
+                {
+                    "status": "success",
+                    "entrypoint": "municipal_bluebook_citation_validator.main",
+                    "invoked": True,
+                    "dry_run": False,
+                    "argv": normalized_argv,
+                    "exit_code": int(invocation_result) if isinstance(invocation_result, int) else 0,
+                }
+            )
         envelope.setdefault("success", True)
         envelope.setdefault("entrypoint", "municipal_bluebook_citation_validator.main")
         envelope.setdefault("invoked", True)

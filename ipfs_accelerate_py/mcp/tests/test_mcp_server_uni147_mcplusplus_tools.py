@@ -563,6 +563,23 @@ class TestMCPServerUNI147McplusplusTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_taskqueue_get_status_infers_error_from_contradictory_delegate_payload(self) -> None:
+        async def _run() -> None:
+            class _TaskQueueEngine:
+                def get_status(self, **_kwargs):
+                    return {"status": "success", "success": False, "error": "delegate failure"}
+
+            with patch.object(mcpp_mod, "_API", new={"TaskQueueEngine": _TaskQueueEngine}):
+                result = await mcpp_mod.mcplusplus_taskqueue_get_status("task-1")
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("success"), False)
+            self.assertEqual(result.get("engine"), "TaskQueueEngine")
+            self.assertEqual(result.get("method"), "get_status")
+            self.assertEqual(result.get("error"), "delegate failure")
+
+        anyio.run(_run)
+
     def test_list_and_stats_wrappers_apply_sparse_success_defaults(self) -> None:
         async def _run() -> None:
             class _TaskQueueEngine:

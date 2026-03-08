@@ -45,11 +45,11 @@ def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
         envelope = dict(payload)
-        if "status" not in envelope:
-            if envelope.get("error") or envelope.get("success") is False:
-                envelope["status"] = "error"
-            else:
-                envelope["status"] = "success"
+        failed = bool(envelope.get("error")) or envelope.get("success") is False
+        if failed:
+            envelope["status"] = "error"
+        elif "status" not in envelope:
+            envelope["status"] = "success"
         return envelope
     if payload is None:
         return {"status": "success"}
@@ -1429,7 +1429,6 @@ def register_native_mcplusplus_tools(manager: Any) -> None:
         runtime="fastapi",
         tags=["native", "mcpp", "mcplusplus"],
     )
-
     manager.register_tool(
         category="mcplusplus",
         name="mcplusplus_list_engines",
@@ -1439,7 +1438,6 @@ def register_native_mcplusplus_tools(manager: Any) -> None:
         runtime="fastapi",
         tags=["native", "mcpp", "mcplusplus"],
     )
-
     manager.register_tool(
         category="mcplusplus",
         name="mcplusplus_taskqueue_get_status",
@@ -1726,7 +1724,6 @@ def register_native_mcplusplus_tools(manager: Any) -> None:
         tags=["native", "mcpp", "mcplusplus"],
     )
 
-
     manager.register_tool(
         category="mcplusplus",
         name="mcplusplus_workflow_get_status",
@@ -1744,7 +1741,6 @@ def register_native_mcplusplus_tools(manager: Any) -> None:
         runtime="fastapi",
         tags=["native", "mcpp", "mcplusplus"],
     )
-
     manager.register_tool(
         category="mcplusplus",
         name="mcplusplus_workflow_submit",
@@ -1975,4 +1971,3 @@ def register_native_mcplusplus_tools(manager: Any) -> None:
         runtime="fastapi",
         tags=["native", "mcpp", "mcplusplus"],
     )
-

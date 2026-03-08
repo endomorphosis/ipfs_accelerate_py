@@ -34,10 +34,12 @@ def _load_software_engineering_tools_api() -> Dict[str, Any]:
             analyze_service_health as _analyze_service_health,
             parse_systemd_logs as _parse_systemd_logs,
         )
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.software_engineering_tools.github_repository_scraper import (  # type: ignore
-            scrape_repository as _scrape_repository,
-            search_repositories as _search_repositories,
-        )
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.software_engineering_tools import (
+            github_repository_scraper,
+        )  # type: ignore
+
+        _scrape_repository = github_repository_scraper.scrape_repository
+        _search_repositories = github_repository_scraper.search_repositories
 
         return {
             "scrape_repository": _scrape_repository,
@@ -160,7 +162,13 @@ def _load_software_engineering_tools_api() -> Dict[str, Any]:
             return {
                 "success": True,
                 "entries": [],
-                "statistics": {"total_entries": 0, "by_severity": {}, "by_namespace": {}, "by_pod": {}, "by_container": {}},
+                "statistics": {
+                    "total_entries": 0,
+                    "by_severity": {},
+                    "by_namespace": {},
+                    "by_pod": {},
+                    "by_container": {},
+                },
                 "errors": [],
                 "recommendations": [],
                 "max_entries": max_entries,
@@ -247,11 +255,11 @@ def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
         envelope = dict(payload)
-        if "status" not in envelope:
-            if envelope.get("error") or envelope.get("success") is False:
-                envelope["status"] = "error"
-            else:
-                envelope["status"] = "success"
+        failed = bool(envelope.get("error")) or envelope.get("success") is False
+        if failed:
+            envelope["status"] = "error"
+        elif "status" not in envelope:
+            envelope["status"] = "success"
         return envelope
     if payload is None:
         return {"status": "success"}
@@ -459,7 +467,11 @@ async def analyze_github_actions(
     return envelope
 
 
-async def parse_workflow_logs(log_content: str, detect_errors: bool = True, extract_patterns: bool = True) -> Dict[str, Any]:
+async def parse_workflow_logs(
+    log_content: str,
+    detect_errors: bool = True,
+    extract_patterns: bool = True,
+) -> Dict[str, Any]:
     validation = _require_string(log_content, "log_content")
     if validation is not None:
         return validation
@@ -601,7 +613,16 @@ async def parse_kubernetes_logs(
     if envelope.get("status") == "success":
         envelope.setdefault("success", True)
         envelope.setdefault("entries", [])
-        envelope.setdefault("statistics", {"total_entries": 0, "by_severity": {}, "by_namespace": {}, "by_pod": {}, "by_container": {}})
+        envelope.setdefault(
+            "statistics",
+            {
+                "total_entries": 0,
+                "by_severity": {},
+                "by_namespace": {},
+                "by_pod": {},
+                "by_container": {},
+            },
+        )
         envelope.setdefault("errors", [])
         envelope.setdefault("recommendations", [])
     return envelope
@@ -645,7 +666,10 @@ async def detect_error_patterns(
             not isinstance(k, str) or not k.strip() or not isinstance(v, str) or not v.strip()
             for k, v in pattern_library.items()
         ):
-            return _error_result("pattern_library must be an object of non-empty string keys and values", pattern_library=pattern_library)
+            return _error_result(
+                "pattern_library must be an object of non-empty string keys and values",
+                pattern_library=pattern_library,
+            )
     validation = _validate_non_negative_int(min_occurrences, "min_occurrences")
     if validation is not None:
         return validation
@@ -819,7 +843,20 @@ def register_native_software_engineering_tools(manager: Any) -> None:
                 "properties": {
                     "log_content": {"type": "string", "minLength": 1},
                     "service_filter": {"type": ["string", "null"]},
-                    "priority_filter": {"type": ["string", "null"], "enum": ["emerg", "alert", "crit", "err", "warning", "notice", "info", "debug", None]},
+                    "priority_filter": {
+                        "type": ["string", "null"],
+                        "enum": [
+                            "emerg",
+                            "alert",
+                            "crit",
+                            "err",
+                            "warning",
+                            "notice",
+                            "info",
+                            "debug",
+                            None,
+                        ],
+                    },
                     "max_entries": {"type": "integer", "minimum": 1, "default": 1000},
                 },
                 "required": ["log_content"],
@@ -848,7 +885,18 @@ def register_native_software_engineering_tools(manager: Any) -> None:
                     "log_content": {"type": "string", "minLength": 1},
                     "namespace_filter": {"type": ["string", "null"]},
                     "pod_filter": {"type": ["string", "null"]},
-                    "severity_filter": {"type": ["string", "null"], "enum": ["ERROR", "WARN", "INFO", "DEBUG", "FATAL", "CRITICAL", None]},
+                    "severity_filter": {
+                        "type": ["string", "null"],
+                        "enum": [
+                            "ERROR",
+                            "WARN",
+                            "INFO",
+                            "DEBUG",
+                            "FATAL",
+                            "CRITICAL",
+                            None,
+                        ],
+                    },
                     "max_entries": {"type": "integer", "minimum": 1, "default": 1000},
                 },
                 "required": ["log_content"],

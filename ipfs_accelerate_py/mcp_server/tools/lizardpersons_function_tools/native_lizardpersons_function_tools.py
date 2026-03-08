@@ -11,9 +11,11 @@ logger = logging.getLogger(__name__)
 def _load_lizardpersons_function_api() -> Dict[str, Any]:
     """Resolve source lizardpersons-function-tools APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.lizardpersons_function_tools.llm_context_tools.get_current_time import (  # type: ignore
-            get_current_time as _get_current_time,
-        )
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.lizardpersons_function_tools.llm_context_tools import (
+            get_current_time as _get_current_time_module,
+        )  # type: ignore
+
+        _get_current_time = _get_current_time_module.get_current_time
 
         return {"get_current_time": _get_current_time}
     except Exception:
@@ -44,11 +46,11 @@ def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
         envelope = dict(payload)
-        if "status" not in envelope:
-            if envelope.get("error") or envelope.get("success") is False:
-                envelope["status"] = "error"
-            else:
-                envelope["status"] = "success"
+        failed = bool(envelope.get("error")) or envelope.get("success") is False
+        if failed:
+            envelope["status"] = "error"
+        elif "status" not in envelope:
+            envelope["status"] = "success"
         return envelope
     if payload is None:
         return {"status": "success"}

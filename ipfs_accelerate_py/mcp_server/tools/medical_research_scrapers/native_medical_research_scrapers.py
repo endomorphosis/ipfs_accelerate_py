@@ -11,10 +11,12 @@ logger = logging.getLogger(__name__)
 def _load_medical_research_scrapers_api() -> Dict[str, Any]:
     """Resolve source medical-research APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.medical_research_scrapers.medical_research_mcp_tools import (  # type: ignore
-            scrape_clinical_trials as _scrape_clinical_trials,
-            scrape_pubmed_medical_research as _scrape_pubmed_medical_research,
-        )
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.medical_research_scrapers import (
+            medical_research_mcp_tools,
+        )  # type: ignore
+
+        _scrape_clinical_trials = medical_research_mcp_tools.scrape_clinical_trials
+        _scrape_pubmed_medical_research = medical_research_mcp_tools.scrape_pubmed_medical_research
 
         if not callable(_scrape_pubmed_medical_research) or not callable(_scrape_clinical_trials):
             raise TypeError("Source medical research exports are not callable")
@@ -73,11 +75,11 @@ def _normalize_payload(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dict envelopes."""
     if isinstance(payload, dict):
         envelope = dict(payload)
-        if "status" not in envelope:
-            if envelope.get("error") or envelope.get("success") is False:
-                envelope["status"] = "error"
-            else:
-                envelope["status"] = "success"
+        failed = bool(envelope.get("error")) or envelope.get("success") is False
+        if failed:
+            envelope["status"] = "error"
+        elif "status" not in envelope:
+            envelope["status"] = "success"
         return envelope
     if payload is None:
         return {"status": "success"}

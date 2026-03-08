@@ -102,6 +102,22 @@ class TestMCPServerUNI150NativeP2PTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_status_infers_error_from_contradictory_delegate_payload(self) -> None:
+        async def _run() -> None:
+            with patch.object(p2p_mod, "_request_status") as mock_request:
+                async def _impl(**_kwargs):
+                    return {"status": "success", "success": False, "error": "delegate failure"}
+
+                mock_request.side_effect = _impl
+                result = await p2p_mod.p2p_taskqueue_status(detail=True)
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("success"), False)
+            self.assertEqual(result.get("ok"), False)
+            self.assertEqual(result.get("error"), "delegate failure")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 import anyio
 
+from ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers import native_medical_research_scrapers
 from ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers.native_medical_research_scrapers import (
     register_native_medical_research_scrapers,
     scrape_clinical_trials,
@@ -122,6 +123,30 @@ class TestMCPServerUNI143MedicalResearchScrapers(unittest.TestCase):
 
             self.assertEqual(result.get("status"), "error")
             self.assertIn("clinical trials unavailable", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_medical_research_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_medical_research_scrapers._API,
+                {
+                    "scrape_pubmed_medical_research": _contradictory_failure,
+                    "scrape_clinical_trials": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                pubmed = await scrape_pubmed_medical_research(query="diabetes", max_results=3)
+                trials = await scrape_clinical_trials(query="diabetes", max_results=3)
+
+            self.assertEqual(pubmed.get("status"), "error")
+            self.assertEqual(pubmed.get("error"), "delegate failed")
+
+            self.assertEqual(trials.get("status"), "error")
+            self.assertEqual(trials.get("error"), "delegate failed")
 
         anyio.run(_run)
 

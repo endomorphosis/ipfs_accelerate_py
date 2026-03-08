@@ -131,6 +131,25 @@ class TestMCPServerUNI146LizardpersonArgparsePrograms(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_argparse_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _run() -> None:
+            class _Entry:
+                def __call__(self, _argv):
+                    return {"status": "success", "success": False, "error": "delegate failure"}
+
+            with patch.object(argparse_mod, "_API", new={"validator_main": _Entry()}):
+                info_result = await argparse_mod.municipal_bluebook_validator_info()
+                invoke_result = await argparse_mod.municipal_bluebook_validator_invoke(
+                    argv=["--sample-size", "5"],
+                    allow_execution=True,
+                )
+
+            self.assertEqual(info_result.get("status"), "success")
+            self.assertEqual(invoke_result.get("status"), "error")
+            self.assertEqual(invoke_result.get("error"), "delegate failure")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

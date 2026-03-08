@@ -23,7 +23,9 @@ def _normalize_response(response_payload: Any, **defaults: Any) -> Dict[str, Any
             envelope["ok"] = False
         else:
             envelope["ok"] = True
-    if "status" not in envelope:
+    if envelope.get("error") or envelope.get("success") is False or envelope.get("ok") is False:
+        envelope["status"] = "error"
+    elif "status" not in envelope:
         envelope["status"] = "success" if envelope.get("ok") else "error"
     if "success" not in envelope:
         envelope["success"] = bool(envelope.get("ok"))

@@ -64,6 +64,15 @@ class TestMCPServerUNI145LegacyMcpTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_normalize_payload_infers_error_status_from_contradictory_delegate_payload(self) -> None:
+        result = legacy_mod._normalize_payload(
+            {"status": "success", "success": False, "error": "delegate failure", "deprecated": True}
+        )
+
+        self.assertEqual(result.get("status"), "error")
+        self.assertEqual(result.get("error"), "delegate failure")
+        self.assertIs(result.get("deprecated"), True)
+
 
 if __name__ == "__main__":
     unittest.main()
