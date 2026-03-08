@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from ipfs_accelerate_py.mcp.fastapi_integration import integrate_mcp_with_fastapi
 from ipfs_accelerate_py.mcp.integration import create_standalone_app, run_standalone_app
 from ipfs_accelerate_py.mcp.integration import initialize_mcp_server
+from ipfs_accelerate_py.mcp.server import _reset_mcp_facade_telemetry, get_mcp_facade_telemetry
 
 
 class _DummyServer:
@@ -41,6 +42,9 @@ class _DummyModelServer:
 
 class TestMCPTransportProcessLevel(unittest.TestCase):
     """Validate standalone app creation and uvicorn run wiring."""
+
+    def setUp(self) -> None:
+        _reset_mcp_facade_telemetry()
 
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server", return_value=_DummyServer())
     def test_create_standalone_app_mounts_mcp_server(self, _mock_create_server: MagicMock) -> None:
@@ -99,6 +103,39 @@ class TestMCPTransportProcessLevel(unittest.TestCase):
             (getattr(mounted_server, "_unified_server_context_snapshot", {}) or {}).get("profile_negotiation"),
             getattr(mounted_server, "_unified_profile_negotiation", {}),
         )
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper", side_effect=lambda *args, **kwargs: _DummyServer())
+    @patch("ipfs_accelerate_py.mcp_server.server.create_server")
+    def test_create_standalone_app_preserves_d2_legacy_fallback_telemetry(self, mock_unified_create: MagicMock, _mock_wrapper: MagicMock) -> None:
+        with self.assertLogs("ipfs_accelerate_mcp.server", level="WARNING") as captured:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_FORCE_LEGACY_ROLLBACK": "1",
+                    "IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN": "0",
+                },
+                clear=False,
+            ):
+                app = create_standalone_app(mount_path="/mcp", name="demo", description="demo server")
+
+        mounted_server = getattr(app, "_mcp_server")
+        telemetry = getattr(mounted_server, "_mcp_facade_telemetry", {})
+
+        mock_unified_create.assert_not_called()
+        self.assertTrue(any("D2 opt-in only" in line for line in captured.output))
+        self.assertTrue(telemetry.get("used_legacy_wrapper"))
+        self.assertTrue(telemetry.get("force_legacy_rollback"))
+        self.assertTrue(telemetry.get("deprecation_warning_emitted"))
+        self.assertEqual(telemetry.get("deprecation_phase"), "D2_opt_in_only")
+        self.assertEqual(telemetry.get("reason"), "force_legacy_rollback")
+
+        counts = get_mcp_facade_telemetry()
+        self.assertEqual(counts.get("facade_calls"), 1)
+        self.assertEqual(counts.get("legacy_wrapper_calls"), 1)
+        self.assertEqual(counts.get("rollback_calls"), 1)
+        self.assertEqual(counts.get("warning_emissions"), 1)
+        self.assertEqual((counts.get("reason_counts") or {}).get("force_legacy_rollback"), 1)
 
     def test_run_standalone_app_invokes_uvicorn(self) -> None:
         mock_run = MagicMock()

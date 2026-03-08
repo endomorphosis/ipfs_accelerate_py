@@ -617,7 +617,7 @@ Exit:
 4. Published cutover checklist: [MCP_CUTOVER_CHECKLIST.md](MCP_CUTOVER_CHECKLIST.md). ✅
 5. Deprecate shim runtime behavior in phases:
    - Phase D1: warn-only,
-   - Phase D2: opt-in only,
+   - Phase D2: opt-in only, in progress/active,
    - Phase D3: remove runtime duplication.
 
 ## 9. Testing and CI Gate Matrix

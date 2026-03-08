@@ -15,6 +15,7 @@
 - [Overview](#-overview)
 - [Installation](#-installation)
 - [Quick Start](#-quick-start)
+- [MCP++ Server](#-mcp-server)
 - [Architecture](#️-architecture)
 - [Supported Hardware](#-supported-hardware)
 - [Supported Models](#-supported-models)
@@ -37,6 +38,7 @@
 - 🔥 **8+ Hardware Platforms** - CPU, CUDA, ROCm, OpenVINO, Apple MPS, WebNN, WebGPU, Qualcomm
 - 🌐 **Distributed by Design** - IPFS content addressing, P2P inference, global caching
 - 🤖 **300+ Models** - Full HuggingFace compatibility + custom architectures
+- 🧠 **Canonical MCP++ Server** - Unified `ipfs_accelerate_py.mcp_server` runtime is now the default startup path
 - 🌍 **Browser-Native** - WebNN & WebGPU for client-side acceleration
 - 📊 **Production Ready** - Real-time monitoring, enterprise security, compliance validation
 - ⚡ **High Performance** - Intelligent caching, batch processing, model optimization
@@ -123,8 +125,14 @@ print(result)
 ### Command Line Interface
 
 ```bash
-# Start the MCP server for automation
+# Start the default MCP++ server for automation
 ipfs-accelerate mcp start
+
+# Run the canonical FastAPI MCP service directly
+python -m ipfs_accelerate_py.mcp_server.fastapi_service
+
+# Run the direct MCP server CLI with p2p/task options
+python -m ipfs_accelerate_py.mcp.cli --host 0.0.0.0 --port 9000
 
 # Run inference directly
 ipfs-accelerate inference generate \
@@ -185,6 +193,60 @@ Notes:
 
 ---
 
+## 🧠 MCP++ Server
+
+The MCP server in this repository has completed its unification cutover.
+
+- **Canonical runtime**: `ipfs_accelerate_py/mcp_server`
+- **Compatibility facade**: `ipfs_accelerate_py/mcp`
+- **Current default**: `create_mcp_server()` and the main MCP startup paths now select the unified runtime by default
+- **Cutover status**: approved and frozen with a focused release-candidate matrix of `120 passed`
+
+### Current entrypoints
+
+| Entry point | Best for | Notes |
+|------------|----------|-------|
+| `ipfs-accelerate mcp start` | End-user server startup | Main product CLI for MCP server management and dashboard workflows |
+| `python -m ipfs_accelerate_py.mcp.cli` | Direct server/process control | Starts the MCP server and can also host TaskQueue/libp2p worker services |
+| `python -m ipfs_accelerate_py.mcp_server.fastapi_service` | Standalone HTTP/FastAPI hosting | Reads `IPFS_MCP_*` env vars and mounts the MCP app at `/mcp` by default |
+| `from ipfs_accelerate_py.mcp_server import create_server` | Programmatic embedding | Stable import target for the canonical runtime package |
+
+### Supported MCP++ profile chapters
+
+The unified runtime currently advertises these additive MCP++ profiles:
+
+- `mcp++/profile-a-idl`
+- `mcp++/profile-b-cid-artifacts`
+- `mcp++/profile-c-ucan`
+- `mcp++/profile-d-temporal-policy`
+- `mcp++/profile-e-mcp-p2p`
+
+### Unified control-plane features
+
+- **Meta-tools**: `tools_list_categories`, `tools_list_tools`, `tools_get_schema`, `tools_dispatch`, `tools_runtime_metrics`
+- **Migrated native categories**: `ipfs`, `workflow`, `p2p`
+- **Security and governance**: UCAN validation, temporal/deontic policy evaluation, policy audit logging, secrets vault support, and risk scoring/frontier execution
+- **Observability**: runtime metrics, audit-to-metrics bridging, OpenTelemetry hooks, and Prometheus exporter support
+- **Transport coverage**: compatibility-tested process helpers, FastAPI mounting, and MCP+p2p handler parity with mixed-version negotiation hardening
+
+### Cutover and rollback controls
+
+These controls remain available for validation and operational rollback:
+
+- `IPFS_MCP_FORCE_LEGACY_ROLLBACK=1` — force the compatibility facade to stay on the legacy wrapper
+- `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN=1` — validate the unified startup path while keeping legacy runtime behavior active
+- `IPFS_MCP_ENABLE_UNIFIED_BRIDGE=1` — explicitly request the unified bridge on compatibility-facade paths
+
+### Recommended documentation
+
+- [Canonical MCP server README](ipfs_accelerate_py/mcp_server/README.md)
+- [MCP Cutover Checklist](MCP_CUTOVER_CHECKLIST.md)
+- [MCP Server Unification Plan](MCP_SERVER_UNIFICATION_PLAN.md)
+- [MCP++ Conformance Checklist](mcpplusplus/CONFORMANCE_CHECKLIST.md)
+- [MCP++ Spec Gap Matrix](mcpplusplus/SPEC_GAP_MATRIX.md)
+
+---
+
 ## 🏗️ Architecture
 
 IPFS Accelerate Python is built on a **modular, enterprise-grade architecture**:
@@ -216,7 +278,7 @@ IPFS Accelerate Python is built on a **modular, enterprise-grade architecture**:
 - **Hardware Abstraction**: Unified API across 8+ platforms with automatic selection
 - **IPFS Integration**: Content-addressed storage, P2P distribution, intelligent caching
 - **Performance Modeling**: ML-powered optimization and resource management
-- **MCP Server**: Model Context Protocol for standardized automation
+- **MCP Server**: Canonical `ipfs_accelerate_py.mcp_server` MCP++ runtime with compatibility facade and cutover controls
 - **Monitoring**: Real-time metrics, profiling, and analytics
 
 📐 **Detailed architecture**: [docs/architecture/overview.md](docs/architecture/overview.md) | [CI/CD](docs/architecture/ci-cd.md)
@@ -309,7 +371,7 @@ model = accelerator.load_model("gpt2", device="cuda")
 | **IPFS & P2P** | [IPFS Integration](docs/features/ipfs/IPFS.md) • [P2P Networking](docs/guides/p2p/) |
 | **GitHub Actions** | [Autoscaler](docs/architecture/AUTOSCALER.md) • [CI/CD](docs/guides/github/) |
 | **Docker & K8s** | [Container Guide](docs/guides/docker/) • [Deployment](docs/guides/deployment/) |
-| **MCP Server** | [MCP Setup](docs/guides/MCP_SETUP_GUIDE.md) • [Protocol Docs](docs/P2P_AND_MCP.md) |
+| **MCP Server** | [Canonical MCP Server README](ipfs_accelerate_py/mcp_server/README.md) • [MCP Setup](docs/guides/MCP_SETUP_GUIDE.md) • [Protocol Docs](docs/P2P_AND_MCP.md) • [Cutover Checklist](MCP_CUTOVER_CHECKLIST.md) |
 | **Browser Support** | [WebNN/WebGPU](docs/features/webnn-webgpu/WEBNN_WEBGPU_README.md) • [Examples](examples/webnn_demo.py) |
 
 ### 📊 Documentation Quality

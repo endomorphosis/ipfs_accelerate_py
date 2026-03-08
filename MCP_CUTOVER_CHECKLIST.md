@@ -9,7 +9,7 @@ Status: Approved for canonical-default cutover on 2026-03-08.
 Frozen migration delta set:
 
 - Canonical runtime default remains `ipfs_accelerate_py.mcp_server`.
-- Legacy `ipfs_accelerate_py.mcp.server` remains compatibility-only in deprecation phase `D1_warn_only`.
+- Legacy `ipfs_accelerate_py.mcp.server` remains compatibility-only in deprecation phase `D2_opt_in_only`.
 - Rollback and dry-run controls remain available via `IPFS_MCP_FORCE_LEGACY_ROLLBACK` and `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN`.
 - Remaining follow-up work is limited to maintenance hardening, deprecation-phase progression (`D2`/`D3`), and explicitly deferred governance items already tracked in `MCP_SERVER_UNIFICATION_PLAN.md`.
 

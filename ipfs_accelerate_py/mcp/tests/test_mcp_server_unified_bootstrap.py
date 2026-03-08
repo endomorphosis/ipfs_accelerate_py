@@ -677,20 +677,21 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     @patch("ipfs_accelerate_py.mcp_server.server.create_server")
-    def test_legacy_create_mcp_server_bridge_disabled(self, mock_unified_create, mock_wrapper):
-        """Legacy create_mcp_server should stay on legacy path when bridge flag is disabled."""
+    def test_legacy_create_mcp_server_bridge_disable_flag_keeps_unified_default(self, mock_unified_create, mock_wrapper):
+        """Legacy create_mcp_server should keep unified default even when bridge flag is disabled in D2."""
 
         class DummyServer:
-            mcp = None
+            pass
 
-        mock_wrapper.return_value = DummyServer()
+        dummy = DummyServer()
+        mock_unified_create.return_value = dummy
 
         with patch.dict(os.environ, {"IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "0"}, clear=False):
             server = create_mcp_server(name="bridge-disabled")
 
-        self.assertIsNotNone(server)
-        mock_unified_create.assert_not_called()
-        mock_wrapper.assert_called_once()
+        self.assertIs(server, dummy)
+        mock_unified_create.assert_called_once()
+        mock_wrapper.assert_not_called()
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_legacy_bridge_plus_bootstrap_meta_tool_flow(self, mock_wrapper):

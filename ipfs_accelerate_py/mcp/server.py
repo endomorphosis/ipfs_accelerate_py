@@ -1182,14 +1182,14 @@ def _record_mcp_facade_usage(telemetry: dict) -> None:
 
 
 def _warn_legacy_facade_usage(reason: str) -> bool:
-    """Emit the D1 warn-only deprecation notice once per reason."""
+    """Emit the D2 opt-in-only deprecation notice once per reason."""
     normalized_reason = str(reason or "legacy_fallback")
     if normalized_reason in _MCP_FACADE_WARNED_REASONS:
         return False
 
     logger.warning(
-        "Legacy MCP facade runtime path is deprecated (D1 warn-only); reason=%s. "
-        "Canonical mcp_server startup is now the default and legacy routing should be reserved for rollback/testing.",
+        "Legacy MCP facade runtime path is deprecated (D2 opt-in only); reason=%s. "
+        "Canonical mcp_server startup is now the default and legacy routing should be reserved for explicit rollback/testing only.",
         normalized_reason,
     )
     _MCP_FACADE_WARNED_REASONS.add(normalized_reason)
@@ -1253,7 +1253,7 @@ def create_mcp_server(
         "force_legacy_rollback": bool(force_legacy_rollback),
         "cutover_dry_run": bool(cutover_dry_run_enabled),
         "dry_run_ok": False,
-        "deprecation_phase": "D1_warn_only",
+        "deprecation_phase": "D2_opt_in_only",
         "deprecation_warning_emitted": False,
         "selected_runtime": "legacy",
         "reason": "legacy_fallback",
@@ -1264,7 +1264,9 @@ def create_mcp_server(
     # The private skip flag prevents recursion.
     if not _skip_unified_bridge:
         try:
-            bridge_enabled = True if not bridge_explicit else bool(bridge_requested)
+            # Phase D2 keeps unified startup as the only supported facade default;
+            # the legacy runtime now requires explicit rollback opt-in.
+            bridge_enabled = True
             if force_legacy_rollback:
                 bridge_enabled = False
                 facade_telemetry["reason"] = "force_legacy_rollback"

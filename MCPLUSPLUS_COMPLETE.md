@@ -11,7 +11,7 @@
 Canonical-default cutover is now approved.
 
 - Default runtime: `ipfs_accelerate_py.mcp_server`
-- Legacy facade status: compatibility-only, deprecation phase `D1_warn_only`
+- Legacy facade status: compatibility-only, deprecation phase `D2_opt_in_only`
 - Rollback controls retained: `IPFS_MCP_FORCE_LEGACY_ROLLBACK`, `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN`
 - Focused release-candidate matrix result: `120 passed`
 - Published cutover checklist: `MCP_CUTOVER_CHECKLIST.md`

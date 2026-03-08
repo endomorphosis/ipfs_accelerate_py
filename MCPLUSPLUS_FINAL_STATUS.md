@@ -12,7 +12,7 @@ Canonical-default cutover is now approved and frozen.
 
 **Latest cutover state**:
 - Canonical startup defaults to `ipfs_accelerate_py.mcp_server`
-- Legacy `ipfs_accelerate_py.mcp.server` remains compatibility-only in deprecation phase `D1_warn_only`
+- Legacy `ipfs_accelerate_py.mcp.server` remains compatibility-only in deprecation phase `D2_opt_in_only`
 - Rollback and dry-run controls remain available through `IPFS_MCP_FORCE_LEGACY_ROLLBACK` and `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN`
 - Focused release-candidate transport/profile matrix completed successfully: `120 passed`
 - Published cutover checklist: `MCP_CUTOVER_CHECKLIST.md`
