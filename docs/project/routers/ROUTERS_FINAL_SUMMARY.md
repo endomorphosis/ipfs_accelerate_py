@@ -63,7 +63,7 @@ Both routers share common infrastructure:
 - `examples/llm_router_example.py` (7 examples)
 - `test/test_llm_router_integration.py` (6 tests)
 - `LLM_ROUTER_IMPLEMENTATION_SUMMARY.md`
-- `IMPLEMENTATION_COMPLETE.md`
+- `../status/IMPLEMENTATION_COMPLETE.md`
 
 #### Embeddings Router (Phase 2)
 - `ipfs_accelerate_py/embeddings_router.py` (650 lines)
@@ -257,7 +257,7 @@ Both routers follow the same design principles:
 ### Implementation Summaries
 - `LLM_ROUTER_IMPLEMENTATION_SUMMARY.md` (7,000+ chars)
 - `EMBEDDINGS_ROUTER_IMPLEMENTATION_SUMMARY.md` (9,000+ chars)
-- `IMPLEMENTATION_COMPLETE.md` (6,000+ chars)
+- `../status/IMPLEMENTATION_COMPLETE.md` (6,000+ chars)
 
 ### Examples
 - `examples/llm_router_example.py` (7 scenarios)

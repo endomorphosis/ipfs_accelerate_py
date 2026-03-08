@@ -4,13 +4,13 @@
 
 ### Added
 
-- Published `MCP_CUTOVER_CHECKLIST.md` to freeze migration deltas and document cutover gates.
+- Published `CUTOVER_CHECKLIST.md` to freeze migration deltas and document cutover gates.
 
 ### Validated
 
 - Compatibility-facade rollback, dry-run, and precedence telemetry via `ipfs_accelerate_py/mcp/tests/test_mcp_server_uni007_cutover_rollback.py`
 - Focused release-candidate matrix across transport and representative profile chapters (`120 passed`)
-- Ongoing conformance synchronization in `MCP_SERVER_UNIFICATION_PLAN.md`, `mcpplusplus/CONFORMANCE_CHECKLIST.md`, and `mcpplusplus/SPEC_GAP_MATRIX.md`
+- Ongoing conformance synchronization in `SERVER_UNIFICATION_PLAN.md`, `mcpplusplus/CONFORMANCE_CHECKLIST.md`, and `mcpplusplus/SPEC_GAP_MATRIX.md`
 
 ---
 
@@ -193,7 +193,7 @@ Methods:
 - Graceful shutdown patterns
 
 **Phase Documentation**
-- `MCPLUSPLUS_PHASE3_COMPLETE.md` (400+ lines)
+- `history/PHASE3_COMPLETE.md` (400+ lines)
 - Deployment guide (development & production)
 - Architecture decisions
 - Usage examples
@@ -221,7 +221,7 @@ Complete migration documentation:
 - Performance comparison data
 - Migration checklist
 
-**MCPLUSPLUS_COMPLETE.md (410 lines)**
+**COMPLETE.md (410 lines)**
 
 Comprehensive implementation summary:
 - All 3 phases documented
@@ -233,7 +233,7 @@ Comprehensive implementation summary:
 - Future enhancements
 - Success criteria verification
 
-**MCPLUSPLUS_FINAL_STATUS.md (350 lines)**
+**FINAL_STATUS.md (350 lines)**
 
 Final verification document:
 - All checklist items verified complete
@@ -244,9 +244,9 @@ Final verification document:
 - Statistics and metrics
 
 **Phase-Specific Documentation**
-- `MCPLUSPLUS_PHASE1_COMPLETE.md` - Trio bridge details
-- `MCPLUSPLUS_PHASE2_COMPLETE.md` - P2P refactoring details
-- `MCPLUSPLUS_PHASE3_COMPLETE.md` - Server/client implementation
+- `history/PHASE1_COMPLETE.md` - Trio bridge details
+- `history/PHASE2_COMPLETE.md` - P2P refactoring details
+- `history/PHASE3_COMPLETE.md` - Server/client implementation
 
 ---
 
@@ -318,12 +318,12 @@ Issue 3: Duplicate sleep with jitter in hole punching (lines 809-810)
 | Document | Lines | Purpose |
 |----------|-------|---------|
 | **MIGRATION_GUIDE.md** | 480 | Migration instructions |
-| **MCPLUSPLUS_COMPLETE.md** | 410 | Implementation summary |
-| **MCPLUSPLUS_FINAL_STATUS.md** | 350 | Completion verification |
-| **MCPLUSPLUS_PHASE1_COMPLETE.md** | 200+ | Phase 1 details |
-| **MCPLUSPLUS_PHASE2_COMPLETE.md** | 300+ | Phase 2 details |
-| **MCPLUSPLUS_PHASE3_COMPLETE.md** | 400+ | Phase 3 details |
-| **MCPLUSPLUS_CHANGELOG.md** | 600+ | This document |
+| **COMPLETE.md** | 410 | Implementation summary |
+| **FINAL_STATUS.md** | 350 | Completion verification |
+| **history/PHASE1_COMPLETE.md** | 200+ | Phase 1 details |
+| **history/PHASE2_COMPLETE.md** | 300+ | Phase 2 details |
+| **history/PHASE3_COMPLETE.md** | 400+ | Phase 3 details |
+| **CHANGELOG.md** | 600+ | This document |
 | **Total** | **2,740+** | Complete documentation |
 
 ---
@@ -604,7 +604,7 @@ Same as parent project (ipfs_accelerate_py)
 
 For issues, questions, or contributions:
 - Repository: https://github.com/endomorphosis/ipfs_accelerate_py
-- Documentation: See MIGRATION_GUIDE.md and MCPLUSPLUS_COMPLETE.md
+- Documentation: See MIGRATION_GUIDE.md and COMPLETE.md
 - Testing: Run `pytest ipfs_accelerate_py/mcplusplus_module/tests/`
 
 ---

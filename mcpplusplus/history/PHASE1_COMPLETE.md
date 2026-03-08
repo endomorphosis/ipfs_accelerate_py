@@ -189,11 +189,11 @@ Required packages (already in requirements.txt):
 
 ## References
 
-- [MCP Trio Roadmap](docs/MCP_TRIO_ROADMAP.md)
-- [Mcp-Plus-Plus Specification](ipfs_accelerate_py/mcplusplus/README.md)
-- [MCP++ Architecture](ipfs_accelerate_py/mcplusplus/docs/ARCHITECTURE.md)
-- [Module README](ipfs_accelerate_py/mcplusplus_module/README.md)
-- [Implementation Summary](MCP_PLUSPLUS_IMPLEMENTATION_SUMMARY.md)
+- [MCP Trio Roadmap](../../docs/MCP_TRIO_ROADMAP.md)
+- [MCP++ Spec Baseline](../README.md)
+- [MCP++ Module Architecture](../../ipfs_accelerate_py/mcplusplus_module/README.md)
+- [Module README](../../ipfs_accelerate_py/mcplusplus_module/README.md)
+- [Implementation Summary](../IMPLEMENTATION_SUMMARY.md)
 
 ## Success Metrics
 

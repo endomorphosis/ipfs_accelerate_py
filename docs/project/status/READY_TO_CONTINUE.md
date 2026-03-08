@@ -12,7 +12,7 @@
 - **Documentation**: 16+ comprehensive files
 
 ### 📋 Comprehensive Plan Ready
-- **Detailed Roadmap**: PLAN_100_PERCENT_SDK_UTILIZATION.md
+- **Detailed Roadmap**: ../sdk-utilization/PLAN_100_PERCENT_SDK_UTILIZATION.md
 - **Remaining Work**: 63 methods (44.7%)
 - **Timeline**: 4-6 sessions to 100%
 - **Code Estimate**: ~3,400 lines

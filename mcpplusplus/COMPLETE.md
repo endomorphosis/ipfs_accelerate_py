@@ -14,13 +14,13 @@ Canonical-default cutover is now approved.
 - Legacy facade status: compatibility-only, deprecation phase `D2_opt_in_only`
 - Rollback controls retained: `IPFS_MCP_FORCE_LEGACY_ROLLBACK`, `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN`
 - Focused release-candidate matrix result: `120 passed`
-- Published cutover checklist: `MCP_CUTOVER_CHECKLIST.md`
+- Published cutover checklist: `CUTOVER_CHECKLIST.md`
 
 Primary evidence now lives in:
-- `MCP_SERVER_UNIFICATION_PLAN.md`
+- `SERVER_UNIFICATION_PLAN.md`
 - `mcpplusplus/CONFORMANCE_CHECKLIST.md`
 - `mcpplusplus/SPEC_GAP_MATRIX.md`
-- `MCP_CUTOVER_CHECKLIST.md`
+- `CUTOVER_CHECKLIST.md`
 
 ## Implementation Statistics
 
@@ -263,17 +263,17 @@ async with TrioMCPClient(url) as client:
 
 ### Completion Documents
 
-1. **MCPLUSPLUS_PHASE1_COMPLETE.md**
+1. **history/PHASE1_COMPLETE.md**
    - Trio bridge implementation
    - Bridge utilities and context management
    - 8 tests passing
 
-2. **MCPLUSPLUS_PHASE2_COMPLETE.md**
+2. **history/PHASE2_COMPLETE.md**
    - P2P code refactoring (2,785 lines)
    - 20 MCP tools migrated
    - All P2P modules consolidated
 
-3. **MCPLUSPLUS_PHASE3_COMPLETE.md**
+3. **history/PHASE3_COMPLETE.md**
    - TrioMCPServer implementation
    - Hypercorn integration
    - 12 server tests passing
@@ -284,7 +284,7 @@ async with TrioMCPClient(url) as client:
    - Troubleshooting guide
    - Performance comparisons
 
-5. **MCP_PLUSPLUS_IMPLEMENTATION_SUMMARY.md**
+5. **IMPLEMENTATION_SUMMARY.md**
    - Overall architecture decisions
    - Implementation notes
    - Future enhancements

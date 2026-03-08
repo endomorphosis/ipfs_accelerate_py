@@ -4,10 +4,10 @@ Comprehensive guides for peer-to-peer networking, distributed workflows, and lib
 
 ## Quick Links
 
-- [P2P Setup Guide](../../P2P_SETUP_GUIDE.md) - Main P2P setup guide (root level)
-- [P2P & MCP Architecture](../../P2P_AND_MCP.md) - Complete P2P and MCP documentation
-- [P2P Workflow Scheduler](../../P2P_WORKFLOW_SCHEDULER.md) - Workflow scheduling guide
-- [P2P Workflow Quick Start](../../P2P_WORKFLOW_QUICK_START.md) - Quick start guide
+- [P2P Setup Guide](P2P_SETUP_GUIDE.md) - Main P2P setup guide
+- [P2P & MCP Architecture](../../features/mcp-integration/p2p-integration.md) - Complete P2P and MCP documentation
+- [P2P Workflow Scheduler](P2P_WORKFLOW_SCHEDULER.md) - Workflow scheduling guide
+- [P2P Workflow Quick Start](P2P_WORKFLOW_QUICK_START.md) - Quick start guide
 
 ## Specialized Guides (in this directory)
 
@@ -144,7 +144,7 @@ async def main():
 ## See Also
 
 - [Main Documentation](../../README.md)
-- [P2P & MCP Architecture](../../P2P_AND_MCP.md)
+- [P2P & MCP Architecture](../../features/mcp-integration/p2p-integration.md)
 - [GitHub Guides](../github/)
 - [Deployment Guides](../deployment/)
 

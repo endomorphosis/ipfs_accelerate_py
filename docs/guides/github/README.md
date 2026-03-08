@@ -34,7 +34,7 @@ Comprehensive guides for GitHub Actions, autoscaling, authentication, and P2P ca
   - Monitors workflows automatically
   - Provisions runners on demand
   - Respects CPU core limits
-  - See also: [AUTOSCALER.md](../../AUTOSCALER.md)
+  - See also: [AUTOSCALER.md](../../architecture/AUTOSCALER.md)
 
 ## Runner Setup
 
@@ -47,7 +47,7 @@ Comprehensive guides for GitHub Actions, autoscaling, authentication, and P2P ca
 - [Main Documentation](../../README.md)
 - [P2P Guides](../p2p/)
 - [Docker Guides](../docker/)
-- [MCP Documentation](../../docs/P2P_AND_MCP.md)
+- [MCP Documentation](../../features/mcp-integration/p2p-integration.md)
 
 ---
 

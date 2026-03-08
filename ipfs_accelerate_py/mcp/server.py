@@ -1147,6 +1147,7 @@ _MCP_FACADE_USAGE_TELEMETRY = {
     "unified_bridge_calls": 0,
     "dry_run_calls": 0,
     "rollback_calls": 0,
+    "bridge_disable_ignored_calls": 0,
     "bridge_failure_calls": 0,
     "warning_emissions": 0,
     "reason_counts": {},
@@ -1175,6 +1176,8 @@ def _record_mcp_facade_usage(telemetry: dict) -> None:
         _MCP_FACADE_USAGE_TELEMETRY["dry_run_calls"] += 1
     if telemetry.get("force_legacy_rollback"):
         _MCP_FACADE_USAGE_TELEMETRY["rollback_calls"] += 1
+    if telemetry.get("bridge_disable_ignored"):
+        _MCP_FACADE_USAGE_TELEMETRY["bridge_disable_ignored_calls"] += 1
     if telemetry.get("bridge_error"):
         _MCP_FACADE_USAGE_TELEMETRY["bridge_failure_calls"] += 1
     if telemetry.get("deprecation_warning_emitted"):
@@ -1248,6 +1251,7 @@ def create_mcp_server(
         "facade": "ipfs_accelerate_py.mcp.server.create_mcp_server",
         "bridge_requested": bool(bridge_requested),
         "bridge_defaulted": not bool(bridge_explicit),
+        "bridge_disable_ignored": bool(bridge_explicit and not bridge_requested),
         "bridge_active": False,
         "used_legacy_wrapper": False,
         "force_legacy_rollback": bool(force_legacy_rollback),
@@ -1269,6 +1273,7 @@ def create_mcp_server(
             bridge_enabled = True
             if force_legacy_rollback:
                 bridge_enabled = False
+                facade_telemetry["bridge_disable_ignored"] = False
                 facade_telemetry["reason"] = "force_legacy_rollback"
             if bridge_enabled:
                 from ipfs_accelerate_py.mcp_server.server import create_server as create_unified_server

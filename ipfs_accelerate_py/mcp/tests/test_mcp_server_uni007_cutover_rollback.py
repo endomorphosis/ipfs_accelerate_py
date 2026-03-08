@@ -327,6 +327,7 @@ class TestUNI007CutoverRollback(unittest.TestCase):
         telemetry = getattr(server, "_mcp_facade_telemetry", {})
         self.assertFalse(telemetry.get("bridge_defaulted"))
         self.assertFalse(telemetry.get("bridge_requested"))
+        self.assertTrue(telemetry.get("bridge_disable_ignored"))
         self.assertTrue(telemetry.get("bridge_active"))
         self.assertEqual(telemetry.get("selected_runtime"), "unified")
         self.assertEqual(telemetry.get("deprecation_phase"), "D2_opt_in_only")
@@ -334,6 +335,7 @@ class TestUNI007CutoverRollback(unittest.TestCase):
 
         counts = get_mcp_facade_telemetry()
         self.assertEqual(counts.get("facade_calls"), 1)
+        self.assertEqual(counts.get("bridge_disable_ignored_calls"), 1)
         self.assertEqual(counts.get("unified_bridge_calls"), 1)
         self.assertEqual(counts.get("legacy_wrapper_calls"), 0)
         self.assertEqual(counts.get("warning_emissions"), 0)

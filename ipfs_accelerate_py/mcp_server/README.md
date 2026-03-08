@@ -214,8 +214,8 @@ The current server state is backed by deterministic repo-local evidence.
 
 Primary references:
 
-- `../../MCP_CUTOVER_CHECKLIST.md`
-- `../../MCP_SERVER_UNIFICATION_PLAN.md`
+- `../../mcpplusplus/CUTOVER_CHECKLIST.md`
+- `../../mcpplusplus/SERVER_UNIFICATION_PLAN.md`
 - `../../mcpplusplus/CONFORMANCE_CHECKLIST.md`
 - `../../mcpplusplus/SPEC_GAP_MATRIX.md`
 

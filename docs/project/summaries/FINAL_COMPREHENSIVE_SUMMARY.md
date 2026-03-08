@@ -190,9 +190,9 @@ Total:       +44 tools (+894% from baseline)
 
 ## 📝 Documentation Delivered
 
-1. **DASHBOARD_ENHANCEMENT_PLAN.md** (9KB)
-2. **DASHBOARD_REVIEW_SUMMARY.md** (11KB)
-3. **DASHBOARD_REVIEW_EXECUTIVE_SUMMARY.md** (9KB)
+1. **../dashboard/DASHBOARD_ENHANCEMENT_PLAN.md** (9KB)
+2. **../dashboard/DASHBOARD_REVIEW_SUMMARY.md** (11KB)
+3. **../dashboard/DASHBOARD_REVIEW_EXECUTIVE_SUMMARY.md** (9KB)
 4. **PHASE1_PROGRESS.md** (8KB)
 5. **PHASE1_PROGRESS_UPDATE.md** (5KB)
 6. **PHASE1_COMPLETE.md** (9KB)

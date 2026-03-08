@@ -212,9 +212,9 @@
 - `PHASE1_PROGRESS.md` - Initial progress report
 - `PHASE1_PROGRESS_UPDATE.md` - Mid-phase update
 - `PHASE1_COMPLETE.md` - **This document**
-- `DASHBOARD_ENHANCEMENT_PLAN.md` - Technical plan
-- `DASHBOARD_REVIEW_SUMMARY.md` - Comprehensive review
-- `DASHBOARD_REVIEW_EXECUTIVE_SUMMARY.md` - Executive summary
+- `../dashboard/DASHBOARD_ENHANCEMENT_PLAN.md` - Technical plan
+- `../dashboard/DASHBOARD_REVIEW_SUMMARY.md` - Comprehensive review
+- `../dashboard/DASHBOARD_REVIEW_EXECUTIVE_SUMMARY.md` - Executive summary
 
 ### Code Commits (9)
 1. Initial plan

@@ -2,7 +2,7 @@
 
 ## ✅ Status: COMPLETE
 
-All work from PLAN_100_PERCENT_SDK_UTILIZATION.md (Phases 3-6) has been successfully implemented, tested, and documented.
+All work from `PLAN_100_PERCENT_SDK_UTILIZATION.md` (Phases 3-6) has been successfully implemented, tested, and documented.
 
 ---
 
@@ -248,7 +248,7 @@ Improvement:              +28% (+44 methods integrated)
 - User benefits analysis
 - Future enhancement suggestions
 
-### 2. QUICK_SUMMARY.md
+### 2. ../summaries/QUICK_SUMMARY.md
 **Size:** 5,476 bytes  
 **Content:**
 - ASCII art diagrams of new tabs
@@ -312,7 +312,7 @@ ipfs_accelerate_py/static/css/dashboard.css
 ### Documentation Files
 ```
 IMPLEMENTATION_COMPLETE_PHASES_3-6.md (NEW)
-QUICK_SUMMARY.md (NEW)
+../summaries/QUICK_SUMMARY.md (NEW)
 WORK_COMPLETION_SUMMARY.md (NEW)
 ```
 

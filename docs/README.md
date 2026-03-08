@@ -21,6 +21,8 @@
 - 🔐 **[Security Policy](../SECURITY.md)** - Security reporting and best practices
 - 🤝 **[Contributing Guide](../CONTRIBUTING.md)** - How to contribute to the project
 - 📄 **[License](../LICENSE)** - AGPLv3+ license details
+- 🗂️ **[Project Docs](project/README.md)** - production project status, summaries, dashboard, router, and migration docs
+- 🧠 **[MCP++ Docs](../mcpplusplus/README.md)** - conformance, cutover, and unification records
 
 ### **Platform-Specific**
 - ⚙️ **[Hardware Optimization](guides/hardware/overview.md)** - Maximize performance across different hardware
@@ -79,6 +81,8 @@ IPFS Accelerate Python is a **comprehensive, enterprise-grade framework** that c
 12. **[Docker Guides](guides/docker/)** - Container deployment, caching, security
 13. **[P2P Guides](guides/p2p/)** - Distributed computing, libp2p, workflow scheduling
 14. **[Deployment Guides](guides/deployment/)** - Production deployment, cross-platform
+15. **[Project Documentation](project/README.md)** - permanent location for project status, summary, and migration records
+16. **[MCP++ Records](../mcpplusplus/README.md)** - cutover evidence, conformance, and migration backlog
 
 ## Key Features Covered
 
@@ -141,6 +145,8 @@ All active, maintained documentation is organized in this directory:
 - **Core Docs**: Installation, Usage, API, Architecture, Testing
 - **[Guides](guides/)**: Topic-specific guides (GitHub, Docker, P2P, Deployment)
 - **[Architecture](architecture/)**: System architecture and design docs
+- **[Project](project/)**: project execution history, dashboard workstreams, router summaries, SDK-utilization records, and migration guides
+- **[MCP++](../mcpplusplus/)**: MCP++ cutover, conformance, and server-unification records
 
 ### **Historical Documentation**
 - **[Archive](archive/README.md)**: Historical session summaries and implementation reports

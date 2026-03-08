@@ -168,7 +168,7 @@ Dashboard (10 Tabs, 78 SDK Methods)
 ## 📚 Comprehensive Documentation
 
 ### Planning Documents
-- **PLAN_100_PERCENT_SDK_UTILIZATION.md** (706 lines)
+- **../sdk-utilization/PLAN_100_PERCENT_SDK_UTILIZATION.md** (706 lines)
   - Complete roadmap to 100%
   - Detailed specifications for Phases 3-7
   - Timeline and estimates
@@ -178,20 +178,21 @@ Dashboard (10 Tabs, 78 SDK Methods)
   - Implementation patterns
 
 ### Progress Reports
-- PHASE1_PROGRESS.md
-- PHASE1_COMPLETE.md
-- PHASE2_PROGRESS.md
-- CURRENT_STATUS_AND_NEXT_STEPS.md
+- ../phases/PHASE1_PROGRESS.md
+- ../phases/PHASE1_COMPLETE.md
+- ../phases/PHASE2_PROGRESS.md
+- ../status/ACTIVE_IMPLEMENTATION_STATUS.md
+- ../status/READY_TO_CONTINUE.md
 
 ### Comprehensive Summaries
-- FINAL_COMPREHENSIVE_SUMMARY.md
-- COMPLETE_DASHBOARD_TRANSFORMATION.md
-- ULTIMATE_DASHBOARD_SUMMARY.md
-- CONSOLIDATED_FINAL_SUMMARY.md
+- ../summaries/FINAL_COMPREHENSIVE_SUMMARY.md
+- ../summaries/COMPLETE_SUMMARY.md
+- ../summaries/FINAL_SUMMARY.md
+- ../summaries/EXECUTIVE_SUMMARY.md
 
 ### Technical Documentation
-- CODE_REVIEW_FIXES.md
-- MCP_COVERAGE_IMPROVEMENT.md
+- ../reviews/CODE_REVIEW_FIXES.md
+- ../../../mcpplusplus/COVERAGE_IMPROVEMENT.md
 - SDK_DASHBOARD_IMPROVEMENTS.md
 
 **Total**: 15+ documents (~120KB)

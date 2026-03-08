@@ -127,7 +127,7 @@ mcpClient.callTool(toolName, params)
 
 ### Created
 4. `test_dashboard_sdk.py` - Test script
-5. `SDK_DASHBOARD_IMPROVEMENTS.md` - Documentation
+5. `../dashboard/SDK_DASHBOARD_IMPROVEMENTS.md` - Documentation
 6. `SDK_PLAYGROUND_PREVIEW.html` - Visual reference
 
 ## 🧪 How to Test
@@ -146,7 +146,7 @@ python test_dashboard_sdk.py
 ## 📚 Documentation
 
 Complete documentation available in:
-- `SDK_DASHBOARD_IMPROVEMENTS.md` - Comprehensive guide
+- `../dashboard/SDK_DASHBOARD_IMPROVEMENTS.md` - Comprehensive guide
 - `SDK_PLAYGROUND_PREVIEW.html` - Visual preview
 - Inline code comments - Implementation details
 

@@ -109,7 +109,7 @@ anyio.run(main)
 
 **Available Tools**: 14+ tools for inference, model management, hardware detection, workflows, and GitHub integration.
 
-See [docs/P2P_AND_MCP.md](docs/P2P_AND_MCP.md#mcp-tools-reference) for complete tool reference.
+See [P2P integration](../features/mcp-integration/p2p-integration.md) for complete tool reference.
 
 ---
 
@@ -166,7 +166,7 @@ ipfs-accelerate network p2p-status
 ipfs-accelerate workflow status <workflow-id>
 ```
 
-See [docs/P2P_AND_MCP.md](docs/P2P_AND_MCP.md#p2p-workflow-scheduler) for detailed documentation.
+See [P2P integration](../features/mcp-integration/p2p-integration.md) for detailed documentation.
 
 ---
 
@@ -198,7 +198,7 @@ The autoscaler will:
 - ✅ Respect your system's CPU core limit
 - ✅ Work completely automatically once started
 
-**See [AUTOSCALER.md](AUTOSCALER.md) for complete autoscaler documentation.**
+**See [Autoscaler architecture](../architecture/AUTOSCALER.md) for complete autoscaler documentation.**
 
 ### GitHub CLI Commands
 
@@ -345,7 +345,7 @@ python data/benchmarks/run_benchmarks.py
 
 - **GitHub Issues**: [Report bugs](https://github.com/endomorphosis/ipfs_accelerate_py/issues)
 - **Discussions**: [Ask questions](https://github.com/endomorphosis/ipfs_accelerate_py/discussions)
-- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Contributing**: See [CONTRIBUTING.md](../../CONTRIBUTING.md)
 
 ---
 
@@ -373,5 +373,5 @@ Expected output: No errors, hardware detected, inference completes successfully.
 
 ---
 
-**For complete documentation, see [docs/README.md](docs/README.md)**
+**For complete documentation, see [docs/README.md](../README.md)**
 

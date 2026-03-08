@@ -217,7 +217,7 @@ Users can now access dashboard features through **FOUR different methods**:
 
 Complete documentation includes:
 
-1. **SDK_DASHBOARD_IMPROVEMENTS.md** (7KB)
+1. **../dashboard/SDK_DASHBOARD_IMPROVEMENTS.md** (7KB)
    - Original SDK integration guide
    - Usage examples
    - API reference

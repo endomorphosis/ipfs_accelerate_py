@@ -15,6 +15,9 @@ This directory is the source of truth for MCP++ conformance in this workspace.
 
 - `mcpplusplus/CONFORMANCE_CHECKLIST.md`: requirement-level conformance status and evidence.
 - `mcpplusplus/SPEC_GAP_MATRIX.md`: capability matrix from source to target with implementation and test status.
+- `mcpplusplus/SERVER_UNIFICATION_PLAN.md`: migration backlog, milestones, and deferred-governance tracking.
+- `mcpplusplus/CUTOVER_CHECKLIST.md`: approved cutover gates and release-candidate evidence.
+- `mcpplusplus/history/`: earlier MCP++ phase completion records.
 
 ## Status Model
 
@@ -34,4 +37,4 @@ This directory is the source of truth for MCP++ conformance in this workspace.
 1. Update `SPEC_GAP_MATRIX.md` first when code changes parity status.
 2. Update requirement status in `CONFORMANCE_CHECKLIST.md`.
 3. Add or update deterministic tests in `ipfs_accelerate_py/mcp/tests/`.
-4. Keep `MCP_SERVER_UNIFICATION_PLAN.md` aligned with milestone and phase changes.
+4. Keep `SERVER_UNIFICATION_PLAN.md` aligned with milestone and phase changes.

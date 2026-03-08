@@ -230,7 +230,7 @@ The MCP server provides 14+ tools:
 - `gh_workflow_runs` - List workflow runs
 - `gh_provision_runner` - Provision self-hosted runner
 
-For complete documentation, see [P2P_AND_MCP.md](P2P_AND_MCP.md#mcp-tools-reference).
+For complete documentation, see [P2P integration](../features/mcp-integration/p2p-integration.md).
 
 ## P2P Workflow Scheduling
 
@@ -329,7 +329,7 @@ print(f"Active tasks: {network_status['active_tasks']}")
 await scheduler.rebalance_tasks(strategy="load")
 ```
 
-For complete documentation, see [P2P_AND_MCP.md](P2P_AND_MCP.md#p2p-workflow-scheduler).
+For complete documentation, see [P2P integration](../features/mcp-integration/p2p-integration.md).
 
 ## CLI Tools
 

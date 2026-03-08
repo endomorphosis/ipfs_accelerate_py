@@ -10,7 +10,7 @@
 
 This review consists of three comprehensive documents:
 
-### 1. 📖 [Full Technical Review](./HF_MODEL_SERVER_REVIEW.md)
+### 1. 📖 [Full Technical Review](./review.md)
 **45+ pages** | Comprehensive technical analysis
 
 **Contents:**
@@ -29,7 +29,7 @@ This review consists of three comprehensive documents:
 
 ---
 
-### 2. ⚡ [Executive Summary](./HF_MODEL_SERVER_SUMMARY.md)
+### 2. ⚡ [Executive Summary](./summary.md)
 **Quick reference** | High-level overview
 
 **Contents:**
@@ -46,7 +46,7 @@ This review consists of three comprehensive documents:
 
 ---
 
-### 3. 🎨 [Architecture Diagrams](./HF_MODEL_SERVER_ARCHITECTURE.md)
+### 3. 🎨 [Architecture Diagrams](./architecture.md)
 **Visual guide** | System architecture illustrations
 
 **Contents:**
@@ -185,9 +185,9 @@ POST /v1/infer/{model}      # Generic inference
 ## 📋 Next Steps
 
 ### For Reviewers
-1. ✅ Read the [Executive Summary](./HF_MODEL_SERVER_SUMMARY.md) (5-10 min)
-2. ✅ Browse [Architecture Diagrams](./HF_MODEL_SERVER_ARCHITECTURE.md) (10-15 min)
-3. ✅ Review [Full Technical Document](./HF_MODEL_SERVER_REVIEW.md) (detailed, 30-60 min)
+1. ✅ Read the [Executive Summary](./summary.md) (5-10 min)
+2. ✅ Browse [Architecture Diagrams](./architecture.md) (10-15 min)
+3. ✅ Review [Full Technical Document](./review.md) (detailed, 30-60 min)
 4. ⏳ Provide feedback on:
    - Architecture design
    - Implementation priorities
@@ -214,16 +214,16 @@ POST /v1/infer/{model}      # Generic inference
 ## 🔗 Related Documentation
 
 ### Existing Documentation
-- [Architecture Overview](./ARCHITECTURE.md)
-- [Hardware Guide](./HARDWARE.md)
-- [API Documentation](./API.md)
-- [Installation Guide](./INSTALLATION.md)
+- [Architecture Overview](./architecture.md)
+- [Implementation Guide](./implementation.md)
+- [Testing & Deployment](./testing-deployment.md)
+- [Project Overview](./README.md)
 
 ### Related Systems
 - **Model Manager**: `docs/MODEL_MANAGER_README.md`
 - **AI MCP Server**: `docs/AI_MCP_SERVER_IMPLEMENTATION.md`
 - **IPFS Integration**: `docs/IPFS.md`
-- **P2P & MCP**: `docs/P2P_AND_MCP.md`
+- **P2P & MCP**: `../mcp-integration/p2p-integration.md`
 
 ---
 

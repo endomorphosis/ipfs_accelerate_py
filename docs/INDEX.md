@@ -8,6 +8,8 @@ Welcome to the complete documentation for IPFS Accelerate Python. This index hel
 - [API Reference](api/overview.md) - Complete API documentation
 - [Architecture](architecture/overview.md) - System architecture and design
 - [Contributing](../CONTRIBUTING.md) - How to contribute
+- [Project Docs](project/README.md) - Production project status, summaries, and migrations
+- [MCP++ Docs](../mcpplusplus/README.md) - Conformance, cutover, and unification records
 
 ## 🗂️ Documentation Structure
 
@@ -63,6 +65,18 @@ Feature-specific documentation for major system components.
 
 #### MCP Integration
 - [P2P Integration](features/mcp-integration/p2p-integration.md) - MCP & P2P integration
+
+### 🗂️ Project Records
+
+Production project records that were moved out of the repository root.
+
+- [Project documentation hub](project/README.md) - Landing page for project records
+- [Status](project/status/) - Current implementation and continuation status
+- [Dashboard](project/dashboard/) - Dashboard planning, reviews, and completion reports
+- [Routers](project/routers/) - Router implementation summaries
+- [SDK utilization](project/sdk-utilization/) - SDK utilization plans and implementation reports
+- [Migration](project/migration/MIGRATION_GUIDE.md) - Project migration guidance
+- [MCP++ records](../mcpplusplus/README.md) - Canonical MCP++ conformance and cutover docs
 
 ### 💻 Development
 

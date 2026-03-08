@@ -543,9 +543,9 @@ If you encounter issues during migration:
    - `ipfs_accelerate_py/mcplusplus_module/examples/`
    
 2. **Review documentation:**
-   - `MCPLUSPLUS_PHASE1_COMPLETE.md` - Trio bridge
-   - `MCPLUSPLUS_PHASE2_COMPLETE.md` - P2P refactoring
-   - `MCPLUSPLUS_PHASE3_COMPLETE.md` - Server implementation
+    - `../../../mcpplusplus/history/PHASE1_COMPLETE.md` - Trio bridge
+    - `../../../mcpplusplus/history/PHASE2_COMPLETE.md` - P2P refactoring
+    - `../../../mcpplusplus/history/PHASE3_COMPLETE.md` - Server implementation
    
 3. **Run tests:**
    ```bash

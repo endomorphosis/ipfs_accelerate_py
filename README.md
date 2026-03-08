@@ -240,8 +240,8 @@ These controls remain available for validation and operational rollback:
 ### Recommended documentation
 
 - [Canonical MCP server README](ipfs_accelerate_py/mcp_server/README.md)
-- [MCP Cutover Checklist](MCP_CUTOVER_CHECKLIST.md)
-- [MCP Server Unification Plan](MCP_SERVER_UNIFICATION_PLAN.md)
+- [MCP Cutover Checklist](mcpplusplus/CUTOVER_CHECKLIST.md)
+- [MCP Server Unification Plan](mcpplusplus/SERVER_UNIFICATION_PLAN.md)
 - [MCP++ Conformance Checklist](mcpplusplus/CONFORMANCE_CHECKLIST.md)
 - [MCP++ Spec Gap Matrix](mcpplusplus/SPEC_GAP_MATRIX.md)
 
@@ -371,7 +371,7 @@ model = accelerator.load_model("gpt2", device="cuda")
 | **IPFS & P2P** | [IPFS Integration](docs/features/ipfs/IPFS.md) • [P2P Networking](docs/guides/p2p/) |
 | **GitHub Actions** | [Autoscaler](docs/architecture/AUTOSCALER.md) • [CI/CD](docs/guides/github/) |
 | **Docker & K8s** | [Container Guide](docs/guides/docker/) • [Deployment](docs/guides/deployment/) |
-| **MCP Server** | [Canonical MCP Server README](ipfs_accelerate_py/mcp_server/README.md) • [MCP Setup](docs/guides/MCP_SETUP_GUIDE.md) • [Protocol Docs](docs/P2P_AND_MCP.md) • [Cutover Checklist](MCP_CUTOVER_CHECKLIST.md) |
+| **MCP Server** | [Canonical MCP Server README](ipfs_accelerate_py/mcp_server/README.md) • [MCP Setup](docs/guides/MCP_SETUP_GUIDE.md) • [Protocol Docs](docs/features/mcp-integration/p2p-integration.md) • [Cutover Checklist](mcpplusplus/CUTOVER_CHECKLIST.md) |
 | **Browser Support** | [WebNN/WebGPU](docs/features/webnn-webgpu/WEBNN_WEBGPU_README.md) • [Examples](examples/webnn_demo.py) |
 
 ### 📊 Documentation Quality

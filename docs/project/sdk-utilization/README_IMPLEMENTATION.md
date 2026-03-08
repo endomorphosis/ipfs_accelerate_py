@@ -3,8 +3,8 @@
 ## Quick Links
 - 📋 [Work Completion Summary](WORK_COMPLETION_SUMMARY.md) - Comprehensive completion report
 - 📖 [Implementation Details](IMPLEMENTATION_COMPLETE_PHASES_3-6.md) - Phase-by-phase breakdown  
-- ⚡ [Quick Summary](QUICK_SUMMARY.md) - Visual overview with metrics
-- 🎨 [Visual Guide](VISUAL_GUIDE.md) - ASCII diagrams of new UI
+- ⚡ [Quick Summary](../summaries/QUICK_SUMMARY.md) - Visual overview with metrics
+- 🎨 [Visual Guide](../summaries/VISUAL_GUIDE.md) - ASCII diagrams of new UI
 
 ---
 
@@ -114,12 +114,12 @@ See [WORK_COMPLETION_SUMMARY.md](WORK_COMPLETION_SUMMARY.md) for:
    - Technical specifications
    - User benefits
 
-4. **QUICK_SUMMARY.md**
+4. **../summaries/QUICK_SUMMARY.md**
    - Visual progress bars
    - Code statistics
    - At-a-glance metrics
 
-5. **VISUAL_GUIDE.md**
+5. **../summaries/VISUAL_GUIDE.md**
    - ASCII art diagrams
    - UI component layouts
    - Visual design elements

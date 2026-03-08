@@ -15,13 +15,13 @@ Canonical-default cutover is now approved and frozen.
 - Legacy `ipfs_accelerate_py.mcp.server` remains compatibility-only in deprecation phase `D2_opt_in_only`
 - Rollback and dry-run controls remain available through `IPFS_MCP_FORCE_LEGACY_ROLLBACK` and `IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN`
 - Focused release-candidate transport/profile matrix completed successfully: `120 passed`
-- Published cutover checklist: `MCP_CUTOVER_CHECKLIST.md`
+- Published cutover checklist: `CUTOVER_CHECKLIST.md`
 
 **Primary evidence**:
-- `MCP_SERVER_UNIFICATION_PLAN.md`
+- `SERVER_UNIFICATION_PLAN.md`
 - `mcpplusplus/CONFORMANCE_CHECKLIST.md`
 - `mcpplusplus/SPEC_GAP_MATRIX.md`
-- `MCP_CUTOVER_CHECKLIST.md`
+- `CUTOVER_CHECKLIST.md`
 
 ## Checklist Status
 
@@ -200,7 +200,7 @@ python3 -m pytest ipfs_accelerate_py/mcplusplus_module/tests/ -v
 - Performance comparison data
 - Migration checklist
 
-**MCPLUSPLUS_COMPLETE.md** (410 lines):
+**COMPLETE.md** (410 lines):
 - Complete implementation overview
 - All 3 phases summarized
 - Architecture diagrams
@@ -212,17 +212,17 @@ python3 -m pytest ipfs_accelerate_py/mcplusplus_module/tests/ -v
 - Success criteria verification
 
 **Phase Documentation**:
-- MCPLUSPLUS_PHASE1_COMPLETE.md - Trio bridge implementation
-- MCPLUSPLUS_PHASE2_COMPLETE.md - P2P refactoring details
-- MCPLUSPLUS_PHASE3_COMPLETE.md - Server/client implementation
+- history/PHASE1_COMPLETE.md - Trio bridge implementation
+- history/PHASE2_COMPLETE.md - P2P refactoring details
+- history/PHASE3_COMPLETE.md - Server/client implementation
 
-**MCP_PLUSPLUS_IMPLEMENTATION_SUMMARY.md**:
+**IMPLEMENTATION_SUMMARY.md**:
 - Architecture decisions
 - Implementation notes
 - Design patterns used
 
 **Evidence**:
-- All documentation files exist in repository root
+- All documentation files exist in the production documentation layout
 - Clear migration examples for every scenario
 - Troubleshooting guide for common issues
 - Performance data documented
@@ -327,7 +327,7 @@ server = TrioMCPServer(config=config)
 - Network operations now more efficient
 
 **Documentation:**
-- Added comprehensive MCPLUSPLUS_CHANGELOG.md (600+ lines)
+- Added comprehensive CHANGELOG.md (600+ lines)
 - Documents all phases, changes, fixes, and metrics
 - Complete migration guide integrated
 - Architecture diagrams included
@@ -351,7 +351,7 @@ All items verified as complete:
 - [x] Workflow tools migrated (6 tools)
 - [x] P2P infrastructure migrated (3 modules)
 - [x] MIGRATION_GUIDE.md created (480 lines)
-- [x] MCPLUSPLUS_COMPLETE.md created (410 lines)
+- [x] COMPLETE.md created (410 lines)
 - [x] Phase documentation complete (3 files)
 - [x] Examples created and validated
 - [x] Production deployment tested

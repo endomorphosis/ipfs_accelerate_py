@@ -6,7 +6,7 @@ This document summarizes the implementation of the MCP++ (MCP Plus Plus) module,
 
 ## Overview
 
-The `ipfs_accelerate_py/mcplusplus_module/` module has been created to implement the MCP++ blueprint from the [Mcp-Plus-Plus repository](https://github.com/endomorphosis/Mcp-Plus-Plus), following the roadmap detailed in [docs/MCP_TRIO_ROADMAP.md](docs/MCP_TRIO_ROADMAP.md).
+The `ipfs_accelerate_py/mcplusplus_module/` module has been created to implement the MCP++ blueprint from the [Mcp-Plus-Plus repository](https://github.com/endomorphosis/Mcp-Plus-Plus), following the roadmap detailed in [docs/MCP_TRIO_ROADMAP.md](../docs/MCP_TRIO_ROADMAP.md).
 
 ## What Was Implemented
 
@@ -128,7 +128,7 @@ The original MCP implementation remains unchanged:
 
 ## Roadmap Alignment
 
-Following [docs/MCP_TRIO_ROADMAP.md](docs/MCP_TRIO_ROADMAP.md):
+Following [docs/MCP_TRIO_ROADMAP.md](../docs/MCP_TRIO_ROADMAP.md):
 
 ### ✅ Completed
 1. Bridge everywhere - Created `trio/bridge.py` with `run_in_trio` helper
@@ -205,10 +205,10 @@ These are likely already in requirements.txt from the original MCP implementatio
 
 ## References
 
-1. [MCP Trio Roadmap](docs/MCP_TRIO_ROADMAP.md) - Implementation roadmap
-2. [Mcp-Plus-Plus Spec](ipfs_accelerate_py/mcplusplus/README.md) - MCP++ specification
-3. [MCP++ Architecture](ipfs_accelerate_py/mcplusplus/docs/ARCHITECTURE.md) - Architecture details
-4. [Original MCP Implementation](ipfs_accelerate_py/mcp/README.md) - Existing asyncio-based MCP
+1. [MCP Trio Roadmap](../docs/MCP_TRIO_ROADMAP.md) - Implementation roadmap
+2. [MCP++ Spec Baseline](README.md) - MCP++ conformance and migration baseline
+3. [MCP++ Module Architecture](../ipfs_accelerate_py/mcplusplus_module/README.md) - Module architecture details
+4. [Original MCP Implementation](../ipfs_accelerate_py/mcp/README.md) - Existing asyncio-based MCP
 
 ## Next Actions
 

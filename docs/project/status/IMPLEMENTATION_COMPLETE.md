@@ -109,7 +109,7 @@ Every provider reuses existing infrastructure:
 
 ### Documentation (17,000+ characters)
 1. `docs/LLM_ROUTER.md`
-2. `LLM_ROUTER_IMPLEMENTATION_SUMMARY.md`
+2. `../routers/LLM_ROUTER_IMPLEMENTATION_SUMMARY.md`
 3. `IMPLEMENTATION_COMPLETE.md` (this file)
 
 ### Examples & Tests

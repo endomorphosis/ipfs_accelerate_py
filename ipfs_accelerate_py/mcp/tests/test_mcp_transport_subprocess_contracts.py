@@ -6,6 +6,7 @@ import subprocess
 import sys
 import textwrap
 import unittest
+import json
 
 
 class TestMCPTransportSubprocessContracts(unittest.TestCase):
@@ -51,6 +52,109 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
         result = self._run_subprocess(code)
         self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
         self.assertIn("FASTAPI_RUN_CALLED 127.0.0.1 8992", result.stdout)
+
+    def test_standalone_fastapi_app_tracks_d2_bridge_disable_override(self) -> None:
+        """Standalone integration app should expose D2 telemetry when bridge-disable is ignored."""
+        code = """
+        import json
+        import os
+        from unittest.mock import patch
+        from ipfs_accelerate_py.mcp import integration
+        from ipfs_accelerate_py.mcp.server import _reset_mcp_facade_telemetry, get_mcp_facade_telemetry
+
+        class DummyUnifiedServer:
+            def __init__(self):
+                self.app = object()
+                self.mcp = None
+
+        _reset_mcp_facade_telemetry()
+
+        with patch('ipfs_accelerate_py.mcp_server.server.create_server', return_value=DummyUnifiedServer()):
+            with patch.dict(
+                os.environ,
+                {
+                    'IPFS_MCP_ENABLE_UNIFIED_BRIDGE': '0',
+                    'IPFS_MCP_FORCE_LEGACY_ROLLBACK': '0',
+                    'IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN': '0',
+                },
+                clear=False,
+            ):
+                app = integration.create_standalone_app(mount_path='/mcp', name='demo', description='demo')
+
+        telemetry = getattr(app, '_mcp_server')._mcp_facade_telemetry
+        counts = get_mcp_facade_telemetry()
+        print('D2_APP_TELEMETRY', json.dumps({'telemetry': telemetry, 'counts': counts}, sort_keys=True))
+        """
+        result = self._run_subprocess(code)
+        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        marker = 'D2_APP_TELEMETRY '
+        payload_line = next((line for line in result.stdout.splitlines() if line.startswith(marker)), '')
+        self.assertTrue(payload_line, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        payload = json.loads(payload_line[len(marker):])
+        telemetry = payload['telemetry']
+        counts = payload['counts']
+        self.assertTrue(telemetry.get('bridge_disable_ignored'))
+        self.assertTrue(telemetry.get('bridge_active'))
+        self.assertEqual(telemetry.get('deprecation_phase'), 'D2_opt_in_only')
+        self.assertEqual(telemetry.get('reason'), 'unified_bridge')
+        self.assertEqual(counts.get('bridge_disable_ignored_calls'), 1)
+        self.assertEqual(counts.get('unified_bridge_calls'), 1)
+
+    def test_standalone_run_server_preserves_d2_rollback_telemetry(self) -> None:
+        """Standalone run_server should preserve explicit rollback telemetry in subprocess mode."""
+        code = """
+        import json
+        import os
+        from unittest.mock import patch
+        from ipfs_accelerate_py.mcp import standalone
+        from ipfs_accelerate_py.mcp.server import _reset_mcp_facade_telemetry, get_mcp_facade_telemetry
+
+        class DummyServer:
+            def __init__(self):
+                self.app = object()
+                self.mcp = None
+
+            def run(self, host=None, port=None):
+                payload = {
+                    'telemetry': getattr(self, '_mcp_facade_telemetry', {}),
+                    'counts': get_mcp_facade_telemetry(),
+                    'host': host,
+                    'port': port,
+                }
+                print('D2_RUN_TELEMETRY', json.dumps(payload, sort_keys=True))
+
+        _reset_mcp_facade_telemetry()
+
+        with patch('ipfs_accelerate_py.mcp.server.MCPServerWrapper', return_value=DummyServer()):
+            with patch.dict(
+                os.environ,
+                {
+                    'IPFS_MCP_ENABLE_UNIFIED_BRIDGE': '1',
+                    'IPFS_MCP_FORCE_LEGACY_ROLLBACK': '1',
+                    'IPFS_MCP_UNIFIED_CUTOVER_DRY_RUN': '0',
+                },
+                clear=False,
+            ):
+                standalone.run_server(host='127.0.0.1', port=8995, name='demo', description='demo', verbose=False)
+        """
+        result = self._run_subprocess(code)
+        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        marker = 'D2_RUN_TELEMETRY '
+        payload_line = next((line for line in result.stdout.splitlines() if line.startswith(marker)), '')
+        self.assertTrue(payload_line, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        payload = json.loads(payload_line[len(marker):])
+        telemetry = payload['telemetry']
+        counts = payload['counts']
+        self.assertEqual(payload['host'], '127.0.0.1')
+        self.assertEqual(payload['port'], 8995)
+        self.assertTrue(telemetry.get('used_legacy_wrapper'))
+        self.assertTrue(telemetry.get('force_legacy_rollback'))
+        self.assertFalse(telemetry.get('bridge_disable_ignored'))
+        self.assertEqual(telemetry.get('deprecation_phase'), 'D2_opt_in_only')
+        self.assertEqual(telemetry.get('reason'), 'force_legacy_rollback')
+        self.assertEqual(counts.get('rollback_calls'), 1)
+        self.assertEqual(counts.get('legacy_wrapper_calls'), 1)
+        self.assertEqual(counts.get('warning_emissions'), 1)
 
     def test_canonical_standalone_run_server_contract(self) -> None:
         """Canonical standalone facade should delegate to legacy standalone path."""

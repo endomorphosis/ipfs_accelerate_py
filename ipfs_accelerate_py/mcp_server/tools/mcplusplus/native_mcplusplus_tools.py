@@ -649,20 +649,13 @@ async def mcplusplus_worker_status(
             method="get_worker_status",
         )
 
-    result = await _invoke_engine_method(
+    return await _invoke_engine_method(
         "TaskQueueEngine",
         "get_worker_status",
         worker_id=worker_id.strip(),
         include_tasks=include_tasks,
         include_metrics=include_metrics,
     )
-    if result.get("status") == "success":
-        result.setdefault("worker_id", worker_id.strip())
-        result.setdefault("include_tasks", include_tasks)
-        result.setdefault("include_metrics", include_metrics)
-        result.setdefault("tasks", [])
-        result.setdefault("metrics", {})
-    return result
 
 
 async def mcplusplus_taskqueue_result(
@@ -690,20 +683,13 @@ async def mcplusplus_taskqueue_result(
             method="get_result",
         )
 
-    result = await _invoke_engine_method(
+    return await _invoke_engine_method(
         "TaskQueueEngine",
         "get_result",
         task_id=task_id.strip(),
         include_output=include_output,
         include_logs=include_logs,
     )
-    if result.get("status") == "success":
-        result.setdefault("task_id", task_id.strip())
-        result.setdefault("include_output", include_output)
-        result.setdefault("include_logs", include_logs)
-        result.setdefault("output", None)
-        result.setdefault("logs", [])
-    return result
 
 
 async def mcplusplus_workflow_get_status(
@@ -969,20 +955,13 @@ async def mcplusplus_workflow_result(
             method="get_result",
         )
 
-    result = await _invoke_engine_method(
+    return await _invoke_engine_method(
         "WorkflowEngine",
         "get_result",
         workflow_id=workflow_id.strip(),
         include_outputs=include_outputs,
         include_logs=include_logs,
     )
-    if result.get("status") == "success":
-        result.setdefault("workflow_id", workflow_id.strip())
-        result.setdefault("include_outputs", include_outputs)
-        result.setdefault("include_logs", include_logs)
-        result.setdefault("outputs", {})
-        result.setdefault("logs", [])
-    return result
 
 
 async def mcplusplus_peer_list(
@@ -1081,7 +1060,7 @@ async def mcplusplus_peer_discover(
             method="discover",
         )
 
-    result = await _invoke_engine_method(
+    return await _invoke_engine_method(
         "PeerEngine",
         "discover",
         capability_filter=[str(item).strip() for item in (capability_filter or [])] or None,
@@ -1089,13 +1068,6 @@ async def mcplusplus_peer_discover(
         timeout=timeout,
         include_metrics=include_metrics,
     )
-    if result.get("status") == "success":
-        result.setdefault("peers", [])
-        result.setdefault("capability_filter", [str(item).strip() for item in (capability_filter or [])])
-        result.setdefault("max_peers", max_peers)
-        result.setdefault("timeout", timeout)
-        result.setdefault("include_metrics", include_metrics)
-    return result
 
 
 async def mcplusplus_peer_connect(
@@ -1207,20 +1179,13 @@ async def mcplusplus_peer_metrics(
             method="get_metrics",
         )
 
-    result = await _invoke_engine_method(
+    return await _invoke_engine_method(
         "PeerEngine",
         "get_metrics",
         peer_id=peer_id.strip(),
         include_history=include_history,
         history_hours=history_hours,
     )
-    if result.get("status") == "success":
-        result.setdefault("peer_id", peer_id.strip())
-        result.setdefault("include_history", include_history)
-        result.setdefault("history_hours", history_hours)
-        result.setdefault("metrics", {})
-        result.setdefault("history", [])
-    return result
 
 
 async def mcplusplus_peer_bootstrap_network(
