@@ -6,8 +6,10 @@ legacy tool names while delegating behavior to canonical mcp_server adapters.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from typing import Any, Dict
+from unittest.mock import Mock
 
 import pytest
 import anyio
@@ -458,6 +460,32 @@ def test_shared_detect_public_ip_tries_fallback_services(monkeypatch):
     assert len(calls) >= 2
 
 
+def test_shared_peer_registration_record_alias_and_shape():
+    """Peer-record helper should be canonically owned and preserve expected shape."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
+
+    assert mcplusplus_module._build_peer_registration_record is canonical_compat._build_peer_registration_record
+
+    record = mcplusplus_module._build_peer_registration_record(
+        peer_id="peer-1",
+        runner_name="runner-a",
+        public_ip="198.51.100.7",
+        listen_port=4100,
+        multiaddr="/ip4/198.51.100.7/tcp/4100/p2p/peer-1",
+        metadata={"role": "cache"},
+    )
+
+    assert record["peer_id"] == "peer-1"
+    assert record["runner_name"] == "runner-a"
+    assert record["public_ip"] == "198.51.100.7"
+    assert record["listen_port"] == 4100
+    assert record["multiaddr"] == "/ip4/198.51.100.7/tcp/4100/p2p/peer-1"
+    assert record["metadata"] == {"role": "cache"}
+    assert isinstance(record["last_seen"], str)
+    assert record["last_seen"]
+
+
 def test_bootstrap_detection_delegates_to_shared_helpers(monkeypatch):
     """Bootstrap shim should use shared detection helpers to avoid duplicate logic."""
     from ipfs_accelerate_py.mcplusplus_module.p2p import bootstrap
@@ -470,6 +498,34 @@ def test_bootstrap_detection_delegates_to_shared_helpers(monkeypatch):
     assert peer_bootstrap.public_ip == "198.51.100.5"
 
 
+def test_bootstrap_register_peer_uses_shared_record_builder(tmp_path, monkeypatch):
+    """Bootstrap registration should reuse the shared canonical peer-record helper."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcplusplus_module.p2p import bootstrap
+
+    assert bootstrap._build_peer_registration_record is mcplusplus_module._build_peer_registration_record
+    monkeypatch.setattr(bootstrap, "_shared_detect_runner_name", lambda: "shared-runner")
+    monkeypatch.setattr(bootstrap, "_shared_detect_public_ip", lambda: "198.51.100.5")
+
+    helper = bootstrap.SimplePeerBootstrap(cache_dir=tmp_path)
+    helper.storage = None
+
+    assert helper.register_peer(
+        peer_id="peer-1",
+        listen_port=4100,
+        multiaddr="/ip4/198.51.100.5/tcp/4100/p2p/peer-1",
+        metadata={"role": "cache"},
+    )
+
+    peer_file = tmp_path / "peer_shared-runner.json"
+    payload = json.loads(peer_file.read_text())
+    assert payload["peer_id"] == "peer-1"
+    assert payload["runner_name"] == "shared-runner"
+    assert payload["public_ip"] == "198.51.100.5"
+    assert payload["listen_port"] == 4100
+    assert payload["metadata"] == {"role": "cache"}
+
+
 def test_peer_registry_detection_delegates_to_shared_helpers(monkeypatch):
     """Peer-registry shim should use shared detection helpers to avoid drift."""
     from ipfs_accelerate_py.mcplusplus_module.p2p import peer_registry
@@ -480,6 +536,53 @@ def test_peer_registry_detection_delegates_to_shared_helpers(monkeypatch):
     registry = peer_registry.P2PPeerRegistry(repo="owner/repo")
     assert registry.runner_name == "shared-runner"
     assert registry.public_ip == "198.51.100.6"
+
+
+def test_peer_registry_register_peer_uses_shared_record_builder(monkeypatch):
+    """Issue-backed registry should render the shared canonical peer-record helper output."""
+    import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
+    from ipfs_accelerate_py.mcplusplus_module.p2p import peer_registry
+
+    assert peer_registry._build_peer_registration_record is mcplusplus_module._build_peer_registration_record
+    monkeypatch.setattr(peer_registry, "_shared_detect_runner_name", lambda: "shared-runner")
+    monkeypatch.setattr(peer_registry, "_shared_detect_public_ip", lambda: "198.51.100.6")
+
+    registry = peer_registry.P2PPeerRegistry(repo="owner/repo")
+    registry.storage = None
+    monkeypatch.setattr(registry, "_get_or_create_registry_issue_number", lambda: 17)
+    monkeypatch.setattr(registry, "_list_registry_comments", lambda _issue_number: [])
+
+    captured: Dict[str, Any] = {}
+
+    def _fake_gh_api(method: str, endpoint: str, payload=None, timeout: int = 60):
+        captured.update(
+            {
+                "method": method,
+                "endpoint": endpoint,
+                "payload": payload,
+                "timeout": timeout,
+            }
+        )
+        return Mock(returncode=0, stderr="", stdout="")
+
+    monkeypatch.setattr(registry, "_gh_api", _fake_gh_api)
+
+    assert registry.register_peer(
+        peer_id="peer-2",
+        listen_port=4200,
+        multiaddr="/ip4/198.51.100.6/tcp/4200/p2p/peer-2",
+        metadata={"region": "test"},
+    )
+
+    assert captured["method"] == "POST"
+    assert captured["endpoint"].endswith("/issues/17/comments")
+    parsed = registry._parse_peer_comment(captured["payload"]["body"])
+    assert parsed is not None
+    assert parsed["peer_id"] == "peer-2"
+    assert parsed["runner_name"] == "shared-runner"
+    assert parsed["public_ip"] == "198.51.100.6"
+    assert parsed["listen_port"] == 4200
+    assert parsed["metadata"] == {"region": "test"}
 
 
 def test_workflow_module_optional_dependency_contract():

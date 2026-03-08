@@ -18,11 +18,12 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional
 
 from .. import (
+    _build_peer_registration_record,
     _create_storage_wrapper,
     _detect_public_ip as _shared_detect_public_ip,
     _detect_runner_name as _shared_detect_runner_name,
@@ -113,15 +114,14 @@ class SimplePeerBootstrap:
             True if registration succeeded
         """
         try:
-            peer_info = {
-                "peer_id": peer_id,
-                "runner_name": self.runner_name,
-                "public_ip": self.public_ip,
-                "listen_port": listen_port,
-                "multiaddr": multiaddr,
-                "last_seen": datetime.now(UTC).isoformat(),
-                "metadata": metadata or {}
-            }
+            peer_info = _build_peer_registration_record(
+                peer_id=peer_id,
+                runner_name=self.runner_name,
+                public_ip=self.public_ip,
+                listen_port=listen_port,
+                multiaddr=multiaddr,
+                metadata=metadata,
+            )
             
             # Store peer info in local file
             peer_file = self.cache_dir / f"peer_{self.runner_name}.json"

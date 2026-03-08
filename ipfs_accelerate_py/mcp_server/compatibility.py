@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from importlib import import_module
 import os
 import socket
@@ -86,6 +87,27 @@ def _resolve_p2p_registrars():
         return register_p2p_taskqueue_tools, register_p2p_workflow_tools
 
 
+def _build_peer_registration_record(
+    *,
+    peer_id: str,
+    runner_name: str,
+    public_ip: Optional[str],
+    listen_port: int,
+    multiaddr: str,
+    metadata: Optional[dict] = None,
+) -> dict:
+    """Build a shared peer-registration payload for shim backends."""
+    return {
+        "peer_id": str(peer_id),
+        "runner_name": str(runner_name),
+        "public_ip": public_ip,
+        "listen_port": listen_port,
+        "multiaddr": str(multiaddr),
+        "last_seen": datetime.now(UTC).isoformat(),
+        "metadata": dict(metadata or {}),
+    }
+
+
 def _detect_runner_name() -> str:
     """Detect runner identity from environment with hostname fallback."""
     runner_name = str(os.environ.get("RUNNER_NAME") or "").strip()
@@ -121,6 +143,7 @@ __all__ = [
     "_resolve_storage_wrapper_factory",
     "_create_storage_wrapper",
     "_resolve_p2p_registrars",
+    "_build_peer_registration_record",
     "_detect_runner_name",
     "_detect_public_ip",
 ]

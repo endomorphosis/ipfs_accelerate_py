@@ -55,6 +55,7 @@ __version__ = "0.1.0"
 __author__ = "endomorphosis"
 
 from ipfs_accelerate_py.mcp_server.compatibility import (
+    _build_peer_registration_record,
     _create_storage_wrapper,
     _detect_public_ip,
     _detect_runner_name,
@@ -92,6 +93,7 @@ __all__ = [
     "_missing_dependency_stub",
     "_resolve_storage_wrapper_factory",
     "_create_storage_wrapper",
+    "_build_peer_registration_record",
     "_detect_runner_name",
     "_detect_public_ip",
     "TrioMCPServer",

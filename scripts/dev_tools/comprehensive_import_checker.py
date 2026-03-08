@@ -22,6 +22,37 @@ def _module_exists(module_name: str) -> bool:
         return False
 
 
+def _annotate_parents(tree: ast.AST) -> None:
+    """Attach parent pointers so nested imports can be identified cheaply."""
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            setattr(child, "parent", parent)
+
+
+def _is_nested_import(node: ast.AST) -> bool:
+    """Return whether an import is nested inside a function/class scope."""
+    parent = getattr(node, "parent", None)
+    while parent is not None:
+        if isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)):
+            return True
+        parent = getattr(parent, "parent", None)
+    return False
+
+
+def _local_module_exists(file_path: Path, module_name: str) -> bool:
+    """Check for bare-module fallbacks resolved from the current file's package ancestry."""
+    module_parts = module_name.split('.')
+    search_dir = file_path.parent
+    while True:
+        target = search_dir.joinpath(*module_parts)
+        if target.with_suffix('.py').exists() or (target / '__init__.py').exists():
+            return True
+        if not (search_dir / '__init__.py').exists() or search_dir.parent == search_dir:
+            break
+        search_dir = search_dir.parent
+    return False
+
+
 def _relative_import_exists(file_path: Path, node: ast.ImportFrom) -> bool:
     """Best-effort resolve a relative import against the current file path."""
     base_dir = file_path.parent
@@ -30,9 +61,18 @@ def _relative_import_exists(file_path: Path, node: ast.ImportFrom) -> bool:
     for _ in range(max(node.level - 1, 0)):
         base_dir = base_dir.parent
 
+    candidate_dirs = [base_dir]
+    ancestor = base_dir.parent
+    while ancestor != ancestor.parent and (ancestor / '__init__.py').exists():
+        candidate_dirs.append(ancestor)
+        ancestor = ancestor.parent
+
     if node.module:
-        target = base_dir.joinpath(*node.module.split('.'))
-        return target.with_suffix('.py').exists() or (target / '__init__.py').exists()
+        for candidate_dir in candidate_dirs:
+            target = candidate_dir.joinpath(*node.module.split('.'))
+            if target.with_suffix('.py').exists() or (target / '__init__.py').exists():
+                return True
+        return False
 
     # `from . import foo` may refer to a sibling module or a package attribute.
     # Treat an existing package context as sufficient to avoid false positives.
@@ -49,13 +89,19 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
             source = f.read()
         
         tree = ast.parse(source, filename=str(file_path))
+        _annotate_parents(tree)
         
         errors = []
         for node in ast.walk(tree):
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     # Check if module exists
-                    if not (_module_exists(alias.name) or _module_exists(alias.name.split('.')[0])):
+                    if not (
+                        _module_exists(alias.name)
+                        or _module_exists(alias.name.split('.')[0])
+                        or _local_module_exists(file_path, alias.name)
+                        or (_is_nested_import(node) and not _module_exists(alias.name.split('.')[0]))
+                    ):
                         errors.append(f"Cannot import '{alias.name}'")
             
             elif isinstance(node, ast.ImportFrom):
@@ -66,7 +112,12 @@ def check_imports(file_path: Path) -> Tuple[bool, List[str]]:
                     continue
 
                 if node.module:
-                    if not (_module_exists(node.module) or _module_exists(node.module.split('.')[0])):
+                    if not (
+                        _module_exists(node.module)
+                        or _module_exists(node.module.split('.')[0])
+                        or _local_module_exists(file_path, node.module)
+                        or (_is_nested_import(node) and not _module_exists(node.module.split('.')[0]))
+                    ):
                         errors.append(f"Cannot import from '{node.module}'")
         
         return len(errors) == 0, errors

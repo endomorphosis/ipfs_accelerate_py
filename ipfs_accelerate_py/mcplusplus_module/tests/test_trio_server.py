@@ -98,6 +98,8 @@ class TestTrioMCPServer:
         from ipfs_accelerate_py.mcplusplus_module import tools as tools_module
         from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
+        assert tools_module._resolve_p2p_registrars is canonical_compat._resolve_p2p_registrars
+
         def _taskqueue(_mcp):
             return None
 
@@ -113,7 +115,6 @@ class TestTrioMCPServer:
         server = TrioMCPServer()
         taskqueue_registrar, workflow_registrar = server._resolve_p2p_registrars()
 
-        assert tools_module._resolve_p2p_registrars is canonical_compat._resolve_p2p_registrars
         assert taskqueue_registrar is _taskqueue
         assert workflow_registrar is _workflow
 

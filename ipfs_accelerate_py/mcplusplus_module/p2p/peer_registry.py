@@ -23,9 +23,10 @@ import subprocess
 import time
 import tempfile
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from .. import (
+    _build_peer_registration_record,
     _create_storage_wrapper,
     _detect_public_ip as _shared_detect_public_ip,
     _detect_runner_name as _shared_detect_runner_name,
@@ -295,15 +296,14 @@ class P2PPeerRegistry:
             True if registration succeeded
         """
         try:
-            peer_info = {
-                "peer_id": peer_id,
-                "runner_name": self.runner_name,
-                "public_ip": self.public_ip,
-                "listen_port": listen_port,
-                "multiaddr": multiaddr,
-                "last_seen": datetime.now(UTC).isoformat(),
-                "metadata": metadata or {}
-            }
+            peer_info = _build_peer_registration_record(
+                peer_id=peer_id,
+                runner_name=self.runner_name,
+                public_ip=self.public_ip,
+                listen_port=listen_port,
+                multiaddr=multiaddr,
+                metadata=metadata,
+            )
 
             issue_number = self._get_or_create_registry_issue_number()
             if issue_number is None:
