@@ -16980,6 +16980,68 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_lizardpersons_function_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
+        """lizardpersons_function_tools bootstrap dispatch should normalize contradictory failed payloads."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="lizardpersons-function-tools-failed-payload")
+
+        from ipfs_accelerate_py.mcp_server.tools.lizardpersons_function_tools import (
+            native_lizardpersons_function_tools,
+        )
+
+        async def _failed_delegate(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run_flow() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_lizardpersons_function_tools._API,
+                {"get_current_time": _failed_delegate},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "lizardpersons_function_tools",
+                        "get_current_time",
+                        {
+                            "format_type": "timestamp",
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failure")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_legacy_mcp_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """legacy_mcp_tools should expose schema contracts and deterministic envelopes."""
 
