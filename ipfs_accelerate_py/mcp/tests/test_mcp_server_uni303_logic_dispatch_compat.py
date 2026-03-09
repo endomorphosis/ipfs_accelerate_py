@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""UNI-294 logic-tools dispatch compatibility tests."""
+"""UNI-303 logic-tools dispatch compatibility tests."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ from ipfs_accelerate_py.mcp.server import create_mcp_server
 from ipfs_accelerate_py.mcp_server.tools.logic_tools import native_logic_tools
 
 
-class TestMCPServerUNI294LogicDispatchCompat(unittest.TestCase):
+class TestMCPServerUNI303LogicDispatchCompat(unittest.TestCase):
     def _assert_dispatch_success_envelope(self, response: dict) -> dict:
         self.assertIsInstance(response, dict)
         self.assertTrue(response.get("ok"), response)
