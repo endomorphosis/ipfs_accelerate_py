@@ -287,7 +287,8 @@ def _normalize_payload(result: Any) -> Dict[str, Any]:
     if isinstance(result, dict):
         payload = dict(result)
         if payload.get("error") or payload.get("success") is False:
-            payload.setdefault("status", "error")
+            payload["status"] = "error"
+            payload.setdefault("success", False)
         else:
             payload.setdefault("status", "success")
         return payload

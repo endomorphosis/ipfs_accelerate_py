@@ -155,6 +155,30 @@ class TestMCPServerUNI127SecurityTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_check_access_permission_contradictory_failed_delegate_payload_infers_error(self) -> None:
+        async def _run() -> None:
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.security_tools.native_security_tools._CHECK_ACCESS_PERMISSION"
+            ) as mock_impl:
+                async def _impl(**kwargs):
+                    _ = kwargs
+                    return {"status": "success", "success": False, "error": "backend denied"}
+
+                mock_impl.side_effect = _impl
+
+                result = await check_access_permission(
+                    resource_id="resource-1",
+                    user_id="user-1",
+                    permission_type="read",
+                )
+
+                self.assertEqual(result.get("status"), "error")
+                self.assertEqual(result.get("success"), False)
+                self.assertEqual(result.get("allowed"), False)
+                self.assertIn("backend denied", str(result.get("error", "")))
+
+        anyio.run(_run)
+
     def test_check_access_permissions_batch_requires_non_empty_array(self) -> None:
         async def _run() -> None:
             result = await check_access_permissions_batch(requests=[])

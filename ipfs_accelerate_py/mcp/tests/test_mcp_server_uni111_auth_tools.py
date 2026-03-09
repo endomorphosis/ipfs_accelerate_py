@@ -15,6 +15,8 @@ from ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools import (
     validate_token,
 )
 
+import ipfs_accelerate_py.mcp_server.tools.auth_tools.native_auth_tools as native_auth_tools
+
 
 class _DummyManager:
     def __init__(self) -> None:
@@ -248,6 +250,39 @@ class TestMCPServerUNI111AuthTools(unittest.TestCase):
             self.assertEqual(user_info_result.get("status"), "success")
             self.assertEqual((user_info_result.get("user_info") or {}).get("permissions"), [])
             self.assertEqual((user_info_result.get("user_info") or {}).get("profile"), {})
+
+        anyio.run(_run)
+
+    def test_auth_tools_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run() -> None:
+            with patch.dict(
+                native_auth_tools._API,
+                {
+                    "authenticate_user": _contradictory_failure,
+                    "validate_token": _contradictory_failure,
+                    "get_user_info": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                authenticated = await authenticate_user(username="demo", password="pw")
+                validated = await validate_token(token="tok")
+                user_info = await get_user_info(token="tok")
+
+            self.assertEqual(authenticated.get("status"), "error")
+            self.assertEqual(authenticated.get("success"), False)
+            self.assertEqual(authenticated.get("error"), "delegate failure")
+
+            self.assertEqual(validated.get("status"), "error")
+            self.assertEqual(validated.get("success"), False)
+            self.assertEqual(validated.get("valid"), False)
+            self.assertEqual(validated.get("error"), "delegate failure")
+
+            self.assertEqual(user_info.get("status"), "error")
+            self.assertEqual(user_info.get("success"), False)
+            self.assertEqual(user_info.get("error"), "delegate failure")
 
         anyio.run(_run)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from importlib import import_module
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
@@ -16,10 +17,11 @@ _LOCAL_TDFOL_KB_STATE: Dict[str, List[str]] = {
 def _load_logic_tools_api() -> Dict[str, Any]:
     """Resolve source logic-tools APIs with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.logic_tools.logic_capabilities_tool import (  # type: ignore
-            logic_capabilities as _logic_capabilities,
-            logic_health as _logic_health,
+        logic_capabilities_module = import_module(
+            "ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.logic_tools.logic_capabilities_tool"
         )
+        _logic_capabilities = getattr(logic_capabilities_module, "logic_capabilities")
+        _logic_health = getattr(logic_capabilities_module, "logic_health")
         from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.logic_tools.tdfol_parse_tool import (  # type: ignore
             tdfol_parse as _tdfol_parse,
         )
@@ -294,7 +296,7 @@ _API = _load_logic_tools_api()
 
 def _error_result(message: str, context: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """Return deterministic logic-tool error envelopes."""
-    payload: Dict[str, Any] = {"success": False, "error": message}
+    payload: Dict[str, Any] = {"status": "error", "success": False, "error": message}
     if context:
         payload.update(context)
     return payload
@@ -310,8 +312,13 @@ async def _await_maybe(result: Any) -> Any:
 def _normalize_result(payload: Any) -> Dict[str, Any]:
     """Normalize delegate payloads to deterministic dictionary envelopes."""
     normalized: Dict[str, Any] = dict(payload or {}) if isinstance(payload, dict) else {"result": payload}
-    if "success" not in normalized:
-        normalized["success"] = "error" not in normalized
+    failed = normalized.get("success") is False or bool(normalized.get("error")) or bool(normalized.get("errors"))
+    if failed:
+        normalized["status"] = "error"
+        normalized["success"] = False
+    else:
+        normalized.setdefault("status", "success")
+        normalized.setdefault("success", True)
     return normalized
 
 
@@ -647,7 +654,10 @@ async def cec_validate_formula(formula: str) -> Dict[str, Any]:
     """Validate a CEC/DCEC formula string."""
     normalized_formula = _normalize_non_empty_string(formula, "formula")
     if normalized_formula is None:
-        return _error_result("'formula' is required.", {"valid": False, "errors": ["'formula' is required."], "warnings": []})
+        return _error_result(
+            "'formula' is required.",
+            {"valid": False, "errors": ["'formula' is required."], "warnings": []},
+        )
     try:
         payload = await _await_maybe(_API["cec_validate_formula"](formula=normalized_formula))
     except Exception as exc:

@@ -181,6 +181,27 @@ def _normalize_session_payload(
     }
 
 
+def _normalize_delegate_payload(result: Any) -> Optional[Dict[str, Any]]:
+    """Normalize contradictory failed-manager payloads into stable error envelopes."""
+    if not isinstance(result, dict):
+        return None
+
+    normalized = dict(result)
+    status = str(normalized.get("status", "")).strip().lower()
+    success = normalized.get("success")
+    error = normalized.get("error")
+    has_error = error not in (None, "")
+
+    if success is False or (status == "success" and has_error):
+        normalized["status"] = "error"
+        normalized["success"] = False
+        if has_error and "message" not in normalized:
+            normalized["message"] = str(error)
+        return normalized
+
+    return None
+
+
 async def create_session(
     session_name: str,
     user_id: str = "default_user",
@@ -235,6 +256,10 @@ async def create_session(
             timeout_seconds=config.get("timeout_seconds", 3600),
         )
 
+        normalized = _normalize_delegate_payload(session)
+        if normalized is not None:
+            return normalized
+
         normalized_session = _normalize_session_payload(
             session,
             session_name=session_name,
@@ -285,6 +310,9 @@ async def manage_session_state(session_id: str, action: str, **kwargs: Any) -> D
         manager = _get_session_manager()
         if action == "get":
             session = await manager.get_session(session_id)
+            normalized = _normalize_delegate_payload(session)
+            if normalized is not None:
+                return normalized
             if not session:
                 return {"status": "error", "message": "Session not found"}
             return {
@@ -304,6 +332,9 @@ async def manage_session_state(session_id: str, action: str, **kwargs: Any) -> D
 
         if action == "update":
             session = await manager.update_session(session_id, **kwargs)
+            normalized = _normalize_delegate_payload(session)
+            if normalized is not None:
+                return normalized
             if not session:
                 return {"status": "error", "message": "Session not found"}
             return {
@@ -315,6 +346,9 @@ async def manage_session_state(session_id: str, action: str, **kwargs: Any) -> D
 
         if action == "pause":
             session = await manager.update_session(session_id, status="paused")
+            normalized = _normalize_delegate_payload(session)
+            if normalized is not None:
+                return normalized
             if not session:
                 return {"status": "error", "message": "Session not found"}
             return {
@@ -326,6 +360,9 @@ async def manage_session_state(session_id: str, action: str, **kwargs: Any) -> D
 
         if action == "resume":
             session = await manager.update_session(session_id, status="active")
+            normalized = _normalize_delegate_payload(session)
+            if normalized is not None:
+                return normalized
             if not session:
                 return {"status": "error", "message": "Session not found"}
             return {
@@ -340,6 +377,9 @@ async def manage_session_state(session_id: str, action: str, **kwargs: Any) -> D
             if not isinstance(extend_minutes, int) or extend_minutes <= 0:
                 return {"status": "error", "message": "extend_minutes must be a positive integer"}
             session = await manager.get_session(session_id)
+            normalized = _normalize_delegate_payload(session)
+            if normalized is not None:
+                return normalized
             if not session:
                 return {"status": "error", "message": "Session not found"}
             current_expires = session.get("expires_at")
@@ -359,6 +399,9 @@ async def manage_session_state(session_id: str, action: str, **kwargs: Any) -> D
 
         if action == "delete":
             deleted = await manager.delete_session(session_id)
+            normalized = _normalize_delegate_payload(deleted)
+            if normalized is not None:
+                return normalized
             if not deleted:
                 return {"status": "error", "message": "Session not found"}
             return {
@@ -392,6 +435,9 @@ async def cleanup_sessions(
         manager = session_manager or _get_session_manager()
         if cleanup_type == "expired":
             expired = await manager.cleanup_expired_sessions()
+            normalized = _normalize_delegate_payload(expired)
+            if normalized is not None:
+                return normalized
             expired_count = len(expired) if isinstance(expired, list) else int(expired)
             return {
                 "status": "success",
@@ -402,6 +448,9 @@ async def cleanup_sessions(
 
         if cleanup_type == "all":
             sessions = await manager.list_sessions()
+            normalized = _normalize_delegate_payload(sessions)
+            if normalized is not None:
+                return normalized
             deleted_count = 0
             for session in sessions:
                 if await manager.delete_session(str(session.get("session_id", ""))):
@@ -415,6 +464,9 @@ async def cleanup_sessions(
 
         if cleanup_type == "by_user":
             user_sessions = await manager.list_sessions(user_id=user_id)
+            normalized = _normalize_delegate_payload(user_sessions)
+            if normalized is not None:
+                return normalized
             deleted_count = 0
             for session in user_sessions:
                 if await manager.delete_session(str(session.get("session_id", ""))):
@@ -458,6 +510,9 @@ async def manage_session(
                     "code": "INVALID_SESSION_ID",
                 }
             session = await _get_session_manager().get_session(str(session_id))
+            normalized = _normalize_delegate_payload(session)
+            if normalized is not None:
+                return normalized
             if not session:
                 return {
                     "status": "error",
@@ -489,6 +544,9 @@ async def manage_session(
                     "code": "INVALID_SESSION_ID",
                 }
             session = await _get_session_manager().update_session(str(session_id), **(updates or {}))
+            normalized = _normalize_delegate_payload(session)
+            if normalized is not None:
+                return normalized
             if not session:
                 return {
                     "status": "error",
@@ -520,6 +578,9 @@ async def manage_session(
                     "code": "INVALID_SESSION_ID",
                 }
             deleted = await _get_session_manager().delete_session(str(session_id))
+            normalized = _normalize_delegate_payload(deleted)
+            if normalized is not None:
+                return normalized
             if not deleted:
                 return {
                     "status": "error",
@@ -534,6 +595,9 @@ async def manage_session(
 
         if normalized_action == "list":
             sessions = await _get_session_manager().list_sessions(**(filters or {}))
+            normalized = _normalize_delegate_payload(sessions)
+            if normalized is not None:
+                return normalized
             return {
                 "status": "success",
                 "sessions": sessions,
@@ -570,6 +634,9 @@ async def manage_session(
                 expired = await _get_session_manager().cleanup_expired_sessions(max_age_hours=max_age_hours)
             else:
                 expired = []
+            normalized = _normalize_delegate_payload(expired)
+            if normalized is not None:
+                return normalized
             expired_count = len(expired) if isinstance(expired, list) else int(expired)
             return {
                 "status": "success",
@@ -615,6 +682,9 @@ async def get_session_state(
             }
 
         session = await _get_session_manager().get_session(str(session_id))
+        normalized = _normalize_delegate_payload(session)
+        if normalized is not None:
+            return normalized
         if not session:
             return {
                 "status": "error",

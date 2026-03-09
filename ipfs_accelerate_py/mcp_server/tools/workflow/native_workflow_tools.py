@@ -9,6 +9,26 @@ def _error_result(message: str) -> Dict[str, Any]:
     return {"status": "error", "success": False, "error": message}
 
 
+def _normalize_delegate_payload(result: Any) -> Optional[Dict[str, Any]]:
+    """Normalize contradictory manager payloads into deterministic envelopes."""
+    if not isinstance(result, dict):
+        return None
+
+    payload = dict(result)
+    failed = (
+        payload.get("status") == "error"
+        or payload.get("success") is False
+        or bool(payload.get("error"))
+    )
+    if failed:
+        payload["status"] = "error"
+        payload.setdefault("success", False)
+    else:
+        payload.setdefault("status", "success")
+        payload.setdefault("success", True)
+    return payload
+
+
 def _get_workflow_manager() -> Optional[Any]:
     """Resolve workflow manager lazily to avoid hard dependency at import time."""
     try:
@@ -75,6 +95,10 @@ def list_workflows(status: str | None = None) -> Dict[str, Any]:
 
     normalized_status = (status or "").strip() or None
     workflows = manager.list_workflows(status=normalized_status)
+    normalized = _normalize_delegate_payload(workflows)
+    if normalized is not None:
+        return normalized
+
     workflow_list = []
     for wf in workflows:
         progress = wf.get_progress()
@@ -115,6 +139,10 @@ def get_workflow(workflow_id: str) -> Dict[str, Any]:
         }
 
     workflow = manager.get_workflow(workflow_id.strip())
+    normalized = _normalize_delegate_payload(workflow)
+    if normalized is not None:
+        return normalized
+
     if not workflow:
         return {
             "status": "error",
@@ -177,6 +205,10 @@ def create_workflow(name: str, description: str, tasks: List[Dict[str, Any]]) ->
         }
 
     workflow = manager.create_workflow(name.strip(), description.strip(), tasks)
+    normalized = _normalize_delegate_payload(workflow)
+    if normalized is not None:
+        return normalized
+
     return {
         "status": "success",
         "success": True,
@@ -218,6 +250,10 @@ def update_workflow(
         description=description.strip() if isinstance(description, str) else description,
         tasks=tasks,
     )
+    normalized = _normalize_delegate_payload(workflow)
+    if normalized is not None:
+        return normalized
+
     return {
         "status": "success",
         "success": True,
@@ -242,7 +278,13 @@ def delete_workflow(workflow_id: str) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    manager.delete_workflow(workflow_id.strip())
+    result = manager.delete_workflow(workflow_id.strip())
+    normalized = _normalize_delegate_payload(result)
+    if normalized is not None:
+        normalized.setdefault("workflow_id", workflow_id.strip())
+        normalized.setdefault("message", "Workflow deleted successfully")
+        return normalized
+
     return {
         "status": "success",
         "success": True,
@@ -264,7 +306,13 @@ def start_workflow(workflow_id: str) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    manager.start_workflow(workflow_id.strip())
+    result = manager.start_workflow(workflow_id.strip())
+    normalized = _normalize_delegate_payload(result)
+    if normalized is not None:
+        normalized.setdefault("workflow_id", workflow_id.strip())
+        normalized.setdefault("message", "Workflow started successfully")
+        return normalized
+
     return {
         "status": "success",
         "success": True,
@@ -286,7 +334,13 @@ def pause_workflow(workflow_id: str) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    manager.pause_workflow(workflow_id.strip())
+    result = manager.pause_workflow(workflow_id.strip())
+    normalized = _normalize_delegate_payload(result)
+    if normalized is not None:
+        normalized.setdefault("workflow_id", workflow_id.strip())
+        normalized.setdefault("message", "Workflow paused successfully")
+        return normalized
+
     return {
         "status": "success",
         "success": True,
@@ -308,7 +362,13 @@ def stop_workflow(workflow_id: str) -> Dict[str, Any]:
             "error": "Workflow manager not available",
         }
 
-    manager.stop_workflow(workflow_id.strip())
+    result = manager.stop_workflow(workflow_id.strip())
+    normalized = _normalize_delegate_payload(result)
+    if normalized is not None:
+        normalized.setdefault("workflow_id", workflow_id.strip())
+        normalized.setdefault("message", "Workflow stopped successfully")
+        return normalized
+
     return {
         "status": "success",
         "success": True,

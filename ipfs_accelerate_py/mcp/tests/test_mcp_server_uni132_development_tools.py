@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import anyio
 
+import ipfs_accelerate_py.mcp_server.tools.development_tools.native_development_tools as native_development_tools
+
 from ipfs_accelerate_py.mcp_server.tools.development_tools.native_development_tools import (
     codebase_search,
     documentation_generator,
@@ -113,6 +115,49 @@ class TestMCPServerUNI132DevelopmentTools(unittest.TestCase):
             result = await vscode_cli_status(install_dir="   ")
             self.assertEqual(result.get("status"), "error")
             self.assertIn("install_dir must be a non-empty string", str(result.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _run() -> None:
+            async def _contradictory_failure(**_: object) -> dict:
+                return {"status": "success", "success": False, "error": "delegate failure"}
+
+            with patch.dict(
+                native_development_tools._API,
+                {
+                    "codebase_search": _contradictory_failure,
+                    "documentation_generator": _contradictory_failure,
+                    "run_comprehensive_tests": _contradictory_failure,
+                    "vscode_cli_execute": _contradictory_failure,
+                    "vscode_cli_status": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                searched = await codebase_search(pattern="README", path="src")
+                self.assertEqual(searched.get("status"), "error")
+                self.assertEqual(searched.get("success"), False)
+                self.assertEqual(searched.get("error"), "delegate failure")
+
+                documented = await documentation_generator(input_path="src", output_path="docs")
+                self.assertEqual(documented.get("status"), "error")
+                self.assertEqual(documented.get("success"), False)
+                self.assertEqual(documented.get("error"), "delegate failure")
+
+                tested = await run_comprehensive_tests(path=".")
+                self.assertEqual(tested.get("status"), "error")
+                self.assertEqual(tested.get("success"), False)
+                self.assertEqual(tested.get("error"), "delegate failure")
+
+                executed = await vscode_cli_execute(command=["--version"], timeout=30)
+                self.assertEqual(executed.get("status"), "error")
+                self.assertEqual(executed.get("success"), False)
+                self.assertEqual(executed.get("error"), "delegate failure")
+
+                status = await vscode_cli_status(install_dir="/opt/code")
+                self.assertEqual(status.get("status"), "error")
+                self.assertEqual(status.get("success"), False)
+                self.assertEqual(status.get("error"), "delegate failure")
 
         anyio.run(_run)
 

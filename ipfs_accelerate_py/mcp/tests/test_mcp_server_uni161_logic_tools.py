@@ -95,7 +95,10 @@ class TestMCPServerUNI161LogicTools(unittest.TestCase):
                 timeout_ms=0,
             )
             self.assertEqual(invalid_timeout.get("success"), False)
-            self.assertIn("'timeout_ms' must be an integer greater than or equal to 1", str(invalid_timeout.get("error", "")))
+            self.assertIn(
+                "'timeout_ms' must be an integer greater than or equal to 1",
+                str(invalid_timeout.get("error", "")),
+            )
 
             with patch.dict(
                 logic_tools._API,
@@ -145,7 +148,10 @@ class TestMCPServerUNI161LogicTools(unittest.TestCase):
 
             invalid_timeout = await logic_tools.cec_prove(goal="P(a)", timeout=0)
             self.assertEqual(invalid_timeout.get("success"), False)
-            self.assertIn("'timeout' must be an integer greater than or equal to 1", str(invalid_timeout.get("error", "")))
+            self.assertIn(
+                "'timeout' must be an integer greater than or equal to 1",
+                str(invalid_timeout.get("error", "")),
+            )
 
             invalid_parse = await logic_tools.cec_parse(text="acts(agent)", language="")
             self.assertEqual(invalid_parse.get("success"), False)
@@ -173,6 +179,38 @@ class TestMCPServerUNI161LogicTools(unittest.TestCase):
                 wrapped = await logic_tools.cec_prove(goal="P(a)")
             self.assertEqual(wrapped.get("success"), False)
             self.assertIn("cec_prove failed", str(wrapped.get("error", "")))
+
+        anyio.run(_run)
+
+    def test_logic_tools_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run() -> None:
+            with patch.dict(
+                logic_tools._API,
+                {
+                    "tdfol_parse": _contradictory_failure,
+                    "tdfol_prove": _contradictory_failure,
+                    "cec_prove": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                parsed = await logic_tools.tdfol_parse(text="forall x P(x)")
+                proved = await logic_tools.tdfol_prove(formula="forall x P(x)")
+                cec_proved = await logic_tools.cec_prove(goal="P(a)")
+
+            self.assertEqual(parsed.get("status"), "error")
+            self.assertEqual(parsed.get("success"), False)
+            self.assertEqual(parsed.get("error"), "delegate failed")
+
+            self.assertEqual(proved.get("status"), "error")
+            self.assertEqual(proved.get("success"), False)
+            self.assertEqual(proved.get("error"), "delegate failed")
+
+            self.assertEqual(cec_proved.get("status"), "error")
+            self.assertEqual(cec_proved.get("success"), False)
+            self.assertEqual(cec_proved.get("error"), "delegate failed")
 
         anyio.run(_run)
 

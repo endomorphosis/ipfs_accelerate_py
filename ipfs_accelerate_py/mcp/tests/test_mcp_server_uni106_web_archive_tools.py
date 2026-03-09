@@ -4,8 +4,11 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 import anyio
+
+import ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_tools as native_web_archive_tools
 
 from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_tools import (
     archive_to_archive_is,
@@ -16,6 +19,7 @@ from ipfs_accelerate_py.mcp_server.tools.web_archive_tools.native_web_archive_to
     batch_scrape_with_autoscraper,
     check_archive_status,
     clear_brave_cache,
+    create_warc,
     create_autoscraper_model,
     extract_dataset_from_cdxj,
     extract_links_from_warc,
@@ -301,6 +305,64 @@ class TestMCPServerUNI106WebArchiveTools(unittest.TestCase):
             self.assertIn(collection_info_result.get("status"), ["success", "error"])
             if collection_info_result.get("status") == "error":
                 self.assertIn("error", collection_info_result)
+
+        anyio.run(_run)
+
+    def test_representative_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _run() -> None:
+            async def _contradictory_failure(**_: object) -> dict:
+                return {"status": "success", "success": False, "error": "delegate failure"}
+
+            with patch.dict(
+                native_web_archive_tools._API,
+                {
+                    "create_warc": _contradictory_failure,
+                    "archive_to_wayback": _contradictory_failure,
+                    "search_common_crawl": _contradictory_failure,
+                    "get_common_crawl_content": _contradictory_failure,
+                    "search_github_repositories": _contradictory_failure,
+                    "unified_search": _contradictory_failure,
+                    "unified_fetch": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                created = await create_warc(url="https://example.com")
+                self.assertEqual(created.get("status"), "error")
+                self.assertEqual(created.get("success"), False)
+                self.assertEqual(created.get("error"), "delegate failure")
+
+                archived = await archive_to_wayback(url="https://example.com")
+                self.assertEqual(archived.get("status"), "error")
+                self.assertEqual(archived.get("success"), False)
+                self.assertEqual(archived.get("error"), "delegate failure")
+
+                searched = await search_common_crawl(domain="example.com")
+                self.assertEqual(searched.get("status"), "error")
+                self.assertEqual(searched.get("success"), False)
+                self.assertEqual(searched.get("error"), "delegate failure")
+
+                content = await get_common_crawl_content(
+                    url="https://example.com",
+                    timestamp="20240101000000",
+                )
+                self.assertEqual(content.get("status"), "error")
+                self.assertEqual(content.get("success"), False)
+                self.assertEqual(content.get("error"), "delegate failure")
+
+                repositories = await search_github_repositories(query="ipfs")
+                self.assertEqual(repositories.get("status"), "error")
+                self.assertEqual(repositories.get("success"), False)
+                self.assertEqual(repositories.get("error"), "delegate failure")
+
+                unified_search_result = await unified_search(query="ipfs")
+                self.assertEqual(unified_search_result.get("status"), "error")
+                self.assertEqual(unified_search_result.get("success"), False)
+                self.assertEqual(unified_search_result.get("error"), "delegate failure")
+
+                unified_fetch_result = await unified_fetch(url="https://example.com")
+                self.assertEqual(unified_fetch_result.get("status"), "error")
+                self.assertEqual(unified_fetch_result.get("success"), False)
+                self.assertEqual(unified_fetch_result.get("error"), "delegate failure")
 
         anyio.run(_run)
 

@@ -137,6 +137,18 @@ class TestMCPServerUNI148NativeIPFSTools(unittest.TestCase):
         self.assertFalse(result.get("success"))
         self.assertEqual(result.get("error"), "invalid cid")
 
+    def test_error_status_inferred_from_contradictory_failed_kit_payload(self) -> None:
+        class _ContradictoryKit:
+            def validate_cid(self, cid: str):
+                return {"status": "success", "success": False, "error": f"invalid {cid}"}
+
+        with patch.object(ipfs_mod, "get_ipfs_files_kit", return_value=_ContradictoryKit()):
+            result = ipfs_mod.ipfs_files_validate_cid("bafy-demo")
+
+        self.assertEqual(result.get("status"), "error")
+        self.assertFalse(result.get("success"))
+        self.assertEqual(result.get("error"), "invalid bafy-demo")
+
 
 if __name__ == "__main__":
     unittest.main()

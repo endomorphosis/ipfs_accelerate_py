@@ -2029,6 +2029,62 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_dispatch)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_native_ipfs_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """Unified `tools_dispatch` should normalize contradictory failed native IPFS payloads."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class _ContradictoryKit:
+            def validate_cid(self, cid: str):
+                return {"status": "success", "success": False, "error": f"invalid {cid}"}
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "ipfs",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="native-ipfs-contradictory-dispatch")
+
+        async def _run_dispatch() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.ipfs.native_ipfs_tools.get_ipfs_files_kit",
+                return_value=_ContradictoryKit(),
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "ipfs",
+                        "ipfs_files_validate_cid",
+                        {"cid": "bafy-bootstrap-demo"},
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertFalse(result.get("success"))
+            self.assertEqual(result.get("error"), "invalid bafy-bootstrap-demo")
+
+        anyio.run(_run_dispatch)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_native_ipfs_unpin_file_dispatch_via_meta_tools(self, mock_wrapper):
         """Unified `tools_dispatch` should execute native Wave A IPFS unpin-file implementation."""
 
@@ -2364,6 +2420,59 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             self.assertEqual(result["status"], "error")
             self.assertIn("Workflow manager not available", result["error"])
+
+        anyio.run(_run_dispatch)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_native_workflow_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """Unified `workflow` dispatch should normalize contradictory failed manager payloads."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class _ContradictoryManager:
+            def list_workflows(self, status=None):
+                _ = status
+                return {"status": "success", "success": False, "error": "list failed"}
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                "IPFS_MCP_UNIFIED_PRELOAD_CATEGORIES": "workflow",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="native-workflow-failed-payload")
+
+        async def _run_dispatch() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.workflow.native_workflow_tools._get_workflow_manager",
+                return_value=_ContradictoryManager(),
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch("workflow", "list_workflows", {})
+                )
+
+            self.assertEqual(result["status"], "error")
+            self.assertFalse(result["success"])
+            self.assertEqual(result["error"], "list failed")
 
         anyio.run(_run_dispatch)
 
@@ -6918,6 +7027,61 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_native_p2p_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """Unified `tools_dispatch` should normalize contradictory failed native p2p payloads."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _contradictory_failure(**_kwargs):
+            return {"status": "success", "success": False, "error": "delegate failure"}
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="native-p2p-contradictory-bootstrap")
+
+        async def _run_flow() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools._request_status",
+                side_effect=_contradictory_failure,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "p2p",
+                        "p2p_taskqueue_status",
+                        {"timeout_s": 10.0, "detail": True},
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("success"), False)
+            self.assertEqual(result.get("ok"), False)
+            self.assertEqual(result.get("error"), "delegate failure")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_rate_limiting_tools_category_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """rate_limiting_tools alias category should expose deterministic schema and validation envelopes."""
 
@@ -7362,6 +7526,65 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_search_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """search_tools bootstrap dispatch should normalize contradictory failed payloads."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="search-tools-failed-payload")
+
+        from ipfs_accelerate_py.mcp_server.tools.search_tools import native_search_tools
+
+        async def _failed_delegate(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_search_tools._API,
+                {"semantic": _failed_delegate},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "search_tools",
+                        "semantic_search",
+                        {
+                            "query": "hello",
+                            "top_k": 3,
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_vector_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """vector_tools should expose deterministic schema and validation envelopes."""
 
@@ -7582,6 +7805,64 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn(deleted_store.get("status"), ["success", "error"])
             self.assertEqual(deleted_store.get("backend"), "faiss")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_vector_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """vector_tools bootstrap dispatch should normalize contradictory failed payloads."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="vector-tools-failed-payload")
+
+        from ipfs_accelerate_py.mcp_server.tools.vector_tools import native_vector_tools
+
+        async def _failed_delegate(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run_flow() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_vector_tools._API,
+                {"create_vector_index": _failed_delegate},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "vector_tools",
+                        "create_vector_index",
+                        {
+                            "vectors": [[1.0, 2.0]],
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failure")
 
         anyio.run(_run_flow)
 
@@ -8975,6 +9256,64 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_embedding_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """embedding_tools dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="embedding-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "embedding delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.embedding_tools import native_embedding_tools
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_embedding_tools._API,
+                {"generate_embedding": _contradictory_failure},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "embedding_tools",
+                        "generate_embedding",
+                        {
+                            "text": "hello",
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "embedding delegate failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_graph_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """graph_tools should expose deterministic schema and validation envelopes."""
 
@@ -9943,6 +10282,60 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_session_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """session_tools bootstrap dispatch should normalize contradictory failed delegate payloads."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class _ContradictoryManager:
+            async def create_session(self, **kwargs):
+                return {"status": "success", "success": False, "error": "create failed"}
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="session-tools-contradictory-bootstrap")
+
+        async def _run_flow() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.session_tools.native_session_tools._get_session_manager",
+                return_value=_ContradictoryManager(),
+            ):
+                created = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "session_tools",
+                        "create_session",
+                        {"session_name": "session-bootstrap-contradictory"},
+                    )
+                )
+            self.assertEqual(created.get("status"), "error")
+            self.assertFalse(created.get("success"))
+            self.assertEqual(created.get("error"), "create failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_auth_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """auth_tools should expose source-compatible operations with deterministic validation envelopes."""
 
@@ -10051,6 +10444,85 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertIn(user_info_result.get("status"), ["success", "error"])
             self.assertEqual(user_info_result.get("include_permissions"), False)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_auth_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """auth_tools dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="auth-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.auth_tools import native_auth_tools
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_auth_tools._API,
+                {
+                    "authenticate_user": _contradictory_failure,
+                    "validate_token": _contradictory_failure,
+                    "get_user_info": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                authenticated = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "auth_tools",
+                        "authenticate_user",
+                        {"username": "demo", "password": "pw"},
+                    )
+                )
+                self.assertEqual(authenticated.get("status"), "error")
+                self.assertEqual(authenticated.get("error"), "delegate failed")
+
+                validated = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "auth_tools",
+                        "validate_token",
+                        {"token": "tok"},
+                    )
+                )
+                self.assertEqual(validated.get("status"), "error")
+                self.assertEqual(validated.get("error"), "delegate failed")
+
+                user_info = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "auth_tools",
+                        "get_user_info",
+                        {"token": "tok"},
+                    )
+                )
+                self.assertEqual(user_info.get("status"), "error")
+                self.assertEqual(user_info.get("error"), "delegate failed")
 
         anyio.run(_run_flow)
 
@@ -12451,6 +12923,66 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_security_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """security_tools dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="security-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.security_tools import native_security_tools
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.object(
+                native_security_tools,
+                "_CHECK_ACCESS_PERMISSION",
+                _contradictory_failure,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "security_tools",
+                        "check_access_permission",
+                        {
+                            "resource_id": "resource-1",
+                            "user_id": "user-1",
+                            "permission_type": "read",
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_vector_store_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """vector_store_tools should expose source-compatible schema and deterministic validation envelopes."""
 
@@ -13533,6 +14065,64 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_media_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """media_tools dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="media-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.media_tools import native_media_tools
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_media_tools._API,
+                {"ffmpeg_analyze": _contradictory_failure},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "media_tools",
+                        "ffmpeg_analyze",
+                        {
+                            "input_file": "/tmp/video.mp4",
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_workflow_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """workflow_tools should expose schema contracts and deterministic validation envelopes."""
 
@@ -13723,6 +14313,66 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(valid_pipeline.get("status"), "success")
             self.assertIn("pipeline_name", valid_pipeline)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_workflow_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """workflow_tools dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="workflow-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.workflow_tools import native_workflow_tools_category
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_workflow_tools_category._API,
+                {"schedule_p2p_workflow": _contradictory_failure},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "workflow_tools",
+                        "schedule_p2p_workflow",
+                        {
+                            "workflow_id": "wf-1",
+                            "name": "workflow",
+                            "tags": ["smoke"],
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
 
         anyio.run(_run_flow)
 
@@ -14025,6 +14675,65 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_finance_data_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """finance_data_tools dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="finance-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.finance_data_tools import native_finance_data_tools
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_finance_data_tools._API,
+                {"scrape_stock_data": _contradictory_failure},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "finance_data_tools",
+                        "scrape_stock_data",
+                        {
+                            "symbols": ["AAPL"],
+                            "days": 1,
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_legal_dataset_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """legal_dataset_tools should expose schema contracts and deterministic validation envelopes."""
 
@@ -14186,6 +14895,65 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(valid_synonyms.get("status"), "success")
             self.assertEqual(valid_synonyms.get("term"), "regulation")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_legal_dataset_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """legal_dataset_tools dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="legal-dataset-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.legal_dataset_tools import native_legal_dataset_tools
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_legal_dataset_tools._API,
+                {"scrape_state_laws": _contradictory_failure},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "legal_dataset_tools",
+                        "scrape_state_laws",
+                        {
+                            "states": ["ca"],
+                            "output_format": "json",
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
 
         anyio.run(_run_flow)
 
@@ -14359,6 +15127,64 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(valid_geo.get("status"), "success")
             self.assertEqual(valid_geo.get("query"), "incident near river")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_investigation_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """investigation_tools dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="investigation-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.investigation_tools import native_investigation_tools
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_investigation_tools._API,
+                {"analyze_entities": _contradictory_failure},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "investigation_tools",
+                        "analyze_entities",
+                        {
+                            "corpus_data": '{"documents": []}',
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
 
         anyio.run(_run_flow)
 
@@ -14960,6 +15786,66 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_cli_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """cli dispatch should normalize contradictory failed delegate payloads to error status."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="cli-tools-dispatch-failed-payload")
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.cli import native_cli_tools
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_cli_tools._API,
+                {"execute_command": _contradictory_failure},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "cli",
+                        "execute_command",
+                        {
+                            "command": "echo",
+                            "args": ["hello"],
+                            "timeout_seconds": 3,
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_medical_research_scrapers_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """medical_research_scrapers should expose schema contracts and deterministic envelopes."""
 
@@ -15038,6 +15924,69 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_max.get("error", ""))
             )
             self.assertIn("max_results must be an integer >= 1", invalid_max_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_medical_research_scrapers_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
+        """medical_research_scrapers bootstrap dispatch should normalize contradictory failed payloads."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="medical-research-scrapers-failed-payload")
+
+        async def _failed_delegate(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            from ipfs_accelerate_py.mcp_server.tools.medical_research_scrapers import (
+                native_medical_research_scrapers,
+            )
+
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.dict(
+                native_medical_research_scrapers._API,
+                {"scrape_pubmed_medical_research": _failed_delegate},
+                clear=False,
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "medical_research_scrapers",
+                        "scrape_pubmed_medical_research",
+                        {
+                            "query": "diabetes",
+                            "max_results": 3,
+                        },
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failed")
 
         anyio.run(_run_flow)
 

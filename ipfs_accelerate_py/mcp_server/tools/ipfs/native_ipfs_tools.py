@@ -13,6 +13,25 @@ def _error_result(message: str) -> Dict[str, Any]:
 
 def _normalize_kit_result(result: Any) -> Dict[str, Any]:
     """Normalize kit result objects to deterministic envelopes."""
+    if isinstance(result, dict):
+        normalized = dict(result)
+        status = str(normalized.get("status", "")).strip().lower()
+        success = normalized.get("success")
+        error = normalized.get("error")
+        has_error = error not in (None, "")
+
+        if success is False or (status == "success" and has_error):
+            normalized["status"] = "error"
+            normalized["success"] = False
+            normalized.setdefault("data", None)
+            return normalized
+
+        if success is True and normalized.get("data") is None:
+            normalized["data"] = {}
+        if success is True and not normalized.get("status"):
+            normalized["status"] = "success"
+        return normalized
+
     success = bool(getattr(result, "success", False))
     data = getattr(result, "data", None)
     error = getattr(result, "error", None)

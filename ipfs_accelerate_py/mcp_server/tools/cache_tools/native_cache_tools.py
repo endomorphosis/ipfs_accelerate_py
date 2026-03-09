@@ -10,6 +10,23 @@ from typing import Any, Dict, List, Optional
 logger = logging.getLogger(__name__)
 
 
+def _normalize_cache_payload(payload: Any, success_status: str = "success") -> Dict[str, Any]:
+    """Normalize delegate payloads to deterministic cache envelopes."""
+    normalized: Dict[str, Any] = dict(payload or {}) if isinstance(payload, dict) else {"result": payload}
+    failed = (
+        normalized.get("success") is False
+        or bool(normalized.get("error"))
+        or bool(normalized.get("errors"))
+    )
+    if failed:
+        normalized["status"] = "error"
+        normalized["success"] = False
+    else:
+        normalized.setdefault("success", True)
+        normalized.setdefault("status", success_status)
+    return normalized
+
+
 def _load_cache_manager_class() -> Any:
     """Resolve CacheManager from source package with compatibility fallback."""
     try:
@@ -197,9 +214,7 @@ def _get_cache_manager() -> Any:
 async def cache_get(key: str, namespace: str = "default") -> Dict[str, Any]:
     """Get value from cache namespace."""
     result = _get_cache_manager().get(str(key), str(namespace))
-    payload = dict(result or {})
-    payload.setdefault("status", "success" if payload.get("success", True) else "error")
-    return payload
+    return _normalize_cache_payload(result)
 
 
 async def cache_set(
@@ -210,34 +225,27 @@ async def cache_set(
 ) -> Dict[str, Any]:
     """Set cache value in namespace with optional TTL."""
     result = _get_cache_manager().set(str(key), value, ttl, str(namespace))
-    payload = dict(result or {})
-    payload.setdefault("status", "success" if payload.get("success", True) else "error")
-    return payload
+    return _normalize_cache_payload(result)
 
 
 async def cache_delete(key: str, namespace: str = "default") -> Dict[str, Any]:
     """Delete cache key from namespace."""
     result = _get_cache_manager().delete(str(key), str(namespace))
-    payload = dict(result or {})
-    payload.setdefault("status", "success" if payload.get("success", True) else "error")
-    return payload
+    return _normalize_cache_payload(result)
 
 
 async def cache_clear(namespace: str = "default") -> Dict[str, Any]:
     """Clear cache namespace."""
     result = _get_cache_manager().clear(str(namespace))
-    payload = dict(result or {})
-    payload.setdefault("status", "success" if payload.get("success", True) else "error")
-    return payload
+    return _normalize_cache_payload(result)
 
 
 async def cache_stats(namespace: Optional[str] = None) -> Dict[str, Any]:
     """Return cache statistics."""
     result = _get_cache_manager().get_stats(str(namespace) if namespace else None)
-    payload = dict(result or {})
+    payload = _normalize_cache_payload(result)
     if isinstance(payload.get("global_stats"), dict):
         payload.setdefault("stats", payload["global_stats"])
-    payload.setdefault("status", "success" if payload.get("success", True) else "error")
     return payload
 
 
@@ -268,29 +276,39 @@ async def manage_cache(
     if op == "get":
         if not key:
             return {"success": False, "error": "Key required"}
-        return {**manager.get(str(key), str(namespace)), "operation": op}
+        payload = _normalize_cache_payload(manager.get(str(key), str(namespace)))
+        payload["operation"] = op
+        return payload
     if op == "set":
         if not key or value is None:
             return {"success": False, "error": "Key/value required"}
-        return {**manager.set(str(key), value, ttl, str(namespace)), "operation": op}
+        payload = _normalize_cache_payload(manager.set(str(key), value, ttl, str(namespace)))
+        payload["operation"] = op
+        return payload
     if op == "delete":
         if not key:
             return {"success": False, "error": "Key required"}
-        return {**manager.delete(str(key), str(namespace)), "operation": op}
+        payload = _normalize_cache_payload(manager.delete(str(key), str(namespace)))
+        payload["operation"] = op
+        return payload
     if op == "clear":
-        return {**manager.clear(str(namespace)), "operation": op}
+        payload = _normalize_cache_payload(manager.clear(str(namespace)))
+        payload["operation"] = op
+        return payload
     if op == "stats":
         stats = manager.get_stats(str(namespace) if namespace != "default" else None)
+        payload = _normalize_cache_payload(stats)
         return {
-            **stats,
+            **payload,
             "operation": op,
-            "status": "success",
             "cache_stats": stats.get("global_stats", {}),
             "stats": stats.get("global_stats", {}),
             "namespaces": stats.get("namespace_stats", {}),
         }
     if op == "list":
-        return {**manager.list_keys(str(namespace) if namespace != "default" else None), "operation": op}
+        payload = _normalize_cache_payload(manager.list_keys(str(namespace) if namespace != "default" else None))
+        payload["operation"] = op
+        return payload
 
     if op == "configure":
         config = configuration or {}
@@ -379,11 +397,10 @@ async def manage_cache(
                 "operation": op,
             }
         cleared = manager.clear(str(namespace))
-        payload = dict(cleared or {})
+        payload = _normalize_cache_payload(cleared)
         payload.update({
             "operation": op,
             "confirm_clear": confirm_clear,
-            "status": "success" if payload.get("success", True) else "error",
         })
         return payload
 
@@ -421,8 +438,7 @@ async def optimize_cache(
         max_age_hours=max_age_hours,
         namespace=namespace,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success" if payload.get("success", True) else "error")
+    payload = _normalize_cache_payload(result)
     payload.setdefault("optimization_strategy", str(strategy or "lru"))
     if max_size_mb is not None:
         payload["max_size_mb"] = max_size_mb
@@ -468,8 +484,7 @@ async def cache_embeddings(
         model=str(model or "default"),
         ttl=ttl,
     )
-    payload = dict(result or {})
-    payload.setdefault("status", "success" if payload.get("success", True) else "error")
+    payload = _normalize_cache_payload(result)
     payload.setdefault("cache_operation", "set")
     return payload
 
@@ -484,10 +499,9 @@ async def get_cached_embeddings(text: str, model: str = "default") -> Dict[str, 
         text=normalized_text,
         model=str(model or "default"),
     )
-    payload = dict(result or {})
-    payload.setdefault("success", True)
+    payload = _normalize_cache_payload(result, success_status="not_found")
     if payload.get("success") is False:
-        payload.setdefault("status", "error")
+        payload["status"] = "error"
     else:
         payload.setdefault("status", "found" if payload.get("cache_hit") else "not_found")
     return payload
@@ -587,7 +601,9 @@ async def monitor_cache(
         return {"success": False, "status": "error", "error": "time_window must be a non-empty string"}
 
     selected_metrics = metrics or ["hit_rate", "latency", "memory_usage"]
-    if not isinstance(selected_metrics, list) or not all(isinstance(item, str) and item.strip() for item in selected_metrics):
+    if not isinstance(selected_metrics, list) or not all(
+        isinstance(item, str) and item.strip() for item in selected_metrics
+    ):
         return {
             "success": False,
             "status": "error",

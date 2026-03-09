@@ -52,7 +52,8 @@ def _parse_json_object(request_json: Any) -> tuple[Optional[Dict[str, Any]], Opt
 def _load_check_access_permission() -> Any:
     """Resolve source check_access_permission tool with compatibility fallback."""
     try:
-        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.security_tools.check_access_permission import (  # type: ignore
+        from ipfs_datasets_py.ipfs_datasets_py.mcp_server.tools.security_tools.check_access_permission import (
+            # type: ignore
             check_access_permission as source_check_access_permission,
         )
 
@@ -181,11 +182,16 @@ async def check_access_permission(
 
     if isinstance(result, dict):
         normalized = dict(result)
-        if "status" not in normalized:
-            if normalized.get("error") or normalized.get("success") is False:
-                normalized["status"] = "error"
-            else:
-                normalized["status"] = "success"
+        failed = (
+            normalized.get("status") == "error"
+            or normalized.get("error")
+            or normalized.get("success") is False
+        )
+        if failed:
+            normalized["status"] = "error"
+            normalized.setdefault("success", False)
+        else:
+            normalized.setdefault("status", "success")
         normalized.setdefault("allowed", False)
         normalized.setdefault("user_id", normalized_user_id)
         normalized.setdefault("resource_id", normalized_resource_id)

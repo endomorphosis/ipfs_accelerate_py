@@ -137,6 +137,82 @@ class TestMCPServerUNI149NativeWorkflowTools(unittest.TestCase):
         self.assertFalse(result.get("success"))
         self.assertIn("Workflow manager not available", str(result.get("error", "")))
 
+    def test_workflow_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        class _ContradictoryManager:
+            def list_workflows(self, status=None):
+                _ = status
+                return {"status": "success", "success": False, "error": "list failed"}
+
+            def get_workflow(self, workflow_id):
+                _ = workflow_id
+                return {"status": "success", "success": False, "error": "detail failed"}
+
+            def create_workflow(self, name, description, tasks):
+                _ = name, description, tasks
+                return {"status": "success", "success": False, "error": "create failed"}
+
+            def update_workflow(self, **kwargs):
+                _ = kwargs
+                return {"status": "success", "success": False, "error": "update failed"}
+
+            def delete_workflow(self, workflow_id):
+                _ = workflow_id
+                return {"status": "success", "success": False, "error": "delete failed"}
+
+            def start_workflow(self, workflow_id):
+                _ = workflow_id
+                return {"status": "success", "success": False, "error": "start failed"}
+
+            def pause_workflow(self, workflow_id):
+                _ = workflow_id
+                return {"status": "success", "success": False, "error": "pause failed"}
+
+            def stop_workflow(self, workflow_id):
+                _ = workflow_id
+                return {"status": "success", "success": False, "error": "stop failed"}
+
+        with patch.object(workflow_mod, "_get_workflow_manager", return_value=_ContradictoryManager()):
+            listed = workflow_mod.list_workflows()
+            detailed = workflow_mod.get_workflow("wf-1")
+            created = workflow_mod.create_workflow("name", "desc", [])
+            updated = workflow_mod.update_workflow("wf-1", name="updated")
+            deleted = workflow_mod.delete_workflow("wf-1")
+            started = workflow_mod.start_workflow("wf-1")
+            paused = workflow_mod.pause_workflow("wf-1")
+            stopped = workflow_mod.stop_workflow("wf-1")
+
+        self.assertEqual(listed.get("status"), "error")
+        self.assertFalse(listed.get("success"))
+        self.assertEqual(listed.get("error"), "list failed")
+
+        self.assertEqual(detailed.get("status"), "error")
+        self.assertFalse(detailed.get("success"))
+        self.assertEqual(detailed.get("error"), "detail failed")
+
+        self.assertEqual(created.get("status"), "error")
+        self.assertFalse(created.get("success"))
+        self.assertEqual(created.get("error"), "create failed")
+
+        self.assertEqual(updated.get("status"), "error")
+        self.assertFalse(updated.get("success"))
+        self.assertEqual(updated.get("error"), "update failed")
+
+        self.assertEqual(deleted.get("status"), "error")
+        self.assertFalse(deleted.get("success"))
+        self.assertEqual(deleted.get("error"), "delete failed")
+
+        self.assertEqual(started.get("status"), "error")
+        self.assertFalse(started.get("success"))
+        self.assertEqual(started.get("error"), "start failed")
+
+        self.assertEqual(paused.get("status"), "error")
+        self.assertFalse(paused.get("success"))
+        self.assertEqual(paused.get("error"), "pause failed")
+
+        self.assertEqual(stopped.get("status"), "error")
+        self.assertFalse(stopped.get("success"))
+        self.assertEqual(stopped.get("error"), "stop failed")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -1003,6 +1003,19 @@ def _load_web_archive_tools_api() -> Dict[str, Any]:
 _API = _load_web_archive_tools_api()
 
 
+def _normalize_web_archive_payload(result: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads into deterministic status envelopes."""
+    if isinstance(result, dict):
+        payload = dict(result)
+        if payload.get("error") or payload.get("success") is False:
+            payload["status"] = "error"
+            payload.setdefault("success", False)
+        else:
+            payload.setdefault("status", "success")
+        return payload
+    return {"status": "success", "result": result}
+
+
 async def create_warc(
     url: str,
     output_path: Optional[str] = None,
@@ -1015,8 +1028,8 @@ async def create_warc(
         options=options,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        return _normalize_web_archive_payload(await result)
+    return _normalize_web_archive_payload(result)
 
 
 async def archive_to_wayback(url: str) -> Dict[str, Any]:
@@ -1027,8 +1040,8 @@ async def archive_to_wayback(url: str) -> Dict[str, Any]:
 
     result = _API["archive_to_wayback"](url=normalized_url)
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        return _normalize_web_archive_payload(await result)
+    return _normalize_web_archive_payload(result)
 
 
 async def archive_to_archive_is(
@@ -1328,8 +1341,8 @@ async def search_common_crawl(
         output_format=normalized_output_format,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        return _normalize_web_archive_payload(await result)
+    return _normalize_web_archive_payload(result)
 
 
 async def search_common_crawl_advanced(
@@ -1407,8 +1420,8 @@ async def get_common_crawl_content(
         crawl_id=crawl_id,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        return _normalize_web_archive_payload(await result)
+    return _normalize_web_archive_payload(result)
 
 
 async def list_common_crawl_indexes() -> Dict[str, Any]:
@@ -1862,8 +1875,16 @@ async def search_github_repositories(
     normalized_order = str(order or "desc").strip().lower() or "desc"
     if normalized_order not in {"asc", "desc"}:
         return {"status": "error", "error": "'order' must be one of: asc, desc."}
-    if sort is not None and str(sort).strip() not in {"stars", "forks", "help-wanted-issues", "updated"}:
-        return {"status": "error", "error": "'sort' must be one of: stars, forks, help-wanted-issues, updated, or null."}
+    if sort is not None and str(sort).strip() not in {
+        "stars",
+        "forks",
+        "help-wanted-issues",
+        "updated",
+    }:
+        return {
+            "status": "error",
+            "error": "'sort' must be one of: stars, forks, help-wanted-issues, updated, or null.",
+        }
     normalized_per_page = int(per_page)
     if normalized_per_page <= 0:
         return {"status": "error", "error": "'per_page' must be greater than 0."}
@@ -1880,8 +1901,8 @@ async def search_github_repositories(
         page=normalized_page,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        return _normalize_web_archive_payload(await result)
+    return _normalize_web_archive_payload(result)
 
 
 async def search_github_code(
@@ -2416,8 +2437,8 @@ async def unified_search(
         domain=str(domain or "general").strip() or "general",
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        return _normalize_web_archive_payload(await result)
+    return _normalize_web_archive_payload(result)
 
 
 async def unified_fetch(
@@ -2439,8 +2460,8 @@ async def unified_fetch(
         domain=str(domain or "general").strip() or "general",
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        return _normalize_web_archive_payload(await result)
+    return _normalize_web_archive_payload(result)
 
 
 async def unified_search_and_fetch(
@@ -3458,7 +3479,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
             "type": "object",
             "properties": {
                 "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
-                "search_type": {"type": "string", "enum": ["repositories", "code", "users", "issues"], "default": "repositories"},
+                "search_type": {
+                    "type": "string",
+                    "enum": ["repositories", "code", "users", "issues"],
+                    "default": "repositories",
+                },
                 "api_token": {"type": ["string", "null"]},
                 "per_page": {"type": "integer", "default": 30, "minimum": 1},
                 "delay_seconds": {"type": "number", "default": 2.0, "minimum": 0},
@@ -3482,7 +3507,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "filter_task": {"type": ["string", "null"]},
                 "filter_library": {"type": ["string", "null"]},
                 "filter_language": {"type": ["string", "null"]},
-                "sort": {"type": "string", "enum": ["downloads", "created", "updated", "likes"], "default": "downloads"},
+                "sort": {
+                    "type": "string",
+                    "enum": ["downloads", "created", "updated", "likes"],
+                    "default": "downloads",
+                },
                 "direction": {"type": "integer", "enum": [-1, 1], "default": -1},
                 "limit": {"type": "integer", "default": 20, "minimum": 1},
             },
@@ -3505,7 +3534,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
                 "filter_task": {"type": ["string", "null"]},
                 "filter_language": {"type": ["string", "null"]},
                 "filter_size": {"type": ["string", "null"]},
-                "sort": {"type": "string", "enum": ["downloads", "created", "updated", "likes"], "default": "downloads"},
+                "sort": {
+                    "type": "string",
+                    "enum": ["downloads", "created", "updated", "likes"],
+                    "default": "downloads",
+                },
                 "direction": {"type": "integer", "enum": [-1, 1], "default": -1},
                 "limit": {"type": "integer", "default": 20, "minimum": 1},
             },
@@ -3646,7 +3679,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
             "properties": {
                 "query": {"type": "string"},
                 "api_key": {"type": ["string", "null"]},
-                "engine": {"type": "string", "enum": ["google", "bing", "yandex", "yahoo", "baidu"], "default": "google"},
+                "engine": {
+                    "type": "string",
+                    "enum": ["google", "bing", "yandex", "yahoo", "baidu"],
+                    "default": "google",
+                },
                 "num": {"type": "integer", "default": 10, "minimum": 1, "maximum": 100},
                 "page": {"type": "integer", "default": 1, "minimum": 1},
                 "location": {"type": ["string", "null"]},
@@ -3669,7 +3706,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
             "properties": {
                 "query": {"type": "string"},
                 "api_key": {"type": ["string", "null"]},
-                "engine": {"type": "string", "enum": ["google", "bing", "yandex", "yahoo", "baidu"], "default": "google"},
+                "engine": {
+                    "type": "string",
+                    "enum": ["google", "bing", "yandex", "yahoo", "baidu"],
+                    "default": "google",
+                },
                 "num": {"type": "integer", "default": 10, "minimum": 1, "maximum": 100},
                 "location": {"type": ["string", "null"]},
             },
@@ -3689,7 +3730,11 @@ def register_native_web_archive_tools(manager: Any) -> None:
             "properties": {
                 "queries": {"type": "array", "items": {"type": "string"}, "minItems": 1},
                 "api_key": {"type": ["string", "null"]},
-                "engine": {"type": "string", "enum": ["google", "bing", "yandex", "yahoo", "baidu"], "default": "google"},
+                "engine": {
+                    "type": "string",
+                    "enum": ["google", "bing", "yandex", "yahoo", "baidu"],
+                    "default": "google",
+                },
                 "num": {"type": "integer", "default": 10, "minimum": 1, "maximum": 100},
                 "delay_seconds": {"type": "number", "default": 1.0, "minimum": 0},
             },

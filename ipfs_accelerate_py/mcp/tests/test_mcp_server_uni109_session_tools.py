@@ -151,6 +151,75 @@ class TestMCPServerUNI109SessionTools(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_session_wrappers_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        class _ContradictoryManager:
+            async def create_session(self, **kwargs):
+                return {"status": "success", "success": False, "error": "create failed"}
+
+            async def get_session(self, session_id: str):
+                return {"status": "success", "success": False, "error": "lookup failed"}
+
+            async def update_session(self, session_id: str, **kwargs):
+                return {"status": "success", "success": False, "error": "update failed"}
+
+            async def delete_session(self, session_id: str):
+                return {"status": "success", "success": False, "error": "delete failed"}
+
+            async def list_sessions(self, **filters):
+                return {"status": "success", "success": False, "error": "list failed"}
+
+            async def cleanup_expired_sessions(self, max_age_hours: int = 24):
+                return {"status": "success", "success": False, "error": "cleanup failed"}
+
+        async def _run() -> None:
+            manager = _ContradictoryManager()
+
+            created = await create_session(session_name="uni109-contradictory", session_manager=manager)
+            self.assertEqual(created.get("status"), "error")
+            self.assertFalse(created.get("success"))
+            self.assertEqual(created.get("error"), "create failed")
+
+            with patch(
+                "ipfs_accelerate_py.mcp_server.tools.session_tools.native_session_tools._get_session_manager",
+                return_value=manager,
+            ):
+                managed_get = await manage_session(
+                    action="get",
+                    session_id="11111111-1111-1111-1111-111111111111",
+                )
+                self.assertEqual(managed_get.get("status"), "error")
+                self.assertFalse(managed_get.get("success"))
+                self.assertEqual(managed_get.get("error"), "lookup failed")
+
+                managed_update = await manage_session(
+                    action="update",
+                    session_id="11111111-1111-1111-1111-111111111111",
+                    updates={"status": "paused"},
+                )
+                self.assertEqual(managed_update.get("status"), "error")
+                self.assertFalse(managed_update.get("success"))
+                self.assertEqual(managed_update.get("error"), "update failed")
+
+                managed_list = await manage_session(action="list")
+                self.assertEqual(managed_list.get("status"), "error")
+                self.assertFalse(managed_list.get("success"))
+                self.assertEqual(managed_list.get("error"), "list failed")
+
+                managed_cleanup = await manage_session(
+                    action="cleanup",
+                    cleanup_options={"max_age_hours": 12},
+                )
+                self.assertEqual(managed_cleanup.get("status"), "error")
+                self.assertFalse(managed_cleanup.get("success"))
+                self.assertEqual(managed_cleanup.get("error"), "cleanup failed")
+
+                state = await get_session_state(session_id="11111111-1111-1111-1111-111111111111")
+                self.assertEqual(state.get("status"), "error")
+                self.assertFalse(state.get("success"))
+                self.assertEqual(state.get("error"), "lookup failed")
+
+        anyio.run(_run)
+
 
 if __name__ == "__main__":
     unittest.main()

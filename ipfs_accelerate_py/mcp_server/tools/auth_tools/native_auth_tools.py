@@ -14,6 +14,19 @@ def _compat_subset(payload: Dict[str, Any], keys: tuple[str, ...]) -> Dict[str, 
     return {key: payload[key] for key in keys if key in payload}
 
 
+def _normalize_auth_payload(result: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads so contradictory failures surface as errors."""
+    payload: Dict[str, Any] = dict(result or {}) if isinstance(result, dict) else {"result": result}
+    failed = payload.get("status") == "error" or payload.get("success") is False or bool(payload.get("error"))
+    if failed:
+        payload["status"] = "error"
+        payload.setdefault("success", False)
+    else:
+        payload.setdefault("status", "success")
+        payload.setdefault("success", True)
+    return payload
+
+
 def _load_auth_api() -> Dict[str, Any]:
     """Resolve source auth APIs with compatibility fallback."""
     try:
@@ -136,7 +149,7 @@ async def authenticate_user(
         return {"status": "error", "message": "remember_me must be a boolean"}
 
     result = await _API["authenticate_user"](username=username, password=password)
-    payload = dict(result or {})
+    payload = _normalize_auth_payload(result)
     if payload.get("status") == "success" and remember_me and isinstance(payload.get("expires_in"), int):
         payload["expires_in"] = 86400 * 7
     if payload.get("status") == "success":
@@ -201,8 +214,10 @@ async def validate_token(
         required_permission=normalized_permission,
         action=normalized_action,
     )
-    payload = dict(result or {})
+    payload = _normalize_auth_payload(result)
     payload.setdefault("strict", strict)
+    if normalized_action == "validate" and payload.get("status") == "error":
+        payload.setdefault("valid", False)
 
     if payload.get("status") == "success":
         if normalized_action == "refresh":
@@ -268,7 +283,7 @@ async def get_user_info(
         return {"status": "error", "message": "include_profile must be a boolean"}
 
     result = await _API["get_user_info"](token=normalized_token)
-    payload = dict(result or {})
+    payload = _normalize_auth_payload(result)
     if payload.get("status") == "success":
         payload.setdefault("message", "User information retrieved successfully")
         payload.setdefault("permissions", [])

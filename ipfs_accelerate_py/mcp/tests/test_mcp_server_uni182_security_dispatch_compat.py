@@ -10,6 +10,7 @@ from unittest.mock import patch
 import anyio
 
 from ipfs_accelerate_py.mcp.server import create_mcp_server
+from ipfs_accelerate_py.mcp_server.tools.security_tools import native_security_tools
 
 
 class TestMCPServerUNI182SecurityDispatchCompat(unittest.TestCase):
@@ -84,6 +85,60 @@ class TestMCPServerUNI182SecurityDispatchCompat(unittest.TestCase):
                 self.assertEqual(result.get("allowed_count"), 1)
                 self.assertEqual(result.get("denied_count"), 1)
                 self.assertEqual(result.get("error_count"), 1)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_security_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.object(
+                native_security_tools,
+                "_CHECK_ACCESS_PERMISSION",
+                _contradictory_failure,
+            ):
+                server = create_mcp_server(name="security-dispatch-compat-errors")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                checked = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "security_tools",
+                        "check_access_permission",
+                        {
+                            "resource_id": "resource-1",
+                            "user_id": "user-1",
+                            "permission_type": "read",
+                        },
+                    )
+                )
+                self.assertEqual(checked.get("status"), "error")
+                self.assertEqual(checked.get("success"), False)
+                self.assertEqual(checked.get("error"), "delegate failure")
 
         anyio.run(_run_flow)
 
