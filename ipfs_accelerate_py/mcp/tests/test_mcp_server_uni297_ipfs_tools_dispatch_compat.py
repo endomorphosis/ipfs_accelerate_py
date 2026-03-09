@@ -152,6 +152,83 @@ class TestMCPServerUNI297IPFSToolsDispatchCompat(unittest.TestCase):
 
         anyio.run(_run_flow)
 
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_ipfs_tools_dispatch_infers_error_status_from_contradictory_delegate_payloads(self, mock_wrapper) -> None:
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(
+                self,
+                name,
+                function,
+                description,
+                input_schema,
+                execution_context=None,
+                tags=None,
+            ):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _contradictory_failure(**kwargs):
+            return {
+                "status": "success",
+                "success": False,
+                "error": f"delegate failed for {kwargs.get('content_source') or kwargs.get('cid')}",
+            }
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ):
+                with patch.dict(
+                    native_ipfs_tools._API,
+                    {
+                        "pin_to_ipfs": _contradictory_failure,
+                        "get_from_ipfs": _contradictory_failure,
+                    },
+                    clear=False,
+                ):
+                    server = create_mcp_server(name="ipfs-tools-dispatch-contradictory")
+                    dispatch = server.tools["tools_dispatch"]["function"]
+
+                    pinned = self._assert_dispatch_success_envelope(
+                        await dispatch(
+                            "ipfs_tools",
+                            "pin_to_ipfs",
+                            {"content_source": "/tmp/dispatch-contradictory.txt"},
+                        )
+                    )
+                    self.assertEqual(pinned.get("status"), "error")
+                    self.assertFalse(pinned.get("success"))
+                    self.assertIn("delegate failed", str(pinned.get("error", "")))
+
+                    fetched = self._assert_dispatch_success_envelope(
+                        await dispatch(
+                            "ipfs_tools",
+                            "get_from_ipfs",
+                            {"cid": "QmDispatchContradictory"},
+                        )
+                    )
+                    self.assertEqual(fetched.get("status"), "error")
+                    self.assertFalse(fetched.get("success"))
+                    self.assertIn("delegate failed", str(fetched.get("error", "")))
+
+        anyio.run(_run_flow)
+
 
 if __name__ == "__main__":
     unittest.main()

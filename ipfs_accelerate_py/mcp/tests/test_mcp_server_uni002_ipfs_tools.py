@@ -74,7 +74,10 @@ class TestMCPServerUNI002IPFSTools(unittest.TestCase):
             self.assertEqual(invalid_timeout.get("status"), "error")
             self.assertIn("'timeout_seconds'", str(invalid_timeout.get("message", "")))
 
-            invalid_timeout_type = await get_from_ipfs(cid="QmDemoHash", timeout_seconds="bad")  # type: ignore[arg-type]
+            invalid_timeout_type = await get_from_ipfs(  # type: ignore[arg-type]
+                cid="QmDemoHash",
+                timeout_seconds="bad",
+            )
             self.assertEqual(invalid_timeout_type.get("status"), "error")
             self.assertIn("must be an integer", str(invalid_timeout_type.get("message", "")))
 
@@ -140,6 +143,37 @@ class TestMCPServerUNI002IPFSTools(unittest.TestCase):
             self.assertEqual(result["content"][0].get("type"), "text")
             parsed = json.loads(result["content"][0].get("text", "{}"))
             self.assertIn(parsed.get("status"), ["success", "error"])
+
+        anyio.run(_run)
+
+    def test_ipfs_tools_infer_error_status_from_contradictory_delegate_payloads(self) -> None:
+        async def _run() -> None:
+            original_pin = native_ipfs_tools._API["pin_to_ipfs"]
+            original_get = native_ipfs_tools._API["get_from_ipfs"]
+
+            async def _contradictory_failure(**kwargs):
+                return {
+                    "status": "success",
+                    "success": False,
+                    "error": f"delegate failed for {kwargs.get('content_source') or kwargs.get('cid')}",
+                }
+
+            native_ipfs_tools._API["pin_to_ipfs"] = _contradictory_failure
+            native_ipfs_tools._API["get_from_ipfs"] = _contradictory_failure
+            try:
+                pinned = await pin_to_ipfs(content_source="/tmp/contradictory.txt")
+                fetched = await get_from_ipfs(cid="QmContradictoryHash")
+            finally:
+                native_ipfs_tools._API["pin_to_ipfs"] = original_pin
+                native_ipfs_tools._API["get_from_ipfs"] = original_get
+
+            self.assertEqual(pinned.get("status"), "error")
+            self.assertFalse(pinned.get("success"))
+            self.assertIn("delegate failed", str(pinned.get("error", "")))
+
+            self.assertEqual(fetched.get("status"), "error")
+            self.assertFalse(fetched.get("success"))
+            self.assertIn("delegate failed", str(fetched.get("error", "")))
 
         anyio.run(_run)
 

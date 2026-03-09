@@ -9,6 +9,20 @@ from typing import Any, Dict, Optional, Union
 logger = logging.getLogger(__name__)
 
 
+def _normalize_delegate_payload(payload: Any) -> Dict[str, Any]:
+    """Normalize delegate payloads with deterministic failed-status inference."""
+    if isinstance(payload, dict):
+        normalized = dict(payload)
+        failed = normalized.get("success") is False or bool(normalized.get("error"))
+        if failed:
+            normalized["status"] = "error"
+        else:
+            normalized.setdefault("status", "success")
+        return normalized
+
+    return {"status": "success", "result": payload}
+
+
 def _load_ipfs_tools_api() -> Dict[str, Any]:
     """Resolve source ipfs-tools APIs with compatibility fallback."""
     try:
@@ -150,8 +164,8 @@ async def pin_to_ipfs(
         hash_algo=normalized_hash_algo,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        result = await result
+    return _normalize_delegate_payload(result)
 
 
 async def get_from_ipfs(
@@ -226,8 +240,8 @@ async def get_from_ipfs(
         gateway=normalized_gateway,
     )
     if hasattr(result, "__await__"):
-        return await result
-    return result
+        result = await result
+    return _normalize_delegate_payload(result)
 
 
 def register_native_ipfs_tools_category(manager: Any) -> None:
