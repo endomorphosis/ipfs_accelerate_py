@@ -1489,6 +1489,134 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_web_archive_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """web_archive_tools dispatch should normalize contradictory failed delegate payloads."""
+
+        from ipfs_accelerate_py.mcp_server.tools.web_archive_tools import native_web_archive_tools
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.dict(
+                native_web_archive_tools._API,
+                {
+                    "create_warc": _contradictory_failure,
+                    "archive_to_wayback": _contradictory_failure,
+                    "search_common_crawl": _contradictory_failure,
+                    "get_common_crawl_content": _contradictory_failure,
+                    "search_github_repositories": _contradictory_failure,
+                    "unified_search": _contradictory_failure,
+                    "unified_fetch": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                server = create_mcp_server(name="web-archive-contradictory-bootstrap")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                created = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "web_archive_tools",
+                        "create_warc",
+                        {"url": "https://example.com"},
+                    )
+                )
+                self.assertEqual(created.get("status"), "error")
+                self.assertEqual(created.get("success"), False)
+                self.assertEqual(created.get("error"), "delegate failure")
+
+                archived = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "web_archive_tools",
+                        "archive_to_wayback",
+                        {"url": "https://example.com"},
+                    )
+                )
+                self.assertEqual(archived.get("status"), "error")
+                self.assertEqual(archived.get("success"), False)
+                self.assertEqual(archived.get("error"), "delegate failure")
+
+                searched = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "web_archive_tools",
+                        "search_common_crawl",
+                        {"domain": "example.com", "limit": 10},
+                    )
+                )
+                self.assertEqual(searched.get("status"), "error")
+                self.assertEqual(searched.get("success"), False)
+                self.assertEqual(searched.get("error"), "delegate failure")
+
+                content = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "web_archive_tools",
+                        "get_common_crawl_content",
+                        {"url": "https://example.com", "timestamp": "20240101000000"},
+                    )
+                )
+                self.assertEqual(content.get("status"), "error")
+                self.assertEqual(content.get("success"), False)
+                self.assertEqual(content.get("error"), "delegate failure")
+
+                repositories = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "web_archive_tools",
+                        "search_github_repositories",
+                        {"query": "ipfs", "order": "desc", "per_page": 5, "page": 1},
+                    )
+                )
+                self.assertEqual(repositories.get("status"), "error")
+                self.assertEqual(repositories.get("success"), False)
+                self.assertEqual(repositories.get("error"), "delegate failure")
+
+                unified_search_result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "web_archive_tools",
+                        "unified_search",
+                        {"query": "ipfs", "max_results": 5, "mode": "balanced"},
+                    )
+                )
+                self.assertEqual(unified_search_result.get("status"), "error")
+                self.assertEqual(unified_search_result.get("success"), False)
+                self.assertEqual(unified_search_result.get("error"), "delegate failure")
+
+                unified_fetch_result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "web_archive_tools",
+                        "unified_fetch",
+                        {"url": "https://example.com", "mode": "balanced"},
+                    )
+                )
+                self.assertEqual(unified_fetch_result.get("status"), "error")
+                self.assertEqual(unified_fetch_result.get("success"), False)
+                self.assertEqual(unified_fetch_result.get("error"), "delegate failure")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_idl_tools_dispatch_via_meta_tools(self, mock_wrapper):
         """Unified meta-tools should dispatch native MCP-IDL `interfaces/*` tools."""
 
@@ -10788,6 +10916,85 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_analysis_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """analysis_tools dispatch should normalize contradictory failed delegate payloads."""
+
+        from ipfs_accelerate_py.mcp_server.tools.analysis_tools import native_analysis_tools
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.dict(
+                native_analysis_tools._API,
+                {
+                    "analyze_data_distribution": _contradictory_failure,
+                    "cluster_analysis": _contradictory_failure,
+                    "quality_assessment": _contradictory_failure,
+                    "detect_outliers": _contradictory_failure,
+                    "dimensionality_reduction": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                server = create_mcp_server(name="analysis-tools-contradictory-bootstrap")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                clustered = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "analysis_tools",
+                        "cluster_analysis",
+                        {"algorithm": "kmeans"},
+                    )
+                )
+                self.assertEqual(clustered.get("status"), "error")
+                self.assertEqual(clustered.get("error"), "delegate failure")
+
+                reduced = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "analysis_tools",
+                        "dimensionality_reduction",
+                        {"method": "pca", "n_components": 2},
+                    )
+                )
+                self.assertEqual(reduced.get("status"), "error")
+                self.assertEqual(reduced.get("error"), "delegate failure")
+
+                assessed = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "analysis_tools",
+                        "quality_assessment",
+                        {"assessment_type": "comprehensive"},
+                    )
+                )
+                self.assertEqual(assessed.get("status"), "error")
+                self.assertEqual(assessed.get("error"), "delegate failure")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_geospatial_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """geospatial_tools should expose source-compatible operations with deterministic validation envelopes."""
 
@@ -14067,6 +14274,110 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 + str(invalid_cli_timeout.get("error", ""))
             )
             self.assertIn("timeout must be an integer between 1 and 300", invalid_cli_timeout_text)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_development_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """development_tools dispatch should normalize contradictory failed delegate payloads."""
+
+        from ipfs_accelerate_py.mcp_server.tools.development_tools import native_development_tools
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _contradictory_failure(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.dict(
+                native_development_tools._API,
+                {
+                    "codebase_search": _contradictory_failure,
+                    "documentation_generator": _contradictory_failure,
+                    "run_comprehensive_tests": _contradictory_failure,
+                    "vscode_cli_execute": _contradictory_failure,
+                    "vscode_cli_status": _contradictory_failure,
+                },
+                clear=False,
+            ):
+                server = create_mcp_server(name="development-tools-contradictory-bootstrap")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                searched = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "development_tools",
+                        "codebase_search",
+                        {"pattern": "README", "path": "src"},
+                    )
+                )
+                self.assertEqual(searched.get("status"), "error")
+                self.assertEqual(searched.get("success"), False)
+                self.assertEqual(searched.get("error"), "delegate failure")
+
+                documented = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "development_tools",
+                        "documentation_generator",
+                        {"input_path": "src", "output_path": "docs"},
+                    )
+                )
+                self.assertEqual(documented.get("status"), "error")
+                self.assertEqual(documented.get("success"), False)
+                self.assertEqual(documented.get("error"), "delegate failure")
+
+                tested = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "development_tools",
+                        "run_comprehensive_tests",
+                        {"path": ".", "test_framework": "pytest"},
+                    )
+                )
+                self.assertEqual(tested.get("status"), "error")
+                self.assertEqual(tested.get("success"), False)
+                self.assertEqual(tested.get("error"), "delegate failure")
+
+                executed = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "development_tools",
+                        "vscode_cli_execute",
+                        {"command": ["--version"], "timeout": 30},
+                    )
+                )
+                self.assertEqual(executed.get("status"), "error")
+                self.assertEqual(executed.get("success"), False)
+                self.assertEqual(executed.get("error"), "delegate failure")
+
+                status = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "development_tools",
+                        "vscode_cli_status",
+                        {"install_dir": "/opt/code"},
+                    )
+                )
+                self.assertEqual(status.get("status"), "error")
+                self.assertEqual(status.get("success"), False)
+                self.assertEqual(status.get("error"), "delegate failure")
 
         anyio.run(_run_flow)
 
