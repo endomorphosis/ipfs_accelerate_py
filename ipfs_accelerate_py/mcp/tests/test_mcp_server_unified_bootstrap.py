@@ -9346,6 +9346,58 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_dataset_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """dataset_tools dispatch should normalize contradictory failed delegate payloads."""
+        from ipfs_accelerate_py.mcp_server.tools.dataset_tools import native_dataset_tools
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.dict(
+                native_dataset_tools._API,
+                {"load_dataset": _failed},
+                clear=False,
+            ):
+                server = create_mcp_server(name="dataset-tools-failed-payload")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                loaded = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "dataset_tools",
+                        "load_dataset",
+                        {"source": "dataset://demo"},
+                    )
+                )
+                self.assertEqual(loaded.get("status"), "error")
+                self.assertEqual(loaded.get("error"), "delegate failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_embedding_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """embedding_tools should expose deterministic schema and validation envelopes."""
 
@@ -17709,6 +17761,67 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                     await dispatch("mcplusplus", tool_name, params)
                 )
                 self.assertTrue("status" in result or "success" in result or "error" in result)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_mcplusplus_tools_dispatch_infers_error_status_from_failed_delegate_payload(
+        self, mock_wrapper
+    ):
+        """mcplusplus bootstrap dispatch should normalize contradictory failed engine payloads."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="mcplusplus-tools-failed-payload")
+
+        from ipfs_accelerate_py.mcp_server.tools.mcplusplus import native_mcplusplus_tools
+
+        class _TaskQueueEngine:
+            def get_status(self, **_kwargs):
+                return {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run_flow() -> None:
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            with patch.object(
+                native_mcplusplus_tools,
+                "_API",
+                new={"TaskQueueEngine": _TaskQueueEngine},
+            ):
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "mcplusplus",
+                        "mcplusplus_taskqueue_get_status",
+                        {"task_id": "task-1"},
+                    )
+                )
+
+            self.assertEqual(result.get("status"), "error")
+            self.assertEqual(result.get("error"), "delegate failure")
+            self.assertEqual(result.get("engine"), "TaskQueueEngine")
+            self.assertEqual(result.get("method"), "get_status")
 
         anyio.run(_run_flow)
 
