@@ -309,7 +309,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         p2p_tools = {tool["name"]: tool for tool in manager.list_tools("p2p")}
         self.assertIn("p2p_canonical_ping", p2p_tools)
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_create_server_bootstrap_flag_enabled(self, mock_create):
         """create_server should attach unified components when feature flag is enabled."""
 
@@ -359,7 +359,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertIn("tools_runtime_metrics", server.tools)
         self.assertEqual(sorted(get_unified_meta_tool_names()), sorted(server.tools.keys()))
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_unified_supported_profiles_are_attached_as_snapshots(self, mock_create):
         """Attached profile metadata should not mutate canonical defaults/context snapshots."""
 
@@ -406,7 +406,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             "optional_additive",
         )
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_unified_profile_capability_snapshot_matches_expected_contract(self, mock_create):
         """Canonical profile capability metadata should remain stable across bootstrap snapshots."""
 
@@ -450,7 +450,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertEqual(server._unified_server_context_snapshot.get("supported_profiles"), expected_profiles)
         self.assertEqual(server._unified_server_context_snapshot.get("profile_negotiation"), expected_negotiation)
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_unified_bootstrap_service_factories_smoke(self, mock_create):
         """Unified bootstrap should provide callable MCP++ service factories."""
 
@@ -496,7 +496,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertTrue(hasattr(services["peer_bootstrap_factory"](), "get_bootstrap_addrs"))
         self.assertTrue(hasattr(services["peer_discovery_factory"](), "discover_peers"))
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_unified_bootstrap_attaches_secrets_vault_when_enabled(self, mock_create):
         """Unified bootstrap should attach a secrets vault when enabled."""
 
@@ -533,7 +533,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertTrue(hasattr(vault, "set"))
         self.assertTrue(hasattr(vault, "get"))
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_unified_bootstrap_attaches_risk_scorer(self, mock_create):
         """Unified bootstrap should attach canonical risk scorer component."""
 
@@ -561,7 +561,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         assessment = scorer.score_intent(tool="smoke.echo", actor="did:model:worker", params={"k": 1})
         self.assertEqual(assessment.tool, "smoke.echo")
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_unified_bootstrap_attaches_observability_components(self, mock_create):
         """Unified bootstrap should attach monitoring/tracing/prometheus components."""
 
@@ -614,7 +614,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertTrue(audit_metrics.get("enabled"))
         self.assertTrue(audit_metrics.get("attached"))
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_unified_bootstrap_autoloads_secrets_into_env(self, mock_create):
         """Unified bootstrap should optionally autoload vault secrets into environment."""
 
@@ -662,7 +662,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
 
             os.environ.pop("MCP_TEST_SECRET", None)
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_unified_bootstrap_secrets_autoload_failure_is_nonfatal(self, mock_create):
         """Secrets autoload failure should not break bootstrap and should be surfaced in status."""
 
@@ -701,7 +701,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         self.assertTrue(status.get("attached"))
         self.assertEqual(status.get("error"), "autoload_failed")
 
-    @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
+    @patch("ipfs_accelerate_py.mcp_server.server._create_base_server")
     def test_create_server_bootstrap_flag_disabled(self, mock_create):
         """create_server should keep pure delegation behavior when feature flag is disabled."""
 

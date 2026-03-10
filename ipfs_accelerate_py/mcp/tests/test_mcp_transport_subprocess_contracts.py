@@ -187,17 +187,32 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
         self.assertIn("CANONICAL_FASTAPI_RUN 127.0.0.1 8994 /mcp", result.stdout)
 
     def test_canonical_module_main_contract(self) -> None:
-        """Canonical mcp_server.__main__ facade should delegate to mcp.__main__.main."""
+        """Canonical mcp_server.__main__ facade should delegate to standalone_server.main."""
         code = """
         from unittest.mock import patch
         from ipfs_accelerate_py.mcp_server import __main__ as canonical_main
 
-        with patch('ipfs_accelerate_py.mcp.__main__.main', return_value=7):
+        with patch('ipfs_accelerate_py.mcp_server.standalone_server.main', side_effect=lambda: print('STANDALONE_MAIN_CALLED')):
             print('MAIN_RETURN', canonical_main.main())
         """
         result = self._run_subprocess(code)
         self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
-        self.assertIn("MAIN_RETURN 7", result.stdout)
+        self.assertIn("STANDALONE_MAIN_CALLED", result.stdout)
+        self.assertIn("MAIN_RETURN 0", result.stdout)
+
+    def test_canonical_server_main_contract(self) -> None:
+        """Canonical mcp_server.server.main should delegate to standalone_server.main."""
+        code = """
+        from unittest.mock import patch
+        from ipfs_accelerate_py.mcp_server import server as canonical_server
+
+        with patch('ipfs_accelerate_py.mcp_server.standalone_server.main', side_effect=lambda: print('SERVER_STANDALONE_MAIN_CALLED')):
+            print('SERVER_MAIN_RETURN', canonical_server.main())
+        """
+        result = self._run_subprocess(code)
+        self.assertEqual(result.returncode, 0, msg=f"stderr={result.stderr}\nstdout={result.stdout}")
+        self.assertIn("SERVER_STANDALONE_MAIN_CALLED", result.stdout)
+        self.assertIn("SERVER_MAIN_RETURN None", result.stdout)
 
     def test_canonical_simple_server_start_contract(self) -> None:
         """Canonical simple_server facade should delegate startup to standalone run_server."""

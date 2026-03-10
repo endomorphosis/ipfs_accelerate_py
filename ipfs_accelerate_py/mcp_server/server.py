@@ -1,8 +1,7 @@
-"""Compatibility bootstrap server for MCP unification.
+"""Canonical bootstrap server for MCP unification.
 
-This module provides a stable import location for the new canonical MCP server
-package while delegating runtime behavior to the existing
-`ipfs_accelerate_py.mcp.server` implementation.
+This module provides the stable runtime construction path for the unified MCP
+server package and attaches canonical bootstrap services when enabled.
 """
 
 from __future__ import annotations
@@ -1604,24 +1603,35 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
             )
 
 
+def _create_base_server(*args: Any, **kwargs: Any) -> Any:
+    """Construct the underlying MCP server wrapper without routing through the facade."""
+    from ipfs_accelerate_py.mcp import server as legacy_server
+
+    server_kwargs = dict(kwargs)
+    server_kwargs.pop("_skip_unified_bridge", None)
+
+    server = legacy_server.MCPServerWrapper(*args, **server_kwargs)
+    legacy_server._MCP_SERVER_INSTANCE = server
+    try:
+        legacy_server.set_mcp_like_instance(getattr(server, "mcp", None) or server)
+    except Exception:
+        pass
+
+    return server
+
+
 def create_server(*args: Any, **kwargs: Any) -> Any:
     """Create and return an MCP server instance.
 
-    Delegates to the current stable implementation under
-    `ipfs_accelerate_py.mcp.server`. This allows callers to migrate imports to
-    `ipfs_accelerate_py.mcp_server.server` immediately while preserving behavior.
+    Builds the canonical MCP server wrapper directly while keeping unified
+    bootstrap attachment in this package.
     """
-    from ipfs_accelerate_py.mcp.server import create_mcp_server
-
-    # Prevent recursive bridging if legacy create_mcp_server is configured to
-    # route back through this unified package.
-    kwargs.setdefault("_skip_unified_bridge", True)
 
     config = UnifiedMCPServerConfig.from_env(
         allowed_preload_categories=get_unified_wave_a_categories()
     )
 
-    server = create_mcp_server(*args, **kwargs)
+    server = _create_base_server(*args, **kwargs)
 
     if config.enable_unified_bootstrap:
         try:
@@ -1635,14 +1645,10 @@ def create_server(*args: Any, **kwargs: Any) -> Any:
 
 
 def main() -> None:
-    """Start the MCP server using existing CLI behavior.
+    """Start the MCP server using the canonical standalone CLI behavior."""
+    from ipfs_accelerate_py.mcp_server.standalone_server import main as standalone_main
 
-    Delegates to `ipfs_accelerate_py.mcp.server.main` until the unified server
-    implementation is ported in place.
-    """
-    from ipfs_accelerate_py.mcp.server import main as mcp_main
-
-    mcp_main()
+    standalone_main()
 
 
 if __name__ == "__main__":
