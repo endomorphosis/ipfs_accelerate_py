@@ -67,6 +67,29 @@ class TestWorkflowSchedulerWrapper(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_default_scheduler_ownership_is_canonical(self) -> None:
+        created = []
+
+        class _FakeScheduler:
+            def __init__(self, peer_id: str):
+                created.append(peer_id)
+                self.peer_id = peer_id
+
+        with (
+            patch.object(ws, "HAVE_WORKFLOW_SCHEDULER", True),
+            patch.object(ws, "P2PWorkflowScheduler", _FakeScheduler),
+        ):
+            ws._scheduler_instance = None
+            first = ws._default_get_scheduler()
+            second = ws._default_get_scheduler()
+
+            self.assertIs(first, second)
+            self.assertEqual(len(created), 1)
+            self.assertTrue(created[0].startswith("peer-"))
+
+            ws._default_reset_scheduler()
+            self.assertIsNone(ws._scheduler_instance)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -151,8 +151,8 @@ def test_workflow_core_tools_delegate_to_canonical(monkeypatch):
     anyio.run(_run)
 
 
-def test_tools_resolver_prefers_explicit_modules(monkeypatch):
-    """Tools resolver should prefer explicit module imports when available."""
+def test_tools_resolver_prefers_canonical_modules(monkeypatch):
+    """Tools resolver should prefer canonical registrar modules when available."""
     from ipfs_accelerate_py.mcplusplus_module import tools
     from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
@@ -166,10 +166,10 @@ def test_tools_resolver_prefers_explicit_modules(monkeypatch):
 
     def _fake_import_module(name: str):
         calls.append(name)
-        if name.endswith("tools.taskqueue_tools"):
-            return SimpleNamespace(register_p2p_taskqueue_tools=_taskqueue)
-        if name.endswith("tools.workflow_tools"):
-            return SimpleNamespace(register_p2p_workflow_tools=_workflow)
+        if name == "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools":
+            return SimpleNamespace(register_native_p2p_tools=_taskqueue)
+        if name == "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools":
+            return SimpleNamespace(register_native_p2p_workflow_tools=_workflow)
         raise AssertionError(f"Unexpected import: {name}")
 
     assert tools._resolve_p2p_registrars is canonical_compat._resolve_p2p_registrars
@@ -179,28 +179,48 @@ def test_tools_resolver_prefers_explicit_modules(monkeypatch):
     assert taskqueue_registrar is _taskqueue
     assert workflow_registrar is _workflow
     assert calls == [
+        "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools",
+        "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools",
+    ]
+
+
+def test_tools_resolver_falls_back_to_shim_explicit_modules(monkeypatch):
+    """Tools resolver should fall back to shim explicit modules when canonical imports fail."""
+    from ipfs_accelerate_py.mcplusplus_module import tools
+    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
+
+    calls = []
+
+    def _taskqueue(_mcp):
+        return None
+
+    def _workflow(_mcp):
+        return None
+
+    def _fake_import_module(name: str):
+        calls.append(name)
+        if name.startswith("ipfs_accelerate_py.mcp_server.tools."):
+            raise ImportError("simulated canonical failure")
+        if name == "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools":
+            return SimpleNamespace(register_p2p_taskqueue_tools=_taskqueue)
+        if name == "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools":
+            return SimpleNamespace(register_p2p_workflow_tools=_workflow)
+        raise AssertionError(f"Unexpected import: {name}")
+
+    monkeypatch.setattr(canonical_compat, "import_module", _fake_import_module)
+
+    taskqueue_registrar, workflow_registrar = tools._resolve_p2p_registrars()
+    assert taskqueue_registrar is _taskqueue
+    assert workflow_registrar is _workflow
+    assert calls == [
+        "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools",
         "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
         "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools",
     ]
 
 
 def test_tools_resolver_falls_back_to_package_symbols(monkeypatch):
-    """Tools resolver should return package symbols if imports fail."""
-    from ipfs_accelerate_py.mcplusplus_module import tools
-    from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
-
-    def _fake_import_module(_name: str):
-        raise ImportError("simulated failure")
-
-    monkeypatch.setattr(canonical_compat, "import_module", _fake_import_module)
-
-    taskqueue_registrar, workflow_registrar = tools._resolve_p2p_registrars()
-    assert taskqueue_registrar is tools.register_p2p_taskqueue_tools
-    assert workflow_registrar is tools.register_p2p_workflow_tools
-
-
-def test_tools_resolver_partial_import_failure_uses_package_symbols(monkeypatch):
-    """Any explicit-module import failure should fall back to package symbols."""
+    """Tools resolver should return package symbols if all explicit imports fail."""
     from ipfs_accelerate_py.mcplusplus_module import tools
     from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
@@ -208,11 +228,7 @@ def test_tools_resolver_partial_import_failure_uses_package_symbols(monkeypatch)
 
     def _fake_import_module(name: str):
         calls.append(name)
-        if name.endswith("tools.taskqueue_tools"):
-            return SimpleNamespace(register_p2p_taskqueue_tools=lambda _mcp: None)
-        if name.endswith("tools.workflow_tools"):
-            raise ImportError("simulated workflow import failure")
-        raise AssertionError(f"Unexpected import: {name}")
+        raise ImportError(f"simulated failure for {name}")
 
     monkeypatch.setattr(canonical_compat, "import_module", _fake_import_module)
 
@@ -220,8 +236,8 @@ def test_tools_resolver_partial_import_failure_uses_package_symbols(monkeypatch)
     assert taskqueue_registrar is tools.register_p2p_taskqueue_tools
     assert workflow_registrar is tools.register_p2p_workflow_tools
     assert calls == [
+        "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools",
         "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
-        "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools",
     ]
 
 def test_register_all_p2p_tools_uses_resolver(monkeypatch):

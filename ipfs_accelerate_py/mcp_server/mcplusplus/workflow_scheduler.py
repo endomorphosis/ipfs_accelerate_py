@@ -3,31 +3,57 @@
 from __future__ import annotations
 
 import logging
+import socket
 from typing import Any, Callable, Optional
+import uuid
 
 logger = logging.getLogger(__name__)
 
 P2PWorkflowScheduler: Any = None
 _get_scheduler: Optional[Callable[[], Any]] = None
 _reset_scheduler: Optional[Callable[[], None]] = None
+_scheduler_instance: Any = None
 
 try:
-    from ipfs_accelerate_py.mcplusplus_module.p2p.workflow import (
+    from ipfs_accelerate_py.p2p_workflow_scheduler import (
         HAVE_P2P_SCHEDULER,
         P2PWorkflowScheduler as _P2PWorkflowSchedulerImpl,
-        get_scheduler as _get_scheduler_impl,
-        reset_scheduler as _reset_scheduler_impl,
+        P2PTask,
+        WorkflowTag,
+        MerkleClock,
     )
 
     HAVE_WORKFLOW_SCHEDULER = bool(HAVE_P2P_SCHEDULER)
     P2PWorkflowScheduler = _P2PWorkflowSchedulerImpl
-    _get_scheduler = _get_scheduler_impl
-    _reset_scheduler = _reset_scheduler_impl
 except ImportError:
     HAVE_WORKFLOW_SCHEDULER = False
     P2PWorkflowScheduler = None
-    _get_scheduler = None
-    _reset_scheduler = None
+    P2PTask = None
+    WorkflowTag = None
+    MerkleClock = None
+
+
+def _default_get_scheduler() -> Optional[Any]:
+    global _scheduler_instance
+
+    if not HAVE_WORKFLOW_SCHEDULER or P2PWorkflowScheduler is None:
+        return None
+
+    if _scheduler_instance is None:
+        peer_id = f"peer-{socket.gethostname()}-{uuid.uuid4().hex[:8]}"
+        _scheduler_instance = P2PWorkflowScheduler(peer_id=peer_id)
+        logger.info("Created canonical P2P workflow scheduler with peer_id: %s", peer_id)
+
+    return _scheduler_instance
+
+
+def _default_reset_scheduler() -> None:
+    global _scheduler_instance
+    _scheduler_instance = None
+
+
+_get_scheduler = _default_get_scheduler
+_reset_scheduler = _default_reset_scheduler
 
 
 def create_workflow_scheduler(

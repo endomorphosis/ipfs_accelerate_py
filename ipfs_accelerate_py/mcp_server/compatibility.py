@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 from datetime import UTC, datetime
 from importlib import import_module
 import os
@@ -67,24 +68,58 @@ def _create_storage_wrapper(**kwargs) -> Optional[object]:
 
 def _resolve_p2p_registrars():
     """Resolve MCP++ P2P registrars with canonical shared fallback behavior."""
-    try:
-        taskqueue_module = import_module(
-            "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools"
-        )
-        workflow_module = import_module(
-            "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools"
-        )
-        return (
-            taskqueue_module.register_p2p_taskqueue_tools,
-            workflow_module.register_p2p_workflow_tools,
-        )
-    except (ImportError, AttributeError):
-        from ipfs_accelerate_py.mcplusplus_module.tools import (
-            register_p2p_taskqueue_tools,
-            register_p2p_workflow_tools,
-        )
+    explicit_candidates = (
+        (
+            "ipfs_accelerate_py.mcp_server.tools.p2p.native_p2p_tools",
+            "register_native_p2p_tools",
+            "ipfs_accelerate_py.mcp_server.tools.p2p_workflow_tools.native_p2p_workflow_tools",
+            "register_native_p2p_workflow_tools",
+        ),
+        (
+            "ipfs_accelerate_py.mcplusplus_module.tools.taskqueue_tools",
+            "register_p2p_taskqueue_tools",
+            "ipfs_accelerate_py.mcplusplus_module.tools.workflow_tools",
+            "register_p2p_workflow_tools",
+        ),
+    )
 
-        return register_p2p_taskqueue_tools, register_p2p_workflow_tools
+    for (
+        taskqueue_module_name,
+        taskqueue_registrar_name,
+        workflow_module_name,
+        workflow_registrar_name,
+    ) in explicit_candidates:
+        try:
+            taskqueue_module = import_module(taskqueue_module_name)
+            workflow_module = import_module(workflow_module_name)
+        except (ImportError, AttributeError):
+            continue
+
+        taskqueue_registrar = getattr(taskqueue_module, taskqueue_registrar_name, None)
+        workflow_registrar = getattr(workflow_module, workflow_registrar_name, None)
+        if callable(taskqueue_registrar) and callable(workflow_registrar):
+            return taskqueue_registrar, workflow_registrar
+
+    from ipfs_accelerate_py.mcplusplus_module.tools import (
+        register_p2p_taskqueue_tools,
+        register_p2p_workflow_tools,
+    )
+
+    return register_p2p_taskqueue_tools, register_p2p_workflow_tools
+
+
+def _resolve_trio_bridge_runner() -> Optional[Callable[..., object]]:
+    """Resolve the Trio bridge runner through the canonical compatibility layer."""
+    try:
+        module = builtins.__import__(
+            "ipfs_accelerate_py.mcplusplus_module.trio.bridge",
+            fromlist=("run_in_trio",),
+        )
+    except Exception:
+        return None
+
+    runner = getattr(module, "run_in_trio", None)
+    return runner if callable(runner) else None
 
 
 def _build_peer_registration_record(
@@ -143,6 +178,7 @@ __all__ = [
     "_resolve_storage_wrapper_factory",
     "_create_storage_wrapper",
     "_resolve_p2p_registrars",
+    "_resolve_trio_bridge_runner",
     "_build_peer_registration_record",
     "_detect_runner_name",
     "_detect_public_ip",

@@ -215,7 +215,7 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     }
     if artifact_store_backend == "json" and not artifact_store_path:
         artifact_store_runtime_meta["warning"] = "artifact_store_path_required"
-    risk_scheduler = RiskScheduler()
+    risk_scheduler = None
     risk_scorer = RiskScorer()
     policy_audit = PolicyAuditLog(enabled=config.enable_policy_audit)
     metrics_collector = EnhancedMetricsCollector(enabled=config.enable_monitoring)
@@ -1461,6 +1461,35 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
 
     # Attach migration components for callers that want the unified surface.
     unified_services = _build_unified_services()
+    risk_scheduler_factory = unified_services.get("risk_scheduler_factory") if isinstance(unified_services, dict) else None
+    if callable(risk_scheduler_factory):
+        try:
+            risk_scheduler = risk_scheduler_factory()
+        except Exception:
+            risk_scheduler = None
+    if risk_scheduler is None:
+        risk_scheduler = RiskScheduler()
+
+    workflow_engine_factory = unified_services.get("workflow_engine_factory") if isinstance(unified_services, dict) else None
+    workflow_engine = None
+    if callable(workflow_engine_factory):
+        try:
+            workflow_engine = workflow_engine_factory()
+        except Exception:
+            workflow_engine = None
+    if workflow_engine is None:
+        workflow_engine = WorkflowEngine()
+
+    workflow_dag_executor_factory = unified_services.get("workflow_dag_executor_factory") if isinstance(unified_services, dict) else None
+    workflow_dag_executor = None
+    if callable(workflow_dag_executor_factory):
+        try:
+            workflow_dag_executor = workflow_dag_executor_factory()
+        except Exception:
+            workflow_dag_executor = None
+    if workflow_dag_executor is None:
+        workflow_dag_executor = WorkflowDAGExecutor()
+
     unified_context = UnifiedServerContext(
         runtime_router=runtime_router,
         tool_manager=manager,
@@ -1481,6 +1510,8 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
     setattr(server, "_unified_artifact_store", artifact_store)
     setattr(server, "_unified_artifact_store_meta", dict(artifact_store_runtime_meta))
     setattr(server, "_unified_event_dag", event_store)
+    setattr(server, "_unified_workflow_engine", workflow_engine)
+    setattr(server, "_unified_workflow_dag_executor", workflow_dag_executor)
     setattr(server, "_unified_risk_scheduler", risk_scheduler)
     setattr(server, "_unified_risk_scorer", risk_scorer)
     setattr(server, "_unified_policy_audit", policy_audit)

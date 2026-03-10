@@ -54,6 +54,14 @@ class _FakeBootstrap:
 class TestPeerPrimitives(unittest.TestCase):
     """Validate peer wrapper and discovery manager behavior."""
 
+    def test_peer_wrappers_prefer_canonical_implementations(self) -> None:
+        from ipfs_accelerate_py.mcp_server.mcplusplus import peer_bootstrap, peer_registry
+
+        if peer_registry.HAVE_PEER_REGISTRY:
+            self.assertEqual(peer_registry._PeerRegistry.__module__, "ipfs_accelerate_py.github_cli.p2p_peer_registry")
+        if peer_bootstrap.HAVE_PEER_BOOTSTRAP:
+            self.assertEqual(peer_bootstrap._PeerBootstrap.__module__, "ipfs_accelerate_py.github_cli.p2p_bootstrap_helper")
+
     def test_bootstrap_nodes_management(self) -> None:
         registry = create_peer_registry(bootstrap_nodes=["/ip4/1.2.3.4/tcp/4001/p2p/x"])
         registry.add_bootstrap_node("/ip4/1.2.3.4/tcp/4001/p2p/x")

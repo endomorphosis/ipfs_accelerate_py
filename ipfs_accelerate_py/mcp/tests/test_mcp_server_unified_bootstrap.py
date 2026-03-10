@@ -6655,6 +6655,135 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_unified_bootstrap_risk_scheduler_factory_consumed(self, mock_wrapper):
+        """Unified bootstrap should prefer risk_scheduler_factory for the attached scheduler."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakeRiskScheduler:
+            def __init__(self):
+                self.mark = "factory-backed"
+
+        mock_wrapper.return_value = DummyServer()
+        fake_scheduler = FakeRiskScheduler()
+        factory_calls = {"risk_scheduler_factory": 0}
+
+        from ipfs_accelerate_py.mcp_server import server as unified_server_module
+
+        original_build_unified_services = unified_server_module._build_unified_services
+
+        def _build_unified_services_with_fake_risk_scheduler():
+            services = original_build_unified_services()
+
+            def _risk_scheduler_factory(**kwargs):
+                _ = kwargs
+                factory_calls["risk_scheduler_factory"] += 1
+                return fake_scheduler
+
+            services["risk_scheduler_factory"] = _risk_scheduler_factory
+            return services
+
+        with patch.object(
+            unified_server_module,
+            "_build_unified_services",
+            side_effect=_build_unified_services_with_fake_risk_scheduler,
+        ):
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ):
+                server = create_mcp_server(name="bootstrap-risk-scheduler-factory")
+
+        self.assertEqual(factory_calls["risk_scheduler_factory"], 1)
+        self.assertIs(server._unified_risk_scheduler, fake_scheduler)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_unified_bootstrap_workflow_factories_consumed(self, mock_wrapper):
+        """Unified bootstrap should prefer workflow engine and DAG executor factories for attached components."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakeWorkflowEngine:
+            pass
+
+        class FakeWorkflowDAGExecutor:
+            pass
+
+        mock_wrapper.return_value = DummyServer()
+        fake_engine = FakeWorkflowEngine()
+        fake_dag_executor = FakeWorkflowDAGExecutor()
+        factory_calls = {"workflow_engine_factory": 0, "workflow_dag_executor_factory": 0}
+
+        from ipfs_accelerate_py.mcp_server import server as unified_server_module
+
+        original_build_unified_services = unified_server_module._build_unified_services
+
+        def _build_unified_services_with_fake_workflow_runtime():
+            services = original_build_unified_services()
+
+            def _workflow_engine_factory(**kwargs):
+                _ = kwargs
+                factory_calls["workflow_engine_factory"] += 1
+                return fake_engine
+
+            def _workflow_dag_executor_factory(**kwargs):
+                _ = kwargs
+                factory_calls["workflow_dag_executor_factory"] += 1
+                return fake_dag_executor
+
+            services["workflow_engine_factory"] = _workflow_engine_factory
+            services["workflow_dag_executor_factory"] = _workflow_dag_executor_factory
+            return services
+
+        with patch.object(
+            unified_server_module,
+            "_build_unified_services",
+            side_effect=_build_unified_services_with_fake_workflow_runtime,
+        ):
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ):
+                server = create_mcp_server(name="bootstrap-workflow-factories")
+
+        self.assertEqual(factory_calls["workflow_engine_factory"], 1)
+        self.assertEqual(factory_calls["workflow_dag_executor_factory"], 1)
+        self.assertIs(server._unified_workflow_engine, fake_engine)
+        self.assertIs(server._unified_workflow_dag_executor, fake_dag_executor)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_tools_dispatch_peer_registry_factory_consumed_for_probe(self, mock_wrapper):
         """tools_dispatch should consume peer_registry_factory when peer probing is requested."""
 

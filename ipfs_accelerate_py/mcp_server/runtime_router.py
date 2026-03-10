@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from threading import RLock
 from typing import Any, Callable, Dict, List, Optional
 
+from .compatibility import _resolve_trio_bridge_runner
 from .exceptions import RuntimeExecutionError, RuntimeNotFoundError, RuntimeRoutingError
 from .tool_metadata import ToolMetadataRegistry, get_registry
 
@@ -220,19 +221,18 @@ class RuntimeRouter:
 
     async def _execute_trio(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
         """Execute via Trio bridge when available."""
-        try:
-            from ipfs_accelerate_py.mcplusplus_module.trio.bridge import run_in_trio
-
+        run_in_trio = _resolve_trio_bridge_runner()
+        if callable(run_in_trio):
             return await run_in_trio(func, *args, **kwargs)
-        except ImportError:
-            if self.trio_bridge_required:
-                raise RuntimeRoutingError(
-                    "Trio bridge unavailable and trio_bridge_required=True"
-                )
-            # Backward-compatible fallback keeps routing functional in environments
-            # without trio extras.
-            logger.warning("Trio bridge unavailable; falling back to standard execution")
-            return await self._execute_fastapi(func, *args, **kwargs)
+
+        if self.trio_bridge_required:
+            raise RuntimeRoutingError(
+                "Trio bridge unavailable and trio_bridge_required=True"
+            )
+        # Backward-compatible fallback keeps routing functional in environments
+        # without trio extras.
+        logger.warning("Trio bridge unavailable; falling back to standard execution")
+        return await self._execute_fastapi(func, *args, **kwargs)
 
     def get_metrics(self) -> Dict[str, Dict[str, Any]]:
         """Return collected runtime metrics."""

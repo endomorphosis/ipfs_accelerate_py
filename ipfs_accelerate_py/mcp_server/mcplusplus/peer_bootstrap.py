@@ -12,13 +12,19 @@ import anyio
 logger = logging.getLogger(__name__)
 
 try:
-    from ipfs_accelerate_py.mcplusplus_module.p2p.bootstrap import SimplePeerBootstrap as _PeerBootstrapImpl
+    from ipfs_accelerate_py.github_cli.p2p_bootstrap_helper import SimplePeerBootstrap as _PeerBootstrapImpl
 
     HAVE_PEER_BOOTSTRAP = True
     _PeerBootstrap: Any = _PeerBootstrapImpl
 except ImportError:
-    HAVE_PEER_BOOTSTRAP = False
-    _PeerBootstrap = None
+    try:
+        from ipfs_accelerate_py.mcplusplus_module.p2p.bootstrap import SimplePeerBootstrap as _PeerBootstrapImpl
+
+        HAVE_PEER_BOOTSTRAP = True
+        _PeerBootstrap = _PeerBootstrapImpl
+    except ImportError:
+        HAVE_PEER_BOOTSTRAP = False
+        _PeerBootstrap = None
 
 
 class PeerBootstrapWrapper:

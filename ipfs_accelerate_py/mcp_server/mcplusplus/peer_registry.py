@@ -11,13 +11,19 @@ import anyio
 logger = logging.getLogger(__name__)
 
 try:
-    from ipfs_accelerate_py.mcplusplus_module.p2p.peer_registry import P2PPeerRegistry as _PeerRegistryImpl
+    from ipfs_accelerate_py.github_cli.p2p_peer_registry import P2PPeerRegistry as _PeerRegistryImpl
 
     HAVE_PEER_REGISTRY = True
     _PeerRegistry: Any = _PeerRegistryImpl
 except ImportError:
-    HAVE_PEER_REGISTRY = False
-    _PeerRegistry = None
+    try:
+        from ipfs_accelerate_py.mcplusplus_module.p2p.peer_registry import P2PPeerRegistry as _PeerRegistryImpl
+
+        HAVE_PEER_REGISTRY = True
+        _PeerRegistry = _PeerRegistryImpl
+    except ImportError:
+        HAVE_PEER_REGISTRY = False
+        _PeerRegistry = None
 
 
 class PeerRegistryWrapper:
