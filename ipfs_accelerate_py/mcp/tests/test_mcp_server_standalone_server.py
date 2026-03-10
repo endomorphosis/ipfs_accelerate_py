@@ -8,8 +8,11 @@ from ipfs_accelerate_py.mcp_server import standalone_server
 
 
 class TestMCPServerStandaloneFacade(unittest.TestCase):
-    @patch("ipfs_accelerate_py.mcp.standalone.run_server")
-    def test_run_server_delegates_to_legacy_standalone(self, mock_run) -> None:
+    @patch("ipfs_accelerate_py.mcp_server.standalone_server.create_server")
+    def test_run_server_uses_canonical_server_builder(self, mock_create_server) -> None:
+        mock_server = unittest.mock.MagicMock()
+        mock_create_server.return_value = mock_server
+
         standalone_server.run_server(
             host="127.0.0.1",
             port=9901,
@@ -18,13 +21,15 @@ class TestMCPServerStandaloneFacade(unittest.TestCase):
             verbose=True,
         )
 
-        mock_run.assert_called_once_with(
+        mock_create_server.assert_called_once_with(
             host="127.0.0.1",
             port=9901,
             name="demo",
             description="demo-desc",
-            verbose=True,
+            debug=True,
+            mount_path="/mcp",
         )
+        mock_server.run.assert_called_once_with(host="127.0.0.1", port=9901)
 
     @patch("ipfs_accelerate_py.mcp_server.standalone_server.run_canonical_fastapi_server")
     def test_run_fastapi_server_uses_canonical_fastapi_facade(self, mock_run_fastapi) -> None:

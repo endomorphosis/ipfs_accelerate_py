@@ -2,6 +2,7 @@
 """Tests for canonical mcp_server FastAPI facade modules."""
 
 import os
+import types
 import unittest
 from unittest.mock import patch
 
@@ -74,23 +75,24 @@ class TestUnifiedFastAPIConfig(_EnvResetMixin, unittest.TestCase):
 
 
 class TestUnifiedFastAPIServiceFacade(unittest.TestCase):
-    @patch("ipfs_accelerate_py.mcp.integration.create_standalone_app")
-    def test_create_fastapi_app_delegates_to_integration(self, mock_create) -> None:
-        mock_create.return_value = {"app": "ok"}
+    @patch("ipfs_accelerate_py.mcp_server.fastapi_service.create_server")
+    def test_create_fastapi_app_creates_canonical_standalone_app(self, mock_create_server) -> None:
+        mock_create_server.return_value = type("DummyServer", (), {"app": object()})()
         cfg = UnifiedFastAPIConfig(name="svc", description="svc-desc", mount_path="/mcp", verbose=True)
 
         app = create_fastapi_app(cfg)
 
-        self.assertEqual(app, {"app": "ok"})
-        mock_create.assert_called_once_with(
+        self.assertTrue(hasattr(app, "_mcp_server"))
+        mounted_server = getattr(app, "_mcp_server")
+        self.assertIsNotNone(mounted_server)
+        mock_create_server.assert_called_once_with(
             name="svc",
             description="svc-desc",
-            mount_path="/mcp",
-            verbose=True,
+            mount_path="",
         )
 
-    @patch("ipfs_accelerate_py.mcp.integration.run_standalone_app")
-    @patch("ipfs_accelerate_py.mcp.integration.create_standalone_app")
+    @patch("ipfs_accelerate_py.mcp_server.fastapi_service.run_standalone_app")
+    @patch("ipfs_accelerate_py.mcp_server.fastapi_service.create_fastapi_app")
     def test_run_fastapi_server_delegates_to_runner(self, mock_create, mock_run) -> None:
         mock_create.return_value = {"app": "ok"}
         cfg = UnifiedFastAPIConfig(host="0.0.0.0", port=8899, verbose=True)
@@ -100,7 +102,7 @@ class TestUnifiedFastAPIServiceFacade(unittest.TestCase):
         mock_create.assert_called_once()
         mock_run.assert_called_once_with({"app": "ok"}, host="0.0.0.0", port=8899, verbose=True)
 
-    @patch("ipfs_accelerate_py.mcp.integration.create_standalone_app")
+    @patch("ipfs_accelerate_py.mcp_server.fastapi_service.create_fastapi_app")
     def test_get_fastapi_config_and_app_are_lazy_cached_compat_exports(self, mock_create) -> None:
         mock_create.return_value = {"app": "cached"}
 
@@ -131,11 +133,21 @@ class TestUnifiedFastAPIServiceFacade(unittest.TestCase):
         self.assertTrue(settings.verbose)
         self.assertEqual(app, {"app": "cached"})
         mock_create.assert_called_once_with(
-            name="cached-name",
-            description="cached-desc",
-            mount_path="/cached-mcp",
-            verbose=True,
+            settings,
         )
+
+    def test_run_standalone_app_invokes_uvicorn(self) -> None:
+        mock_run = unittest.mock.MagicMock()
+        fake_uvicorn = types.SimpleNamespace(run=mock_run)
+
+        with patch.dict("sys.modules", {"uvicorn": fake_uvicorn}):
+            fastapi_service_module.run_standalone_app(app=object(), host="127.0.0.1", port=8899, verbose=True)
+
+        mock_run.assert_called_once()
+        kwargs = mock_run.call_args.kwargs
+        self.assertEqual(kwargs["host"], "127.0.0.1")
+        self.assertEqual(kwargs["port"], 8899)
+        self.assertEqual(kwargs["log_level"], "debug")
 
 
 if __name__ == "__main__":

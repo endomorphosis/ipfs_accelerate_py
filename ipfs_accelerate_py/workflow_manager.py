@@ -33,6 +33,17 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+_workflow_manager = None
+
+
+def get_workflow_manager():
+    """Get or create the canonical workflow manager singleton."""
+    global _workflow_manager
+    if _workflow_manager is None:
+        _workflow_manager = WorkflowManager()
+    return _workflow_manager
+
+
 class WorkflowStatus(Enum):
     """Workflow execution status"""
     PENDING = "pending"

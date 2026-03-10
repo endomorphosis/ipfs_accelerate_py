@@ -157,12 +157,16 @@ class TestMCPTransportSubprocessContracts(unittest.TestCase):
         self.assertEqual(counts.get('warning_emissions'), 1)
 
     def test_canonical_standalone_run_server_contract(self) -> None:
-        """Canonical standalone facade should delegate to legacy standalone path."""
+        """Canonical standalone facade should invoke the canonical server builder path."""
         code = """
         from unittest.mock import patch
         from ipfs_accelerate_py.mcp_server import standalone_server
 
-        with patch('ipfs_accelerate_py.mcp.standalone.run_server', side_effect=lambda **kwargs: print('CANONICAL_RUN_SERVER', kwargs['host'], kwargs['port'])):
+        class _DummyServer:
+            def run(self, **kwargs):
+                print('CANONICAL_RUN_SERVER', kwargs['host'], kwargs['port'])
+
+        with patch('ipfs_accelerate_py.mcp_server.standalone_server.create_server', return_value=_DummyServer()):
             standalone_server.run_server(host='127.0.0.1', port=8993, name='demo', description='demo', verbose=False)
         """
         result = self._run_subprocess(code)

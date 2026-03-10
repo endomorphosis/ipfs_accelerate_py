@@ -36,20 +36,41 @@ class LegacyCollectorMCP:
 
     def register_tool(
         self,
-        name: str,
-        function: Callable[..., Any],
-        description: str,
-        input_schema: Dict[str, Any],
+        name: str | None = None,
+        function: Callable[..., Any] | None = None,
+        description: str = "",
+        input_schema: Dict[str, Any] | None = None,
         execution_context: str | None = None,
         tags: List[str] | None = None,
+        *,
+        category: str | None = None,
+        func: Callable[..., Any] | None = None,
+        runtime: str | None = None,
     ) -> None:
-        """Collect explicit register_tool calls."""
-        self.tools[name] = LegacyToolRecord(
-            name=name,
-            function=function,
+        """Collect explicit register_tool calls from legacy or hierarchical callers."""
+        del category
+
+        resolved_name = str(name or "").strip()
+        resolved_function = function or func
+        resolved_schema = input_schema or {"type": "object", "properties": {}, "required": []}
+        resolved_execution_context = execution_context
+        if resolved_execution_context is None:
+            if runtime == "trio":
+                resolved_execution_context = "worker"
+            elif runtime == "fastapi":
+                resolved_execution_context = "server"
+
+        if not resolved_name:
+            raise ValueError("register_tool requires a non-empty name")
+        if not callable(resolved_function):
+            raise ValueError(f"register_tool requires a callable function for '{resolved_name}'")
+
+        self.tools[resolved_name] = LegacyToolRecord(
+            name=resolved_name,
+            function=resolved_function,
             description=description,
-            input_schema=input_schema,
-            execution_context=execution_context,
+            input_schema=resolved_schema,
+            execution_context=resolved_execution_context,
             tags=tags,
         )
 

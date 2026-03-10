@@ -355,8 +355,8 @@ def test_storage_wrapper_resolver_prefers_primary_module(monkeypatch):
     assert calls == ["ipfs_accelerate_py.common.storage_wrapper"]
 
 
-def test_storage_wrapper_resolver_fallbacks_to_legacy_module(monkeypatch):
-    """Storage wrapper resolver should fall back when primary import fails."""
+def test_storage_wrapper_resolver_fallbacks_to_test_module(monkeypatch):
+    """Storage wrapper resolver should fall back to the test fixture module when primary import fails."""
     import ipfs_accelerate_py.mcplusplus_module as mcplusplus_module
     from ipfs_accelerate_py.mcp_server import compatibility as canonical_compat
 
@@ -369,7 +369,7 @@ def test_storage_wrapper_resolver_fallbacks_to_legacy_module(monkeypatch):
         calls.append(name)
         if name == "ipfs_accelerate_py.common.storage_wrapper":
             raise ImportError("simulated missing primary")
-        if name == "ipfs_accelerate_py.mcplusplus_module.common.storage_wrapper":
+        if name == "test.common.storage_wrapper":
             return SimpleNamespace(HAVE_STORAGE_WRAPPER=True, get_storage_wrapper=_factory)
         raise AssertionError(f"Unexpected import: {name}")
 
@@ -379,7 +379,7 @@ def test_storage_wrapper_resolver_fallbacks_to_legacy_module(monkeypatch):
     assert factory is _factory
     assert calls == [
         "ipfs_accelerate_py.common.storage_wrapper",
-        "ipfs_accelerate_py.mcplusplus_module.common.storage_wrapper",
+        "test.common.storage_wrapper",
     ]
 
 

@@ -40,7 +40,6 @@ def _resolve_storage_wrapper_factory() -> Optional[Callable[..., object]]:
     """Resolve a storage-wrapper factory across historical import locations."""
     module_candidates = (
         "ipfs_accelerate_py.common.storage_wrapper",
-        "ipfs_accelerate_py.mcplusplus_module.common.storage_wrapper",
         "test.common.storage_wrapper",
     )
     for module_name in module_candidates:

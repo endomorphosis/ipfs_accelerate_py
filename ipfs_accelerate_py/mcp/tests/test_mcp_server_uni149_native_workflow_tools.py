@@ -18,6 +18,12 @@ class _DummyManager:
 
 
 class TestMCPServerUNI149NativeWorkflowTools(unittest.TestCase):
+    def test_workflow_manager_resolver_uses_canonical_accessor(self) -> None:
+        sentinel = object()
+
+        with patch("ipfs_accelerate_py.workflow_manager.get_workflow_manager", return_value=sentinel):
+            self.assertIs(workflow_mod._get_workflow_manager(), sentinel)
+
     def test_register_schema_contracts(self) -> None:
         manager = _DummyManager()
         workflow_mod.register_native_workflow_tools(manager)

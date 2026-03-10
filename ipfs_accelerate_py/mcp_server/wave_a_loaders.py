@@ -8,8 +8,11 @@ from typing import Callable, Dict, Iterable
 from .hierarchical_tool_manager import HierarchicalToolManager
 from .registration_adapter import LegacyCollectorMCP
 from .tools.ipfs import register_native_ipfs_tools
+from .tools.ipfs_tools import register_native_ipfs_tools_category
 from .tools.p2p import register_native_p2p_tools
+from .tools.p2p_tools import register_native_p2p_tools_category
 from .tools.workflow import register_native_workflow_tools
+from .tools.workflow_tools import register_native_workflow_tools_category
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +28,9 @@ def load_ipfs_tools(manager: HierarchicalToolManager) -> None:
     """Load IPFS tools, preferring native unified implementations when available."""
     collector = LegacyCollectorMCP()
     try:
-        from ipfs_accelerate_py.mcp.tools.ipfs_files import register_files_tools
-
-        register_files_tools(collector)
+        register_native_ipfs_tools_category(collector)
     except Exception as exc:
-        logger.warning("Unable to load legacy IPFS tools: %s", exc)
+        logger.warning("Unable to load canonical IPFS tools category: %s", exc)
 
     if collector.tools:
         _register_collected(manager, collector.tools, category="ipfs")
@@ -46,11 +47,9 @@ def load_workflow_tools(manager: HierarchicalToolManager) -> None:
     """Load workflow tools, preferring native unified implementations when available."""
     collector = LegacyCollectorMCP()
     try:
-        from ipfs_accelerate_py.mcp.tools.workflows import register_tools as register_workflow_tools
-
-        register_workflow_tools(collector)
+        register_native_workflow_tools_category(collector)
     except Exception as exc:
-        logger.warning("Unable to load workflow tools: %s", exc)
+        logger.warning("Unable to load canonical workflow tools category: %s", exc)
         return
 
     if collector.tools:
@@ -73,11 +72,9 @@ def load_p2p_tools(manager: HierarchicalToolManager) -> None:
     """Load p2p tools, preferring native unified implementations when available."""
     collector = LegacyCollectorMCP()
     try:
-        from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import register_tools as register_p2p_tools
-
-        register_p2p_tools(collector)
+        register_native_p2p_tools_category(collector)
     except Exception as exc:
-        logger.warning("Unable to load p2p tools: %s", exc)
+        logger.warning("Unable to load canonical p2p tools category: %s", exc)
     
     if collector.tools:
         _register_collected(

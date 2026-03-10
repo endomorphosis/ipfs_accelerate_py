@@ -12,23 +12,19 @@ logger = logging.getLogger("ipfs_accelerate_mcp.tools.workflows")
 
 # Import workflow manager
 try:
-    from ipfs_accelerate_py.workflow_manager import WorkflowManager
+    from ipfs_accelerate_py.workflow_manager import get_workflow_manager as _canonical_get_workflow_manager
     HAVE_WORKFLOW_MANAGER = True
 except ImportError as e:
     logger.warning(f"Workflow manager not available: {e}")
     HAVE_WORKFLOW_MANAGER = False
-    WorkflowManager = None
-
-# Global workflow manager instance
-_workflow_manager = None
+    _canonical_get_workflow_manager = None
 
 
 def get_workflow_manager():
-    """Get or create the global workflow manager instance"""
-    global _workflow_manager
-    if _workflow_manager is None and HAVE_WORKFLOW_MANAGER:
-        _workflow_manager = WorkflowManager()
-    return _workflow_manager
+    """Get or create the global workflow manager instance."""
+    if not HAVE_WORKFLOW_MANAGER or _canonical_get_workflow_manager is None:
+        return None
+    return _canonical_get_workflow_manager()
 
 
 def register_tools(mcp):

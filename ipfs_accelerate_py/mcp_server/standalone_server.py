@@ -8,9 +8,16 @@ This module provides stable standalone startup functions under
 from __future__ import annotations
 
 import argparse
+import logging
+import signal
+import sys
 
 from .fastapi_config import UnifiedFastAPIConfig
 from .fastapi_service import run_fastapi_server as run_canonical_fastapi_server
+from .server import create_server
+
+
+logger = logging.getLogger(__name__)
 
 
 def run_server(
@@ -20,16 +27,42 @@ def run_server(
     description: str = "IPFS Accelerate MCP Server",
     verbose: bool = False,
 ) -> None:
-    """Run standalone MCP server using legacy-compatible bootstrap path."""
-    from ipfs_accelerate_py.mcp.standalone import run_server as run_legacy_standalone_server
+    """Run standalone MCP server using the canonical server builder."""
+    logger.info("Starting standalone MCP server on %s:%s", host, port)
 
-    run_legacy_standalone_server(
-        host=host,
-        port=port,
-        name=name,
-        description=description,
-        verbose=verbose,
-    )
+    try:
+        mcp = create_server(
+            host=host,
+            port=port,
+            name=name,
+            description=description,
+            debug=bool(verbose),
+            mount_path="/mcp",
+        )
+
+        def signal_handler(_sig, _frame):
+            logger.info("Received shutdown signal, stopping server...")
+            try:
+                mcp.stop()
+                logger.info("Server stopped")
+            except Exception:
+                pass
+            sys.exit(0)
+
+        signal.signal(signal.SIGINT, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+
+        logger.info("Server listening on http://%s:%s", host, port)
+        if hasattr(mcp, "run") and callable(getattr(mcp, "run")):
+            mcp.run(host=host, port=port)
+            return
+        raise RuntimeError("MCP server instance does not expose a run() method")
+    except KeyboardInterrupt:
+        logger.info("Keyboard interrupt received, stopping server...")
+        sys.exit(0)
+    except Exception as exc:
+        logger.error("Error running standalone MCP server: %s", exc)
+        sys.exit(1)
 
 
 def run_fastapi_server(

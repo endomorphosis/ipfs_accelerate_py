@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import inspect
 from typing import Any, Dict, List, Optional
+
+import anyio
+import sniffio
 
 
 def _error_result(message: str) -> Dict[str, Any]:
@@ -35,6 +39,31 @@ def _normalize_response(response_payload: Any, **defaults: Any) -> Dict[str, Any
     return envelope
 
 
+async def _run_in_trio(func: Any, /, *args: Any, **kwargs: Any) -> Any:
+    """Execute Trio-native client calls without routing back through mcp.tools."""
+    try:
+        if sniffio.current_async_library() == "trio":
+            result = func(*args, **kwargs)
+            return await result if inspect.isawaitable(result) else result
+    except Exception:
+        pass
+
+    def _runner() -> Any:
+        async def _inner() -> Any:
+            result = func(*args, **kwargs)
+            return await result if inspect.isawaitable(result) else result
+
+        return anyio.run(_inner, backend="trio")
+
+    return await anyio.to_thread.run_sync(_runner)
+
+
+def _remote_queue(*, peer_id: str = "", multiaddr: str = ""):
+    from ipfs_accelerate_py.p2p_tasks.client import RemoteQueue
+
+    return RemoteQueue(peer_id=str(peer_id or "").strip(), multiaddr=str(multiaddr or "").strip())
+
+
 async def _request_status(
     remote_multiaddr: str = "",
     peer_id: str = "",
@@ -42,7 +71,6 @@ async def _request_status(
     detail: bool = False,
 ) -> Any:
     """Request TaskQueue status using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import request_status
 
     remote = _remote_queue(peer_id=peer_id, multiaddr=remote_multiaddr)
@@ -86,7 +114,6 @@ async def _submit_task_with_info(
     peer_id: str = "",
 ) -> Any:
     """Submit a TaskQueue task using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import submit_task_with_info
 
     remote = _remote_queue(peer_id=peer_id, multiaddr=remote_multiaddr)
@@ -136,7 +163,6 @@ async def _claim_next(
     remote_peer_id: str = "",
 ) -> Any:
     """Claim next task using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import claim_next
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -181,7 +207,6 @@ async def _call_tool(
     timeout_s: float = 30.0,
 ) -> Any:
     """Call remote p2p tool using legacy client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import call_tool
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -223,7 +248,6 @@ async def _list_tasks(
     remote_peer_id: str = "",
 ) -> Any:
     """List TaskQueue tasks using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import list_tasks
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -268,7 +292,6 @@ async def _get_task(
     remote_peer_id: str = "",
 ) -> Any:
     """Get a single TaskQueue task using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import get_task
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -306,7 +329,6 @@ async def _wait_task(
     remote_peer_id: str = "",
 ) -> Any:
     """Wait for a TaskQueue task using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import wait_task
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -351,7 +373,6 @@ async def _complete_task(
     remote_peer_id: str = "",
 ) -> Any:
     """Complete a TaskQueue task using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import complete_task
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -395,7 +416,6 @@ async def _heartbeat(
     remote_peer_id: str = "",
 ) -> Any:
     """Send heartbeat using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import heartbeat
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -433,7 +453,6 @@ async def _cache_get(
     remote_peer_id: str = "",
 ) -> Any:
     """Read shared cache using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import cache_get
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -473,7 +492,6 @@ async def _cache_set(
     remote_peer_id: str = "",
 ) -> Any:
     """Write shared cache using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import cache_set
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -521,7 +539,6 @@ async def _submit_docker_hub(
     **kwargs: Any,
 ) -> Any:
     """Submit Docker Hub task using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import submit_docker_hub_task
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -578,7 +595,6 @@ async def _submit_docker_github(
     **kwargs: Any,
 ) -> Any:
     """Submit Docker GitHub task using legacy p2p client helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _remote_queue, _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import submit_docker_github_task
 
     remote = _remote_queue(peer_id=remote_peer_id, multiaddr=remote_multiaddr)
@@ -640,7 +656,6 @@ async def _list_peers(
     limit: int = 50,
 ) -> Dict[str, Any]:
     """List known/discovered peers using legacy p2p helpers lazily."""
-    from ipfs_accelerate_py.mcp.tools.p2p_taskqueue import _run_in_trio
     from ipfs_accelerate_py.p2p_tasks.client import (
         RemoteQueue,
         discover_peers_via_dht,

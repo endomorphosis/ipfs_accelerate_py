@@ -251,6 +251,64 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         ipfs_tools = manager.list_tools("ipfs")
         self.assertGreater(len(ipfs_tools), 0)
 
+    def test_legacy_collector_accepts_hierarchical_register_signature(self):
+        """Legacy collector should capture canonical hierarchical registration calls."""
+        from ipfs_accelerate_py.mcp_server.registration_adapter import LegacyCollectorMCP
+
+        collector = LegacyCollectorMCP()
+
+        async def _tool() -> dict:
+            return {"ok": True}
+
+        collector.register_tool(
+            category="demo_tools",
+            name="demo_tool",
+            func=_tool,
+            description="demo",
+            input_schema={"type": "object", "properties": {}, "required": []},
+            runtime="trio",
+            tags=["native"],
+        )
+
+        record = collector.tools["demo_tool"]
+        self.assertEqual(record.name, "demo_tool")
+        self.assertIs(record.function, _tool)
+        self.assertEqual(record.execution_context, "worker")
+        self.assertEqual(record.tags, ["native"])
+
+    def test_wave_a_loader_can_remap_canonical_p2p_tools_category(self):
+        """Wave A p2p loader should capture canonical category registrars into the p2p category."""
+        from ipfs_accelerate_py.mcp_server.wave_a_loaders import load_p2p_tools
+
+        manager = HierarchicalToolManager(runtime_router=RuntimeRouter())
+
+        async def _canonical_ping(peer_id: str = "") -> dict:
+            return {"ok": True, "peer_id": peer_id}
+
+        def _register_category(collector):
+            collector.register_tool(
+                category="p2p_tools",
+                name="p2p_canonical_ping",
+                func=_canonical_ping,
+                description="Canonical category ping.",
+                input_schema={
+                    "type": "object",
+                    "properties": {"peer_id": {"type": "string", "default": ""}},
+                    "required": [],
+                },
+                runtime="trio",
+                tags=["native", "p2p-tools"],
+            )
+
+        with patch("ipfs_accelerate_py.mcp_server.wave_a_loaders.register_native_p2p_tools_category", new=_register_category), patch(
+            "ipfs_accelerate_py.mcp_server.wave_a_loaders.register_native_p2p_tools",
+            new=lambda _manager: None,
+        ):
+            load_p2p_tools(manager)
+
+        p2p_tools = {tool["name"]: tool for tool in manager.list_tools("p2p")}
+        self.assertIn("p2p_canonical_ping", p2p_tools)
+
     @patch("ipfs_accelerate_py.mcp.server.create_mcp_server")
     def test_create_server_bootstrap_flag_enabled(self, mock_create):
         """create_server should attach unified components when feature flag is enabled."""

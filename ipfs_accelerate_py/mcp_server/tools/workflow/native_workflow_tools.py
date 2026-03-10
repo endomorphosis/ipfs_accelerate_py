@@ -32,7 +32,7 @@ def _normalize_delegate_payload(result: Any) -> Optional[Dict[str, Any]]:
 def _get_workflow_manager() -> Optional[Any]:
     """Resolve workflow manager lazily to avoid hard dependency at import time."""
     try:
-        from ipfs_accelerate_py.mcp.tools.workflows import get_workflow_manager
+        from ipfs_accelerate_py.workflow_manager import get_workflow_manager
 
         return get_workflow_manager()
     except Exception:
