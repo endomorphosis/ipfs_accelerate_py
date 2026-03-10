@@ -6702,6 +6702,7 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             factory_calls["peer_registry_factory"] += 1
             return fake_registry
 
+        server._unified_services["peer_discovery_factory"] = None
         server._unified_services["peer_registry_factory"] = _peer_registry_factory
 
         async def _run_flow() -> None:
@@ -6730,6 +6731,176 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertTrue(response["peer_registry"]["factory_used"])
             self.assertEqual(response["peer_registry"]["peer_count"], 1)
             self.assertEqual(len(response["peer_registry"]["peers"]), 1)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_peer_discovery_factory_preferred_for_probe(self, mock_wrapper):
+        """tools_dispatch should prefer peer_discovery_factory for peer probing when available."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakePeerDiscovery:
+            def __init__(self):
+                self.calls = []
+
+            async def discover_peers(self, max_peers=50):
+                self.calls.append({"max_peers": max_peers})
+                return [
+                    {"peer_id": "peer-discovery-a", "multiaddr": "/ip4/127.0.0.1/tcp/5001"},
+                    {"peer_id": "peer-discovery-b", "multiaddr": "/ip4/127.0.0.1/tcp/5002"},
+                ]
+
+        fake_discovery = FakePeerDiscovery()
+        factory_calls = {"peer_discovery_factory": 0, "peer_registry_factory": 0}
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-peer-discovery-probe")
+
+        def _peer_discovery_factory(**kwargs):
+            _ = kwargs
+            factory_calls["peer_discovery_factory"] += 1
+            return fake_discovery
+
+        def _peer_registry_factory(**kwargs):
+            _ = kwargs
+            factory_calls["peer_registry_factory"] += 1
+            raise AssertionError("peer_registry_factory should not be used when peer_discovery_factory is available")
+
+        server._unified_services["peer_discovery_factory"] = _peer_discovery_factory
+        server._unified_services["peer_registry_factory"] = _peer_registry_factory
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__discover_peers": True,
+                    "__peer_probe_limit": 1,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            self.assertEqual(factory_calls["peer_discovery_factory"], 1)
+            self.assertEqual(factory_calls["peer_registry_factory"], 0)
+            self.assertEqual(len(fake_discovery.calls), 1)
+            self.assertEqual(fake_discovery.calls[0]["max_peers"], 1)
+            self.assertIn("peer_registry", response)
+            self.assertTrue(response["peer_registry"]["enabled"])
+            self.assertTrue(response["peer_registry"]["factory_used"])
+            self.assertEqual(response["peer_registry"]["peer_count"], 1)
+            self.assertEqual(len(response["peer_registry"]["peers"]), 1)
+            self.assertEqual(response["peer_registry"]["peers"][0]["peer_id"], "peer-discovery-a")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_peer_registry_fallback_when_peer_discovery_unavailable(self, mock_wrapper):
+        """tools_dispatch should fall back to peer_registry_factory when peer_discovery_factory returns no service."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakePeerRegistry:
+            def __init__(self):
+                self.calls = []
+
+            async def list_connected_peers(self):
+                self.calls.append({"method": "list_connected_peers"})
+                return [
+                    {"peer_id": "peer-registry-fallback", "multiaddr": "/ip4/127.0.0.1/tcp/5101"},
+                ]
+
+        fake_registry = FakePeerRegistry()
+        factory_calls = {"peer_discovery_factory": 0, "peer_registry_factory": 0}
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-peer-discovery-fallback")
+
+        def _peer_discovery_factory(**kwargs):
+            _ = kwargs
+            factory_calls["peer_discovery_factory"] += 1
+            return None
+
+        def _peer_registry_factory(**kwargs):
+            _ = kwargs
+            factory_calls["peer_registry_factory"] += 1
+            return fake_registry
+
+        server._unified_services["peer_discovery_factory"] = _peer_discovery_factory
+        server._unified_services["peer_registry_factory"] = _peer_registry_factory
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__discover_peers": True,
+                    "__peer_probe_limit": 1,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            self.assertEqual(factory_calls["peer_discovery_factory"], 1)
+            self.assertEqual(factory_calls["peer_registry_factory"], 1)
+            self.assertEqual(len(fake_registry.calls), 1)
+            self.assertIn("peer_registry", response)
+            self.assertEqual(response["peer_registry"]["error"], "")
+            self.assertEqual(response["peer_registry"]["peer_count"], 1)
+            self.assertEqual(response["peer_registry"]["peers"][0]["peer_id"], "peer-registry-fallback")
 
         anyio.run(_run_flow)
 
@@ -6809,6 +6980,93 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertTrue(response["peer_bootstrap"]["factory_used"])
             self.assertEqual(response["peer_bootstrap"]["address_count"], 1)
             self.assertEqual(len(response["peer_bootstrap"]["addresses"]), 1)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_tools_dispatch_peer_registry_fallback_for_bootstrap_addresses(self, mock_wrapper):
+        """tools_dispatch should use peer_registry bootstrap nodes when peer_bootstrap_factory has no service."""
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        class FakePeerRegistry:
+            def __init__(self):
+                self.calls = []
+
+            def get_bootstrap_nodes(self):
+                self.calls.append({"method": "get_bootstrap_nodes"})
+                return [
+                    "/ip4/127.0.0.1/tcp/6101/p2p/peer-bootstrap-fallback",
+                    "/ip4/127.0.0.1/tcp/6102/p2p/peer-bootstrap-extra",
+                ]
+
+        fake_registry = FakePeerRegistry()
+        factory_calls = {"peer_bootstrap_factory": 0, "peer_registry_factory": 0}
+        mock_wrapper.return_value = DummyServer()
+
+        with patch.dict(
+            os.environ,
+            {
+                "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+            },
+            clear=False,
+        ):
+            server = create_mcp_server(name="dispatch-peer-bootstrap-fallback")
+
+        def _peer_bootstrap_factory(**kwargs):
+            _ = kwargs
+            factory_calls["peer_bootstrap_factory"] += 1
+            return None
+
+        def _peer_registry_factory(**kwargs):
+            _ = kwargs
+            factory_calls["peer_registry_factory"] += 1
+            return fake_registry
+
+        server._unified_services["peer_bootstrap_factory"] = _peer_bootstrap_factory
+        server._unified_services["peer_registry_factory"] = _peer_registry_factory
+
+        async def _run_flow() -> None:
+            async def echo(value: str):
+                return {"echo": value}
+
+            server._unified_tool_manager.register_tool("smoke", "echo", echo, description="echo smoke")
+            dispatch = server.tools["tools_dispatch"]["function"]
+
+            response = await dispatch(
+                "smoke",
+                "echo",
+                {
+                    "value": "ok",
+                    "__resolve_bootstrap_addrs": True,
+                    "__peer_probe_limit": 1,
+                },
+            )
+
+            self.assertTrue(response["ok"])
+            self.assertEqual(factory_calls["peer_bootstrap_factory"], 1)
+            self.assertEqual(factory_calls["peer_registry_factory"], 1)
+            self.assertEqual(len(fake_registry.calls), 1)
+            self.assertIn("peer_bootstrap", response)
+            self.assertEqual(response["peer_bootstrap"]["error"], "")
+            self.assertEqual(response["peer_bootstrap"]["address_count"], 1)
+            self.assertEqual(
+                response["peer_bootstrap"]["addresses"][0],
+                "/ip4/127.0.0.1/tcp/6101/p2p/peer-bootstrap-fallback",
+            )
 
         anyio.run(_run_flow)
 
@@ -7522,6 +7780,85 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
                 "limit_name must be a non-empty string when provided for stats",
                 str(invalid_stats_limit.get("error", "")),
             )
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_rate_limiting_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """rate_limiting dispatch should normalize contradictory failed delegate payloads."""
+
+        from ipfs_accelerate_py.mcp_server.tools.rate_limiting import native_rate_limiting_tools
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+        contradictory = {"status": "success", "success": False, "error": "delegate failure"}
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.object(
+                native_rate_limiting_tools._rate_limiter,
+                "check_rate_limit",
+                return_value=contradictory,
+            ), patch.object(
+                native_rate_limiting_tools._rate_limiter,
+                "get_stats",
+                return_value=contradictory,
+            ), patch.object(
+                native_rate_limiting_tools._rate_limiter,
+                "reset_limits",
+                return_value=contradictory,
+            ):
+                server = create_mcp_server(name="rate-limiting-contradictory-bootstrap")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                checked = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "rate_limiting",
+                        "check_rate_limit",
+                        {"limit_name": "api", "identifier": "client-a"},
+                    )
+                )
+                self.assertEqual(checked.get("status"), "error")
+                self.assertEqual(checked.get("error"), "delegate failure")
+
+                stats = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "rate_limiting",
+                        "manage_rate_limits",
+                        {"action": "stats", "limit_name": "api"},
+                    )
+                )
+                self.assertEqual(stats.get("status"), "error")
+                self.assertEqual(stats.get("error"), "delegate failure")
+
+                reset = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "rate_limiting",
+                        "manage_rate_limits",
+                        {"action": "reset", "limit_name": "api"},
+                    )
+                )
+                self.assertEqual(reset.get("status"), "error")
+                self.assertEqual(reset.get("error"), "delegate failure")
 
         anyio.run(_run_flow)
 
@@ -11662,6 +11999,61 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         anyio.run(_run_flow)
 
     @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_provenance_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """provenance_tools dispatch should normalize contradictory failed delegate payloads."""
+        from ipfs_accelerate_py.mcp_server.tools.provenance_tools import native_provenance_tools
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.dict(
+                native_provenance_tools._API,
+                {"record_provenance": _failed},
+                clear=False,
+            ):
+                server = create_mcp_server(name="provenance-tools-failed-payload")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "provenance_tools",
+                        "record_provenance",
+                        {
+                            "dataset_id": "dataset-1",
+                            "operation": "transform",
+                        },
+                    )
+                )
+                self.assertEqual(result.get("status"), "error")
+                self.assertEqual(result.get("error"), "delegate failed")
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
     def test_admin_tools_discovery_schema_and_dispatch_parity(self, mock_wrapper):
         """admin_tools should expose source-compatible operations with deterministic validation envelopes."""
 
@@ -13012,6 +13404,58 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             )
             self.assertEqual(invalid_action.get("status"), "error")
             self.assertIn("action must be one of", str(invalid_action.get("message", "")))
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_sparse_embedding_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """sparse_embedding_tools dispatch should normalize contradictory failed delegate payloads."""
+        from ipfs_accelerate_py.mcp_server.tools.sparse_embedding_tools import native_sparse_embedding_tools
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _failed(**_: object) -> dict:
+            return {"status": "success", "success": False, "error": "delegate failed"}
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.dict(
+                native_sparse_embedding_tools._API,
+                {"generate_sparse_embedding": _failed},
+                clear=False,
+            ):
+                server = create_mcp_server(name="sparse-embedding-tools-failed-payload")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "sparse_embedding_tools",
+                        "generate_sparse_embedding",
+                        {"text": "hello world"},
+                    )
+                )
+                self.assertEqual(result.get("status"), "error")
+                self.assertEqual(result.get("error"), "delegate failed")
 
         anyio.run(_run_flow)
 
@@ -17146,6 +17590,61 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
             self.assertIn(dispatched.get("status"), ["success", "error"])
             self.assertIs(dispatched.get("deprecated"), True)
             self.assertIn("temporal_deontic_tool_count", dispatched)
+
+        anyio.run(_run_flow)
+
+    @patch("ipfs_accelerate_py.mcp.server.MCPServerWrapper")
+    def test_legacy_mcp_tools_dispatch_infers_error_status_from_failed_delegate_payload(self, mock_wrapper):
+        """legacy_mcp_tools dispatch should normalize contradictory failed delegate payloads."""
+        from ipfs_accelerate_py.mcp_server.tools.legacy_mcp_tools import native_legacy_mcp_tools
+
+        class DummyServer:
+            def __init__(self):
+                self.tools = {}
+                self.mcp = None
+
+            def register_tool(self, name, function, description, input_schema, execution_context=None, tags=None):
+                self.tools[name] = {
+                    "function": function,
+                    "description": description,
+                    "input_schema": input_schema,
+                    "execution_context": execution_context,
+                    "tags": tags,
+                }
+
+        mock_wrapper.return_value = DummyServer()
+
+        async def _run_flow() -> None:
+            with patch.dict(
+                os.environ,
+                {
+                    "IPFS_MCP_ENABLE_UNIFIED_BRIDGE": "1",
+                    "IPFS_MCP_SERVER_ENABLE_UNIFIED_BOOTSTRAP": "1",
+                },
+                clear=False,
+            ), patch.object(
+                native_legacy_mcp_tools,
+                "_normalize_payload",
+                return_value={
+                    "status": "error",
+                    "success": False,
+                    "error": "delegate failure",
+                    "deprecated": True,
+                },
+            ):
+                server = create_mcp_server(name="legacy-mcp-tools-failed-payload")
+                dispatch = server.tools["tools_dispatch"]["function"]
+
+                result = self._assert_dispatch_success_envelope(
+                    await dispatch(
+                        "legacy_mcp_tools",
+                        "legacy_tools_inventory",
+                        {},
+                    )
+                )
+                self.assertEqual(result.get("status"), "error")
+                self.assertEqual(result.get("error"), "delegate failure")
+                self.assertIs(result.get("deprecated"), True)
 
         anyio.run(_run_flow)
 

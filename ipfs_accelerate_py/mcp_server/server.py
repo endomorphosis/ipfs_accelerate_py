@@ -852,24 +852,45 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 response["error"] = "services_unavailable"
                 return response
 
-            registry_factory = services.get("peer_registry_factory")
-            if not callable(registry_factory):
-                response["error"] = "peer_registry_factory_unavailable"
-                return response
-
             try:
-                response["factory_used"] = True
-                registry = registry_factory()
-                if registry is None:
-                    response["error"] = "peer_registry_unavailable"
-                    return response
+                discover_fn = None
+                discovery_error = ""
 
-                discover_fn = getattr(registry, "discover_peers", None)
+                discovery_factory = services.get("peer_discovery_factory")
+                if callable(discovery_factory):
+                    response["factory_used"] = True
+                    try:
+                        discovery = discovery_factory()
+                    except Exception as exc:
+                        discovery = None
+                        discovery_error = str(exc)
+                    if discovery is not None:
+                        discover_fn = getattr(discovery, "discover_peers", None)
+                        if discover_fn is None:
+                            discovery_error = "peer_discovery_unavailable"
+                    elif not discovery_error:
+                        discovery_error = "peer_discovery_unavailable"
+
                 if not callable(discover_fn):
-                    discover_fn = getattr(registry, "list_connected_peers", None)
-                if not callable(discover_fn):
-                    response["error"] = "peer_registry_discovery_unavailable"
-                    return response
+                    registry_factory = services.get("peer_registry_factory")
+                    if not callable(registry_factory):
+                        response["error"] = discovery_error or "peer_registry_factory_unavailable"
+                        return response
+
+                    response["factory_used"] = True
+                    registry = registry_factory()
+                    if registry is None:
+                        response["error"] = discovery_error or "peer_registry_unavailable"
+                        return response
+
+                    discover_fn = getattr(registry, "discover_peers", None)
+                    if not callable(discover_fn):
+                        discover_fn = getattr(registry, "list_connected_peers", None)
+                    if not callable(discover_fn):
+                        response["error"] = discovery_error or "peer_registry_discovery_unavailable"
+                        return response
+
+                    response["error"] = ""
 
                 try:
                     peers_result = await _invoke_maybe_async(discover_fn, max_peers=peer_probe_limit)
@@ -905,24 +926,48 @@ def _attach_unified_bootstrap(server: Any, config: UnifiedMCPServerConfig) -> No
                 response["error"] = "services_unavailable"
                 return response
 
-            bootstrap_factory = services.get("peer_bootstrap_factory")
-            if not callable(bootstrap_factory):
-                response["error"] = "peer_bootstrap_factory_unavailable"
-                return response
-
             try:
-                response["factory_used"] = True
-                bootstrap = bootstrap_factory()
-                if bootstrap is None:
-                    response["error"] = "peer_bootstrap_unavailable"
-                    return response
+                addrs_fn = None
+                bootstrap_error = ""
 
-                addrs_fn = getattr(bootstrap, "get_bootstrap_addrs", None)
+                bootstrap_factory = services.get("peer_bootstrap_factory")
+                if callable(bootstrap_factory):
+                    response["factory_used"] = True
+                    try:
+                        bootstrap = bootstrap_factory()
+                    except Exception as exc:
+                        bootstrap = None
+                        bootstrap_error = str(exc)
+
+                    if bootstrap is not None:
+                        addrs_fn = getattr(bootstrap, "get_bootstrap_addrs", None)
+                        if not callable(addrs_fn):
+                            addrs_fn = getattr(bootstrap, "get_bootstrap_nodes", None)
+                        if addrs_fn is None:
+                            bootstrap_error = "peer_bootstrap_resolution_unavailable"
+                    elif not bootstrap_error:
+                        bootstrap_error = "peer_bootstrap_unavailable"
+
                 if not callable(addrs_fn):
-                    addrs_fn = getattr(bootstrap, "get_bootstrap_nodes", None)
-                if not callable(addrs_fn):
-                    response["error"] = "peer_bootstrap_resolution_unavailable"
-                    return response
+                    registry_factory = services.get("peer_registry_factory")
+                    if not callable(registry_factory):
+                        response["error"] = bootstrap_error or "peer_bootstrap_factory_unavailable"
+                        return response
+
+                    response["factory_used"] = True
+                    registry = registry_factory()
+                    if registry is None:
+                        response["error"] = bootstrap_error or "peer_registry_unavailable"
+                        return response
+
+                    addrs_fn = getattr(registry, "get_bootstrap_addrs", None)
+                    if not callable(addrs_fn):
+                        addrs_fn = getattr(registry, "get_bootstrap_nodes", None)
+                    if not callable(addrs_fn):
+                        response["error"] = bootstrap_error or "peer_bootstrap_resolution_unavailable"
+                        return response
+
+                    response["error"] = ""
 
                 try:
                     addrs_result = await _invoke_maybe_async(addrs_fn, max_peers=peer_probe_limit)

@@ -52,16 +52,24 @@ class PeerDiscoveryManager:
                 bootstrap_nodes=bootstrap_nodes,
                 enable_bootstrap=False,
             )
-        self.registry = registry or (bundle.peer_registry if bundle is not None else None) or create_peer_registry(
-            repo=repo,
-            bootstrap_nodes=bootstrap_nodes,
-        )
+        if registry is not None:
+            self.registry = registry
+        elif bundle is not None:
+            self.registry = bundle.peer_registry
+        else:
+            self.registry = create_peer_registry(
+                repo=repo,
+                bootstrap_nodes=bootstrap_nodes,
+            )
 
     async def discover_peers(
         self,
         capability_filter: Optional[List[str]] = None,
         max_peers: int = 50,
     ) -> List[PeerInfo]:
+        if self.registry is None:
+            return []
+
         raw = await self.registry.discover_peers(max_peers=max_peers)
         peers: List[PeerInfo] = []
 

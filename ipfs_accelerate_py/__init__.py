@@ -208,12 +208,12 @@ export = {
 
 if not SKIP_CORE:
     # Add CLI entry point for package access
-    try:
-        from .cli_entry import main as cli_main
+    def cli_main(*args, **kwargs):
+        from .cli_entry import main as _cli_main
 
-        export["cli_main"] = cli_main
-    except ImportError:
-        cli_main = None
+        return _cli_main(*args, **kwargs)
+
+    export["cli_main"] = cli_main
 
     # Add system logs access
     try:

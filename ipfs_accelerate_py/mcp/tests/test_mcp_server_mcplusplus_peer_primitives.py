@@ -120,6 +120,21 @@ class TestPeerPrimitives(unittest.TestCase):
 
         anyio.run(_run)
 
+    def test_create_peer_discovery_honors_bundle_registry_disable(self) -> None:
+        async def _run() -> None:
+            bundle = cast(Any, type("Bundle", (), {"peer_registry": None})())
+            with patch(
+                "ipfs_accelerate_py.mcp_server.mcplusplus.peer_discovery.create_peer_registry",
+                side_effect=AssertionError("create_peer_registry should not run when bundle is supplied"),
+            ):
+                manager = create_peer_discovery(service_bundle=bundle)
+                peers = await manager.discover_peers()
+
+            self.assertIsNone(manager.registry)
+            self.assertEqual(peers, [])
+
+        anyio.run(_run)
+
     def test_registry_delegates_to_common_method_names(self) -> None:
         async def _run() -> None:
             registry = create_peer_registry()
