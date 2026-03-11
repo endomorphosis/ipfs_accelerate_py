@@ -1,6 +1,6 @@
 """Registration adapters for incremental MCP migration.
 
-This module bridges legacy `ipfs_accelerate_py.mcp.tools` registrations into
+This module captures compatibility registrations into
 `ipfs_accelerate_py.mcp_server.HierarchicalToolManager` so migration can proceed
 without a big-bang rewrite.
 """
@@ -24,6 +24,7 @@ class LegacyToolRecord:
     function: Callable[..., Any]
     description: str
     input_schema: Dict[str, Any]
+    category: Optional[str] = None
     execution_context: Optional[str] = None
     tags: Optional[List[str]] = None
 
@@ -48,8 +49,6 @@ class LegacyCollectorMCP:
         runtime: str | None = None,
     ) -> None:
         """Collect explicit register_tool calls from legacy or hierarchical callers."""
-        del category
-
         resolved_name = str(name or "").strip()
         resolved_function = function or func
         resolved_schema = input_schema or {"type": "object", "properties": {}, "required": []}
@@ -70,6 +69,7 @@ class LegacyCollectorMCP:
             function=resolved_function,
             description=description,
             input_schema=resolved_schema,
+            category=category,
             execution_context=resolved_execution_context,
             tags=tags,
         )
@@ -103,12 +103,129 @@ class LegacyCollectorMCP:
 
 
 def collect_legacy_mcp_tools(include_p2p_taskqueue_tools: bool = True) -> Dict[str, LegacyToolRecord]:
-    """Collect tools from existing `ipfs_accelerate_py.mcp.tools` register flow."""
-    from ipfs_accelerate_py.mcp.tools import register_all_tools
+    """Collect compatibility tools from canonical native registrars."""
 
     collector = LegacyCollectorMCP()
-    register_all_tools(collector, include_p2p_taskqueue_tools=include_p2p_taskqueue_tools)
+    for registrar in _resolve_compatibility_registrars(
+        include_p2p_taskqueue_tools=include_p2p_taskqueue_tools
+    ):
+        try:
+            registrar(collector)
+        except Exception as exc:
+            logger.warning("Compatibility registrar %r failed: %s", registrar, exc)
+
     return collector.tools
+
+
+def _resolve_compatibility_registrars(
+    *, include_p2p_taskqueue_tools: bool
+) -> List[Callable[[Any], None]]:
+    """Resolve canonical registrars used by the compatibility adapter."""
+    from .tools.admin_tools import register_native_admin_tools
+    from .tools.alert_tools import register_native_alert_tools
+    from .tools.analysis_tools import register_native_analysis_tools
+    from .tools.auth_tools import register_native_auth_tools
+    from .tools.background_task_tools import register_native_background_task_tools
+    from .tools.bespoke_tools import register_native_bespoke_tools
+    from .tools.cache_tools import register_native_cache_tools
+    from .tools.cli import register_native_cli_tools
+    from .tools.dashboard_tools import register_native_dashboard_tools
+    from .tools.data_processing_tools import register_native_data_processing_tools
+    from .tools.dataset_tools import register_native_dataset_tools
+    from .tools.development_tools import register_native_development_tools
+    from .tools.discord_tools import register_native_discord_tools
+    from .tools.embedding_tools import register_native_embedding_tools
+    from .tools.email_tools import register_native_email_tools
+    from .tools.file_converter_tools import register_native_file_converter_tools
+    from .tools.file_detection_tools import register_native_file_detection_tools
+    from .tools.finance_data_tools import register_native_finance_data_tools
+    from .tools.functions import register_native_function_tools
+    from .tools.geospatial_tools import register_native_geospatial_tools
+    from .tools.graph_tools import register_native_graph_tools
+    from .tools.index_management_tools import register_native_index_management_tools
+    from .tools.investigation_tools import register_native_investigation_tools
+    from .tools.ipfs import register_native_ipfs_tools
+    from .tools.ipfs_cluster_tools import register_native_ipfs_cluster_tools
+    from .tools.legal_dataset_tools import register_native_legal_dataset_tools
+    from .tools.legacy_mcp_tools import register_native_legacy_mcp_tools
+    from .tools.lizardperson_argparse_programs import register_native_lizardperson_argparse_programs
+    from .tools.lizardpersons_function_tools import register_native_lizardpersons_function_tools
+    from .tools.logic_tools import register_native_logic_tools
+    from .tools.mcplusplus import register_native_mcplusplus_tools
+    from .tools.media_tools import register_native_media_tools
+    from .tools.medical_research_scrapers import register_native_medical_research_scrapers
+    from .tools.monitoring_tools import register_native_monitoring_tools
+    from .tools.p2p import register_native_p2p_tools
+    from .tools.p2p_workflow_tools import register_native_p2p_workflow_tools
+    from .tools.pdf_tools import register_native_pdf_tools
+    from .tools.provenance_tools import register_native_provenance_tools
+    from .tools.rate_limiting import register_native_rate_limiting_tools
+    from .tools.search_tools import register_native_search_tools
+    from .tools.security_tools import register_native_security_tools
+    from .tools.session_tools import register_native_session_tools
+    from .tools.software_engineering_tools import register_native_software_engineering_tools
+    from .tools.sparse_embedding_tools import register_native_sparse_embedding_tools
+    from .tools.storage_tools import register_native_storage_tools
+    from .tools.vector_store_tools import register_native_vector_store_tools
+    from .tools.vector_tools import register_native_vector_tools
+    from .tools.web_archive_tools import register_native_web_archive_tools
+    from .tools.web_scraping_tools import register_native_web_scraping_tools
+    from .tools.workflow import register_native_workflow_tools
+
+    registrars: List[Callable[[Any], None]] = [
+        register_native_admin_tools,
+        register_native_alert_tools,
+        register_native_analysis_tools,
+        register_native_auth_tools,
+        register_native_background_task_tools,
+        register_native_bespoke_tools,
+        register_native_cache_tools,
+        register_native_cli_tools,
+        register_native_dashboard_tools,
+        register_native_data_processing_tools,
+        register_native_dataset_tools,
+        register_native_development_tools,
+        register_native_discord_tools,
+        register_native_embedding_tools,
+        register_native_email_tools,
+        register_native_file_converter_tools,
+        register_native_file_detection_tools,
+        register_native_finance_data_tools,
+        register_native_function_tools,
+        register_native_geospatial_tools,
+        register_native_graph_tools,
+        register_native_index_management_tools,
+        register_native_investigation_tools,
+        register_native_ipfs_cluster_tools,
+        register_native_ipfs_tools,
+        register_native_legal_dataset_tools,
+        register_native_legacy_mcp_tools,
+        register_native_lizardperson_argparse_programs,
+        register_native_lizardpersons_function_tools,
+        register_native_logic_tools,
+        register_native_mcplusplus_tools,
+        register_native_media_tools,
+        register_native_medical_research_scrapers,
+        register_native_monitoring_tools,
+        register_native_p2p_workflow_tools,
+        register_native_pdf_tools,
+        register_native_provenance_tools,
+        register_native_rate_limiting_tools,
+        register_native_search_tools,
+        register_native_security_tools,
+        register_native_session_tools,
+        register_native_software_engineering_tools,
+        register_native_sparse_embedding_tools,
+        register_native_storage_tools,
+        register_native_vector_store_tools,
+        register_native_vector_tools,
+        register_native_web_archive_tools,
+        register_native_web_scraping_tools,
+        register_native_workflow_tools,
+    ]
+    if include_p2p_taskqueue_tools:
+        registrars.append(register_native_p2p_tools)
+    return registrars
 
 
 def register_legacy_tools_into_manager(
@@ -126,7 +243,7 @@ def register_legacy_tools_into_manager(
 
     count = 0
     for record in records.values():
-        category = _category_from_tool_name(record.name, fallback=default_category)
+        category = record.category or _category_from_tool_name(record.name, fallback=default_category)
         manager.register_tool(
             category=category,
             name=record.name,

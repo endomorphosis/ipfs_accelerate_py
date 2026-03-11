@@ -273,8 +273,38 @@ class TestUnifiedMCPServerBootstrap(unittest.TestCase):
         record = collector.tools["demo_tool"]
         self.assertEqual(record.name, "demo_tool")
         self.assertIs(record.function, _tool)
+        self.assertEqual(record.category, "demo_tools")
         self.assertEqual(record.execution_context, "worker")
         self.assertEqual(record.tags, ["native"])
+
+    def test_legacy_adapter_preserves_canonical_category_metadata(self):
+        """Compatibility adapter should preserve canonical categories when registrars provide them."""
+        from ipfs_accelerate_py.mcp_server.registration_adapter import LegacyToolRecord
+
+        manager = HierarchicalToolManager(runtime_router=RuntimeRouter())
+
+        async def _tool() -> dict:
+            return {"ok": True}
+
+        with patch(
+            "ipfs_accelerate_py.mcp_server.registration_adapter.collect_legacy_mcp_tools",
+            return_value={
+                "demo_tool": LegacyToolRecord(
+                    name="demo_tool",
+                    function=_tool,
+                    description="demo",
+                    input_schema={"type": "object", "properties": {}, "required": []},
+                    category="demo_tools",
+                    execution_context="worker",
+                    tags=["native"],
+                )
+            },
+        ):
+            count = register_legacy_tools_into_manager(manager)
+
+        self.assertEqual(count, 1)
+        self.assertEqual(manager.list_categories(), ["demo_tools"])
+        self.assertEqual(manager.list_tools("demo_tools")[0]["name"], "demo_tool")
 
     def test_wave_a_loader_can_remap_canonical_p2p_tools_category(self):
         """Wave A p2p loader should capture canonical category registrars into the p2p category."""
