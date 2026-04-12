@@ -15,6 +15,10 @@ import pyarrow.parquet as pq
 
 from ipfs_accelerate_py.embeddings_router import embed_texts
 from ipfs_accelerate_py.embeddings.ipfs_knn_index import IPFSKnnIndex
+from ipfs_datasets_py.processors.legal_scrapers.canonical_legal_corpora import get_canonical_legal_corpus
+
+
+_STATE_LAWS_CORPUS = get_canonical_legal_corpus("state_laws")
 
 
 def _run(cmd: List[str], env: Optional[dict] = None) -> None:
@@ -155,7 +159,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--repo-id",
-        default="justicedao/ipfs_state_laws",
+        default=_STATE_LAWS_CORPUS.hf_dataset_id,
         help="Hugging Face dataset repo id",
     )
     parser.add_argument(
