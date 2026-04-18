@@ -742,6 +742,13 @@ ensure_repo_bin_on_path() {
 create_or_update_venv() {
   local venv_dir="$1"
   mkdir -p "$BIN_DIR"
+  local venv_python="$venv_dir/bin/python"
+  local venv_activate="$venv_dir/bin/activate"
+
+  if [[ -d "$venv_dir" && ( ! -f "$venv_python" || ! -f "$venv_activate" ) ]]; then
+    warn "Found incomplete venv at $venv_dir; rebuilding"
+    rm -rf "$venv_dir"
+  fi
 
   if [[ ! -d "$venv_dir" ]]; then
     log "Creating venv at $venv_dir"
