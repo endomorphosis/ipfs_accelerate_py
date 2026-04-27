@@ -174,11 +174,15 @@ class StandaloneMCP:
     def register_tool(
         self,
         name: str,
-        function: Callable,
-        description: str,
-        input_schema: Dict[str, Any],
+        function: Callable | None = None,
+        description: str = "",
+        input_schema: Dict[str, Any] | None = None,
         execution_context: str | None = None,
+        func: Callable | None = None,
+        category: str | None = None,
+        runtime: str | None = None,
         tags: list[str] | None = None,
+        **metadata: Any,
     ) -> None:
         """
         Register a tool with the MCP server
@@ -189,19 +193,26 @@ class StandaloneMCP:
             description: Description of the tool
             input_schema: JSON schema for the tool's input
         """
-        ctx = str(execution_context or "").strip().lower()
+        tool_function = function or func
+        if tool_function is None:
+            raise ValueError(f"Tool {name!r} must provide a function")
+
+        ctx = str(execution_context or runtime or "").strip().lower()
         if ctx not in {"", "server", "worker"}:
             ctx = ""
 
         self.tools[name] = {
-            "function": function,
+            "function": tool_function,
             "description": description,
-            "input_schema": input_schema,
+            "input_schema": input_schema or {"type": "object", "properties": {}, "required": []},
+            "category": category,
+            "runtime": runtime,
             # Tool routing metadata used by p2p call_tool.
             # - 'server': safe/control-plane, can run inline in the MCP+p2p process
             # - 'worker': must run in thin executor workers
             "execution_context": ctx or None,
             "tags": [str(t) for t in (tags or []) if str(t).strip()],
+            "metadata": metadata,
         }
         
         logger.debug(f"Registered tool: {name}")
