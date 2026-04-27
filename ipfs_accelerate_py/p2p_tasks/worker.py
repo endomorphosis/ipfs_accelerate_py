@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import shlex
 import subprocess
 import threading
@@ -2211,6 +2212,7 @@ def _compute_supported_task_types(
         {"text-classification", "text_classification"},
         {"hf.pipeline", "hf_pipeline"},
         {"llm.generate", "llm_generate"},
+        {"multimodal-generation", "multimodal_generation", "vision-generation", "vision_generation"},
         {"tool.call", "tool"},
     ]
 
@@ -2261,6 +2263,8 @@ def _compute_supported_task_types(
     # type when explicitly enabled, since it may rely on external tooling.
     if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_COPILOT_CLI")):
         base_defaults.extend(["llm.generate", "llm_generate"])
+    if _truthy(os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ENABLE_MULTIMODAL", "1")):
+        base_defaults.extend(["multimodal-generation", "multimodal_generation", "vision-generation", "vision_generation"])
     out = _supported_task_types_from_env(base_defaults)
 
     # Add tool.call only when we can actually execute it, and only when the
@@ -2575,6 +2579,48 @@ def _allowed_llm_providers() -> set[str]:
     return set(parts)
 
 
+def _allowed_multimodal_providers() -> set[str]:
+    raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_MULTIMODAL_PROVIDERS")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_ALLOWED_MULTIMODAL_PROVIDERS")
+    if raw is None:
+        raw = os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS")
+    if raw is None:
+        raw = os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_ALLOWED_LLM_PROVIDERS")
+
+    text = str(raw or "").strip()
+    if not text:
+        return {"openai", "openrouter", "codex_cli", "codex", "gemini_cli", "gemini_py"}
+
+    parts = [p.strip().lower() for p in text.split(",") if p.strip()]
+    if not parts:
+        return {"openai", "openrouter", "codex_cli", "codex", "gemini_cli", "gemini_py"}
+    if "*" in parts or "all" in parts:
+        return {"openai", "openrouter", "codex_cli", "codex", "gemini_cli", "gemini_py", "claude_code", "claude_py"}
+    return set(parts)
+
+
+def _default_multimodal_provider() -> str:
+    explicit = (
+        os.environ.get("IPFS_ACCELERATE_PY_TASK_WORKER_MULTIMODAL_PROVIDER")
+        or os.environ.get("IPFS_DATASETS_PY_TASK_WORKER_MULTIMODAL_PROVIDER")
+        or ""
+    )
+    if str(explicit or "").strip():
+        return str(explicit).strip().lower()
+
+    # Pick a practical provider from credentials/tools that are already present
+    # on the worker host. This keeps laptop services useful after reinstall
+    # without requiring every multimodal payload to carry provider metadata.
+    if any(os.environ.get(name) for name in ("OPENAI_API_KEY", "OPENAI_KEY", "OPENAI_TOKEN")):
+        return "openai"
+    if any(os.environ.get(name) for name in ("OPENROUTER_API_KEY", "IPFS_DATASETS_PY_OPENROUTER_API_KEY")):
+        return "openrouter"
+    if shutil.which("codex"):
+        return "codex_cli"
+    return ""
+
+
 def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
     """Run an LLM provider via llm_router (intended for copilot_cli mesh)."""
 
@@ -2760,6 +2806,69 @@ def _run_llm_generate(task: Dict[str, Any]) -> Dict[str, Any]:
             pass
     if isinstance(resume_session_id, str) and resume_session_id.strip():
         out["resume_session_id"] = resume_session_id.strip()
+    return out
+
+
+def _run_multimodal_generation(task: Dict[str, Any]) -> Dict[str, Any]:
+    payload = task.get("payload") or {}
+    if not isinstance(payload, dict):
+        raise ValueError("multimodal-generation payload must be a dict")
+
+    prompt = payload.get("prompt")
+    if prompt is None:
+        prompt = payload.get("text")
+    if prompt is None:
+        prompt = payload.get("input")
+
+    provider_raw = payload.get("provider") or _default_multimodal_provider()
+    provider = str(provider_raw or "").strip().lower() or None
+    if provider in {"p2p", "p2p_task", "p2p_task_queue", "remote_queue", "task_queue"}:
+        raise RuntimeError("multimodal-generation remote provider cannot be p2p_task_queue")
+
+    if provider is not None and provider not in _allowed_multimodal_providers():
+        raise RuntimeError(f"multimodal-generation provider not allowed: {provider}")
+
+    model_name = str(task.get("model_name") or payload.get("model") or payload.get("model_name") or "").strip() or None
+    image_urls = [str(url) for url in payload.get("image_urls") or [] if str(url or "").strip()]
+    image_data_urls = [str(url) for url in payload.get("image_data_urls") or [] if str(url or "").strip()]
+    all_image_urls = image_urls + image_data_urls
+
+    additional_text_blocks = payload.get("additional_text_blocks")
+    if isinstance(additional_text_blocks, str):
+        additional_blocks = [additional_text_blocks]
+    elif isinstance(additional_text_blocks, (list, tuple)):
+        additional_blocks = [str(item) for item in additional_text_blocks if str(item or "").strip()]
+    else:
+        additional_blocks = []
+
+    kwargs: Dict[str, Any] = {}
+    for key in ("max_tokens", "max_new_tokens", "temperature", "top_p", "timeout", "image_detail"):
+        if key in payload:
+            kwargs[key] = payload.get(key)
+
+    from ipfs_datasets_py import multimodal_router
+
+    text = multimodal_router.generate_multimodal_text(
+        str(prompt or ""),
+        model_name=model_name,
+        provider=provider,
+        image_urls=all_image_urls,
+        system_prompt=str(payload.get("system_prompt")) if payload.get("system_prompt") else None,
+        additional_text_blocks=additional_blocks,
+        messages=payload.get("messages") if isinstance(payload.get("messages"), list) else None,
+        **kwargs,
+    )
+
+    out: Dict[str, Any] = {
+        "text": str(text),
+        "provider": provider or "auto",
+        "executor_worker_id": str(task.get("assigned_worker") or "").strip(),
+    }
+    try:
+        out["executor_peer_id"] = _read_local_announce_peer_id()
+        out["executor_multiaddr"] = _read_local_announce_multiaddr()
+    except Exception:
+        pass
     return out
 
 
@@ -3132,6 +3241,11 @@ def run_worker(
     # does not take accelerate_instance.
     handlers["llm.generate"] = _run_llm_generate
     handlers["llm_generate"] = _run_llm_generate
+
+    handlers["multimodal-generation"] = _run_multimodal_generation
+    handlers["multimodal_generation"] = _run_multimodal_generation
+    handlers["vision-generation"] = _run_multimodal_generation
+    handlers["vision_generation"] = _run_multimodal_generation
 
     def _shell_handler(task_dict: Dict[str, Any]) -> Dict[str, Any]:
         payload = task_dict.get("payload") or {}
