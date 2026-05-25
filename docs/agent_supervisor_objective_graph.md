@@ -31,8 +31,9 @@ available to dataset tooling, provenance systems, and future vector indexes.
 ## Bundle Flow
 
 1. Keep the objective heap in markdown with `## VAIOS-G*` records.
-2. Run `generate_objective_todos(...)` with a main todo file, discovery
-   directory, and objective bundle directory.
+2. Run `ipfs-accelerate-agent-objective-daemon` or
+   `generate_objective_todos(...)` with a main todo file, discovery directory,
+   and objective bundle directory.
 3. The scanner appends daemon-parseable tasks to the main todo file.
 4. It writes per-bundle shards under `objective_bundles/*.todo.md`.
 5. It writes `objective_bundles/index.json`.
@@ -44,6 +45,21 @@ available to dataset tooling, provenance systems, and future vector indexes.
 This keeps the concurrency concern in `ipfs_accelerate_py`: agent lanes can be
 scheduled locally, through P2P task queues, or by future accelerated agent
 workers.
+
+## Runnable Daemons
+
+The reusable todo daemon and implementation supervisor are ported into
+`ipfs_accelerate_py.agent_supervisor.todo_daemon`.  Installable entry points are:
+
+- `ipfs-accelerate-agent-objective-daemon` for objective-heap scanning,
+  AST/dataset persistence, bundle writing, and optional task-queue submission.
+- `ipfs-accelerate-agent-implementation-daemon` for draining markdown todo
+  tasks with the Codex/Copilot implementation loop.
+- `ipfs-accelerate-agent-implementation-supervisor` for monitoring, restarting,
+  and repairing the implementation daemon.
+
+The objective daemon suppresses duplicate work by reading existing discovery
+fingerprints unless `--repeat-existing` is set.
 
 ## Merge Conflicts
 
@@ -58,13 +74,18 @@ record the conflict payload before deciding whether to apply a semantic merge.
 
 ## Relationship To `ipfs_datasets_py`
 
-`ipfs_datasets_py` remains the source of the existing todo daemon framework. This
-module does not edit that package and does not import from it at runtime.  The
-ported code provides the objective graph, bundle planning, task-queue payloads,
-and merge-resolution bridge that are specific to accelerating autonomous agent
-systems in `ipfs_accelerate_py`.
+`ipfs_datasets_py` remains the upstream source of the existing todo daemon
+framework. This module does not edit that package. The accelerator port now
+contains its own runnable copy of the todo daemon/supervisor runtime plus the
+objective graph, bundle planning, task-queue payloads, and merge-resolution
+bridge that are specific to accelerating autonomous agent systems.
 
 When `ipfs_datasets_py` is available, `ObjectiveDatasetStore` uses its
 `DatasetManager` to register the AST dataset.  When it is not available, the same
 scan still succeeds with JSONL and manifest artifacts, so accelerator workers can
 run in minimal environments.
+
+Some dataset-specific daemon families, such as the legal parser and logic port,
+still bridge to `ipfs_datasets_py` logic modules when those specialized runtimes
+are invoked. Core objective scanning and the generic todo daemon import without
+that optional package.

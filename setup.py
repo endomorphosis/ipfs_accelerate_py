@@ -217,6 +217,9 @@ setup(
         "console_scripts": [
             "ipfs_accelerate=ipfs_accelerate_py.ai_inference_cli:main",
             "ipfs-accelerate=ipfs_accelerate_py.cli_entry:main",
+            "ipfs-accelerate-agent-objective-daemon=ipfs_accelerate_py.agent_supervisor.objective_daemon:main",
+            "ipfs-accelerate-agent-implementation-daemon=ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon:main",
+            "ipfs-accelerate-agent-implementation-supervisor=ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor:main",
         ]
     },
 )

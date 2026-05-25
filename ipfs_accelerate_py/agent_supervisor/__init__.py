@@ -31,6 +31,7 @@ __all__ = [
     "ObjectiveTaskRecord",
     "build_bundle_task_payloads",
     "build_merge_prompt",
+    "build_objective_daemon_arg_parser",
     "collect_ast_dataset_records",
     "generate_objective_todos",
     "goal_graph",
@@ -38,7 +39,20 @@ __all__ = [
     "parse_goal_heap",
     "persist_objective_ast_dataset",
     "resolver_payload",
+    "run_objective_daemon",
     "scan_objective_gaps",
     "submit_bundle_tasks",
     "write_bundle_shards",
 ]
+
+
+def __getattr__(name: str):
+    if name == "build_objective_daemon_arg_parser":
+        from .objective_daemon import build_arg_parser
+
+        return build_arg_parser
+    if name == "run_objective_daemon":
+        from .objective_daemon import run_objective_daemon
+
+        return run_objective_daemon
+    raise AttributeError(name)
