@@ -314,10 +314,12 @@ from .plans import (
     strip_daemon_task_board,
 )
 from .implementation_daemon import (
+    DEFAULT_WORKTREE_SUBMODULE_PATHS,
     TodoImplementationDaemon,
     TodoTask,
     TodoTaskState,
     WORKTREE_SUBMODULE_PATHS,
+    normalize_relative_path_list,
     parse_task_file,
 )
 from .implementation_supervisor import TodoImplementationSupervisor, TodoSupervisorConfig
@@ -463,7 +465,9 @@ __all__ = [
     "TodoSupervisorConfig",
     "TodoTask",
     "TodoTaskState",
+    "DEFAULT_WORKTREE_SUBMODULE_PATHS",
     "WORKTREE_SUBMODULE_PATHS",
+    "normalize_relative_path_list",
     "TodoDaemonRegistration",
     "TodoDaemonRuntimeConfig",
     "ValidationWorkspaceSpec",

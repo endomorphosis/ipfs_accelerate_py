@@ -47,7 +47,35 @@ RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
 SHARED_WORKTREE_PATHS = ("wallet_interface/ui/node_modules",)
-WORKTREE_SUBMODULE_PATHS = ("hallucinate_app", "ipfs_datasets_py", "swissknife")
+
+
+def normalize_relative_path_list(values: Any) -> tuple[str, ...]:
+    """Normalize comma/list configured repo-relative paths."""
+
+    if values is None:
+        raw_values: list[Any] = []
+    elif isinstance(values, str):
+        raw_values = [values]
+    else:
+        raw_values = list(values)
+
+    paths: list[str] = []
+    for value in raw_values:
+        for raw_path in str(value).split(","):
+            path = raw_path.strip().strip("/")
+            if not path or path.startswith("/") or "\0" in path:
+                continue
+            if ".." in Path(path).parts:
+                continue
+            if path not in paths:
+                paths.append(path)
+    return tuple(paths)
+
+
+DEFAULT_WORKTREE_SUBMODULE_PATHS = normalize_relative_path_list(
+    os.environ.get("IPFS_ACCELERATE_AGENT_WORKTREE_SUBMODULE_PATHS", "")
+)
+WORKTREE_SUBMODULE_PATHS = DEFAULT_WORKTREE_SUBMODULE_PATHS
 EPHEMERAL_WORKTREE_PATHS = (
     *SHARED_WORKTREE_PATHS,
     ".pytest_cache",
@@ -428,6 +456,7 @@ class PortalImplementationDaemon:
         implementation_log_dir: Path | None = None,
         use_ephemeral_worktree: bool = False,
         worktree_root: Path | None = None,
+        worktree_submodule_paths: Any = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -441,6 +470,12 @@ class PortalImplementationDaemon:
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.use_ephemeral_worktree = use_ephemeral_worktree
         self.worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
+        configured_submodules = (
+            DEFAULT_WORKTREE_SUBMODULE_PATHS
+            if worktree_submodule_paths is None
+            else normalize_relative_path_list(worktree_submodule_paths)
+        )
+        self.worktree_submodule_paths = configured_submodules
 
     def load_strategy(self) -> dict[str, Any]:
         defaults = {
@@ -1291,7 +1326,7 @@ class PortalImplementationDaemon:
         return baseline_ref
 
     def _initialize_worktree_submodules(self, worktree_path: Path, *, branch_name: str = "") -> None:
-        for relative in WORKTREE_SUBMODULE_PATHS:
+        for relative in self.worktree_submodule_paths:
             if self._create_local_submodule_worktree(worktree_path, relative, branch_name=branch_name):
                 target = worktree_path / relative
                 if self._is_git_worktree(target):
@@ -1554,7 +1589,7 @@ class PortalImplementationDaemon:
             return False
         if any(self._path_matches_prefix(relative, prefix) for prefix in EPHEMERAL_WORKTREE_PATHS):
             return False
-        if any(self._path_matches_prefix(relative, prefix) for prefix in WORKTREE_SUBMODULE_PATHS):
+        if any(self._path_matches_prefix(relative, prefix) for prefix in self.worktree_submodule_paths):
             return False
         return any(self._path_matches_prefix(relative, prefix) for prefix in UNTRACKED_WORKTREE_CONTEXT_PREFIXES)
 
@@ -1610,7 +1645,7 @@ class PortalImplementationDaemon:
         attempt: int,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
-        for relative in WORKTREE_SUBMODULE_PATHS:
+        for relative in self.worktree_submodule_paths:
             target = worktree_path / relative
             if not self._is_git_worktree(target):
                 continue
@@ -1725,7 +1760,7 @@ class PortalImplementationDaemon:
             if result.get("committed", False):
                 continue
             relative = str(result.get("path") or "")
-            if relative not in WORKTREE_SUBMODULE_PATHS or not self._repo_relative_path_safe(relative):
+            if relative not in self.worktree_submodule_paths or not self._repo_relative_path_safe(relative):
                 continue
             subprocess.run(
                 ["git", "restore", "--source=HEAD", "--staged", "--worktree", "--", relative],
@@ -1789,7 +1824,7 @@ class PortalImplementationDaemon:
         if not self._repo_relative_path_safe(relative):
             return
         target = worktree_path / relative
-        if relative in WORKTREE_SUBMODULE_PATHS and target.is_symlink():
+        if relative in self.worktree_submodule_paths and target.is_symlink():
             target.unlink()
         if self._path_tracked_in_head(worktree_path, relative) or self._path_tracked_in_repo(worktree_path, relative):
             restore = subprocess.run(
@@ -2583,7 +2618,7 @@ class PortalImplementationDaemon:
         parent_relative: str,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
-        relatives = WORKTREE_SUBMODULE_PATHS if not parent_relative else tuple(self._declared_submodule_paths(repo_path))
+        relatives = self.worktree_submodule_paths if not parent_relative else tuple(self._declared_submodule_paths(repo_path))
         for relative in relatives:
             full_relative = f"{parent_relative.rstrip('/')}/{relative}" if parent_relative else relative
             source = (self.repo_root / full_relative).resolve()
@@ -2759,7 +2794,7 @@ class PortalImplementationDaemon:
         parent_relative: str = "",
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
-        relatives = WORKTREE_SUBMODULE_PATHS if not parent_relative else tuple(self._declared_submodule_paths(worktree_path))
+        relatives = self.worktree_submodule_paths if not parent_relative else tuple(self._declared_submodule_paths(worktree_path))
         for relative in relatives:
             full_relative = f"{parent_relative.rstrip('/')}/{relative}" if parent_relative else relative
             source = (self.repo_root / full_relative).resolve()
@@ -3604,6 +3639,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Directory for temporary implementation worktrees. Defaults to the system temp directory.",
     )
     parser.add_argument(
+        "--worktree-submodule-path",
+        action="append",
+        default=[],
+        help=(
+            "Repo-relative submodule path to initialize and commit inside implementation worktrees. "
+            "May be repeated or comma-separated. Defaults to IPFS_ACCELERATE_AGENT_WORKTREE_SUBMODULE_PATHS."
+        ),
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -3635,6 +3679,7 @@ def main(argv: list[str] | None = None) -> None:
         implementation_timeout=args.implementation_timeout,
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
+        worktree_submodule_paths=args.worktree_submodule_path or None,
     )
     while True:
         result = daemon.run_once()

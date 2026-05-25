@@ -19,7 +19,11 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import PortalTask, TodoImplementationDaemon
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
+    PortalTask,
+    TodoImplementationDaemon,
+    parse_args as parse_implementation_daemon_args,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
@@ -94,6 +98,33 @@ def test_todo_daemon_runtime_is_ported_to_accelerate_package():
     assert TodoSupervisorConfig.__module__ == (
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
     )
+
+
+def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["packages/app,external/lib", "vendor/tools"],
+    )
+
+    assert daemon.worktree_submodule_paths == ("packages/app", "external/lib", "vendor/tools")
+
+    args = parse_implementation_daemon_args(
+        [
+            "--todo-path",
+            str(repo / "todo.md"),
+            "--worktree-submodule-path",
+            "packages/app",
+            "--worktree-submodule-path",
+            "external/lib,vendor/tools",
+        ]
+    )
+    assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
 
 
 def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
