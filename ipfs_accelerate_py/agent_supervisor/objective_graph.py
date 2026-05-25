@@ -15,7 +15,7 @@ import math
 import os
 import re
 import subprocess
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from hashlib import sha1
 from pathlib import Path
@@ -26,6 +26,7 @@ from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
 
 DEFAULT_EMBEDDING_DIMENSIONS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64"))
 DEFAULT_EMBEDDING_MIN_SCORE = float(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_MIN_SCORE", "0.62"))
+DEFAULT_BUNDLE_CLUSTER_MIN_SCORE = float(os.environ.get("IPFS_ACCELERATE_AGENT_BUNDLE_CLUSTER_MIN_SCORE", "0.42"))
 DEFAULT_TASK_PREFIX = "AUTO-"
 DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
 SCAN_SUFFIXES = {
@@ -126,6 +127,8 @@ class ObjectiveFinding:
     graph_depth: int = 0
     bundle_key: str = "objective/general"
     parallel_lane: str = "objective/general"
+    bundle_explicit: bool = False
+    bundle_strategy: str = "semantic_ast"
     embedding_query: str = ""
     ast_query: str = ""
     conflict_policy: str = "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
@@ -603,6 +606,108 @@ def objective_fingerprint(goal: ObjectiveGoal, missing_terms: Sequence[str]) -> 
     return sha1(payload.encode("utf-8")).hexdigest()
 
 
+def _path_root(value: str) -> str:
+    value = str(value or "").strip()
+    if not value or not repo_relative_path_safe(value):
+        return ""
+    first = Path(value).parts[0] if Path(value).parts else ""
+    if first in {"data", "tests", "docs", "."}:
+        return ""
+    return first
+
+
+def finding_conflict_root(finding: ObjectiveFinding) -> str:
+    """Return the path-root conflict domain used for implicit bundle planning."""
+
+    for output in finding.outputs:
+        root = _path_root(output)
+        if root:
+            return root
+    for paths in finding.present_evidence.values():
+        for raw_path in paths:
+            root = _path_root(str(raw_path).split(" (", 1)[0])
+            if root:
+                return root
+    return "general"
+
+
+def finding_semantic_bundle_text(finding: ObjectiveFinding) -> str:
+    present_paths: list[str] = []
+    for paths in finding.present_evidence.values():
+        present_paths.extend(str(path) for path in paths)
+    return "\n".join(
+        [
+            finding.title,
+            finding.goal,
+            finding.embedding_query,
+            finding.ast_query,
+            " ".join(finding.missing_evidence),
+            " ".join(present_paths),
+        ]
+    )
+
+
+def _bundle_cluster_key(*, finding: ObjectiveFinding, root: str, cluster_text: str) -> str:
+    digest = sha1(cluster_text.encode("utf-8")).hexdigest()[:8]
+    track = safe_bundle_key(finding.track).replace("-", "_") or "ops"
+    safe_root = safe_bundle_key(root).replace("-", "_") or "general"
+    return f"objective/{track}/{safe_root}/semantic-{digest}"
+
+
+def plan_semantic_ast_bundles(
+    findings: Sequence[ObjectiveFinding],
+    *,
+    min_score: float = DEFAULT_BUNDLE_CLUSTER_MIN_SCORE,
+    preserve_explicit: bool = True,
+) -> list[ObjectiveFinding]:
+    """Assign implicit objective findings to AST/embedding-aware bundle lanes.
+
+    Explicit ``Bundle:`` fields are left unchanged.  Remaining findings are
+    clustered inside a conflict-domain path root using deterministic token
+    embeddings built from the goal text, missing evidence, AST query, and present
+    evidence paths.  This keeps likely-overlapping work in the same lane while
+    letting unrelated roots drain in parallel.
+    """
+
+    planned: list[ObjectiveFinding] = []
+    clusters: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for finding in findings:
+        if preserve_explicit and finding.bundle_explicit:
+            planned.append(finding)
+            continue
+        root = finding_conflict_root(finding)
+        group_key = (finding.track, root)
+        text = finding_semantic_bundle_text(finding)
+        vector = text_embedding(text)
+        selected: dict[str, Any] | None = None
+        best_score = -1.0
+        for cluster in clusters.get(group_key, []):
+            score = cosine(vector, cluster["vector"])
+            if score > best_score:
+                best_score = score
+                selected = cluster
+        if selected is None or best_score < min_score:
+            bundle_key = _bundle_cluster_key(finding=finding, root=root, cluster_text=text)
+            selected = {"bundle_key": bundle_key, "vector": vector, "texts": [text]}
+            clusters.setdefault(group_key, []).append(selected)
+        else:
+            selected["texts"].append(text)
+            vectors = [text_embedding(item) for item in selected["texts"]]
+            averaged = [sum(values) / len(vectors) for values in zip(*vectors)]
+            norm = math.sqrt(sum(value * value for value in averaged))
+            selected["vector"] = [value / norm for value in averaged] if norm else averaged
+        bundle_key = str(selected["bundle_key"])
+        planned.append(
+            replace(
+                finding,
+                bundle_key=bundle_key,
+                parallel_lane=bundle_key,
+                bundle_strategy="semantic_ast",
+            )
+        )
+    return planned
+
+
 def scan_objective_gaps(
     repo_root: Path,
     *,
@@ -642,8 +747,9 @@ def scan_objective_gaps(
         if fingerprint in seen:
             continue
         present = {term: evidence.get(term, []) for term in terms if evidence.get(term)}
-        bundle_key = goal.bundle_key(missing_terms)
         fields = goal.fields
+        bundle_key = goal.bundle_key(missing_terms)
+        explicit_bundle = bool(str(fields.get("bundle") or "").strip())
         finding = ObjectiveFinding(
             fingerprint=fingerprint,
             goal_id=goal.goal_id,
@@ -664,6 +770,8 @@ def scan_objective_gaps(
             graph_depth=int(graph["depths"].get(goal.goal_id, 0)),
             bundle_key=bundle_key,
             parallel_lane=str(fields.get("parallel_lane") or bundle_key),
+            bundle_explicit=explicit_bundle,
+            bundle_strategy="explicit" if explicit_bundle else "semantic_ast",
             embedding_query=str(fields.get("embedding_query") or fields.get("goal") or goal.title),
             ast_query=str(fields.get("ast_query") or ", ".join(terms)),
             conflict_policy=str(
@@ -676,7 +784,7 @@ def scan_objective_gaps(
         seen.add(fingerprint)
         if len(findings) >= max_findings:
             break
-    return findings
+    return plan_semantic_ast_bundles(findings)
 
 
 def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX) -> list[str]:
@@ -733,6 +841,7 @@ Parent goals: {parents}
 Graph depth: {finding.graph_depth}
 Bundle: {finding.bundle_key}
 Parallel lane: {finding.parallel_lane}
+Bundle strategy: {finding.bundle_strategy}
 Evidence methods: {", ".join(finding.evidence_methods) or "none"}
 Embedding query: {finding.embedding_query}
 AST query: {finding.ast_query}
@@ -784,6 +893,7 @@ def render_task_block(
 - Validation: {finding.validation}
 - Bundle: {finding.bundle_key}
 - Bundle shard: {bundle_shard}
+- Bundle strategy: {finding.bundle_strategy}
 - Graph parents: {parents}
 - Graph depth: {finding.graph_depth}
 - Parallel lane: {finding.parallel_lane}
@@ -859,11 +969,13 @@ def write_bundle_shards(
                 "parent_goal_ids": record.finding.parent_goal_ids,
                 "missing_evidence": record.finding.missing_evidence,
                 "discovery_path": repo_relative_path(repo_root, record.discovery_path),
+                "bundle_strategy": record.finding.bundle_strategy,
             }
         bundles[key] = {
             "bundle_key": key,
             "shard_path": repo_relative_path(repo_root, bundle_path(bundle_dir, key)),
             "parallel_lane": bundle_records[0].finding.parallel_lane,
+            "bundle_strategy": bundle_records[0].finding.bundle_strategy,
             "conflict_policy": bundle_records[0].finding.conflict_policy,
             "tasks": [task_map[task_id] for task_id in sorted(task_map)],
         }

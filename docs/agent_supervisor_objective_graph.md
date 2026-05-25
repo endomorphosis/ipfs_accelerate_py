@@ -21,6 +21,14 @@ Missing evidence becomes todo work.  Each generated task is mirrored into a
 bundle-local todo shard so multiple Codex daemons can work independent lanes in
 parallel.
 
+When a goal has an explicit `Bundle:` field, that bundle assignment is honored.
+When it does not, the scanner assigns a bundle using the goal track, the
+conflict-domain path root, AST/query text, present evidence paths, and
+deterministic sentence-embedding similarity. This keeps semantically similar
+work that is likely to touch the same files in one lane while allowing unrelated
+roots to run in parallel. The implicit clustering threshold is controlled by
+`IPFS_ACCELERATE_AGENT_BUNDLE_CLUSTER_MIN_SCORE`, which defaults to `0.42`.
+
 The objective heap is the tracking document and stays separate from executable
 todo boards. Use `--ensure-tracking-document` to create it from an ultimate goal
 when it is missing, and `--refine-objective-heap` to append child goals for broad

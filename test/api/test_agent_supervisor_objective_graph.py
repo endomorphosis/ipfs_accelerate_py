@@ -108,6 +108,72 @@ def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
     assert finding.present_evidence["meta glasses terminal router"][0].startswith("docs/runtime_notes.md (embedding:")
 
 
+def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "capability_router.py"
+    source.parent.mkdir()
+    source.write_text(
+        """class CapabilityRouter:
+    def dispatch_task(self, request):
+        return request
+
+    def schedule_task(self, request):
+        return request
+""",
+        encoding="utf-8",
+    )
+    objective_path = repo / "objective-heap.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 Capability routing contract
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Prove capability routing dispatch contracts.
+- Evidence: CapabilityRouter.dispatch_task, missing capability route contract
+- Outputs: src/capability_router.py, tests
+- Validation: test -f objective-heap.md
+- AST query: CapabilityRouter.dispatch_task
+- Embedding query: capability routing dispatch contract
+
+## VAIOS-G002 Capability scheduling contract
+
+- Status: active
+- Parent:
+- Fib priority: 2
+- Track: runtime
+- Priority: P1
+- Goal: Prove capability routing scheduling contracts.
+- Evidence: CapabilityRouter.schedule_task, missing capability schedule contract
+- Outputs: src/capability_router.py, tests
+- Validation: test -f objective-heap.md
+- AST query: CapabilityRouter.schedule_task
+- Embedding query: capability routing schedule contract
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective-heap.md", "src/capability_router.py")
+    _git(repo, "commit", "-m", "seed implicit bundle objectives")
+
+    findings = scan_objective_gaps(repo, objective_path=objective_path, max_findings=2)
+
+    assert len(findings) == 2
+    assert {finding.bundle_explicit for finding in findings} == {False}
+    assert {finding.bundle_strategy for finding in findings} == {"semantic_ast"}
+    assert len({finding.bundle_key for finding in findings}) == 1
+    assert findings[0].bundle_key.startswith("objective/runtime/src/semantic-")
+    assert findings[0].parallel_lane == findings[0].bundle_key
+
+
 def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
