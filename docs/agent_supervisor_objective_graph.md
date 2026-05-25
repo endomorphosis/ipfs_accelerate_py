@@ -51,6 +51,9 @@ available to dataset tooling, provenance systems, and future vector indexes.
 9. `build_bundle_task_payloads(...)` converts the index into task queue payloads.
 10. `submit_bundle_tasks(...)` submits each bundle to the existing
    `ipfs_accelerate_py.p2p_tasks.task_queue.TaskQueue` as `codex.todo_bundle`.
+11. `ipfs-accelerate-agent-bundle-supervisor` plans one isolated
+    implementation-supervisor lane per bundle shard and, with `--start`, launches
+    those lanes with separate state directories and worktree roots.
 
 This keeps the concurrency concern in `ipfs_accelerate_py`: agent lanes can be
 scheduled locally, through P2P task queues, or by future accelerated agent
@@ -63,6 +66,9 @@ The reusable todo daemon and implementation supervisor are ported into
 
 - `ipfs-accelerate-agent-objective-daemon` for objective-heap scanning,
   AST/dataset persistence, bundle writing, and optional task-queue submission.
+- `ipfs-accelerate-agent-bundle-supervisor` for turning
+  `objective_bundles/index.json` into isolated daemon lanes. Dry-run planning is
+  the default; `--start` launches the lane supervisors.
 - `ipfs-accelerate-agent-implementation-daemon` for draining markdown todo
   tasks with the Codex/Copilot implementation loop.
 - `ipfs-accelerate-agent-implementation-supervisor` for monitoring, restarting,

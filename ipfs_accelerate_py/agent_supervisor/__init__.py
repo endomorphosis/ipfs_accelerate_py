@@ -26,6 +26,7 @@ from .objective_tracker import (
 
 __all__ = [
     "BundleWriteResult",
+    "BundleLaneSpec",
     "DatasetArtifact",
     "ObjectiveFinding",
     "ObjectiveGoal",
@@ -41,20 +42,34 @@ __all__ = [
     "ensure_objective_tracking_document",
     "fibonacci_priority",
     "goal_graph",
+    "launch_bundle_lanes",
     "invoke_llm_resolver",
     "latest_failed_merge_event",
     "parse_goal_heap",
+    "plan_bundle_lanes",
     "persist_objective_ast_dataset",
     "resolver_payload",
+    "run_bundle_supervisor",
     "run_objective_daemon",
     "scan_objective_gaps",
     "submit_bundle_tasks",
     "write_objective_graph_artifact",
     "write_bundle_shards",
+    "write_bundle_lane_manifest",
 ]
 
 
 def __getattr__(name: str):
+    if name in {
+        "BundleLaneSpec",
+        "launch_bundle_lanes",
+        "plan_bundle_lanes",
+        "run_bundle_supervisor",
+        "write_bundle_lane_manifest",
+    }:
+        from . import bundle_supervisor
+
+        return getattr(bundle_supervisor, name)
     if name in {"build_merge_prompt", "invoke_llm_resolver", "latest_failed_merge_event", "resolver_payload"}:
         from . import merge_resolver
 
