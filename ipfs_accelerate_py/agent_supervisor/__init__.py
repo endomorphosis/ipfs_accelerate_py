@@ -28,6 +28,7 @@ from .objective_tracker import (
 __all__ = [
     "BundleWriteResult",
     "BundleLaneSpec",
+    "CodebaseFinding",
     "DatasetArtifact",
     "ObjectiveFinding",
     "ObjectiveGoal",
@@ -50,9 +51,14 @@ __all__ = [
     "plan_semantic_ast_bundles",
     "plan_bundle_lanes",
     "persist_objective_ast_dataset",
+    "record_codebase_scan_findings",
+    "record_objective_backlog_findings",
+    "record_retry_budget_findings",
     "resolver_payload",
+    "run_backlog_refinery",
     "run_bundle_supervisor",
     "run_objective_daemon",
+    "scan_codebase_findings",
     "scan_objective_gaps",
     "submit_bundle_tasks",
     "write_objective_graph_artifact",
@@ -62,6 +68,17 @@ __all__ = [
 
 
 def __getattr__(name: str):
+    if name in {
+        "CodebaseFinding",
+        "record_codebase_scan_findings",
+        "record_objective_backlog_findings",
+        "record_retry_budget_findings",
+        "run_backlog_refinery",
+        "scan_codebase_findings",
+    }:
+        from . import backlog_refinery
+
+        return getattr(backlog_refinery, name)
     if name in {
         "BundleLaneSpec",
         "launch_bundle_lanes",

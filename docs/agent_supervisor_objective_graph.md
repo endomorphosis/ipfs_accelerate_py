@@ -74,6 +74,10 @@ The reusable todo daemon and implementation supervisor are ported into
 
 - `ipfs-accelerate-agent-objective-daemon` for objective-heap scanning,
   AST/dataset persistence, bundle writing, and optional task-queue submission.
+- `ipfs-accelerate-agent-backlog-refinery` for script-port backlog feed logic:
+  refill low todo queues from an objective heap, scan tracked code for focused
+  bug/improvement findings, and convert repeated validation or merge failures
+  into evidence-backed follow-up tasks instead of indefinite retry loops.
 - `ipfs-accelerate-agent-bundle-supervisor` for turning
   `objective_bundles/index.json` into isolated daemon lanes. Dry-run planning is
   the default; `--start` launches the lane supervisors.
@@ -87,6 +91,34 @@ The reusable todo daemon and implementation supervisor are ported into
 
 The objective daemon suppresses duplicate work by reading existing discovery
 fingerprints unless `--repeat-existing` is set.
+
+## Backlog Refinery
+
+`ipfs_accelerate_py.agent_supervisor.backlog_refinery` is the reusable port of
+the repo-local supervisor feed behavior. It is separate from the implementation
+daemon so product-specific wrappers can decide when to run it, while the
+accelerator owns the actual policy.
+
+The refinery has three modes:
+
+- Objective scan: calls the objective graph scanner and appends missing-evidence
+  tasks only when the backlog is low, forced, or fully drained. It updates the
+  strategy file with seen fingerprints and writes the same bundle shards and AST
+  dataset artifacts as the objective daemon.
+- Codebase scan: scans tracked files across the repo and nested worktrees for
+  small actionable findings such as unfenced TODO/FIXME annotations, swallowed
+  exception paths, and placeholder runtime paths. Findings become parseable todo
+  tasks with discovery evidence.
+- Retry budget: reads daemon events and blocks source tasks that repeatedly fail
+  validation or merge reconciliation, then appends a follow-up task with the
+  relevant logs, failed command, and merge-resolution instructions.
+
+When no mode flag is passed, `ipfs-accelerate-agent-backlog-refinery` runs all
+available modes. `--objective-scan`, `--codebase-scan`, and `--retry-budget`
+select individual modes. The refill thresholds are controlled by
+`IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_MIN_OPEN_TASKS`,
+`IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MIN_OPEN_TASKS`, and the matching
+`*_MAX_FINDINGS` and `*_COOLDOWN_SECONDS` environment variables.
 
 ## Merge Conflicts
 
