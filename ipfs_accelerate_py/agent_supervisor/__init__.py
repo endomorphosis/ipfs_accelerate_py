@@ -1,10 +1,5 @@
 """Autonomous agent supervisor helpers for objective-driven todo execution."""
 
-from .merge_resolver import (
-    build_merge_prompt,
-    latest_failed_merge_event,
-    resolver_payload,
-)
 from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
 from .objective_graph import (
     BundleWriteResult,
@@ -21,6 +16,13 @@ from .objective_graph import (
     submit_bundle_tasks,
     write_bundle_shards,
 )
+from .objective_tracker import (
+    ObjectiveTrackingResult,
+    append_refinement_goals,
+    ensure_objective_tracking_document,
+    fibonacci_priority,
+    write_objective_graph_artifact,
+)
 
 __all__ = [
     "BundleWriteResult",
@@ -28,13 +30,18 @@ __all__ = [
     "ObjectiveFinding",
     "ObjectiveGoal",
     "ObjectiveDatasetStore",
+    "ObjectiveTrackingResult",
     "ObjectiveTaskRecord",
+    "append_refinement_goals",
     "build_bundle_task_payloads",
     "build_merge_prompt",
     "build_objective_daemon_arg_parser",
     "collect_ast_dataset_records",
     "generate_objective_todos",
+    "ensure_objective_tracking_document",
+    "fibonacci_priority",
     "goal_graph",
+    "invoke_llm_resolver",
     "latest_failed_merge_event",
     "parse_goal_heap",
     "persist_objective_ast_dataset",
@@ -42,11 +49,16 @@ __all__ = [
     "run_objective_daemon",
     "scan_objective_gaps",
     "submit_bundle_tasks",
+    "write_objective_graph_artifact",
     "write_bundle_shards",
 ]
 
 
 def __getattr__(name: str):
+    if name in {"build_merge_prompt", "invoke_llm_resolver", "latest_failed_merge_event", "resolver_payload"}:
+        from . import merge_resolver
+
+        return getattr(merge_resolver, name)
     if name == "build_objective_daemon_arg_parser":
         from .objective_daemon import build_arg_parser
 

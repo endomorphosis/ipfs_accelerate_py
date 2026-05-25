@@ -14,6 +14,7 @@ from ipfs_accelerate_py.agent_supervisor import (
     scan_objective_gaps,
     submit_bundle_tasks,
 )
+from ipfs_accelerate_py.agent_supervisor.merge_resolver import main as merge_resolver_main
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -247,3 +248,33 @@ def test_merge_resolver_builds_dry_run_payload(tmp_path):
     assert payload["branch"] == "implementation/accel-009"
     assert "Resolve the autonomous-agent supervisor merge conflict" in payload["prompt"]
     assert "ipfs_accelerate_py/agent_supervisor" in payload["prompt"]
+
+
+def test_merge_resolver_cli_prints_payload(tmp_path, capsys):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    events_path = tmp_path / "events.jsonl"
+    events_path.write_text(
+        json.dumps(
+            {
+                "type": "merge_finished",
+                "task_id": "ACCEL-010",
+                "attempted": True,
+                "merged": False,
+                "branch": "implementation/accel-010",
+                "target_branch": "main",
+                "reason": "content_conflict",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert merge_resolver_main(["--events-path", str(events_path), "--repo-root", str(repo)]) == 0
+    output = json.loads(capsys.readouterr().out)
+
+    assert output["found"] is True
+    assert output["task_id"] == "ACCEL-010"
+    assert "Resolve the autonomous-agent supervisor merge conflict" in output["prompt"]

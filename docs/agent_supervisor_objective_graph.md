@@ -21,6 +21,13 @@ Missing evidence becomes todo work.  Each generated task is mirrored into a
 bundle-local todo shard so multiple Codex daemons can work independent lanes in
 parallel.
 
+The objective heap is the tracking document and stays separate from executable
+todo boards. Use `--ensure-tracking-document` to create it from an ultimate goal
+when it is missing, and `--refine-objective-heap` to append child goals for broad
+missing-evidence gaps before generating todos. A JSON graph artifact is written
+on each objective-daemon run so supervisors can inspect roots, edges, depths,
+priorities, and active goal counts without reparsing markdown.
+
 Large AST and symbol payloads are dataset artifacts.  The accelerator writes a
 JSONL artifact and manifest for every objective scan, and when `ipfs_datasets_py`
 plus its dataset dependencies are importable it also saves the rows through
@@ -34,12 +41,15 @@ available to dataset tooling, provenance systems, and future vector indexes.
 2. Run `ipfs-accelerate-agent-objective-daemon` or
    `generate_objective_todos(...)` with a main todo file, discovery directory,
    and objective bundle directory.
-3. The scanner appends daemon-parseable tasks to the main todo file.
-4. It writes per-bundle shards under `objective_bundles/*.todo.md`.
-5. It writes `objective_bundles/index.json`.
-6. It writes AST/symbol datasets under `objective_datasets/`.
-7. `build_bundle_task_payloads(...)` converts the index into task queue payloads.
-8. `submit_bundle_tasks(...)` submits each bundle to the existing
+3. Optionally refine broad missing evidence into child goals with
+   `--refine-objective-heap`.
+4. The scanner appends daemon-parseable tasks to the main todo file.
+5. It writes per-bundle shards under `objective_bundles/*.todo.md`.
+6. It writes `objective_bundles/index.json`.
+7. It writes `objective_graph.json`.
+8. It writes AST/symbol datasets under `objective_datasets/`.
+9. `build_bundle_task_payloads(...)` converts the index into task queue payloads.
+10. `submit_bundle_tasks(...)` submits each bundle to the existing
    `ipfs_accelerate_py.p2p_tasks.task_queue.TaskQueue` as `codex.todo_bundle`.
 
 This keeps the concurrency concern in `ipfs_accelerate_py`: agent lanes can be
@@ -57,6 +67,9 @@ The reusable todo daemon and implementation supervisor are ported into
   tasks with the Codex/Copilot implementation loop.
 - `ipfs-accelerate-agent-implementation-supervisor` for monitoring, restarting,
   and repairing the implementation daemon.
+- `ipfs-accelerate-agent-merge-resolver` for building a merge-conflict prompt
+  from daemon events and, with `--apply`, invoking an external LLM resolver
+  command.
 
 The objective daemon suppresses duplicate work by reading existing discovery
 fingerprints unless `--repeat-existing` is set.

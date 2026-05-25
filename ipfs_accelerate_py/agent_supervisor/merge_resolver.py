@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import shlex
 import subprocess
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 
 def iter_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -173,3 +174,28 @@ def invoke_llm_resolver(
         "llm_stdout": compact_text(result.stdout),
         "llm_stderr": compact_text(result.stderr),
     }
+
+
+def build_arg_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Build or invoke an LLM merge resolver for agent-supervisor events")
+    parser.add_argument("--events-path", type=Path, required=True)
+    parser.add_argument("--repo-root", type=Path, default=Path.cwd())
+    parser.add_argument("--task-id", default=None)
+    parser.add_argument("--apply", action="store_true", help="Invoke the configured resolver command")
+    parser.add_argument("--command", default=None, help="Resolver command template. Defaults to env var.")
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = build_arg_parser().parse_args(argv)
+    payload = resolver_payload(events_path=args.events_path, repo_root=args.repo_root.resolve(), task_id=args.task_id)
+    if args.apply:
+        payload = invoke_llm_resolver(payload, command_template=args.command)
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    if args.apply and payload.get("found") and not payload.get("applied"):
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -19,7 +19,15 @@ from .objective_graph import (
     DEFAULT_TASK_PREFIX,
     generate_objective_todos,
     repo_relative_path,
+    scan_objective_gaps,
     submit_bundle_tasks,
+)
+from .objective_tracker import (
+    DEFAULT_ULTIMATE_GOAL,
+    append_refinement_goals,
+    ensure_objective_tracking_document,
+    parse_root_evidence,
+    write_objective_graph_artifact,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,11 +85,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--discovery-dir", type=Path, default=None)
     parser.add_argument("--bundle-dir", type=Path, default=None)
     parser.add_argument("--dataset-dir", type=Path, default=None)
+    parser.add_argument("--graph-path", type=Path, default=None)
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
     parser.add_argument("--depends-on", action="append", default=[])
     parser.add_argument("--seen-fingerprint", action="append", default=[])
     parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
     parser.add_argument("--max-findings", type=int, default=10)
+    parser.add_argument("--ensure-tracking-document", action="store_true")
+    parser.add_argument("--ultimate-goal", default=DEFAULT_ULTIMATE_GOAL)
+    parser.add_argument("--root-evidence", action="append", default=[])
+    parser.add_argument("--refine-objective-heap", action="store_true")
+    parser.add_argument("--max-refinement-children", type=int, default=3)
+    parser.add_argument("--max-refinement-depth", type=int, default=4)
     parser.add_argument("--no-persist-ast-dataset", action="store_true")
     parser.add_argument("--submit-bundles", action="store_true", help="Submit generated bundle shards to the local task queue")
     parser.add_argument("--queue-path", default=None)
@@ -99,10 +114,40 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
     discovery_dir = (args.discovery_dir or state_root / "discovery").resolve()
     bundle_dir = (args.bundle_dir or state_root / "objective_bundles").resolve()
     dataset_dir = (args.dataset_dir or state_root / "objective_datasets").resolve()
+    graph_path = (getattr(args, "graph_path", None) or state_root / "objective_graph.json").resolve()
 
     seen_fingerprints = set(split_csv(args.seen_fingerprint))
     if not args.repeat_existing:
         seen_fingerprints.update(discovery_fingerprints(discovery_dir))
+
+    tracking_created = False
+    ensured_goal_ids: list[str] = []
+    if getattr(args, "ensure_tracking_document", False):
+        tracking = ensure_objective_tracking_document(
+            objective_path,
+            ultimate_goal=getattr(args, "ultimate_goal", DEFAULT_ULTIMATE_GOAL),
+            root_evidence=parse_root_evidence(getattr(args, "root_evidence", [])),
+        )
+        tracking_created = tracking.created
+        ensured_goal_ids = tracking.appended_goal_ids
+
+    refined_goal_ids: list[str] = []
+    if getattr(args, "refine_objective_heap", False) and objective_path.exists():
+        refinement_findings = scan_objective_gaps(
+            repo_root,
+            objective_path=objective_path,
+            max_findings=args.max_findings,
+            seen_fingerprints=seen_fingerprints,
+        )
+        refinement = append_refinement_goals(
+            objective_path,
+            refinement_findings,
+            max_children_per_finding=getattr(args, "max_refinement_children", 3),
+            max_depth=getattr(args, "max_refinement_depth", 4),
+        )
+        refined_goal_ids = refinement.appended_goal_ids
+        if refined_goal_ids:
+            seen_fingerprints.update(finding.fingerprint for finding in refinement_findings)
 
     records = generate_objective_todos(
         repo_root=repo_root,
@@ -117,6 +162,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         seen_fingerprints=seen_fingerprints,
         persist_ast_dataset=not args.no_persist_ast_dataset,
     )
+    graph_payload = write_objective_graph_artifact(objective_path=objective_path, graph_path=graph_path)
 
     bundle_index_path = bundle_dir / "index.json"
     submitted_bundle_task_ids: list[str] = []
@@ -136,6 +182,12 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "discovery_dir": repo_relative_path(repo_root, discovery_dir),
         "bundle_index_path": repo_relative_path(repo_root, bundle_index_path),
         "dataset_dir": repo_relative_path(repo_root, dataset_dir),
+        "graph_path": repo_relative_path(repo_root, graph_path),
+        "tracking_document_created": tracking_created,
+        "ensured_goal_ids": ensured_goal_ids,
+        "refined_goal_ids": refined_goal_ids,
+        "objective_goal_count": graph_payload["goal_count"],
+        "objective_active_goal_count": graph_payload["active_goal_count"],
         "generated_count": len(records),
         "task_ids": [record.task_id for record in records],
         "discovery_paths": [repo_relative_path(repo_root, record.discovery_path) for record in records],

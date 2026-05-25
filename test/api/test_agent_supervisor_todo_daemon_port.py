@@ -10,6 +10,8 @@ from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     discovery_fingerprints,
     run_objective_daemon,
 )
+from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
+from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import TodoImplementationDaemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     TodoImplementationSupervisor,
@@ -158,3 +160,88 @@ def test_objective_daemon_suppresses_existing_discovery_fingerprint(tmp_path):
     assert first["generated_count"] == 1
     assert second["generated_count"] == 0
     assert todo_path.read_text(encoding="utf-8").count("## ACCEL-001 ") == 1
+
+
+def test_objective_daemon_creates_tracking_document_and_graph(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    readme = repo / "README.md"
+    readme.write_text("# Repo\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "seed")
+
+    objective_path = repo / "docs" / "objective-heap.md"
+    todo_path = repo / "docs" / "todo.md"
+    graph_path = repo / "data" / "agent_supervisor" / "objective_graph.json"
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--graph-path",
+            str(graph_path),
+            "--ensure-tracking-document",
+            "--ultimate-goal",
+            "Operate as a virtual AI OS for a Meta glasses remote display.",
+            "--root-evidence",
+            "missing_meta_display_bridge",
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "1",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["tracking_document_created"] is True
+    assert payload["ensured_goal_ids"] == ["VAIOS-G000"]
+    assert payload["objective_goal_count"] == 1
+    assert graph_path.exists()
+    graph = json.loads(graph_path.read_text(encoding="utf-8"))
+    assert graph["graph"]["roots"] == ["VAIOS-G000"]
+    assert "missing_meta_display_bridge" in objective_path.read_text(encoding="utf-8")
+    assert "## ACCEL-001 Close virtual AI OS objective gap" in todo_path.read_text(encoding="utf-8")
+
+
+def test_objective_daemon_refines_missing_evidence_into_child_goals(tmp_path):
+    repo, objective_path, todo_path = _seed_repo(tmp_path)
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--refine-objective-heap",
+            "--max-refinement-children",
+            "1",
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "2",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+    goals = parse_goal_heap(objective_path.read_text(encoding="utf-8"))
+    refined = [goal for goal in goals if goal.goal_id in payload["refined_goal_ids"]]
+
+    assert payload["refined_goal_ids"] == ["VAIOS-G011"]
+    assert payload["generated_count"] == 1
+    assert len(refined) == 1
+    assert refined[0].parent_goal_ids == ["VAIOS-G010"]
+    assert refined[0].required_evidence == ["missing_gesture_policy"]
+    assert refined[0].fields["fib_priority"] == str(fibonacci_priority(1, 0))
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "Prove missing_gesture_policy for Meta display control bridge" in todo_text
