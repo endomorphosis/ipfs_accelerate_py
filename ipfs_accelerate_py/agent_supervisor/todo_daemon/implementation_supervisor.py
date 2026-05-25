@@ -35,6 +35,16 @@ from .supervisor_runtime import RestartPolicy
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor")
 
 
+def split_csv_values(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
+    items: list[str] = []
+    for value in values:
+        for raw_item in str(value).split(","):
+            item = " ".join(raw_item.strip().split())
+            if item and item.lower() not in {"none", "n/a"} and item not in items:
+                items.append(item)
+    return tuple(items)
+
+
 @dataclass
 class PortalSupervisorConfig:
     todo_path: Path
@@ -55,6 +65,16 @@ class PortalSupervisorConfig:
     use_ephemeral_worktree: bool = True
     worktree_root: Path | None = None
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
+    codebase_refill_enabled: bool = False
+    codebase_scan_discovery_dir: Path | None = None
+    codebase_scan_discovery_output_path: str = ""
+    codebase_scan_min_open_tasks: int = 0
+    codebase_scan_max_findings: int = 5
+    codebase_scan_cooldown_seconds: int = 21600
+    codebase_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
+    codebase_scan_skip_prefixes: tuple[str, ...] = field(default_factory=tuple)
+    codebase_scan_commit_outputs: bool = False
+    codebase_scan_commit_subject: str = "Agent: record supervisor codebase scan findings"
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
 
@@ -121,18 +141,21 @@ class PortalImplementationSupervisor:
                 "strategy_generation": int(strategy.get("generation", 0)),
                 "active_task_id": state.active_task_id,
             }
+        codebase_findings = self.refill_codebase_backlog()
         self._record_event(
             "supervisor_check",
             {
                 "stuck": False,
                 "active_task_id": state.active_task_id,
                 "completed_count": state.completed_count,
+                "codebase_refill_count": len(codebase_findings),
             },
         )
         return {
             "stuck": False,
             "active_task_id": state.active_task_id,
             "completed_count": state.completed_count,
+            "codebase_refill_count": len(codebase_findings),
         }
 
     def run_forever(self) -> None:
@@ -209,9 +232,57 @@ class PortalImplementationSupervisor:
         state = PortalTaskState.load(self.config.state_path)
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if not stuck:
+            self.refill_codebase_backlog()
             return SupervisorLoopDecision.keep_running()
         self.rewrite_strategy(state, reason)
         return SupervisorLoopDecision.recycle(reason, detail={"active_task_id": state.active_task_id})
+
+    def refill_codebase_backlog(self) -> list[dict[str, Any]]:
+        """Feed low or drained todo boards from a codebase/submodule scan."""
+
+        if not self.config.codebase_refill_enabled:
+            return []
+
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            CODEBASE_SCAN_SKIP_PREFIXES,
+            record_codebase_scan_findings,
+            task_id_prefix,
+        )
+
+        discovery_dir = self.config.codebase_scan_discovery_dir or self.config.state_dir.parent / "discovery"
+        discovery_output_path = self.config.codebase_scan_discovery_output_path
+        if not discovery_output_path:
+            try:
+                discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
+            except ValueError:
+                discovery_output_path = str(discovery_dir)
+        findings = record_codebase_scan_findings(
+            todo_path=self.config.todo_path,
+            state_path=self.config.state_path,
+            strategy_path=self.config.strategy_path,
+            discovery_dir=discovery_dir,
+            repo_root=self.config.repo_root,
+            task_prefix=task_id_prefix(self.config.task_prefix),
+            depends_on=self.config.codebase_scan_depends_on,
+            min_open_tasks=self.config.codebase_scan_min_open_tasks,
+            max_findings=self.config.codebase_scan_max_findings,
+            cooldown_seconds=self.config.codebase_scan_cooldown_seconds,
+            discovery_output_path=discovery_output_path,
+            skip_prefixes=self.config.codebase_scan_skip_prefixes or CODEBASE_SCAN_SKIP_PREFIXES,
+            commit_outputs=self.config.codebase_scan_commit_outputs,
+            commit_subject=self.config.codebase_scan_commit_subject,
+        )
+        if findings:
+            self._record_event(
+                "codebase_refill_scan",
+                {
+                    "generated_count": len(findings),
+                    "todo_path": str(self.config.todo_path),
+                    "discovery_dir": str(discovery_dir),
+                    "findings": findings,
+                },
+            )
+        return findings
 
     def _implementation_attempt_is_active(self, state: PortalTaskState, *, now_ts: float) -> bool:
         if not state.active_task_id or not state.implementation_in_progress:
@@ -534,6 +605,51 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--codebase-refill-scan",
+        action="store_true",
+        help="Append codebase-scan follow-up tasks when the supervised backlog is low or drained.",
+    )
+    parser.add_argument(
+        "--codebase-scan-discovery-dir",
+        type=Path,
+        default=None,
+        help="Directory for codebase-scan discovery reports. Defaults to a sibling discovery directory near state.",
+    )
+    parser.add_argument(
+        "--codebase-scan-discovery-output-path",
+        default="",
+        help="Todo Outputs path used for generated codebase-scan tasks.",
+    )
+    parser.add_argument(
+        "--codebase-scan-min-open-tasks",
+        type=int,
+        default=0,
+        help="Run the refill scan when open tasks are at or below this count.",
+    )
+    parser.add_argument("--codebase-scan-max-findings", type=int, default=5)
+    parser.add_argument("--codebase-scan-cooldown-seconds", type=int, default=21600)
+    parser.add_argument(
+        "--codebase-scan-depends-on",
+        action="append",
+        default=[],
+        help="Task id dependency for generated codebase-scan tasks. May be repeated or comma-separated.",
+    )
+    parser.add_argument(
+        "--codebase-scan-skip-prefix",
+        action="append",
+        default=[],
+        help="Repo-relative path prefix to skip during codebase scans. May be repeated.",
+    )
+    parser.add_argument(
+        "--codebase-scan-commit-outputs",
+        action="store_true",
+        help="Commit generated todo/discovery outputs after a supervisor codebase scan.",
+    )
+    parser.add_argument(
+        "--codebase-scan-commit-subject",
+        default="Agent: record supervisor codebase scan findings",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -568,6 +684,16 @@ def main(argv: list[str] | None = None) -> None:
             use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
             worktree_root=args.worktree_root,
             worktree_submodule_paths=normalize_relative_path_list(args.worktree_submodule_path),
+            codebase_refill_enabled=args.codebase_refill_scan,
+            codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
+            codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,
+            codebase_scan_min_open_tasks=args.codebase_scan_min_open_tasks,
+            codebase_scan_max_findings=args.codebase_scan_max_findings,
+            codebase_scan_cooldown_seconds=args.codebase_scan_cooldown_seconds,
+            codebase_scan_depends_on=split_csv_values(args.codebase_scan_depends_on),
+            codebase_scan_skip_prefixes=tuple(args.codebase_scan_skip_prefix),
+            codebase_scan_commit_outputs=args.codebase_scan_commit_outputs,
+            codebase_scan_commit_subject=args.codebase_scan_commit_subject,
             repo_root=REPO_ROOT,
         )
     )

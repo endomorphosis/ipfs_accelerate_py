@@ -141,6 +141,17 @@ configuration and forwards it to managed implementation daemons.
 The Hallucinate wrapper supplies its own `hallucinate_app`, `ipfs_datasets_py`,
 and `swissknife` paths as adapter configuration.
 
+## Drained-Backlog Refill
+
+Supervisors can keep an implementation loop fed after the todo board drains by
+enabling `--codebase-refill-scan`. On each supervisor health check the reusable
+backlog refinery inspects the board state and only appends work when the open
+task count is at or below `--codebase-scan-min-open-tasks`. When the count is
+zero, the scan mode becomes `drained_exhaustive`, which walks the root checkout
+and discovered git worktrees/submodules even if the normal cooldown has not
+elapsed. The scan writes discovery reports and daemon-parseable follow-up tasks
+for code annotations, swallowed exceptions, and placeholder runtime paths.
+
 ## Merge Conflicts
 
 `ipfs_accelerate_py.agent_supervisor.merge_resolver` reads daemon JSONL events

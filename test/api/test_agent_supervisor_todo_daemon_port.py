@@ -157,9 +157,77 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
             "packages/app",
             "--worktree-submodule-path",
             "external/lib,vendor/tools",
+            "--codebase-refill-scan",
+            "--codebase-scan-min-open-tasks",
+            "0",
+            "--codebase-scan-depends-on",
+            "AUTO-001,AUTO-002",
         ]
     )
     assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
+    assert args.codebase_refill_scan is True
+    assert args.codebase_scan_depends_on == ["AUTO-001,AUTO-002"]
+
+
+def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        """def route_request(request):
+    # TODO: inspect drained supervisor refill
+    return request
+""",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed seed
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: Seed task.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed drained backlog")
+    state_dir = repo / "state"
+    config = TodoSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        task_prefix="## AUTO-",
+        codebase_refill_enabled=True,
+        codebase_scan_discovery_dir=repo / "discovery",
+        codebase_scan_min_open_tasks=0,
+        codebase_scan_max_findings=1,
+        codebase_scan_cooldown_seconds=21600,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["codebase_refill_count"] == 1
+    assert "## AUTO-002 Resolve code annotation in src/runtime.py:2" in todo_path.read_text(encoding="utf-8")
+    strategy = json.loads((state_dir / "strategy.json").read_text(encoding="utf-8"))
+    assert strategy["last_codebase_scan_mode"] == "drained_exhaustive"
+    assert strategy["last_drained_codebase_scan_task_count"] == 1
+    assert list((repo / "discovery").glob("*-auto-002-codebase-scan-*.md"))
 
 
 def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
