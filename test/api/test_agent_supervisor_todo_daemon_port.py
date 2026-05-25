@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import shlex
 import subprocess
+import sys
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
@@ -17,7 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import TodoImplementationDaemon
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import PortalTask, TodoImplementationDaemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
@@ -349,3 +351,110 @@ def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
     assert manifest["lanes"][0]["bundle_key"] == "objective/ops/root"
     assert manifest["lanes"][0]["todo_path"] == "objective_bundles/root.todo.md"
     assert "--no-implement" in manifest["lanes"][0]["command"]
+
+
+def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("# Repo\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "seed")
+
+    capture_path = tmp_path / "resolver-prompt.txt"
+    resolver_script = tmp_path / "resolver.py"
+    resolver_script.write_text(
+        "import pathlib, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv(
+        "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
+        f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    result = daemon._invoke_llm_merge_resolver_for_failed_merge(
+        workspace=repo,
+        task=PortalTask(
+            task_id="ACCEL-999",
+            title="Resolve semantic merge",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        attempt=2,
+        branch_name="implementation/accel-999",
+        target_branch="main",
+        merge_command=["git", "merge", "implementation/accel-999"],
+        merge_stdout="",
+        merge_stderr="CONFLICT (content): Merge conflict",
+    )
+
+    assert result["applied"] is True
+    assert result["llm_returncode"] == 0
+    prompt = capture_path.read_text(encoding="utf-8")
+    assert "ACCEL-999" in prompt
+    assert "implementation/accel-999" in prompt
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "llm_merge_resolver_invoked"
+    assert events[-1]["prompt_chars"] == len(prompt)
+
+
+def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "conflict.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "feature")
+    target.write_text("feature\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "feature")
+    _git(repo, "checkout", "main")
+    target.write_text("main\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "main")
+    merge = subprocess.run(
+        ["git", "merge", "feature"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert merge.returncode != 0
+    target.write_text("resolved\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    result = daemon._commit_llm_resolved_merge(repo)
+
+    assert result["completed"] is True
+    assert target.read_text(encoding="utf-8") == "resolved\n"
+    no_merge_head = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert no_merge_head.returncode != 0

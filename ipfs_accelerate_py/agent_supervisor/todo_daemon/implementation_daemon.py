@@ -42,6 +42,7 @@ DEFAULT_TRACKS = [
 ]
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
+LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
@@ -2214,6 +2215,8 @@ class PortalImplementationDaemon:
             submodule_merge_results: list[dict[str, Any]] = []
             submodule_conflict_repair: dict[str, Any] = {}
             merge_abort_result: dict[str, Any] = {}
+            llm_merge_resolver: dict[str, Any] = {}
+            llm_merge_commit_result: dict[str, Any] = {}
             merge_returncode = merge.returncode
             if merge_returncode != 0:
                 submodule_conflict_repair = self._repair_submodule_gitlink_merge_conflicts(
@@ -2223,7 +2226,24 @@ class PortalImplementationDaemon:
                 if submodule_conflict_repair.get("repaired", False):
                     merge_returncode = 0
                 else:
-                    merge_abort_result = self._abort_failed_merge(merge_workspace)
+                    llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
+                        workspace=merge_workspace,
+                        task=task,
+                        attempt=attempt,
+                        branch_name=branch_name,
+                        target_branch=target_branch,
+                        merge_command=command,
+                        merge_stdout=merge.stdout,
+                        merge_stderr=merge.stderr,
+                    )
+                    if llm_merge_resolver.get("applied", False):
+                        llm_merge_commit_result = self._commit_llm_resolved_merge(merge_workspace)
+                        if llm_merge_commit_result.get("completed", False):
+                            merge_returncode = 0
+                        else:
+                            merge_abort_result = self._abort_failed_merge(merge_workspace)
+                    else:
+                        merge_abort_result = self._abort_failed_merge(merge_workspace)
             if merge_returncode == 0:
                 merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=merge_workspace).stdout.strip()
                 submodule_merge_results = self._merge_submodule_branches_to_main(branch_name)
@@ -2254,6 +2274,10 @@ class PortalImplementationDaemon:
                 result["submodule_conflict_repair"] = submodule_conflict_repair
             if merge_abort_result:
                 result["merge_abort_result"] = merge_abort_result
+            if llm_merge_resolver:
+                result["llm_merge_resolver"] = llm_merge_resolver
+            if llm_merge_commit_result:
+                result["llm_merge_commit_result"] = llm_merge_commit_result
             if failed_submodules:
                 result["submodule_merge_failed"] = True
                 result["reason"] = "submodule_merge_failed"
@@ -2299,6 +2323,103 @@ class PortalImplementationDaemon:
         }
         self._record_event("failed_merge_aborted", {"worktree_path": str(cwd), **result})
         return result
+
+    def _invoke_llm_merge_resolver_for_failed_merge(
+        self,
+        *,
+        workspace: Path,
+        task: PortalTask,
+        attempt: int,
+        branch_name: str,
+        target_branch: str,
+        merge_command: list[str],
+        merge_stdout: str,
+        merge_stderr: str,
+    ) -> dict[str, Any]:
+        command_template = os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "").strip()
+        if not command_template:
+            return {"attempted": False, "reason": "resolver_command_not_configured"}
+        from ipfs_accelerate_py.agent_supervisor.merge_resolver import build_merge_prompt, invoke_llm_resolver
+
+        merge_result = {
+            "attempted": True,
+            "merged": False,
+            "returncode": 1,
+            "branch": branch_name,
+            "target_branch": target_branch,
+            "command": merge_command,
+            "reason": "merge_conflict",
+            "stdout": merge_stdout[-4000:],
+            "stderr": merge_stderr[-4000:],
+            "main_worktree_path": str(workspace),
+        }
+        event = {
+            "type": "merge_finished",
+            "task_id": task.task_id,
+            "attempt": attempt,
+            "merge_result": merge_result,
+        }
+        payload = {
+            "found": True,
+            "task_id": task.task_id,
+            "attempt": attempt,
+            "events_path": str(self.events_path),
+            "repo_root": str(workspace),
+            "branch": branch_name,
+            "target_branch": target_branch,
+            "command": merge_command,
+            "reason": "merge_conflict",
+            "dirty_paths": [],
+            "unmerged_paths": sorted(self._unmerged_worktree_paths(workspace)),
+            "prompt": build_merge_prompt(event=event, repo_root=workspace),
+        }
+        result = invoke_llm_resolver(payload, command_template=command_template)
+        compact_result = dict(result)
+        if "prompt" in compact_result:
+            compact_result["prompt_chars"] = len(str(compact_result.pop("prompt") or ""))
+        self._record_event("llm_merge_resolver_invoked", compact_result)
+        return compact_result
+
+    def _commit_llm_resolved_merge(self, workspace: Path) -> dict[str, Any]:
+        unresolved = sorted(self._unmerged_worktree_paths(workspace))
+        if unresolved:
+            return {
+                "attempted": True,
+                "completed": False,
+                "reason": "unresolved_paths_remain",
+                "unresolved_paths": unresolved,
+            }
+        merge_head = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD"],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if merge_head.returncode != 0:
+            return {"attempted": False, "completed": False, "reason": "no_merge_in_progress"}
+        commit = subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Implementation Daemon",
+                "-c",
+                "user.email=implementation-daemon@example.invalid",
+                "commit",
+                "--no-edit",
+            ],
+            cwd=workspace,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return {
+            "attempted": True,
+            "completed": commit.returncode == 0,
+            "returncode": commit.returncode,
+            "stdout": commit.stdout[-4000:],
+            "stderr": commit.stderr[-4000:],
+        }
 
     def _repair_submodule_gitlink_merge_conflicts(
         self,

@@ -90,6 +90,11 @@ stdout/stderr excerpts.
 Set `IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND` to invoke an external LLM
 resolver command.  The default resolver path is dry-run only, so supervisors can
 record the conflict payload before deciding whether to apply a semantic merge.
+When that environment variable is present for the implementation daemon, failed
+content merges invoke the resolver against the conflicted merge workspace before
+the daemon aborts the merge. If the resolver clears all unmerged paths, the
+daemon commits the resolved merge and records `llm_merge_resolver_invoked` plus
+the merge result in the event log.
 
 ## Relationship To `ipfs_datasets_py`
 
