@@ -27,6 +27,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon impor
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import (
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
+    parse_args as parse_implementation_supervisor_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.runner import TodoDaemonRunner
 
@@ -116,6 +117,40 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
 
     args = parse_implementation_daemon_args(
         [
+            "--todo-path",
+            str(repo / "todo.md"),
+            "--worktree-submodule-path",
+            "packages/app",
+            "--worktree-submodule-path",
+            "external/lib,vendor/tools",
+        ]
+    )
+    assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
+
+
+def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        state_dir=repo / "state",
+        implement=True,
+        worktree_submodule_paths=("packages/app", "external/lib"),
+    )
+    supervisor = TodoImplementationSupervisor(config)
+
+    command = supervisor._build_daemon_command()
+
+    assert command.count("--worktree-submodule-path") == 2
+    assert "packages/app" in command
+    assert "external/lib" in command
+
+    args = parse_implementation_supervisor_args(
+        [
+            "--implement",
             "--todo-path",
             str(repo / "todo.md"),
             "--worktree-submodule-path",

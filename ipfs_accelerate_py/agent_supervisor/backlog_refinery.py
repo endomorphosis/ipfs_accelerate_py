@@ -22,7 +22,7 @@ from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
 from hashlib import sha1
 from pathlib import Path
-from typing import Any, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from .objective_graph import (
     DEFAULT_DISCOVERY_OUTPUT_PATH,
@@ -902,6 +902,7 @@ def record_retry_budget_findings(
     validation_retry_budget: int = DEFAULT_VALIDATION_RETRY_BUDGET,
     merge_retry_budget: int = DEFAULT_MERGE_RETRY_BUDGET,
     validation_depends_on: Sequence[str] = (),
+    validation_task_command_transform: Callable[[str], str] | None = None,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     commit_outputs: bool = False,
     repo_root: Path | None = None,
@@ -949,10 +950,15 @@ def record_retry_budget_findings(
             )
             generated_paths.append(discovery_path)
             depends_on = list(validation_depends_on) if validation_depends_on else list(task.depends_on)
+            validation_command = (
+                validation_task_command_transform(failed_command)
+                if validation_task_command_transform is not None
+                else failed_command
+            )
             task_block = validation_retry_task_block(
                 task_id=follow_up_task_id,
                 source_task=task,
-                failed_command=failed_command,
+                failed_command=validation_command,
                 discovery_path=discovery_path,
                 depends_on=depends_on,
                 discovery_output_path=discovery_output_path,

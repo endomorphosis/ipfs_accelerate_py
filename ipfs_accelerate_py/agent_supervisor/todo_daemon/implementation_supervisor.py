@@ -21,6 +21,7 @@ from .implementation_daemon import (
     TASK_HEADER_PREFIX,
     PortalTaskState,
     load_json_dict,
+    normalize_relative_path_list,
     parse_timestamp,
     process_command_line,
     process_is_running,
@@ -53,6 +54,7 @@ class PortalSupervisorConfig:
     implementation_log_stall_seconds: float = 300.0
     use_ephemeral_worktree: bool = True
     worktree_root: Path | None = None
+    worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
 
@@ -380,6 +382,8 @@ class PortalImplementationSupervisor:
                 command.append("--no-ephemeral-worktree")
             if self.config.worktree_root is not None:
                 command.extend(["--worktree-root", str(self.config.worktree_root)])
+            for relative in self.config.worktree_submodule_paths:
+                command.extend(["--worktree-submodule-path", relative])
         return command
 
     def _managed_daemon_pid_path(self) -> Path:
@@ -521,6 +525,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Directory for temporary implementation worktrees",
     )
     parser.add_argument(
+        "--worktree-submodule-path",
+        action="append",
+        default=[],
+        help=(
+            "Repo-relative submodule path to initialize and commit inside implementation worktrees. "
+            "May be repeated or comma-separated."
+        ),
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -554,6 +567,7 @@ def main(argv: list[str] | None = None) -> None:
             implementation_log_stall_seconds=args.implementation_log_stall_seconds,
             use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
             worktree_root=args.worktree_root,
+            worktree_submodule_paths=normalize_relative_path_list(args.worktree_submodule_path),
             repo_root=REPO_ROOT,
         )
     )

@@ -136,6 +136,8 @@ the host repository has Hallucinate-specific submodules. Callers that need
 submodule-aware worktrees can pass `worktree_submodule_paths` to
 `PortalImplementationDaemon`, repeat `--worktree-submodule-path` on the CLI, or
 set `IPFS_ACCELERATE_AGENT_WORKTREE_SUBMODULE_PATHS` to a comma-separated list.
+`PortalImplementationSupervisor` accepts the same `worktree_submodule_paths`
+configuration and forwards it to managed implementation daemons.
 The Hallucinate wrapper supplies its own `hallucinate_app`, `ipfs_datasets_py`,
 and `swissknife` paths as adapter configuration.
 
