@@ -27,6 +27,14 @@ from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
 DEFAULT_EMBEDDING_DIMENSIONS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64"))
 DEFAULT_EMBEDDING_MIN_SCORE = float(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_MIN_SCORE", "0.62"))
 DEFAULT_BUNDLE_CLUSTER_MIN_SCORE = float(os.environ.get("IPFS_ACCELERATE_AGENT_BUNDLE_CLUSTER_MIN_SCORE", "0.42"))
+DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX = os.environ.get(
+    "IPFS_ACCELERATE_AGENT_OBJECTIVE_TASK_SUMMARY_PREFIX",
+    "Close objective gap",
+)
+DEFAULT_DISCOVERY_OUTPUT_PATH = os.environ.get(
+    "IPFS_ACCELERATE_AGENT_DISCOVERY_OUTPUT_PATH",
+    "data/agent_supervisor/discovery",
+)
 DEFAULT_TASK_PREFIX = "AUTO-"
 DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
 SCAN_SUFFIXES = {
@@ -198,18 +206,19 @@ def normalize_field_key(value: str) -> str:
 def parse_goal_heap(text: str) -> list[ObjectiveGoal]:
     """Parse flat markdown objective records.
 
-    Records use ``## VAIOS-G001 Title`` headers and ``- Field: value`` rows.
-    The parser is intentionally database-free so goal heaps can live in repos.
+    Records use ``## GOAL-ID Title`` headers and ``- Field: value`` rows.  The
+    goal id is intentionally not tied to a project prefix so other packages can
+    provide their own objective heaps.
     """
 
     goals: list[ObjectiveGoal] = []
     current_id = ""
     current_title = ""
     current_fields: dict[str, str] = {}
-    header_pattern = re.compile(r"^##\s+([A-Za-z]+-[A-Za-z0-9]+)\s+(.+?)\s*$")
+    header_pattern = re.compile(r"^##\s+(\S+)\s+(.+?)\s*$")
 
     def flush() -> None:
-        if current_id:
+        if current_id and current_fields:
             goals.append(ObjectiveGoal(goal_id=current_id, title=current_title.strip(), fields=dict(current_fields)))
 
     for line in text.splitlines():
@@ -715,6 +724,7 @@ def scan_objective_gaps(
     max_findings: int = 10,
     seen_fingerprints: Iterable[str] = (),
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
+    summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
 ) -> list[ObjectiveFinding]:
     if max_findings <= 0 or not objective_path.exists():
         return []
@@ -754,7 +764,7 @@ def scan_objective_gaps(
             fingerprint=fingerprint,
             goal_id=goal.goal_id,
             title=goal.title,
-            summary=f"Close virtual AI OS objective gap: {goal.title}",
+            summary=f"{summary_prefix}: {goal.title}",
             priority=str(fields.get("priority") or "P2"),
             track=str(fields.get("track") or "ops"),
             missing_evidence=missing_terms,
@@ -874,8 +884,9 @@ def render_task_block(
     discovery_path: Path,
     depends_on: Sequence[str] = (),
     bundle_shard: str = "",
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
-    outputs = ["data/agent_supervisor/discovery", finding.objective_path]
+    outputs = [discovery_output_path, finding.objective_path]
     outputs.extend(str(item) for item in finding.outputs if str(item).strip())
     unique_outputs = list(dict.fromkeys(outputs))
     missing = ", ".join(finding.missing_evidence)
@@ -898,7 +909,7 @@ def render_task_block(
 - Graph depth: {finding.graph_depth}
 - Parallel lane: {finding.parallel_lane}
 - Conflict policy: {finding.conflict_policy}
-- Acceptance: Objective scan filed this gap for {finding.goal_id}. Use evidence in {discovery_path}, add code/tests/docs or child goals that prove the missing evidence terms are covered ({missing}), and keep the supervisor-fed backlog aligned with the virtual AI OS objective heap. {refinement}
+- Acceptance: Objective scan filed this gap for {finding.goal_id}. Use evidence in {discovery_path}, add code/tests/docs or child goals that prove the missing evidence terms are covered ({missing}), and keep the supervisor-fed backlog aligned with the objective heap. {refinement}
 """
 
 
@@ -1001,6 +1012,8 @@ def generate_objective_todos(
     max_findings: int = 10,
     seen_fingerprints: Iterable[str] = (),
     persist_ast_dataset: bool = True,
+    summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
@@ -1011,6 +1024,7 @@ def generate_objective_todos(
         objective_path=objective_path,
         max_findings=max_findings,
         seen_fingerprints=seen_fingerprints,
+        summary_prefix=summary_prefix,
     ):
         task_id = next_task_id(todo_text, task_prefix=task_prefix)
         shard_relative = repo_relative_path(repo_root, bundle_path(bundle_dir, finding.bundle_key))
@@ -1021,6 +1035,7 @@ def generate_objective_todos(
             discovery_path=discovery_path,
             depends_on=depends_on,
             bundle_shard=shard_relative,
+            discovery_output_path=discovery_output_path,
         )
         todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
         records.append(

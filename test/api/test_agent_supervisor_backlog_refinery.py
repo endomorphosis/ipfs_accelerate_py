@@ -261,6 +261,6 @@ def test_backlog_refinery_objective_scan_refills_low_backlog(tmp_path):
     assert findings[0]["goal_id"] == "VAIOS-G001"
     assert findings[0]["bundle_strategy"] == "semantic_ast"
     todo_text = todo_path.read_text(encoding="utf-8")
-    assert "## AUTO-002 Close virtual AI OS objective gap" in todo_text
+    assert "## AUTO-002 Close objective gap" in todo_text
     assert "- Bundle strategy: semantic_ast" in todo_text
     assert (bundle_dir / "index.json").exists()

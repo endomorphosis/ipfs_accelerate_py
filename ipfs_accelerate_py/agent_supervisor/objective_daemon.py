@@ -16,6 +16,8 @@ from pathlib import Path
 from typing import Any, Iterable, Sequence
 
 from .objective_graph import (
+    DEFAULT_DISCOVERY_OUTPUT_PATH,
+    DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     DEFAULT_TASK_PREFIX,
     generate_objective_todos,
     repo_relative_path,
@@ -23,6 +25,9 @@ from .objective_graph import (
     submit_bundle_tasks,
 )
 from .objective_tracker import (
+    DEFAULT_GOAL_PREFIX,
+    DEFAULT_ROOT_GOAL_TITLE,
+    DEFAULT_TRACKING_DOCUMENT_TITLE,
     DEFAULT_ULTIMATE_GOAL,
     append_refinement_goals,
     ensure_objective_tracking_document,
@@ -87,6 +92,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dataset-dir", type=Path, default=None)
     parser.add_argument("--graph-path", type=Path, default=None)
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_PREFIX)
+    parser.add_argument("--objective-summary-prefix", default=DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX)
+    parser.add_argument("--discovery-output-path", default=DEFAULT_DISCOVERY_OUTPUT_PATH)
     parser.add_argument("--depends-on", action="append", default=[])
     parser.add_argument("--seen-fingerprint", action="append", default=[])
     parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
@@ -94,6 +101,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ensure-tracking-document", action="store_true")
     parser.add_argument("--ultimate-goal", default=DEFAULT_ULTIMATE_GOAL)
     parser.add_argument("--root-evidence", action="append", default=[])
+    parser.add_argument("--goal-prefix", default=None)
+    parser.add_argument("--root-goal-id", default=None)
+    parser.add_argument("--root-goal-title", default=DEFAULT_ROOT_GOAL_TITLE)
+    parser.add_argument("--tracking-document-title", default=DEFAULT_TRACKING_DOCUMENT_TITLE)
     parser.add_argument("--refine-objective-heap", action="store_true")
     parser.add_argument("--max-refinement-children", type=int, default=3)
     parser.add_argument("--max-refinement-depth", type=int, default=4)
@@ -127,6 +138,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             objective_path,
             ultimate_goal=getattr(args, "ultimate_goal", DEFAULT_ULTIMATE_GOAL),
             root_evidence=parse_root_evidence(getattr(args, "root_evidence", [])),
+            root_goal_id=getattr(args, "root_goal_id", None),
+            goal_prefix=getattr(args, "goal_prefix", None) or DEFAULT_GOAL_PREFIX,
+            root_goal_title=getattr(args, "root_goal_title", DEFAULT_ROOT_GOAL_TITLE),
+            document_title=getattr(args, "tracking_document_title", DEFAULT_TRACKING_DOCUMENT_TITLE),
         )
         tracking_created = tracking.created
         ensured_goal_ids = tracking.appended_goal_ids
@@ -144,6 +159,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             refinement_findings,
             max_children_per_finding=getattr(args, "max_refinement_children", 3),
             max_depth=getattr(args, "max_refinement_depth", 4),
+            goal_prefix=getattr(args, "goal_prefix", None),
         )
         refined_goal_ids = refinement.appended_goal_ids
         if refined_goal_ids:
@@ -161,6 +177,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         max_findings=args.max_findings,
         seen_fingerprints=seen_fingerprints,
         persist_ast_dataset=not args.no_persist_ast_dataset,
+        summary_prefix=getattr(args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX),
+        discovery_output_path=getattr(args, "discovery_output_path", DEFAULT_DISCOVERY_OUTPUT_PATH),
     )
     graph_payload = write_objective_graph_artifact(objective_path=objective_path, graph_path=graph_path)
 

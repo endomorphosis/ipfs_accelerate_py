@@ -9,6 +9,7 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor import (
     build_bundle_task_payloads,
     generate_objective_todos,
+    parse_goal_heap,
     persist_objective_ast_dataset,
     resolver_payload,
     scan_objective_gaps,
@@ -108,6 +109,23 @@ def test_objective_graph_scanner_uses_ast_and_embedding_evidence(tmp_path):
     assert finding.present_evidence["meta glasses terminal router"][0].startswith("docs/runtime_notes.md (embedding:")
 
 
+def test_objective_goal_heap_accepts_package_specific_goal_ids():
+    goals = parse_goal_heap(
+        """# Objective Heap
+
+## APP.GOAL-001 Package-specific proof
+
+- Status: active
+- Evidence: package proof
+- Goal: Prove a package-specific objective.
+"""
+    )
+
+    assert len(goals) == 1
+    assert goals[0].goal_id == "APP.GOAL-001"
+    assert goals[0].title == "Package-specific proof"
+
+
 def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -192,12 +210,12 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert len(records) == 1
     assert records[0].task_id == "ACCEL-002"
     todo_text = todo_path.read_text(encoding="utf-8")
-    assert "## ACCEL-002 Close virtual AI OS objective gap" in todo_text
+    assert "## ACCEL-002 Close objective gap" in todo_text
     assert "- Bundle: objective/ops/root" in todo_text
 
     shard = bundle_dir / "objective-ops-root.todo.md"
     assert shard.exists()
-    assert "## ACCEL-002 Close virtual AI OS objective gap" in shard.read_text(encoding="utf-8")
+    assert "## ACCEL-002 Close objective gap" in shard.read_text(encoding="utf-8")
     index_path = bundle_dir / "index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
     assert index["bundles"]["objective/ops/root"]["tasks"][0]["task_id"] == "ACCEL-002"

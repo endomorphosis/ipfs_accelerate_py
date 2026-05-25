@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -12,8 +13,7 @@ from .objective_graph import ObjectiveFinding, ObjectiveGoal, goal_graph, parse_
 
 
 DEFAULT_ULTIMATE_GOAL = (
-    "Make this repository operate as a virtual AI operating system whose services can be controlled by "
-    "agents, voice, gestures, clicks, and remote display surfaces."
+    "Make this repository satisfy its stated objective with verifiable code, tests, docs, and runtime evidence."
 )
 DEFAULT_ROOT_EVIDENCE = (
     "objective goal graph",
@@ -22,7 +22,9 @@ DEFAULT_ROOT_EVIDENCE = (
     "embedding evidence scan",
     "LLM merge conflict resolver",
 )
-DEFAULT_GOAL_PREFIX = "VAIOS-G"
+DEFAULT_GOAL_PREFIX = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_GOAL_PREFIX", "OBJ-G")
+DEFAULT_TRACKING_DOCUMENT_TITLE = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_DOCUMENT_TITLE", "Objective Heap")
+DEFAULT_ROOT_GOAL_TITLE = os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_ROOT_TITLE", "Objective outcome")
 
 
 @dataclass(frozen=True)
@@ -59,7 +61,22 @@ def fibonacci_priority(depth: int, sibling_index: int = 0) -> int:
     return fibonacci_number(max(1, depth + 2)) * 1000 + max(0, sibling_index)
 
 
-def next_goal_id(goals: Sequence[ObjectiveGoal], *, prefix: str = DEFAULT_GOAL_PREFIX) -> str:
+def infer_goal_prefix(goals: Sequence[ObjectiveGoal], *, fallback: str = DEFAULT_GOAL_PREFIX) -> str:
+    """Infer a numeric goal-id prefix from existing goals."""
+
+    prefixes: dict[str, int] = {}
+    for goal in goals:
+        match = re.match(r"^(.+?)(\d+)$", goal.goal_id)
+        if not match:
+            continue
+        prefixes[match.group(1)] = prefixes.get(match.group(1), 0) + 1
+    if not prefixes:
+        return fallback
+    return sorted(prefixes.items(), key=lambda item: (-item[1], item[0]))[0][0]
+
+
+def next_goal_id(goals: Sequence[ObjectiveGoal], *, prefix: str | None = None) -> str:
+    prefix = prefix or infer_goal_prefix(goals)
     highest = -1
     pattern = re.compile(rf"^{re.escape(prefix)}(\d+)$")
     for goal in goals:
@@ -81,17 +98,21 @@ def ensure_objective_tracking_document(
     *,
     ultimate_goal: str = DEFAULT_ULTIMATE_GOAL,
     root_evidence: Sequence[str] = DEFAULT_ROOT_EVIDENCE,
-    root_goal_id: str = f"{DEFAULT_GOAL_PREFIX}000",
+    root_goal_id: str | None = None,
+    goal_prefix: str = DEFAULT_GOAL_PREFIX,
+    document_title: str = DEFAULT_TRACKING_DOCUMENT_TITLE,
+    root_goal_title: str = DEFAULT_ROOT_GOAL_TITLE,
 ) -> ObjectiveTrackingResult:
     """Create the objective tracking document if it does not exist."""
 
     if objective_path.exists():
         return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
 
+    root_goal_id = root_goal_id or f"{goal_prefix}000"
     objective_path.parent.mkdir(parents=True, exist_ok=True)
     text = "\n".join(
         [
-            "# Virtual AI OS Objective Heap",
+            f"# {document_title}",
             "",
             "This document is the supervisor planning state. It is intentionally separate from markdown todo",
             "boards: todos represent executable work, while this heap represents the objective graph used to",
@@ -99,7 +120,7 @@ def ensure_objective_tracking_document(
             "",
             render_goal_block(
                 goal_id=root_goal_id,
-                title="Virtual AI OS outcome",
+                title=root_goal_title,
                 fields={
                     "Status": "active",
                     "Parent": "",
@@ -171,7 +192,7 @@ def append_refinement_goals(
     *,
     max_children_per_finding: int = 3,
     max_depth: int = 4,
-    goal_prefix: str = DEFAULT_GOAL_PREFIX,
+    goal_prefix: str | None = None,
 ) -> ObjectiveTrackingResult:
     """Append child goals for missing evidence terms that are still too broad."""
 
@@ -184,6 +205,7 @@ def append_refinement_goals(
     refinement_keys = existing_refinement_keys(goals)
     appended_blocks: list[str] = []
     appended_goal_ids: list[str] = []
+    goal_prefix = goal_prefix or infer_goal_prefix(goals)
     next_id = next_goal_id(goals, prefix=goal_prefix)
 
     def allocate_goal_id() -> str:

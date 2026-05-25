@@ -24,7 +24,14 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
-from .objective_graph import generate_objective_todos, repo_relative_path, safe_bundle_key
+from .objective_graph import (
+    DEFAULT_DISCOVERY_OUTPUT_PATH,
+    DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+    bundle_path,
+    generate_objective_todos,
+    repo_relative_path,
+    safe_bundle_key,
+)
 from .todo_daemon.implementation_daemon import parse_task_file
 
 
@@ -277,6 +284,138 @@ def git_toplevel_for_path(cwd: Path) -> Path | None:
     return Path(result.stdout.strip()).resolve()
 
 
+def path_status(repo: Path, relative: str) -> str:
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all", "--", relative],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def unmerged_worktree_paths(repo: Path) -> set[str]:
+    result = subprocess.run(
+        ["git", "diff", "--name-only", "--diff-filter=U"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return set()
+    return {line.strip() for line in result.stdout.splitlines() if line.strip()}
+
+
+def commit_specific_path(repo: Path, relative: str, *, subject: str) -> dict[str, Any]:
+    if not repo_relative_path_safe(relative):
+        return {"committed": False, "reason": "unsafe_path", "repo": str(repo), "path": relative}
+    unmerged = unmerged_worktree_paths(repo)
+    if unmerged and relative not in unmerged:
+        return {
+            "committed": False,
+            "reason": "repo_has_unrelated_unmerged_paths",
+            "repo": str(repo),
+            "path": relative,
+            "unmerged_paths": sorted(unmerged),
+        }
+    status = path_status(repo, relative)
+    if not status:
+        return {"committed": False, "reason": "no_changes", "repo": str(repo), "path": relative}
+    add = subprocess.run(["git", "add", "--", relative], cwd=repo, text=True, capture_output=True, check=False)
+    if add.returncode != 0:
+        return {
+            "committed": False,
+            "reason": "git_add_failed",
+            "repo": str(repo),
+            "path": relative,
+            "returncode": add.returncode,
+            "stdout": add.stdout[-4000:],
+            "stderr": add.stderr[-4000:],
+        }
+    staged = subprocess.run(["git", "diff", "--cached", "--quiet", "--", relative], cwd=repo, check=False)
+    if staged.returncode == 0:
+        return {"committed": False, "reason": "no_staged_changes", "repo": str(repo), "path": relative}
+    commit = subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Accelerator Backlog Refinery",
+            "-c",
+            "user.email=accelerator-backlog-refinery@example.invalid",
+            "commit",
+            "-m",
+            subject,
+            "--",
+            relative,
+        ],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if commit.returncode != 0:
+        return {
+            "committed": False,
+            "reason": "git_commit_failed",
+            "repo": str(repo),
+            "path": relative,
+            "returncode": commit.returncode,
+            "stdout": commit.stdout[-4000:],
+            "stderr": commit.stderr[-4000:],
+        }
+    ref = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, text=True, capture_output=True, check=False)
+    return {"committed": True, "repo": str(repo), "path": relative, "commit": ref.stdout.strip(), "status": status}
+
+
+def parent_git_toplevel_for_repo(repo: Path) -> Path | None:
+    parent = git_toplevel_for_path(repo.resolve().parent)
+    if parent is None or parent.resolve() == repo.resolve():
+        return None
+    try:
+        repo.resolve().relative_to(parent.resolve())
+    except ValueError:
+        return None
+    return parent
+
+
+def commit_parent_gitlink_updates(child_repo: Path, *, repo_root: Path, subject: str) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    current = child_repo.resolve()
+    root = repo_root.resolve()
+    while current != root:
+        parent = parent_git_toplevel_for_repo(current)
+        if parent is None:
+            break
+        relative = repo_relative_path(parent, current)
+        if not relative:
+            break
+        results.append(commit_specific_path(parent, relative, subject=subject))
+        current = parent.resolve()
+    return results
+
+
+def commit_generated_outputs(paths: Sequence[Path], *, repo_root: Path, subject: str) -> list[dict[str, Any]]:
+    results: list[dict[str, Any]] = []
+    for path in paths:
+        repo = git_toplevel_for_path(path.parent)
+        if repo is None:
+            results.append({"committed": False, "reason": "not_in_git_repo", "path": str(path)})
+            continue
+        relative = repo_relative_path(repo, path)
+        if not relative:
+            results.append({"committed": False, "reason": "path_outside_repo", "path": str(path), "repo": str(repo)})
+            continue
+        result = commit_specific_path(repo, relative, subject=subject)
+        if result.get("committed"):
+            parent_results = commit_parent_gitlink_updates(repo, repo_root=repo_root, subject=subject)
+            if parent_results:
+                result["parent_gitlink_commits"] = parent_results
+        results.append(result)
+    return results
+
+
 def repo_relative_path_safe(relative: str) -> bool:
     if not relative or relative.startswith("/") or "\0" in relative:
         return False
@@ -306,7 +445,11 @@ def codebase_scan_path_skipped(
     return any(part in CODEBASE_SCAN_SKIP_PARTS for part in path.parts)
 
 
-def discover_git_worktrees(repo_root: Path) -> list[Path]:
+def discover_git_worktrees(
+    repo_root: Path,
+    *,
+    skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+) -> list[Path]:
     roots: list[Path] = []
     seen: set[str] = set()
 
@@ -329,7 +472,7 @@ def discover_git_worktrees(repo_root: Path) -> list[Path]:
             dirname
             for dirname in dirnames
             if dirname not in CODEBASE_SCAN_SKIP_PARTS
-            and not codebase_scan_path_skipped(current_path / dirname, repo_root=repo_root)
+            and not codebase_scan_path_skipped(current_path / dirname, repo_root=repo_root, skip_prefixes=skip_prefixes)
         ]
         if current_path != repo_root and (current_path / ".git").exists():
             add_if_worktree(current_path)
@@ -361,8 +504,13 @@ def root_relative_path(repo_root: Path, path: Path) -> str:
         return path.as_posix()
 
 
-def file_is_scan_candidate(path: Path, *, repo_root: Path) -> bool:
-    if codebase_scan_path_skipped(path, repo_root=repo_root):
+def file_is_scan_candidate(
+    path: Path,
+    *,
+    repo_root: Path,
+    skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+) -> bool:
+    if codebase_scan_path_skipped(path, repo_root=repo_root, skip_prefixes=skip_prefixes):
         return False
     if "-codebase-scan-" in path.name or "retry-budget" in path.name:
         return False
@@ -474,12 +622,13 @@ def scan_codebase_findings(
     max_findings: int,
     seen_fingerprints: Iterable[str] = (),
     exhaustive: bool = False,
+    skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
 ) -> list[CodebaseFinding]:
     findings: list[CodebaseFinding] = []
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
-    for git_root in discover_git_worktrees(repo_root):
+    for git_root in discover_git_worktrees(repo_root, skip_prefixes=skip_prefixes):
         for path in tracked_files(git_root):
-            if not file_is_scan_candidate(path, repo_root=repo_root):
+            if not file_is_scan_candidate(path, repo_root=repo_root, skip_prefixes=skip_prefixes):
                 continue
             for finding in scan_findings_in_file(path, repo_root=repo_root):
                 if finding.fingerprint in seen:
@@ -534,8 +683,9 @@ def codebase_scan_task_block(
     finding: CodebaseFinding,
     discovery_path: Path,
     depends_on: Sequence[str] = (),
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
-    outputs = ["data/agent_supervisor/discovery", finding.root_relative_path]
+    outputs = [discovery_output_path, finding.root_relative_path]
     return f"""## {task_id} {finding.summary}
 
 - Status: todo
@@ -635,6 +785,19 @@ def write_retry_budget_discovery(
     discovery_dir.mkdir(parents=True, exist_ok=True)
     log_paths = [str(event.get("log_path") or "") for event in failures if event.get("log_path")]
     attempt_numbers = [str(event.get("attempt") or "") for event in failures if event.get("attempt")]
+    merge_result = event_merge_result(failures[-1]) if failures and failure_kind == "merge" else {}
+    merge_evidence = ""
+    if merge_result:
+        dirty_paths = merge_result.get("dirty_paths") or []
+        dirty_paths_text = ", ".join(str(path) for path in dirty_paths) if isinstance(dirty_paths, list) else str(dirty_paths)
+        merge_evidence = "\n".join(
+            [
+                f"- Merge reason: `{str(merge_result.get('reason') or 'not recorded')}`",
+                f"- Dirty paths: {dirty_paths_text or 'not recorded'}",
+                f"- Branch: `{str(merge_result.get('branch') or 'not recorded')}`",
+                f"- Main worktree: `{str(merge_result.get('main_worktree_path') or 'not recorded')}`",
+            ]
+        )
     content = f"""# {task_id} {failure_kind.title()} Retry-Budget Finding: {source_task_id}
 
 Date: {date}
@@ -648,6 +811,7 @@ Observed consecutive {failure_kind} failures: {len(failures)}
 - Failed command: `{failed_command}`
 - Attempts: {", ".join(attempt_numbers) or "not recorded"}
 - Logs: {", ".join(log_paths) or "not recorded"}
+{merge_evidence}
 
 ## Guardrail Result
 
@@ -667,10 +831,11 @@ def validation_retry_task_block(
     failed_command: str,
     discovery_path: Path,
     depends_on: Sequence[str] = (),
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if "data/agent_supervisor/discovery" not in outputs:
-        outputs.append("data/agent_supervisor/discovery")
+    if discovery_output_path not in outputs:
+        outputs.append(discovery_output_path)
     return f"""## {task_id} Resolve validation retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -700,10 +865,11 @@ def merge_retry_task_block(
     discovery_path: Path,
     strategy_path: Path,
     depends_on: Sequence[str] = (),
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> str:
     outputs = list(getattr(source_task, "outputs", []) or [])
-    if "data/agent_supervisor/discovery" not in outputs:
-        outputs.append("data/agent_supervisor/discovery")
+    if discovery_output_path not in outputs:
+        outputs.append(discovery_output_path)
     validation_source = "\n".join(
         [
             "import json, pathlib",
@@ -735,6 +901,11 @@ def record_retry_budget_findings(
     task_prefix: str = DEFAULT_TASK_ID_PREFIX,
     validation_retry_budget: int = DEFAULT_VALIDATION_RETRY_BUDGET,
     merge_retry_budget: int = DEFAULT_MERGE_RETRY_BUDGET,
+    validation_depends_on: Sequence[str] = (),
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    commit_outputs: bool = False,
+    repo_root: Path | None = None,
+    commit_subject: str = "Agent: record retry-budget guardrail outputs",
 ) -> list[dict[str, Any]]:
     """Append follow-up tasks for repeated validation or merge failures."""
 
@@ -751,6 +922,7 @@ def record_retry_budget_findings(
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
     findings: list[dict[str, Any]] = []
+    generated_paths: list[Path] = []
 
     if validation_retry_budget > 0:
         for task in tasks:
@@ -775,13 +947,15 @@ def record_retry_budget_findings(
                 failures=failures,
                 retry_budget=validation_retry_budget,
             )
-            depends_on = list(task.depends_on)
+            generated_paths.append(discovery_path)
+            depends_on = list(validation_depends_on) if validation_depends_on else list(task.depends_on)
             task_block = validation_retry_task_block(
                 task_id=follow_up_task_id,
                 source_task=task,
                 failed_command=failed_command,
                 discovery_path=discovery_path,
                 depends_on=depends_on,
+                discovery_output_path=discovery_output_path,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             task_ids.add(follow_up_task_id)
@@ -822,12 +996,14 @@ def record_retry_budget_findings(
                 retry_budget=merge_retry_budget,
                 failure_kind="merge",
             )
+            generated_paths.append(discovery_path)
             task_block = merge_retry_task_block(
                 task_id=follow_up_task_id,
                 source_task=task,
                 discovery_path=discovery_path,
                 strategy_path=strategy_path,
                 depends_on=task.depends_on,
+                discovery_output_path=discovery_output_path,
             )
             todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
             task_ids.add(follow_up_task_id)
@@ -852,6 +1028,16 @@ def record_retry_budget_findings(
     strategy["last_retry_budget_guardrail_at"] = utc_now()
     strategy["retry_budget_findings"] = findings
     write_json(strategy_path, strategy)
+    if commit_outputs:
+        generated_paths.insert(0, todo_path)
+        commit_results = commit_generated_outputs(
+            generated_paths,
+            repo_root=repo_root or todo_path.parent,
+            subject=commit_subject,
+        )
+        if commit_results:
+            strategy["last_retry_budget_commit_results"] = commit_results
+            write_json(strategy_path, strategy)
     return findings
 
 
@@ -868,6 +1054,10 @@ def record_codebase_scan_findings(
     max_findings: int = DEFAULT_CODEBASE_SCAN_MAX_FINDINGS,
     cooldown_seconds: int = DEFAULT_CODEBASE_SCAN_COOLDOWN_SECONDS,
     force: bool = False,
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    commit_outputs: bool = False,
+    commit_subject: str = "Agent: record codebase scan backlog findings",
 ) -> list[dict[str, Any]]:
     """Feed a todo board with static codebase findings when backlog runs low."""
 
@@ -895,6 +1085,7 @@ def record_codebase_scan_findings(
         max_findings=max_findings,
         seen_fingerprints=seen,
         exhaustive=mode == "drained_exhaustive",
+        skip_prefixes=skip_prefixes,
     )
     strategy["last_codebase_scan_at"] = utc_now()
     strategy["last_codebase_scan_mode"] = mode
@@ -907,6 +1098,7 @@ def record_codebase_scan_findings(
         return []
 
     appended: list[dict[str, Any]] = []
+    generated_paths: list[Path] = []
     for finding in findings:
         follow_up_task_id = next_task_id(todo_text, task_prefix=task_prefix)
         discovery_path = write_codebase_scan_discovery(
@@ -914,11 +1106,13 @@ def record_codebase_scan_findings(
             task_id=follow_up_task_id,
             finding=finding,
         )
+        generated_paths.append(discovery_path)
         task_block = codebase_scan_task_block(
             task_id=follow_up_task_id,
             finding=finding,
             discovery_path=discovery_path,
             depends_on=depends_on,
+            discovery_output_path=discovery_output_path,
         )
         todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
         appended.append(
@@ -934,6 +1128,16 @@ def record_codebase_scan_findings(
     todo_path.write_text(todo_text, encoding="utf-8")
     strategy["last_codebase_scan_findings"] = appended
     write_json(strategy_path, strategy)
+    if commit_outputs:
+        generated_paths.insert(0, todo_path)
+        commit_results = commit_generated_outputs(
+            generated_paths,
+            repo_root=repo_root,
+            subject=commit_subject,
+        )
+        if commit_results:
+            strategy["last_codebase_scan_commit_results"] = commit_results
+            write_json(strategy_path, strategy)
     return appended
 
 
@@ -954,6 +1158,10 @@ def record_objective_backlog_findings(
     cooldown_seconds: int = DEFAULT_OBJECTIVE_SCAN_COOLDOWN_SECONDS,
     force: bool = False,
     persist_ast_dataset: bool = True,
+    summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    commit_outputs: bool = False,
+    commit_subject: str = "Agent: record objective backlog findings",
 ) -> list[dict[str, Any]]:
     """Feed a todo board from objective-heap gaps when backlog runs low."""
 
@@ -988,6 +1196,8 @@ def record_objective_backlog_findings(
         max_findings=max_findings,
         seen_fingerprints=seen,
         persist_ast_dataset=persist_ast_dataset,
+        summary_prefix=summary_prefix,
+        discovery_output_path=discovery_output_path,
     )
     strategy["last_objective_goal_scan_at"] = utc_now()
     strategy["last_objective_goal_scan_mode"] = mode
@@ -1015,6 +1225,19 @@ def record_objective_backlog_findings(
     ]
     strategy["last_objective_goal_scan_findings"] = appended
     write_json(strategy_path, strategy)
+    if commit_outputs and records:
+        generated_paths = [todo_path]
+        generated_paths.extend(record.discovery_path for record in records)
+        generated_paths.append(bundle_dir / "index.json")
+        generated_paths.extend(bundle_path(bundle_dir, record.finding.bundle_key) for record in records)
+        commit_results = commit_generated_outputs(
+            generated_paths,
+            repo_root=repo_root,
+            subject=commit_subject,
+        )
+        if commit_results:
+            strategy["last_objective_goal_commit_results"] = commit_results
+            write_json(strategy_path, strategy)
     return appended
 
 
@@ -1026,12 +1249,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--strategy-path", type=Path, default=None)
     parser.add_argument("--events-path", type=Path, default=None)
     parser.add_argument("--discovery-dir", type=Path, default=None)
+    parser.add_argument("--discovery-output-path", default=DEFAULT_DISCOVERY_OUTPUT_PATH)
     parser.add_argument("--objective-path", type=Path, default=None)
     parser.add_argument("--bundle-dir", type=Path, default=None)
     parser.add_argument("--dataset-dir", type=Path, default=None)
     parser.add_argument("--task-prefix", default=DEFAULT_TASK_ID_PREFIX)
     parser.add_argument("--task-header-prefix", default=DEFAULT_TASK_HEADER_PREFIX)
     parser.add_argument("--depends-on", action="append", default=[])
+    parser.add_argument("--validation-depends-on", action="append", default=[])
+    parser.add_argument("--skip-prefix", action="append", default=[])
     parser.add_argument("--objective-scan", action="store_true")
     parser.add_argument("--codebase-scan", action="store_true")
     parser.add_argument("--retry-budget", action="store_true")
@@ -1042,6 +1268,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--validation-retry-budget", type=int, default=DEFAULT_VALIDATION_RETRY_BUDGET)
     parser.add_argument("--merge-retry-budget", type=int, default=DEFAULT_MERGE_RETRY_BUDGET)
     parser.add_argument("--no-persist-ast-dataset", action="store_true")
+    parser.add_argument("--objective-summary-prefix", default=DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX)
+    parser.add_argument("--commit-generated-outputs", action="store_true")
     return parser
 
 
@@ -1054,6 +1282,8 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
     state_path = args.state_path.resolve() if args.state_path else None
     events_path = args.events_path.resolve() if args.events_path else state_root / "events.jsonl"
     depends_on = split_csv(args.depends_on)
+    validation_depends_on = split_csv(args.validation_depends_on)
+    skip_prefixes = tuple(args.skip_prefix) if args.skip_prefix else CODEBASE_SCAN_SKIP_PREFIXES
 
     run_all = not (args.objective_scan or args.codebase_scan or args.retry_budget)
     objective_findings: list[dict[str, Any]] = []
@@ -1077,6 +1307,9 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             cooldown_seconds=args.cooldown_seconds,
             force=args.force,
             persist_ast_dataset=not args.no_persist_ast_dataset,
+            summary_prefix=args.objective_summary_prefix,
+            discovery_output_path=args.discovery_output_path,
+            commit_outputs=args.commit_generated_outputs,
         )
     if args.codebase_scan or run_all:
         codebase_findings = record_codebase_scan_findings(
@@ -1091,6 +1324,9 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             max_findings=args.max_findings,
             cooldown_seconds=args.cooldown_seconds,
             force=args.force,
+            discovery_output_path=args.discovery_output_path,
+            skip_prefixes=skip_prefixes,
+            commit_outputs=args.commit_generated_outputs,
         )
     if args.retry_budget or run_all:
         retry_findings = record_retry_budget_findings(
@@ -1102,6 +1338,10 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             task_prefix=args.task_prefix,
             validation_retry_budget=args.validation_retry_budget,
             merge_retry_budget=args.merge_retry_budget,
+            validation_depends_on=validation_depends_on,
+            discovery_output_path=args.discovery_output_path,
+            commit_outputs=args.commit_generated_outputs,
+            repo_root=repo_root,
         )
 
     return {

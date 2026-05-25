@@ -128,7 +128,7 @@ def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
     assert payload["schema"] == "ipfs_accelerate_py.agent_supervisor.objective_daemon"
     assert payload["generated_count"] == 1
     assert payload["task_ids"] == ["ACCEL-001"]
-    assert "## ACCEL-001 Close virtual AI OS objective gap" in todo_path.read_text(encoding="utf-8")
+    assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
     assert (bundle_dir / "objective-mobile-meta-display.todo.md").exists()
     assert (bundle_dir / "index.json").exists()
     manifest = dataset_dir / "accel-objective-ast.manifest.json"
@@ -210,13 +210,13 @@ def test_objective_daemon_creates_tracking_document_and_graph(tmp_path):
     payload = run_objective_daemon(args)
 
     assert payload["tracking_document_created"] is True
-    assert payload["ensured_goal_ids"] == ["VAIOS-G000"]
+    assert payload["ensured_goal_ids"] == ["OBJ-G000"]
     assert payload["objective_goal_count"] == 1
     assert graph_path.exists()
     graph = json.loads(graph_path.read_text(encoding="utf-8"))
-    assert graph["graph"]["roots"] == ["VAIOS-G000"]
+    assert graph["graph"]["roots"] == ["OBJ-G000"]
     assert "missing_meta_display_bridge" in objective_path.read_text(encoding="utf-8")
-    assert "## ACCEL-001 Close virtual AI OS objective gap" in todo_path.read_text(encoding="utf-8")
+    assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
 
 
 def test_objective_daemon_refines_missing_evidence_into_child_goals(tmp_path):

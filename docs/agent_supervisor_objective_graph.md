@@ -45,7 +45,7 @@ available to dataset tooling, provenance systems, and future vector indexes.
 
 ## Bundle Flow
 
-1. Keep the objective heap in markdown with `## VAIOS-G*` records.
+1. Keep the objective heap in markdown with `## GOAL-ID Title` records.
 2. Run `ipfs-accelerate-agent-objective-daemon` or
    `generate_objective_todos(...)` with a main todo file, discovery directory,
    and objective bundle directory.
@@ -99,6 +99,12 @@ the repo-local supervisor feed behavior. It is separate from the implementation
 daemon so product-specific wrappers can decide when to run it, while the
 accelerator owns the actual policy.
 
+The objective heap parser is package-neutral: callers can provide their own goal
+ids, task prefixes, paths, discovery output roots, and summary prefixes. The
+default tracking-document creator uses `OBJ-G###` ids, while existing heaps that
+already use another numeric prefix keep that prefix when child goals are
+refined.
+
 The refinery has three modes:
 
 - Objective scan: calls the objective graph scanner and appends missing-evidence
@@ -118,7 +124,10 @@ available modes. `--objective-scan`, `--codebase-scan`, and `--retry-budget`
 select individual modes. The refill thresholds are controlled by
 `IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_MIN_OPEN_TASKS`,
 `IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MIN_OPEN_TASKS`, and the matching
-`*_MAX_FINDINGS` and `*_COOLDOWN_SECONDS` environment variables.
+`*_MAX_FINDINGS` and `*_COOLDOWN_SECONDS` environment variables. Use
+`--discovery-output-path`, `--objective-summary-prefix`, `--task-prefix`, and
+`--task-header-prefix` when embedding the refinery in another package's todo
+format.
 
 ## Merge Conflicts
 
