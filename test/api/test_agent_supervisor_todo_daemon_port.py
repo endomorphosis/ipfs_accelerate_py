@@ -230,6 +230,103 @@ def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
     assert list((repo / "discovery").glob("*-auto-002-codebase-scan-*.md"))
 
 
+def test_implementation_supervisor_refines_objective_goals_before_generating_todos(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "runtime_bridge.py"
+    source.parent.mkdir()
+    source.write_text(
+        """class RuntimeBridge:
+    def dispatch(self, request):
+        return request
+""",
+        encoding="utf-8",
+    )
+    objective_path = repo / "objective-heap.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 Runtime bridge proof
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Prove that runtime bridge dispatch supports virtual AI OS execution.
+- Evidence: RuntimeBridge.dispatch, missing_runtime_contract
+- Outputs: src/runtime_bridge.py, tests
+- Validation: test -f objective-heap.md
+- Gap task: Add the missing runtime contract proof.
+""",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Completed seed
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation: test -f objective-heap.md
+- Acceptance: Seed task.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md", "objective-heap.md", "src/runtime_bridge.py")
+    _git(repo, "commit", "-m", "seed objective refill")
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            task_prefix="## ACCEL-",
+            objective_refill_enabled=True,
+            objective_path=objective_path,
+            objective_discovery_dir=repo / "discovery",
+            objective_bundle_dir=repo / "bundles",
+            objective_dataset_dir=repo / "datasets",
+            objective_graph_path=repo / "objective-graph.json",
+            objective_scan_min_open_tasks=0,
+            objective_scan_max_findings=1,
+            objective_scan_cooldown_seconds=21600,
+            objective_max_refinement_children=1,
+            objective_max_refinement_depth=3,
+            objective_persist_ast_dataset=False,
+        )
+    )
+
+    result = supervisor.run_once()
+
+    assert result["objective_refined_goal_count"] == 1
+    assert result["objective_refill_count"] == 1
+    objective_text = objective_path.read_text(encoding="utf-8")
+    assert "## VAIOS-G002 Prove missing_runtime_contract for Runtime bridge proof" in objective_text
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## ACCEL-002 Close objective gap" in todo_text
+    assert "Graph parents: VAIOS-G001" in todo_text
+    assert (repo / "objective-graph.json").exists()
+    assert (repo / "bundles" / "index.json").exists()
+    strategy = json.loads((state_dir / "strategy.json").read_text(encoding="utf-8"))
+    assert strategy["last_objective_goal_scan_mode"] == "drained_exhaustive"
+    assert strategy["last_drained_objective_goal_scan_task_count"] == 1
+    assert strategy["last_objective_refined_goal_ids"] == ["VAIOS-G002"]
+    assert strategy["last_objective_generated_task_ids"] == ["ACCEL-002"]
+
+
 def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"

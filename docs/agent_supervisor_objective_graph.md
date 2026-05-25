@@ -152,6 +152,15 @@ and discovered git worktrees/submodules even if the normal cooldown has not
 elapsed. The scan writes discovery reports and daemon-parseable follow-up tasks
 for code annotations, swallowed exceptions, and placeholder runtime paths.
 
+Enable `--objective-refill-scan` when the supervisor should also maintain the
+durable goal graph. In that mode, a low or drained backlog causes the supervisor
+to scan the objective heap, append bounded child goals for missing evidence, and
+then generate bundle-local todos from the refined graph. Use
+`--objective-scan-min-open-tasks`, `--objective-scan-cooldown-seconds`,
+`--objective-max-refinement-children`, and `--objective-max-refinement-depth` to
+control growth. `--no-objective-goal-refinement` keeps the scan in todo-only mode
+for callers that want a fixed goal graph.
+
 ## Merge Conflicts
 
 `ipfs_accelerate_py.agent_supervisor.merge_resolver` reads daemon JSONL events

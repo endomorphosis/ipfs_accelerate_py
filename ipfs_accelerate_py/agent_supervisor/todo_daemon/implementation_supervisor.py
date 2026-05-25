@@ -75,6 +75,29 @@ class PortalSupervisorConfig:
     codebase_scan_skip_prefixes: tuple[str, ...] = field(default_factory=tuple)
     codebase_scan_commit_outputs: bool = False
     codebase_scan_commit_subject: str = "Agent: record supervisor codebase scan findings"
+    objective_refill_enabled: bool = False
+    objective_path: Path | None = None
+    objective_graph_path: Path | None = None
+    objective_bundle_dir: Path | None = None
+    objective_dataset_dir: Path | None = None
+    objective_discovery_dir: Path | None = None
+    objective_discovery_output_path: str = ""
+    objective_summary_prefix: str = ""
+    objective_refine_goals: bool = True
+    objective_ensure_tracking_document: bool = False
+    objective_ultimate_goal: str = ""
+    objective_root_evidence: tuple[str, ...] = field(default_factory=tuple)
+    objective_goal_prefix: str | None = None
+    objective_root_goal_id: str | None = None
+    objective_root_goal_title: str = ""
+    objective_tracking_document_title: str = ""
+    objective_scan_min_open_tasks: int = 0
+    objective_scan_max_findings: int = 5
+    objective_scan_cooldown_seconds: int = 21600
+    objective_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
+    objective_max_refinement_children: int = 3
+    objective_max_refinement_depth: int = 4
+    objective_persist_ast_dataset: bool = True
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
 
@@ -141,13 +164,18 @@ class PortalImplementationSupervisor:
                 "strategy_generation": int(strategy.get("generation", 0)),
                 "active_task_id": state.active_task_id,
             }
+        objective_payload = self.refill_objective_backlog()
         codebase_findings = self.refill_codebase_backlog()
+        objective_generated_count = int(objective_payload.get("generated_count") or 0)
+        objective_refined_goal_count = len(objective_payload.get("refined_goal_ids") or [])
         self._record_event(
             "supervisor_check",
             {
                 "stuck": False,
                 "active_task_id": state.active_task_id,
                 "completed_count": state.completed_count,
+                "objective_refill_count": objective_generated_count,
+                "objective_refined_goal_count": objective_refined_goal_count,
                 "codebase_refill_count": len(codebase_findings),
             },
         )
@@ -155,6 +183,8 @@ class PortalImplementationSupervisor:
             "stuck": False,
             "active_task_id": state.active_task_id,
             "completed_count": state.completed_count,
+            "objective_refill_count": objective_generated_count,
+            "objective_refined_goal_count": objective_refined_goal_count,
             "codebase_refill_count": len(codebase_findings),
         }
 
@@ -232,10 +262,144 @@ class PortalImplementationSupervisor:
         state = PortalTaskState.load(self.config.state_path)
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if not stuck:
+            self.refill_objective_backlog()
             self.refill_codebase_backlog()
             return SupervisorLoopDecision.keep_running()
         self.rewrite_strategy(state, reason)
         return SupervisorLoopDecision.recycle(reason, detail={"active_task_id": state.active_task_id})
+
+    def refill_objective_backlog(self) -> dict[str, Any]:
+        """Refine the objective heap and feed todos when the backlog is low or drained."""
+
+        if not self.config.objective_refill_enabled:
+            return {}
+
+        from argparse import Namespace
+
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            load_strategy,
+            should_refill_backlog,
+            task_id_prefix,
+            write_json,
+        )
+        from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
+            default_objective_path,
+            discovery_fingerprints,
+            run_objective_daemon,
+        )
+        from ipfs_accelerate_py.agent_supervisor.objective_graph import (
+            DEFAULT_DISCOVERY_OUTPUT_PATH,
+            DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+        )
+        from ipfs_accelerate_py.agent_supervisor.objective_tracker import (
+            DEFAULT_ROOT_GOAL_TITLE,
+            DEFAULT_TRACKING_DOCUMENT_TITLE,
+            DEFAULT_ULTIMATE_GOAL,
+        )
+
+        objective_path = self.config.objective_path or default_objective_path(self.config.repo_root)
+        if not objective_path.exists() and not self.config.objective_ensure_tracking_document:
+            return {}
+        if not self.config.todo_path.exists():
+            return {}
+
+        todo_text = self.config.todo_path.read_text(encoding="utf-8")
+        strategy = load_strategy(self.config.strategy_path)
+        task_prefix = task_id_prefix(self.config.task_prefix)
+        should_scan, mode, current_open, task_count = should_refill_backlog(
+            todo_text=todo_text,
+            state_path=self.config.state_path,
+            strategy=strategy,
+            last_scan_key="last_objective_goal_scan_at",
+            last_drained_scan_task_count_key="last_drained_objective_goal_scan_task_count",
+            task_prefix=task_prefix,
+            min_open_tasks=self.config.objective_scan_min_open_tasks,
+            cooldown_seconds=self.config.objective_scan_cooldown_seconds,
+        )
+        if not should_scan:
+            return {}
+
+        state_root = self.config.state_dir.parent
+        discovery_dir = self.config.objective_discovery_dir or state_root / "discovery"
+        bundle_dir = self.config.objective_bundle_dir or state_root / "objective_bundles"
+        dataset_dir = self.config.objective_dataset_dir or state_root / "objective_datasets"
+        graph_path = self.config.objective_graph_path or state_root / "objective_graph.json"
+        discovery_output_path = self.config.objective_discovery_output_path
+        if not discovery_output_path:
+            try:
+                discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
+            except ValueError:
+                discovery_output_path = DEFAULT_DISCOVERY_OUTPUT_PATH
+
+        seen_fingerprints = {
+            str(item)
+            for item in strategy.get("objective_goal_seen_fingerprints", [])
+            if str(item).strip()
+        }
+        seen_fingerprints.update(discovery_fingerprints(discovery_dir))
+        payload = run_objective_daemon(
+            Namespace(
+                repo_root=self.config.repo_root,
+                objective_path=objective_path,
+                todo_path=self.config.todo_path,
+                discovery_dir=discovery_dir,
+                bundle_dir=bundle_dir,
+                dataset_dir=dataset_dir,
+                graph_path=graph_path,
+                task_prefix=task_prefix,
+                objective_summary_prefix=(
+                    self.config.objective_summary_prefix or DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
+                ),
+                discovery_output_path=discovery_output_path,
+                depends_on=list(self.config.objective_scan_depends_on),
+                seen_fingerprint=sorted(seen_fingerprints),
+                repeat_existing=False,
+                max_findings=self.config.objective_scan_max_findings,
+                ensure_tracking_document=self.config.objective_ensure_tracking_document,
+                ultimate_goal=self.config.objective_ultimate_goal or DEFAULT_ULTIMATE_GOAL,
+                root_evidence=list(self.config.objective_root_evidence),
+                goal_prefix=self.config.objective_goal_prefix,
+                root_goal_id=self.config.objective_root_goal_id,
+                root_goal_title=self.config.objective_root_goal_title or DEFAULT_ROOT_GOAL_TITLE,
+                tracking_document_title=(
+                    self.config.objective_tracking_document_title or DEFAULT_TRACKING_DOCUMENT_TITLE
+                ),
+                refine_objective_heap=self.config.objective_refine_goals,
+                max_refinement_children=self.config.objective_max_refinement_children,
+                max_refinement_depth=self.config.objective_max_refinement_depth,
+                no_persist_ast_dataset=not self.config.objective_persist_ast_dataset,
+                submit_bundles=False,
+                queue_path=None,
+                queue_task_type="codex.todo_bundle",
+                queue_model_name="codex",
+                log_level="INFO",
+            )
+        )
+
+        strategy = load_strategy(self.config.strategy_path)
+        strategy["last_objective_goal_scan_at"] = utc_now()
+        strategy["last_objective_goal_scan_mode"] = mode
+        if current_open == 0:
+            strategy["last_drained_objective_goal_scan_task_count"] = task_count
+        strategy["objective_goal_seen_fingerprints"] = sorted(discovery_fingerprints(discovery_dir))
+        strategy["last_objective_refined_goal_ids"] = list(payload.get("refined_goal_ids") or [])
+        strategy["last_objective_generated_task_ids"] = list(payload.get("task_ids") or [])
+        strategy["last_objective_goal_count"] = int(payload.get("objective_goal_count") or 0)
+        strategy["last_objective_active_goal_count"] = int(payload.get("objective_active_goal_count") or 0)
+        write_json(self.config.strategy_path, strategy)
+
+        if payload.get("refined_goal_ids") or payload.get("task_ids"):
+            self._record_event(
+                "objective_refill_scan",
+                {
+                    "mode": mode,
+                    "objective_path": str(objective_path),
+                    "refined_goal_ids": payload.get("refined_goal_ids") or [],
+                    "task_ids": payload.get("task_ids") or [],
+                    "bundle_keys": payload.get("bundle_keys") or [],
+                },
+            )
+        return payload
 
     def refill_codebase_backlog(self) -> list[dict[str, Any]]:
         """Feed low or drained todo boards from a codebase/submodule scan."""
@@ -650,6 +814,59 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="Agent: record supervisor codebase scan findings",
     )
     parser.add_argument(
+        "--objective-refill-scan",
+        action="store_true",
+        help="Refine the objective heap and append objective-gap todos when the supervised backlog is low or drained.",
+    )
+    parser.add_argument(
+        "--objective-path",
+        type=Path,
+        default=None,
+        help="Objective goal heap markdown document. Defaults to implementation_plan/docs/23-virtual-ai-os-objective-goal-heap.md.",
+    )
+    parser.add_argument("--objective-graph-path", type=Path, default=None)
+    parser.add_argument("--objective-bundle-dir", type=Path, default=None)
+    parser.add_argument("--objective-dataset-dir", type=Path, default=None)
+    parser.add_argument("--objective-discovery-dir", type=Path, default=None)
+    parser.add_argument("--objective-discovery-output-path", default="")
+    parser.add_argument("--objective-summary-prefix", default="")
+    parser.add_argument(
+        "--no-objective-goal-refinement",
+        dest="objective_refine_goals",
+        action="store_false",
+        help="Generate todos from the objective heap without appending new subgoals.",
+    )
+    parser.set_defaults(objective_refine_goals=True)
+    parser.add_argument(
+        "--objective-ensure-tracking-document",
+        action="store_true",
+        help="Create the objective heap with a root goal if it does not exist.",
+    )
+    parser.add_argument("--objective-ultimate-goal", default="")
+    parser.add_argument("--objective-root-evidence", action="append", default=[])
+    parser.add_argument("--objective-goal-prefix", default=None)
+    parser.add_argument("--objective-root-goal-id", default=None)
+    parser.add_argument("--objective-root-goal-title", default="")
+    parser.add_argument("--objective-tracking-document-title", default="")
+    parser.add_argument("--objective-scan-min-open-tasks", type=int, default=0)
+    parser.add_argument("--objective-scan-max-findings", type=int, default=5)
+    parser.add_argument("--objective-scan-cooldown-seconds", type=int, default=21600)
+    parser.add_argument(
+        "--objective-scan-depends-on",
+        action="append",
+        default=[],
+        help="Task id dependency for generated objective tasks. May be repeated or comma-separated.",
+    )
+    parser.add_argument("--objective-max-refinement-children", type=int, default=3)
+    parser.add_argument("--objective-max-refinement-depth", type=int, default=4)
+    parser.add_argument(
+        "--no-objective-ast-dataset",
+        dest="objective_persist_ast_dataset",
+        action="store_false",
+        help="Skip persisting the objective AST/evidence dataset while refilling.",
+    )
+    parser.set_defaults(objective_persist_ast_dataset=True)
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -694,6 +911,29 @@ def main(argv: list[str] | None = None) -> None:
             codebase_scan_skip_prefixes=tuple(args.codebase_scan_skip_prefix),
             codebase_scan_commit_outputs=args.codebase_scan_commit_outputs,
             codebase_scan_commit_subject=args.codebase_scan_commit_subject,
+            objective_refill_enabled=args.objective_refill_scan,
+            objective_path=args.objective_path,
+            objective_graph_path=args.objective_graph_path,
+            objective_bundle_dir=args.objective_bundle_dir,
+            objective_dataset_dir=args.objective_dataset_dir,
+            objective_discovery_dir=args.objective_discovery_dir,
+            objective_discovery_output_path=args.objective_discovery_output_path,
+            objective_summary_prefix=args.objective_summary_prefix,
+            objective_refine_goals=args.objective_refine_goals,
+            objective_ensure_tracking_document=args.objective_ensure_tracking_document,
+            objective_ultimate_goal=args.objective_ultimate_goal,
+            objective_root_evidence=split_csv_values(args.objective_root_evidence),
+            objective_goal_prefix=args.objective_goal_prefix,
+            objective_root_goal_id=args.objective_root_goal_id,
+            objective_root_goal_title=args.objective_root_goal_title,
+            objective_tracking_document_title=args.objective_tracking_document_title,
+            objective_scan_min_open_tasks=args.objective_scan_min_open_tasks,
+            objective_scan_max_findings=args.objective_scan_max_findings,
+            objective_scan_cooldown_seconds=args.objective_scan_cooldown_seconds,
+            objective_scan_depends_on=split_csv_values(args.objective_scan_depends_on),
+            objective_max_refinement_children=args.objective_max_refinement_children,
+            objective_max_refinement_depth=args.objective_max_refinement_depth,
+            objective_persist_ast_dataset=args.objective_persist_ast_dataset,
             repo_root=REPO_ROOT,
         )
     )
