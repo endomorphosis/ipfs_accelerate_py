@@ -21,6 +21,13 @@ Missing evidence becomes todo work.  Each generated task is mirrored into a
 bundle-local todo shard so multiple Codex daemons can work independent lanes in
 parallel.
 
+Large AST and symbol payloads are dataset artifacts.  The accelerator writes a
+JSONL artifact and manifest for every objective scan, and when `ipfs_datasets_py`
+plus its dataset dependencies are importable it also saves the rows through
+`ipfs_datasets_py.dataset_manager.DatasetManager` and writes a parquet dataset.
+This keeps bulky scan evidence out of markdown todos while still making it
+available to dataset tooling, provenance systems, and future vector indexes.
+
 ## Bundle Flow
 
 1. Keep the objective heap in markdown with `## VAIOS-G*` records.
@@ -29,8 +36,9 @@ parallel.
 3. The scanner appends daemon-parseable tasks to the main todo file.
 4. It writes per-bundle shards under `objective_bundles/*.todo.md`.
 5. It writes `objective_bundles/index.json`.
-6. `build_bundle_task_payloads(...)` converts the index into task queue payloads.
-7. `submit_bundle_tasks(...)` submits each bundle to the existing
+6. It writes AST/symbol datasets under `objective_datasets/`.
+7. `build_bundle_task_payloads(...)` converts the index into task queue payloads.
+8. `submit_bundle_tasks(...)` submits each bundle to the existing
    `ipfs_accelerate_py.p2p_tasks.task_queue.TaskQueue` as `codex.todo_bundle`.
 
 This keeps the concurrency concern in `ipfs_accelerate_py`: agent lanes can be
@@ -55,3 +63,8 @@ module does not edit that package and does not import from it at runtime.  The
 ported code provides the objective graph, bundle planning, task-queue payloads,
 and merge-resolution bridge that are specific to accelerating autonomous agent
 systems in `ipfs_accelerate_py`.
+
+When `ipfs_datasets_py` is available, `ObjectiveDatasetStore` uses its
+`DatasetManager` to register the AST dataset.  When it is not available, the same
+scan still succeeds with JSONL and manifest artifacts, so accelerator workers can
+run in minimal environments.

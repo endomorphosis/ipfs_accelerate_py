@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import json
 import subprocess
+import sys
+import types
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor import (
     build_bundle_task_payloads,
     generate_objective_todos,
+    persist_objective_ast_dataset,
     resolver_payload,
     scan_objective_gaps,
     submit_bundle_tasks,
@@ -131,6 +134,11 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     index_path = bundle_dir / "index.json"
     index = json.loads(index_path.read_text(encoding="utf-8"))
     assert index["bundles"]["objective/ops/root"]["tasks"][0]["task_id"] == "ACCEL-002"
+    dataset_manifest = bundle_dir.parent / "objective_datasets" / "accel-objective-ast.manifest.json"
+    assert dataset_manifest.exists()
+    dataset_payload = json.loads(dataset_manifest.read_text(encoding="utf-8"))
+    assert dataset_payload["row_count"] >= 2
+    assert Path(dataset_payload["jsonl_path"]).exists()
 
     payloads = build_bundle_task_payloads(index_path)
     assert payloads[0]["bundle_key"] == "objective/ops/root"
@@ -148,6 +156,59 @@ def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     assert task_ids == ["queued-1"]
     assert submitted[0]["task_type"] == "codex.todo_bundle"
     assert submitted[0]["payload"]["bundle_key"] == "objective/ops/root"
+
+
+def test_persist_objective_ast_dataset_uses_ipfs_datasets_bridge(tmp_path, monkeypatch):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+    saved: dict[str, object] = {}
+
+    class FakeDataset:
+        def __init__(self, rows):
+            self.rows = list(rows)
+
+        @classmethod
+        def from_list(cls, rows):
+            return cls(rows)
+
+        def to_parquet(self, path):
+            Path(path).write_text(json.dumps({"rows": len(self.rows)}), encoding="utf-8")
+
+    class FakeManaged:
+        def save(self, destination, format=None, **_options):
+            return {"location": destination, "format": format, "size": 123}
+
+    class FakeDatasetManager:
+        def __init__(self, use_accelerate=True):
+            saved["use_accelerate"] = use_accelerate
+
+        def save_dataset(self, dataset_id, dataset):
+            saved["dataset_id"] = dataset_id
+            saved["row_count"] = len(dataset.rows)
+
+        def get_dataset(self, _dataset_id):
+            return FakeManaged()
+
+    package = types.ModuleType("ipfs_datasets_py")
+    ipfs_datasets = types.ModuleType("ipfs_datasets_py.ipfs_datasets")
+    dataset_manager = types.ModuleType("ipfs_datasets_py.dataset_manager")
+    ipfs_datasets.Dataset = FakeDataset
+    dataset_manager.DatasetManager = FakeDatasetManager
+    monkeypatch.setitem(sys.modules, "ipfs_datasets_py", package)
+    monkeypatch.setitem(sys.modules, "ipfs_datasets_py.ipfs_datasets", ipfs_datasets)
+    monkeypatch.setitem(sys.modules, "ipfs_datasets_py.dataset_manager", dataset_manager)
+
+    artifact = persist_objective_ast_dataset(
+        repo_root=repo,
+        objective_path=objective_path,
+        dataset_dir=repo / "datasets",
+        dataset_id="objective-ast-test",
+    )
+
+    assert artifact.backend == "ipfs_datasets_py"
+    assert artifact.parquet_path is not None and artifact.parquet_path.exists()
+    assert artifact.manager_result == {"location": str(artifact.parquet_path), "format": "parquet", "size": 123}
+    assert saved["dataset_id"] == "objective-ast-test"
+    assert saved["row_count"] >= 2
 
 
 def test_merge_resolver_builds_dry_run_payload(tmp_path):

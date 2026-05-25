@@ -21,10 +21,13 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
 
+from .dataset_store import DatasetArtifact, ObjectiveDatasetStore
+
 
 DEFAULT_EMBEDDING_DIMENSIONS = int(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_DIMENSIONS", "64"))
 DEFAULT_EMBEDDING_MIN_SCORE = float(os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_EMBEDDING_MIN_SCORE", "0.62"))
 DEFAULT_TASK_PREFIX = "AUTO-"
+DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
 SCAN_SUFFIXES = {
     ".cjs",
     ".css",
@@ -318,6 +321,85 @@ def symbol_terms(path: Path, text: str) -> set[str]:
         expanded.add(symbol)
         expanded.add(" ".join(objective_tokens(symbol)))
     return {item.lower() for item in expanded if item.strip()}
+
+
+def ast_dataset_payload(path: Path, text: str, *, max_chars: int = DEFAULT_AST_DATASET_MAX_CHARS) -> dict[str, Any]:
+    """Return a serializable AST/symbol payload suitable for dataset storage."""
+
+    suffix = path.suffix.lower()
+    ast_kind = "symbols"
+    ast_text = ""
+    parse_error = ""
+    if suffix == ".py":
+        ast_kind = "python_ast"
+        try:
+            tree = ast.parse(text)
+            ast_text = ast.dump(tree, include_attributes=True)
+        except SyntaxError as exc:
+            parse_error = f"{type(exc).__name__}: {exc}"
+    elif suffix == ".json":
+        ast_kind = "json_keys"
+    elif suffix in {".js", ".jsx", ".ts", ".tsx", ".mjs", ".cjs"}:
+        ast_kind = "js_ts_symbols"
+    elif suffix in {".md", ".rst"}:
+        ast_kind = "markdown_headings"
+
+    truncated = False
+    if len(ast_text) > max_chars:
+        ast_text = ast_text[:max_chars]
+        truncated = True
+    return {
+        "ast_kind": ast_kind,
+        "ast_text": ast_text,
+        "ast_truncated": truncated,
+        "parse_error": parse_error,
+    }
+
+
+def collect_ast_dataset_records(
+    repo_root: Path,
+    *,
+    objective_path: Path,
+    max_ast_chars: int = DEFAULT_AST_DATASET_MAX_CHARS,
+) -> list[dict[str, Any]]:
+    """Collect AST/symbol records for dataset-backed objective scans."""
+
+    rows: list[dict[str, Any]] = []
+    for path in objective_candidate_files(repo_root, objective_path=objective_path):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        symbols = sorted(symbol_terms(path, text))
+        payload = ast_dataset_payload(path, text, max_chars=max_ast_chars)
+        rows.append(
+            {
+                "root_relative_path": repo_relative_path(repo_root, path),
+                "suffix": path.suffix.lower(),
+                "source_sha1": sha1(text.encode("utf-8", errors="replace")).hexdigest(),
+                "source_bytes": len(text.encode("utf-8", errors="replace")),
+                "symbols_json": json.dumps(symbols, sort_keys=True),
+                "token_count": len(objective_tokens(text)),
+                **payload,
+            }
+        )
+    return rows
+
+
+def persist_objective_ast_dataset(
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    dataset_dir: Path,
+    dataset_id: str = "objective-ast",
+) -> DatasetArtifact:
+    """Persist scan AST/symbol records with the optional ipfs_datasets backend."""
+
+    store = ObjectiveDatasetStore(dataset_dir)
+    return store.persist_records(
+        dataset_id=dataset_id,
+        records=collect_ast_dataset_records(repo_root, objective_path=objective_path),
+    )
 
 
 def discover_git_worktrees(repo_root: Path) -> list[Path]:
@@ -801,10 +883,12 @@ def generate_objective_todos(
     todo_path: Path,
     discovery_dir: Path,
     bundle_dir: Path,
+    dataset_dir: Path | None = None,
     task_prefix: str = DEFAULT_TASK_PREFIX,
     depends_on: Sequence[str] = (),
     max_findings: int = 10,
     seen_fingerprints: Iterable[str] = (),
+    persist_ast_dataset: bool = True,
 ) -> list[ObjectiveTaskRecord]:
     """Append generated objective gap tasks and write bundle shards."""
 
@@ -841,6 +925,13 @@ def generate_objective_todos(
     todo_path.parent.mkdir(parents=True, exist_ok=True)
     todo_path.write_text(todo_text, encoding="utf-8")
     write_bundle_shards(bundle_dir=bundle_dir, repo_root=repo_root, todo_path=todo_path, records=records)
+    if persist_ast_dataset:
+        persist_objective_ast_dataset(
+            repo_root=repo_root,
+            objective_path=objective_path,
+            dataset_dir=dataset_dir or bundle_dir.parent / "objective_datasets",
+            dataset_id=f"{task_prefix.rstrip('-').lower()}-objective-ast",
+        )
     return records
 
 
