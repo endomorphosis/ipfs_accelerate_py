@@ -237,6 +237,25 @@ timeouts as validation failures for retry-budget handling, but validation
 subprocesses receive stdin from `/dev/null` so accidental prompts or commands
 that read from stdin do not consume the daemon's own input stream.
 
+Strategy state is repaired before supervisor guardrails run. If the strategy
+file is missing, unreadable, invalid JSON, or has malformed list metadata, the
+supervisor rewrites it to a normalized object, records `strategy_file_repaired`,
+and continues. The daemon has the same repair path when it loads strategy
+directly, so a corrupt `strategy.json` does not block every later pass.
+
+Daemon state is repaired the same way. If `task_state.json` is unreadable,
+invalid JSON, not an object, or contains malformed numeric/dictionary metadata,
+the daemon or supervisor rewrites it to a valid empty state, records
+`state_file_repaired`, and continues with a clean pass instead of repeatedly
+crashing or losing progress visibility on the same corrupt state file.
+
+Event logs are also self-repaired. If `events.jsonl` contains malformed JSONL
+or non-object events, the valid events are preserved, invalid lines are moved to
+a quarantine file, `event_log_repaired` is recorded, and retry-budget scans can
+continue using the remaining evidence. If the configured event-log path is
+accidentally a directory, it is moved aside and replaced with a writable JSONL
+file before the daemon or supervisor records more events.
+
 The supervisor also runs a dependency and board-metadata guardrail by default.
 If open tasks depend on task ids that are not present on the board, on
 themselves, on a closed cycle of open tasks, or if the board contains duplicate

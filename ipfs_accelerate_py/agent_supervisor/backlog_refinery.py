@@ -24,6 +24,7 @@ from hashlib import sha1
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
+from .event_log import read_jsonl_events
 from .objective_graph import (
     DEFAULT_DISCOVERY_OUTPUT_PATH,
     DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
@@ -928,20 +929,7 @@ def dependency_guardrail_task_block(
 
 
 def iter_jsonl(path: Path) -> list[dict[str, Any]]:
-    if not path.exists():
-        return []
-    events: list[dict[str, Any]] = []
-    for raw_line in path.read_text(encoding="utf-8").splitlines():
-        raw_line = raw_line.strip()
-        if not raw_line:
-            continue
-        try:
-            event = json.loads(raw_line)
-        except json.JSONDecodeError:
-            continue
-        if isinstance(event, dict):
-            events.append(event)
-    return events
+    return read_jsonl_events(path, repair=True)
 
 
 def event_merge_result(event: Mapping[str, Any]) -> dict[str, Any]:

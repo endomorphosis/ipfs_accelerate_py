@@ -208,6 +208,281 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     assert captured["kwargs"]["timeout"] == 1
 
 
+def test_implementation_daemon_repairs_invalid_strategy_file(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Ready task.
+""",
+        encoding="utf-8",
+    )
+    strategy_path = repo / "strategy.json"
+    strategy_path.write_text("{not json", encoding="utf-8")
+    events_path = repo / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=strategy_path,
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+    )
+
+    result = daemon.run_once()
+
+    assert result["ready_count"] == 1
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["last_strategy_repair_reason"] == "invalid_or_unreadable_strategy_file"
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "strategy_file_repaired" for event in events)
+
+
+def test_implementation_daemon_repairs_malformed_state_file(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Ready task.
+""",
+        encoding="utf-8",
+    )
+    state_path = repo / "state.json"
+    state_path.write_text(json.dumps({"active_attempt": "not-an-int"}), encoding="utf-8")
+    events_path = repo / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=repo / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+    )
+
+    result = daemon.run_once()
+
+    assert result["state_file_repair"]["repaired"] is True
+    assert result["state_file_repair"]["reason"] == "malformed_state_metadata"
+    assert result["ready_count"] == 1
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["active_attempt"] == 0
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "state_file_repaired" for event in events)
+
+
+def test_implementation_daemon_repairs_malformed_event_log(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Ready task.
+""",
+        encoding="utf-8",
+    )
+    events_path = repo / "events.jsonl"
+    events_path.write_text(
+        json.dumps({"type": "seed", "task_id": "AUTO-000"}) + "\nnot json\n[]\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+        task_header_prefix="## AUTO-",
+    )
+
+    result = daemon.run_once()
+
+    assert result["event_log_repair"]["repaired"] is True
+    assert result["event_log_repair"]["reason"] == "malformed_jsonl"
+    assert result["event_log_repair"]["invalid_count"] == 2
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    assert events[0]["type"] == "seed"
+    assert any(event["type"] == "event_log_repaired" for event in events)
+    quarantines = list(repo.glob("events.jsonl.invalid-jsonl-*"))
+    assert len(quarantines) == 1
+
+
+def test_implementation_supervisor_repairs_invalid_strategy_file(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Ready task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text("{not json", encoding="utf-8")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=strategy_path,
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    result = supervisor.run_once()
+
+    assert result["strategy_file_repair"]["repaired"] is True
+    assert result["strategy_file_repair"]["reason"] == "invalid_or_unreadable_strategy_file"
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["last_strategy_repair_reason"] == "invalid_or_unreadable_strategy_file"
+    events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "strategy_file_repaired" for event in events)
+
+
+def test_implementation_supervisor_repairs_malformed_state_file(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Ready task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_text(json.dumps({"active_attempt": "not-an-int"}), encoding="utf-8")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    result = supervisor.run_once()
+
+    assert result["state_file_repair"]["repaired"] is True
+    assert result["state_file_repair"]["reason"] == "malformed_state_metadata"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert state["active_attempt"] == 0
+    events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "state_file_repaired" for event in events)
+
+
+def test_implementation_supervisor_repairs_event_log_directory(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Ready task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    events_path = state_dir / "supervisor_events.jsonl"
+    events_path.mkdir(parents=True)
+    (events_path / "old-event-fragment").write_text("not json\n", encoding="utf-8")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=events_path,
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    result = supervisor.run_once()
+
+    assert result["event_log_repair"]["repaired"] is True
+    assert result["event_log_repair"]["reason"] == "event_path_was_directory"
+    assert events_path.is_file()
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "event_log_repaired" for event in events)
+    backup_path = Path(result["event_log_repair"]["backup_path"])
+    assert backup_path.is_dir()
+    assert (backup_path / "old-event-fragment").exists()
+
+
 def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

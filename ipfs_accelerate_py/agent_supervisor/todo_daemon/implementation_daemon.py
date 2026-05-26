@@ -18,6 +18,7 @@ from typing import Any
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
+from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
 REPO_ROOT = Path.cwd()
@@ -301,7 +302,10 @@ class PortalTaskState:
     def load(cls, path: Path) -> "PortalTaskState":
         if not path.exists():
             return cls()
-        text = path.read_text(encoding="utf-8").strip()
+        try:
+            text = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            return cls()
         if not text:
             return cls()
         try:
@@ -310,72 +314,115 @@ class PortalTaskState:
             return cls()
         if not isinstance(payload, dict):
             return cls()
-        return cls(
-            heartbeat_at=str(payload.get("heartbeat_at") or ""),
-            last_progress_at=str(payload.get("last_progress_at") or ""),
-            active_task_id=str(payload.get("active_task_id") or ""),
-            active_task_title=str(payload.get("active_task_title") or ""),
-            active_task_track=str(payload.get("active_task_track") or ""),
-            active_task_started_at=str(payload.get("active_task_started_at") or ""),
-            active_attempt=int(payload.get("active_attempt") or 0),
-            active_phase=str(payload.get("active_phase") or ""),
-            active_phase_started_at=str(payload.get("active_phase_started_at") or ""),
-            active_phase_detail=str(payload.get("active_phase_detail") or ""),
-            active_log_path=str(payload.get("active_log_path") or ""),
-            active_worktree_path=str(payload.get("active_worktree_path") or ""),
-            active_branch=str(payload.get("active_branch") or ""),
-            implementation_in_progress=bool(payload.get("implementation_in_progress")),
-            recommended_task_id=str(payload.get("recommended_task_id") or ""),
-            recommended_actions=[str(item) for item in payload.get("recommended_actions", []) or []],
-            completed_task_ids=[str(item) for item in payload.get("completed_task_ids", []) or []],
-            ready_task_ids=[str(item) for item in payload.get("ready_task_ids", []) or []],
-            waiting_task_ids=[str(item) for item in payload.get("waiting_task_ids", []) or []],
-            blocked_task_ids=[str(item) for item in payload.get("blocked_task_ids", []) or []],
-            task_statuses={str(key): str(value) for key, value in (payload.get("task_statuses") or {}).items()},
-            task_artifacts={
-                str(key): [str(item) for item in value]
-                for key, value in (payload.get("task_artifacts") or {}).items()
-                if isinstance(value, list)
-            },
-            task_validation={
-                str(key): [str(item) for item in value]
-                for key, value in (payload.get("task_validation") or {}).items()
-                if isinstance(value, list)
-            },
-            implementation_attempts={
-                str(key): int(value)
-                for key, value in (payload.get("implementation_attempts") or {}).items()
-                if str(value).isdigit()
-            },
-            last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
-            last_implementation_started_at=str(payload.get("last_implementation_started_at") or ""),
-            last_implementation_finished_at=str(payload.get("last_implementation_finished_at") or ""),
-            last_implementation_returncode=(
-                int(payload["last_implementation_returncode"])
-                if payload.get("last_implementation_returncode") is not None
-                else None
-            ),
-            last_implementation_log_path=str(payload.get("last_implementation_log_path") or ""),
-            last_implementation_worktree_path=str(payload.get("last_implementation_worktree_path") or ""),
-            last_implementation_branch=str(payload.get("last_implementation_branch") or ""),
-            last_implementation_commit=str(payload.get("last_implementation_commit") or ""),
-            last_merge_started_at=str(payload.get("last_merge_started_at") or ""),
-            last_merge_finished_at=str(payload.get("last_merge_finished_at") or ""),
-            last_merge_branch=str(payload.get("last_merge_branch") or ""),
-            last_merge_commit=str(payload.get("last_merge_commit") or ""),
-            last_merge_returncode=(
-                int(payload["last_merge_returncode"])
-                if payload.get("last_merge_returncode") is not None
-                else None
-            ),
-            last_merge_error=str(payload.get("last_merge_error") or ""),
-            completed_count=int(payload.get("completed_count") or 0),
-            ready_count=int(payload.get("ready_count") or 0),
-            waiting_count=int(payload.get("waiting_count") or 0),
-            blocked_count=int(payload.get("blocked_count") or 0),
-            task_count=int(payload.get("task_count") or 0),
-            strategy_generation=int(payload.get("strategy_generation") or 0),
-        )
+        try:
+            return cls(
+                heartbeat_at=str(payload.get("heartbeat_at") or ""),
+                last_progress_at=str(payload.get("last_progress_at") or ""),
+                active_task_id=str(payload.get("active_task_id") or ""),
+                active_task_title=str(payload.get("active_task_title") or ""),
+                active_task_track=str(payload.get("active_task_track") or ""),
+                active_task_started_at=str(payload.get("active_task_started_at") or ""),
+                active_attempt=int(payload.get("active_attempt") or 0),
+                active_phase=str(payload.get("active_phase") or ""),
+                active_phase_started_at=str(payload.get("active_phase_started_at") or ""),
+                active_phase_detail=str(payload.get("active_phase_detail") or ""),
+                active_log_path=str(payload.get("active_log_path") or ""),
+                active_worktree_path=str(payload.get("active_worktree_path") or ""),
+                active_branch=str(payload.get("active_branch") or ""),
+                implementation_in_progress=bool(payload.get("implementation_in_progress")),
+                recommended_task_id=str(payload.get("recommended_task_id") or ""),
+                recommended_actions=[str(item) for item in payload.get("recommended_actions", []) or []],
+                completed_task_ids=[str(item) for item in payload.get("completed_task_ids", []) or []],
+                ready_task_ids=[str(item) for item in payload.get("ready_task_ids", []) or []],
+                waiting_task_ids=[str(item) for item in payload.get("waiting_task_ids", []) or []],
+                blocked_task_ids=[str(item) for item in payload.get("blocked_task_ids", []) or []],
+                task_statuses={str(key): str(value) for key, value in (payload.get("task_statuses") or {}).items()},
+                task_artifacts={
+                    str(key): [str(item) for item in value]
+                    for key, value in (payload.get("task_artifacts") or {}).items()
+                    if isinstance(value, list)
+                },
+                task_validation={
+                    str(key): [str(item) for item in value]
+                    for key, value in (payload.get("task_validation") or {}).items()
+                    if isinstance(value, list)
+                },
+                implementation_attempts={
+                    str(key): int(value)
+                    for key, value in (payload.get("implementation_attempts") or {}).items()
+                    if str(value).isdigit()
+                },
+                last_implementation_task_id=str(payload.get("last_implementation_task_id") or ""),
+                last_implementation_started_at=str(payload.get("last_implementation_started_at") or ""),
+                last_implementation_finished_at=str(payload.get("last_implementation_finished_at") or ""),
+                last_implementation_returncode=(
+                    int(payload["last_implementation_returncode"])
+                    if payload.get("last_implementation_returncode") is not None
+                    else None
+                ),
+                last_implementation_log_path=str(payload.get("last_implementation_log_path") or ""),
+                last_implementation_worktree_path=str(payload.get("last_implementation_worktree_path") or ""),
+                last_implementation_branch=str(payload.get("last_implementation_branch") or ""),
+                last_implementation_commit=str(payload.get("last_implementation_commit") or ""),
+                last_merge_started_at=str(payload.get("last_merge_started_at") or ""),
+                last_merge_finished_at=str(payload.get("last_merge_finished_at") or ""),
+                last_merge_branch=str(payload.get("last_merge_branch") or ""),
+                last_merge_commit=str(payload.get("last_merge_commit") or ""),
+                last_merge_returncode=(
+                    int(payload["last_merge_returncode"])
+                    if payload.get("last_merge_returncode") is not None
+                    else None
+                ),
+                last_merge_error=str(payload.get("last_merge_error") or ""),
+                completed_count=int(payload.get("completed_count") or 0),
+                ready_count=int(payload.get("ready_count") or 0),
+                waiting_count=int(payload.get("waiting_count") or 0),
+                blocked_count=int(payload.get("blocked_count") or 0),
+                task_count=int(payload.get("task_count") or 0),
+                strategy_generation=int(payload.get("strategy_generation") or 0),
+            )
+        except (AttributeError, TypeError, ValueError):
+            return cls()
+
+
+def state_file_repair_reason(path: Path) -> str:
+    if not path.exists():
+        return "missing_state_file"
+    try:
+        text = path.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unreadable_state_file"
+    if not text:
+        return "empty_state_file"
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        return "invalid_state_json"
+    if not isinstance(payload, dict):
+        return "non_object_state_json"
+    int_fields = (
+        "active_attempt",
+        "completed_count",
+        "ready_count",
+        "waiting_count",
+        "blocked_count",
+        "task_count",
+        "strategy_generation",
+    )
+    optional_int_fields = ("last_implementation_returncode", "last_merge_returncode")
+    try:
+        for field_name in int_fields:
+            int(payload.get(field_name) or 0)
+        for field_name in optional_int_fields:
+            if payload.get(field_name) is not None:
+                int(payload[field_name])
+    except (TypeError, ValueError):
+        return "malformed_state_metadata"
+    for field_name in ("task_statuses", "task_artifacts", "task_validation", "implementation_attempts"):
+        value = payload.get(field_name)
+        if value is not None and not isinstance(value, dict):
+            return "malformed_state_metadata"
+    return ""
 
 
 def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) -> list[PortalTask]:
@@ -596,7 +643,29 @@ class PortalImplementationDaemon:
             "reason": reason,
         }
 
+    def ensure_state_file(self) -> dict[str, Any]:
+        """Repair malformed durable state before this pass reads it."""
+
+        reason = state_file_repair_reason(self.state_path)
+        if not reason or reason == "missing_state_file":
+            return {"repaired": False, "reason": reason or "valid", "path": str(self.state_path)}
+        state = PortalTaskState()
+        state.save(self.state_path)
+        result = {"repaired": True, "reason": reason, "path": str(self.state_path)}
+        self._record_event("state_file_repaired", result)
+        return result
+
+    def ensure_event_log_file(self) -> dict[str, Any]:
+        """Repair malformed event-log storage before this pass reads or writes it."""
+
+        result = repair_jsonl_event_log(self.events_path)
+        if result.get("repaired"):
+            append_jsonl_event(self.events_path, "event_log_repaired", result)
+        return result
+
     def run_once(self) -> dict[str, Any]:
+        event_log_repair = self.ensure_event_log_file()
+        state_file_repair = self.ensure_state_file()
         try:
             tasks = parse_task_file(self.todo_path, self.task_header_prefix)
         except OSError as exc:
@@ -781,6 +850,8 @@ class PortalImplementationDaemon:
             "events_path": str(self.events_path),
             "implementation_result": implementation_result,
             "merge_reconciliation": merge_reconciliation,
+            "event_log_repair": event_log_repair,
+            "state_file_repair": state_file_repair,
         }
 
     def _run_implementation(self, task: PortalTask, state: PortalTaskState) -> dict[str, Any]:
@@ -3869,20 +3940,7 @@ class PortalImplementationDaemon:
         return max(0.0, age) < RECENT_NO_CHANGE_COOLDOWN_SECONDS
 
     def _iter_events(self) -> list[dict[str, Any]]:
-        if not self.events_path.exists():
-            return []
-        events: list[dict[str, Any]] = []
-        for raw_line in self.events_path.read_text(encoding="utf-8").splitlines():
-            raw_line = raw_line.strip()
-            if not raw_line:
-                continue
-            try:
-                event = json.loads(raw_line)
-            except json.JSONDecodeError:
-                continue
-            if isinstance(event, dict):
-                events.append(event)
-        return events
+        return read_jsonl_events(self.events_path, repair=True)
 
     def _implementation_process_active(self, event: dict[str, Any]) -> bool:
         worktree_path = str(event.get("worktree_path") or "")
@@ -4023,10 +4081,7 @@ Rules:
         return sorted(ready, key=sort_key)[0]
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
-        self.events_path.parent.mkdir(parents=True, exist_ok=True)
-        event = {"type": event_type, "timestamp": utc_now(), **payload}
-        with self.events_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+        append_jsonl_event(self.events_path, event_type, payload)
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:

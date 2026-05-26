@@ -5,6 +5,8 @@ import subprocess
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+    iter_jsonl,
+    load_strategy,
     release_completed_guardrail_blocks,
     record_codebase_scan_findings,
     record_dependency_guardrail_findings,
@@ -90,6 +92,39 @@ def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["last_codebase_scan_findings"][0]["follow_up_task_id"] == "AUTO-002"
     assert Path(findings[0]["discovery_path"]).exists()
+
+
+def test_backlog_refinery_repairs_invalid_strategy_file(tmp_path):
+    repo = _seed_repo(tmp_path)
+    strategy_path = repo / "state" / "strategy.json"
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text("{not json", encoding="utf-8")
+
+    strategy = load_strategy(strategy_path)
+
+    assert strategy["blocked_tasks"] == []
+    assert strategy["last_strategy_repair_reason"] == "invalid_strategy_json"
+    repaired = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert repaired["blocked_tasks"] == []
+    assert repaired["last_strategy_repair_reason"] == "invalid_strategy_json"
+
+
+def test_backlog_refinery_iter_jsonl_quarantines_malformed_events(tmp_path):
+    events_path = tmp_path / "events.jsonl"
+    valid_event = {"type": "implementation_finished", "task_id": "AUTO-001"}
+    events_path.write_text(
+        json.dumps(valid_event) + "\nnot json\n[1, 2, 3]\n",
+        encoding="utf-8",
+    )
+
+    events = iter_jsonl(events_path)
+
+    assert events == [valid_event]
+    repaired_lines = events_path.read_text(encoding="utf-8").splitlines()
+    assert [json.loads(line) for line in repaired_lines] == [valid_event]
+    quarantines = list(tmp_path.glob("events.jsonl.invalid-jsonl-*"))
+    assert len(quarantines) == 1
+    assert "not json" in quarantines[0].read_text(encoding="utf-8")
 
 
 def test_backlog_refinery_dependency_guardrail_adds_ready_repair_task(tmp_path):

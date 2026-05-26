@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import argparse
-import json
 import logging
 import os
 import signal
@@ -15,6 +14,7 @@ from typing import Any
 
 REPO_ROOT = Path.cwd()
 
+from ..event_log import append_jsonl_event, repair_jsonl_event_log
 from .core import ManagedDaemonSpec
 from .implementation_daemon import (
     DEFAULT_TRACKS,
@@ -25,6 +25,7 @@ from .implementation_daemon import (
     parse_timestamp,
     process_command_line,
     process_is_running,
+    state_file_repair_reason,
     utc_now,
     write_json_atomic,
     write_text_atomic,
@@ -171,7 +172,9 @@ class PortalImplementationSupervisor:
         self.last_start_at: float | None = None
 
     def run_once(self) -> dict[str, Any]:
+        event_log_repair = self.ensure_event_log_file()
         strategy_file_repair = self.ensure_strategy_file()
+        state_file_repair = self.ensure_state_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
         guardrail_releases = self.release_completed_guardrail_blocks()
         state = PortalTaskState.load(self.config.state_path)
@@ -190,7 +193,9 @@ class PortalImplementationSupervisor:
                 "strategy_generation": int(strategy.get("generation", 0)),
                 "active_task_id": state.active_task_id,
                 "state_repair": state_repair,
+                "event_log_repair": event_log_repair,
                 "strategy_file_repair": strategy_file_repair,
+                "state_file_repair": state_file_repair,
                 "todo_board_repair": todo_board_repair,
                 "guardrail_unblock_count": len(guardrail_releases),
             }
@@ -224,7 +229,9 @@ class PortalImplementationSupervisor:
             "objective_refill_count": objective_generated_count,
             "objective_refined_goal_count": objective_refined_goal_count,
             "codebase_refill_count": len(codebase_findings),
+            "event_log_repair": event_log_repair,
             "strategy_file_repair": strategy_file_repair,
+            "state_file_repair": state_file_repair,
             "todo_board_repair": todo_board_repair,
         }
 
@@ -302,7 +309,9 @@ class PortalImplementationSupervisor:
         state = PortalTaskState.load(self.config.state_path)
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if not stuck:
+            self.ensure_event_log_file()
             self.ensure_strategy_file()
+            self.ensure_state_file()
             self.ensure_todo_board_for_refill()
             self.release_completed_guardrail_blocks()
             self.record_retry_budget_guardrails()
@@ -310,7 +319,9 @@ class PortalImplementationSupervisor:
             self.refill_objective_backlog()
             self.refill_codebase_backlog()
             return SupervisorLoopDecision.keep_running()
+        self.ensure_event_log_file()
         self.ensure_strategy_file()
+        self.ensure_state_file()
         self.ensure_todo_board_for_refill()
         self.release_completed_guardrail_blocks()
         self.record_retry_budget_guardrails()
@@ -331,6 +342,80 @@ class PortalImplementationSupervisor:
         write_text_atomic(self.config.todo_path, "# Agent Todos\n")
         result = {"created": True, "reason": "refill_enabled", "path": str(self.config.todo_path)}
         self._record_event("todo_board_created", result)
+        return result
+
+    def ensure_event_log_file(self) -> dict[str, Any]:
+        """Repair malformed supervisor event-log storage before guardrails run."""
+
+        result = repair_jsonl_event_log(self.config.events_path)
+        if result.get("repaired"):
+            append_jsonl_event(self.config.events_path, "event_log_repaired", result)
+        return result
+
+    def ensure_state_file(self) -> dict[str, Any]:
+        """Repair malformed durable daemon state before supervisor checks it."""
+
+        reason = state_file_repair_reason(self.config.state_path)
+        if not reason or reason == "missing_state_file":
+            return {"repaired": False, "reason": reason or "valid", "path": str(self.config.state_path)}
+        PortalTaskState().save(self.config.state_path)
+        result = {"repaired": True, "reason": reason, "path": str(self.config.state_path)}
+        self._record_event("state_file_repaired", result)
+        return result
+
+    def ensure_strategy_file(self) -> dict[str, Any]:
+        """Persist a valid strategy file before guardrail/refill work starts."""
+
+        defaults = {
+            "generation": 0,
+            "focus_tracks": DEFAULT_TRACKS,
+            "blocked_tasks": [],
+            "deprioritized_tasks": [],
+            "last_rewrite_at": "",
+            "last_rewrite_reason": "",
+        }
+        reason = ""
+        if not self.config.strategy_path.exists():
+            strategy = defaults.copy()
+            reason = "missing_strategy_file"
+        else:
+            payload = load_json_dict(self.config.strategy_path)
+            if payload is None:
+                strategy = defaults.copy()
+                reason = "invalid_or_unreadable_strategy_file"
+            else:
+                strategy = {**defaults, **payload}
+                normalized_blocked = (
+                    [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
+                    if isinstance(strategy.get("blocked_tasks"), list)
+                    else []
+                )
+                normalized_deprioritized = (
+                    [str(item) for item in strategy.get("deprioritized_tasks", []) if str(item).strip()]
+                    if isinstance(strategy.get("deprioritized_tasks"), list)
+                    else []
+                )
+                normalized_focus = (
+                    [str(item).strip().lower() for item in strategy.get("focus_tracks", []) if str(item).strip()]
+                    if isinstance(strategy.get("focus_tracks"), list)
+                    else DEFAULT_TRACKS
+                )
+                if (
+                    normalized_blocked != strategy.get("blocked_tasks")
+                    or normalized_deprioritized != strategy.get("deprioritized_tasks")
+                    or normalized_focus != strategy.get("focus_tracks")
+                ):
+                    reason = "normalized_strategy_metadata"
+                strategy["blocked_tasks"] = normalized_blocked
+                strategy["deprioritized_tasks"] = normalized_deprioritized
+                strategy["focus_tracks"] = normalized_focus or DEFAULT_TRACKS
+        if not reason:
+            return {"repaired": False, "reason": "valid", "path": str(self.config.strategy_path)}
+        strategy["last_strategy_repair_at"] = utc_now()
+        strategy["last_strategy_repair_reason"] = reason
+        write_json_atomic(self.config.strategy_path, strategy)
+        result = {"repaired": True, "reason": reason, "path": str(self.config.strategy_path)}
+        self._record_event("strategy_file_repaired", result)
         return result
 
     def release_completed_guardrail_blocks(self) -> list[dict[str, Any]]:
@@ -812,12 +897,43 @@ class PortalImplementationSupervisor:
             "last_rewrite_reason": "",
         }
         if not self.config.strategy_path.exists():
+            write_json_atomic(self.config.strategy_path, defaults)
             return defaults
         payload = load_json_dict(self.config.strategy_path)
         if payload is None:
             logger.warning("Strategy file is missing or invalid JSON; using defaults: %s", self.config.strategy_path)
-            return defaults.copy()
-        return {**defaults, **payload}
+            repaired = {
+                **defaults,
+                "last_strategy_repair_at": utc_now(),
+                "last_strategy_repair_reason": "invalid_or_unreadable_strategy_file",
+            }
+            write_json_atomic(self.config.strategy_path, repaired)
+            self._record_event(
+                "strategy_file_repaired",
+                {
+                    "repaired": True,
+                    "reason": "invalid_or_unreadable_strategy_file",
+                    "path": str(self.config.strategy_path),
+                },
+            )
+            return repaired
+        merged = {**defaults, **payload}
+        merged["focus_tracks"] = (
+            [str(item).strip().lower() for item in merged.get("focus_tracks", []) if str(item).strip()]
+            if isinstance(merged.get("focus_tracks"), list)
+            else DEFAULT_TRACKS
+        )
+        merged["blocked_tasks"] = (
+            [str(item) for item in merged.get("blocked_tasks", []) if str(item).strip()]
+            if isinstance(merged.get("blocked_tasks"), list)
+            else []
+        )
+        merged["deprioritized_tasks"] = (
+            [str(item) for item in merged.get("deprioritized_tasks", []) if str(item).strip()]
+            if isinstance(merged.get("deprioritized_tasks"), list)
+            else []
+        )
+        return merged
 
     def _start_daemon(self) -> subprocess.Popen[str]:
         command = self._build_daemon_command()
@@ -934,10 +1050,7 @@ class PortalImplementationSupervisor:
         return True
 
     def _record_event(self, event_type: str, payload: dict[str, Any]) -> None:
-        self.config.events_path.parent.mkdir(parents=True, exist_ok=True)
-        event = {"type": event_type, "timestamp": utc_now(), **payload}
-        with self.config.events_path.open("a", encoding="utf-8") as fh:
-            fh.write(json.dumps(event, ensure_ascii=False) + "\n")
+        append_jsonl_event(self.config.events_path, event_type, payload)
 
     @staticmethod
     def _age_seconds(timestamp: str, now_ts: float) -> float:
