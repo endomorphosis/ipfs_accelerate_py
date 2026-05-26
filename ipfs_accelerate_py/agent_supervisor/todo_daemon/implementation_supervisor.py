@@ -173,6 +173,7 @@ class PortalImplementationSupervisor:
 
     def run_once(self) -> dict[str, Any]:
         event_log_repair = self.ensure_event_log_file()
+        main_checkout_repair = self.repair_main_checkout_merge_state()
         strategy_file_repair = self.ensure_strategy_file()
         state_file_repair = self.ensure_state_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
@@ -197,6 +198,7 @@ class PortalImplementationSupervisor:
                 "strategy_file_repair": strategy_file_repair,
                 "state_file_repair": state_file_repair,
                 "todo_board_repair": todo_board_repair,
+                "main_checkout_repair": main_checkout_repair,
                 "guardrail_unblock_count": len(guardrail_releases),
             }
         retry_budget_findings = self.record_retry_budget_guardrails()
@@ -233,9 +235,12 @@ class PortalImplementationSupervisor:
             "strategy_file_repair": strategy_file_repair,
             "state_file_repair": state_file_repair,
             "todo_board_repair": todo_board_repair,
+            "main_checkout_repair": main_checkout_repair,
         }
 
     def run_forever(self) -> None:
+        self.ensure_event_log_file()
+        self.repair_main_checkout_merge_state()
         self.ensure_managed_daemon_pid_file()
         loop = SupervisorLoop(
             self.build_supervisor_loop_config(),
@@ -311,10 +316,16 @@ class PortalImplementationSupervisor:
         _child: Any,
         _current_status: dict[str, Any],
     ) -> SupervisorLoopDecision:
+        self.ensure_event_log_file()
+        main_checkout_repair = self.repair_main_checkout_merge_state()
+        if main_checkout_repair.get("repaired"):
+            return SupervisorLoopDecision.recycle(
+                "main_checkout_merge_state_repaired",
+                detail=main_checkout_repair,
+            )
         state = PortalTaskState.load(self.config.state_path)
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if not stuck:
-            self.ensure_event_log_file()
             self.ensure_strategy_file()
             self.ensure_state_file()
             self.ensure_todo_board_for_refill()
@@ -324,7 +335,6 @@ class PortalImplementationSupervisor:
             self.refill_objective_backlog()
             self.refill_codebase_backlog()
             return SupervisorLoopDecision.keep_running()
-        self.ensure_event_log_file()
         self.ensure_strategy_file()
         self.ensure_state_file()
         self.ensure_todo_board_for_refill()
@@ -335,6 +345,267 @@ class PortalImplementationSupervisor:
         active_task_id = state.active_task_id
         self.repair_blocked_progress_state(state, reason, now_ts=time.time())
         return SupervisorLoopDecision.recycle(reason, detail={"active_task_id": active_task_id})
+
+    def repair_main_checkout_merge_state(self) -> dict[str, Any]:
+        """Resolve or abort an interrupted merge in the shared repository checkout."""
+
+        repo_root = self.config.repo_root
+        merge_head = self._git_merge_head(repo_root)
+        unmerged_paths = self._git_unmerged_paths(repo_root)
+        if not merge_head and not unmerged_paths:
+            return {"attempted": False, "repaired": False, "reason": "clean", "path": str(repo_root)}
+
+        result: dict[str, Any] = {
+            "attempted": True,
+            "repaired": False,
+            "path": str(repo_root),
+            "merge_in_progress": bool(merge_head),
+            "merge_head": merge_head,
+            "initial_unmerged_paths": unmerged_paths,
+            "status_short": self._git_status_short(repo_root),
+        }
+        if not merge_head:
+            result["reason"] = "unmerged_paths_without_merge_head"
+            self._record_event("main_checkout_merge_state_repair", result)
+            return result
+
+        if self.config.llm_merge_resolver_command:
+            llm_result = self._invoke_main_checkout_merge_resolver(
+                repo_root,
+                merge_head=merge_head,
+                unmerged_paths=unmerged_paths,
+            )
+            result["llm_merge_resolver"] = self._compact_resolver_result(llm_result)
+            if self._git_merge_head(repo_root):
+                commit_result = self._commit_supervisor_resolved_merge(repo_root)
+                result["commit_result"] = commit_result
+                if commit_result.get("completed") or commit_result.get("reason") == "resolver_committed_merge":
+                    result.update(
+                        {
+                            "repaired": True,
+                            "reason": "llm_resolved_merge",
+                            "final_unmerged_paths": self._git_unmerged_paths(repo_root),
+                            "merge_in_progress_after": bool(self._git_merge_head(repo_root)),
+                        }
+                    )
+                    self._record_event("main_checkout_merge_state_repair", result)
+                    return result
+            elif not self._git_unmerged_paths(repo_root):
+                result.update(
+                    {
+                        "repaired": True,
+                        "reason": "llm_resolver_completed_merge",
+                        "final_unmerged_paths": [],
+                        "merge_in_progress_after": False,
+                    }
+                )
+                self._record_event("main_checkout_merge_state_repair", result)
+                return result
+
+        post_unmerged_paths = self._git_unmerged_paths(repo_root)
+        post_merge_head = self._git_merge_head(repo_root)
+        if post_merge_head:
+            abort_result = self._abort_main_checkout_merge(repo_root)
+            result["abort_result"] = abort_result
+            result["repaired"] = bool(abort_result.get("aborted"))
+            result["reason"] = (
+                "merge_aborted_after_resolver_failed"
+                if self.config.llm_merge_resolver_command
+                else "merge_aborted_without_resolver"
+            )
+        else:
+            result["reason"] = "merge_no_longer_in_progress"
+            result["repaired"] = not post_unmerged_paths
+        result["final_unmerged_paths"] = self._git_unmerged_paths(repo_root)
+        result["merge_in_progress_after"] = bool(self._git_merge_head(repo_root))
+        self._record_event("main_checkout_merge_state_repair", result)
+        return result
+
+    def _invoke_main_checkout_merge_resolver(
+        self,
+        repo_root: Path,
+        *,
+        merge_head: str,
+        unmerged_paths: list[str],
+    ) -> dict[str, Any]:
+        from ipfs_accelerate_py.agent_supervisor.merge_resolver import build_merge_prompt, invoke_llm_resolver
+
+        target_branch = self._git_current_branch(repo_root) or "HEAD"
+        active_task_id = ""
+        try:
+            active_task_id = PortalTaskState.load(self.config.state_path).active_task_id
+        except Exception:
+            active_task_id = ""
+        merge_result = {
+            "attempted": True,
+            "merged": False,
+            "returncode": 1,
+            "branch": merge_head,
+            "target_branch": target_branch,
+            "command": ["git", "status", "--short"],
+            "reason": "supervisor_main_checkout_merge_in_progress",
+            "stdout": "\n".join(self._git_status_short(repo_root)),
+            "stderr": "",
+            "main_worktree_path": str(repo_root),
+            "dirty_paths": unmerged_paths,
+        }
+        event = {
+            "type": "supervisor_main_checkout_merge_repair",
+            "task_id": active_task_id or self.config.state_prefix,
+            "attempt": 0,
+            "merge_result": merge_result,
+        }
+        payload = {
+            "found": True,
+            "task_id": active_task_id,
+            "attempt": 0,
+            "events_path": str(self.config.events_path),
+            "repo_root": str(repo_root),
+            "branch": merge_head,
+            "target_branch": target_branch,
+            "command": merge_result["command"],
+            "reason": merge_result["reason"],
+            "dirty_paths": unmerged_paths,
+            "unmerged_paths": unmerged_paths,
+            "prompt": build_merge_prompt(event=event, repo_root=repo_root),
+        }
+        return invoke_llm_resolver(
+            payload,
+            command_template=self.config.llm_merge_resolver_command,
+            timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
+        )
+
+    @staticmethod
+    def _compact_resolver_result(result: dict[str, Any]) -> dict[str, Any]:
+        compact = dict(result)
+        if "prompt" in compact:
+            compact["prompt_chars"] = len(str(compact.pop("prompt") or ""))
+        return compact
+
+    def _commit_supervisor_resolved_merge(self, repo_root: Path) -> dict[str, Any]:
+        unresolved = self._git_unmerged_paths(repo_root)
+        if unresolved:
+            return {
+                "attempted": True,
+                "completed": False,
+                "reason": "unresolved_paths_remain",
+                "unresolved_paths": unresolved,
+            }
+        if not self._git_merge_head(repo_root):
+            return {
+                "attempted": False,
+                "completed": True,
+                "reason": "resolver_committed_merge",
+            }
+        add = subprocess.run(
+            ["git", "add", "-A"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if add.returncode != 0:
+            return {
+                "attempted": True,
+                "completed": False,
+                "reason": "stage_resolved_merge_failed",
+                "returncode": add.returncode,
+                "stdout": add.stdout[-4000:],
+                "stderr": add.stderr[-4000:],
+            }
+        commit = subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Implementation Supervisor",
+                "-c",
+                "user.email=implementation-supervisor@example.invalid",
+                "commit",
+                "--no-edit",
+            ],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return {
+            "attempted": True,
+            "completed": commit.returncode == 0,
+            "reason": "committed" if commit.returncode == 0 else "commit_failed",
+            "returncode": commit.returncode,
+            "stdout": commit.stdout[-4000:],
+            "stderr": commit.stderr[-4000:],
+        }
+
+    def _abort_main_checkout_merge(self, repo_root: Path) -> dict[str, Any]:
+        if not self._git_merge_head(repo_root):
+            return {"attempted": False, "aborted": False, "reason": "no_merge_in_progress"}
+        abort = subprocess.run(
+            ["git", "merge", "--abort"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return {
+            "attempted": True,
+            "aborted": abort.returncode == 0,
+            "returncode": abort.returncode,
+            "stdout": abort.stdout[-4000:],
+            "stderr": abort.stderr[-4000:],
+        }
+
+    @staticmethod
+    def _git_merge_head(repo_root: Path) -> str:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
+
+    @staticmethod
+    def _git_unmerged_paths(repo_root: Path) -> list[str]:
+        result = subprocess.run(
+            ["git", "diff", "--name-only", "--diff-filter=U"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        return sorted(line.strip() for line in result.stdout.splitlines() if line.strip())
+
+    @staticmethod
+    def _git_status_short(repo_root: Path) -> list[str]:
+        result = subprocess.run(
+            ["git", "status", "--short"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        return [line.rstrip() for line in result.stdout.splitlines() if line.strip()]
+
+    @staticmethod
+    def _git_current_branch(repo_root: Path) -> str:
+        result = subprocess.run(
+            ["git", "branch", "--show-current"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
 
     def ensure_todo_board_for_refill(self) -> dict[str, Any]:
         """Create an empty todo board when refill machinery is expected to populate it."""

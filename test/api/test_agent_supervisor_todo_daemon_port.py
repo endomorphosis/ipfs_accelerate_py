@@ -2100,6 +2100,108 @@ def test_llm_merge_resolver_times_out_hung_command(tmp_path):
     assert "timed out" in result["apply_error"]
 
 
+def test_implementation_supervisor_aborts_interrupted_main_checkout_merge(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "conflict.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/conflict")
+    target.write_text("feature\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "feature")
+    _git(repo, "checkout", "main")
+    target.write_text("main\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "main")
+    merge = subprocess.run(["git", "merge", "implementation/conflict"], cwd=repo, text=True, capture_output=True)
+    assert merge.returncode != 0
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+        )
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result["repaired"] is True
+    assert result["reason"] == "merge_aborted_without_resolver"
+    assert result["abort_result"]["aborted"] is True
+    assert supervisor._git_merge_head(repo) == ""
+    assert supervisor._git_unmerged_paths(repo) == []
+    assert target.read_text(encoding="utf-8") == "main\n"
+
+
+def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_merge(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "conflict.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/conflict")
+    target.write_text("feature\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "feature")
+    _git(repo, "checkout", "main")
+    target.write_text("main\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "main")
+    merge = subprocess.run(["git", "merge", "implementation/conflict"], cwd=repo, text=True, capture_output=True)
+    assert merge.returncode != 0
+
+    capture_path = tmp_path / "supervisor-resolver-prompt.txt"
+    resolver_script = tmp_path / "supervisor_resolver.py"
+    resolver_script.write_text(
+        "import pathlib, subprocess, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n"
+        "pathlib.Path('conflict.txt').write_text('resolved by supervisor\\n', encoding='utf-8')\n"
+        "subprocess.check_call(['git', 'add', 'conflict.txt'])\n",
+        encoding="utf-8",
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+            llm_merge_resolver_command=(
+                f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} "
+                f"{shlex.quote(str(capture_path))}"
+            ),
+            llm_merge_resolver_timeout_seconds=5,
+        )
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result["repaired"] is True
+    assert result["reason"] == "llm_resolved_merge"
+    assert result["llm_merge_resolver"]["applied"] is True
+    assert result["commit_result"]["completed"] is True
+    assert supervisor._git_merge_head(repo) == ""
+    assert supervisor._git_unmerged_paths(repo) == []
+    assert target.read_text(encoding="utf-8") == "resolved by supervisor\n"
+    assert _git(repo, "merge-base", "--is-ancestor", "implementation/conflict", "HEAD") == ""
+    prompt = capture_path.read_text(encoding="utf-8")
+    assert "supervisor_main_checkout_merge_in_progress" in prompt
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "main_checkout_merge_state_repair"
+
+
 def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
