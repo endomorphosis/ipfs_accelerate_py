@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Iterator, Mapping, Optional, Sequence
 
+from ..event_log import unique_backup_path
+
 
 DEFAULT_CHECKBOX_RE = re.compile(r"^(?P<prefix>\s*-\s+\[)(?P<mark>[ xX~!])(?P<suffix>\]\s+)(?P<title>.+)$")
 JSON_BLOCK_RE = re.compile(r"```json\s*([\s\S]*?)\s*```", re.IGNORECASE)
@@ -35,6 +37,9 @@ def read_text(path: Path, limit: Optional[int] = None) -> str:
 
 def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_dir():
+        backup_path = unique_backup_path(path, "directory-backup")
+        path.rename(backup_path)
     tmp = path.with_name(f".{path.name}.{os.getpid()}.{uuid.uuid4().hex}.tmp")
     try:
         tmp.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -46,6 +51,9 @@ def atomic_write_json(path: Path, payload: dict[str, Any]) -> None:
 
 def append_jsonl(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_dir():
+        backup_path = unique_backup_path(path, "directory-backup")
+        path.rename(backup_path)
     with path.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(payload, default=str, sort_keys=True) + "\n")
 

@@ -182,6 +182,29 @@ class SupervisorLoop:
             extra=payload_extra,
         )
 
+    def _safe_write_status(
+        self,
+        status: str,
+        *,
+        child: Optional[SupervisedChild] = None,
+        run_id: str = "",
+        log_path: str = "",
+        last_exit_code: Any = None,
+        extra: Optional[Mapping[str, Any]] = None,
+    ) -> bool:
+        try:
+            self._write_status(
+                status,
+                child=child,
+                run_id=run_id,
+                log_path=log_path,
+                last_exit_code=last_exit_code,
+                extra=extra,
+            )
+            return True
+        except Exception:
+            return False
+
     def default_watchdog(self, child: SupervisedChild, current_status: Mapping[str, Any]) -> SupervisorLoopDecision:
         heartbeat = heartbeat_snapshot(
             current_status,
@@ -221,12 +244,39 @@ class SupervisorLoop:
         final_status = "stopped"
         while True:
             run_id = supervisor_run_id()
-            child = launch_supervised_child(self._child_spec(run_id))
-            log_path = self.config.spec.repo_relative(child.log_path)
+            child_spec = self._child_spec(run_id)
+            log_path = self.config.spec.repo_relative(child_spec.log_path)
             self.last_run_id = run_id
             self.last_log_path = log_path
+            try:
+                child = launch_supervised_child(child_spec)
+            except Exception as exc:
+                self.last_exit_code = 127
+                self.last_recycle_reason = "launch_failed"
+                self._safe_write_status(
+                    "launch_failed",
+                    run_id=run_id,
+                    log_path=log_path,
+                    last_exit_code=self.last_exit_code,
+                    extra={
+                        "launch_error": str(exc),
+                        "launch_error_type": type(exc).__name__,
+                    },
+                )
+                self.restart_count += 1
+                if self.config.max_restarts > 0 and self.restart_count >= self.config.max_restarts:
+                    final_status = "max_restarts_reached"
+                    break
+                self._safe_write_status(
+                    "restarting",
+                    run_id=run_id,
+                    log_path=log_path,
+                    last_exit_code=self.last_exit_code,
+                )
+                self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason))
+                continue
             child_started_at = self.monotonic()
-            self._write_status("starting", child=child, run_id=run_id, log_path=log_path)
+            self._safe_write_status("starting", child=child, run_id=run_id, log_path=log_path)
             recycled = False
             stop_requested = False
 
@@ -235,7 +285,7 @@ class SupervisorLoop:
                 if exit_code is not None:
                     self.last_exit_code = exit_code
                     break
-                self._write_status("running", child=child, run_id=run_id, log_path=log_path)
+                self._safe_write_status("running", child=child, run_id=run_id, log_path=log_path)
                 if self.monotonic() - child_started_at >= self.config.watchdog_startup_grace_seconds:
                     decision = self.watchdog_decision(child)
                     if decision.action == "stop":
@@ -247,7 +297,7 @@ class SupervisorLoop:
                         break
                     if decision.action == "recycle":
                         self.last_recycle_reason = decision.reason
-                        self._write_status(
+                        self._safe_write_status(
                             "recycling",
                             child=child,
                             run_id=run_id,
@@ -267,7 +317,7 @@ class SupervisorLoop:
             if self.config.max_restarts > 0 and self.restart_count >= self.config.max_restarts:
                 final_status = "max_restarts_reached" if recycled else "child_exited"
                 break
-            self._write_status(
+            self._safe_write_status(
                 "restarting",
                 child=None,
                 run_id=run_id,
@@ -276,7 +326,7 @@ class SupervisorLoop:
             )
             self.sleep(self.config.restart_policy.delay_for_status(self.last_recycle_reason))
 
-        self._write_status(
+        self._safe_write_status(
             final_status,
             child=None,
             run_id=self.last_run_id,

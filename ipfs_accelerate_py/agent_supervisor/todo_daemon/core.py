@@ -19,6 +19,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Sequence, Tuple
 
+from ..event_log import unique_backup_path
+
 
 JsonDict = Dict[str, Any]
 
@@ -125,6 +127,9 @@ def read_json(path: Optional[Path]) -> JsonDict:
 
 def write_json(path: Path, payload: Mapping[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_dir():
+        backup_path = unique_backup_path(path, "directory-backup")
+        path.rename(backup_path)
     with path.open("w", encoding="utf-8") as handle:
         json.dump(dict(payload), handle, indent=2, sort_keys=True)
         handle.write("\n")
@@ -246,6 +251,22 @@ def read_pid_file(path: Optional[Path]) -> Optional[int]:
         return int(digits) if digits else None
     except Exception:
         return None
+
+
+def remove_runtime_marker(path: Optional[Path]) -> bool:
+    if path is None:
+        return False
+    try:
+        if path.is_dir():
+            backup_path = unique_backup_path(path, "directory-backup")
+            path.rename(backup_path)
+        else:
+            path.unlink()
+        return True
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return False
 
 
 def process_args(pid: int) -> str:
@@ -761,11 +782,7 @@ def stop_daemon(
 
     time.sleep(0.5)
     for path in (spec.resolve(spec.supervisor_pid_path), spec.resolve(spec.child_pid_path)):
-        if path is not None:
-            try:
-                path.unlink()
-            except FileNotFoundError:
-                pass
+        remove_runtime_marker(path)
 
     payload = {
         "schema": f"{spec.schema}.stop",

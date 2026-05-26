@@ -31,7 +31,16 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     TodoSupervisorConfig,
     parse_args as parse_implementation_supervisor_args,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec, stop_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.runner import TodoDaemonRunner
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import SupervisorStatusContext
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import SupervisorLoop, SupervisorLoopConfig
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+    RestartPolicy,
+    SupervisedChildSpec,
+    launch_supervised_child,
+    terminate_supervised_child,
+)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -129,6 +138,154 @@ def test_todo_daemon_runtime_is_ported_to_accelerate_package():
     assert TodoSupervisorConfig.__module__ == (
         "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor"
     )
+
+
+def test_supervisor_runtime_repairs_marker_directories_before_launch(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    log_path = state_dir / "child.log"
+    pid_path = state_dir / "child.pid"
+    latest_log_path = state_dir / "latest.log"
+    for marker_path in (log_path, pid_path, latest_log_path):
+        marker_path.mkdir()
+        (marker_path / "fragment").write_text("old marker directory\n", encoding="utf-8")
+
+    child = None
+    try:
+        child = launch_supervised_child(
+            SupervisedChildSpec(
+                repo_root=repo,
+                command=(sys.executable, "-c", "import time; time.sleep(30)"),
+                log_path=log_path,
+                child_pid_path=pid_path,
+                latest_log_path=latest_log_path,
+            )
+        )
+
+        assert log_path.is_file()
+        assert pid_path.read_text(encoding="utf-8").strip() == str(child.pid)
+        assert latest_log_path.is_symlink()
+        assert latest_log_path.readlink() == Path(log_path.name)
+        for marker_name in ("child.log", "child.pid", "latest.log"):
+            backups = list(state_dir.glob(f"{marker_name}.directory-backup-*"))
+            assert len(backups) == 1
+            assert (backups[0] / "fragment").exists()
+    finally:
+        if child is not None:
+            terminate_supervised_child(child, grace_seconds=1)
+
+
+def test_supervisor_status_write_repairs_directory_status_path(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor_status_path = state_dir / "supervisor_status.json"
+    supervisor_status_path.mkdir(parents=True)
+    (supervisor_status_path / "fragment").write_text("old status directory\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=supervisor_status_path,
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+
+    payload = SupervisorStatusContext(spec).write("running", run_id="run-1")
+
+    assert supervisor_status_path.is_file()
+    assert json.loads(supervisor_status_path.read_text(encoding="utf-8"))["status"] == "running"
+    assert payload["run_id"] == "run-1"
+    backups = list(state_dir.glob("supervisor_status.json.directory-backup-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "fragment").exists()
+
+
+def test_stop_daemon_moves_directory_pid_markers(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor_pid_path = state_dir / "supervisor.pid"
+    child_pid_path = state_dir / "child.pid"
+    for marker_path in (supervisor_pid_path, child_pid_path):
+        marker_path.mkdir(parents=True, exist_ok=True)
+        (marker_path / "fragment").write_text("old pid directory\n", encoding="utf-8")
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=(sys.executable, "-c", "pass"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=supervisor_pid_path,
+        child_pid_path=child_pid_path,
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+
+    result = stop_daemon(spec, cleanup_tmux=False)
+
+    assert result.exit_code == 0
+    assert result.payload["status"] == "not_running"
+    for marker_name in ("supervisor.pid", "child.pid"):
+        assert not (state_dir / marker_name).exists()
+        backups = list(state_dir.glob(f"{marker_name}.directory-backup-*"))
+        assert len(backups) == 1
+        assert (backups[0] / "fragment").exists()
+
+
+def test_supervisor_loop_retries_child_launch_failures(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=("/definitely/missing/daemon",),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+        latest_log_path=state_dir / "latest.log",
+    )
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=("/definitely/missing/daemon",),
+            log_prefix="child",
+            restart_policy=RestartPolicy(restart_backoff_seconds=0, fast_restart_backoff_seconds=0),
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            max_restarts=2,
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+    result = loop.run()
+
+    assert result.status == "max_restarts_reached"
+    assert result.restart_count == 2
+    assert result.last_exit_code == 127
+    assert result.last_recycle_reason == "launch_failed"
+    status = json.loads((state_dir / "supervisor_status.json").read_text(encoding="utf-8"))
+    assert status["status"] == "max_restarts_reached"
+    assert status["last_recycle_reason"] == "launch_failed"
+    assert status["last_exit_code"] == 127
 
 
 def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
@@ -250,6 +407,35 @@ def test_implementation_daemon_repairs_invalid_strategy_file(tmp_path):
     assert any(event["type"] == "strategy_file_repaired" for event in events)
 
 
+def test_implementation_daemon_repairs_directory_strategy_file(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.mkdir(parents=True)
+    (strategy_path / "fragment").write_text("old strategy directory\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=strategy_path,
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+
+    result = daemon.run_once()
+
+    assert result["reason"] == "no_tasks_found"
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["last_strategy_repair_reason"] == "invalid_or_unreadable_strategy_file"
+    backups = list(state_dir.glob("strategy.json.directory-backup-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "fragment").exists()
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "strategy_file_repaired" for event in events)
+
+
 def test_implementation_daemon_repairs_malformed_state_file(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -337,6 +523,44 @@ def test_implementation_daemon_repairs_malformed_event_log(tmp_path):
     assert any(event["type"] == "event_log_repaired" for event in events)
     quarantines = list(repo.glob("events.jsonl.invalid-jsonl-*"))
     assert len(quarantines) == 1
+
+
+def test_implementation_daemon_moves_directory_lock_and_acquires_lock(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    lock_path = state_dir / "implementation.lock"
+    lock_path.mkdir(parents=True)
+    (lock_path / "fragment").write_text("not lock json\n", encoding="utf-8")
+    events_path = state_dir / "events.jsonl"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=events_path,
+        repo_root=repo,
+    )
+
+    fd, reason, existing = daemon._try_acquire_lock(
+        lock_path,
+        lock_kind="implementation",
+        owner_active=lambda _metadata: False,
+    )
+    if fd is not None:
+        import os
+
+        os.close(fd)
+
+    assert reason == "acquired"
+    assert existing is None
+    assert lock_path.is_file()
+    backups = list(state_dir.glob("implementation.lock.directory-backup-*"))
+    assert len(backups) == 1
+    assert (backups[0] / "fragment").exists()
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    lock_events = [event for event in events if event["type"] == "implementation_lock_cleared"]
+    assert len(lock_events) == 1
+    assert lock_events[0]["moved_directory_path"] == str(backups[0])
 
 
 def test_implementation_supervisor_repairs_invalid_strategy_file(tmp_path):
@@ -481,6 +705,70 @@ def test_implementation_supervisor_repairs_event_log_directory(tmp_path):
     backup_path = Path(result["event_log_repair"]["backup_path"])
     assert backup_path.is_dir()
     assert (backup_path / "old-event-fragment").exists()
+
+
+def test_implementation_supervisor_repairs_directory_managed_pid_path(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    pid_path = state_dir / "portal_managed_daemon.pid"
+    pid_path.mkdir(parents=True)
+    (pid_path / "fragment").write_text("not a pid\n", encoding="utf-8")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is True
+    assert result["reason"] == "managed_pid_path_was_directory"
+    assert not pid_path.exists()
+    backup_path = Path(result["backup_path"])
+    assert backup_path.is_dir()
+    assert (backup_path / "fragment").exists()
+    events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["type"] == "managed_daemon_pid_file_repaired"
+
+
+def test_implementation_supervisor_repairs_stale_managed_pid_file(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    pid_path = state_dir / "portal_managed_daemon.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("999999999\n", encoding="utf-8")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is True
+    assert result["reason"] == "stale_managed_pid"
+    assert not pid_path.exists()
+    events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["type"] == "managed_daemon_pid_file_repaired"
+    assert events[-1]["pid"] == 999999999
 
 
 def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
@@ -654,6 +942,29 @@ def test_implementation_daemon_keeps_alive_on_empty_todo_board(tmp_path):
     assert events[-1]["type"] == "daemon_no_tasks"
 
 
+def test_implementation_daemon_records_unreadable_todo_text(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_bytes(b"\xff\xfe\x00")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    result = daemon.run_once()
+
+    assert result["reason"] == "todo_read_failed"
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "daemon_no_tasks"
+    assert events[-1]["reason"] == "todo_read_failed"
+
+
 def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -766,6 +1077,74 @@ def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
     assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
     events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert any(event["type"] == "todo_board_created" for event in events)
+
+
+def test_implementation_supervisor_repairs_directory_todo_before_refill(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective-heap.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 Directory todo repair
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Prove that todo board directory repair bootstraps refill.
+- Evidence: missing_directory_todo_repair
+- Outputs: src/runtime_bridge.py, tests
+- Validation: test -f objective-heap.md
+- Gap task: Add the directory todo repair proof.
+""",
+        encoding="utf-8",
+    )
+    (repo / "src").mkdir()
+    (repo / "src" / "runtime_bridge.py").write_text("class RuntimeBridge: pass\n", encoding="utf-8")
+    _git(repo, "add", "objective-heap.md", "src/runtime_bridge.py")
+    _git(repo, "commit", "-m", "seed objective heap")
+    todo_path = repo / "todo.md"
+    todo_path.mkdir()
+    (todo_path / "fragment").write_text("not a todo board\n", encoding="utf-8")
+    state_dir = repo / "state"
+
+    result = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            task_prefix="## ACCEL-",
+            objective_refill_enabled=True,
+            objective_path=objective_path,
+            objective_discovery_dir=repo / "discovery",
+            objective_bundle_dir=repo / "bundles",
+            objective_dataset_dir=repo / "datasets",
+            objective_graph_path=repo / "objective-graph.json",
+            objective_scan_min_open_tasks=0,
+            objective_scan_max_findings=1,
+            objective_scan_cooldown_seconds=21600,
+            objective_persist_ast_dataset=False,
+        )
+    ).run_once()
+
+    assert result["todo_board_repair"]["repaired"] is True
+    assert result["todo_board_repair"]["reason"] == "todo_path_was_directory"
+    assert todo_path.is_file()
+    assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
+    backup_path = Path(result["todo_board_repair"]["backup_path"])
+    assert backup_path.is_dir()
+    assert (backup_path / "fragment").exists()
+    events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "todo_board_repaired" for event in events)
 
 
 def test_implementation_supervisor_records_dependency_guardrail(tmp_path):

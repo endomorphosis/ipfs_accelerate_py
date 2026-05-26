@@ -18,7 +18,7 @@ from typing import Any
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
-from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log
+from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
 REPO_ROOT = Path.cwd()
@@ -174,6 +174,9 @@ def normalize_task_header_prefix(value: str) -> str:
 
 def write_text_atomic(path: Path, content: str, *, encoding: str = "utf-8") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_dir():
+        backup_path = unique_backup_path(path, "directory-backup")
+        path.rename(backup_path)
     fd, temp_path = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=str(path.parent))
     try:
         with os.fdopen(fd, "w", encoding=encoding) as fh:
@@ -668,7 +671,7 @@ class PortalImplementationDaemon:
         state_file_repair = self.ensure_state_file()
         try:
             tasks = parse_task_file(self.todo_path, self.task_header_prefix)
-        except OSError as exc:
+        except (OSError, UnicodeDecodeError) as exc:
             return self._record_empty_backlog_state(reason="todo_read_failed", error=str(exc))
         if not tasks:
             return self._record_empty_backlog_state(reason="no_tasks_found")
@@ -3842,22 +3845,28 @@ class PortalImplementationDaemon:
             os.close(lock_fd)
 
     def _clear_stale_lock(self, lock_path: Path, *, lock_kind: str, metadata: dict[str, Any] | None) -> bool:
+        moved_directory_path = ""
         try:
-            lock_path.unlink()
+            if lock_path.is_dir():
+                backup_path = unique_backup_path(lock_path, "directory-backup")
+                lock_path.rename(backup_path)
+                moved_directory_path = str(backup_path)
+            else:
+                lock_path.unlink()
         except FileNotFoundError:
             return True
         except OSError:
             logger.warning("Failed to remove stale %s lock %s", lock_kind, lock_path)
             return False
-        self._record_event(
-            f"{lock_kind}_lock_cleared",
-            {
-                "lock_path": str(lock_path),
-                "lock_owner_pid": int(metadata.get("pid") or 0) if metadata else 0,
-                "task_id": str(metadata.get("task_id") or "") if metadata else "",
-                "branch": str(metadata.get("branch") or "") if metadata else "",
-            },
-        )
+        event = {
+            "lock_path": str(lock_path),
+            "lock_owner_pid": int(metadata.get("pid") or 0) if metadata else 0,
+            "task_id": str(metadata.get("task_id") or "") if metadata else "",
+            "branch": str(metadata.get("branch") or "") if metadata else "",
+        }
+        if moved_directory_path:
+            event["moved_directory_path"] = moved_directory_path
+        self._record_event(f"{lock_kind}_lock_cleared", event)
         return True
 
     def _find_live_inflight_implementation(self) -> dict[str, Any] | None:

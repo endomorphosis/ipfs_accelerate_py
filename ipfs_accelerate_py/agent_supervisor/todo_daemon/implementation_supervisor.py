@@ -14,7 +14,7 @@ from typing import Any
 
 REPO_ROOT = Path.cwd()
 
-from ..event_log import append_jsonl_event, repair_jsonl_event_log
+from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from .core import ManagedDaemonSpec
 from .implementation_daemon import (
     DEFAULT_TRACKS,
@@ -236,6 +236,7 @@ class PortalImplementationSupervisor:
         }
 
     def run_forever(self) -> None:
+        self.ensure_managed_daemon_pid_file()
         loop = SupervisorLoop(
             self.build_supervisor_loop_config(),
             watchdog_hook=self._supervisor_loop_watchdog_decision,
@@ -335,6 +336,46 @@ class PortalImplementationSupervisor:
         """Create an empty todo board when refill machinery is expected to populate it."""
 
         if self.config.todo_path.exists():
+            if self.config.todo_path.is_dir():
+                if not (self.config.objective_refill_enabled or self.config.codebase_refill_enabled):
+                    return {"created": False, "reason": "todo_path_is_directory", "path": str(self.config.todo_path)}
+                backup_path = unique_backup_path(self.config.todo_path, "directory-backup")
+                self.config.todo_path.rename(backup_path)
+                self.config.todo_path.parent.mkdir(parents=True, exist_ok=True)
+                write_text_atomic(self.config.todo_path, "# Agent Todos\n")
+                result = {
+                    "created": True,
+                    "repaired": True,
+                    "reason": "todo_path_was_directory",
+                    "path": str(self.config.todo_path),
+                    "backup_path": str(backup_path),
+                }
+                self._record_event("todo_board_repaired", result)
+                return result
+            try:
+                self.config.todo_path.read_text(encoding="utf-8")
+            except UnicodeDecodeError:
+                if not (self.config.objective_refill_enabled or self.config.codebase_refill_enabled):
+                    return {"created": False, "reason": "todo_text_decode_failed", "path": str(self.config.todo_path)}
+                backup_path = unique_backup_path(self.config.todo_path, "invalid-text")
+                self.config.todo_path.rename(backup_path)
+                write_text_atomic(self.config.todo_path, "# Agent Todos\n")
+                result = {
+                    "created": True,
+                    "repaired": True,
+                    "reason": "todo_text_decode_failed",
+                    "path": str(self.config.todo_path),
+                    "backup_path": str(backup_path),
+                }
+                self._record_event("todo_board_repaired", result)
+                return result
+            except OSError as exc:
+                return {
+                    "created": False,
+                    "reason": "todo_read_failed",
+                    "path": str(self.config.todo_path),
+                    "error": str(exc),
+                }
             return {"created": False, "reason": "exists", "path": str(self.config.todo_path)}
         if not (self.config.objective_refill_enabled or self.config.codebase_refill_enabled):
             return {"created": False, "reason": "refill_disabled", "path": str(self.config.todo_path)}
@@ -936,6 +977,7 @@ class PortalImplementationSupervisor:
         return merged
 
     def _start_daemon(self) -> subprocess.Popen[str]:
+        self.ensure_managed_daemon_pid_file()
         command = self._build_daemon_command()
         process = subprocess.Popen(command, cwd=self.config.repo_root, text=True)
         write_text_atomic(self._managed_daemon_pid_path(), f"{process.pid}\n")
@@ -951,7 +993,11 @@ class PortalImplementationSupervisor:
                 process.wait(timeout=15)
         pid_path = self._managed_daemon_pid_path()
         if pid_path.exists():
-            pid_path.unlink()
+            if pid_path.is_dir():
+                backup_path = unique_backup_path(pid_path, "directory-backup")
+                pid_path.rename(backup_path)
+            else:
+                pid_path.unlink()
         self._record_event("daemon_stop", {"returncode": process.returncode})
 
     def _build_daemon_command(self) -> list[str]:
@@ -999,9 +1045,115 @@ class PortalImplementationSupervisor:
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
 
-    def _adopt_existing_daemon(self) -> AdoptedManagedDaemonProcess | None:
+    def ensure_managed_daemon_pid_file(self) -> dict[str, Any]:
+        """Remove stale or malformed managed-daemon PID state before adoption."""
+
         pid_path = self._managed_daemon_pid_path()
         if not pid_path.exists():
+            return {"repaired": False, "reason": "missing", "path": str(pid_path)}
+        if pid_path.is_dir():
+            backup_path = unique_backup_path(pid_path, "directory-backup")
+            pid_path.rename(backup_path)
+            result = {
+                "repaired": True,
+                "reason": "managed_pid_path_was_directory",
+                "path": str(pid_path),
+                "backup_path": str(backup_path),
+            }
+            self._record_event("managed_daemon_pid_file_repaired", result)
+            return result
+        try:
+            raw_pid = pid_path.read_text(encoding="utf-8").strip()
+            pid = int(raw_pid)
+        except (OSError, UnicodeDecodeError, ValueError):
+            try:
+                backup_path = unique_backup_path(pid_path, "invalid-pid")
+                pid_path.rename(backup_path)
+                result = {
+                    "repaired": True,
+                    "reason": "invalid_managed_pid_file",
+                    "path": str(pid_path),
+                    "backup_path": str(backup_path),
+                }
+            except OSError as exc:
+                result = {
+                    "repaired": False,
+                    "reason": "invalid_managed_pid_file_unrepairable",
+                    "path": str(pid_path),
+                    "error": str(exc),
+                }
+            if result.get("repaired"):
+                self._record_event("managed_daemon_pid_file_repaired", result)
+            return result
+        if pid <= 0:
+            try:
+                backup_path = unique_backup_path(pid_path, "invalid-pid")
+                pid_path.rename(backup_path)
+                result = {
+                    "repaired": True,
+                    "reason": "invalid_managed_pid",
+                    "path": str(pid_path),
+                    "pid": pid,
+                    "backup_path": str(backup_path),
+                }
+            except OSError as exc:
+                result = {
+                    "repaired": False,
+                    "reason": "invalid_managed_pid_unrepairable",
+                    "path": str(pid_path),
+                    "pid": pid,
+                    "error": str(exc),
+                }
+            if result.get("repaired"):
+                self._record_event("managed_daemon_pid_file_repaired", result)
+            return result
+        if not process_is_running(pid):
+            try:
+                pid_path.unlink()
+                result = {
+                    "repaired": True,
+                    "reason": "stale_managed_pid",
+                    "path": str(pid_path),
+                    "pid": pid,
+                }
+            except OSError as exc:
+                result = {
+                    "repaired": False,
+                    "reason": "stale_managed_pid_unrepairable",
+                    "path": str(pid_path),
+                    "pid": pid,
+                    "error": str(exc),
+                }
+            if result.get("repaired"):
+                self._record_event("managed_daemon_pid_file_repaired", result)
+            return result
+        command_line = process_command_line(pid)
+        if not self._managed_daemon_matches_command_line(command_line):
+            try:
+                pid_path.unlink()
+                result = {
+                    "repaired": True,
+                    "reason": "managed_pid_command_mismatch",
+                    "path": str(pid_path),
+                    "pid": pid,
+                }
+            except OSError as exc:
+                result = {
+                    "repaired": False,
+                    "reason": "managed_pid_command_mismatch_unrepairable",
+                    "path": str(pid_path),
+                    "pid": pid,
+                    "error": str(exc),
+                }
+            if result.get("repaired"):
+                self._record_event("managed_daemon_pid_file_repaired", result)
+            return result
+        return {"repaired": False, "reason": "active", "path": str(pid_path), "pid": pid}
+
+    def _adopt_existing_daemon(self) -> AdoptedManagedDaemonProcess | None:
+        pid_path = self._managed_daemon_pid_path()
+        repair = self.ensure_managed_daemon_pid_file()
+        if repair.get("repaired") or not pid_path.exists() or pid_path.is_dir():
             return None
         try:
             pid = int(pid_path.read_text(encoding="utf-8").strip())

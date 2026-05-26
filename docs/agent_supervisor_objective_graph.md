@@ -256,6 +256,47 @@ continue using the remaining evidence. If the configured event-log path is
 accidentally a directory, it is moved aside and replaced with a writable JSONL
 file before the daemon or supervisor records more events.
 
+Todo boards are repaired before refill scans. If the configured todo path is a
+directory, or if its text cannot be decoded as UTF-8, and objective/codebase
+refill is enabled, the supervisor moves the bad path aside, writes a skeleton
+todo board, records `todo_board_repaired`, and then allows refill to populate
+new work. The daemon also treats decode failures as `todo_read_failed` instead
+of crashing the pass.
+
+Managed daemon PID files are repaired before adoption or restart. Invalid PID
+text is moved aside, stale PID files are removed, command-line mismatches are
+unlinked, and an accidental PID directory is moved to a timestamped backup. The
+supervisor records `managed_daemon_pid_file_repaired`, so stale process metadata
+does not block starting a fresh managed daemon.
+
+The shared supervisor launcher also repairs generated marker paths before it
+starts a child process. A directory in place of the child PID marker, child log,
+or latest-log symlink is moved aside before launch, and stale symlinks are
+removed. This prevents malformed runtime artifacts from crashing the supervisor
+loop before the watchdog can supervise the daemon.
+
+Shared JSON output writers also move directory-shaped targets aside before
+writing supervisor status, ensure/check status, strategy files, or JSONL event
+records. This keeps a bad generated artifact from breaking the next health
+write, startup check, or retry-budget pass.
+
+Stop cleanup is also tolerant of malformed PID markers. If the supervisor or
+child PID marker path is a directory during stop/restart recovery, it is moved
+aside instead of raising during cleanup, so restart orchestration can continue.
+
+Child launch failures are supervised instead of crashing the supervisor loop.
+If the daemon command cannot be launched, the loop records `launch_failed`,
+waits according to the restart policy, and retries until the configured restart
+budget is exhausted. Status-write failures are also isolated from the process
+monitor so a transient status artifact problem cannot kill an otherwise healthy
+supervisor loop.
+
+Lock cleanup handles malformed lock paths. Stale implementation or merge lock
+files are removed as before, and if a lock path is accidentally a directory, it
+is moved aside to a timestamped backup path before retrying acquisition. The
+daemon records the normal lock-cleared event with the moved directory path so a
+bad lock cannot permanently return `lock_cleanup_failed`.
+
 The supervisor also runs a dependency and board-metadata guardrail by default.
 If open tasks depend on task ids that are not present on the board, on
 themselves, on a closed cycle of open tasks, or if the board contains duplicate

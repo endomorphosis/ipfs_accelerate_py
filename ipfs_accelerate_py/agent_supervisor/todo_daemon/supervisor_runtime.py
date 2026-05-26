@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Mapping, Optional, Sequence
 
+from ..event_log import unique_backup_path
 from .core import terminate_pid_tree
 
 
@@ -101,6 +102,19 @@ def build_python_module_command(
     return tuple(command)
 
 
+def _prepare_marker_path(path: Path, *, remove_existing_file: bool) -> Optional[Path]:
+    if path.is_symlink():
+        path.unlink()
+        return None
+    if path.is_dir():
+        backup_path = unique_backup_path(path, "directory-backup")
+        path.rename(backup_path)
+        return backup_path
+    if remove_existing_file:
+        path.unlink(missing_ok=True)
+    return None
+
+
 def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
     """Launch a supervisor-owned child process and write its marker files."""
 
@@ -109,12 +123,11 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
     latest_log_path = spec.resolve(spec.latest_log_path) if spec.latest_log_path is not None else None
     log_path.parent.mkdir(parents=True, exist_ok=True)
     child_pid_path.parent.mkdir(parents=True, exist_ok=True)
+    _prepare_marker_path(log_path, remove_existing_file=False)
+    _prepare_marker_path(child_pid_path, remove_existing_file=False)
     if latest_log_path is not None:
         latest_log_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            latest_log_path.unlink()
-        except FileNotFoundError:
-            pass
+        _prepare_marker_path(latest_log_path, remove_existing_file=True)
         latest_log_path.symlink_to(log_path.name)
 
     env = dict(os.environ)
@@ -153,6 +166,11 @@ def clear_child_pid_file(child: SupervisedChild | SupervisedChildSpec, *, pid: O
     try:
         current = child_pid_path.read_text(encoding="utf-8").strip()
     except FileNotFoundError:
+        return False
+    except (OSError, UnicodeDecodeError):
+        if child_pid_path.is_dir() or child_pid_path.is_symlink():
+            _prepare_marker_path(child_pid_path, remove_existing_file=False)
+            return True
         return False
     if expected and current != expected:
         return False
