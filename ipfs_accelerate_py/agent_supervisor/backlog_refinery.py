@@ -6,8 +6,8 @@ the reusable pieces close to the accelerator daemon runtime:
 
 * refill low todo queues from an objective heap,
 * scan tracked code for small bug/improvement findings,
-* turn repeated validation or merge failures into evidence-backed follow-up
-  tasks instead of allowing indefinite retry loops.
+* turn repeated implementation, validation, or merge failures into
+  evidence-backed follow-up tasks instead of allowing indefinite retry loops.
 """
 
 from __future__ import annotations
@@ -47,6 +47,12 @@ DEFAULT_OBJECTIVE_SCAN_COOLDOWN_SECONDS = int(
 )
 DEFAULT_VALIDATION_RETRY_BUDGET = int(os.environ.get("IPFS_ACCELERATE_AGENT_VALIDATION_RETRY_BUDGET", "3"))
 DEFAULT_MERGE_RETRY_BUDGET = int(os.environ.get("IPFS_ACCELERATE_AGENT_MERGE_RETRY_BUDGET", "3"))
+DEFAULT_IMPLEMENTATION_RETRY_BUDGET = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_RETRY_BUDGET", "3")
+)
+DEFAULT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS", "5")
+)
 DEFAULT_TASK_ID_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = "## AUTO-"
 CODEBASE_SCAN_MAX_FILE_BYTES = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144"))
@@ -192,11 +198,40 @@ def write_json(path: Path, payload: Mapping[str, Any]) -> None:
 
 
 def load_strategy(path: Path) -> dict[str, Any]:
-    strategy = load_json_dict(path)
+    repair_reason = ""
+    if not path.exists():
+        strategy: dict[str, Any] = {}
+        repair_reason = "missing_strategy_file"
+    else:
+        try:
+            raw_text = path.read_text(encoding="utf-8").strip()
+        except OSError:
+            strategy = {}
+            repair_reason = "unreadable_strategy_file"
+        else:
+            if not raw_text:
+                strategy = {}
+                repair_reason = "empty_strategy_file"
+            else:
+                try:
+                    payload = json.loads(raw_text)
+                except json.JSONDecodeError:
+                    strategy = {}
+                    repair_reason = "invalid_strategy_json"
+                else:
+                    if isinstance(payload, dict):
+                        strategy = dict(payload)
+                    else:
+                        strategy = {}
+                        repair_reason = "non_object_strategy_json"
     if not strategy:
         strategy = {"blocked_tasks": []}
     blocked = strategy.get("blocked_tasks")
     strategy["blocked_tasks"] = [str(item) for item in blocked] if isinstance(blocked, list) else []
+    if repair_reason:
+        strategy["last_strategy_repair_at"] = utc_now()
+        strategy["last_strategy_repair_reason"] = repair_reason
+        write_json(path, strategy)
     return strategy
 
 
@@ -699,6 +734,199 @@ def codebase_scan_task_block(
 """
 
 
+def duplicate_task_id_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
+    """Return todo-board records for task ids that appear more than once."""
+
+    task_groups: dict[str, list[Any]] = {}
+    for task in tasks:
+        task_id = str(getattr(task, "task_id", "") or "").strip()
+        if not task_id:
+            continue
+        task_groups.setdefault(task_id, []).append(task)
+
+    records: list[dict[str, Any]] = []
+    for task_id, duplicates in sorted(task_groups.items()):
+        if len(duplicates) < 2:
+            continue
+        titles = [str(getattr(task, "title", "") or "") for task in duplicates]
+        source_lines: list[int] = []
+        for task in duplicates:
+            try:
+                source_line = int(getattr(task, "source_line", 0) or 0)
+            except (TypeError, ValueError):
+                continue
+            if source_line > 0:
+                source_lines.append(source_line)
+        fingerprint = sha1(
+            json.dumps(
+                {
+                    "kind": "duplicate_task_id",
+                    "task_id": task_id,
+                    "titles": sorted(title for title in titles if title),
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        records.append(
+            {
+                "source_task_id": task_id,
+                "source_title": "Duplicate task id",
+                "missing_dependencies": [],
+                "self_references": [],
+                "dependency_cycle": [],
+                "duplicate_task_id": task_id,
+                "duplicate_task_lines": source_lines,
+                "duplicate_task_titles": titles,
+                "fingerprint": fingerprint,
+            }
+        )
+    return records
+
+
+def dependency_guardrail_records(tasks: Sequence[Any]) -> list[dict[str, Any]]:
+    """Return todo-board records that can keep tasks from becoming ready."""
+
+    task_ids = {str(task.task_id) for task in tasks}
+    open_task_ids = {
+        str(task.task_id)
+        for task in tasks
+        if str(task.status).lower() not in {"completed", "blocked"}
+    }
+    dependency_graph = {
+        str(task.task_id): [
+            str(dep)
+            for dep in task.depends_on
+            if str(dep).strip() and str(dep) in open_task_ids
+        ]
+        for task in tasks
+        if str(task.task_id) in open_task_ids
+    }
+    records: list[dict[str, Any]] = duplicate_task_id_records(tasks)
+
+    def reachable_cycle(start: str) -> list[str]:
+        path: list[str] = []
+
+        def visit(node: str) -> list[str]:
+            if node in path:
+                index = path.index(node)
+                return [*path[index:], node]
+            path.append(node)
+            for dependency in dependency_graph.get(node, []):
+                cycle = visit(dependency)
+                if cycle:
+                    return cycle
+            path.pop()
+            return []
+
+        return visit(start)
+
+    for task in tasks:
+        if str(task.status).lower() in {"completed", "blocked"}:
+            continue
+        dependencies = [str(dep) for dep in task.depends_on if str(dep).strip()]
+        missing = sorted(dep for dep in dependencies if dep not in task_ids)
+        self_references = sorted(dep for dep in dependencies if dep == task.task_id)
+        dependency_cycle = reachable_cycle(task.task_id)
+        if not missing and not self_references and not dependency_cycle:
+            continue
+        fingerprint = sha1(
+            json.dumps(
+                {
+                    "task_id": task.task_id,
+                    "missing_dependencies": missing,
+                    "self_references": self_references,
+                    "dependency_cycle": dependency_cycle,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        records.append(
+            {
+                "source_task_id": task.task_id,
+                "source_title": task.title,
+                "missing_dependencies": missing,
+                "self_references": self_references,
+                "dependency_cycle": dependency_cycle,
+                "fingerprint": fingerprint,
+            }
+        )
+    return records
+
+
+def write_dependency_guardrail_discovery(
+    *,
+    discovery_dir: Path,
+    task_id: str,
+    record: Mapping[str, Any],
+) -> Path:
+    date = datetime.now(timezone.utc).date().isoformat()
+    path = discovery_dir / f"{date}-{task_id.lower()}-dependency-guardrail.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    missing = ", ".join(str(item) for item in record.get("missing_dependencies", []) or []) or "none"
+    self_references = ", ".join(str(item) for item in record.get("self_references", []) or []) or "none"
+    dependency_cycle = " -> ".join(str(item) for item in record.get("dependency_cycle", []) or []) or "none"
+    duplicate_task_id = str(record.get("duplicate_task_id") or "") or "none"
+    duplicate_lines = ", ".join(str(item) for item in record.get("duplicate_task_lines", []) or []) or "none"
+    duplicate_titles = "\n".join(
+        f"- {title}" for title in record.get("duplicate_task_titles", []) or [] if str(title).strip()
+    )
+    duplicate_titles = duplicate_titles or "- none"
+    content = f"""# Dependency Guardrail: {record.get("source_task_id")}
+
+Created: {utc_now()}
+Fingerprint: {record.get("fingerprint")}
+Source task: {record.get("source_task_id")} {record.get("source_title") or ""}
+Missing dependencies: {missing}
+Self-referential dependencies: {self_references}
+Dependency cycle: {dependency_cycle}
+Duplicate task id: {duplicate_task_id}
+Duplicate source lines: {duplicate_lines}
+
+## Duplicate Task Titles
+
+{duplicate_titles}
+
+## Why This Blocks Progress
+
+The implementation daemon only selects tasks whose dependencies are completed.
+When an open task depends on a task id that is not present on the board, or on
+itself, or participates in a dependency cycle, the task can remain waiting
+indefinitely while the supervisor reports no ready work. Duplicate task ids are
+also ambiguous because status maps, dependency resolution, and guardrail
+releases all key by task id.
+
+## Suggested Repair
+
+Inspect the source task metadata and either add the missing prerequisite task,
+remove the stale dependency, break the dependency cycle, rename duplicate task
+ids so each task is unique, or replace stale references with the correct existing
+task id. Keep the todo board parseable after the repair.
+"""
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def dependency_guardrail_task_block(
+    *,
+    task_id: str,
+    source_task_id: str,
+    discovery_path: Path,
+    todo_output_path: str,
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+) -> str:
+    return f"""## {task_id} Resolve dependency guardrail for {source_task_id}
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: {discovery_output_path}, {todo_output_path}
+- Validation: test -f {shlex.quote(str(discovery_path))}
+- Acceptance: Dependency guardrail filed this because {source_task_id} has missing, self-referential, cyclic, or duplicate task-id metadata. Use the evidence in {discovery_path} to repair the todo board metadata or add the missing prerequisite task, then verify the original task can become ready once its real dependencies complete.
+"""
+
+
 def iter_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -718,7 +946,17 @@ def iter_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def event_merge_result(event: Mapping[str, Any]) -> dict[str, Any]:
     merge_result = event.get("merge_result") or {}
-    return dict(merge_result) if isinstance(merge_result, Mapping) else {}
+    if isinstance(merge_result, Mapping) and merge_result:
+        return dict(merge_result)
+    event_type = str(event.get("type") or "")
+    if event_type in {"merge_reconcile_skipped", "merge_reconcile_exception"}:
+        return {
+            "attempted": True,
+            "merged": False,
+            "reason": str(event.get("reason") or event_type),
+            "branch": str(event.get("branch") or ""),
+        }
+    return {}
 
 
 def consecutive_validation_failures(events: Sequence[Mapping[str, Any]], task_id: str) -> list[dict[str, Any]]:
@@ -742,7 +980,12 @@ def consecutive_merge_failures(events: Sequence[Mapping[str, Any]], task_id: str
     failures: list[dict[str, Any]] = []
     for event in reversed(events):
         event_type = str(event.get("type") or "")
-        if event_type not in {"implementation_finished", "merge_reconciled"}:
+        if event_type not in {
+            "implementation_finished",
+            "merge_reconciled",
+            "merge_reconcile_skipped",
+            "merge_reconcile_exception",
+        }:
             continue
         if str(event.get("task_id") or "") != task_id:
             continue
@@ -769,6 +1012,51 @@ def consecutive_merge_failures(events: Sequence[Mapping[str, Any]], task_id: str
     return failures
 
 
+def implementation_failure_label(event: Mapping[str, Any]) -> str:
+    exception = event.get("exception_result") or {}
+    if isinstance(exception, Mapping) and exception:
+        exception_type = str(exception.get("exception_type") or "unknown")
+        return f"implementation_exception:{exception_type}"
+    try:
+        returncode = int(event.get("returncode"))
+    except (TypeError, ValueError):
+        returncode = 1
+    if returncode == 124:
+        return "implementation_timeout"
+    return f"implementation_command_returncode:{returncode}"
+
+
+def consecutive_implementation_failures(events: Sequence[Mapping[str, Any]], task_id: str) -> list[dict[str, Any]]:
+    failures: list[dict[str, Any]] = []
+    for event in reversed(events):
+        if str(event.get("type") or "") != "implementation_finished":
+            continue
+        if str(event.get("task_id") or "") != task_id:
+            continue
+
+        validation = event.get("validation_result") or {}
+        if isinstance(validation, Mapping) and validation.get("attempted") and not validation.get("passed", False):
+            break
+
+        merge_result = event_merge_result(event)
+        if merge_result.get("attempted", False):
+            if merge_result.get("merged", False):
+                break
+            if str(merge_result.get("reason") or "") != "not_attempted":
+                break
+
+        try:
+            returncode = int(event.get("returncode"))
+        except (TypeError, ValueError):
+            returncode = 1 if event.get("exception_result") else 0
+        if returncode == 0:
+            break
+        failures.append(dict(event))
+
+    failures.reverse()
+    return failures
+
+
 def write_retry_budget_discovery(
     *,
     discovery_dir: Path,
@@ -780,7 +1068,13 @@ def write_retry_budget_discovery(
     failure_kind: str = "validation",
 ) -> Path:
     date = datetime.now(timezone.utc).date().isoformat()
-    suffix = "merge-retry-budget" if failure_kind == "merge" else "retry-budget"
+    suffix = (
+        "merge-retry-budget"
+        if failure_kind == "merge"
+        else "implementation-retry-budget"
+        if failure_kind == "implementation"
+        else "retry-budget"
+    )
     path = discovery_dir / f"{date}-{task_id.lower()}-{source_task_id.lower()}-{suffix}.md"
     discovery_dir.mkdir(parents=True, exist_ok=True)
     log_paths = [str(event.get("log_path") or "") for event in failures if event.get("log_path")]
@@ -798,6 +1092,27 @@ def write_retry_budget_discovery(
                 f"- Main worktree: `{str(merge_result.get('main_worktree_path') or 'not recorded')}`",
             ]
         )
+    implementation_evidence = ""
+    if failures and failure_kind == "implementation":
+        latest = failures[-1]
+        exception = latest.get("exception_result") or {}
+        exception_text = ""
+        if isinstance(exception, Mapping) and exception:
+            exception_text = "\n".join(
+                [
+                    f"- Exception type: `{str(exception.get('exception_type') or 'not recorded')}`",
+                    f"- Exception phase: `{str(exception.get('phase') or 'not recorded')}`",
+                    f"- Exception message: {str(exception.get('message') or 'not recorded')}",
+                ]
+            )
+        implementation_evidence = "\n".join(
+            [
+                f"- Return code: `{str(latest.get('returncode') or 'not recorded')}`",
+                f"- Branch: `{str(latest.get('branch') or 'not recorded')}`",
+                f"- Worktree: `{str(latest.get('worktree_path') or 'not recorded')}`",
+                exception_text,
+            ]
+        ).strip()
     content = f"""# {task_id} {failure_kind.title()} Retry-Budget Finding: {source_task_id}
 
 Date: {date}
@@ -812,6 +1127,7 @@ Observed consecutive {failure_kind} failures: {len(failures)}
 - Attempts: {", ".join(attempt_numbers) or "not recorded"}
 - Logs: {", ".join(log_paths) or "not recorded"}
 {merge_evidence}
+{implementation_evidence}
 
 ## Guardrail Result
 
@@ -845,7 +1161,33 @@ def validation_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {failed_command}
-- Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then remove {source_task.task_id} from the strategy blocked_tasks list so the original backlog item can continue without an indefinite retry loop.
+- Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
+"""
+
+
+def implementation_retry_task_block(
+    *,
+    task_id: str,
+    source_task: Any,
+    discovery_path: Path,
+    strategy_path: Path,
+    depends_on: Sequence[str] = (),
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+) -> str:
+    outputs = list(getattr(source_task, "outputs", []) or [])
+    if discovery_output_path not in outputs:
+        outputs.append(discovery_output_path)
+    validation_command = f"test -f {shlex.quote(str(discovery_path))}"
+    return f"""## {task_id} Resolve implementation retry-budget failure for {source_task.task_id}
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: {", ".join(depends_on)}
+- Outputs: {", ".join(outputs)}
+- Validation: {validation_command}
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
 """
 
 
@@ -870,14 +1212,7 @@ def merge_retry_task_block(
     outputs = list(getattr(source_task, "outputs", []) or [])
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
-    validation_source = "\n".join(
-        [
-            "import json, pathlib",
-            f"strategy = json.loads(pathlib.Path({str(strategy_path)!r}).read_text(encoding='utf-8'))",
-            f"assert {source_task.task_id!r} not in strategy.get('blocked_tasks', [])",
-        ]
-    )
-    validation_command = f"python3 -c {shlex.quote(f'exec({validation_source!r})')}"
+    validation_command = f"test -f {shlex.quote(str(discovery_path))}"
     return f"""## {task_id} Resolve merge retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -887,7 +1222,7 @@ def merge_retry_task_block(
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
 - Validation: {validation_command}
-- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the merge blocker, verify the intended implementation changes are committed in their owning repository or submodule, run `ipfs-accelerate-agent-merge-resolver --events-path ... --apply` when the conflict is semantic, then remove {source_task.task_id} from the strategy blocked_tasks list so the original backlog item can continue without an indefinite retry loop.
+- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the merge blocker, verify the intended implementation changes are committed in their owning repository or submodule, run `ipfs-accelerate-agent-merge-resolver --events-path ... --apply` when the conflict is semantic, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
 """
 
 
@@ -901,6 +1236,7 @@ def record_retry_budget_findings(
     task_prefix: str = DEFAULT_TASK_ID_PREFIX,
     validation_retry_budget: int = DEFAULT_VALIDATION_RETRY_BUDGET,
     merge_retry_budget: int = DEFAULT_MERGE_RETRY_BUDGET,
+    implementation_retry_budget: int = DEFAULT_IMPLEMENTATION_RETRY_BUDGET,
     validation_depends_on: Sequence[str] = (),
     validation_task_command_transform: Callable[[str], str] | None = None,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
@@ -908,7 +1244,7 @@ def record_retry_budget_findings(
     repo_root: Path | None = None,
     commit_subject: str = "Agent: record retry-budget guardrail outputs",
 ) -> list[dict[str, Any]]:
-    """Append follow-up tasks for repeated validation or merge failures."""
+    """Append follow-up tasks for repeated implementation, validation, or merge failures."""
 
     if not todo_path.exists():
         return []
@@ -924,6 +1260,51 @@ def record_retry_budget_findings(
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
     findings: list[dict[str, Any]] = []
     generated_paths: list[Path] = []
+
+    if implementation_retry_budget > 0:
+        for task in tasks:
+            if task.task_id in completed_task_ids:
+                continue
+            marker = f"implementation retry-budget failure for {task.task_id}"
+            if marker in todo_text:
+                continue
+            failures = consecutive_implementation_failures(events, task.task_id)
+            if len(failures) < implementation_retry_budget:
+                continue
+            follow_up_task_id = next_task_id(todo_text, task_prefix=task_prefix)
+            failed_command = implementation_failure_label(failures[-1])
+            discovery_path = write_retry_budget_discovery(
+                discovery_dir=discovery_dir,
+                task_id=follow_up_task_id,
+                source_task_id=task.task_id,
+                failed_command=failed_command,
+                failures=failures,
+                retry_budget=implementation_retry_budget,
+                failure_kind="implementation",
+            )
+            generated_paths.append(discovery_path)
+            task_block = implementation_retry_task_block(
+                task_id=follow_up_task_id,
+                source_task=task,
+                discovery_path=discovery_path,
+                strategy_path=strategy_path,
+                depends_on=task.depends_on,
+                discovery_output_path=discovery_output_path,
+            )
+            todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
+            task_ids.add(follow_up_task_id)
+            if task.task_id not in blocked_tasks:
+                blocked_tasks.append(task.task_id)
+            findings.append(
+                {
+                    "source_task_id": task.task_id,
+                    "follow_up_task_id": follow_up_task_id,
+                    "failure_count": len(failures),
+                    "failed_command": failed_command,
+                    "discovery_path": str(discovery_path),
+                    "failure_kind": "implementation",
+                }
+            )
 
     if validation_retry_budget > 0:
         for task in tasks:
@@ -1045,6 +1426,200 @@ def record_retry_budget_findings(
             strategy["last_retry_budget_commit_results"] = commit_results
             write_json(strategy_path, strategy)
     return findings
+
+
+def record_dependency_guardrail_findings(
+    *,
+    todo_path: Path,
+    strategy_path: Path,
+    discovery_dir: Path,
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+    max_findings: int = DEFAULT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS,
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    commit_outputs: bool = False,
+    repo_root: Path | None = None,
+    commit_subject: str = "Agent: record dependency guardrail outputs",
+) -> list[dict[str, Any]]:
+    """Append ready repair tasks for missing or self-referential dependencies."""
+
+    if max_findings <= 0 or not todo_path.exists():
+        return []
+    tasks = parse_task_file(todo_path, task_header_prefix(task_header_prefix_value))
+    if not tasks:
+        return []
+
+    todo_text = todo_path.read_text(encoding="utf-8")
+    strategy = load_strategy(strategy_path)
+    blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
+    seen = {str(item) for item in strategy.get("dependency_guardrail_seen_fingerprints", []) if str(item).strip()}
+    records = [
+        record
+        for record in dependency_guardrail_records(tasks)
+        if str(record.get("fingerprint") or "") not in seen
+        and f"dependency guardrail for {record.get('source_task_id')}" not in todo_text
+    ][:max_findings]
+    if not records:
+        return []
+
+    findings: list[dict[str, Any]] = []
+    generated_paths: list[Path] = []
+    try:
+        todo_output_path = todo_path.resolve().relative_to((repo_root or todo_path.parent).resolve()).as_posix()
+    except ValueError:
+        todo_output_path = todo_path.as_posix()
+    for record in records:
+        follow_up_task_id = next_task_id(todo_text, task_prefix=task_prefix)
+        discovery_path = write_dependency_guardrail_discovery(
+            discovery_dir=discovery_dir,
+            task_id=follow_up_task_id,
+            record=record,
+        )
+        generated_paths.append(discovery_path)
+        source_task_id = str(record.get("source_task_id") or "")
+        task_block = dependency_guardrail_task_block(
+            task_id=follow_up_task_id,
+            source_task_id=source_task_id,
+            discovery_path=discovery_path,
+            todo_output_path=todo_output_path,
+            discovery_output_path=discovery_output_path,
+        )
+        todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
+        if source_task_id and source_task_id not in blocked_tasks:
+            blocked_tasks.append(source_task_id)
+        findings.append(
+            {
+                "source_task_id": source_task_id,
+                "follow_up_task_id": follow_up_task_id,
+                "missing_dependencies": list(record.get("missing_dependencies", []) or []),
+                "self_references": list(record.get("self_references", []) or []),
+                "dependency_cycle": list(record.get("dependency_cycle", []) or []),
+                "duplicate_task_id": str(record.get("duplicate_task_id") or ""),
+                "duplicate_task_lines": list(record.get("duplicate_task_lines", []) or []),
+                "discovery_path": str(discovery_path),
+                "fingerprint": str(record.get("fingerprint") or ""),
+            }
+        )
+
+    todo_path.write_text(todo_text, encoding="utf-8")
+    strategy["blocked_tasks"] = blocked_tasks
+    strategy["dependency_guardrail_seen_fingerprints"] = sorted(
+        seen | {str(record.get("fingerprint") or "") for record in records if record.get("fingerprint")}
+    )
+    strategy["last_dependency_guardrail_at"] = utc_now()
+    strategy["dependency_guardrail_findings"] = findings
+    write_json(strategy_path, strategy)
+    if commit_outputs:
+        generated_paths.insert(0, todo_path)
+        commit_results = commit_generated_outputs(
+            generated_paths,
+            repo_root=repo_root or todo_path.parent,
+            subject=commit_subject,
+        )
+        if commit_results:
+            strategy["last_dependency_guardrail_commit_results"] = commit_results
+            write_json(strategy_path, strategy)
+    return findings
+
+
+def release_completed_guardrail_blocks(
+    *,
+    todo_path: Path,
+    strategy_path: Path,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+) -> list[dict[str, Any]]:
+    """Unblock source tasks after guardrail repair or stale strategy state clears."""
+
+    if not todo_path.exists() or not strategy_path.exists():
+        return []
+    todo_text = todo_path.read_text(encoding="utf-8")
+    statuses = task_statuses_from_todo_text(todo_text, task_prefix=task_prefix)
+    if not statuses:
+        return []
+    strategy = load_strategy(strategy_path)
+    blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
+    if not blocked_tasks:
+        return []
+
+    releases: list[dict[str, Any]] = []
+    deduplicated_blocked_tasks = list(dict.fromkeys(blocked_tasks))
+    if len(deduplicated_blocked_tasks) != len(blocked_tasks):
+        duplicate_ids = sorted(
+            {
+                task_id
+                for task_id in blocked_tasks
+                if blocked_tasks.count(task_id) > 1
+            }
+        )
+        releases.extend(
+            {
+                "source_task_id": task_id,
+                "follow_up_task_id": "",
+                "guardrail_kind": "stale_strategy_block",
+                "reason": "duplicate_strategy_block",
+            }
+            for task_id in duplicate_ids
+        )
+        blocked_tasks = deduplicated_blocked_tasks
+
+    guardrail_groups = (
+        ("retry_budget", strategy.get("retry_budget_findings")),
+        ("dependency_guardrail", strategy.get("dependency_guardrail_findings")),
+    )
+    for guardrail_kind, raw_records in guardrail_groups:
+        if not isinstance(raw_records, list):
+            continue
+        for raw_record in raw_records:
+            if not isinstance(raw_record, Mapping):
+                continue
+            source_task_id = str(raw_record.get("source_task_id") or "")
+            follow_up_task_id = str(raw_record.get("follow_up_task_id") or "")
+            if not source_task_id or not follow_up_task_id:
+                continue
+            if source_task_id not in blocked_tasks:
+                continue
+            if statuses.get(follow_up_task_id) != "completed":
+                continue
+            blocked_tasks = [task_id for task_id in blocked_tasks if task_id != source_task_id]
+            releases.append(
+                {
+                    "source_task_id": source_task_id,
+                    "follow_up_task_id": follow_up_task_id,
+                    "guardrail_kind": guardrail_kind,
+                }
+            )
+
+    for source_task_id in list(blocked_tasks):
+        status = statuses.get(source_task_id)
+        if status is None:
+            blocked_tasks = [task_id for task_id in blocked_tasks if task_id != source_task_id]
+            releases.append(
+                {
+                    "source_task_id": source_task_id,
+                    "follow_up_task_id": "",
+                    "guardrail_kind": "stale_strategy_block",
+                    "reason": "missing_task",
+                }
+            )
+            continue
+        if status == "completed":
+            blocked_tasks = [task_id for task_id in blocked_tasks if task_id != source_task_id]
+            releases.append(
+                {
+                    "source_task_id": source_task_id,
+                    "follow_up_task_id": "",
+                    "guardrail_kind": "stale_strategy_block",
+                    "reason": "source_completed",
+                }
+            )
+
+    if not releases:
+        return []
+    strategy["blocked_tasks"] = blocked_tasks
+    strategy["last_guardrail_unblock_at"] = utc_now()
+    strategy["guardrail_unblock_releases"] = releases
+    write_json(strategy_path, strategy)
+    return releases
 
 
 def record_codebase_scan_findings(
@@ -1267,12 +1842,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--objective-scan", action="store_true")
     parser.add_argument("--codebase-scan", action="store_true")
     parser.add_argument("--retry-budget", action="store_true")
+    parser.add_argument("--dependency-guardrail", action="store_true")
     parser.add_argument("--force", action="store_true")
     parser.add_argument("--min-open-tasks", type=int, default=DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS)
     parser.add_argument("--max-findings", type=int, default=DEFAULT_CODEBASE_SCAN_MAX_FINDINGS)
     parser.add_argument("--cooldown-seconds", type=int, default=DEFAULT_CODEBASE_SCAN_COOLDOWN_SECONDS)
     parser.add_argument("--validation-retry-budget", type=int, default=DEFAULT_VALIDATION_RETRY_BUDGET)
     parser.add_argument("--merge-retry-budget", type=int, default=DEFAULT_MERGE_RETRY_BUDGET)
+    parser.add_argument("--implementation-retry-budget", type=int, default=DEFAULT_IMPLEMENTATION_RETRY_BUDGET)
     parser.add_argument("--no-persist-ast-dataset", action="store_true")
     parser.add_argument("--objective-summary-prefix", default=DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX)
     parser.add_argument("--commit-generated-outputs", action="store_true")
@@ -1291,10 +1868,11 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
     validation_depends_on = split_csv(args.validation_depends_on)
     skip_prefixes = tuple(args.skip_prefix) if args.skip_prefix else CODEBASE_SCAN_SKIP_PREFIXES
 
-    run_all = not (args.objective_scan or args.codebase_scan or args.retry_budget)
+    run_all = not (args.objective_scan or args.codebase_scan or args.retry_budget or args.dependency_guardrail)
     objective_findings: list[dict[str, Any]] = []
     codebase_findings: list[dict[str, Any]] = []
     retry_findings: list[dict[str, Any]] = []
+    dependency_findings: list[dict[str, Any]] = []
 
     if (args.objective_scan or run_all) and args.objective_path:
         objective_findings = record_objective_backlog_findings(
@@ -1344,7 +1922,20 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             task_prefix=args.task_prefix,
             validation_retry_budget=args.validation_retry_budget,
             merge_retry_budget=args.merge_retry_budget,
+            implementation_retry_budget=args.implementation_retry_budget,
             validation_depends_on=validation_depends_on,
+            discovery_output_path=args.discovery_output_path,
+            commit_outputs=args.commit_generated_outputs,
+            repo_root=repo_root,
+        )
+    if args.dependency_guardrail or run_all:
+        dependency_findings = record_dependency_guardrail_findings(
+            todo_path=args.todo_path.resolve(),
+            strategy_path=strategy_path,
+            discovery_dir=discovery_dir,
+            task_header_prefix_value=args.task_header_prefix,
+            task_prefix=args.task_prefix,
+            max_findings=args.max_findings,
             discovery_output_path=args.discovery_output_path,
             commit_outputs=args.commit_generated_outputs,
             repo_root=repo_root,
@@ -1358,9 +1949,11 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
         "objective_generated_count": len(objective_findings),
         "codebase_generated_count": len(codebase_findings),
         "retry_budget_generated_count": len(retry_findings),
+        "dependency_guardrail_generated_count": len(dependency_findings),
         "objective_findings": objective_findings,
         "codebase_findings": codebase_findings,
         "retry_budget_findings": retry_findings,
+        "dependency_guardrail_findings": dependency_findings,
     }
 
 

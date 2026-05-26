@@ -43,6 +43,7 @@ DEFAULT_TRACKS = [
 PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
+LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
@@ -457,6 +458,8 @@ class PortalImplementationDaemon:
         use_ephemeral_worktree: bool = False,
         worktree_root: Path | None = None,
         worktree_submodule_paths: Any = None,
+        llm_merge_resolver_command: str | None = None,
+        llm_merge_resolver_timeout_seconds: float | None = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -470,6 +473,12 @@ class PortalImplementationDaemon:
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.use_ephemeral_worktree = use_ephemeral_worktree
         self.worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
+        self.llm_merge_resolver_command = (
+            llm_merge_resolver_command
+            if llm_merge_resolver_command is not None
+            else os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "")
+        ).strip()
+        self.llm_merge_resolver_timeout_seconds = llm_merge_resolver_timeout_seconds
         configured_submodules = (
             DEFAULT_WORKTREE_SUBMODULE_PATHS
             if worktree_submodule_paths is None
@@ -492,17 +501,108 @@ class PortalImplementationDaemon:
         payload = load_json_dict(self.strategy_path)
         if payload is None:
             logger.warning("Strategy file is missing or invalid JSON; using defaults: %s", self.strategy_path)
-            return defaults.copy()
+            repaired = {
+                **defaults,
+                "last_strategy_repair_at": utc_now(),
+                "last_strategy_repair_reason": "invalid_or_unreadable_strategy_file",
+            }
+            write_json_atomic(self.strategy_path, repaired)
+            self._record_event(
+                "strategy_file_repaired",
+                {
+                    "strategy_path": str(self.strategy_path),
+                    "reason": "invalid_or_unreadable_strategy_file",
+                },
+            )
+            return repaired
         merged = {**defaults, **payload}
         merged["focus_tracks"] = [str(item).lower() for item in merged.get("focus_tracks", DEFAULT_TRACKS)]
         merged["blocked_tasks"] = [str(item) for item in merged.get("blocked_tasks", [])]
         merged["deprioritized_tasks"] = [str(item) for item in merged.get("deprioritized_tasks", [])]
         return merged
 
+    def _mark_long_running_phase(self, *, task_id: str, phase: str, detail: str = "") -> None:
+        state = PortalTaskState.load(self.state_path)
+        now = utc_now()
+        if task_id:
+            state.active_task_id = task_id
+        if state.active_phase != phase or state.active_phase_detail != detail:
+            state.active_phase_started_at = now
+        state.active_phase = phase
+        state.active_phase_detail = detail
+        state.heartbeat_at = now
+        state.save(self.state_path)
+        self._record_event(
+            "daemon_phase_heartbeat",
+            {
+                "task_id": task_id,
+                "phase": phase,
+                "detail": detail,
+            },
+        )
+
+    def _record_empty_backlog_state(self, *, reason: str, error: str = "") -> dict[str, Any]:
+        previous = PortalTaskState.load(self.state_path)
+        strategy = self.load_strategy()
+        live_inflight_implementation = self._find_live_inflight_implementation()
+        now = utc_now()
+        state = PortalTaskState.load(self.state_path)
+        state.heartbeat_at = now
+        if not state.last_progress_at:
+            state.last_progress_at = now
+        state.completed_task_ids = []
+        state.ready_task_ids = []
+        state.waiting_task_ids = []
+        state.blocked_task_ids = []
+        state.completed_count = 0
+        state.ready_count = 0
+        state.waiting_count = 0
+        state.blocked_count = 0
+        state.task_count = 0
+        state.task_statuses = {}
+        state.task_artifacts = {}
+        state.task_validation = {}
+        state.strategy_generation = int(strategy.get("generation", 0))
+        if not (previous.implementation_in_progress and live_inflight_implementation is not None):
+            state.active_task_id = ""
+            state.active_task_title = ""
+            state.active_task_track = ""
+            state.active_task_started_at = ""
+            self._clear_active_execution_state(state)
+            state.recommended_task_id = ""
+            state.recommended_actions = []
+        state.save(self.state_path)
+        payload = {
+            "reason": reason,
+            "todo_path": str(self.todo_path),
+            "task_count": 0,
+            "active_task_id": state.active_task_id,
+        }
+        if error:
+            payload["error"] = error[-4000:]
+        self._record_event("daemon_no_tasks", payload)
+        return {
+            "task_count": 0,
+            "completed_count": 0,
+            "ready_count": 0,
+            "waiting_count": 0,
+            "blocked_count": 0,
+            "active_task_id": state.active_task_id,
+            "state_path": str(self.state_path),
+            "strategy_path": str(self.strategy_path),
+            "events_path": str(self.events_path),
+            "implementation_result": None,
+            "merge_reconciliation": [],
+            "reason": reason,
+        }
+
     def run_once(self) -> dict[str, Any]:
-        tasks = parse_task_file(self.todo_path, self.task_header_prefix)
+        try:
+            tasks = parse_task_file(self.todo_path, self.task_header_prefix)
+        except OSError as exc:
+            return self._record_empty_backlog_state(reason="todo_read_failed", error=str(exc))
         if not tasks:
-            raise RuntimeError(f"No tasks found in {self.todo_path}")
+            return self._record_empty_backlog_state(reason="no_tasks_found")
         previous = PortalTaskState.load(self.state_path)
         strategy = self.load_strategy()
         now = utc_now()
@@ -722,7 +822,7 @@ class PortalImplementationDaemon:
         log_path = self.implementation_log_dir / f"{task.task_id.lower()}-attempt-{attempt}.log"
         prompt = self._build_implementation_prompt(task, attempt)
         workspace_path = self.repo_root
-        command = self._build_implementation_command(workspace_path)
+        command: list[str] = []
         result: dict[str, Any]
         validation_result: dict[str, Any] = {
             "attempted": False,
@@ -744,6 +844,7 @@ class PortalImplementationDaemon:
                     log_path=log_path,
                     prompt=prompt,
                 )
+            command = self._build_implementation_command(workspace_path)
             self.implementation_log_dir.mkdir(parents=True, exist_ok=True)
             self._mark_implementation_started(
                 state,
@@ -825,6 +926,37 @@ class PortalImplementationDaemon:
                 "log_path": str(log_path),
                 "error": "timeout",
             }
+            self._record_event("implementation_finished", result)
+            return result
+        except Exception as exc:
+            finished_at = utc_now()
+            failed_phase = state.active_phase or "implementation_setup"
+            state.implementation_attempts[task.task_id] = attempt
+            state.last_implementation_task_id = task.task_id
+            state.last_implementation_started_at = started_at
+            state.last_implementation_finished_at = finished_at
+            state.last_implementation_returncode = 1
+            state.last_implementation_log_path = str(log_path)
+            self._mark_implementation_finished(state, finished_at=finished_at)
+            state.save(self.state_path)
+            exception_result = {
+                "exception_type": type(exc).__name__,
+                "message": str(exc)[-4000:],
+                "phase": failed_phase,
+                "command": command,
+            }
+            result = {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                "returncode": 1,
+                "log_path": str(log_path),
+                "validation_result": validation_result,
+                "exception_result": exception_result,
+            }
+            self._record_event(
+                "implementation_exception",
+                {"task_id": task.task_id, "attempt": attempt, **exception_result},
+            )
             self._record_event("implementation_finished", result)
             return result
         finally:
@@ -1093,6 +1225,7 @@ class PortalImplementationDaemon:
         commit_result: dict[str, Any] = {"committed": False}
         failed_preservation_result: dict[str, Any] = {}
         todo_update_result: dict[str, Any] = {}
+        exception_result: dict[str, Any] = {}
 
         try:
             baseline_ref = self._create_seeded_worktree(worktree_path, branch_name, task=task)
@@ -1188,6 +1321,23 @@ class PortalImplementationDaemon:
                 "implementation_timeout",
                 {"task_id": task.task_id, "attempt": attempt, "worktree_path": str(worktree_path)},
             )
+        except Exception as exc:
+            returncode = 1
+            exception_result = {
+                "exception_type": type(exc).__name__,
+                "message": str(exc)[-4000:],
+                "worktree_path": str(worktree_path),
+                "branch": branch_name,
+                "phase": state.active_phase or "worktree_setup",
+            }
+            self._record_event(
+                "implementation_exception",
+                {
+                    "task_id": task.task_id,
+                    "attempt": attempt,
+                    **exception_result,
+                },
+            )
         finished_at = utc_now()
         state.implementation_attempts[task.task_id] = attempt
         state.last_implementation_task_id = task.task_id
@@ -1225,6 +1375,8 @@ class PortalImplementationDaemon:
             "cleanup_result": cleanup_result,
             "failed_preservation_result": failed_preservation_result,
         }
+        if exception_result:
+            result["exception_result"] = exception_result
         if todo_update_result:
             result["todo_update_result"] = todo_update_result
         self._record_event("implementation_finished", result)
@@ -1928,6 +2080,7 @@ class PortalImplementationDaemon:
                         ["/bin/bash", "-lc", command],
                         cwd=workspace_path,
                         text=True,
+                        stdin=subprocess.DEVNULL,
                         stdout=log_fh,
                         stderr=subprocess.STDOUT,
                         timeout=self.implementation_timeout,
@@ -2164,6 +2317,36 @@ class PortalImplementationDaemon:
         try:
             self._write_lock_metadata(lock_fd, lock_metadata)
             workspace_result = self._prepare_main_merge_workspace(target_branch, branch_name)
+            llm_workspace_resolver: dict[str, Any] = {}
+            if not workspace_result.get("available", False):
+                workspace_reason = str(workspace_result.get("reason") or "main_merge_workspace_unavailable")
+                workspace_path = str(workspace_result.get("worktree_path") or "")
+                if workspace_reason == "main_merge_worktree_dirty" and workspace_path:
+                    llm_workspace_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
+                        workspace=Path(workspace_path),
+                        task=task,
+                        attempt=attempt,
+                        branch_name=branch_name,
+                        target_branch=target_branch,
+                        merge_command=[],
+                        merge_stdout="",
+                        merge_stderr="",
+                        reason=workspace_reason,
+                        dirty_paths=[str(item) for item in workspace_result.get("dirty_paths", [])],
+                    )
+                    if llm_workspace_resolver.get("applied", False):
+                        workspace_result = self._prepare_main_merge_workspace(target_branch, branch_name)
+                    if workspace_result.get("available", False):
+                        self._record_event(
+                            "main_merge_workspace_blocker_resolved",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": attempt,
+                                "branch": branch_name,
+                                "target_branch": target_branch,
+                                "llm_merge_resolver": llm_workspace_resolver,
+                            },
+                        )
             if not workspace_result.get("available", False):
                 result = {
                     "attempted": True,
@@ -2182,6 +2365,8 @@ class PortalImplementationDaemon:
                     "identical_untracked_paths": [],
                     "submodule_merge_results": [],
                 }
+                if llm_workspace_resolver:
+                    result["llm_merge_resolver"] = llm_workspace_resolver
                 self._record_event("merge_finished", result)
                 return result
 
@@ -2195,6 +2380,35 @@ class PortalImplementationDaemon:
                 ignore_paths=set(identical_untracked_paths),
             )
             if dirty_overlap:
+                llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
+                    workspace=merge_workspace,
+                    task=task,
+                    attempt=attempt,
+                    branch_name=branch_name,
+                    target_branch=target_branch,
+                    merge_command=[],
+                    merge_stdout="",
+                    merge_stderr="",
+                    reason="main_checkout_dirty_conflict",
+                    dirty_paths=dirty_overlap,
+                )
+                if llm_merge_resolver.get("applied", False):
+                    dirty_overlap = self._dirty_merge_conflict_paths(
+                        branch_name,
+                        cwd=merge_workspace,
+                        ignore_paths=set(identical_untracked_paths),
+                    )
+                if not dirty_overlap:
+                    self._record_event(
+                        "dirty_checkout_merge_blocker_resolved",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "branch": branch_name,
+                            "target_branch": target_branch,
+                            "llm_merge_resolver": llm_merge_resolver,
+                        },
+                    )
                 result = {
                     "attempted": True,
                     "merged": False,
@@ -2214,8 +2428,11 @@ class PortalImplementationDaemon:
                     "resolved_generated_conflicts": resolved_add_add_conflicts,
                     "submodule_merge_results": [],
                 }
-                self._record_event("merge_finished", result)
-                return result
+                if dirty_overlap:
+                    if llm_merge_resolver:
+                        result["llm_merge_resolver"] = llm_merge_resolver
+                    self._record_event("merge_finished", result)
+                    return result
 
             removed_untracked = self._remove_untracked_paths_for_merge(identical_untracked_paths, cwd=merge_workspace)
             self._record_event(
@@ -2275,13 +2492,28 @@ class PortalImplementationDaemon:
                         llm_merge_commit_result = self._commit_llm_resolved_merge(merge_workspace)
                         if llm_merge_commit_result.get("completed", False):
                             merge_returncode = 0
+                        elif (
+                            llm_merge_commit_result.get("reason") == "no_merge_in_progress"
+                            and self._branch_merged_in_workspace(merge_workspace, branch_name)
+                        ):
+                            llm_merge_commit_result = {
+                                **llm_merge_commit_result,
+                                "completed": True,
+                                "reason": "resolver_committed_merge",
+                                "commit": self._run_git(["rev-parse", "HEAD"], cwd=merge_workspace).stdout.strip(),
+                            }
+                            merge_returncode = 0
                         else:
                             merge_abort_result = self._abort_failed_merge(merge_workspace)
                     else:
                         merge_abort_result = self._abort_failed_merge(merge_workspace)
             if merge_returncode == 0:
                 merge_commit = self._run_git(["rev-parse", "HEAD"], cwd=merge_workspace).stdout.strip()
-                submodule_merge_results = self._merge_submodule_branches_to_main(branch_name)
+                submodule_merge_results = self._merge_submodule_branches_to_main(
+                    branch_name,
+                    task=task,
+                    attempt=attempt,
+                )
             elif removed_untracked:
                 self._restore_removed_untracked_paths(removed_untracked, cwd=merge_workspace)
             failed_submodules = [item for item in submodule_merge_results if not item.get("merged", False)]
@@ -2307,6 +2539,8 @@ class PortalImplementationDaemon:
             }
             if submodule_conflict_repair:
                 result["submodule_conflict_repair"] = submodule_conflict_repair
+            if llm_workspace_resolver:
+                result["llm_workspace_resolver"] = llm_workspace_resolver
             if merge_abort_result:
                 result["merge_abort_result"] = merge_abort_result
             if llm_merge_resolver:
@@ -2370,8 +2604,10 @@ class PortalImplementationDaemon:
         merge_command: list[str],
         merge_stdout: str,
         merge_stderr: str,
+        reason: str = "merge_conflict",
+        dirty_paths: list[str] | None = None,
     ) -> dict[str, Any]:
-        command_template = os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "").strip()
+        command_template = self.llm_merge_resolver_command
         if not command_template:
             return {"attempted": False, "reason": "resolver_command_not_configured"}
         from ipfs_accelerate_py.agent_supervisor.merge_resolver import build_merge_prompt, invoke_llm_resolver
@@ -2383,10 +2619,11 @@ class PortalImplementationDaemon:
             "branch": branch_name,
             "target_branch": target_branch,
             "command": merge_command,
-            "reason": "merge_conflict",
+            "reason": reason,
             "stdout": merge_stdout[-4000:],
             "stderr": merge_stderr[-4000:],
             "main_worktree_path": str(workspace),
+            "dirty_paths": dirty_paths or [],
         }
         event = {
             "type": "merge_finished",
@@ -2403,17 +2640,33 @@ class PortalImplementationDaemon:
             "branch": branch_name,
             "target_branch": target_branch,
             "command": merge_command,
-            "reason": "merge_conflict",
-            "dirty_paths": [],
+            "reason": reason,
+            "dirty_paths": dirty_paths or [],
             "unmerged_paths": sorted(self._unmerged_worktree_paths(workspace)),
             "prompt": build_merge_prompt(event=event, repo_root=workspace),
         }
-        result = invoke_llm_resolver(payload, command_template=command_template)
+        self._mark_long_running_phase(
+            task_id=task.task_id,
+            phase="merge_resolver",
+            detail=reason,
+        )
+        result = invoke_llm_resolver(
+            payload,
+            command_template=command_template,
+            timeout_seconds=self.llm_merge_resolver_timeout_seconds,
+        )
         compact_result = dict(result)
         if "prompt" in compact_result:
             compact_result["prompt_chars"] = len(str(compact_result.pop("prompt") or ""))
         self._record_event("llm_merge_resolver_invoked", compact_result)
         return compact_result
+
+    def _branch_merged_in_workspace(self, workspace: Path, branch_name: str) -> bool:
+        if self._unmerged_worktree_paths(workspace):
+            return False
+        if not branch_name:
+            return False
+        return self._git_ref_is_ancestor_in_repo(workspace, branch_name, "HEAD")
 
     def _commit_llm_resolved_merge(self, workspace: Path) -> dict[str, Any]:
         unresolved = sorted(self._unmerged_worktree_paths(workspace))
@@ -2603,11 +2856,19 @@ class PortalImplementationDaemon:
         )
         return result.returncode == 0 and bool(result.stdout.strip())
 
-    def _merge_submodule_branches_to_main(self, branch_name: str) -> list[dict[str, Any]]:
+    def _merge_submodule_branches_to_main(
+        self,
+        branch_name: str,
+        *,
+        task: PortalTask,
+        attempt: int,
+    ) -> list[dict[str, Any]]:
         return self._merge_submodule_branches_to_main_in_repo(
             repo_path=self.repo_root,
             branch_name=branch_name,
             parent_relative="",
+            task=task,
+            attempt=attempt,
         )
 
     def _merge_submodule_branches_to_main_in_repo(
@@ -2616,6 +2877,8 @@ class PortalImplementationDaemon:
         repo_path: Path,
         branch_name: str,
         parent_relative: str,
+        task: PortalTask,
+        attempt: int,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         relatives = self.worktree_submodule_paths if not parent_relative else tuple(self._declared_submodule_paths(repo_path))
@@ -2630,21 +2893,50 @@ class PortalImplementationDaemon:
             default_branch = self._submodule_default_branch(relative, source)
             dirty = self._run_git(["status", "--porcelain"], cwd=source).stdout.strip()
             if dirty:
-                results.append(
-                    {
-                        "path": relative,
-                        "branch": submodule_branch,
-                        "default_branch": default_branch,
-                        "merged": False,
-                        "reason": "submodule_checkout_dirty",
-                        "status": dirty,
-                    }
+                llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
+                    workspace=source,
+                    task=task,
+                    attempt=attempt,
+                    branch_name=submodule_branch,
+                    target_branch=default_branch,
+                    merge_command=[],
+                    merge_stdout="",
+                    merge_stderr="",
+                    reason="submodule_checkout_dirty",
+                    dirty_paths=self._dirty_status_paths(dirty),
                 )
-                continue
+                if llm_merge_resolver.get("applied", False):
+                    dirty = self._run_git(["status", "--porcelain"], cwd=source).stdout.strip()
+                if not dirty:
+                    self._record_event(
+                        "submodule_checkout_blocker_resolved",
+                        {
+                            "task_id": task.task_id,
+                            "attempt": attempt,
+                            "path": full_relative,
+                            "branch": submodule_branch,
+                            "default_branch": default_branch,
+                            "llm_merge_resolver": llm_merge_resolver,
+                        },
+                    )
+                else:
+                    results.append(
+                        {
+                            "path": full_relative,
+                            "branch": submodule_branch,
+                            "default_branch": default_branch,
+                            "merged": False,
+                            "reason": "submodule_checkout_dirty",
+                            "status": dirty,
+                            "dirty_paths": self._dirty_status_paths(dirty),
+                            "llm_merge_resolver": llm_merge_resolver,
+                        }
+                    )
+                    continue
             if self._git_ref_is_ancestor_in_repo(source, submodule_branch, default_branch):
                 results.append(
                     {
-                        "path": relative,
+                        "path": full_relative,
                         "branch": submodule_branch,
                         "default_branch": default_branch,
                         "merged": True,
@@ -2661,36 +2953,126 @@ class PortalImplementationDaemon:
                     check=False,
                 )
                 if checkout.returncode != 0:
-                    results.append(
-                        {
-                            "path": relative,
-                            "branch": submodule_branch,
-                            "default_branch": default_branch,
-                            "merged": False,
-                            "returncode": checkout.returncode,
-                            "reason": "default_branch_checkout_failed",
-                            "stdout": checkout.stdout[-4000:],
-                            "stderr": checkout.stderr[-4000:],
-                        }
+                    llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
+                        workspace=source,
+                        task=task,
+                        attempt=attempt,
+                        branch_name=submodule_branch,
+                        target_branch=default_branch,
+                        merge_command=["git", "checkout", default_branch],
+                        merge_stdout=checkout.stdout,
+                        merge_stderr=checkout.stderr,
+                        reason="submodule_default_branch_checkout_failed",
                     )
-                    continue
+                    if llm_merge_resolver.get("applied", False) and self._git_current_branch(source) != default_branch:
+                        checkout = subprocess.run(
+                            ["git", "checkout", default_branch],
+                            cwd=source,
+                            text=True,
+                            capture_output=True,
+                            check=False,
+                        )
+                    if self._git_current_branch(source) == default_branch:
+                        self._record_event(
+                            "submodule_checkout_blocker_resolved",
+                            {
+                                "task_id": task.task_id,
+                                "attempt": attempt,
+                                "path": full_relative,
+                                "branch": submodule_branch,
+                                "default_branch": default_branch,
+                                "llm_merge_resolver": llm_merge_resolver,
+                            },
+                        )
+                    else:
+                        results.append(
+                            {
+                                "path": full_relative,
+                                "branch": submodule_branch,
+                                "default_branch": default_branch,
+                                "merged": False,
+                                "returncode": checkout.returncode,
+                                "reason": "default_branch_checkout_failed",
+                                "stdout": checkout.stdout[-4000:],
+                                "stderr": checkout.stderr[-4000:],
+                                "llm_merge_resolver": llm_merge_resolver,
+                            }
+                        )
+                        continue
+            merge_command = ["git", "merge", "--ff-only", submodule_branch]
             merge = subprocess.run(
-                ["git", "merge", "--ff-only", submodule_branch],
+                merge_command,
                 cwd=source,
                 text=True,
                 capture_output=True,
                 check=False,
             )
+            merge_abort_result: dict[str, Any] = {}
+            llm_merge_resolver: dict[str, Any] = {}
+            llm_merge_commit_result: dict[str, Any] = {}
+            ff_only_result = {
+                "returncode": merge.returncode,
+                "stdout": merge.stdout[-4000:],
+                "stderr": merge.stderr[-4000:],
+            }
+            if merge.returncode != 0:
+                merge_command = ["git", "merge", "--no-ff", "--no-edit", submodule_branch]
+                merge = subprocess.run(
+                    merge_command,
+                    cwd=source,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                if merge.returncode != 0:
+                    llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
+                        workspace=source,
+                        task=task,
+                        attempt=attempt,
+                        branch_name=submodule_branch,
+                        target_branch=default_branch,
+                        merge_command=merge_command,
+                        merge_stdout=merge.stdout,
+                        merge_stderr=merge.stderr,
+                        reason="submodule_merge_conflict",
+                    )
+                    if llm_merge_resolver.get("applied", False):
+                        llm_merge_commit_result = self._commit_llm_resolved_merge(source)
+                        if llm_merge_commit_result.get("completed", False):
+                            merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
+                        elif (
+                            llm_merge_commit_result.get("reason") == "no_merge_in_progress"
+                            and self._branch_merged_in_workspace(source, submodule_branch)
+                        ):
+                            llm_merge_commit_result = {
+                                **llm_merge_commit_result,
+                                "completed": True,
+                                "reason": "resolver_committed_merge",
+                                "commit": self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip(),
+                            }
+                            merge = subprocess.CompletedProcess(merge_command, 0, merge.stdout, merge.stderr)
+                        else:
+                            merge_abort_result = self._abort_failed_merge(source)
+                    else:
+                        merge_abort_result = self._abort_failed_merge(source)
             result = {
                 "path": full_relative,
                 "branch": submodule_branch,
                 "default_branch": default_branch,
                 "merged": merge.returncode == 0,
                 "returncode": merge.returncode,
+                "command": merge_command,
                 "stdout": merge.stdout[-4000:],
                 "stderr": merge.stderr[-4000:],
                 "commit": "",
+                "ff_only_result": ff_only_result,
             }
+            if merge_abort_result:
+                result["merge_abort_result"] = merge_abort_result
+            if llm_merge_resolver:
+                result["llm_merge_resolver"] = llm_merge_resolver
+            if llm_merge_commit_result:
+                result["llm_merge_commit_result"] = llm_merge_commit_result
             if merge.returncode == 0:
                 result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=source).stdout.strip()
             results.append(result)
@@ -2700,9 +3082,29 @@ class PortalImplementationDaemon:
                         repo_path=source,
                         branch_name=branch_name,
                         parent_relative=full_relative,
+                        task=task,
+                        attempt=attempt,
                     )
                 )
         return results
+
+    @staticmethod
+    def _dirty_status_paths(status: str) -> list[str]:
+        paths: list[str] = []
+        for line in status.splitlines():
+            if len(line) < 3:
+                continue
+            if len(line) >= 3 and line[2] == " ":
+                path = line[3:].strip()
+            elif len(line) >= 2 and line[1] == " ":
+                path = line[2:].strip()
+            else:
+                path = line.strip()
+            if " -> " in path:
+                path = path.rsplit(" -> ", 1)[1].strip()
+            if path:
+                paths.append(path)
+        return paths
 
     def _submodule_default_branch(self, relative: str, source: Path) -> str:
         result = subprocess.run(
@@ -3093,13 +3495,14 @@ class PortalImplementationDaemon:
                 continue
             if self._git_ref_is_ancestor(implementation_commit, target_branch):
                 cleanup_result = self._cleanup_merged_worktree(worktree_path, branch) if branch else {}
+                cleanup_cleaned = bool(cleanup_result.get("cleaned", False)) if cleanup_result else True
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
-                    "resolved": True,
-                    "reason": "implementation_commit_already_merged",
+                    "resolved": cleanup_cleaned,
+                    "reason": "implementation_commit_already_merged" if cleanup_cleaned else "cleanup_retry_failed",
                     "cleanup_result": cleanup_result,
                 }
                 self._record_event("merge_reconciled", result)
@@ -3126,12 +3529,32 @@ class PortalImplementationDaemon:
                 priority="P2",
                 track="ops",
             )
-            merge_result = self._merge_branch_to_main(
-                branch,
-                task,
-                attempt,
-                baseline_ref=str(event.get("baseline_ref") or ""),
+            self._mark_long_running_phase(
+                task_id=task_id,
+                phase="merge_reconciliation",
+                detail=branch,
             )
+            try:
+                merge_result = self._merge_branch_to_main(
+                    branch,
+                    task,
+                    attempt,
+                    baseline_ref=str(event.get("baseline_ref") or ""),
+                )
+            except Exception as exc:
+                result = {
+                    "task_id": task_id,
+                    "attempt": attempt,
+                    "branch": branch,
+                    "implementation_commit": implementation_commit,
+                    "resolved": False,
+                    "reason": "merge_reconcile_exception",
+                    "exception_type": type(exc).__name__,
+                    "error": str(exc)[-4000:],
+                }
+                self._record_event("merge_reconcile_exception", result)
+                results.append(result)
+                continue
             cleanup_result = {}
             if merge_result.get("merged"):
                 cleanup_result = self._cleanup_merged_worktree(worktree_path, branch)
@@ -3183,7 +3606,7 @@ class PortalImplementationDaemon:
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict):
                 continue
-            if not merge_result.get("attempted") or merge_result.get("merged"):
+            if not self._merge_result_needs_reconciliation(merge_result):
                 continue
             key = (task_id, implementation_commit)
             candidates[key] = event
@@ -3200,6 +3623,18 @@ class PortalImplementationDaemon:
             if isinstance(cleanup, dict) and not cleanup.get("cleaned", False):
                 unresolved.append(event)
         return unresolved
+
+    @staticmethod
+    def _merge_result_needs_reconciliation(merge_result: dict[str, Any]) -> bool:
+        if not isinstance(merge_result, dict) or merge_result.get("merged"):
+            return False
+        if merge_result.get("attempted"):
+            return True
+        return str(merge_result.get("reason") or "") in {
+            "lock_exists",
+            "lock_unavailable",
+            "lock_cleanup_failed",
+        }
 
     def _unresolved_merge_failures_by_task(self, *, skip_task_ids: set[str] | None = None) -> dict[str, dict[str, Any]]:
         skip_task_ids = skip_task_ids or set()
@@ -3626,6 +4061,23 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help="Command used for implementation. Defaults to codex exec with local Copilot CLI fallback when available.",
     )
+    parser.add_argument(
+        "--llm-merge-resolver-command",
+        default=os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, ""),
+        help=(
+            "Command invoked with merge-conflict repair prompts on stdin. "
+            f"Defaults to {LLM_MERGE_RESOLVER_COMMAND_ENV}."
+        ),
+    )
+    parser.add_argument(
+        "--llm-merge-resolver-timeout-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Timeout for the merge resolver subprocess. "
+            f"Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 600 seconds; <=0 disables."
+        ),
+    )
     parser.add_argument("--implementation-timeout", type=float, default=DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS)
     parser.add_argument(
         "--no-ephemeral-worktree",
@@ -3667,6 +4119,10 @@ def main(argv: list[str] | None = None) -> None:
         level=getattr(logging, args.log_level),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    if args.llm_merge_resolver_command:
+        os.environ[LLM_MERGE_RESOLVER_COMMAND_ENV] = args.llm_merge_resolver_command
+    if args.llm_merge_resolver_timeout_seconds is not None:
+        os.environ[LLM_MERGE_RESOLVER_TIMEOUT_ENV] = str(args.llm_merge_resolver_timeout_seconds)
     daemon = PortalImplementationDaemon(
         todo_path=args.todo_path,
         state_path=args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -3680,6 +4136,8 @@ def main(argv: list[str] | None = None) -> None:
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         worktree_submodule_paths=args.worktree_submodule_path or None,
+        llm_merge_resolver_command=args.llm_merge_resolver_command or None,
+        llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
     )
     while True:
         result = daemon.run_once()

@@ -5,7 +5,9 @@ import subprocess
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+    release_completed_guardrail_blocks,
     record_codebase_scan_findings,
+    record_dependency_guardrail_findings,
     record_objective_backlog_findings,
     record_retry_budget_findings,
 )
@@ -90,6 +92,310 @@ def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):
     assert Path(findings[0]["discovery_path"]).exists()
 
 
+def test_backlog_refinery_dependency_guardrail_adds_ready_repair_task(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Waiting on missing prerequisite
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-999
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: This task cannot become ready until dependencies resolve.
+""",
+        encoding="utf-8",
+    )
+
+    findings = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        repo_root=repo,
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["source_task_id"] == "AUTO-001"
+    assert findings[0]["missing_dependencies"] == ["AUTO-999"]
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve dependency guardrail for AUTO-001" in todo_text
+    assert "AUTO-999" in Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    assert strategy["dependency_guardrail_findings"][0]["follow_up_task_id"] == "AUTO-002"
+
+    repeated = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        repo_root=repo,
+    )
+    assert repeated == []
+    assert todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001") == 1
+
+
+def test_backlog_refinery_dependency_guardrail_detects_dependency_cycle(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Waiting on cycle entry
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-002
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: This task cannot become ready until dependencies resolve.
+
+## AUTO-002 Waiting on cycle return
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-001
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: This task cannot become ready until dependencies resolve.
+""",
+        encoding="utf-8",
+    )
+
+    findings = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        repo_root=repo,
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["source_task_id"] == "AUTO-001"
+    assert findings[0]["dependency_cycle"] == ["AUTO-001", "AUTO-002", "AUTO-001"]
+    discovery = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
+    assert "Dependency cycle: AUTO-001 -> AUTO-002 -> AUTO-001" in discovery
+    assert "## AUTO-003 Resolve dependency guardrail for AUTO-001" in todo_path.read_text(encoding="utf-8")
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+
+
+def test_backlog_refinery_dependency_guardrail_detects_duplicate_task_ids(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 First duplicate
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: First task.
+
+## AUTO-001 Second duplicate
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Second task.
+""",
+        encoding="utf-8",
+    )
+
+    findings = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        repo_root=repo,
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["source_task_id"] == "AUTO-001"
+    assert findings[0]["duplicate_task_id"] == "AUTO-001"
+    assert findings[0]["duplicate_task_lines"] == [3, 14]
+    discovery = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
+    assert "Duplicate task id: AUTO-001" in discovery
+    assert "Duplicate source lines: 3, 14" in discovery
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve dependency guardrail for AUTO-001" in todo_text
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+
+    repeated = record_dependency_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_prefix="AUTO-",
+        max_findings=1,
+        repo_root=repo,
+    )
+    assert repeated == []
+    assert todo_path.read_text(encoding="utf-8").count("Resolve dependency guardrail for AUTO-001") == 1
+
+
+def test_backlog_refinery_releases_completed_guardrail_block(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Original task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Original blocked task.
+
+## AUTO-002 Resolve implementation retry-budget failure for AUTO-001
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Follow-up repair completed.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001", "AUTO-999"],
+                "retry_budget_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-002",
+                        "failure_kind": "implementation",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "retry_budget",
+        },
+        {
+            "source_task_id": "AUTO-999",
+            "follow_up_task_id": "",
+            "guardrail_kind": "stale_strategy_block",
+            "reason": "missing_task",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["guardrail_unblock_releases"] == releases
+
+
+def test_backlog_refinery_releases_completed_and_duplicate_stale_strategy_blocks(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed source
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Source task already completed.
+
+## AUTO-002 Still blocked intentionally
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/other.py
+- Validation: test -f todo.md
+- Acceptance: This task remains blocked.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps({"blocked_tasks": ["AUTO-001", "AUTO-002", "AUTO-002"]}),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-002",
+            "follow_up_task_id": "",
+            "guardrail_kind": "stale_strategy_block",
+            "reason": "duplicate_strategy_block",
+        },
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "",
+            "guardrail_kind": "stale_strategy_block",
+            "reason": "source_completed",
+        },
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-002"]
+
+
 def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
@@ -144,6 +450,70 @@ def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
     assert Path(findings[0]["discovery_path"]).exists()
+
+
+def test_backlog_refinery_retry_budget_blocks_implementation_loop(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    events_path = repo / "state" / "events.jsonl"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Fix setup
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f src/runtime.py
+- Acceptance: Fix the implementation setup failure.
+""",
+        encoding="utf-8",
+    )
+    events_path.parent.mkdir(parents=True)
+    failure = {
+        "type": "implementation_finished",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "returncode": 1,
+        "validation_result": {"attempted": False, "passed": True},
+        "merge_result": {"attempted": False, "merged": False, "reason": "not_attempted"},
+        "exception_result": {
+            "exception_type": "RuntimeError",
+            "phase": "worktree_setup",
+            "message": "not a git repository",
+        },
+        "log_path": "state/implementation_logs/auto-001-attempt-1.log",
+        "worktree_path": "worktrees/auto-001-attempt-1",
+        "branch": "implementation/auto-001-attempt-1",
+    }
+    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+
+    findings = record_retry_budget_findings(
+        todo_path=todo_path,
+        events_path=events_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_header_prefix_value="## AUTO-",
+        task_prefix="AUTO-",
+        implementation_retry_budget=2,
+        validation_retry_budget=0,
+        merge_retry_budget=0,
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["failure_kind"] == "implementation"
+    assert findings[0]["failed_command"] == "implementation_exception:RuntimeError"
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve implementation retry-budget failure for AUTO-001" in todo_text
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
+    assert "Exception type: `RuntimeError`" in discovery_text
 
 
 def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
@@ -201,6 +571,63 @@ def test_backlog_refinery_retry_budget_blocks_merge_loop(tmp_path):
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "## AUTO-002 Resolve merge retry-budget failure for AUTO-001" in todo_text
     assert "ipfs-accelerate-agent-merge-resolver" in todo_text
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+
+
+def test_backlog_refinery_retry_budget_blocks_merge_reconcile_skips(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    events_path = repo / "state" / "events.jsonl"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Merge missing branch
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f src/runtime.py
+- Acceptance: Recover the missing implementation branch.
+""",
+        encoding="utf-8",
+    )
+    event = {
+        "type": "merge_reconcile_skipped",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "branch": "implementation/auto-001",
+        "implementation_commit": "abc123",
+        "resolved": False,
+        "reason": "implementation_branch_missing",
+    }
+    events_path.parent.mkdir(parents=True)
+    events_path.write_text(json.dumps(event) + "\n" + json.dumps({**event, "attempt": 2}) + "\n", encoding="utf-8")
+
+    findings = record_retry_budget_findings(
+        todo_path=todo_path,
+        events_path=events_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_header_prefix_value="## AUTO-",
+        task_prefix="AUTO-",
+        implementation_retry_budget=0,
+        validation_retry_budget=0,
+        merge_retry_budget=2,
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["failure_kind"] == "merge"
+    assert findings[0]["failed_command"] == "git merge (implementation_branch_missing)"
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve merge retry-budget failure for AUTO-001" in todo_text
+    discovery_text = Path(findings[0]["discovery_path"]).read_text(encoding="utf-8")
+    assert "Merge reason: `implementation_branch_missing`" in discovery_text
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
 

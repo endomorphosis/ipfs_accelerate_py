@@ -5,6 +5,7 @@ import json
 import shlex
 import subprocess
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
@@ -21,6 +22,7 @@ from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
+    TodoTaskState,
     TodoImplementationDaemon,
     parse_args as parse_implementation_daemon_args,
 )
@@ -88,6 +90,34 @@ def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     return repo, objective_path, todo_path
 
 
+def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
+    child_source = tmp_path / "child-source"
+    child_source.mkdir()
+    _git(child_source, "init")
+    _git(child_source, "checkout", "-b", "main")
+    _git(child_source, "config", "user.name", "Test User")
+    _git(child_source, "config", "user.email", "test@example.invalid")
+    (child_source / "child.txt").write_text("base\n", encoding="utf-8")
+    _git(child_source, "add", "child.txt")
+    _git(child_source, "commit", "-m", "child base")
+
+    repo = tmp_path / "parent"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(child_source), "libs/child")
+    _git(repo, "add", ".gitmodules", "libs/child")
+    _git(repo, "commit", "-m", "add child submodule")
+
+    submodule = repo / "libs" / "child"
+    _git(submodule, "checkout", "main")
+    _git(submodule, "config", "user.name", "Test User")
+    _git(submodule, "config", "user.email", "test@example.invalid")
+    return repo, submodule
+
+
 def test_todo_daemon_runtime_is_ported_to_accelerate_package():
     assert TodoDaemonRunner.__module__ == "ipfs_accelerate_py.agent_supervisor.todo_daemon.runner"
     assert TodoImplementationDaemon.__module__ == (
@@ -110,15 +140,23 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
         strategy_path=repo / "strategy.json",
         events_path=repo / "events.jsonl",
         repo_root=repo,
+        llm_merge_resolver_command="true",
+        llm_merge_resolver_timeout_seconds=5,
         worktree_submodule_paths=["packages/app,external/lib", "vendor/tools"],
     )
 
     assert daemon.worktree_submodule_paths == ("packages/app", "external/lib", "vendor/tools")
+    assert daemon.llm_merge_resolver_command == "true"
+    assert daemon.llm_merge_resolver_timeout_seconds == 5
 
     args = parse_implementation_daemon_args(
         [
             "--todo-path",
             str(repo / "todo.md"),
+            "--llm-merge-resolver-command",
+            "true",
+            "--llm-merge-resolver-timeout-seconds",
+            "5",
             "--worktree-submodule-path",
             "packages/app",
             "--worktree-submodule-path",
@@ -126,9 +164,120 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
         ]
     )
     assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
+    assert args.llm_merge_resolver_command == "true"
+    assert args.llm_merge_resolver_timeout_seconds == 5
+
+
+def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log_path = repo / "validation.log"
+    captured: dict[str, object] = {}
+
+    def fake_run(*args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return subprocess.CompletedProcess(args=args[0], returncode=0)
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon.subprocess.run",
+        fake_run,
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        implementation_timeout=1,
+    )
+    task = PortalTask(
+        task_id="AUTO-001",
+        title="Validate stdin handling",
+        status="todo",
+        completion="manual",
+        priority="P1",
+        track="ops",
+        validation=["python3 -c 'import sys; sys.stdin.read()'"],
+    )
+
+    result = daemon._run_validation_commands(repo, task, log_path)
+
+    assert result["passed"] is True
+    assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
+    assert captured["kwargs"]["timeout"] == 1
 
 
 def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon_script = repo / "custom_daemon.py"
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        state_dir=repo / "state",
+        implement=True,
+        llm_merge_resolver_command="true",
+        llm_merge_resolver_timeout_seconds=5,
+        worktree_submodule_paths=("packages/app", "external/lib"),
+        daemon_script_path=daemon_script,
+    )
+    supervisor = TodoImplementationSupervisor(config)
+
+    command = supervisor._build_daemon_command()
+
+    assert command[:2] == [sys.executable, str(daemon_script)]
+    assert command.count("--worktree-submodule-path") == 2
+    assert "packages/app" in command
+    assert "external/lib" in command
+    assert command[command.index("--llm-merge-resolver-command") + 1] == "true"
+    assert command[command.index("--llm-merge-resolver-timeout-seconds") + 1] == "5"
+
+    args = parse_implementation_supervisor_args(
+        [
+            "--implement",
+            "--todo-path",
+            str(repo / "todo.md"),
+            "--llm-merge-resolver-command",
+            "resolver-command",
+            "--llm-merge-resolver-timeout-seconds",
+            "7",
+            "--daemon-script-path",
+            str(repo / "daemon.py"),
+            "--supervisor-script-path",
+            str(repo / "supervisor.py"),
+            "--worktree-submodule-path",
+            "packages/app",
+            "--worktree-submodule-path",
+            "external/lib,vendor/tools",
+            "--codebase-refill-scan",
+            "--dependency-guardrail-discovery-dir",
+            str(repo / "dependency-discovery"),
+            "--dependency-guardrail-discovery-output-path",
+            "dependency-discovery",
+            "--dependency-guardrail-max-findings",
+            "2",
+            "--codebase-scan-min-open-tasks",
+            "0",
+            "--codebase-scan-depends-on",
+            "AUTO-001,AUTO-002",
+        ]
+    )
+    assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
+    assert args.llm_merge_resolver_command == "resolver-command"
+    assert args.llm_merge_resolver_timeout_seconds == 7
+    assert args.daemon_script_path == repo / "daemon.py"
+    assert args.supervisor_script_path == repo / "supervisor.py"
+    assert args.codebase_refill_scan is True
+    assert args.codebase_scan_depends_on == ["AUTO-001,AUTO-002"]
+    assert args.dependency_guardrail_discovery_dir == repo / "dependency-discovery"
+    assert args.dependency_guardrail_discovery_output_path == "dependency-discovery"
+    assert args.dependency_guardrail_max_findings == 2
+
+
+def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     config = TodoSupervisorConfig(
@@ -137,36 +286,569 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
         strategy_path=repo / "strategy.json",
         events_path=repo / "events.jsonl",
         state_dir=repo / "state",
-        implement=True,
-        worktree_submodule_paths=("packages/app", "external/lib"),
+        stale_seconds=60,
     )
     supervisor = TodoImplementationSupervisor(config)
-
-    command = supervisor._build_daemon_command()
-
-    assert command.count("--worktree-submodule-path") == 2
-    assert "packages/app" in command
-    assert "external/lib" in command
-
-    args = parse_implementation_supervisor_args(
-        [
-            "--implement",
-            "--todo-path",
-            str(repo / "todo.md"),
-            "--worktree-submodule-path",
-            "packages/app",
-            "--worktree-submodule-path",
-            "external/lib,vendor/tools",
-            "--codebase-refill-scan",
-            "--codebase-scan-min-open-tasks",
-            "0",
-            "--codebase-scan-depends-on",
-            "AUTO-001,AUTO-002",
-        ]
+    now = datetime.now(timezone.utc)
+    state = TodoTaskState(
+        active_task_id="AUTO-001",
+        active_phase="merge_resolver",
+        active_phase_detail="merge_conflict",
+        heartbeat_at=now.isoformat(),
+        last_progress_at="2000-01-01T00:00:00+00:00",
+        ready_count=1,
     )
-    assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
-    assert args.codebase_refill_scan is True
-    assert args.codebase_scan_depends_on == ["AUTO-001,AUTO-002"]
+
+    stuck, reason = supervisor.is_stuck(state, now_ts=now.timestamp())
+
+    assert stuck is False
+    assert reason == ""
+
+
+def test_implementation_supervisor_repairs_stale_active_state_after_rewrite(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    stale_timestamp = "2000-01-01T00:00:00+00:00"
+    TodoTaskState(
+        active_task_id="AUTO-001",
+        active_task_title="Stale active task",
+        active_task_track="ops",
+        active_task_started_at=stale_timestamp,
+        active_attempt=2,
+        active_phase="implementing",
+        active_phase_started_at=stale_timestamp,
+        active_phase_detail="stale worker",
+        active_log_path=str(state_dir / "implementation.log"),
+        active_worktree_path=str(repo / "worktrees" / "auto-001"),
+        active_branch="implementation/auto-001",
+        implementation_in_progress=False,
+        heartbeat_at=stale_timestamp,
+        last_progress_at=stale_timestamp,
+        ready_count=1,
+    ).save(state_path)
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        stale_seconds=60,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["stuck"] is True
+    assert result["state_repair"]["repaired"] is True
+    assert result["state_repair"]["active_task_id"] == "AUTO-001"
+    repaired_state = TodoTaskState.load(state_path)
+    assert repaired_state.active_task_id == ""
+    assert repaired_state.implementation_in_progress is False
+    assert repaired_state.active_worktree_path == ""
+    strategy = json.loads((state_dir / "strategy.json").read_text(encoding="utf-8"))
+    assert strategy["deprioritized_tasks"] == ["AUTO-001"]
+    events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "blocked_progress_state_repaired" for event in events)
+
+
+def test_implementation_daemon_keeps_alive_on_empty_todo_board(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    result = daemon.run_once()
+
+    assert result["reason"] == "no_tasks_found"
+    assert result["task_count"] == 0
+    state = TodoTaskState.load(state_dir / "task_state.json")
+    assert state.active_task_id == ""
+    assert state.ready_count == 0
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "daemon_no_tasks"
+
+
+def test_implementation_daemon_records_non_ephemeral_setup_exception(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Record command failure
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs:
+- Validation:
+- Acceptance: The daemon records setup failures as durable events.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="missing-implementation-command-for-test",
+        use_ephemeral_worktree=False,
+    )
+
+    result = daemon.run_once()
+
+    implementation = result["implementation_result"]
+    assert implementation["returncode"] == 1
+    assert implementation["exception_result"]["exception_type"] == "FileNotFoundError"
+    assert implementation["exception_result"]["phase"] == "implementing"
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "implementation_exception" for event in events)
+    assert events[-1]["type"] == "daemon_pass"
+
+
+def test_implementation_supervisor_creates_missing_todo_before_refill(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "runtime_bridge.py"
+    source.parent.mkdir()
+    source.write_text(
+        """class RuntimeBridge:
+    def dispatch(self, request):
+        return request
+""",
+        encoding="utf-8",
+    )
+    objective_path = repo / "objective-heap.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 Runtime bridge proof
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Prove that runtime bridge dispatch supports virtual AI OS execution.
+- Evidence: RuntimeBridge.dispatch, missing_runtime_contract
+- Outputs: src/runtime_bridge.py, tests
+- Validation: test -f objective-heap.md
+- Gap task: Add the missing runtime contract proof.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective-heap.md", "src/runtime_bridge.py")
+    _git(repo, "commit", "-m", "seed objective heap")
+    todo_path = repo / "missing-todo.md"
+    state_dir = repo / "state"
+
+    result = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            task_prefix="## ACCEL-",
+            objective_refill_enabled=True,
+            objective_path=objective_path,
+            objective_discovery_dir=repo / "discovery",
+            objective_bundle_dir=repo / "bundles",
+            objective_dataset_dir=repo / "datasets",
+            objective_graph_path=repo / "objective-graph.json",
+            objective_scan_min_open_tasks=0,
+            objective_scan_max_findings=1,
+            objective_scan_cooldown_seconds=21600,
+            objective_persist_ast_dataset=False,
+        )
+    ).run_once()
+
+    assert result["todo_board_repair"]["created"] is True
+    assert result["objective_refill_count"] == 1
+    assert todo_path.exists()
+    assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
+    events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "todo_board_created" for event in events)
+
+
+def test_implementation_supervisor_records_dependency_guardrail(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Waiting on missing dependency
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-999
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: This task should become ready when dependencies are valid.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            task_prefix="## AUTO-",
+            dependency_guardrail_discovery_dir=repo / "dependency-discovery",
+            dependency_guardrail_max_findings=1,
+        )
+    )
+
+    result = supervisor.run_once()
+
+    assert result["dependency_guardrail_count"] == 1
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve dependency guardrail for AUTO-001" in todo_text
+    strategy = json.loads((state_dir / "strategy.json").read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    assert strategy["dependency_guardrail_findings"][0]["missing_dependencies"] == ["AUTO-999"]
+    supervisor_events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "dependency_guardrail" for event in supervisor_events)
+
+
+def test_implementation_supervisor_releases_completed_guardrail_block(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Original blocked task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Original task should resume after repair.
+
+## AUTO-002 Resolve implementation retry-budget failure for AUTO-001
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Repair task completed.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "retry_budget_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-002",
+                        "failure_kind": "implementation",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=strategy_path,
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            task_prefix="## AUTO-",
+        )
+    )
+
+    result = supervisor.run_once()
+
+    assert result["guardrail_unblock_count"] == 1
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["guardrail_unblock_releases"][0]["source_task_id"] == "AUTO-001"
+    supervisor_events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "guardrail_blocks_released" for event in supervisor_events)
+
+
+def test_implementation_supervisor_releases_stale_strategy_blocks(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed source
+
+- Status: completed
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Already complete.
+
+## AUTO-002 Still blocked source
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Remains blocked.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps({"blocked_tasks": ["AUTO-001", "AUTO-999", "AUTO-002", "AUTO-002"]}),
+        encoding="utf-8",
+    )
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=strategy_path,
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            task_prefix="## AUTO-",
+        )
+    )
+
+    result = supervisor.run_once()
+
+    assert result["guardrail_unblock_count"] == 3
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-002"]
+    reasons = {release["reason"] for release in strategy["guardrail_unblock_releases"]}
+    assert reasons == {"duplicate_strategy_block", "missing_task", "source_completed"}
+    supervisor_events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "guardrail_blocks_released" for event in supervisor_events)
+
+
+def test_implementation_daemon_records_worktree_setup_exception(tmp_path):
+    repo = tmp_path / "not-a-git-repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Record setup failure
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs:
+- Validation:
+- Acceptance: The daemon records setup failures as durable events.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+        implementation_command="true",
+        use_ephemeral_worktree=True,
+        worktree_root=repo / "worktrees",
+    )
+
+    result = daemon.run_once()
+
+    implementation = result["implementation_result"]
+    assert implementation["returncode"] == 1
+    assert implementation["exception_result"]["exception_type"] == "RuntimeError"
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "implementation_exception" for event in events)
+    assert events[-1]["type"] == "daemon_pass"
+
+
+def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "task_id": "ACCEL-002",
+        "attempt": 3,
+        "branch": "implementation/accel-002",
+        "implementation_commit": "abc123",
+        "title": "Recover failed merge",
+    }
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
+    daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
+
+    def raise_merge_error(*args, **kwargs):
+        raise RuntimeError("merge workspace unavailable")
+
+    daemon._merge_branch_to_main = raise_merge_error  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert result == [
+        {
+            "task_id": "ACCEL-002",
+            "attempt": 3,
+            "branch": "implementation/accel-002",
+            "implementation_commit": "abc123",
+            "resolved": False,
+            "reason": "merge_reconcile_exception",
+            "exception_type": "RuntimeError",
+            "error": "merge workspace unavailable",
+        }
+    ]
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "merge_reconcile_exception"
+
+
+def test_implementation_daemon_reconciles_merge_lock_deferrals(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "type": "implementation_finished",
+        "task_id": "ACCEL-003",
+        "attempt": 2,
+        "branch": "implementation/accel-003",
+        "implementation_commit": "def456",
+        "validation_result": {"attempted": True, "passed": True},
+        "merge_result": {
+            "attempted": False,
+            "merged": False,
+            "reason": "lock_exists",
+            "branch": "implementation/accel-003",
+            "lock_owner_pid": 12345,
+        },
+    }
+
+    daemon._iter_events = lambda: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
+
+    assert daemon._failed_merge_candidates() == [event]
+    assert daemon._unresolved_merge_failures_by_task()["ACCEL-003"] == event
+
+
+def test_implementation_daemon_retries_cleanup_failures_for_already_merged_branch(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "type": "implementation_finished",
+        "task_id": "ACCEL-004",
+        "attempt": 1,
+        "branch": "implementation/accel-004",
+        "implementation_commit": "abc123",
+        "worktree_path": str(repo / "worktrees" / "accel-004"),
+        "validation_result": {"attempted": True, "passed": True},
+        "merge_result": {
+            "attempted": True,
+            "merged": False,
+            "reason": "cleanup_failed",
+            "branch": "implementation/accel-004",
+        },
+    }
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: True  # type: ignore[method-assign]
+    daemon._cleanup_merged_worktree = lambda worktree_path, branch: {  # type: ignore[method-assign]
+        "cleaned": False,
+        "reason": "worktree_remove_failed",
+        "branch": branch,
+        "worktree_path": str(worktree_path),
+    }
+
+    result = daemon._reconcile_failed_merges()
+
+    assert result[0]["resolved"] is False
+    assert result[0]["reason"] == "cleanup_retry_failed"
+    assert result[0]["cleanup_result"]["reason"] == "worktree_remove_failed"
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "merge_reconciled"
+    assert events[-1]["resolved"] is False
 
 
 def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
@@ -228,6 +910,68 @@ def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
     assert strategy["last_codebase_scan_mode"] == "drained_exhaustive"
     assert strategy["last_drained_codebase_scan_task_count"] == 1
     assert list((repo / "discovery").glob("*-auto-002-codebase-scan-*.md"))
+
+
+def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Fix implementation runtime
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f src/runtime.py
+- Acceptance: Fix the repeated implementation blocker.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    events_path = state_dir / "auto_events.jsonl"
+    events_path.parent.mkdir(parents=True)
+    failure = {
+        "type": "implementation_finished",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "returncode": 124,
+        "validation_result": {"attempted": False, "passed": True},
+        "merge_result": {"attempted": False, "merged": False, "reason": "not_attempted"},
+        "log_path": "state/implementation_logs/auto-001-attempt-1.log",
+    }
+    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    config = TodoSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "auto_task_state.json",
+        strategy_path=state_dir / "auto_strategy.json",
+        events_path=state_dir / "auto_supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        task_prefix="## AUTO-",
+        state_prefix="auto",
+        implementation_retry_budget=2,
+        validation_retry_budget=0,
+        merge_retry_budget=0,
+        retry_budget_discovery_dir=repo / "discovery",
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["retry_budget_count"] == 1
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve implementation retry-budget failure for AUTO-001" in todo_text
+    strategy = json.loads((state_dir / "auto_strategy.json").read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    supervisor_events = [
+        json.loads(line)
+        for line in (state_dir / "auto_supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "retry_budget_guardrail" for event in supervisor_events)
 
 
 def test_implementation_supervisor_refines_objective_goals_before_generating_todos(tmp_path):
@@ -584,7 +1328,7 @@ def test_bundle_supervisor_writes_manifest_without_starting_lanes(tmp_path):
     assert "--no-implement" in manifest["lanes"][0]["command"]
 
 
-def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path, monkeypatch):
+def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -603,16 +1347,16 @@ def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path, m
         "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv(
-        "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
-        f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}",
-    )
     daemon = TodoImplementationDaemon(
         todo_path=repo / "todo.md",
         state_path=repo / "state" / "task_state.json",
         strategy_path=repo / "state" / "strategy.json",
         events_path=repo / "state" / "events.jsonl",
         repo_root=repo,
+        llm_merge_resolver_command=(
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}"
+        ),
+        llm_merge_resolver_timeout_seconds=5,
     )
     result = daemon._invoke_llm_merge_resolver_for_failed_merge(
         workspace=repo,
@@ -640,6 +1384,201 @@ def test_implementation_daemon_invokes_configured_llm_merge_resolver(tmp_path, m
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "llm_merge_resolver_invoked"
     assert events[-1]["prompt_chars"] == len(prompt)
+
+
+def test_llm_merge_resolver_times_out_hung_command(tmp_path):
+    from ipfs_accelerate_py.agent_supervisor.merge_resolver import invoke_llm_resolver
+
+    sleeper = tmp_path / "sleeper.py"
+    sleeper.write_text("import time\ntime.sleep(5)\n", encoding="utf-8")
+
+    result = invoke_llm_resolver(
+        {"found": True, "repo_root": str(tmp_path), "prompt": "resolve this merge"},
+        command_template=f"{shlex.quote(sys.executable)} {shlex.quote(str(sleeper))}",
+        timeout_seconds=0.01,
+    )
+
+    assert result["applied"] is False
+    assert result["llm_timeout"] is True
+    assert result["llm_returncode"] is None
+    assert "timed out" in result["apply_error"]
+
+
+def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "blocked.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "blocked.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-001")
+    target.write_text("branch\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "branch")
+    _git(repo, "checkout", "main")
+    target.write_text("local dirty\n", encoding="utf-8")
+
+    capture_path = tmp_path / "dirty-resolver-prompt.txt"
+    resolver_script = tmp_path / "dirty_resolver.py"
+    resolver_script.write_text(
+        "import pathlib, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        llm_merge_resolver_command=(
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}"
+        ),
+        llm_merge_resolver_timeout_seconds=5,
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-001",
+        PortalTask(
+            task_id="AUTO-001",
+            title="Resolve dirty checkout blocker",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["merged"] is False
+    assert result["reason"] == "main_checkout_dirty_conflict"
+    assert result["dirty_paths"] == ["blocked.txt"]
+    assert result["llm_merge_resolver"]["applied"] is True
+    prompt = capture_path.read_text(encoding="utf-8")
+    assert "main_checkout_dirty_conflict" in prompt
+    assert "Dirty paths: blocked.txt" in prompt
+
+
+def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "blocked.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "blocked.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-004")
+    target.write_text("branch\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "branch")
+    _git(repo, "checkout", "-b", "driver", "main")
+
+    capture_path = tmp_path / "managed-main-resolver-prompt.txt"
+    resolver_script = tmp_path / "managed_main_resolver.py"
+    resolver_script.write_text(
+        "import pathlib, subprocess, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n"
+        "subprocess.check_call(['git', 'checkout', '--', 'blocked.txt'])\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_root=repo / "worktrees",
+        llm_merge_resolver_command=(
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}"
+        ),
+        llm_merge_resolver_timeout_seconds=5,
+    )
+    workspace_result = daemon._prepare_main_merge_workspace("main", "implementation/auto-004")
+    workspace = Path(str(workspace_result["path"]))
+    (workspace / "blocked.txt").write_text("dirty managed worktree\n", encoding="utf-8")
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-004",
+        PortalTask(
+            task_id="AUTO-004",
+            title="Repair dirty managed main merge worktree",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["merged"] is True
+    assert result["llm_workspace_resolver"]["applied"] is True
+    assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-004", "main") == ""
+    prompt = capture_path.read_text(encoding="utf-8")
+    assert "main_merge_worktree_dirty" in prompt
+    assert "Dirty paths: blocked.txt" in prompt
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "main_merge_workspace_blocker_resolved" for event in events)
+
+
+def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _git(submodule, "checkout", "-b", "implementation/auto-001-submodule-libs-child")
+    (submodule / "child.txt").write_text("branch\n", encoding="utf-8")
+    _git(submodule, "commit", "-am", "submodule branch")
+    _git(submodule, "checkout", "main")
+    (submodule / "child.txt").write_text("dirty\n", encoding="utf-8")
+
+    capture_path = tmp_path / "submodule-dirty-prompt.txt"
+    resolver_script = tmp_path / "submodule_dirty_resolver.py"
+    resolver_script.write_text(
+        "import pathlib, subprocess, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n"
+        "subprocess.check_call(['git', 'checkout', '--', 'child.txt'])\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        llm_merge_resolver_command=(
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}"
+        ),
+        llm_merge_resolver_timeout_seconds=5,
+    )
+
+    results = daemon._merge_submodule_branches_to_main(
+        "implementation/auto-001",
+        task=PortalTask(
+            task_id="AUTO-001",
+            title="Resolve dirty submodule checkout",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert results[0]["merged"] is True
+    assert results[0]["path"] == "libs/child"
+    assert _git(submodule, "rev-parse", "HEAD") == _git(
+        submodule,
+        "rev-parse",
+        "implementation/auto-001-submodule-libs-child",
+    )
+    prompt = capture_path.read_text(encoding="utf-8")
+    assert "submodule_checkout_dirty" in prompt
+    assert "Dirty paths: child.txt" in prompt
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "submodule_checkout_blocker_resolved" for event in events)
 
 
 def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
@@ -689,3 +1628,119 @@ def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
         check=False,
     )
     assert no_merge_head.returncode != 0
+
+
+def test_implementation_daemon_accepts_resolver_committed_merge(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "conflict.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-merge")
+    target.write_text("feature\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "feature")
+    _git(repo, "checkout", "main")
+    target.write_text("main\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "main")
+
+    resolver_script = tmp_path / "resolver_commits.py"
+    resolver_script.write_text(
+        "import pathlib, subprocess\n"
+        "pathlib.Path('conflict.txt').write_text('resolved by resolver\\n', encoding='utf-8')\n"
+        "subprocess.check_call(['git', 'add', 'conflict.txt'])\n"
+        "subprocess.check_call(['git', 'commit', '--no-edit'])\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        llm_merge_resolver_command=f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))}",
+        llm_merge_resolver_timeout_seconds=5,
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-merge",
+        PortalTask(
+            task_id="AUTO-002",
+            title="Accept resolver committed merge",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["merged"] is True
+    assert result["llm_merge_commit_result"]["reason"] == "resolver_committed_merge"
+    assert target.read_text(encoding="utf-8") == "resolved by resolver\n"
+    assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-merge", "HEAD") == ""
+
+
+def test_implementation_daemon_invokes_llm_resolver_for_submodule_merge_conflict(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _git(submodule, "checkout", "-b", "implementation/auto-003-submodule-libs-child")
+    (submodule / "child.txt").write_text("branch\n", encoding="utf-8")
+    _git(submodule, "commit", "-am", "submodule branch")
+    _git(submodule, "checkout", "main")
+    (submodule / "child.txt").write_text("main\n", encoding="utf-8")
+    _git(submodule, "commit", "-am", "main change")
+
+    capture_path = tmp_path / "submodule-conflict-prompt.txt"
+    resolver_script = tmp_path / "submodule_conflict_resolver.py"
+    resolver_script.write_text(
+        "import pathlib, subprocess, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n"
+        "pathlib.Path('child.txt').write_text('resolved\\n', encoding='utf-8')\n"
+        "subprocess.check_call(['git', 'add', 'child.txt'])\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        llm_merge_resolver_command=(
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}"
+        ),
+        llm_merge_resolver_timeout_seconds=5,
+    )
+
+    results = daemon._merge_submodule_branches_to_main(
+        "implementation/auto-003",
+        task=PortalTask(
+            task_id="AUTO-003",
+            title="Resolve submodule merge conflict",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert results[0]["merged"] is True
+    assert results[0]["ff_only_result"]["returncode"] != 0
+    assert results[0]["llm_merge_resolver"]["applied"] is True
+    assert results[0]["llm_merge_commit_result"]["completed"] is True
+    assert (submodule / "child.txt").read_text(encoding="utf-8") == "resolved\n"
+    assert _git(
+        submodule,
+        "merge-base",
+        "--is-ancestor",
+        "implementation/auto-003-submodule-libs-child",
+        "HEAD",
+    ) == ""
+    prompt = capture_path.read_text(encoding="utf-8")
+    assert "submodule_merge_conflict" in prompt
+    assert "Unmerged paths: child.txt" in prompt

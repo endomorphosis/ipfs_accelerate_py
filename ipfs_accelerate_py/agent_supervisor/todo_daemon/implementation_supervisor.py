@@ -60,11 +60,27 @@ class PortalSupervisorConfig:
     state_prefix: str = "portal"
     implement: bool = False
     implementation_command: str = ""
+    llm_merge_resolver_command: str = ""
+    llm_merge_resolver_timeout_seconds: float | None = None
     implementation_timeout: float = 1800.0
     implementation_log_stall_seconds: float = 300.0
     use_ephemeral_worktree: bool = True
     worktree_root: Path | None = None
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
+    retry_budget_guardrail_enabled: bool = True
+    retry_budget_discovery_dir: Path | None = None
+    retry_budget_discovery_output_path: str = ""
+    validation_retry_budget: int = 3
+    merge_retry_budget: int = 3
+    implementation_retry_budget: int = 3
+    retry_budget_commit_outputs: bool = False
+    retry_budget_commit_subject: str = "Agent: record retry-budget guardrail outputs"
+    dependency_guardrail_enabled: bool = True
+    dependency_guardrail_discovery_dir: Path | None = None
+    dependency_guardrail_discovery_output_path: str = ""
+    dependency_guardrail_max_findings: int = 5
+    dependency_guardrail_commit_outputs: bool = False
+    dependency_guardrail_commit_subject: str = "Agent: record dependency guardrail outputs"
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -100,6 +116,7 @@ class PortalSupervisorConfig:
     objective_persist_ast_dataset: bool = True
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
+    supervisor_script_path: Path | None = None
 
 
 class AdoptedManagedDaemonProcess:
@@ -154,16 +171,31 @@ class PortalImplementationSupervisor:
         self.last_start_at: float | None = None
 
     def run_once(self) -> dict[str, Any]:
+        strategy_file_repair = self.ensure_strategy_file()
+        todo_board_repair = self.ensure_todo_board_for_refill()
+        guardrail_releases = self.release_completed_guardrail_blocks()
         state = PortalTaskState.load(self.config.state_path)
-        stuck, reason = self.is_stuck(state, now_ts=time.time())
+        now_ts = time.time()
+        stuck, reason = self.is_stuck(state, now_ts=now_ts)
         if stuck:
+            retry_budget_findings = self.record_retry_budget_guardrails()
+            dependency_findings = self.record_dependency_guardrails()
             strategy = self.rewrite_strategy(state, reason)
+            state_repair = self.repair_blocked_progress_state(state, reason, now_ts=now_ts)
             return {
                 "stuck": True,
                 "reason": reason,
+                "retry_budget_count": len(retry_budget_findings),
+                "dependency_guardrail_count": len(dependency_findings),
                 "strategy_generation": int(strategy.get("generation", 0)),
                 "active_task_id": state.active_task_id,
+                "state_repair": state_repair,
+                "strategy_file_repair": strategy_file_repair,
+                "todo_board_repair": todo_board_repair,
+                "guardrail_unblock_count": len(guardrail_releases),
             }
+        retry_budget_findings = self.record_retry_budget_guardrails()
+        dependency_findings = self.record_dependency_guardrails()
         objective_payload = self.refill_objective_backlog()
         codebase_findings = self.refill_codebase_backlog()
         objective_generated_count = int(objective_payload.get("generated_count") or 0)
@@ -174,6 +206,9 @@ class PortalImplementationSupervisor:
                 "stuck": False,
                 "active_task_id": state.active_task_id,
                 "completed_count": state.completed_count,
+                "retry_budget_count": len(retry_budget_findings),
+                "dependency_guardrail_count": len(dependency_findings),
+                "guardrail_unblock_count": len(guardrail_releases),
                 "objective_refill_count": objective_generated_count,
                 "objective_refined_goal_count": objective_refined_goal_count,
                 "codebase_refill_count": len(codebase_findings),
@@ -183,9 +218,14 @@ class PortalImplementationSupervisor:
             "stuck": False,
             "active_task_id": state.active_task_id,
             "completed_count": state.completed_count,
+            "retry_budget_count": len(retry_budget_findings),
+            "dependency_guardrail_count": len(dependency_findings),
+            "guardrail_unblock_count": len(guardrail_releases),
             "objective_refill_count": objective_generated_count,
             "objective_refined_goal_count": objective_refined_goal_count,
             "codebase_refill_count": len(codebase_findings),
+            "strategy_file_repair": strategy_file_repair,
+            "todo_board_repair": todo_board_repair,
         }
 
     def run_forever(self) -> None:
@@ -262,11 +302,158 @@ class PortalImplementationSupervisor:
         state = PortalTaskState.load(self.config.state_path)
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if not stuck:
+            self.ensure_strategy_file()
+            self.ensure_todo_board_for_refill()
+            self.release_completed_guardrail_blocks()
+            self.record_retry_budget_guardrails()
+            self.record_dependency_guardrails()
             self.refill_objective_backlog()
             self.refill_codebase_backlog()
             return SupervisorLoopDecision.keep_running()
+        self.ensure_strategy_file()
+        self.ensure_todo_board_for_refill()
+        self.release_completed_guardrail_blocks()
+        self.record_retry_budget_guardrails()
+        self.record_dependency_guardrails()
         self.rewrite_strategy(state, reason)
-        return SupervisorLoopDecision.recycle(reason, detail={"active_task_id": state.active_task_id})
+        active_task_id = state.active_task_id
+        self.repair_blocked_progress_state(state, reason, now_ts=time.time())
+        return SupervisorLoopDecision.recycle(reason, detail={"active_task_id": active_task_id})
+
+    def ensure_todo_board_for_refill(self) -> dict[str, Any]:
+        """Create an empty todo board when refill machinery is expected to populate it."""
+
+        if self.config.todo_path.exists():
+            return {"created": False, "reason": "exists", "path": str(self.config.todo_path)}
+        if not (self.config.objective_refill_enabled or self.config.codebase_refill_enabled):
+            return {"created": False, "reason": "refill_disabled", "path": str(self.config.todo_path)}
+        self.config.todo_path.parent.mkdir(parents=True, exist_ok=True)
+        write_text_atomic(self.config.todo_path, "# Agent Todos\n")
+        result = {"created": True, "reason": "refill_enabled", "path": str(self.config.todo_path)}
+        self._record_event("todo_board_created", result)
+        return result
+
+    def release_completed_guardrail_blocks(self) -> list[dict[str, Any]]:
+        """Remove strategy blocks once their generated repair task is completed."""
+
+        if not self.config.todo_path.exists() or not self.config.strategy_path.exists():
+            return []
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            release_completed_guardrail_blocks,
+            task_id_prefix,
+        )
+
+        releases = release_completed_guardrail_blocks(
+            todo_path=self.config.todo_path,
+            strategy_path=self.config.strategy_path,
+            task_prefix=task_id_prefix(self.config.task_prefix),
+        )
+        if releases:
+            self._record_event(
+                "guardrail_blocks_released",
+                {
+                    "released_count": len(releases),
+                    "todo_path": str(self.config.todo_path),
+                    "strategy_path": str(self.config.strategy_path),
+                    "releases": releases,
+                },
+            )
+        return releases
+
+    def record_dependency_guardrails(self) -> list[dict[str, Any]]:
+        """Convert impossible dependency metadata into ready repair tasks."""
+
+        if not self.config.dependency_guardrail_enabled:
+            return []
+        if not self.config.todo_path.exists():
+            return []
+
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            record_dependency_guardrail_findings,
+            task_id_prefix,
+        )
+
+        discovery_dir = (
+            self.config.dependency_guardrail_discovery_dir
+            or self.config.retry_budget_discovery_dir
+            or self.config.state_dir.parent / "discovery"
+        )
+        discovery_output_path = self.config.dependency_guardrail_discovery_output_path
+        if not discovery_output_path:
+            try:
+                discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
+            except ValueError:
+                discovery_output_path = str(discovery_dir)
+        findings = record_dependency_guardrail_findings(
+            todo_path=self.config.todo_path,
+            strategy_path=self.config.strategy_path,
+            discovery_dir=discovery_dir,
+            task_header_prefix_value=self.config.task_prefix,
+            task_prefix=task_id_prefix(self.config.task_prefix),
+            max_findings=self.config.dependency_guardrail_max_findings,
+            discovery_output_path=discovery_output_path,
+            commit_outputs=self.config.dependency_guardrail_commit_outputs,
+            repo_root=self.config.repo_root,
+            commit_subject=self.config.dependency_guardrail_commit_subject,
+        )
+        if findings:
+            self._record_event(
+                "dependency_guardrail",
+                {
+                    "generated_count": len(findings),
+                    "todo_path": str(self.config.todo_path),
+                    "discovery_dir": str(discovery_dir),
+                    "findings": findings,
+                },
+            )
+        return findings
+
+    def record_retry_budget_guardrails(self) -> list[dict[str, Any]]:
+        """Convert repeated daemon blockers into follow-up work before another retry loop."""
+
+        if not self.config.retry_budget_guardrail_enabled:
+            return []
+        if not self.config.todo_path.exists():
+            return []
+
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            record_retry_budget_findings,
+            task_id_prefix,
+        )
+
+        discovery_dir = self.config.retry_budget_discovery_dir or self.config.state_dir.parent / "discovery"
+        discovery_output_path = self.config.retry_budget_discovery_output_path
+        if not discovery_output_path:
+            try:
+                discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
+            except ValueError:
+                discovery_output_path = str(discovery_dir)
+        findings = record_retry_budget_findings(
+            todo_path=self.config.todo_path,
+            events_path=self.config.state_dir / f"{self.config.state_prefix}_events.jsonl",
+            strategy_path=self.config.strategy_path,
+            discovery_dir=discovery_dir,
+            task_header_prefix_value=self.config.task_prefix,
+            task_prefix=task_id_prefix(self.config.task_prefix),
+            validation_retry_budget=self.config.validation_retry_budget,
+            merge_retry_budget=self.config.merge_retry_budget,
+            implementation_retry_budget=self.config.implementation_retry_budget,
+            discovery_output_path=discovery_output_path,
+            commit_outputs=self.config.retry_budget_commit_outputs,
+            repo_root=self.config.repo_root,
+            commit_subject=self.config.retry_budget_commit_subject,
+        )
+        if findings:
+            self._record_event(
+                "retry_budget_guardrail",
+                {
+                    "generated_count": len(findings),
+                    "todo_path": str(self.config.todo_path),
+                    "discovery_dir": str(discovery_dir),
+                    "findings": findings,
+                },
+            )
+        return findings
 
     def refill_objective_backlog(self) -> dict[str, Any]:
         """Refine the objective heap and feed todos when the backlog is low or drained."""
@@ -504,6 +691,12 @@ class PortalImplementationSupervisor:
         stale = self.config.stale_seconds
         if state.active_task_id and heartbeat_age > stale:
             return True, f"heartbeat stale for active task {state.active_task_id}"
+        if (
+            state.active_task_id
+            and state.active_phase in {"merge_reconciliation", "merge_resolver"}
+            and heartbeat_age <= stale
+        ):
+            return False, ""
         if ignore_progress_until_ts is not None and now_ts < ignore_progress_until_ts:
             return False, ""
         if state.active_task_id and state.ready_count > 0 and progress_age > stale:
@@ -551,6 +744,63 @@ class PortalImplementationSupervisor:
             },
         )
         return strategy
+
+    def repair_blocked_progress_state(
+        self,
+        state: PortalTaskState,
+        reason: str,
+        *,
+        now_ts: float,
+    ) -> dict[str, Any]:
+        """Clear stale active-task state after strategy has recorded the blocker."""
+
+        if not state.active_task_id:
+            return {"repaired": False, "reason": "no_active_task"}
+        if self._implementation_attempt_is_active(state, now_ts=now_ts):
+            return {"repaired": False, "reason": "implementation_attempt_active"}
+        if reason.startswith("implementation log stalled"):
+            return {"repaired": False, "reason": "implementation_log_stalled"}
+
+        previous = {
+            "active_task_id": state.active_task_id,
+            "active_task_title": state.active_task_title,
+            "active_task_track": state.active_task_track,
+            "active_task_started_at": state.active_task_started_at,
+            "active_attempt": state.active_attempt,
+            "active_phase": state.active_phase,
+            "active_phase_detail": state.active_phase_detail,
+            "active_log_path": state.active_log_path,
+            "active_worktree_path": state.active_worktree_path,
+            "active_branch": state.active_branch,
+            "implementation_in_progress": state.implementation_in_progress,
+        }
+        repaired_at = utc_now()
+        state.active_task_id = ""
+        state.active_task_title = ""
+        state.active_task_track = ""
+        state.active_task_started_at = ""
+        state.active_attempt = 0
+        state.active_phase = ""
+        state.active_phase_started_at = ""
+        state.active_phase_detail = ""
+        state.active_log_path = ""
+        state.active_worktree_path = ""
+        state.active_branch = ""
+        state.implementation_in_progress = False
+        state.recommended_task_id = ""
+        state.recommended_actions = []
+        state.heartbeat_at = repaired_at
+        state.last_progress_at = repaired_at
+        state.save(self.config.state_path)
+        result = {
+            "repaired": True,
+            "reason": "stale_active_state",
+            "stuck_reason": reason,
+            "repaired_at": repaired_at,
+            **previous,
+        }
+        self._record_event("blocked_progress_state_repaired", result)
+        return result
 
     def _load_strategy(self) -> dict[str, Any]:
         defaults = {
@@ -613,6 +863,15 @@ class PortalImplementationSupervisor:
             command.extend(["--implementation-timeout", str(self.config.implementation_timeout)])
             if self.config.implementation_command:
                 command.extend(["--implementation-command", self.config.implementation_command])
+            if self.config.llm_merge_resolver_command:
+                command.extend(["--llm-merge-resolver-command", self.config.llm_merge_resolver_command])
+            if self.config.llm_merge_resolver_timeout_seconds is not None:
+                command.extend(
+                    [
+                        "--llm-merge-resolver-timeout-seconds",
+                        str(self.config.llm_merge_resolver_timeout_seconds),
+                    ]
+                )
             if not self.config.use_ephemeral_worktree:
                 command.append("--no-ephemeral-worktree")
             if self.config.worktree_root is not None:
@@ -741,6 +1000,24 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="",
         help="Command used by the daemon for implementation. Defaults to codex exec --full-auto.",
     )
+    parser.add_argument(
+        "--llm-merge-resolver-command",
+        default=os.environ.get("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", ""),
+        help=(
+            "Command invoked with merge-conflict repair prompts on stdin. "
+            "Passed to the managed daemon as IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND."
+        ),
+    )
+    parser.add_argument(
+        "--llm-merge-resolver-timeout-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Timeout for the merge resolver subprocess. Passed to the managed daemon as "
+            "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS; defaults to that env var "
+            "or 600 seconds; <=0 disables."
+        ),
+    )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument(
         "--implementation-log-stall-seconds",
@@ -760,6 +1037,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Directory for temporary implementation worktrees",
     )
     parser.add_argument(
+        "--daemon-script-path",
+        type=Path,
+        default=None,
+        help="Python script used to launch the managed daemon instead of the package module.",
+    )
+    parser.add_argument(
+        "--supervisor-script-path",
+        type=Path,
+        default=None,
+        help="Python script used to relaunch this supervisor from external wrappers.",
+    )
+    parser.add_argument(
         "--worktree-submodule-path",
         action="append",
         default=[],
@@ -767,6 +1056,51 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Repo-relative submodule path to initialize and commit inside implementation worktrees. "
             "May be repeated or comma-separated."
         ),
+    )
+    parser.add_argument(
+        "--no-retry-budget-guardrail",
+        dest="retry_budget_guardrail_enabled",
+        action="store_false",
+        help="Disable conversion of repeated implementation, validation, or merge failures into follow-up tasks.",
+    )
+    parser.set_defaults(retry_budget_guardrail_enabled=True)
+    parser.add_argument(
+        "--retry-budget-discovery-dir",
+        type=Path,
+        default=None,
+        help="Directory for retry-budget discovery reports. Defaults to a sibling discovery directory near state.",
+    )
+    parser.add_argument("--retry-budget-discovery-output-path", default="")
+    parser.add_argument("--validation-retry-budget", type=int, default=3)
+    parser.add_argument("--merge-retry-budget", type=int, default=3)
+    parser.add_argument("--implementation-retry-budget", type=int, default=3)
+    parser.add_argument(
+        "--retry-budget-commit-outputs",
+        action="store_true",
+        help="Commit generated retry-budget todo/discovery outputs.",
+    )
+    parser.add_argument(
+        "--retry-budget-commit-subject",
+        default="Agent: record retry-budget guardrail outputs",
+    )
+    parser.add_argument(
+        "--no-dependency-guardrail",
+        dest="dependency_guardrail_enabled",
+        action="store_false",
+        help="Disable conversion of missing/self-referential dependencies into ready repair tasks.",
+    )
+    parser.set_defaults(dependency_guardrail_enabled=True)
+    parser.add_argument("--dependency-guardrail-discovery-dir", type=Path, default=None)
+    parser.add_argument("--dependency-guardrail-discovery-output-path", default="")
+    parser.add_argument("--dependency-guardrail-max-findings", type=int, default=5)
+    parser.add_argument(
+        "--dependency-guardrail-commit-outputs",
+        action="store_true",
+        help="Commit generated dependency-guardrail todo/discovery outputs.",
+    )
+    parser.add_argument(
+        "--dependency-guardrail-commit-subject",
+        default="Agent: record dependency guardrail outputs",
     )
     parser.add_argument(
         "--codebase-refill-scan",
@@ -896,11 +1230,27 @@ def main(argv: list[str] | None = None) -> None:
             state_prefix=args.state_prefix,
             implement=args.implement,
             implementation_command=args.implementation_command,
+            llm_merge_resolver_command=args.llm_merge_resolver_command,
+            llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
             implementation_timeout=args.implementation_timeout,
             implementation_log_stall_seconds=args.implementation_log_stall_seconds,
             use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
             worktree_root=args.worktree_root,
             worktree_submodule_paths=normalize_relative_path_list(args.worktree_submodule_path),
+            retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled,
+            retry_budget_discovery_dir=args.retry_budget_discovery_dir,
+            retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,
+            validation_retry_budget=args.validation_retry_budget,
+            merge_retry_budget=args.merge_retry_budget,
+            implementation_retry_budget=args.implementation_retry_budget,
+            retry_budget_commit_outputs=args.retry_budget_commit_outputs,
+            retry_budget_commit_subject=args.retry_budget_commit_subject,
+            dependency_guardrail_enabled=args.dependency_guardrail_enabled,
+            dependency_guardrail_discovery_dir=args.dependency_guardrail_discovery_dir,
+            dependency_guardrail_discovery_output_path=args.dependency_guardrail_discovery_output_path,
+            dependency_guardrail_max_findings=args.dependency_guardrail_max_findings,
+            dependency_guardrail_commit_outputs=args.dependency_guardrail_commit_outputs,
+            dependency_guardrail_commit_subject=args.dependency_guardrail_commit_subject,
             codebase_refill_enabled=args.codebase_refill_scan,
             codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
             codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,
@@ -935,6 +1285,8 @@ def main(argv: list[str] | None = None) -> None:
             objective_max_refinement_depth=args.objective_max_refinement_depth,
             objective_persist_ast_dataset=args.objective_persist_ast_dataset,
             repo_root=REPO_ROOT,
+            daemon_script_path=args.daemon_script_path,
+            supervisor_script_path=args.supervisor_script_path,
         )
     )
     if args.once:

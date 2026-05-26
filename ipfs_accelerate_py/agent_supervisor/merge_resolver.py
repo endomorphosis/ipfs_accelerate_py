@@ -11,6 +11,11 @@ from pathlib import Path
 from typing import Any, Sequence
 
 
+LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
+LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
+DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS = 600.0
+
+
 def iter_jsonl(path: Path) -> list[dict[str, Any]]:
     if not path.exists():
         return []
@@ -65,6 +70,19 @@ def compact_text(value: Any, *, limit: int = 2000) -> str:
     if len(text) <= limit:
         return text
     return text[:limit] + "\n...[truncated]"
+
+
+def resolver_timeout_seconds(value: str | float | int | None = None) -> float | None:
+    raw_value = os.environ.get(LLM_MERGE_RESOLVER_TIMEOUT_ENV, "") if value is None else value
+    if raw_value in {None, ""}:
+        return DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS
+    try:
+        timeout_seconds = float(raw_value)
+    except (TypeError, ValueError):
+        return DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS
+    if timeout_seconds <= 0:
+        return None
+    return timeout_seconds
 
 
 def _merge_result(event: dict[str, Any]) -> dict[str, Any]:
@@ -147,29 +165,47 @@ def invoke_llm_resolver(
     payload: dict[str, Any],
     *,
     command_template: str | None = None,
+    timeout_seconds: float | None = None,
 ) -> dict[str, Any]:
     """Invoke an external LLM resolver command with the prompt on stdin."""
 
-    command_template = (command_template or os.environ.get("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", "")).strip()
+    command_template = (command_template or os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "")).strip()
     if not command_template:
         return {
             **payload,
             "applied": False,
-            "apply_error": "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND is not set",
+            "apply_error": f"{LLM_MERGE_RESOLVER_COMMAND_ENV} is not set",
         }
     command = shlex.split(command_template)
-    result = subprocess.run(
-        command,
-        cwd=payload.get("repo_root") or None,
-        input=str(payload.get("prompt") or ""),
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    timeout = resolver_timeout_seconds(timeout_seconds)
+    try:
+        result = subprocess.run(
+            command,
+            cwd=payload.get("repo_root") or None,
+            input=str(payload.get("prompt") or ""),
+            text=True,
+            capture_output=True,
+            check=False,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as exc:
+        return {
+            **payload,
+            "applied": False,
+            "llm_command": command,
+            "llm_timeout": True,
+            "llm_timeout_seconds": timeout,
+            "llm_returncode": None,
+            "llm_stdout": compact_text(exc.stdout),
+            "llm_stderr": compact_text(exc.stderr),
+            "apply_error": f"LLM merge resolver timed out after {timeout} seconds",
+        }
     return {
         **payload,
         "applied": result.returncode == 0,
         "llm_command": command,
+        "llm_timeout": False,
+        "llm_timeout_seconds": timeout,
         "llm_returncode": result.returncode,
         "llm_stdout": compact_text(result.stdout),
         "llm_stderr": compact_text(result.stderr),
@@ -183,6 +219,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-id", default=None)
     parser.add_argument("--apply", action="store_true", help="Invoke the configured resolver command")
     parser.add_argument("--command", default=None, help="Resolver command template. Defaults to env var.")
+    parser.add_argument(
+        "--timeout-seconds",
+        type=float,
+        default=None,
+        help=f"Resolver subprocess timeout. Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 600 seconds; <=0 disables.",
+    )
     return parser
 
 
@@ -190,7 +232,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
     payload = resolver_payload(events_path=args.events_path, repo_root=args.repo_root.resolve(), task_id=args.task_id)
     if args.apply:
-        payload = invoke_llm_resolver(payload, command_template=args.command)
+        payload = invoke_llm_resolver(payload, command_template=args.command, timeout_seconds=args.timeout_seconds)
     print(json.dumps(payload, indent=2, sort_keys=True))
     if args.apply and payload.get("found") and not payload.get("applied"):
         return 1

@@ -105,7 +105,7 @@ default tracking-document creator uses `OBJ-G###` ids, while existing heaps that
 already use another numeric prefix keep that prefix when child goals are
 refined.
 
-The refinery has three modes:
+The refinery has four modes:
 
 - Objective scan: calls the objective graph scanner and appends missing-evidence
   tasks only when the backlog is low, forced, or fully drained. It updates the
@@ -116,12 +116,16 @@ The refinery has three modes:
   exception paths, and placeholder runtime paths. Findings become parseable todo
   tasks with discovery evidence.
 - Retry budget: reads daemon events and blocks source tasks that repeatedly fail
-  validation or merge reconciliation, then appends a follow-up task with the
-  relevant logs, failed command, and merge-resolution instructions.
+  implementation setup/runtime, validation, or merge reconciliation, then
+  appends a follow-up task with the relevant logs, failed command, and
+  repair/unblock instructions.
+- Dependency guardrail: scans todo dependency metadata for missing task ids,
+  self-references, and open-task cycles, then appends ready repair tasks with
+  discovery evidence.
 
 When no mode flag is passed, `ipfs-accelerate-agent-backlog-refinery` runs all
-available modes. `--objective-scan`, `--codebase-scan`, and `--retry-budget`
-select individual modes. The refill thresholds are controlled by
+available modes. `--objective-scan`, `--codebase-scan`, `--retry-budget`, and
+`--dependency-guardrail` select individual modes. The refill thresholds are controlled by
 `IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_MIN_OPEN_TASKS`,
 `IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MIN_OPEN_TASKS`, and the matching
 `*_MAX_FINDINGS` and `*_COOLDOWN_SECONDS` environment variables. Use
@@ -161,6 +165,19 @@ then generate bundle-local todos from the refined graph. Use
 control growth. `--no-objective-goal-refinement` keeps the scan in todo-only mode
 for callers that want a fixed goal graph.
 
+The implementation supervisor also runs the retry-budget guardrail by default.
+It converts repeated implementation exceptions, implementation timeouts,
+validation failures, and merge failures into normal follow-up todos and adds the
+source task to `blocked_tasks` so the daemon does not keep retrying the same
+blocker. Use `--implementation-retry-budget`, `--validation-retry-budget`, and
+`--merge-retry-budget` to tune the thresholds, or
+`--no-retry-budget-guardrail` to disable this behavior for a lane.
+Skipped merge reconciliation events, such as missing implementation branches,
+are treated as merge retry-budget evidence. Cleanup failures after an
+implementation commit already reached the target branch are not marked resolved;
+they stay eligible for the next reconciliation pass until the worktree and
+temporary branches are removed or a follow-up blocker is filed.
+
 ## Merge Conflicts
 
 `ipfs_accelerate_py.agent_supervisor.merge_resolver` reads daemon JSONL events
@@ -176,6 +193,77 @@ content merges invoke the resolver against the conflicted merge workspace before
 the daemon aborts the merge. If the resolver clears all unmerged paths, the
 daemon commits the resolved merge and records `llm_merge_resolver_invoked` plus
 the merge result in the event log.
+
+The same resolver path is also used for `main_checkout_dirty_conflict` blockers:
+if dirty files overlap the implementation branch, the daemon records the dirty
+paths, invokes the configured resolver, and retries the merge immediately when
+the dirty overlap is cleared. Managed main-merge worktrees under the daemon's
+worktree root also invoke the resolver for `main_merge_worktree_dirty` and retry
+workspace preparation after the dirty state is cleared. Supervisors can pass
+resolver settings directly to managed daemons with
+`--llm-merge-resolver-command` and `--llm-merge-resolver-timeout-seconds`; the
+timeout also honors
+`IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS` and defaults to 600
+seconds, with values less than or equal to zero disabling the timeout.
+
+Submodule blockers use the same mechanism. During parent merge reconciliation,
+the daemon enters the submodule checkout and invokes the resolver for
+`submodule_checkout_dirty`, `submodule_default_branch_checkout_failed`, and
+`submodule_merge_conflict` failures. It retries the blocked checkout or merge
+after the resolver returns, records the prompt result on the submodule merge
+entry, and accepts resolver-created merge commits when the implementation branch
+is an ancestor of the submodule `HEAD`.
+
+Implementation worktree setup failures and unexpected merge-reconciliation
+exceptions are recorded as durable `implementation_exception` or
+`merge_reconcile_exception` events instead of killing the daemon pass. This lets
+the supervisor keep the loop running, rewrite strategy if progress stalls, and
+feed retry-budget follow-up tasks with concrete blocker evidence.
+
+If the supervisor sees stale active-task state that is no longer an active
+implementation attempt, it rewrites strategy first, then records
+`blocked_progress_state_repaired` and clears the stale active fields. This keeps
+old active selections, abandoned worktree paths, or stale heartbeats from
+blocking refill scans and later daemon passes.
+
+Empty or missing todo boards are also non-fatal. The daemon records
+`daemon_no_tasks` and updates state with zero ready/waiting/blocked tasks instead
+of exiting. When objective or codebase refill is enabled, the supervisor creates
+a skeleton todo board with `todo_board_created` before running refill scans, so a
+fresh lane can bootstrap itself from the objective heap or codebase scan.
+
+Validation commands are bounded and non-interactive. The daemon still records
+timeouts as validation failures for retry-budget handling, but validation
+subprocesses receive stdin from `/dev/null` so accidental prompts or commands
+that read from stdin do not consume the daemon's own input stream.
+
+The supervisor also runs a dependency and board-metadata guardrail by default.
+If open tasks depend on task ids that are not present on the board, on
+themselves, on a closed cycle of open tasks, or if the board contains duplicate
+task ids, it appends a ready repair task and writes discovery evidence with
+`dependency_guardrail`. This turns no-ready-task dependency deadlocks and
+ambiguous task metadata into normal backlog work. The malformed source task is
+also added to `blocked_tasks` until the generated repair task is completed, so
+workers do not act on known-bad metadata. Use
+`--no-dependency-guardrail`, `--dependency-guardrail-discovery-dir`, and
+`--dependency-guardrail-max-findings` to tune that behavior.
+
+Guardrail blocks are released automatically once their generated repair task is
+marked completed. The supervisor reads `retry_budget_findings` and
+`dependency_guardrail_findings`, removes completed sources from `blocked_tasks`,
+and records `guardrail_blocks_released`. This prevents source tasks from staying
+blocked after the repair work has landed.
+
+The same release pass also cleans stale strategy blocks that can no longer be
+valid: duplicate entries in `blocked_tasks`, blocked task ids that no longer
+exist on the todo board, and blocked source tasks already marked completed. This
+prevents abandoned strategy state from permanently hiding ready work.
+
+Merge-lock contention is treated as a deferred merge rather than a terminal
+implementation failure. If a task validates and commits an implementation branch
+but cannot merge because another daemon owns the repository merge lock, the
+result remains eligible for the next reconciliation pass until the branch is
+merged or explicitly abandoned.
 
 ## Relationship To `ipfs_datasets_py`
 
