@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import re
 import shlex
@@ -35,6 +36,8 @@ from .objective_graph import (
 )
 from .todo_daemon.implementation_daemon import parse_task_file
 
+
+logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.backlog_refinery")
 
 DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MIN_OPEN_TASKS", "5"))
 DEFAULT_CODEBASE_SCAN_MAX_FINDINGS = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FINDINGS", "5"))
@@ -308,13 +311,16 @@ def should_refill_backlog(
 
 
 def git_toplevel_for_path(cwd: Path) -> Path | None:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"],
-        cwd=cwd,
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+    except (FileNotFoundError, OSError):
+        return None
     if result.returncode != 0 or not result.stdout.strip():
         return None
     return Path(result.stdout.strip()).resolve()
@@ -517,7 +523,13 @@ def discover_git_worktrees(
 
 
 def tracked_files(repo: Path) -> list[Path]:
-    result = subprocess.run(["git", "ls-files", "-z"], cwd=repo, capture_output=True, check=False)
+    if not repo.is_dir():
+        return []
+    try:
+        result = subprocess.run(["git", "ls-files", "-z"], cwd=repo, capture_output=True, check=False)
+    except (FileNotFoundError, OSError):
+        logger.debug("Skipping vanished git root during codebase scan: %s", repo)
+        return []
     if result.returncode != 0:
         return []
     files: list[Path] = []

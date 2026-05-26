@@ -1008,22 +1008,34 @@ class PortalImplementationSupervisor:
                 discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
             except ValueError:
                 discovery_output_path = str(discovery_dir)
-        findings = record_codebase_scan_findings(
-            todo_path=self.config.todo_path,
-            state_path=self.config.state_path,
-            strategy_path=self.config.strategy_path,
-            discovery_dir=discovery_dir,
-            repo_root=self.config.repo_root,
-            task_prefix=task_id_prefix(self.config.task_prefix),
-            depends_on=self.config.codebase_scan_depends_on,
-            min_open_tasks=self.config.codebase_scan_min_open_tasks,
-            max_findings=self.config.codebase_scan_max_findings,
-            cooldown_seconds=self.config.codebase_scan_cooldown_seconds,
-            discovery_output_path=discovery_output_path,
-            skip_prefixes=self.config.codebase_scan_skip_prefixes or CODEBASE_SCAN_SKIP_PREFIXES,
-            commit_outputs=self.config.codebase_scan_commit_outputs,
-            commit_subject=self.config.codebase_scan_commit_subject,
-        )
+        try:
+            findings = record_codebase_scan_findings(
+                todo_path=self.config.todo_path,
+                state_path=self.config.state_path,
+                strategy_path=self.config.strategy_path,
+                discovery_dir=discovery_dir,
+                repo_root=self.config.repo_root,
+                task_prefix=task_id_prefix(self.config.task_prefix),
+                depends_on=self.config.codebase_scan_depends_on,
+                min_open_tasks=self.config.codebase_scan_min_open_tasks,
+                max_findings=self.config.codebase_scan_max_findings,
+                cooldown_seconds=self.config.codebase_scan_cooldown_seconds,
+                discovery_output_path=discovery_output_path,
+                skip_prefixes=self.config.codebase_scan_skip_prefixes or CODEBASE_SCAN_SKIP_PREFIXES,
+                commit_outputs=self.config.codebase_scan_commit_outputs,
+                commit_subject=self.config.codebase_scan_commit_subject,
+            )
+        except Exception as exc:
+            failure = {
+                "todo_path": str(self.config.todo_path),
+                "discovery_dir": str(discovery_dir),
+                "repo_root": str(self.config.repo_root),
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            }
+            logger.warning("Codebase backlog refill failed; leaving supervisor alive", exc_info=True)
+            self._record_event("codebase_refill_failed", failure)
+            return []
         if findings:
             self._record_event(
                 "codebase_refill_scan",

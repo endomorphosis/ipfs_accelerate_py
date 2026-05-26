@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     record_dependency_guardrail_findings,
     record_objective_backlog_findings,
     record_retry_budget_findings,
+    scan_codebase_findings,
 )
 
 
@@ -92,6 +93,31 @@ def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["last_codebase_scan_findings"][0]["follow_up_task_id"] == "AUTO-002"
     assert Path(findings[0]["discovery_path"]).exists()
+
+
+def test_backlog_refinery_codebase_scan_skips_vanished_git_roots(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor import backlog_refinery
+
+    repo = _seed_repo(tmp_path)
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        """def route_request(request):
+    # TODO: prove vanished roots do not crash scanning
+    return request
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed scan target")
+    vanished = tmp_path / "deleted-worktree"
+    vanished.mkdir()
+    vanished.rmdir()
+    monkeypatch.setattr(backlog_refinery, "discover_git_worktrees", lambda *_args, **_kwargs: [repo, vanished])
+
+    findings = scan_codebase_findings(repo, max_findings=5)
+
+    assert [finding.root_relative_path for finding in findings] == ["src/runtime.py"]
 
 
 def test_backlog_refinery_repairs_invalid_strategy_file(tmp_path):

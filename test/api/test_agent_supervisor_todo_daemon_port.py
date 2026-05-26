@@ -1608,6 +1608,58 @@ def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
     assert list((repo / "discovery").glob("*-auto-002-codebase-scan-*.md"))
 
 
+def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor import backlog_refinery
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed seed
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: Seed task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+
+    def fail_refill(**_kwargs):
+        raise FileNotFoundError("vanished worktree")
+
+    monkeypatch.setattr(backlog_refinery, "record_codebase_scan_findings", fail_refill)
+    config = TodoSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        task_prefix="## AUTO-",
+        codebase_refill_enabled=True,
+        codebase_scan_discovery_dir=repo / "discovery",
+        codebase_scan_min_open_tasks=0,
+        codebase_scan_max_findings=1,
+        codebase_scan_cooldown_seconds=21600,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["codebase_refill_count"] == 0
+    events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
+    failure = [event for event in events if event["type"] == "codebase_refill_failed"][-1]
+    assert failure["error_type"] == "FileNotFoundError"
+    assert "vanished worktree" in failure["error"]
+
+
 def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
