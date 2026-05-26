@@ -33,7 +33,10 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec, stop_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.runner import TodoDaemonRunner
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import SupervisorStatusContext
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (
+    SupervisorStatusContext,
+    worktree_phase_worker_status,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import SupervisorLoop, SupervisorLoopConfig
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     RestartPolicy,
@@ -866,6 +869,45 @@ def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_pa
 
     assert stuck is False
     assert reason == ""
+
+
+def test_supervisor_worker_watchdog_detects_active_merge_resolver_without_worker(tmp_path):
+    now = datetime.now(timezone.utc)
+    old = now.replace(year=2000)
+
+    status = worktree_phase_worker_status(
+        {
+            "active_phase": "merge_resolver",
+            "active_phase_started_at": old.isoformat(),
+        },
+        daemon_pid=999999999,
+        threshold_seconds=60,
+        now=now,
+    )
+
+    assert status["required"] is True
+    assert status["phase"] == "merge_resolver"
+    assert status["active_worker_count"] == 0
+    assert status["stalled_without_active_worker"] is True
+
+
+def test_implementation_supervisor_configures_worker_stall_watchdog(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        implementation_log_stall_seconds=42,
+    )
+
+    loop_config = TodoImplementationSupervisor(config).build_supervisor_loop_config()
+
+    assert loop_config.status_static_fields["worktree_no_child_stall_seconds"] == 42
 
 
 def test_implementation_supervisor_repairs_stale_active_state_after_rewrite(tmp_path):

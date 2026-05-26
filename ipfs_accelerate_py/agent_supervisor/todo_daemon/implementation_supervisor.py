@@ -298,6 +298,10 @@ class PortalImplementationSupervisor:
                 "state_path": str(self.config.state_path),
                 "task_prefix": self.config.task_prefix,
                 "state_prefix": self.config.state_prefix,
+                "worktree_no_child_stall_seconds": max(
+                    0.0,
+                    float(self.config.implementation_log_stall_seconds),
+                ),
             },
         )
 

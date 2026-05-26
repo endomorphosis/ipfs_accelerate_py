@@ -25,6 +25,8 @@ JsonDict = dict[str, Any]
 
 DEFAULT_WORKTREE_PHASES = frozenset(
     {
+        "implementing",
+        "merge_resolver",
         "requesting_worktree_edit",
         "retrying_worktree_edit",
         "repairing_failed_worktree_edit",
@@ -174,11 +176,18 @@ def worktree_phase_worker_status(
 ) -> JsonDict:
     """Report whether a worktree-edit phase appears stuck without a worker."""
 
-    phase = str(current.get("phase") or "")
+    phase = str(first_present(current.get("active_phase"), current.get("phase")) or "")
     if phase not in phases:
         return {"required": False, "phase": phase}
     started = _aware_utc(
-        parse_timestamp(first_present(current.get("phase_started_at"), current.get("phase_updated_at")))
+        parse_timestamp(
+            first_present(
+                current.get("active_phase_started_at"),
+                current.get("phase_started_at"),
+                current.get("active_phase_updated_at"),
+                current.get("phase_updated_at"),
+            )
+        )
     )
     now_at = _aware_utc(now) or now_utc()
     age = None if started is None else max(0.0, (now_at - started).total_seconds())
