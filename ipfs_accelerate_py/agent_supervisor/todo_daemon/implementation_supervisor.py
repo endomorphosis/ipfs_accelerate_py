@@ -1098,14 +1098,14 @@ class PortalImplementationSupervisor:
         log_stall_reason = self._implementation_log_stall_reason(state, now_ts=now_ts)
         if log_stall_reason:
             return True, log_stall_reason
+        merge_phase_stall_reason = self._merge_phase_without_worker_reason(state, now_ts=now_ts)
+        if merge_phase_stall_reason:
+            return True, merge_phase_stall_reason
         if self._implementation_attempt_is_active(state, now_ts=now_ts):
             return False, ""
         heartbeat_age = self._age_seconds(state.heartbeat_at, now_ts)
         progress_age = self._age_seconds(state.last_progress_at, now_ts)
         stale = self.config.stale_seconds
-        merge_phase_stall_reason = self._merge_phase_without_worker_reason(state, now_ts=now_ts)
-        if merge_phase_stall_reason:
-            return True, merge_phase_stall_reason
         if state.active_task_id and heartbeat_age > stale:
             return True, f"heartbeat stale for active task {state.active_task_id}"
         if (
