@@ -30,6 +30,7 @@ from .implementation_daemon import (
     write_json_atomic,
     write_text_atomic,
 )
+from .supervisor import worktree_phase_worker_status
 from .supervisor_loop import SupervisorLoop, SupervisorLoopConfig, SupervisorLoopDecision
 from .supervisor_runtime import RestartPolicy
 
@@ -1102,6 +1103,9 @@ class PortalImplementationSupervisor:
         heartbeat_age = self._age_seconds(state.heartbeat_at, now_ts)
         progress_age = self._age_seconds(state.last_progress_at, now_ts)
         stale = self.config.stale_seconds
+        merge_phase_stall_reason = self._merge_phase_without_worker_reason(state, now_ts=now_ts)
+        if merge_phase_stall_reason:
+            return True, merge_phase_stall_reason
         if state.active_task_id and heartbeat_age > stale:
             return True, f"heartbeat stale for active task {state.active_task_id}"
         if (
@@ -1124,6 +1128,35 @@ class PortalImplementationSupervisor:
             detail = state.last_merge_error or "merge failed without a merge commit"
             return True, f"unresolved merge failure on active task {state.active_task_id}: {detail}"
         return False, ""
+
+    def _merge_phase_without_worker_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
+        if not state.active_task_id or state.active_phase not in {"merge_reconciliation", "merge_resolver"}:
+            return ""
+        threshold = max(30.0, min(120.0, float(self.config.check_interval) * 2.0))
+        worker_status = worktree_phase_worker_status(
+            {
+                "active_phase": state.active_phase,
+                "active_phase_started_at": state.active_phase_started_at,
+            },
+            self._read_managed_daemon_pid(),
+            threshold,
+            now=datetime.fromtimestamp(now_ts, tz=timezone.utc),
+        )
+        if not worker_status.get("stalled_without_active_worker"):
+            return ""
+        self._record_event(
+            "merge_phase_without_worker",
+            {
+                "active_task_id": state.active_task_id,
+                "active_phase": state.active_phase,
+                "active_phase_detail": state.active_phase_detail,
+                "worker_status": worker_status,
+            },
+        )
+        return (
+            f"{state.active_phase} stalled for active task {state.active_task_id}: "
+            f"no active resolver worker for {worker_status.get('phase_age_seconds')}s"
+        )
 
     def rewrite_strategy(self, state: PortalTaskState, reason: str) -> dict[str, Any]:
         strategy = self._load_strategy()
@@ -1331,6 +1364,13 @@ class PortalImplementationSupervisor:
 
     def _managed_daemon_pid_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_managed_daemon.pid"
+
+    def _read_managed_daemon_pid(self) -> int | None:
+        try:
+            raw_pid = self._managed_daemon_pid_path().read_text(encoding="utf-8").strip()
+            return int(raw_pid)
+        except (OSError, ValueError):
+            return None
 
     def ensure_managed_daemon_pid_file(self) -> dict[str, Any]:
         """Remove stale or malformed managed-daemon PID state before adoption."""

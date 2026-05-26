@@ -871,6 +871,50 @@ def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_pa
     assert reason == ""
 
 
+def test_implementation_supervisor_repairs_stale_merge_resolver_without_worker(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    now = datetime.now(timezone.utc)
+    old = now.replace(year=2000)
+    TodoTaskState(
+        active_task_id="AUTO-001",
+        active_task_title="Stale merge resolver",
+        active_task_track="ops",
+        active_task_started_at=old.isoformat(),
+        active_attempt=1,
+        active_phase="merge_resolver",
+        active_phase_started_at=old.isoformat(),
+        active_phase_detail="merge_conflict",
+        implementation_in_progress=False,
+        heartbeat_at=now.isoformat(),
+        last_progress_at=now.isoformat(),
+        ready_count=1,
+    ).save(state_path)
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        check_interval=1,
+        stale_seconds=3600,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["stuck"] is True
+    assert "merge_resolver stalled" in result["reason"]
+    assert result["state_repair"]["repaired"] is True
+    repaired_state = TodoTaskState.load(state_path)
+    assert repaired_state.active_task_id == ""
+    events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "merge_phase_without_worker" for event in events)
+
+
 def test_supervisor_worker_watchdog_detects_active_merge_resolver_without_worker(tmp_path):
     now = datetime.now(timezone.utc)
     old = now.replace(year=2000)
