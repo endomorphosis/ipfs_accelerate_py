@@ -654,6 +654,28 @@ def objective_todo_vector_key(goal: ObjectiveGoal, missing_terms: Sequence[str],
     return sha1(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def objective_goal_packet_aggregate_fingerprint(
+    packet_key: str,
+    findings: Sequence[ObjectiveFinding],
+    missing_terms: Sequence[str],
+) -> str:
+    payload = {
+        "kind": "objective_goal_packet_aggregate",
+        "packet_key": packet_key,
+        "finding_fingerprints": sorted(finding.fingerprint for finding in findings),
+        "missing_terms": sorted(" ".join(str(term).lower().split()) for term in missing_terms),
+    }
+    return sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()
+
+
+def objective_goal_packet_aggregate_key(packet_key: str, missing_terms: Sequence[str]) -> str:
+    payload = {
+        "packet_key": packet_key,
+        "missing_terms": sorted(" ".join(str(term).lower().split()) for term in missing_terms),
+    }
+    return sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
 def objective_goal_packet_key(findings: Sequence[ObjectiveFinding]) -> str:
     """Return a stable packet key for related goal/subgoal findings."""
 
@@ -716,6 +738,147 @@ def assign_goal_subgoal_packets(findings: Sequence[ObjectiveFinding]) -> list[Ob
             )
 
     return [packet_by_fingerprint.get(finding.fingerprint, finding) for finding in findings]
+
+
+def _unique_strings(values: Iterable[str]) -> list[str]:
+    return list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
+
+
+def _merge_present_evidence(findings: Sequence[ObjectiveFinding]) -> dict[str, list[str]]:
+    present: dict[str, list[str]] = {}
+    for finding in findings:
+        for term, paths in finding.present_evidence.items():
+            bucket = present.setdefault(str(term), [])
+            for path in paths:
+                path_text = str(path)
+                if path_text and path_text not in bucket:
+                    bucket.append(path_text)
+    return present
+
+
+def _first_non_empty(values: Iterable[str], default: str = "") -> str:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return default
+
+
+def _parse_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return default
+
+
+def add_goal_packet_aggregate_findings(
+    findings: Sequence[ObjectiveFinding],
+    *,
+    max_findings: int,
+    seen_fingerprints: Iterable[str] = (),
+    summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+) -> list[ObjectiveFinding]:
+    """Add larger packet-level todos for related goal/subgoal findings when capacity allows."""
+
+    planned = list(findings)
+    if len(planned) >= max_findings:
+        return planned[:max_findings]
+
+    seen = {str(item) for item in seen_fingerprints if str(item).strip()}
+    seen.update(finding.fingerprint for finding in planned)
+    groups: dict[str, list[ObjectiveFinding]] = {}
+    for finding in planned:
+        if finding.goal_packet_key:
+            groups.setdefault(finding.goal_packet_key, []).append(finding)
+
+    for packet_key, group_findings in sorted(groups.items()):
+        if len(planned) >= max_findings:
+            break
+        if len(group_findings) < 2:
+            continue
+        sorted_group = sorted(
+            group_findings,
+            key=lambda item: (item.priority, item.goal_id, item.candidate_kind, item.fingerprint),
+        )
+        missing_terms = _unique_strings(term for finding in sorted_group for term in finding.missing_evidence)
+        if len(missing_terms) < 2:
+            continue
+        fingerprint = objective_goal_packet_aggregate_fingerprint(packet_key, sorted_group, missing_terms)
+        if fingerprint in seen:
+            continue
+
+        anchor = sorted_group[0]
+        goal_ids = _unique_strings(finding.goal_id for finding in sorted_group)
+        parent_goal_ids = _unique_strings(parent for finding in sorted_group for parent in finding.parent_goal_ids)
+        outputs = _unique_strings(output for finding in sorted_group for output in finding.outputs)
+        evidence_methods = _unique_strings(method for finding in sorted_group for method in finding.evidence_methods)
+        goal_lines = [
+            f"{finding.goal_id}: {finding.goal or finding.title}"
+            for finding in sorted_group
+            if finding.goal_id or finding.goal or finding.title
+        ]
+        merge_key = objective_goal_packet_aggregate_key(packet_key, missing_terms)
+        title = f"Goal packet aggregate for {', '.join(goal_ids)}"
+        summary = f"{summary_prefix} packet: {', '.join(goal_ids)}"
+        ast_terms = _unique_strings(term for finding in sorted_group for term in split_terms(finding.ast_query))
+        if not ast_terms:
+            ast_terms = missing_terms
+        aggregate = ObjectiveFinding(
+            fingerprint=fingerprint,
+            goal_id=anchor.goal_id,
+            title=title,
+            summary=summary,
+            priority=anchor.priority,
+            track=anchor.track,
+            missing_evidence=missing_terms,
+            present_evidence=_merge_present_evidence(sorted_group),
+            evidence_methods=evidence_methods,
+            objective_path=anchor.objective_path,
+            outputs=outputs,
+            validation=_first_non_empty((finding.validation for finding in sorted_group), anchor.validation),
+            goal="Close packet goals:\n" + "\n".join(f"- {line}" for line in goal_lines),
+            refinement=_first_non_empty((finding.refinement for finding in sorted_group)),
+            gap_task=(
+                "Close the packet-level missing evidence across these related goals/subgoals in one cohesive "
+                "change when the output paths overlap."
+            ),
+            parent_goal_ids=parent_goal_ids,
+            graph_depth=min(finding.graph_depth for finding in sorted_group),
+            bundle_key=anchor.bundle_key,
+            parallel_lane=anchor.parallel_lane,
+            bundle_explicit=anchor.bundle_explicit,
+            bundle_strategy=anchor.bundle_strategy,
+            embedding_query="; ".join(
+                _unique_strings(
+                    [
+                        f"goal packet {packet_key}",
+                        *(finding.embedding_query for finding in sorted_group),
+                        *(finding.title for finding in sorted_group),
+                    ]
+                )
+            ),
+            ast_query=", ".join(ast_terms),
+            conflict_policy=anchor.conflict_policy,
+            refinement_depth=str(min(_parse_int(finding.refinement_depth, 0) for finding in sorted_group)),
+            candidate_kind="goal_packet_aggregate",
+            surplus_group=packet_key,
+            merge_key=merge_key,
+            merge_family=packet_key,
+            merge_role="packet_aggregate",
+            work_item_count=len(missing_terms),
+            work_scope="goal_subgoal_packet_aggregate; vector_ast_bundle",
+            todo_vector_key=sha1(f"{packet_key}\0goal_packet_aggregate\0{merge_key}".encode("utf-8")).hexdigest()[:16],
+            goal_packet_key=packet_key,
+            goal_packet_role="packet_aggregate",
+            goal_packet_goal_ids=goal_ids,
+            goal_packet_task_count=len(sorted_group) + 1,
+            goal_packet_work_item_count=sum(
+                finding.work_item_count or len(finding.missing_evidence) for finding in sorted_group
+            ),
+        )
+        planned.append(aggregate)
+        seen.add(fingerprint)
+    return planned[:max_findings]
 
 
 def surplus_missing_term_groups(
@@ -976,7 +1139,13 @@ def scan_objective_gaps(
                 break
         if len(findings) >= max_findings:
             break
-    return assign_goal_subgoal_packets(plan_semantic_ast_bundles(findings))
+    packeted_findings = assign_goal_subgoal_packets(plan_semantic_ast_bundles(findings))
+    return add_goal_packet_aggregate_findings(
+        packeted_findings,
+        max_findings=max_findings,
+        seen_fingerprints=seen_fingerprints,
+        summary_prefix=summary_prefix,
+    )
 
 
 def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX) -> list[str]:

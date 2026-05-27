@@ -2200,6 +2200,114 @@ def test_objective_daemon_packs_sibling_subgoals_for_vector_bundling(tmp_path):
     assert bundle_summary["goal_packet_goal_ids"] == ["VAIOS-G101", "VAIOS-G102"]
 
 
+def test_objective_daemon_adds_goal_packet_aggregate_when_capacity_allows(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "bridge.py"
+    source.parent.mkdir()
+    source.write_text("class Bridge:\n    pass\n", encoding="utf-8")
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G100 Runtime bridge parent
+
+- Status: completed
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Parent goal for runtime bridge readiness.
+- Evidence: parent_runtime_bridge_packet
+- Outputs: src/bridge.py
+- Validation: test -f objective-heap.md
+
+## VAIOS-G101 Scheduler subgoal
+
+- Status: active
+- Parent: VAIOS-G100
+- Fib priority: 2
+- Track: runtime
+- Priority: P1
+- Goal: Prove scheduler behavior.
+- Evidence: scheduler_policy, scheduler_backpressure, scheduler_metrics
+- Outputs: src/bridge.py
+- Validation: test -f objective-heap.md
+
+## VAIOS-G102 Fallback subgoal
+
+- Status: active
+- Parent: VAIOS-G100
+- Fib priority: 3
+- Track: runtime
+- Priority: P1
+- Goal: Prove fallback behavior.
+- Evidence: fallback_route, fallback_retry, fallback_metrics
+- Outputs: src/bridge.py
+- Validation: test -f objective-heap.md
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    _git(repo, "add", "objective-heap.md", "todo.md", "src/bridge.py")
+    _git(repo, "commit", "-m", "seed packet aggregate objective heap")
+
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--discovery-dir",
+            str(repo / "discovery"),
+            "--bundle-dir",
+            str(repo / "bundles"),
+            "--dataset-dir",
+            str(repo / "datasets"),
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "3",
+            "--surplus-findings-per-goal",
+            "1",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["generated_count"] == 3
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert todo_text.count("Goal packet: goal_packet/runtime/src/") == 3
+    assert "Candidate kind: goal_packet_aggregate" in todo_text
+    assert "Merge role: packet_aggregate" in todo_text
+    assert "Work item count: 6" in todo_text
+    assert "Goal packet role: packet_aggregate" in todo_text
+    assert "Goal packet task count: 3" in todo_text
+    assert "Goal packet goals: VAIOS-G101, VAIOS-G102" in todo_text
+
+    index_payload = json.loads((repo / "bundles" / "todo_vector_index.json").read_text(encoding="utf-8"))
+    assert index_payload["task_count"] == 3
+    aggregate_records = [
+        record for record in index_payload["records"] if record["candidate_kind"] == "goal_packet_aggregate"
+    ]
+    assert len(aggregate_records) == 1
+    aggregate = aggregate_records[0]
+    assert aggregate["goal_packet_role"] == "packet_aggregate"
+    assert aggregate["work_item_count"] == 6
+    assert aggregate["merge_family"] == aggregate["goal_packet_key"]
+    assert aggregate["related_task_ids"]
+    assert index_payload["execution_packets"][0]["goal_packet_work_item_count_max"] == 6
+    assert "goal_packet_aggregate" in index_payload["execution_packets"][0]["candidate_kinds"]
+
+
 def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
