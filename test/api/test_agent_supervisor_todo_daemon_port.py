@@ -1995,6 +1995,8 @@ def test_objective_daemon_generates_surplus_vector_indexed_todos(tmp_path):
     bundle_tasks = next(iter(bundle_index["bundles"].values()))["tasks"]
     assert all(task["merge_key"] for task in bundle_tasks)
     assert all(task["todo_vector_key"] for task in bundle_tasks)
+    bundle_summary = next(iter(bundle_index["bundles"].values()))["todo_vector_summary"]
+    assert bundle_summary["merge_candidate_keys"]
 
 
 def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
@@ -2049,6 +2051,9 @@ def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
     assert payload["task_count"] == 2
     assert len(payload["clusters"]) == 1
     assert payload["clusters"][0]["task_ids"] == ["ACCEL-001", "ACCEL-002"]
+    assert payload["merge_candidates"][0]["confidence"] == "high"
+    assert payload["merge_candidates"][0]["active_task_ids"] == ["ACCEL-001", "ACCEL-002"]
+    assert payload["merge_candidates"][0]["shared_outputs"] == ["src/bridge.py"]
     assert records[0].related_task_ids == ["ACCEL-002"]
 
 
@@ -2121,6 +2126,8 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     assert "Compact todo vector context:" in prompt
     assert "- Merge key: bridge-runtime" in prompt
     assert "- Goal id: VAIOS-G021" in prompt
+    assert "Merge candidates: merge_key/" in prompt
+    assert "active=ACCEL-001, ACCEL-002" in prompt
     assert "Related tasks: ACCEL-002" in prompt
     assert '"embedding"' not in prompt
 

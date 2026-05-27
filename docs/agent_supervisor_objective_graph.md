@@ -56,10 +56,13 @@ Each objective todo generation pass also writes a compact todo vector/AST index
 at `objective_bundles/todo_vector_index.json` unless disabled with
 `--no-todo-vector-index` or `--no-objective-todo-vector-index`. The index stores
 deterministic token embeddings, AST symbols gathered from task outputs, nearest
-related task ids, merge keys, surplus groups, and cluster summaries. Bundle
-indexes are backfilled with `todo_vector_summary` and per-task vector metadata,
-which lets bundle supervisors select cohesive lanes and keep worker prompts
-focused on a shard rather than the whole todo board.
+related task ids, merge keys, surplus groups, cluster summaries, and explicit
+`merge_candidates`.  Merge candidates are compact groups derived from exact merge
+keys, surplus groups, and vector/AST clusters; they include active task ids,
+shared outputs, missing evidence, AST symbols, and estimated prompt-token weight.
+Bundle indexes are backfilled with `todo_vector_summary` and per-task vector
+metadata, which lets bundle supervisors select cohesive lanes and keep worker
+prompts focused on a shard rather than the whole todo board.
 
 Implementation daemons also read that index while selecting the next ready task.
 Existing priority, retry, and dependency guardrails still win, but comparable

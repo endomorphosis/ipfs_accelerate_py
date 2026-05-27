@@ -379,6 +379,129 @@ def cluster_records(
     return sorted(clusters, key=lambda item: (str(item.get("bundle_key") or ""), str(item.get("cluster_key") or "")))
 
 
+def active_record(record: TodoIndexRecord) -> bool:
+    return record.status not in {"blocked", "completed"}
+
+
+def sorted_unique(values: Sequence[str]) -> list[str]:
+    return sorted({str(value) for value in values if str(value)})
+
+
+def build_merge_candidate(
+    *,
+    group_type: str,
+    group_value: str,
+    records: Sequence[TodoIndexRecord],
+    cluster_by_task: Mapping[str, str],
+) -> dict[str, Any] | None:
+    task_ids = sorted_unique([record.task_id for record in records])
+    if len(task_ids) < 2:
+        return None
+    active_task_ids = sorted_unique([record.task_id for record in records if active_record(record)])
+    if not active_task_ids:
+        return None
+    all_outputs = sorted_unique([output for record in records for output in record.outputs])
+    output_sets = [set(record.outputs) for record in records if record.outputs]
+    shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
+    ast_symbols = sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80]
+    missing_evidence = sorted_unique([item for record in records for item in record.missing_evidence])
+    candidate_seed = json.dumps({"group_type": group_type, "group_value": group_value, "task_ids": task_ids}, sort_keys=True)
+    exact_merge_key_count = len({record.merge_key for record in records if record.merge_key})
+    if group_type == "merge_key":
+        confidence = "high"
+    elif group_type == "surplus_group" and exact_merge_key_count <= max(1, len(records) // 2):
+        confidence = "medium"
+    else:
+        confidence = "low"
+    return {
+        "candidate_key": f"{group_type}/{sha1(candidate_seed.encode('utf-8')).hexdigest()[:12]}",
+        "group_type": group_type,
+        "group_value": group_value,
+        "confidence": confidence,
+        "task_ids": task_ids,
+        "active_task_ids": active_task_ids,
+        "completed_task_ids": sorted_unique([record.task_id for record in records if record.status == "completed"]),
+        "blocked_task_ids": sorted_unique([record.task_id for record in records if record.status == "blocked"]),
+        "goal_ids": sorted_unique([record.goal_id for record in records]),
+        "bundle_keys": sorted_unique([record.bundle_key for record in records]),
+        "merge_keys": sorted_unique([record.merge_key for record in records]),
+        "surplus_groups": sorted_unique([record.surplus_group for record in records]),
+        "cluster_keys": sorted_unique([cluster_by_task.get(record.task_id, "") for record in records]),
+        "shared_outputs": shared_outputs,
+        "all_outputs": all_outputs,
+        "missing_evidence": missing_evidence,
+        "ast_symbols": ast_symbols,
+        "estimated_prompt_tokens": sum(record.token_count for record in records),
+    }
+
+
+def build_merge_candidates(
+    records: Sequence[TodoIndexRecord],
+    clusters: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return compact groups of todos that can be reasoned about together."""
+
+    cluster_by_task: dict[str, str] = {}
+    for cluster in clusters:
+        cluster_key = str(cluster.get("cluster_key") or "")
+        if not cluster_key:
+            continue
+        task_ids = cluster.get("task_ids")
+        if not isinstance(task_ids, list):
+            continue
+        for task_id in task_ids:
+            cluster_by_task[str(task_id)] = cluster_key
+
+    groups: list[tuple[str, str, list[TodoIndexRecord]]] = []
+    for group_type, getter in (
+        ("merge_key", lambda record: record.merge_key),
+        ("surplus_group", lambda record: record.surplus_group),
+    ):
+        by_value: dict[str, list[TodoIndexRecord]] = {}
+        for record in records:
+            value = str(getter(record) or "")
+            if value:
+                by_value.setdefault(value, []).append(record)
+        groups.extend((group_type, value, group_records) for value, group_records in by_value.items())
+
+    records_by_task = {record.task_id: record for record in records}
+    for cluster in clusters:
+        cluster_key = str(cluster.get("cluster_key") or "")
+        task_ids = cluster.get("task_ids")
+        if not cluster_key or not isinstance(task_ids, list):
+            continue
+        cluster_records_for_key = [records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task]
+        groups.append(("vector_cluster", cluster_key, cluster_records_for_key))
+
+    candidates: list[dict[str, Any]] = []
+    seen_task_sets: set[tuple[str, ...]] = set()
+    for group_type, group_value, group_records in groups:
+        candidate = build_merge_candidate(
+            group_type=group_type,
+            group_value=group_value,
+            records=group_records,
+            cluster_by_task=cluster_by_task,
+        )
+        if candidate is None:
+            continue
+        task_set = tuple(candidate["task_ids"])
+        if task_set in seen_task_sets:
+            continue
+        seen_task_sets.add(task_set)
+        candidates.append(candidate)
+
+    confidence_order = {"high": 0, "medium": 1, "low": 2}
+    return sorted(
+        candidates,
+        key=lambda candidate: (
+            confidence_order.get(str(candidate.get("confidence") or ""), 9),
+            -len(candidate.get("active_task_ids") or []),
+            int(candidate.get("estimated_prompt_tokens") or 0),
+            str(candidate.get("candidate_key") or ""),
+        ),
+    )
+
+
 def write_todo_vector_index(
     *,
     repo_root: Path,
@@ -401,6 +524,7 @@ def write_todo_vector_index(
         dimensions=dimensions,
     )
     clusters = cluster_records(records)
+    merge_candidates = build_merge_candidates(records, clusters)
     payload: dict[str, Any] = {
         "schema": DEFAULT_TODO_VECTOR_INDEX_SCHEMA,
         "generated_at": utc_now(),
@@ -413,6 +537,7 @@ def write_todo_vector_index(
         "active_task_count": sum(1 for record in records if record.status not in {"completed", "blocked"}),
         "records": [record.to_dict() for record in records],
         "clusters": clusters,
+        "merge_candidates": merge_candidates,
     }
     if bundle_index_path is not None:
         payload["bundle_index_path"] = repo_relative_path(repo_root, bundle_index_path)
@@ -426,7 +551,12 @@ def write_todo_vector_index(
     index_path.parent.mkdir(parents=True, exist_ok=True)
     index_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if bundle_index_path is not None and bundle_index_path.exists():
-        update_bundle_index_with_todo_vectors(bundle_index_path=bundle_index_path, records=records, clusters=clusters)
+        update_bundle_index_with_todo_vectors(
+            bundle_index_path=bundle_index_path,
+            records=records,
+            clusters=clusters,
+            merge_candidates=merge_candidates,
+        )
     return payload
 
 
@@ -448,6 +578,7 @@ def update_bundle_index_with_todo_vectors(
     bundle_index_path: Path,
     records: Sequence[TodoIndexRecord],
     clusters: Sequence[Mapping[str, Any]],
+    merge_candidates: Sequence[Mapping[str, Any]] = (),
 ) -> None:
     try:
         payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
@@ -477,6 +608,11 @@ def update_bundle_index_with_todo_vectors(
             "merge_keys": sorted({record.merge_key for record in bundle_records if record.merge_key}),
             "surplus_groups": sorted({record.surplus_group for record in bundle_records if record.surplus_group}),
             "estimated_prompt_tokens": sum(record.token_count for record in bundle_records),
+            "merge_candidate_keys": [
+                str(candidate.get("candidate_key") or "")
+                for candidate in merge_candidates
+                if set(candidate.get("task_ids") or []) & {record.task_id for record in bundle_records}
+            ],
         }
         tasks = bundle_payload.get("tasks")
         if not isinstance(tasks, list):

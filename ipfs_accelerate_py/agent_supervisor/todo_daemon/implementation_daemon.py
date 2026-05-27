@@ -4100,12 +4100,20 @@ class PortalImplementationDaemon:
                     related_task_id = str(raw_task_id)
                     if related_task_id and related_task_id != task.task_id and related_task_id not in related_ids:
                         related_ids.append(related_task_id)
+            merge_candidates: list[dict[str, Any]] = []
+            for candidate in payload.get("merge_candidates", []) if isinstance(payload.get("merge_candidates"), list) else []:
+                if not isinstance(candidate, dict):
+                    continue
+                candidate_task_ids = candidate.get("task_ids")
+                if isinstance(candidate_task_ids, list) and task.task_id in {str(task_id) for task_id in candidate_task_ids}:
+                    merge_candidates.append(candidate)
 
             return {
                 "index_path": index_path,
                 "record": record,
                 "cluster": cluster or {},
                 "related_records": [by_task[task_id] for task_id in related_ids if task_id in by_task][:5],
+                "merge_candidates": merge_candidates[:3],
             }
         return None
 
@@ -4160,6 +4168,31 @@ class PortalImplementationDaemon:
         ast_symbols = sorted({item for item in symbol_candidates if item})[:24]
         if ast_symbols:
             lines.append(f"- AST symbols: {', '.join(ast_symbols)}")
+
+        merge_candidate_entries: list[str] = []
+        for candidate in context.get("merge_candidates", []):
+            if not isinstance(candidate, dict):
+                continue
+            candidate_key = str(candidate.get("candidate_key") or "").strip()
+            confidence = str(candidate.get("confidence") or "").strip()
+            active_ids = ", ".join(self._compact_value_list(candidate.get("active_task_ids"), limit=5))
+            evidence = ", ".join(self._compact_value_list(candidate.get("missing_evidence"), limit=5))
+            outputs = ", ".join(self._compact_value_list(candidate.get("shared_outputs") or candidate.get("all_outputs"), limit=4))
+            details = [
+                part
+                for part in (
+                    candidate_key,
+                    confidence,
+                    f"active={active_ids}" if active_ids else "",
+                    f"missing={evidence}" if evidence else "",
+                    f"outputs={outputs}" if outputs else "",
+                )
+                if part
+            ]
+            if details:
+                merge_candidate_entries.append("; ".join(details))
+        if merge_candidate_entries:
+            lines.append(f"- Merge candidates: {' | '.join(merge_candidate_entries)}")
 
         related_entries: list[str] = []
         for related in context["related_records"]:
