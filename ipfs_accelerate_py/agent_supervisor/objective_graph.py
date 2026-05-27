@@ -144,6 +144,8 @@ class ObjectiveFinding:
     candidate_kind: str = "aggregate"
     surplus_group: str = ""
     merge_key: str = ""
+    merge_family: str = ""
+    merge_role: str = ""
     todo_vector_key: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -851,6 +853,8 @@ def scan_objective_gaps(
                 candidate_kind=candidate_kind,
                 surplus_group=objective_surplus_group(goal),
                 merge_key=objective_merge_key(goal, candidate_missing_terms, candidate_kind=candidate_kind),
+                merge_family=objective_surplus_group(goal),
+                merge_role=candidate_kind,
                 todo_vector_key=objective_todo_vector_key(
                     goal,
                     candidate_missing_terms,
@@ -984,6 +988,8 @@ def render_task_block(
 - AST query: {finding.ast_query}
 - Surplus group: {finding.surplus_group}
 - Merge key: {finding.merge_key}
+- Merge family: {finding.merge_family or finding.surplus_group}
+- Merge role: {finding.merge_role or finding.candidate_kind}
 - Candidate kind: {finding.candidate_kind}
 - Todo vector key: {finding.todo_vector_key}
 - Acceptance: Objective scan filed this gap for {finding.goal_id}. Use evidence in {discovery_path}, add code/tests/docs or child goals that prove the missing evidence terms are covered ({missing}), and keep the supervisor-fed backlog aligned with the objective heap. {refinement}
@@ -1060,6 +1066,8 @@ def write_bundle_shards(
                 "bundle_strategy": record.finding.bundle_strategy,
                 "surplus_group": record.finding.surplus_group,
                 "merge_key": record.finding.merge_key,
+                "merge_family": record.finding.merge_family or record.finding.surplus_group,
+                "merge_role": record.finding.merge_role or record.finding.candidate_kind,
                 "candidate_kind": record.finding.candidate_kind,
                 "todo_vector_key": record.finding.todo_vector_key,
             }

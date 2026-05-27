@@ -2052,19 +2052,32 @@ def test_objective_daemon_generates_surplus_vector_indexed_todos(tmp_path):
     assert payload["generated_count"] == 3
     todo_text = todo_path.read_text(encoding="utf-8")
     assert todo_text.count("Surplus group: objective/VAIOS-G001") == 3
+    assert todo_text.count("Merge family: objective/VAIOS-G001") == 3
+    assert "Merge role: aggregate" in todo_text
+    assert "Merge role: evidence_term" in todo_text
     assert "Candidate kind: aggregate" in todo_text
     assert "Candidate kind: evidence_term" in todo_text
     index_payload = json.loads((repo / "bundles" / "todo_vector_index.json").read_text(encoding="utf-8"))
     assert index_payload["task_count"] == 3
     surplus_groups = {record["surplus_group"] for record in index_payload["records"]}
     assert surplus_groups == {"objective/VAIOS-G001"}
+    merge_families = {record["merge_family"] for record in index_payload["records"]}
+    assert merge_families == {"objective/VAIOS-G001"}
     assert any(record["related_task_ids"] for record in index_payload["records"])
+    assert index_payload["bundle_contexts"]
+    assert index_payload["bundle_contexts"][0]["merge_ready"] is True
+    assert index_payload["bundle_contexts"][0]["merge_families"] == ["objective/VAIOS-G001"]
+    assert index_payload["estimated_compact_context_tokens"] < index_payload["estimated_raw_prompt_tokens"]
     bundle_index = json.loads((repo / "bundles" / "index.json").read_text(encoding="utf-8"))
     bundle_tasks = next(iter(bundle_index["bundles"].values()))["tasks"]
     assert all(task["merge_key"] for task in bundle_tasks)
+    assert all(task["merge_family"] for task in bundle_tasks)
+    assert all(task["todo_bundle_context_keys"] for task in bundle_tasks)
     assert all(task["todo_vector_key"] for task in bundle_tasks)
     bundle_summary = next(iter(bundle_index["bundles"].values()))["todo_vector_summary"]
     assert bundle_summary["merge_candidate_keys"]
+    assert bundle_summary["bundle_context_keys"]
+    assert bundle_summary["merge_ready_task_ids"]
 
 
 def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
@@ -2086,6 +2099,8 @@ def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
 - Validation: test -f src/bridge.py
 - Bundle: objective/runtime/bridge
 - Goal id: VAIOS-G021
+- Graph parents: VAIOS-G020
+- Graph depth: 2
 - Missing evidence: scheduler policy
 - Surplus group: objective/VAIOS-G020
 - Merge key: bridge-runtime
@@ -2100,6 +2115,8 @@ def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
 - Validation: test -f src/bridge.py
 - Bundle: objective/runtime/bridge
 - Goal id: VAIOS-G022
+- Graph parents: VAIOS-G020
+- Graph depth: 2
 - Missing evidence: fallback route
 - Surplus group: objective/VAIOS-G020
 - Merge key: bridge-runtime
@@ -2122,6 +2139,13 @@ def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
     assert payload["merge_candidates"][0]["confidence"] == "high"
     assert payload["merge_candidates"][0]["active_task_ids"] == ["ACCEL-001", "ACCEL-002"]
     assert payload["merge_candidates"][0]["shared_outputs"] == ["src/bridge.py"]
+    assert payload["merge_candidates"][0]["merge_families"] == ["objective/VAIOS-G020"]
+    assert payload["bundle_contexts"][0]["merge_ready"] is True
+    assert payload["bundle_contexts"][0]["merge_ready_task_ids"] == ["ACCEL-001", "ACCEL-002"]
+    assert payload["bundle_contexts"][0]["graph_parent_ids"] == ["VAIOS-G020"]
+    assert payload["bundle_contexts"][0]["graph_depth_min"] == 2
+    assert payload["bundle_contexts"][0]["graph_depth_max"] == 2
+    assert payload["bundle_contexts"][0]["compact_context_tokens"] < payload["bundle_contexts"][0]["raw_prompt_tokens"]
     assert records[0].related_task_ids == ["ACCEL-002"]
 
 
@@ -2193,7 +2217,10 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     assert task.metadata["merge key"] == "bridge-runtime"
     assert "Compact todo vector context:" in prompt
     assert "- Merge key: bridge-runtime" in prompt
+    assert "- Merge family: objective/VAIOS-G020" in prompt
     assert "- Goal id: VAIOS-G021" in prompt
+    assert "Bundle contexts: bundle_context/" in prompt
+    assert "merge_ready=true" in prompt
     assert "Merge candidates: merge_key/" in prompt
     assert "active=ACCEL-001, ACCEL-002" in prompt
     assert "Related tasks: ACCEL-002" in prompt

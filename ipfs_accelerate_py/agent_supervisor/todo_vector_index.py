@@ -60,6 +60,8 @@ class TodoIndexRecord:
     conflict_policy: str = ""
     surplus_group: str = ""
     merge_key: str = ""
+    merge_family: str = ""
+    merge_role: str = ""
     candidate_kind: str = ""
     vector_key: str = ""
     token_count: int = 0
@@ -183,6 +185,8 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             record.bundle_key,
             record.goal_id,
             record.surplus_group,
+            record.merge_family,
+            record.merge_role,
             record.embedding_query,
             record.ast_query,
             " ".join(record.graph_parents),
@@ -240,6 +244,9 @@ def parse_todo_vector_records(
             outputs=outputs,
             ast_query=ast_query,
         )
+        candidate_kind = str(fields.get("candidate_kind") or "").strip()
+        merge_family = str(fields.get("merge_family") or surplus_group or goal_id or merge_key).strip()
+        merge_role = str(fields.get("merge_role") or candidate_kind or "candidate").strip()
         vector_key = str(fields.get("todo_vector_key") or "").strip() or sha1(
             f"{task_id}\0{merge_key}".encode("utf-8")
         ).hexdigest()[:16]
@@ -265,7 +272,9 @@ def parse_todo_vector_records(
             conflict_policy=str(fields.get("conflict_policy") or "").strip(),
             surplus_group=surplus_group,
             merge_key=merge_key,
-            candidate_kind=str(fields.get("candidate_kind") or "").strip(),
+            merge_family=merge_family,
+            merge_role=merge_role,
+            candidate_kind=candidate_kind,
             vector_key=vector_key,
             ast_symbols=collect_output_symbols(repo_root, outputs),
         )
@@ -295,6 +304,8 @@ def attach_related_task_ids(records: Sequence[TodoIndexRecord], *, max_related: 
             score = cosine(record.embedding, other.embedding)
             if record.merge_key and record.merge_key == other.merge_key:
                 score += 1.0
+            elif record.merge_family and record.merge_family == other.merge_family:
+                score += 0.70
             elif record.surplus_group and record.surplus_group == other.surplus_group:
                 score += 0.50
             elif record.bundle_key and record.bundle_key == other.bundle_key:
@@ -335,6 +346,10 @@ def cluster_records(
                 selected = cluster
                 best_score = 1.0
                 break
+            if record.merge_family and record.merge_family in cluster.get("merge_families", []):
+                selected = cluster
+                best_score = 0.9
+                break
             score = cosine(record.embedding, cluster.get("centroid", []))
             if record.surplus_group and record.surplus_group in cluster.get("surplus_groups", []):
                 score += 0.35
@@ -348,6 +363,7 @@ def cluster_records(
                 "bundle_key": record.bundle_key,
                 "task_ids": [],
                 "merge_keys": [],
+                "merge_families": [],
                 "surplus_groups": [],
                 "ast_symbols": [],
                 "centroid": record.embedding,
@@ -357,6 +373,8 @@ def cluster_records(
         selected["task_ids"].append(record.task_id)
         if record.merge_key and record.merge_key not in selected["merge_keys"]:
             selected["merge_keys"].append(record.merge_key)
+        if record.merge_family and record.merge_family not in selected["merge_families"]:
+            selected["merge_families"].append(record.merge_family)
         if record.surplus_group and record.surplus_group not in selected["surplus_groups"]:
             selected["surplus_groups"].append(record.surplus_group)
         selected_symbols = set(selected.get("ast_symbols") or [])
@@ -372,6 +390,7 @@ def cluster_records(
     for cluster in clusters:
         cluster["task_ids"] = sorted(cluster["task_ids"])
         cluster["merge_keys"] = sorted(cluster["merge_keys"])
+        cluster["merge_families"] = sorted(cluster["merge_families"])
         cluster["surplus_groups"] = sorted(cluster["surplus_groups"])
         cluster["centroid_sha1"] = sha1(
             json.dumps(cluster.pop("centroid", []), sort_keys=True).encode("utf-8")
@@ -405,14 +424,25 @@ def build_merge_candidate(
     shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
     ast_symbols = sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80]
     missing_evidence = sorted_unique([item for record in records for item in record.missing_evidence])
+    graph_depths = [record.graph_depth for record in records if record.graph_depth >= 0]
     candidate_seed = json.dumps({"group_type": group_type, "group_value": group_value, "task_ids": task_ids}, sort_keys=True)
     exact_merge_key_count = len({record.merge_key for record in records if record.merge_key})
     if group_type == "merge_key":
         confidence = "high"
+    elif group_type == "merge_family" and shared_outputs:
+        confidence = "high"
+    elif group_type == "merge_family":
+        confidence = "medium"
     elif group_type == "surplus_group" and exact_merge_key_count <= max(1, len(records) // 2):
         confidence = "medium"
     else:
         confidence = "low"
+    merge_ready_task_ids = (
+        active_task_ids
+        if len(active_task_ids) > 1
+        and (group_type in {"merge_key", "merge_family", "surplus_group"} or bool(shared_outputs))
+        else []
+    )
     return {
         "candidate_key": f"{group_type}/{sha1(candidate_seed.encode('utf-8')).hexdigest()[:12]}",
         "group_type": group_type,
@@ -423,14 +453,20 @@ def build_merge_candidate(
         "completed_task_ids": sorted_unique([record.task_id for record in records if record.status == "completed"]),
         "blocked_task_ids": sorted_unique([record.task_id for record in records if record.status == "blocked"]),
         "goal_ids": sorted_unique([record.goal_id for record in records]),
+        "graph_parent_ids": sorted_unique([parent for record in records for parent in record.graph_parents]),
+        "graph_depth_min": min(graph_depths) if graph_depths else 0,
+        "graph_depth_max": max(graph_depths) if graph_depths else 0,
         "bundle_keys": sorted_unique([record.bundle_key for record in records]),
         "merge_keys": sorted_unique([record.merge_key for record in records]),
+        "merge_families": sorted_unique([record.merge_family for record in records]),
+        "merge_roles": sorted_unique([record.merge_role for record in records]),
         "surplus_groups": sorted_unique([record.surplus_group for record in records]),
         "cluster_keys": sorted_unique([cluster_by_task.get(record.task_id, "") for record in records]),
         "shared_outputs": shared_outputs,
         "all_outputs": all_outputs,
         "missing_evidence": missing_evidence,
         "ast_symbols": ast_symbols,
+        "merge_ready_task_ids": merge_ready_task_ids,
         "estimated_prompt_tokens": sum(record.token_count for record in records),
     }
 
@@ -455,6 +491,7 @@ def build_merge_candidates(
     groups: list[tuple[str, str, list[TodoIndexRecord]]] = []
     for group_type, getter in (
         ("merge_key", lambda record: record.merge_key),
+        ("merge_family", lambda record: record.merge_family),
         ("surplus_group", lambda record: record.surplus_group),
     ):
         by_value: dict[str, list[TodoIndexRecord]] = {}
@@ -502,6 +539,148 @@ def build_merge_candidates(
     )
 
 
+def _compact_context_text(context: Mapping[str, Any]) -> str:
+    parts = [
+        str(context.get("context_key") or ""),
+        f"merge_ready={str(bool(context.get('merge_ready'))).lower()}",
+        f"active={', '.join(context.get('active_task_ids') or [])}",
+        f"goals={', '.join(context.get('goal_ids') or [])}",
+        f"parents={', '.join(context.get('graph_parent_ids') or [])}",
+        f"merge_family={', '.join(context.get('merge_families') or [])}",
+        f"missing={', '.join(context.get('missing_evidence') or [])}",
+        f"outputs={', '.join((context.get('shared_outputs') or context.get('all_outputs') or [])[:4])}",
+        f"ast={', '.join((context.get('ast_symbols') or [])[:12])}",
+    ]
+    return "; ".join(part for part in parts if not part.endswith("=") and part.strip())
+
+
+def build_bundle_context(
+    *,
+    source_type: str,
+    source_key: str,
+    confidence: str,
+    records: Sequence[TodoIndexRecord],
+) -> dict[str, Any] | None:
+    """Build one compact prompt context from goal/subgoal-related todos."""
+
+    if not records:
+        return None
+    task_ids = sorted_unique([record.task_id for record in records])
+    if len(task_ids) < 2:
+        return None
+    active_task_ids = sorted_unique([record.task_id for record in records if active_record(record)])
+    if not active_task_ids:
+        return None
+    all_outputs = sorted_unique([output for record in records for output in record.outputs])
+    output_sets = [set(record.outputs) for record in records if record.outputs]
+    shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
+    graph_depths = [record.graph_depth for record in records if record.graph_depth >= 0]
+    merge_families = sorted_unique([record.merge_family for record in records])
+    context_seed = json.dumps(
+        {"source_type": source_type, "source_key": source_key, "task_ids": task_ids},
+        sort_keys=True,
+    )
+    merge_ready = len(active_task_ids) > 1 and (
+        bool(shared_outputs)
+        or source_type in {"merge_candidate", "merge_key", "merge_family", "surplus_group"}
+        or bool(merge_families)
+    )
+    representative_task_id = active_task_ids[0]
+    context: dict[str, Any] = {
+        "context_key": f"bundle_context/{sha1(context_seed.encode('utf-8')).hexdigest()[:12]}",
+        "source_type": source_type,
+        "source_key": source_key,
+        "confidence": confidence,
+        "task_ids": task_ids,
+        "active_task_ids": active_task_ids,
+        "representative_task_id": representative_task_id,
+        "merge_ready": merge_ready,
+        "merge_ready_task_ids": active_task_ids if merge_ready else [],
+        "goal_ids": sorted_unique([record.goal_id for record in records]),
+        "graph_parent_ids": sorted_unique([parent for record in records for parent in record.graph_parents]),
+        "graph_depth_min": min(graph_depths) if graph_depths else 0,
+        "graph_depth_max": max(graph_depths) if graph_depths else 0,
+        "bundle_keys": sorted_unique([record.bundle_key for record in records]),
+        "merge_keys": sorted_unique([record.merge_key for record in records]),
+        "merge_families": merge_families,
+        "merge_roles": sorted_unique([record.merge_role for record in records]),
+        "surplus_groups": sorted_unique([record.surplus_group for record in records]),
+        "candidate_kinds": sorted_unique([record.candidate_kind for record in records]),
+        "shared_outputs": shared_outputs,
+        "all_outputs": all_outputs,
+        "validation": sorted_unique([command for record in records for command in record.validation])[:8],
+        "missing_evidence": sorted_unique([item for record in records for item in record.missing_evidence]),
+        "ast_symbols": sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80],
+        "raw_prompt_tokens": sum(record.token_count for record in records),
+    }
+    compact_context = _compact_context_text(context)
+    context["compact_context"] = compact_context
+    context["compact_context_tokens"] = len(objective_tokens(compact_context))
+    return context
+
+
+def build_bundle_contexts(
+    records: Sequence[TodoIndexRecord],
+    clusters: Sequence[Mapping[str, Any]],
+    merge_candidates: Sequence[Mapping[str, Any]],
+) -> list[dict[str, Any]]:
+    """Build token-efficient contexts that bundle related goal/subgoal todos."""
+
+    records_by_task = {record.task_id: record for record in records}
+    contexts: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+
+    def add_context(source_type: str, source_key: str, confidence: str, task_ids: Sequence[str]) -> None:
+        selected = [records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task]
+        task_set = tuple(sorted(record.task_id for record in selected))
+        if len(task_set) < 2 or task_set in seen:
+            return
+        context = build_bundle_context(
+            source_type=source_type,
+            source_key=source_key,
+            confidence=confidence,
+            records=selected,
+        )
+        if context is None:
+            return
+        seen.add(task_set)
+        contexts.append(context)
+
+    for candidate in merge_candidates:
+        task_ids = candidate.get("task_ids") if isinstance(candidate, Mapping) else None
+        if not isinstance(task_ids, list):
+            continue
+        add_context(
+            str(candidate.get("group_type") or "merge_candidate"),
+            str(candidate.get("candidate_key") or ""),
+            str(candidate.get("confidence") or "low"),
+            [str(task_id) for task_id in task_ids],
+        )
+
+    for cluster in clusters:
+        task_ids = cluster.get("task_ids") if isinstance(cluster, Mapping) else None
+        if not isinstance(task_ids, list):
+            continue
+        add_context(
+            "vector_cluster",
+            str(cluster.get("cluster_key") or ""),
+            "low",
+            [str(task_id) for task_id in task_ids],
+        )
+
+    confidence_order = {"high": 0, "medium": 1, "low": 2}
+    return sorted(
+        contexts,
+        key=lambda context: (
+            0 if context.get("merge_ready") else 1,
+            confidence_order.get(str(context.get("confidence") or ""), 9),
+            -len(context.get("active_task_ids") or []),
+            int(context.get("compact_context_tokens") or 0),
+            str(context.get("context_key") or ""),
+        ),
+    )
+
+
 def write_todo_vector_index(
     *,
     repo_root: Path,
@@ -525,6 +704,7 @@ def write_todo_vector_index(
     )
     clusters = cluster_records(records)
     merge_candidates = build_merge_candidates(records, clusters)
+    bundle_contexts = build_bundle_contexts(records, clusters, merge_candidates)
     payload: dict[str, Any] = {
         "schema": DEFAULT_TODO_VECTOR_INDEX_SCHEMA,
         "generated_at": utc_now(),
@@ -535,9 +715,14 @@ def write_todo_vector_index(
         "embedding_dimensions": dimensions,
         "task_count": len(records),
         "active_task_count": sum(1 for record in records if record.status not in {"completed", "blocked"}),
+        "estimated_raw_prompt_tokens": sum(record.token_count for record in records if active_record(record)),
+        "estimated_compact_context_tokens": sum(
+            int(context.get("compact_context_tokens") or 0) for context in bundle_contexts
+        ),
         "records": [record.to_dict() for record in records],
         "clusters": clusters,
         "merge_candidates": merge_candidates,
+        "bundle_contexts": bundle_contexts,
     }
     if bundle_index_path is not None:
         payload["bundle_index_path"] = repo_relative_path(repo_root, bundle_index_path)
@@ -556,6 +741,7 @@ def write_todo_vector_index(
             records=records,
             clusters=clusters,
             merge_candidates=merge_candidates,
+            bundle_contexts=bundle_contexts,
         )
     return payload
 
@@ -579,6 +765,7 @@ def update_bundle_index_with_todo_vectors(
     records: Sequence[TodoIndexRecord],
     clusters: Sequence[Mapping[str, Any]],
     merge_candidates: Sequence[Mapping[str, Any]] = (),
+    bundle_contexts: Sequence[Mapping[str, Any]] = (),
 ) -> None:
     try:
         payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
@@ -599,6 +786,26 @@ def update_bundle_index_with_todo_vectors(
         cluster_key = str(cluster.get("cluster_key") or "")
         for task_id in cluster.get("task_ids", []) if isinstance(cluster.get("task_ids"), list) else []:
             cluster_by_task[str(task_id)] = cluster_key
+    context_keys_by_task: dict[str, list[str]] = {}
+    merge_ready_by_task: dict[str, list[str]] = {}
+    for context in bundle_contexts:
+        if not isinstance(context, Mapping):
+            continue
+        context_key = str(context.get("context_key") or "")
+        if not context_key:
+            continue
+        task_ids = context.get("task_ids")
+        if isinstance(task_ids, list):
+            for task_id in task_ids:
+                normalized = str(task_id)
+                if normalized:
+                    context_keys_by_task.setdefault(normalized, []).append(context_key)
+        merge_ready_task_ids = context.get("merge_ready_task_ids")
+        if isinstance(merge_ready_task_ids, list):
+            for task_id in merge_ready_task_ids:
+                normalized = str(task_id)
+                if normalized:
+                    merge_ready_by_task.setdefault(normalized, []).append(context_key)
     for bundle_key, bundle_payload in bundles.items():
         if not isinstance(bundle_payload, dict):
             continue
@@ -606,13 +813,33 @@ def update_bundle_index_with_todo_vectors(
         bundle_payload["todo_vector_summary"] = {
             "task_count": len(bundle_records),
             "merge_keys": sorted({record.merge_key for record in bundle_records if record.merge_key}),
+            "merge_families": sorted({record.merge_family for record in bundle_records if record.merge_family}),
             "surplus_groups": sorted({record.surplus_group for record in bundle_records if record.surplus_group}),
             "estimated_prompt_tokens": sum(record.token_count for record in bundle_records),
+            "compact_context_tokens": sum(
+                int(context.get("compact_context_tokens") or 0)
+                for context in bundle_contexts
+                if set(context.get("task_ids") or []) & {record.task_id for record in bundle_records}
+            ),
             "merge_candidate_keys": [
                 str(candidate.get("candidate_key") or "")
                 for candidate in merge_candidates
                 if set(candidate.get("task_ids") or []) & {record.task_id for record in bundle_records}
             ],
+            "bundle_context_keys": sorted(
+                {
+                    context_key
+                    for record in bundle_records
+                    for context_key in context_keys_by_task.get(record.task_id, [])
+                }
+            ),
+            "merge_ready_task_ids": sorted(
+                {
+                    record.task_id
+                    for record in bundle_records
+                    if merge_ready_by_task.get(record.task_id)
+                }
+            ),
         }
         tasks = bundle_payload.get("tasks")
         if not isinstance(tasks, list):
@@ -624,8 +851,11 @@ def update_bundle_index_with_todo_vectors(
             if record is None:
                 continue
             task["merge_key"] = record.merge_key
+            task["merge_family"] = record.merge_family
+            task["merge_role"] = record.merge_role
             task["surplus_group"] = record.surplus_group
             task["todo_vector_key"] = record.vector_key
             task["todo_cluster_key"] = cluster_by_task.get(record.task_id, "")
+            task["todo_bundle_context_keys"] = context_keys_by_task.get(record.task_id, [])[:5]
             task["related_task_ids"] = record.related_task_ids
     bundle_index_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

@@ -4107,6 +4107,13 @@ class PortalImplementationDaemon:
                 candidate_task_ids = candidate.get("task_ids")
                 if isinstance(candidate_task_ids, list) and task.task_id in {str(task_id) for task_id in candidate_task_ids}:
                     merge_candidates.append(candidate)
+            bundle_contexts: list[dict[str, Any]] = []
+            for bundle_context in payload.get("bundle_contexts", []) if isinstance(payload.get("bundle_contexts"), list) else []:
+                if not isinstance(bundle_context, dict):
+                    continue
+                context_task_ids = bundle_context.get("task_ids")
+                if isinstance(context_task_ids, list) and task.task_id in {str(task_id) for task_id in context_task_ids}:
+                    bundle_contexts.append(bundle_context)
 
             return {
                 "index_path": index_path,
@@ -4114,6 +4121,7 @@ class PortalImplementationDaemon:
                 "cluster": cluster or {},
                 "related_records": [by_task[task_id] for task_id in related_ids if task_id in by_task][:5],
                 "merge_candidates": merge_candidates[:3],
+                "bundle_contexts": bundle_contexts[:2],
             }
         return None
 
@@ -4141,9 +4149,12 @@ class PortalImplementationDaemon:
         fields = [
             ("Todo vector key", record.get("vector_key") or record.get("todo_vector_key")),
             ("Merge key", record.get("merge_key")),
+            ("Merge family", record.get("merge_family")),
+            ("Merge role", record.get("merge_role")),
             ("Surplus group", record.get("surplus_group")),
             ("Candidate kind", record.get("candidate_kind")),
             ("Goal id", record.get("goal_id")),
+            ("Graph depth", record.get("graph_depth")),
             ("Bundle", record.get("bundle_key")),
             ("Cluster", cluster.get("cluster_key") if isinstance(cluster, dict) else ""),
         ]
@@ -4168,6 +4179,40 @@ class PortalImplementationDaemon:
         ast_symbols = sorted({item for item in symbol_candidates if item})[:24]
         if ast_symbols:
             lines.append(f"- AST symbols: {', '.join(ast_symbols)}")
+
+        bundle_context_entries: list[str] = []
+        for bundle_context in context.get("bundle_contexts", []):
+            if not isinstance(bundle_context, dict):
+                continue
+            compact = str(bundle_context.get("compact_context") or "").strip()
+            if compact:
+                bundle_context_entries.append(compact)
+                continue
+            context_key = str(bundle_context.get("context_key") or "").strip()
+            confidence = str(bundle_context.get("confidence") or "").strip()
+            active_ids = ", ".join(self._compact_value_list(bundle_context.get("active_task_ids"), limit=6))
+            merge_ready = "true" if bundle_context.get("merge_ready") else "false"
+            outputs = ", ".join(
+                self._compact_value_list(
+                    bundle_context.get("shared_outputs") or bundle_context.get("all_outputs"),
+                    limit=4,
+                )
+            )
+            details = [
+                part
+                for part in (
+                    context_key,
+                    confidence,
+                    f"merge_ready={merge_ready}",
+                    f"active={active_ids}" if active_ids else "",
+                    f"outputs={outputs}" if outputs else "",
+                )
+                if part
+            ]
+            if details:
+                bundle_context_entries.append("; ".join(details))
+        if bundle_context_entries:
+            lines.append(f"- Bundle contexts: {' | '.join(bundle_context_entries)}")
 
         merge_candidate_entries: list[str] = []
         for candidate in context.get("merge_candidates", []):
@@ -4319,6 +4364,26 @@ Rules:
                 if ready_count:
                     ready_cluster_sizes[cluster_key] = ready_count
 
+        bundle_context_by_task: dict[str, str] = {}
+        ready_bundle_context_sizes: dict[str, int] = {}
+        bundle_contexts = payload.get("bundle_contexts")
+        if isinstance(bundle_contexts, list):
+            for bundle_context in bundle_contexts:
+                if not isinstance(bundle_context, dict):
+                    continue
+                context_key = str(bundle_context.get("context_key") or "")
+                if not context_key:
+                    continue
+                task_ids = bundle_context.get("task_ids")
+                if not isinstance(task_ids, list):
+                    continue
+                normalized_ids = [str(task_id) for task_id in task_ids if str(task_id)]
+                for task_id in normalized_ids:
+                    bundle_context_by_task.setdefault(task_id, context_key)
+                ready_count = sum(1 for task_id in normalized_ids if task_id in ready_task_ids)
+                if ready_count:
+                    ready_bundle_context_sizes[context_key] = ready_count
+
         state = PortalTaskState.load(self.state_path)
         anchor_task_id = state.last_implementation_task_id or state.active_task_id
         anchor_record = record_by_task.get(anchor_task_id) if anchor_task_id else None
@@ -4326,18 +4391,21 @@ Rules:
             "record_by_task": record_by_task,
             "cluster_by_task": cluster_by_task,
             "ready_cluster_sizes": ready_cluster_sizes,
+            "bundle_context_by_task": bundle_context_by_task,
+            "ready_bundle_context_sizes": ready_bundle_context_sizes,
             "anchor_task_id": anchor_task_id,
             "anchor_record": anchor_record if isinstance(anchor_record, dict) else None,
             "anchor_cluster_key": cluster_by_task.get(anchor_task_id, "") if anchor_task_id else "",
+            "anchor_bundle_context_key": bundle_context_by_task.get(anchor_task_id, "") if anchor_task_id else "",
         }
 
-    def _todo_vector_selection_rank(self, task: PortalTask, context: dict[str, Any]) -> tuple[int, int, int]:
+    def _todo_vector_selection_rank(self, task: PortalTask, context: dict[str, Any]) -> tuple[int, int, int, int]:
         record_by_task = context.get("record_by_task")
         if not isinstance(record_by_task, dict):
-            return (9, 0, 0)
+            return (9, 0, 0, 0)
         record = record_by_task.get(task.task_id)
         if not isinstance(record, dict):
-            return (9, 0, 0)
+            return (9, 0, 0, 0)
 
         cluster_by_task = context.get("cluster_by_task")
         ready_cluster_sizes = context.get("ready_cluster_sizes")
@@ -4351,11 +4419,23 @@ Rules:
             if cluster_key and isinstance(ready_cluster_sizes, dict)
             else 0
         )
+        bundle_context_by_task = context.get("bundle_context_by_task")
+        ready_bundle_context_sizes = context.get("ready_bundle_context_sizes")
+        bundle_context_key = (
+            str(bundle_context_by_task.get(task.task_id) or "")
+            if isinstance(bundle_context_by_task, dict)
+            else ""
+        )
+        ready_bundle_context_size = (
+            int(ready_bundle_context_sizes.get(bundle_context_key) or 0)
+            if bundle_context_key and isinstance(ready_bundle_context_sizes, dict)
+            else 0
+        )
         token_count = int(record.get("token_count") or 0)
 
         anchor = context.get("anchor_record")
         if not isinstance(anchor, dict):
-            return (5, -ready_cluster_size, token_count)
+            return (5, -ready_bundle_context_size, -ready_cluster_size, token_count)
 
         anchor_related = {
             str(task_id)
@@ -4369,20 +4449,25 @@ Rules:
         } if isinstance(record.get("related_task_ids"), list) else set()
         anchor_task_id = str(context.get("anchor_task_id") or "")
         anchor_cluster_key = str(context.get("anchor_cluster_key") or "")
+        anchor_bundle_context_key = str(context.get("anchor_bundle_context_key") or "")
 
         if record.get("merge_key") and record.get("merge_key") == anchor.get("merge_key"):
             relation_rank = 0
-        elif cluster_key and anchor_cluster_key and cluster_key == anchor_cluster_key:
+        elif bundle_context_key and anchor_bundle_context_key and bundle_context_key == anchor_bundle_context_key:
             relation_rank = 1
-        elif task.task_id in anchor_related or (anchor_task_id and anchor_task_id in record_related):
+        elif cluster_key and anchor_cluster_key and cluster_key == anchor_cluster_key:
             relation_rank = 2
-        elif record.get("surplus_group") and record.get("surplus_group") == anchor.get("surplus_group"):
+        elif task.task_id in anchor_related or (anchor_task_id and anchor_task_id in record_related):
             relation_rank = 3
-        elif record.get("goal_id") and record.get("goal_id") == anchor.get("goal_id"):
+        elif record.get("merge_family") and record.get("merge_family") == anchor.get("merge_family"):
             relation_rank = 4
-        else:
+        elif record.get("surplus_group") and record.get("surplus_group") == anchor.get("surplus_group"):
             relation_rank = 5
-        return (relation_rank, -ready_cluster_size, token_count)
+        elif record.get("goal_id") and record.get("goal_id") == anchor.get("goal_id"):
+            relation_rank = 6
+        else:
+            relation_rank = 7
+        return (relation_rank, -ready_bundle_context_size, -ready_cluster_size, token_count)
 
     def _select_next_task(
         self,
@@ -4405,7 +4490,7 @@ Rules:
         }
         deprioritized = {str(item) for item in strategy.get("deprioritized_tasks", [])}
 
-        def sort_key(task: PortalTask) -> tuple[int, int, int, int, int, str]:
+        def sort_key(task: PortalTask) -> tuple[Any, ...]:
             selection_penalty = 0
             if task.task_id in unresolved_merge_failures:
                 selection_penalty += UNRESOLVED_MERGE_SELECTION_PENALTY
