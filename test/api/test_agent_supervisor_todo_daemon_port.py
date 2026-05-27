@@ -2352,6 +2352,44 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     assert '"embedding"' not in prompt
 
 
+def test_implementation_daemon_budgets_todo_vector_context_packet_first(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+
+    rendered = daemon._budgeted_todo_vector_context(
+        [
+            "- Index: objective_bundles/todo_vector_index.json",
+            "- Execution packets: execution_packet/runtime/src/abc ids=ACCEL-001,ACCEL-002 w=12 pw=12",
+            "- Goal packet: goal_packet/runtime/src/abc",
+            "- Goal packet work item count: 12",
+        ],
+        [
+            "- AST symbols: " + ", ".join(f"symbol_{index}" for index in range(80)),
+            "- Related tasks: " + " | ".join(f"ACCEL-{index:03d} noisy related task" for index in range(2, 25)),
+            "- Merge candidates: " + " | ".join(f"candidate_{index} active=ACCEL-{index:03d}" for index in range(25)),
+        ],
+        token_budget=36,
+    )
+
+    assert "Execution packets: execution_packet/runtime/src/abc" in rendered
+    assert "Goal packet: goal_packet/runtime/src/abc" in rendered
+    assert "Goal packet work item count: 12" in rendered
+    assert "AST symbols:" not in rendered
+    assert "Related tasks:" not in rendered
+    assert "Context budget:" in rendered
+
+
 def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

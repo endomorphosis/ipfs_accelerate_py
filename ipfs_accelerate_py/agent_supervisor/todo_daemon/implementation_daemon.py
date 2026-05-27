@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import shlex
 import shutil
 import subprocess
@@ -49,6 +50,9 @@ RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
 SHARED_WORKTREE_PATHS = ("wallet_interface/ui/node_modules",)
+DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "260")
+)
 
 
 def normalize_relative_path_list(values: Any) -> tuple[str, ...]:
@@ -4146,6 +4150,43 @@ class PortalImplementationDaemon:
             items = split_csv(str(value or ""))
         return items[:limit]
 
+    def _estimate_prompt_tokens(self, value: str) -> int:
+        return len(re.findall(r"[A-Za-z0-9_./:-]+", str(value or "")))
+
+    def _budgeted_todo_vector_context(
+        self,
+        required_lines: list[str],
+        optional_lines: list[str],
+        *,
+        token_budget: int = DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET,
+    ) -> str:
+        """Render compact vector context without letting optional details bloat prompts."""
+
+        budget = max(80, int(token_budget or DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET))
+        lines: list[str] = []
+        current_tokens = 0
+        for line in required_lines:
+            if not line:
+                continue
+            lines.append(line)
+            current_tokens += self._estimate_prompt_tokens(line)
+
+        skipped = 0
+        for line in optional_lines:
+            if not line:
+                continue
+            line_tokens = self._estimate_prompt_tokens(line)
+            if current_tokens + line_tokens <= budget:
+                lines.append(line)
+                current_tokens += line_tokens
+            else:
+                skipped += 1
+        if skipped:
+            summary = f"- Context budget: kept {current_tokens}/{budget} estimated tokens; skipped {skipped} lower-priority vector details"
+            if current_tokens + self._estimate_prompt_tokens(summary) <= budget + 24:
+                lines.append(summary)
+        return "\n".join(lines)
+
     def _render_todo_vector_context(self, task: PortalTask) -> str:
         context = self._load_todo_vector_context(task)
         if context is None:
@@ -4172,23 +4213,38 @@ class PortalImplementationDaemon:
             ("Bundle", record.get("bundle_key")),
             ("Cluster", cluster.get("cluster_key") if isinstance(cluster, dict) else ""),
         ]
-        lines = [f"- Index: {self._display_context_path(index_path)}"]
+        required_lines = [f"- Index: {self._display_context_path(index_path)}"]
+        optional_lines: list[str] = []
+        required_field_labels = {
+            "Todo vector key",
+            "Merge key",
+            "Merge family",
+            "Work item count",
+            "Work scope",
+            "Goal packet",
+            "Goal packet role",
+            "Goal packet task count",
+            "Goal packet work item count",
+            "Goal id",
+            "Bundle",
+        }
         for label, value in fields:
             text = str(value or "").strip()
             if text:
-                lines.append(f"- {label}: {text}")
+                target = required_lines if label in required_field_labels else optional_lines
+                target.append(f"- {label}: {text}")
 
         missing_evidence = self._compact_value_list(record.get("missing_evidence"), limit=8)
         if missing_evidence:
-            lines.append(f"- Missing evidence: {', '.join(missing_evidence)}")
+            required_lines.append(f"- Missing evidence: {', '.join(missing_evidence)}")
 
         packet_goals = self._compact_value_list(record.get("goal_packet_goal_ids"), limit=8)
         if packet_goals:
-            lines.append(f"- Goal packet goals: {', '.join(packet_goals)}")
+            required_lines.append(f"- Goal packet goals: {', '.join(packet_goals)}")
 
         cluster_task_ids = self._compact_value_list(cluster.get("task_ids") if isinstance(cluster, dict) else [], limit=10)
         if cluster_task_ids:
-            lines.append(f"- Cluster task ids: {', '.join(cluster_task_ids)}")
+            optional_lines.append(f"- Cluster task ids: {', '.join(cluster_task_ids)}")
 
         symbol_candidates = [
             *self._compact_value_list(record.get("ast_symbols"), limit=24),
@@ -4196,7 +4252,7 @@ class PortalImplementationDaemon:
         ]
         ast_symbols = sorted({item for item in symbol_candidates if item})[:24]
         if ast_symbols:
-            lines.append(f"- AST symbols: {', '.join(ast_symbols)}")
+            optional_lines.append(f"- AST symbols: {', '.join(ast_symbols)}")
 
         execution_packet_entries: list[str] = []
         for packet in context.get("execution_packets", []):
@@ -4228,7 +4284,7 @@ class PortalImplementationDaemon:
             if details:
                 execution_packet_entries.append("; ".join(details))
         if execution_packet_entries:
-            lines.append(f"- Execution packets: {' | '.join(execution_packet_entries)}")
+            required_lines.insert(1, f"- Execution packets: {' | '.join(execution_packet_entries)}")
 
         bundle_context_entries: list[str] = []
         for bundle_context in context.get("bundle_contexts", []):
@@ -4262,7 +4318,7 @@ class PortalImplementationDaemon:
             if details:
                 bundle_context_entries.append("; ".join(details))
         if bundle_context_entries:
-            lines.append(f"- Bundle contexts: {' | '.join(bundle_context_entries)}")
+            optional_lines.append(f"- Bundle contexts: {' | '.join(bundle_context_entries)}")
 
         merge_candidate_entries: list[str] = []
         for candidate in context.get("merge_candidates", []):
@@ -4287,7 +4343,7 @@ class PortalImplementationDaemon:
             if details:
                 merge_candidate_entries.append("; ".join(details))
         if merge_candidate_entries:
-            lines.append(f"- Merge candidates: {' | '.join(merge_candidate_entries)}")
+            optional_lines.append(f"- Merge candidates: {' | '.join(merge_candidate_entries)}")
 
         related_entries: list[str] = []
         for related in context["related_records"]:
@@ -4301,9 +4357,9 @@ class PortalImplementationDaemon:
             details = [part for part in (status, title, f"missing={evidence}" if evidence else "", f"outputs={outputs}" if outputs else "") if part]
             related_entries.append(f"{related_id} ({'; '.join(details)})")
         if related_entries:
-            lines.append(f"- Related tasks: {' | '.join(related_entries)}")
+            optional_lines.append(f"- Related tasks: {' | '.join(related_entries)}")
 
-        return "\n".join(lines)
+        return self._budgeted_todo_vector_context(required_lines, optional_lines)
 
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
         todo_vector_context = self._render_todo_vector_context(task)
