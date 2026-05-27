@@ -4230,6 +4230,127 @@ Rules:
             actions.append(f"Acceptance: {task.acceptance}")
         return actions
 
+    def _load_todo_vector_payload_for_tasks(self, tasks: list[PortalTask]) -> dict[str, Any] | None:
+        for task in tasks:
+            for index_path in self._todo_vector_index_candidate_paths(task):
+                payload = load_json_dict(index_path)
+                if payload is None:
+                    continue
+                records = payload.get("records")
+                if not isinstance(records, list):
+                    continue
+                task_ids = {
+                    str(record.get("task_id") or "")
+                    for record in records
+                    if isinstance(record, dict) and str(record.get("task_id") or "")
+                }
+                if any(task.task_id in task_ids for task in tasks):
+                    return payload
+        return None
+
+    def _todo_vector_selection_context(
+        self,
+        tasks: list[PortalTask],
+        ready_task_ids: set[str],
+    ) -> dict[str, Any]:
+        payload = self._load_todo_vector_payload_for_tasks(tasks)
+        if payload is None:
+            return {}
+
+        records = payload.get("records")
+        if not isinstance(records, list):
+            return {}
+        record_by_task = {
+            str(record.get("task_id") or ""): record
+            for record in records
+            if isinstance(record, dict) and str(record.get("task_id") or "")
+        }
+
+        cluster_by_task: dict[str, str] = {}
+        ready_cluster_sizes: dict[str, int] = {}
+        clusters = payload.get("clusters")
+        if isinstance(clusters, list):
+            for cluster in clusters:
+                if not isinstance(cluster, dict):
+                    continue
+                cluster_key = str(cluster.get("cluster_key") or "")
+                if not cluster_key:
+                    continue
+                task_ids = cluster.get("task_ids")
+                if not isinstance(task_ids, list):
+                    continue
+                normalized_ids = [str(task_id) for task_id in task_ids if str(task_id)]
+                for task_id in normalized_ids:
+                    cluster_by_task[task_id] = cluster_key
+                ready_count = sum(1 for task_id in normalized_ids if task_id in ready_task_ids)
+                if ready_count:
+                    ready_cluster_sizes[cluster_key] = ready_count
+
+        state = PortalTaskState.load(self.state_path)
+        anchor_task_id = state.last_implementation_task_id or state.active_task_id
+        anchor_record = record_by_task.get(anchor_task_id) if anchor_task_id else None
+        return {
+            "record_by_task": record_by_task,
+            "cluster_by_task": cluster_by_task,
+            "ready_cluster_sizes": ready_cluster_sizes,
+            "anchor_task_id": anchor_task_id,
+            "anchor_record": anchor_record if isinstance(anchor_record, dict) else None,
+            "anchor_cluster_key": cluster_by_task.get(anchor_task_id, "") if anchor_task_id else "",
+        }
+
+    def _todo_vector_selection_rank(self, task: PortalTask, context: dict[str, Any]) -> tuple[int, int, int]:
+        record_by_task = context.get("record_by_task")
+        if not isinstance(record_by_task, dict):
+            return (9, 0, 0)
+        record = record_by_task.get(task.task_id)
+        if not isinstance(record, dict):
+            return (9, 0, 0)
+
+        cluster_by_task = context.get("cluster_by_task")
+        ready_cluster_sizes = context.get("ready_cluster_sizes")
+        cluster_key = (
+            str(cluster_by_task.get(task.task_id) or "")
+            if isinstance(cluster_by_task, dict)
+            else ""
+        )
+        ready_cluster_size = (
+            int(ready_cluster_sizes.get(cluster_key) or 0)
+            if cluster_key and isinstance(ready_cluster_sizes, dict)
+            else 0
+        )
+        token_count = int(record.get("token_count") or 0)
+
+        anchor = context.get("anchor_record")
+        if not isinstance(anchor, dict):
+            return (5, -ready_cluster_size, token_count)
+
+        anchor_related = {
+            str(task_id)
+            for task_id in anchor.get("related_task_ids", [])
+            if str(task_id)
+        } if isinstance(anchor.get("related_task_ids"), list) else set()
+        record_related = {
+            str(task_id)
+            for task_id in record.get("related_task_ids", [])
+            if str(task_id)
+        } if isinstance(record.get("related_task_ids"), list) else set()
+        anchor_task_id = str(context.get("anchor_task_id") or "")
+        anchor_cluster_key = str(context.get("anchor_cluster_key") or "")
+
+        if record.get("merge_key") and record.get("merge_key") == anchor.get("merge_key"):
+            relation_rank = 0
+        elif cluster_key and anchor_cluster_key and cluster_key == anchor_cluster_key:
+            relation_rank = 1
+        elif task.task_id in anchor_related or (anchor_task_id and anchor_task_id in record_related):
+            relation_rank = 2
+        elif record.get("surplus_group") and record.get("surplus_group") == anchor.get("surplus_group"):
+            relation_rank = 3
+        elif record.get("goal_id") and record.get("goal_id") == anchor.get("goal_id"):
+            relation_rank = 4
+        else:
+            relation_rank = 5
+        return (relation_rank, -ready_cluster_size, token_count)
+
     def _select_next_task(
         self,
         tasks: list[PortalTask],
@@ -4241,6 +4362,8 @@ Rules:
         ready = [task for task in tasks if resolved_statuses.get(task.task_id) == "ready"]
         if not ready:
             return None
+        ready_task_ids = {task.task_id for task in ready}
+        vector_context = self._todo_vector_selection_context(tasks, ready_task_ids)
         focus_order = {
             track: index
             for index, track in enumerate(
@@ -4255,11 +4378,13 @@ Rules:
                 selection_penalty += UNRESOLVED_MERGE_SELECTION_PENALTY
             if self._task_has_recent_no_change_outcome(task.task_id, recent_outcomes):
                 selection_penalty += NO_CHANGE_SELECTION_PENALTY
+            vector_rank = self._todo_vector_selection_rank(task, vector_context)
             return (
                 selection_penalty,
                 PRIORITY_ORDER.get(task.priority, 99),
                 1 if task.task_id in deprioritized else 0,
                 focus_order.get(task.track, len(focus_order)),
+                *vector_rank,
                 len(task.depends_on),
                 task.task_id,
             )

@@ -61,6 +61,13 @@ indexes are backfilled with `todo_vector_summary` and per-task vector metadata,
 which lets bundle supervisors select cohesive lanes and keep worker prompts
 focused on a shard rather than the whole todo board.
 
+Implementation daemons also read that index while selecting the next ready task.
+Existing priority, retry, and dependency guardrails still win, but comparable
+ready tasks are ranked by merge key, vector cluster, related-task ids, surplus
+group, goal id, and ready-cluster density. This keeps a daemon on adjacent work
+after a successful task, so follow-up prompts can reuse compact vector context
+instead of spending tokens reloading unrelated goal and todo material.
+
 ## Bundle Flow
 
 1. Keep the objective heap in markdown with `## GOAL-ID Title` records.

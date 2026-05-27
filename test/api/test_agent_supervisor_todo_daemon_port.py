@@ -2125,6 +2125,96 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     assert '"embedding"' not in prompt
 
 
+def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "src" / "bridge.py"
+    source.parent.mkdir()
+    source.write_text("class Bridge:\n    def route(self):\n        return None\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Unrelated runtime cleanup
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/other
+- Goal id: VAIOS-G099
+- Missing evidence: unrelated cleanup
+- Surplus group: objective/VAIOS-G099
+- Merge key: unrelated-runtime
+- Acceptance: Add unrelated proof.
+
+## ACCEL-010 Completed scheduler proof
+
+- Status: completed
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/bridge
+- Goal id: VAIOS-G021
+- Missing evidence: scheduler policy
+- Surplus group: objective/VAIOS-G020
+- Merge key: bridge-runtime
+- Acceptance: Add scheduler policy proof.
+
+## ACCEL-011 Related fallback proof
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/bridge
+- Goal id: VAIOS-G022
+- Missing evidence: fallback route
+- Surplus group: objective/VAIOS-G020
+- Merge key: bridge-runtime
+- Acceptance: Add fallback route proof.
+""",
+        encoding="utf-8",
+    )
+    index_path = repo / "objective_bundles" / "todo_vector_index.json"
+    write_todo_vector_index(
+        repo_root=repo,
+        todo_path=todo_path,
+        index_path=index_path,
+        task_header_prefix="## ACCEL-",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    TodoTaskState(last_implementation_task_id="ACCEL-010").save(state_path)
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps({"last_objective_todo_vector_index_path": "objective_bundles/todo_vector_index.json"}),
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=strategy_path,
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    statuses = {
+        "ACCEL-001": "ready",
+        "ACCEL-010": "completed",
+        "ACCEL-011": "ready",
+    }
+
+    selected = daemon._select_next_task(tasks, statuses, {}, {}, {})
+
+    assert selected is not None
+    assert selected.task_id == "ACCEL-011"
+
+
 def test_objective_daemon_suppresses_existing_discovery_fingerprint(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
