@@ -4151,6 +4151,8 @@ class PortalImplementationDaemon:
             ("Merge key", record.get("merge_key")),
             ("Merge family", record.get("merge_family")),
             ("Merge role", record.get("merge_role")),
+            ("Work item count", record.get("work_item_count")),
+            ("Work scope", record.get("work_scope")),
             ("Surplus group", record.get("surplus_group")),
             ("Candidate kind", record.get("candidate_kind")),
             ("Goal id", record.get("goal_id")),

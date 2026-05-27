@@ -121,6 +121,7 @@ class PortalSupervisorConfig:
     objective_write_todo_vector_index: bool = True
     objective_todo_vector_index_path: Path | None = None
     objective_surplus_findings_per_goal: int = 1
+    objective_surplus_min_terms_per_todo: int = 2
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
     supervisor_script_path: Path | None = None
@@ -1005,6 +1006,7 @@ class PortalImplementationSupervisor:
                 no_todo_vector_index=not self.config.objective_write_todo_vector_index,
                 todo_vector_index_path=self.config.objective_todo_vector_index_path,
                 surplus_findings_per_goal=self.config.objective_surplus_findings_per_goal,
+                surplus_min_terms_per_todo=self.config.objective_surplus_min_terms_per_todo,
                 submit_bundles=False,
                 queue_path=None,
                 queue_task_type="codex.todo_bundle",
@@ -1023,6 +1025,9 @@ class PortalImplementationSupervisor:
         strategy["last_objective_generated_task_ids"] = list(payload.get("task_ids") or [])
         strategy["last_objective_todo_vector_index_path"] = str(payload.get("todo_vector_index_path") or "")
         strategy["last_objective_surplus_findings_per_goal"] = int(payload.get("surplus_findings_per_goal") or 1)
+        strategy["last_objective_surplus_min_terms_per_todo"] = int(
+            payload.get("surplus_min_terms_per_todo") or 2
+        )
         strategy["last_objective_goal_count"] = int(payload.get("objective_goal_count") or 0)
         strategy["last_objective_active_goal_count"] = int(payload.get("objective_active_goal_count") or 0)
         write_json(self.config.strategy_path, strategy)
@@ -1038,6 +1043,7 @@ class PortalImplementationSupervisor:
                     "bundle_keys": payload.get("bundle_keys") or [],
                     "todo_vector_index_path": payload.get("todo_vector_index_path") or "",
                     "surplus_findings_per_goal": payload.get("surplus_findings_per_goal") or 1,
+                    "surplus_min_terms_per_todo": payload.get("surplus_min_terms_per_todo") or 2,
                 },
             )
         return payload
@@ -1847,6 +1853,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--objective-surplus-min-terms-per-todo",
+        type=int,
+        default=2,
+        help="Minimum missing-evidence terms for non-aggregate objective surplus todos.",
+    )
+    parser.add_argument(
         "--objective-todo-vector-index-path",
         type=Path,
         default=None,
@@ -1953,6 +1965,7 @@ def main(argv: list[str] | None = None) -> None:
             objective_write_todo_vector_index=args.objective_write_todo_vector_index,
             objective_todo_vector_index_path=args.objective_todo_vector_index_path,
             objective_surplus_findings_per_goal=args.objective_surplus_findings_per_goal,
+            objective_surplus_min_terms_per_todo=args.objective_surplus_min_terms_per_todo,
             repo_root=REPO_ROOT,
             daemon_script_path=args.daemon_script_path,
             supervisor_script_path=args.supervisor_script_path,

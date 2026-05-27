@@ -104,9 +104,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=1,
         help=(
             "Generate up to this many structured candidate todos per missing goal. "
-            "The first candidate is the aggregate gap; additional candidates split missing evidence terms "
-            "so the vector index can bundle or merge related surplus work."
+            "The first candidate is the aggregate gap; additional candidates form multi-evidence batches "
+            "so the vector index can bundle or merge related surplus work without creating tiny tasks."
         ),
+    )
+    parser.add_argument(
+        "--surplus-min-terms-per-todo",
+        type=int,
+        default=2,
+        help="Minimum missing-evidence terms for non-aggregate surplus todos when enough terms are available.",
     )
     parser.add_argument("--ensure-tracking-document", action="store_true")
     parser.add_argument("--ultimate-goal", default=DEFAULT_ULTIMATE_GOAL)
@@ -201,6 +207,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
         todo_vector_index_path=getattr(args, "todo_vector_index_path", None),
         surplus_findings_per_goal=getattr(args, "surplus_findings_per_goal", 1),
+        surplus_min_terms_per_todo=getattr(args, "surplus_min_terms_per_todo", 2),
         summary_prefix=getattr(args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX),
         discovery_output_path=getattr(args, "discovery_output_path", DEFAULT_DISCOVERY_OUTPUT_PATH),
     )
@@ -236,6 +243,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "objective_active_goal_count": graph_payload["active_goal_count"],
         "generated_count": len(records),
         "surplus_findings_per_goal": getattr(args, "surplus_findings_per_goal", 1),
+        "surplus_min_terms_per_todo": getattr(args, "surplus_min_terms_per_todo", 2),
         "task_ids": [record.task_id for record in records],
         "discovery_paths": [repo_relative_path(repo_root, record.discovery_path) for record in records],
         "bundle_keys": sorted({record.finding.bundle_key for record in records}),

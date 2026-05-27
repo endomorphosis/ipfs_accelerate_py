@@ -146,6 +146,8 @@ class ObjectiveFinding:
     merge_key: str = ""
     merge_family: str = ""
     merge_role: str = ""
+    work_item_count: int = 0
+    work_scope: str = ""
     todo_vector_key: str = ""
 
     def to_dict(self) -> dict[str, Any]:
@@ -645,13 +647,14 @@ def surplus_missing_term_groups(
     missing_terms: Sequence[str],
     *,
     surplus_findings_per_goal: int = 1,
+    min_terms_per_todo: int = 2,
 ) -> list[tuple[str, list[str]]]:
     """Return mergeable objective-gap candidate groups for one goal.
 
     The first group preserves the historical behavior: one aggregate task that
-    covers all missing terms.  Additional groups are per-evidence candidates so
-    a drained supervisor can create surplus structured work, then rely on the
-    todo vector index and merge keys to bundle related candidates back together.
+    covers all missing terms.  Additional groups are multi-evidence batches by
+    default so each generated todo has enough implementation work to justify a
+    Codex invocation while still carrying merge-family metadata for bundling.
     """
 
     terms = [term for term in dict.fromkeys(str(item).strip() for item in missing_terms) if term]
@@ -662,12 +665,39 @@ def surplus_missing_term_groups(
     except (TypeError, ValueError):
         surplus_count = 1
     groups: list[tuple[str, list[str]]] = [("aggregate", terms)]
-    if surplus_count <= 1:
+    if surplus_count <= 1 or len(terms) <= 1:
         return groups
-    for term in terms:
+
+    try:
+        minimum_terms = max(1, int(min_terms_per_todo))
+    except (TypeError, ValueError):
+        minimum_terms = 2
+    minimum_terms = min(max(1, minimum_terms), len(terms))
+    extra_count = surplus_count - 1
+    group_size = min(len(terms), max(minimum_terms, math.ceil(len(terms) / max(1, extra_count))))
+    seen_term_sets = {tuple(terms)}
+
+    def append_group(candidate_terms: Sequence[str]) -> None:
+        normalized = [term for term in dict.fromkeys(str(item).strip() for item in candidate_terms) if term]
+        if len(normalized) < minimum_terms:
+            return
+        key = tuple(normalized)
+        if key in seen_term_sets:
+            return
+        seen_term_sets.add(key)
+        groups.append(("evidence_cluster" if len(normalized) > 1 else "evidence_term", normalized))
+
+    for start in range(0, len(terms), group_size):
         if len(groups) >= surplus_count:
             break
-        groups.append(("evidence_term", [term]))
+        append_group(terms[start : start + group_size])
+    start = 1
+    while len(groups) < surplus_count and start < len(terms):
+        if start + group_size <= len(terms):
+            append_group(terms[start : start + group_size])
+        else:
+            append_group([*terms[start:], *terms[: max(0, group_size - (len(terms) - start))]])
+        start += 1
     return groups
 
 
@@ -782,6 +812,7 @@ def scan_objective_gaps(
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     surplus_findings_per_goal: int = 1,
+    surplus_min_terms_per_todo: int = 2,
 ) -> list[ObjectiveFinding]:
     if max_findings <= 0 or not objective_path.exists():
         return []
@@ -816,6 +847,7 @@ def scan_objective_gaps(
         for candidate_kind, candidate_missing_terms in surplus_missing_term_groups(
             missing_terms,
             surplus_findings_per_goal=surplus_findings_per_goal,
+            min_terms_per_todo=surplus_min_terms_per_todo,
         ):
             fingerprint = objective_fingerprint(goal, candidate_missing_terms)
             if fingerprint in seen:
@@ -855,6 +887,8 @@ def scan_objective_gaps(
                 merge_key=objective_merge_key(goal, candidate_missing_terms, candidate_kind=candidate_kind),
                 merge_family=objective_surplus_group(goal),
                 merge_role=candidate_kind,
+                work_item_count=len(candidate_missing_terms),
+                work_scope="goal_subgoal_multi_evidence_batch",
                 todo_vector_key=objective_todo_vector_key(
                     goal,
                     candidate_missing_terms,
@@ -990,6 +1024,8 @@ def render_task_block(
 - Merge key: {finding.merge_key}
 - Merge family: {finding.merge_family or finding.surplus_group}
 - Merge role: {finding.merge_role or finding.candidate_kind}
+- Work item count: {finding.work_item_count or len(finding.missing_evidence)}
+- Work scope: {finding.work_scope or "goal_subgoal_multi_evidence_batch"}
 - Candidate kind: {finding.candidate_kind}
 - Todo vector key: {finding.todo_vector_key}
 - Acceptance: Objective scan filed this gap for {finding.goal_id}. Use evidence in {discovery_path}, add code/tests/docs or child goals that prove the missing evidence terms are covered ({missing}), and keep the supervisor-fed backlog aligned with the objective heap. {refinement}
@@ -1068,6 +1104,8 @@ def write_bundle_shards(
                 "merge_key": record.finding.merge_key,
                 "merge_family": record.finding.merge_family or record.finding.surplus_group,
                 "merge_role": record.finding.merge_role or record.finding.candidate_kind,
+                "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
+                "work_scope": record.finding.work_scope or "goal_subgoal_multi_evidence_batch",
                 "candidate_kind": record.finding.candidate_kind,
                 "todo_vector_key": record.finding.todo_vector_key,
             }
@@ -1104,6 +1142,7 @@ def generate_objective_todos(
     write_todo_vector_index: bool = True,
     todo_vector_index_path: Path | None = None,
     surplus_findings_per_goal: int = 1,
+    surplus_min_terms_per_todo: int = 2,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> list[ObjectiveTaskRecord]:
@@ -1118,6 +1157,7 @@ def generate_objective_todos(
         seen_fingerprints=seen_fingerprints,
         summary_prefix=summary_prefix,
         surplus_findings_per_goal=surplus_findings_per_goal,
+        surplus_min_terms_per_todo=surplus_min_terms_per_todo,
     ):
         task_id = next_task_id(todo_text, task_prefix=task_prefix)
         shard_relative = repo_relative_path(repo_root, bundle_path(bundle_dir, finding.bundle_key))

@@ -62,6 +62,8 @@ class TodoIndexRecord:
     merge_key: str = ""
     merge_family: str = ""
     merge_role: str = ""
+    work_item_count: int = 0
+    work_scope: str = ""
     candidate_kind: str = ""
     vector_key: str = ""
     token_count: int = 0
@@ -187,6 +189,8 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             record.surplus_group,
             record.merge_family,
             record.merge_role,
+            str(record.work_item_count),
+            record.work_scope,
             record.embedding_query,
             record.ast_query,
             " ".join(record.graph_parents),
@@ -274,6 +278,8 @@ def parse_todo_vector_records(
             merge_key=merge_key,
             merge_family=merge_family,
             merge_role=merge_role,
+            work_item_count=parse_int(fields.get("work_item_count"), len(missing_evidence)),
+            work_scope=str(fields.get("work_scope") or "").strip(),
             candidate_kind=candidate_kind,
             vector_key=vector_key,
             ast_symbols=collect_output_symbols(repo_root, outputs),
@@ -424,6 +430,7 @@ def build_merge_candidate(
     shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
     ast_symbols = sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80]
     missing_evidence = sorted_unique([item for record in records for item in record.missing_evidence])
+    work_counts = [record.work_item_count for record in records if record.work_item_count > 0]
     graph_depths = [record.graph_depth for record in records if record.graph_depth >= 0]
     candidate_seed = json.dumps({"group_type": group_type, "group_value": group_value, "task_ids": task_ids}, sort_keys=True)
     exact_merge_key_count = len({record.merge_key for record in records if record.merge_key})
@@ -466,6 +473,9 @@ def build_merge_candidate(
         "all_outputs": all_outputs,
         "missing_evidence": missing_evidence,
         "ast_symbols": ast_symbols,
+        "work_item_count_min": min(work_counts) if work_counts else 0,
+        "work_item_count_max": max(work_counts) if work_counts else 0,
+        "work_item_count_total": sum(work_counts),
         "merge_ready_task_ids": merge_ready_task_ids,
         "estimated_prompt_tokens": sum(record.token_count for record in records),
     }
@@ -547,6 +557,7 @@ def _compact_context_text(context: Mapping[str, Any]) -> str:
         f"goals={', '.join(context.get('goal_ids') or [])}",
         f"parents={', '.join(context.get('graph_parent_ids') or [])}",
         f"merge_family={', '.join(context.get('merge_families') or [])}",
+        f"work_items={context.get('work_item_count_min')}-{context.get('work_item_count_max')}",
         f"missing={', '.join(context.get('missing_evidence') or [])}",
         f"outputs={', '.join((context.get('shared_outputs') or context.get('all_outputs') or [])[:4])}",
         f"ast={', '.join((context.get('ast_symbols') or [])[:12])}",
@@ -575,6 +586,7 @@ def build_bundle_context(
     output_sets = [set(record.outputs) for record in records if record.outputs]
     shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
     graph_depths = [record.graph_depth for record in records if record.graph_depth >= 0]
+    work_counts = [record.work_item_count for record in records if record.work_item_count > 0]
     merge_families = sorted_unique([record.merge_family for record in records])
     context_seed = json.dumps(
         {"source_type": source_type, "source_key": source_key, "task_ids": task_ids},
@@ -604,6 +616,10 @@ def build_bundle_context(
         "merge_keys": sorted_unique([record.merge_key for record in records]),
         "merge_families": merge_families,
         "merge_roles": sorted_unique([record.merge_role for record in records]),
+        "work_scopes": sorted_unique([record.work_scope for record in records]),
+        "work_item_count_min": min(work_counts) if work_counts else 0,
+        "work_item_count_max": max(work_counts) if work_counts else 0,
+        "work_item_count_total": sum(work_counts),
         "surplus_groups": sorted_unique([record.surplus_group for record in records]),
         "candidate_kinds": sorted_unique([record.candidate_kind for record in records]),
         "shared_outputs": shared_outputs,
@@ -853,6 +869,8 @@ def update_bundle_index_with_todo_vectors(
             task["merge_key"] = record.merge_key
             task["merge_family"] = record.merge_family
             task["merge_role"] = record.merge_role
+            task["work_item_count"] = record.work_item_count
+            task["work_scope"] = record.work_scope
             task["surplus_group"] = record.surplus_group
             task["todo_vector_key"] = record.vector_key
             task["todo_cluster_key"] = cluster_by_task.get(record.task_id, "")
