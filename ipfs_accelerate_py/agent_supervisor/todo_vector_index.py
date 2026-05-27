@@ -33,6 +33,7 @@ from .objective_graph import (
 
 
 DEFAULT_TODO_VECTOR_INDEX_SCHEMA = "ipfs_accelerate_py.agent_supervisor.todo_vector_index"
+DEFAULT_EXECUTION_PACKET_MAX_TASKS = 6
 
 
 @dataclass(frozen=True)
@@ -697,6 +698,137 @@ def build_bundle_contexts(
     )
 
 
+def _compact_record_summary(record: TodoIndexRecord) -> str:
+    details: list[str] = []
+    if record.work_item_count:
+        details.append(f"w{record.work_item_count}")
+    if record.missing_evidence:
+        details.append(f"m={','.join(record.missing_evidence[:3])}")
+    if record.outputs:
+        details.append(f"o={','.join(record.outputs[:2])}")
+    return f"{record.task_id}[{';'.join(details)}]" if details else record.task_id
+
+
+def _compact_execution_packet_text(packet: Mapping[str, Any]) -> str:
+    parts = [
+        str(packet.get("packet_key") or ""),
+        f"ids={','.join(packet.get('active_task_ids') or [])}",
+        f"mf={','.join(packet.get('merge_families') or [])}",
+        f"w={packet.get('work_item_count_total') or 0}",
+        f"miss={','.join((packet.get('missing_evidence') or [])[:10])}",
+        f"out={','.join((packet.get('shared_outputs') or packet.get('all_outputs') or [])[:5])}",
+        f"ast={','.join((packet.get('ast_symbols') or [])[:12])}",
+        f"todo={'|'.join(packet.get('task_summaries') or [])}",
+    ]
+    return ";".join(part for part in parts if not part.endswith("=") and part.strip())
+
+
+def build_execution_packet(
+    *,
+    context: Mapping[str, Any],
+    records: Sequence[TodoIndexRecord],
+    max_tasks: int = DEFAULT_EXECUTION_PACKET_MAX_TASKS,
+) -> dict[str, Any] | None:
+    """Build a compact multi-todo work packet from one bundle context."""
+
+    if not records:
+        return None
+    active_records = [record for record in records if active_record(record)]
+    if len(active_records) < 2:
+        return None
+    selected_records = active_records[: max(2, max_tasks)]
+    task_ids = sorted_unique([record.task_id for record in selected_records])
+    active_task_ids = sorted_unique([record.task_id for record in selected_records if active_record(record)])
+    if len(active_task_ids) < 2:
+        return None
+    all_outputs = sorted_unique([output for record in selected_records for output in record.outputs])
+    output_sets = [set(record.outputs) for record in selected_records if record.outputs]
+    shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
+    work_counts = [record.work_item_count for record in selected_records if record.work_item_count > 0]
+    packet_seed = json.dumps(
+        {
+            "context_key": context.get("context_key"),
+            "active_task_ids": active_task_ids,
+            "merge_families": sorted_unique([record.merge_family for record in selected_records]),
+        },
+        sort_keys=True,
+    )
+    packet: dict[str, Any] = {
+        "packet_key": f"execution_packet/{sha1(packet_seed.encode('utf-8')).hexdigest()[:12]}",
+        "source_context_key": str(context.get("context_key") or ""),
+        "source_type": str(context.get("source_type") or ""),
+        "source_key": str(context.get("source_key") or ""),
+        "confidence": str(context.get("confidence") or "low"),
+        "merge_ready": bool(context.get("merge_ready")),
+        "task_ids": task_ids,
+        "active_task_ids": active_task_ids,
+        "primary_task_id": active_task_ids[0],
+        "goal_ids": sorted_unique([record.goal_id for record in selected_records]),
+        "graph_parent_ids": sorted_unique([parent for record in selected_records for parent in record.graph_parents]),
+        "bundle_keys": sorted_unique([record.bundle_key for record in selected_records]),
+        "merge_keys": sorted_unique([record.merge_key for record in selected_records]),
+        "merge_families": sorted_unique([record.merge_family for record in selected_records]),
+        "merge_roles": sorted_unique([record.merge_role for record in selected_records]),
+        "surplus_groups": sorted_unique([record.surplus_group for record in selected_records]),
+        "candidate_kinds": sorted_unique([record.candidate_kind for record in selected_records]),
+        "work_scopes": sorted_unique([record.work_scope for record in selected_records]),
+        "work_item_count_min": min(work_counts) if work_counts else 0,
+        "work_item_count_max": max(work_counts) if work_counts else 0,
+        "work_item_count_total": sum(work_counts),
+        "shared_outputs": shared_outputs,
+        "all_outputs": all_outputs,
+        "validation": sorted_unique([command for record in selected_records for command in record.validation])[:8],
+        "missing_evidence": sorted_unique([item for record in selected_records for item in record.missing_evidence]),
+        "ast_symbols": sorted_unique([symbol for record in selected_records for symbol in record.ast_symbols])[:80],
+        "task_summaries": [_compact_record_summary(record) for record in selected_records],
+        "raw_prompt_tokens": sum(record.token_count for record in selected_records),
+    }
+    compact_packet = _compact_execution_packet_text(packet)
+    packet["compact_packet"] = compact_packet
+    packet["compact_packet_tokens"] = len(objective_tokens(compact_packet))
+    packet["estimated_token_savings"] = max(0, int(packet["raw_prompt_tokens"]) - int(packet["compact_packet_tokens"]))
+    return packet
+
+
+def build_execution_packets(
+    records: Sequence[TodoIndexRecord],
+    bundle_contexts: Sequence[Mapping[str, Any]],
+    *,
+    max_tasks: int = DEFAULT_EXECUTION_PACKET_MAX_TASKS,
+) -> list[dict[str, Any]]:
+    """Return compact execution packets for related goal/subgoal todo groups."""
+
+    records_by_task = {record.task_id: record for record in records}
+    packets: list[dict[str, Any]] = []
+    seen: set[tuple[str, ...]] = set()
+    for context in bundle_contexts:
+        task_ids = context.get("active_task_ids") or context.get("task_ids")
+        if not isinstance(task_ids, list):
+            continue
+        selected = [records_by_task[task_id] for task_id in map(str, task_ids) if task_id in records_by_task]
+        task_set = tuple(sorted(record.task_id for record in selected if active_record(record)))
+        if len(task_set) < 2 or task_set in seen:
+            continue
+        packet = build_execution_packet(context=context, records=selected, max_tasks=max_tasks)
+        if packet is None:
+            continue
+        seen.add(tuple(packet["active_task_ids"]))
+        packets.append(packet)
+
+    confidence_order = {"high": 0, "medium": 1, "low": 2}
+    return sorted(
+        packets,
+        key=lambda packet: (
+            0 if packet.get("merge_ready") else 1,
+            confidence_order.get(str(packet.get("confidence") or ""), 9),
+            -int(packet.get("work_item_count_total") or 0),
+            -len(packet.get("active_task_ids") or []),
+            int(packet.get("compact_packet_tokens") or 0),
+            str(packet.get("packet_key") or ""),
+        ),
+    )
+
+
 def write_todo_vector_index(
     *,
     repo_root: Path,
@@ -721,6 +853,7 @@ def write_todo_vector_index(
     clusters = cluster_records(records)
     merge_candidates = build_merge_candidates(records, clusters)
     bundle_contexts = build_bundle_contexts(records, clusters, merge_candidates)
+    execution_packets = build_execution_packets(records, bundle_contexts)
     payload: dict[str, Any] = {
         "schema": DEFAULT_TODO_VECTOR_INDEX_SCHEMA,
         "generated_at": utc_now(),
@@ -735,10 +868,14 @@ def write_todo_vector_index(
         "estimated_compact_context_tokens": sum(
             int(context.get("compact_context_tokens") or 0) for context in bundle_contexts
         ),
+        "estimated_execution_packet_tokens": sum(
+            int(packet.get("compact_packet_tokens") or 0) for packet in execution_packets
+        ),
         "records": [record.to_dict() for record in records],
         "clusters": clusters,
         "merge_candidates": merge_candidates,
         "bundle_contexts": bundle_contexts,
+        "execution_packets": execution_packets,
     }
     if bundle_index_path is not None:
         payload["bundle_index_path"] = repo_relative_path(repo_root, bundle_index_path)
@@ -758,6 +895,7 @@ def write_todo_vector_index(
             clusters=clusters,
             merge_candidates=merge_candidates,
             bundle_contexts=bundle_contexts,
+            execution_packets=execution_packets,
         )
     return payload
 
@@ -782,6 +920,7 @@ def update_bundle_index_with_todo_vectors(
     clusters: Sequence[Mapping[str, Any]],
     merge_candidates: Sequence[Mapping[str, Any]] = (),
     bundle_contexts: Sequence[Mapping[str, Any]] = (),
+    execution_packets: Sequence[Mapping[str, Any]] = (),
 ) -> None:
     try:
         payload = json.loads(bundle_index_path.read_text(encoding="utf-8"))
@@ -822,6 +961,19 @@ def update_bundle_index_with_todo_vectors(
                 normalized = str(task_id)
                 if normalized:
                     merge_ready_by_task.setdefault(normalized, []).append(context_key)
+    packet_keys_by_task: dict[str, list[str]] = {}
+    for packet in execution_packets:
+        if not isinstance(packet, Mapping):
+            continue
+        packet_key = str(packet.get("packet_key") or "")
+        if not packet_key:
+            continue
+        task_ids = packet.get("active_task_ids") or packet.get("task_ids")
+        if isinstance(task_ids, list):
+            for task_id in task_ids:
+                normalized = str(task_id)
+                if normalized:
+                    packet_keys_by_task.setdefault(normalized, []).append(packet_key)
     for bundle_key, bundle_payload in bundles.items():
         if not isinstance(bundle_payload, dict):
             continue
@@ -837,6 +989,12 @@ def update_bundle_index_with_todo_vectors(
                 for context in bundle_contexts
                 if set(context.get("task_ids") or []) & {record.task_id for record in bundle_records}
             ),
+            "execution_packet_tokens": sum(
+                int(packet.get("compact_packet_tokens") or 0)
+                for packet in execution_packets
+                if set(packet.get("active_task_ids") or packet.get("task_ids") or [])
+                & {record.task_id for record in bundle_records}
+            ),
             "merge_candidate_keys": [
                 str(candidate.get("candidate_key") or "")
                 for candidate in merge_candidates
@@ -847,6 +1005,13 @@ def update_bundle_index_with_todo_vectors(
                     context_key
                     for record in bundle_records
                     for context_key in context_keys_by_task.get(record.task_id, [])
+                }
+            ),
+            "execution_packet_keys": sorted(
+                {
+                    packet_key
+                    for record in bundle_records
+                    for packet_key in packet_keys_by_task.get(record.task_id, [])
                 }
             ),
             "merge_ready_task_ids": sorted(
@@ -875,5 +1040,6 @@ def update_bundle_index_with_todo_vectors(
             task["todo_vector_key"] = record.vector_key
             task["todo_cluster_key"] = cluster_by_task.get(record.task_id, "")
             task["todo_bundle_context_keys"] = context_keys_by_task.get(record.task_id, [])[:5]
+            task["todo_execution_packet_keys"] = packet_keys_by_task.get(record.task_id, [])[:5]
             task["related_task_ids"] = record.related_task_ids
     bundle_index_path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")

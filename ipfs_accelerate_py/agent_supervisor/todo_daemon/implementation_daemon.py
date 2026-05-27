@@ -4114,6 +4114,13 @@ class PortalImplementationDaemon:
                 context_task_ids = bundle_context.get("task_ids")
                 if isinstance(context_task_ids, list) and task.task_id in {str(task_id) for task_id in context_task_ids}:
                     bundle_contexts.append(bundle_context)
+            execution_packets: list[dict[str, Any]] = []
+            for execution_packet in payload.get("execution_packets", []) if isinstance(payload.get("execution_packets"), list) else []:
+                if not isinstance(execution_packet, dict):
+                    continue
+                packet_task_ids = execution_packet.get("active_task_ids") or execution_packet.get("task_ids")
+                if isinstance(packet_task_ids, list) and task.task_id in {str(task_id) for task_id in packet_task_ids}:
+                    execution_packets.append(execution_packet)
 
             return {
                 "index_path": index_path,
@@ -4122,6 +4129,7 @@ class PortalImplementationDaemon:
                 "related_records": [by_task[task_id] for task_id in related_ids if task_id in by_task][:5],
                 "merge_candidates": merge_candidates[:3],
                 "bundle_contexts": bundle_contexts[:2],
+                "execution_packets": execution_packets[:2],
             }
         return None
 
@@ -4181,6 +4189,38 @@ class PortalImplementationDaemon:
         ast_symbols = sorted({item for item in symbol_candidates if item})[:24]
         if ast_symbols:
             lines.append(f"- AST symbols: {', '.join(ast_symbols)}")
+
+        execution_packet_entries: list[str] = []
+        for packet in context.get("execution_packets", []):
+            if not isinstance(packet, dict):
+                continue
+            compact = str(packet.get("compact_packet") or "").strip()
+            if compact:
+                execution_packet_entries.append(compact)
+                continue
+            packet_key = str(packet.get("packet_key") or "").strip()
+            active_ids = ", ".join(self._compact_value_list(packet.get("active_task_ids"), limit=6))
+            work_items = str(packet.get("work_item_count_total") or "").strip()
+            outputs = ", ".join(
+                self._compact_value_list(
+                    packet.get("shared_outputs") or packet.get("all_outputs"),
+                    limit=5,
+                )
+            )
+            details = [
+                part
+                for part in (
+                    packet_key,
+                    f"active={active_ids}" if active_ids else "",
+                    f"work_items={work_items}" if work_items else "",
+                    f"outputs={outputs}" if outputs else "",
+                )
+                if part
+            ]
+            if details:
+                execution_packet_entries.append("; ".join(details))
+        if execution_packet_entries:
+            lines.append(f"- Execution packets: {' | '.join(execution_packet_entries)}")
 
         bundle_context_entries: list[str] = []
         for bundle_context in context.get("bundle_contexts", []):
@@ -4385,6 +4425,25 @@ Rules:
                 ready_count = sum(1 for task_id in normalized_ids if task_id in ready_task_ids)
                 if ready_count:
                     ready_bundle_context_sizes[context_key] = ready_count
+        execution_packet_by_task: dict[str, str] = {}
+        ready_execution_packet_sizes: dict[str, int] = {}
+        execution_packets = payload.get("execution_packets")
+        if isinstance(execution_packets, list):
+            for packet in execution_packets:
+                if not isinstance(packet, dict):
+                    continue
+                packet_key = str(packet.get("packet_key") or "")
+                if not packet_key:
+                    continue
+                task_ids = packet.get("active_task_ids") or packet.get("task_ids")
+                if not isinstance(task_ids, list):
+                    continue
+                normalized_ids = [str(task_id) for task_id in task_ids if str(task_id)]
+                for task_id in normalized_ids:
+                    execution_packet_by_task.setdefault(task_id, packet_key)
+                ready_count = sum(1 for task_id in normalized_ids if task_id in ready_task_ids)
+                if ready_count:
+                    ready_execution_packet_sizes[packet_key] = ready_count
 
         state = PortalTaskState.load(self.state_path)
         anchor_task_id = state.last_implementation_task_id or state.active_task_id
@@ -4395,19 +4454,22 @@ Rules:
             "ready_cluster_sizes": ready_cluster_sizes,
             "bundle_context_by_task": bundle_context_by_task,
             "ready_bundle_context_sizes": ready_bundle_context_sizes,
+            "execution_packet_by_task": execution_packet_by_task,
+            "ready_execution_packet_sizes": ready_execution_packet_sizes,
             "anchor_task_id": anchor_task_id,
             "anchor_record": anchor_record if isinstance(anchor_record, dict) else None,
             "anchor_cluster_key": cluster_by_task.get(anchor_task_id, "") if anchor_task_id else "",
             "anchor_bundle_context_key": bundle_context_by_task.get(anchor_task_id, "") if anchor_task_id else "",
+            "anchor_execution_packet_key": execution_packet_by_task.get(anchor_task_id, "") if anchor_task_id else "",
         }
 
-    def _todo_vector_selection_rank(self, task: PortalTask, context: dict[str, Any]) -> tuple[int, int, int, int]:
+    def _todo_vector_selection_rank(self, task: PortalTask, context: dict[str, Any]) -> tuple[int, int, int, int, int]:
         record_by_task = context.get("record_by_task")
         if not isinstance(record_by_task, dict):
-            return (9, 0, 0, 0)
+            return (9, 0, 0, 0, 0)
         record = record_by_task.get(task.task_id)
         if not isinstance(record, dict):
-            return (9, 0, 0, 0)
+            return (9, 0, 0, 0, 0)
 
         cluster_by_task = context.get("cluster_by_task")
         ready_cluster_sizes = context.get("ready_cluster_sizes")
@@ -4433,11 +4495,23 @@ Rules:
             if bundle_context_key and isinstance(ready_bundle_context_sizes, dict)
             else 0
         )
+        execution_packet_by_task = context.get("execution_packet_by_task")
+        ready_execution_packet_sizes = context.get("ready_execution_packet_sizes")
+        execution_packet_key = (
+            str(execution_packet_by_task.get(task.task_id) or "")
+            if isinstance(execution_packet_by_task, dict)
+            else ""
+        )
+        ready_execution_packet_size = (
+            int(ready_execution_packet_sizes.get(execution_packet_key) or 0)
+            if execution_packet_key and isinstance(ready_execution_packet_sizes, dict)
+            else 0
+        )
         token_count = int(record.get("token_count") or 0)
 
         anchor = context.get("anchor_record")
         if not isinstance(anchor, dict):
-            return (5, -ready_bundle_context_size, -ready_cluster_size, token_count)
+            return (5, -ready_execution_packet_size, -ready_bundle_context_size, -ready_cluster_size, token_count)
 
         anchor_related = {
             str(task_id)
@@ -4452,24 +4526,27 @@ Rules:
         anchor_task_id = str(context.get("anchor_task_id") or "")
         anchor_cluster_key = str(context.get("anchor_cluster_key") or "")
         anchor_bundle_context_key = str(context.get("anchor_bundle_context_key") or "")
+        anchor_execution_packet_key = str(context.get("anchor_execution_packet_key") or "")
 
         if record.get("merge_key") and record.get("merge_key") == anchor.get("merge_key"):
             relation_rank = 0
-        elif bundle_context_key and anchor_bundle_context_key and bundle_context_key == anchor_bundle_context_key:
+        elif execution_packet_key and anchor_execution_packet_key and execution_packet_key == anchor_execution_packet_key:
             relation_rank = 1
-        elif cluster_key and anchor_cluster_key and cluster_key == anchor_cluster_key:
+        elif bundle_context_key and anchor_bundle_context_key and bundle_context_key == anchor_bundle_context_key:
             relation_rank = 2
-        elif task.task_id in anchor_related or (anchor_task_id and anchor_task_id in record_related):
+        elif cluster_key and anchor_cluster_key and cluster_key == anchor_cluster_key:
             relation_rank = 3
-        elif record.get("merge_family") and record.get("merge_family") == anchor.get("merge_family"):
+        elif task.task_id in anchor_related or (anchor_task_id and anchor_task_id in record_related):
             relation_rank = 4
-        elif record.get("surplus_group") and record.get("surplus_group") == anchor.get("surplus_group"):
+        elif record.get("merge_family") and record.get("merge_family") == anchor.get("merge_family"):
             relation_rank = 5
-        elif record.get("goal_id") and record.get("goal_id") == anchor.get("goal_id"):
+        elif record.get("surplus_group") and record.get("surplus_group") == anchor.get("surplus_group"):
             relation_rank = 6
-        else:
+        elif record.get("goal_id") and record.get("goal_id") == anchor.get("goal_id"):
             relation_rank = 7
-        return (relation_rank, -ready_bundle_context_size, -ready_cluster_size, token_count)
+        else:
+            relation_rank = 8
+        return (relation_rank, -ready_execution_packet_size, -ready_bundle_context_size, -ready_cluster_size, token_count)
 
     def _select_next_task(
         self,

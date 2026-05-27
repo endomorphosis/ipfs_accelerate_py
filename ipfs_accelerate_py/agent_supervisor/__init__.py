@@ -26,6 +26,8 @@ from .objective_tracker import (
 )
 from .todo_vector_index import (
     TodoIndexRecord,
+    build_execution_packet,
+    build_execution_packets,
     cluster_records,
     parse_todo_vector_records,
     write_todo_vector_index,
@@ -43,6 +45,8 @@ __all__ = [
     "ObjectiveTaskRecord",
     "append_refinement_goals",
     "build_bundle_task_payloads",
+    "build_execution_packet",
+    "build_execution_packets",
     "build_merge_prompt",
     "build_objective_daemon_arg_parser",
     "collect_ast_dataset_records",

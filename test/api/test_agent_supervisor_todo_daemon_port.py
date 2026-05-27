@@ -2071,16 +2071,22 @@ def test_objective_daemon_generates_surplus_vector_indexed_todos(tmp_path):
     assert index_payload["bundle_contexts"][0]["merge_ready"] is True
     assert index_payload["bundle_contexts"][0]["merge_families"] == ["objective/VAIOS-G001"]
     assert index_payload["estimated_compact_context_tokens"] < index_payload["estimated_raw_prompt_tokens"]
+    assert index_payload["execution_packets"]
+    assert index_payload["execution_packets"][0]["work_item_count_total"] >= 9
+    assert index_payload["execution_packets"][0]["compact_packet_tokens"] < index_payload["execution_packets"][0]["raw_prompt_tokens"]
     bundle_index = json.loads((repo / "bundles" / "index.json").read_text(encoding="utf-8"))
     bundle_tasks = next(iter(bundle_index["bundles"].values()))["tasks"]
     assert all(task["merge_key"] for task in bundle_tasks)
     assert all(task["merge_family"] for task in bundle_tasks)
     assert min(task["work_item_count"] for task in bundle_tasks) >= 3
     assert all(task["todo_bundle_context_keys"] for task in bundle_tasks)
+    assert all(task["todo_execution_packet_keys"] for task in bundle_tasks)
     assert all(task["todo_vector_key"] for task in bundle_tasks)
     bundle_summary = next(iter(bundle_index["bundles"].values()))["todo_vector_summary"]
     assert bundle_summary["merge_candidate_keys"]
     assert bundle_summary["bundle_context_keys"]
+    assert bundle_summary["execution_packet_keys"]
+    assert bundle_summary["execution_packet_tokens"] > 0
     assert bundle_summary["merge_ready_task_ids"]
 
 
@@ -2150,6 +2156,9 @@ def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
     assert payload["bundle_contexts"][0]["graph_depth_min"] == 2
     assert payload["bundle_contexts"][0]["graph_depth_max"] == 2
     assert payload["bundle_contexts"][0]["compact_context_tokens"] < payload["bundle_contexts"][0]["raw_prompt_tokens"]
+    assert payload["execution_packets"][0]["active_task_ids"] == ["ACCEL-001", "ACCEL-002"]
+    assert payload["execution_packets"][0]["work_item_count_total"] == 2
+    assert payload["execution_packets"][0]["compact_packet_tokens"] < payload["execution_packets"][0]["raw_prompt_tokens"]
     assert records[0].related_task_ids == ["ACCEL-002"]
 
 
@@ -2220,6 +2229,8 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
 
     assert task.metadata["merge key"] == "bridge-runtime"
     assert "Compact todo vector context:" in prompt
+    assert "Execution packets: execution_packet/" in prompt
+    assert "w=2" in prompt
     assert "- Merge key: bridge-runtime" in prompt
     assert "- Merge family: objective/VAIOS-G020" in prompt
     assert "- Goal id: VAIOS-G021" in prompt
