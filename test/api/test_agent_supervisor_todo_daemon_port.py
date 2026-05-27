@@ -2588,6 +2588,124 @@ def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_p
     assert selected.task_id == "ACCEL-011"
 
 
+def test_implementation_daemon_prefers_goal_packet_aggregate_as_primary_work(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "src" / "bridge.py"
+    source.parent.mkdir()
+    source.write_text("class Bridge:\n    def route(self):\n        return None\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Close scheduler gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/bridge
+- Goal id: VAIOS-G101
+- Graph parents: VAIOS-G100
+- Missing evidence: scheduler_policy, scheduler_backpressure, scheduler_metrics
+- Surplus group: objective/VAIOS-G101
+- Merge key: scheduler-runtime
+- Merge family: goal_packet/runtime/src/abc
+- Merge role: aggregate
+- Work item count: 3
+- Goal packet: goal_packet/runtime/src/abc
+- Goal packet role: packet_anchor
+- Goal packet goals: VAIOS-G101, VAIOS-G102
+- Goal packet task count: 3
+- Goal packet work item count: 6
+- Candidate kind: aggregate
+- Acceptance: Add scheduler proof.
+
+## ACCEL-002 Close fallback gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/bridge
+- Goal id: VAIOS-G102
+- Graph parents: VAIOS-G100
+- Missing evidence: fallback_route, fallback_retry, fallback_metrics
+- Surplus group: objective/VAIOS-G102
+- Merge key: fallback-runtime
+- Merge family: goal_packet/runtime/src/abc
+- Merge role: aggregate
+- Work item count: 3
+- Goal packet: goal_packet/runtime/src/abc
+- Goal packet role: packet_member
+- Goal packet goals: VAIOS-G101, VAIOS-G102
+- Goal packet task count: 3
+- Goal packet work item count: 6
+- Candidate kind: aggregate
+- Acceptance: Add fallback proof.
+
+## ACCEL-003 Close objective gap packet: VAIOS-G101, VAIOS-G102
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/bridge
+- Goal id: VAIOS-G101
+- Graph parents: VAIOS-G100
+- Missing evidence: scheduler_policy, scheduler_backpressure, scheduler_metrics, fallback_route, fallback_retry, fallback_metrics
+- Surplus group: goal_packet/runtime/src/abc
+- Merge key: packet-runtime
+- Merge family: goal_packet/runtime/src/abc
+- Merge role: packet_aggregate
+- Work item count: 6
+- Work scope: goal_subgoal_packet_aggregate; vector_ast_bundle
+- Goal packet: goal_packet/runtime/src/abc
+- Goal packet role: packet_aggregate
+- Goal packet goals: VAIOS-G101, VAIOS-G102
+- Goal packet task count: 3
+- Goal packet work item count: 6
+- Candidate kind: goal_packet_aggregate
+- Acceptance: Close the packet-level scheduler and fallback proof in one cohesive change.
+""",
+        encoding="utf-8",
+    )
+    index_path = repo / "objective_bundles" / "todo_vector_index.json"
+    payload = write_todo_vector_index(
+        repo_root=repo,
+        todo_path=todo_path,
+        index_path=index_path,
+        task_header_prefix="## ACCEL-",
+    )
+    assert payload["execution_packets"][0]["primary_task_id"] == "ACCEL-003"
+    assert payload["execution_packets"][0]["active_task_ids"][0] == "ACCEL-003"
+
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps({"last_objective_todo_vector_index_path": "objective_bundles/todo_vector_index.json"}),
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=strategy_path,
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    statuses = {task.task_id: "ready" for task in tasks}
+
+    selected = daemon._select_next_task(tasks, statuses, {}, {}, {})
+
+    assert selected is not None
+    assert selected.task_id == "ACCEL-003"
+
+
 def test_objective_daemon_suppresses_existing_discovery_fingerprint(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"

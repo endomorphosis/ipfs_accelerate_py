@@ -754,6 +754,7 @@ def _compact_record_summary(record: TodoIndexRecord) -> str:
 def _compact_execution_packet_text(packet: Mapping[str, Any]) -> str:
     parts = [
         str(packet.get("packet_key") or ""),
+        f"primary={packet.get('primary_task_id') or ''}",
         f"ids={','.join(packet.get('active_task_ids') or [])}",
         f"mf={','.join(packet.get('merge_families') or [])}",
         f"gp={','.join(packet.get('goal_packet_keys') or [])}",
@@ -765,6 +766,37 @@ def _compact_execution_packet_text(packet: Mapping[str, Any]) -> str:
         f"todo={'|'.join(packet.get('task_summaries') or [])}",
     ]
     return ";".join(part for part in parts if not part.endswith("=") and part.strip())
+
+
+def execution_packet_record_rank(record: TodoIndexRecord) -> tuple[int, int, int, int, str]:
+    """Prefer larger aggregate packet tasks as the prompt entry point."""
+
+    candidate_kind = record.candidate_kind.strip().lower()
+    packet_role = record.goal_packet_role.strip().lower()
+    merge_role = record.merge_role.strip().lower()
+    if candidate_kind == "goal_packet_aggregate" or packet_role == "packet_aggregate" or merge_role == "packet_aggregate":
+        role_rank = 0
+    elif packet_role == "packet_anchor":
+        role_rank = 1
+    elif candidate_kind == "aggregate":
+        role_rank = 2
+    elif candidate_kind == "evidence_cluster":
+        role_rank = 3
+    elif packet_role == "packet_member":
+        role_rank = 4
+    else:
+        role_rank = 5
+    return (
+        role_rank,
+        -(record.work_item_count or 0),
+        -(record.goal_packet_work_item_count or 0),
+        record.token_count,
+        record.task_id,
+    )
+
+
+def ordered_unique(values: Sequence[str]) -> list[str]:
+    return list(dict.fromkeys(str(value) for value in values if str(value)))
 
 
 def build_execution_packet(
@@ -780,9 +812,9 @@ def build_execution_packet(
     active_records = [record for record in records if active_record(record)]
     if len(active_records) < 2:
         return None
-    selected_records = active_records[: max(2, max_tasks)]
+    selected_records = sorted(active_records, key=execution_packet_record_rank)[: max(2, max_tasks)]
     task_ids = sorted_unique([record.task_id for record in selected_records])
-    active_task_ids = sorted_unique([record.task_id for record in selected_records if active_record(record)])
+    active_task_ids = ordered_unique([record.task_id for record in selected_records if active_record(record)])
     if len(active_task_ids) < 2:
         return None
     all_outputs = sorted_unique([output for record in selected_records for output in record.outputs])
@@ -809,7 +841,7 @@ def build_execution_packet(
         "merge_ready": bool(context.get("merge_ready")),
         "task_ids": task_ids,
         "active_task_ids": active_task_ids,
-        "primary_task_id": active_task_ids[0],
+        "primary_task_id": selected_records[0].task_id,
         "goal_ids": sorted_unique([record.goal_id for record in selected_records]),
         "graph_parent_ids": sorted_unique([parent for record in selected_records for parent in record.graph_parents]),
         "bundle_keys": sorted_unique([record.bundle_key for record in selected_records]),
