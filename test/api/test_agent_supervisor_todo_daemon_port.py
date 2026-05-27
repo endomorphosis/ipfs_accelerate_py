@@ -19,6 +19,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     run_bundle_supervisor,
 )
 from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
+from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -1903,7 +1904,151 @@ def test_objective_daemon_generates_todos_bundles_and_dataset(tmp_path):
     manifest = dataset_dir / "accel-objective-ast.manifest.json"
     assert manifest.exists()
     assert json.loads(manifest.read_text(encoding="utf-8"))["row_count"] >= 2
+    todo_index = bundle_dir / "todo_vector_index.json"
+    assert todo_index.exists()
+    index_payload = json.loads(todo_index.read_text(encoding="utf-8"))
+    assert index_payload["schema"] == "ipfs_accelerate_py.agent_supervisor.todo_vector_index"
+    assert index_payload["task_count"] == 1
+    assert index_payload["records"][0]["goal_id"] == "VAIOS-G010"
+    assert index_payload["records"][0]["merge_key"]
     assert discovery_fingerprints(discovery_dir)
+
+
+def test_objective_daemon_generates_surplus_vector_indexed_todos(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "bridge.py"
+    source.parent.mkdir()
+    source.write_text(
+        """class Bridge:
+    def route(self, request):
+        return request
+""",
+        encoding="utf-8",
+    )
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 Runtime bridge surplus proof
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Prove the runtime bridge has scheduler and timeout semantics.
+- Evidence: missing_scheduler_policy, missing_timeout_policy
+- Outputs: src/bridge.py, tests
+- Validation: test -f objective-heap.md
+- Gap task: Add the missing runtime bridge proof.
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    _git(repo, "add", "objective-heap.md", "todo.md", "src/bridge.py")
+    _git(repo, "commit", "-m", "seed surplus objective heap")
+
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--discovery-dir",
+            str(repo / "discovery"),
+            "--bundle-dir",
+            str(repo / "bundles"),
+            "--dataset-dir",
+            str(repo / "datasets"),
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "3",
+            "--surplus-findings-per-goal",
+            "3",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["generated_count"] == 3
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert todo_text.count("Surplus group: objective/VAIOS-G001") == 3
+    assert "Candidate kind: aggregate" in todo_text
+    assert "Candidate kind: evidence_term" in todo_text
+    index_payload = json.loads((repo / "bundles" / "todo_vector_index.json").read_text(encoding="utf-8"))
+    assert index_payload["task_count"] == 3
+    surplus_groups = {record["surplus_group"] for record in index_payload["records"]}
+    assert surplus_groups == {"objective/VAIOS-G001"}
+    assert any(record["related_task_ids"] for record in index_payload["records"])
+    bundle_index = json.loads((repo / "bundles" / "index.json").read_text(encoding="utf-8"))
+    bundle_tasks = next(iter(bundle_index["bundles"].values()))["tasks"]
+    assert all(task["merge_key"] for task in bundle_tasks)
+    assert all(task["todo_vector_key"] for task in bundle_tasks)
+
+
+def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "src" / "bridge.py"
+    source.parent.mkdir()
+    source.write_text("class Bridge:\n    def route(self):\n        return None\n", encoding="utf-8")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Close scheduler gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/bridge
+- Goal id: VAIOS-G021
+- Missing evidence: scheduler policy
+- Surplus group: objective/VAIOS-G020
+- Merge key: bridge-runtime
+- Acceptance: Add scheduler policy proof.
+
+## ACCEL-002 Close fallback gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Bundle: objective/runtime/bridge
+- Goal id: VAIOS-G022
+- Missing evidence: fallback route
+- Surplus group: objective/VAIOS-G020
+- Merge key: bridge-runtime
+- Acceptance: Add fallback route proof.
+""",
+        encoding="utf-8",
+    )
+
+    payload = write_todo_vector_index(
+        repo_root=repo,
+        todo_path=todo_path,
+        index_path=repo / "todo_vector_index.json",
+        task_header_prefix="## ACCEL-",
+    )
+    records = parse_todo_vector_records(repo_root=repo, todo_path=todo_path, task_header_prefix="## ACCEL-")
+
+    assert payload["task_count"] == 2
+    assert len(payload["clusters"]) == 1
+    assert payload["clusters"][0]["task_ids"] == ["ACCEL-001", "ACCEL-002"]
+    assert records[0].related_task_ids == ["ACCEL-002"]
 
 
 def test_objective_daemon_suppresses_existing_discovery_fingerprint(tmp_path):

@@ -98,6 +98,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seen-fingerprint", action="append", default=[])
     parser.add_argument("--repeat-existing", action="store_true", help="Do not suppress fingerprints already in discovery files")
     parser.add_argument("--max-findings", type=int, default=10)
+    parser.add_argument(
+        "--surplus-findings-per-goal",
+        type=int,
+        default=1,
+        help=(
+            "Generate up to this many structured candidate todos per missing goal. "
+            "The first candidate is the aggregate gap; additional candidates split missing evidence terms "
+            "so the vector index can bundle or merge related surplus work."
+        ),
+    )
     parser.add_argument("--ensure-tracking-document", action="store_true")
     parser.add_argument("--ultimate-goal", default=DEFAULT_ULTIMATE_GOAL)
     parser.add_argument("--root-evidence", action="append", default=[])
@@ -109,6 +119,17 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--max-refinement-children", type=int, default=3)
     parser.add_argument("--max-refinement-depth", type=int, default=4)
     parser.add_argument("--no-persist-ast-dataset", action="store_true")
+    parser.add_argument(
+        "--no-todo-vector-index",
+        action="store_true",
+        help="Skip writing the todo vector/AST index artifact.",
+    )
+    parser.add_argument(
+        "--todo-vector-index-path",
+        type=Path,
+        default=None,
+        help="Path for the todo vector/AST index artifact. Defaults to <bundle-dir>/todo_vector_index.json.",
+    )
     parser.add_argument("--submit-bundles", action="store_true", help="Submit generated bundle shards to the local task queue")
     parser.add_argument("--queue-path", default=None)
     parser.add_argument("--queue-task-type", default="codex.todo_bundle")
@@ -177,6 +198,9 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         max_findings=args.max_findings,
         seen_fingerprints=seen_fingerprints,
         persist_ast_dataset=not args.no_persist_ast_dataset,
+        write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
+        todo_vector_index_path=getattr(args, "todo_vector_index_path", None),
+        surplus_findings_per_goal=getattr(args, "surplus_findings_per_goal", 1),
         summary_prefix=getattr(args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX),
         discovery_output_path=getattr(args, "discovery_output_path", DEFAULT_DISCOVERY_OUTPUT_PATH),
     )
@@ -199,6 +223,10 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "todo_path": repo_relative_path(repo_root, todo_path),
         "discovery_dir": repo_relative_path(repo_root, discovery_dir),
         "bundle_index_path": repo_relative_path(repo_root, bundle_index_path),
+        "todo_vector_index_path": repo_relative_path(
+            repo_root,
+            (getattr(args, "todo_vector_index_path", None) or bundle_dir / "todo_vector_index.json").resolve(),
+        ),
         "dataset_dir": repo_relative_path(repo_root, dataset_dir),
         "graph_path": repo_relative_path(repo_root, graph_path),
         "tracking_document_created": tracking_created,
@@ -207,6 +235,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "objective_goal_count": graph_payload["goal_count"],
         "objective_active_goal_count": graph_payload["active_goal_count"],
         "generated_count": len(records),
+        "surplus_findings_per_goal": getattr(args, "surplus_findings_per_goal", 1),
         "task_ids": [record.task_id for record in records],
         "discovery_paths": [repo_relative_path(repo_root, record.discovery_path) for record in records],
         "bundle_keys": sorted({record.finding.bundle_key for record in records}),

@@ -24,6 +24,12 @@ from .objective_tracker import (
     fibonacci_priority,
     write_objective_graph_artifact,
 )
+from .todo_vector_index import (
+    TodoIndexRecord,
+    cluster_records,
+    parse_todo_vector_records,
+    write_todo_vector_index,
+)
 
 __all__ = [
     "BundleWriteResult",
@@ -40,6 +46,7 @@ __all__ = [
     "build_merge_prompt",
     "build_objective_daemon_arg_parser",
     "collect_ast_dataset_records",
+    "cluster_records",
     "generate_objective_todos",
     "ensure_objective_tracking_document",
     "fibonacci_priority",
@@ -48,6 +55,7 @@ __all__ = [
     "invoke_llm_resolver",
     "latest_failed_merge_event",
     "parse_goal_heap",
+    "parse_todo_vector_records",
     "plan_semantic_ast_bundles",
     "plan_bundle_lanes",
     "persist_objective_ast_dataset",
@@ -64,6 +72,8 @@ __all__ = [
     "write_objective_graph_artifact",
     "write_bundle_shards",
     "write_bundle_lane_manifest",
+    "write_todo_vector_index",
+    "TodoIndexRecord",
 ]
 
 

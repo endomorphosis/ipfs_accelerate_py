@@ -36,12 +36,30 @@ missing-evidence gaps before generating todos. A JSON graph artifact is written
 on each objective-daemon run so supervisors can inspect roots, edges, depths,
 priorities, and active goal counts without reparsing markdown.
 
+When the backlog needs more raw material than one aggregate objective gap,
+enable surplus generation with `--surplus-findings-per-goal` or the supervisor's
+`--objective-surplus-findings-per-goal`. The first generated todo remains the
+aggregate gap, while additional todos split individual missing evidence terms.
+Those surplus todos carry `Goal id`, `Missing evidence`, `Surplus group`,
+`Merge key`, `Candidate kind`, `Embedding query`, `AST query`, and
+`Todo vector key` metadata so related candidates can be bundled, merged, or
+collapsed without asking the LLM to rediscover the structure from prose.
+
 Large AST and symbol payloads are dataset artifacts.  The accelerator writes a
 JSONL artifact and manifest for every objective scan, and when `ipfs_datasets_py`
 plus its dataset dependencies are importable it also saves the rows through
 `ipfs_datasets_py.dataset_manager.DatasetManager` and writes a parquet dataset.
 This keeps bulky scan evidence out of markdown todos while still making it
 available to dataset tooling, provenance systems, and future vector indexes.
+
+Each objective todo generation pass also writes a compact todo vector/AST index
+at `objective_bundles/todo_vector_index.json` unless disabled with
+`--no-todo-vector-index` or `--no-objective-todo-vector-index`. The index stores
+deterministic token embeddings, AST symbols gathered from task outputs, nearest
+related task ids, merge keys, surplus groups, and cluster summaries. Bundle
+indexes are backfilled with `todo_vector_summary` and per-task vector metadata,
+which lets bundle supervisors select cohesive lanes and keep worker prompts
+focused on a shard rather than the whole todo board.
 
 ## Bundle Flow
 
@@ -54,12 +72,14 @@ available to dataset tooling, provenance systems, and future vector indexes.
 4. The scanner appends daemon-parseable tasks to the main todo file.
 5. It writes per-bundle shards under `objective_bundles/*.todo.md`.
 6. It writes `objective_bundles/index.json`.
-7. It writes `objective_graph.json`.
-8. It writes AST/symbol datasets under `objective_datasets/`.
-9. `build_bundle_task_payloads(...)` converts the index into task queue payloads.
-10. `submit_bundle_tasks(...)` submits each bundle to the existing
+7. It writes `objective_bundles/todo_vector_index.json` and annotates the bundle
+   index with merge/vector metadata.
+8. It writes `objective_graph.json`.
+9. It writes AST/symbol datasets under `objective_datasets/`.
+10. `build_bundle_task_payloads(...)` converts the index into task queue payloads.
+11. `submit_bundle_tasks(...)` submits each bundle to the existing
    `ipfs_accelerate_py.p2p_tasks.task_queue.TaskQueue` as `codex.todo_bundle`.
-11. `ipfs-accelerate-agent-bundle-supervisor` plans one isolated
+12. `ipfs-accelerate-agent-bundle-supervisor` plans one isolated
     implementation-supervisor lane per bundle shard and, with `--start`, launches
     those lanes with separate state directories and worktree roots.
 
@@ -162,8 +182,11 @@ to scan the objective heap, append bounded child goals for missing evidence, and
 then generate bundle-local todos from the refined graph. Use
 `--objective-scan-min-open-tasks`, `--objective-scan-cooldown-seconds`,
 `--objective-max-refinement-children`, and `--objective-max-refinement-depth` to
-control growth. `--no-objective-goal-refinement` keeps the scan in todo-only mode
-for callers that want a fixed goal graph.
+control graph growth, and use `--objective-surplus-findings-per-goal` to create
+extra mergeable todo candidates per goal when workers need a larger surplus
+queue. `--no-objective-goal-refinement` keeps the scan in todo-only mode for
+callers that want a fixed goal graph. `--no-objective-todo-vector-index` disables
+the compact todo vector/AST index if a caller only wants plain markdown output.
 
 The implementation supervisor also runs the retry-budget guardrail by default.
 It converts repeated implementation exceptions, implementation timeouts,

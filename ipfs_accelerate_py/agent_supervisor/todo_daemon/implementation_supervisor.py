@@ -116,6 +116,9 @@ class PortalSupervisorConfig:
     objective_max_refinement_children: int = 3
     objective_max_refinement_depth: int = 4
     objective_persist_ast_dataset: bool = True
+    objective_write_todo_vector_index: bool = True
+    objective_todo_vector_index_path: Path | None = None
+    objective_surplus_findings_per_goal: int = 1
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
     supervisor_script_path: Path | None = None
@@ -957,6 +960,9 @@ class PortalImplementationSupervisor:
                 max_refinement_children=self.config.objective_max_refinement_children,
                 max_refinement_depth=self.config.objective_max_refinement_depth,
                 no_persist_ast_dataset=not self.config.objective_persist_ast_dataset,
+                no_todo_vector_index=not self.config.objective_write_todo_vector_index,
+                todo_vector_index_path=self.config.objective_todo_vector_index_path,
+                surplus_findings_per_goal=self.config.objective_surplus_findings_per_goal,
                 submit_bundles=False,
                 queue_path=None,
                 queue_task_type="codex.todo_bundle",
@@ -973,6 +979,8 @@ class PortalImplementationSupervisor:
         strategy["objective_goal_seen_fingerprints"] = sorted(discovery_fingerprints(discovery_dir))
         strategy["last_objective_refined_goal_ids"] = list(payload.get("refined_goal_ids") or [])
         strategy["last_objective_generated_task_ids"] = list(payload.get("task_ids") or [])
+        strategy["last_objective_todo_vector_index_path"] = str(payload.get("todo_vector_index_path") or "")
+        strategy["last_objective_surplus_findings_per_goal"] = int(payload.get("surplus_findings_per_goal") or 1)
         strategy["last_objective_goal_count"] = int(payload.get("objective_goal_count") or 0)
         strategy["last_objective_active_goal_count"] = int(payload.get("objective_active_goal_count") or 0)
         write_json(self.config.strategy_path, strategy)
@@ -986,6 +994,8 @@ class PortalImplementationSupervisor:
                     "refined_goal_ids": payload.get("refined_goal_ids") or [],
                     "task_ids": payload.get("task_ids") or [],
                     "bundle_keys": payload.get("bundle_keys") or [],
+                    "todo_vector_index_path": payload.get("todo_vector_index_path") or "",
+                    "surplus_findings_per_goal": payload.get("surplus_findings_per_goal") or 1,
                 },
             )
         return payload
@@ -1786,12 +1796,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--objective-max-refinement-children", type=int, default=3)
     parser.add_argument("--objective-max-refinement-depth", type=int, default=4)
     parser.add_argument(
+        "--objective-surplus-findings-per-goal",
+        type=int,
+        default=1,
+        help=(
+            "Generate surplus structured objective todos per missing goal. "
+            "Additional candidates are vector-indexed and bundled with related work."
+        ),
+    )
+    parser.add_argument(
+        "--objective-todo-vector-index-path",
+        type=Path,
+        default=None,
+        help="Path for the objective todo vector/AST index. Defaults to <objective-bundle-dir>/todo_vector_index.json.",
+    )
+    parser.add_argument(
         "--no-objective-ast-dataset",
         dest="objective_persist_ast_dataset",
         action="store_false",
         help="Skip persisting the objective AST/evidence dataset while refilling.",
     )
     parser.set_defaults(objective_persist_ast_dataset=True)
+    parser.add_argument(
+        "--no-objective-todo-vector-index",
+        dest="objective_write_todo_vector_index",
+        action="store_false",
+        help="Skip writing the objective todo vector/AST index while refilling.",
+    )
+    parser.set_defaults(objective_write_todo_vector_index=True)
     parser.add_argument(
         "--log-level",
         default="INFO",
@@ -1876,6 +1908,9 @@ def main(argv: list[str] | None = None) -> None:
             objective_max_refinement_children=args.objective_max_refinement_children,
             objective_max_refinement_depth=args.objective_max_refinement_depth,
             objective_persist_ast_dataset=args.objective_persist_ast_dataset,
+            objective_write_todo_vector_index=args.objective_write_todo_vector_index,
+            objective_todo_vector_index_path=args.objective_todo_vector_index_path,
+            objective_surplus_findings_per_goal=args.objective_surplus_findings_per_goal,
             repo_root=REPO_ROOT,
             daemon_script_path=args.daemon_script_path,
             supervisor_script_path=args.supervisor_script_path,

@@ -141,6 +141,10 @@ class ObjectiveFinding:
     ast_query: str = ""
     conflict_policy: str = "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
     refinement_depth: str = "0"
+    candidate_kind: str = "aggregate"
+    surplus_group: str = ""
+    merge_key: str = ""
+    todo_vector_key: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -615,6 +619,56 @@ def objective_fingerprint(goal: ObjectiveGoal, missing_terms: Sequence[str]) -> 
     return sha1(payload.encode("utf-8")).hexdigest()
 
 
+def objective_merge_key(goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str = "aggregate") -> str:
+    payload = {
+        "goal_id": goal.goal_id,
+        "candidate_kind": candidate_kind,
+        "missing_terms": sorted(" ".join(str(term).split()).lower() for term in missing_terms),
+        "outputs": sorted(split_terms(str(goal.fields.get("outputs") or ""))),
+        "ast_query": str(goal.fields.get("ast_query") or ""),
+    }
+    return sha1(json.dumps(payload, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
+
+def objective_surplus_group(goal: ObjectiveGoal) -> str:
+    return f"objective/{goal.goal_id}"
+
+
+def objective_todo_vector_key(goal: ObjectiveGoal, missing_terms: Sequence[str], *, candidate_kind: str) -> str:
+    payload = "\0".join([goal.goal_id, candidate_kind, *sorted(str(term) for term in missing_terms)])
+    return sha1(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def surplus_missing_term_groups(
+    missing_terms: Sequence[str],
+    *,
+    surplus_findings_per_goal: int = 1,
+) -> list[tuple[str, list[str]]]:
+    """Return mergeable objective-gap candidate groups for one goal.
+
+    The first group preserves the historical behavior: one aggregate task that
+    covers all missing terms.  Additional groups are per-evidence candidates so
+    a drained supervisor can create surplus structured work, then rely on the
+    todo vector index and merge keys to bundle related candidates back together.
+    """
+
+    terms = [term for term in dict.fromkeys(str(item).strip() for item in missing_terms) if term]
+    if not terms:
+        return []
+    try:
+        surplus_count = max(1, int(surplus_findings_per_goal))
+    except (TypeError, ValueError):
+        surplus_count = 1
+    groups: list[tuple[str, list[str]]] = [("aggregate", terms)]
+    if surplus_count <= 1:
+        return groups
+    for term in terms:
+        if len(groups) >= surplus_count:
+            break
+        groups.append(("evidence_term", [term]))
+    return groups
+
+
 def _path_root(value: str) -> str:
     value = str(value or "").strip()
     if not value or not repo_relative_path_safe(value):
@@ -725,6 +779,7 @@ def scan_objective_gaps(
     seen_fingerprints: Iterable[str] = (),
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+    surplus_findings_per_goal: int = 1,
 ) -> list[ObjectiveFinding]:
     if max_findings <= 0 or not objective_path.exists():
         return []
@@ -753,45 +808,59 @@ def scan_objective_gaps(
         missing_terms = [term for term in terms if not evidence.get(term)]
         if not missing_terms:
             continue
-        fingerprint = objective_fingerprint(goal, missing_terms)
-        if fingerprint in seen:
-            continue
-        present = {term: evidence.get(term, []) for term in terms if evidence.get(term)}
         fields = goal.fields
-        bundle_key = goal.bundle_key(missing_terms)
+        present = {term: evidence.get(term, []) for term in terms if evidence.get(term)}
         explicit_bundle = bool(str(fields.get("bundle") or "").strip())
-        finding = ObjectiveFinding(
-            fingerprint=fingerprint,
-            goal_id=goal.goal_id,
-            title=goal.title,
-            summary=f"{summary_prefix}: {goal.title}",
-            priority=str(fields.get("priority") or "P2"),
-            track=str(fields.get("track") or "ops"),
-            missing_evidence=missing_terms,
-            present_evidence=present,
-            evidence_methods=evidence_methods(present),
-            objective_path=repo_relative_path(repo_root, objective_path),
-            outputs=split_terms(str(fields.get("outputs") or "")),
-            validation=str(fields.get("validation") or f"test -f {repo_relative_path(repo_root, objective_path)}"),
-            goal=str(fields.get("goal") or ""),
-            refinement=str(fields.get("refinement") or ""),
-            gap_task=str(fields.get("gap_task") or ""),
-            parent_goal_ids=goal.parent_goal_ids,
-            graph_depth=int(graph["depths"].get(goal.goal_id, 0)),
-            bundle_key=bundle_key,
-            parallel_lane=str(fields.get("parallel_lane") or bundle_key),
-            bundle_explicit=explicit_bundle,
-            bundle_strategy="explicit" if explicit_bundle else "semantic_ast",
-            embedding_query=str(fields.get("embedding_query") or fields.get("goal") or goal.title),
-            ast_query=str(fields.get("ast_query") or ", ".join(terms)),
-            conflict_policy=str(
-                fields.get("conflict_policy")
-                or "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
-            ),
-            refinement_depth=str(fields.get("refinement_depth") or graph["depths"].get(goal.goal_id, 0)),
-        )
-        findings.append(finding)
-        seen.add(fingerprint)
+        for candidate_kind, candidate_missing_terms in surplus_missing_term_groups(
+            missing_terms,
+            surplus_findings_per_goal=surplus_findings_per_goal,
+        ):
+            fingerprint = objective_fingerprint(goal, candidate_missing_terms)
+            if fingerprint in seen:
+                continue
+            bundle_key = goal.bundle_key(candidate_missing_terms)
+            finding = ObjectiveFinding(
+                fingerprint=fingerprint,
+                goal_id=goal.goal_id,
+                title=goal.title,
+                summary=f"{summary_prefix}: {goal.title}",
+                priority=str(fields.get("priority") or "P2"),
+                track=str(fields.get("track") or "ops"),
+                missing_evidence=candidate_missing_terms,
+                present_evidence=present,
+                evidence_methods=evidence_methods(present),
+                objective_path=repo_relative_path(repo_root, objective_path),
+                outputs=split_terms(str(fields.get("outputs") or "")),
+                validation=str(fields.get("validation") or f"test -f {repo_relative_path(repo_root, objective_path)}"),
+                goal=str(fields.get("goal") or ""),
+                refinement=str(fields.get("refinement") or ""),
+                gap_task=str(fields.get("gap_task") or ""),
+                parent_goal_ids=goal.parent_goal_ids,
+                graph_depth=int(graph["depths"].get(goal.goal_id, 0)),
+                bundle_key=bundle_key,
+                parallel_lane=str(fields.get("parallel_lane") or bundle_key),
+                bundle_explicit=explicit_bundle,
+                bundle_strategy="explicit" if explicit_bundle else "semantic_ast",
+                embedding_query=str(fields.get("embedding_query") or fields.get("goal") or goal.title),
+                ast_query=str(fields.get("ast_query") or ", ".join(terms)),
+                conflict_policy=str(
+                    fields.get("conflict_policy")
+                    or "prefer bundle-local changes; invoke the LLM merge resolver for semantic conflicts"
+                ),
+                refinement_depth=str(fields.get("refinement_depth") or graph["depths"].get(goal.goal_id, 0)),
+                candidate_kind=candidate_kind,
+                surplus_group=objective_surplus_group(goal),
+                merge_key=objective_merge_key(goal, candidate_missing_terms, candidate_kind=candidate_kind),
+                todo_vector_key=objective_todo_vector_key(
+                    goal,
+                    candidate_missing_terms,
+                    candidate_kind=candidate_kind,
+                ),
+            )
+            findings.append(finding)
+            seen.add(fingerprint)
+            if len(findings) >= max_findings:
+                break
         if len(findings) >= max_findings:
             break
     return plan_semantic_ast_bundles(findings)
@@ -909,6 +978,14 @@ def render_task_block(
 - Graph depth: {finding.graph_depth}
 - Parallel lane: {finding.parallel_lane}
 - Conflict policy: {finding.conflict_policy}
+- Goal id: {finding.goal_id}
+- Missing evidence: {missing}
+- Embedding query: {finding.embedding_query}
+- AST query: {finding.ast_query}
+- Surplus group: {finding.surplus_group}
+- Merge key: {finding.merge_key}
+- Candidate kind: {finding.candidate_kind}
+- Todo vector key: {finding.todo_vector_key}
 - Acceptance: Objective scan filed this gap for {finding.goal_id}. Use evidence in {discovery_path}, add code/tests/docs or child goals that prove the missing evidence terms are covered ({missing}), and keep the supervisor-fed backlog aligned with the objective heap. {refinement}
 """
 
@@ -981,6 +1058,10 @@ def write_bundle_shards(
                 "missing_evidence": record.finding.missing_evidence,
                 "discovery_path": repo_relative_path(repo_root, record.discovery_path),
                 "bundle_strategy": record.finding.bundle_strategy,
+                "surplus_group": record.finding.surplus_group,
+                "merge_key": record.finding.merge_key,
+                "candidate_kind": record.finding.candidate_kind,
+                "todo_vector_key": record.finding.todo_vector_key,
             }
         bundles[key] = {
             "bundle_key": key,
@@ -1012,6 +1093,9 @@ def generate_objective_todos(
     max_findings: int = 10,
     seen_fingerprints: Iterable[str] = (),
     persist_ast_dataset: bool = True,
+    write_todo_vector_index: bool = True,
+    todo_vector_index_path: Path | None = None,
+    surplus_findings_per_goal: int = 1,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> list[ObjectiveTaskRecord]:
@@ -1025,6 +1109,7 @@ def generate_objective_todos(
         max_findings=max_findings,
         seen_fingerprints=seen_fingerprints,
         summary_prefix=summary_prefix,
+        surplus_findings_per_goal=surplus_findings_per_goal,
     ):
         task_id = next_task_id(todo_text, task_prefix=task_prefix)
         shard_relative = repo_relative_path(repo_root, bundle_path(bundle_dir, finding.bundle_key))
@@ -1051,7 +1136,24 @@ def generate_objective_todos(
         return []
     todo_path.parent.mkdir(parents=True, exist_ok=True)
     todo_path.write_text(todo_text, encoding="utf-8")
-    write_bundle_shards(bundle_dir=bundle_dir, repo_root=repo_root, todo_path=todo_path, records=records)
+    bundle_result = write_bundle_shards(bundle_dir=bundle_dir, repo_root=repo_root, todo_path=todo_path, records=records)
+    if write_todo_vector_index:
+        from .todo_vector_index import write_todo_vector_index as write_index
+
+        task_header_prefix = task_prefix.strip()
+        if not task_header_prefix.startswith("## "):
+            task_header_prefix = f"## {task_header_prefix.rstrip('-')}-"
+        write_index(
+            repo_root=repo_root,
+            todo_path=todo_path,
+            index_path=todo_vector_index_path or bundle_dir / "todo_vector_index.json",
+            task_header_prefix=task_header_prefix,
+            objective_path=objective_path,
+            bundle_index_path=bundle_result.index_path,
+            dataset_dir=(dataset_dir or bundle_dir.parent / "objective_datasets") if persist_ast_dataset else None,
+            dataset_id=f"{task_prefix.rstrip('-').lower()}-todo-vector-index",
+            persist_dataset=persist_ast_dataset,
+        )
     if persist_ast_dataset:
         persist_objective_ast_dataset(
             repo_root=repo_root,
