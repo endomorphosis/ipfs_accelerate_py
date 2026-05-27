@@ -249,6 +249,7 @@ class PortalTask:
     validation: list[str] = field(default_factory=list)
     acceptance: str = ""
     source_line: int = 0
+    metadata: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass
@@ -461,6 +462,7 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
                 validation=[item.strip() for item in metadata.get("validation", "").split(";") if item.strip()],
                 acceptance=str(metadata.get("acceptance", "")).strip(),
                 source_line=current_line,
+                metadata=dict(metadata),
             )
         )
         current_id = ""
@@ -4010,7 +4012,181 @@ class PortalImplementationDaemon:
             "No implementation command configured. Install codex or copilot, or set IMPLEMENTATION_DAEMON_COMMAND."
         )
 
+    def _task_metadata_value(self, task: PortalTask, *keys: str) -> str:
+        normalized = {
+            str(key).strip().lower().replace("_", " "): str(value).strip()
+            for key, value in task.metadata.items()
+        }
+        for key in keys:
+            value = normalized.get(str(key).strip().lower().replace("_", " "))
+            if value:
+                return value
+        return ""
+
+    def _resolve_context_path(self, value: Any) -> Path | None:
+        text = str(value or "").strip()
+        if not text:
+            return None
+        path = Path(text)
+        if not path.is_absolute():
+            path = self.repo_root / path
+        return path
+
+    def _todo_vector_index_candidate_paths(self, task: PortalTask) -> list[Path]:
+        candidates: list[Path] = []
+        seen: set[str] = set()
+
+        def add(path: Path | None) -> None:
+            if path is None:
+                return
+            key = str(path)
+            if key in seen:
+                return
+            seen.add(key)
+            candidates.append(path)
+
+        strategy = load_json_dict(self.strategy_path) or {}
+        for key in (
+            "last_objective_todo_vector_index_path",
+            "objective_todo_vector_index_path",
+            "todo_vector_index_path",
+        ):
+            add(self._resolve_context_path(strategy.get(key)))
+
+        for key in ("todo vector index path", "todo_vector_index_path", "todo vector index"):
+            add(self._resolve_context_path(self._task_metadata_value(task, key)))
+
+        bundle_shard = self._task_metadata_value(task, "bundle shard", "bundle_shard")
+        bundle_shard_path = self._resolve_context_path(bundle_shard)
+        if bundle_shard_path is not None:
+            add(bundle_shard_path.parent / "todo_vector_index.json")
+
+        add(self.todo_path.parent / "todo_vector_index.json")
+        add(self.repo_root / "todo_vector_index.json")
+        return candidates
+
+    def _load_todo_vector_context(self, task: PortalTask) -> dict[str, Any] | None:
+        for index_path in self._todo_vector_index_candidate_paths(task):
+            payload = load_json_dict(index_path)
+            if payload is None:
+                continue
+            records = payload.get("records")
+            if not isinstance(records, list):
+                continue
+            by_task = {
+                str(record.get("task_id") or ""): record
+                for record in records
+                if isinstance(record, dict) and str(record.get("task_id") or "")
+            }
+            record = by_task.get(task.task_id)
+            if not isinstance(record, dict):
+                continue
+            cluster: dict[str, Any] | None = None
+            for item in payload.get("clusters", []) if isinstance(payload.get("clusters"), list) else []:
+                if not isinstance(item, dict):
+                    continue
+                task_ids = item.get("task_ids")
+                if isinstance(task_ids, list) and task.task_id in {str(task_id) for task_id in task_ids}:
+                    cluster = item
+                    break
+
+            related_ids: list[str] = []
+            for raw_task_id in record.get("related_task_ids", []) if isinstance(record.get("related_task_ids"), list) else []:
+                related_task_id = str(raw_task_id)
+                if related_task_id and related_task_id != task.task_id and related_task_id not in related_ids:
+                    related_ids.append(related_task_id)
+            if cluster is not None:
+                for raw_task_id in cluster.get("task_ids", []) if isinstance(cluster.get("task_ids"), list) else []:
+                    related_task_id = str(raw_task_id)
+                    if related_task_id and related_task_id != task.task_id and related_task_id not in related_ids:
+                        related_ids.append(related_task_id)
+
+            return {
+                "index_path": index_path,
+                "record": record,
+                "cluster": cluster or {},
+                "related_records": [by_task[task_id] for task_id in related_ids if task_id in by_task][:5],
+            }
+        return None
+
+    def _display_context_path(self, path: Path) -> str:
+        try:
+            return str(path.relative_to(self.repo_root))
+        except ValueError:
+            return str(path)
+
+    def _compact_value_list(self, value: Any, *, limit: int = 8) -> list[str]:
+        if isinstance(value, list):
+            items = [str(item).strip() for item in value if str(item).strip()]
+        else:
+            items = split_csv(str(value or ""))
+        return items[:limit]
+
+    def _render_todo_vector_context(self, task: PortalTask) -> str:
+        context = self._load_todo_vector_context(task)
+        if context is None:
+            return ""
+        record = context["record"]
+        cluster = context["cluster"]
+        index_path = context["index_path"]
+
+        fields = [
+            ("Todo vector key", record.get("vector_key") or record.get("todo_vector_key")),
+            ("Merge key", record.get("merge_key")),
+            ("Surplus group", record.get("surplus_group")),
+            ("Candidate kind", record.get("candidate_kind")),
+            ("Goal id", record.get("goal_id")),
+            ("Bundle", record.get("bundle_key")),
+            ("Cluster", cluster.get("cluster_key") if isinstance(cluster, dict) else ""),
+        ]
+        lines = [f"- Index: {self._display_context_path(index_path)}"]
+        for label, value in fields:
+            text = str(value or "").strip()
+            if text:
+                lines.append(f"- {label}: {text}")
+
+        missing_evidence = self._compact_value_list(record.get("missing_evidence"), limit=8)
+        if missing_evidence:
+            lines.append(f"- Missing evidence: {', '.join(missing_evidence)}")
+
+        cluster_task_ids = self._compact_value_list(cluster.get("task_ids") if isinstance(cluster, dict) else [], limit=10)
+        if cluster_task_ids:
+            lines.append(f"- Cluster task ids: {', '.join(cluster_task_ids)}")
+
+        symbol_candidates = [
+            *self._compact_value_list(record.get("ast_symbols"), limit=24),
+            *self._compact_value_list(cluster.get("ast_symbols") if isinstance(cluster, dict) else [], limit=24),
+        ]
+        ast_symbols = sorted({item for item in symbol_candidates if item})[:24]
+        if ast_symbols:
+            lines.append(f"- AST symbols: {', '.join(ast_symbols)}")
+
+        related_entries: list[str] = []
+        for related in context["related_records"]:
+            related_id = str(related.get("task_id") or "").strip()
+            if not related_id:
+                continue
+            title = str(related.get("title") or "").strip()
+            status = str(related.get("status") or "").strip()
+            evidence = ", ".join(self._compact_value_list(related.get("missing_evidence"), limit=3))
+            outputs = ", ".join(self._compact_value_list(related.get("outputs"), limit=3))
+            details = [part for part in (status, title, f"missing={evidence}" if evidence else "", f"outputs={outputs}" if outputs else "") if part]
+            related_entries.append(f"{related_id} ({'; '.join(details)})")
+        if related_entries:
+            lines.append(f"- Related tasks: {' | '.join(related_entries)}")
+
+        return "\n".join(lines)
+
     def _build_implementation_prompt(self, task: PortalTask, attempt: int) -> str:
+        todo_vector_context = self._render_todo_vector_context(task)
+        todo_vector_context_section = (
+            f"""
+Compact todo vector context:
+{todo_vector_context}
+"""
+            if todo_vector_context
+            else ""
+        )
         return f"""You are an autonomous implementation agent working in this repository.
 
 Implement exactly this backlog task and keep changes scoped.
@@ -4027,6 +4203,7 @@ Task:
 - Expected outputs: {", ".join(task.outputs) or "none listed"}
 - Validation commands: {"; ".join(task.validation) or "none listed"}
 - Acceptance: {task.acceptance or "none listed"}
+{todo_vector_context_section}
 
 Primary plan document:
 - docs/AI_AGENT_CHAT_IMPLEMENTATION_PLAN.md when the task ID starts with AGENT-
