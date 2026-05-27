@@ -65,6 +65,11 @@ class TodoIndexRecord:
     merge_role: str = ""
     work_item_count: int = 0
     work_scope: str = ""
+    goal_packet_key: str = ""
+    goal_packet_role: str = ""
+    goal_packet_goal_ids: list[str] = field(default_factory=list)
+    goal_packet_task_count: int = 0
+    goal_packet_work_item_count: int = 0
     candidate_kind: str = ""
     vector_key: str = ""
     token_count: int = 0
@@ -192,6 +197,11 @@ def record_embedding_text(record: TodoIndexRecord) -> str:
             record.merge_role,
             str(record.work_item_count),
             record.work_scope,
+            record.goal_packet_key,
+            record.goal_packet_role,
+            " ".join(record.goal_packet_goal_ids),
+            str(record.goal_packet_task_count),
+            str(record.goal_packet_work_item_count),
             record.embedding_query,
             record.ast_query,
             " ".join(record.graph_parents),
@@ -281,6 +291,11 @@ def parse_todo_vector_records(
             merge_role=merge_role,
             work_item_count=parse_int(fields.get("work_item_count"), len(missing_evidence)),
             work_scope=str(fields.get("work_scope") or "").strip(),
+            goal_packet_key=str(fields.get("goal_packet") or fields.get("goal_packet_key") or "").strip(),
+            goal_packet_role=str(fields.get("goal_packet_role") or "").strip(),
+            goal_packet_goal_ids=split_csv(fields.get("goal_packet_goals") or fields.get("goal_packet_goal_ids") or ""),
+            goal_packet_task_count=parse_int(fields.get("goal_packet_task_count"), 0),
+            goal_packet_work_item_count=parse_int(fields.get("goal_packet_work_item_count"), 0),
             candidate_kind=candidate_kind,
             vector_key=vector_key,
             ast_symbols=collect_output_symbols(repo_root, outputs),
@@ -313,6 +328,8 @@ def attach_related_task_ids(records: Sequence[TodoIndexRecord], *, max_related: 
                 score += 1.0
             elif record.merge_family and record.merge_family == other.merge_family:
                 score += 0.70
+            elif record.goal_packet_key and record.goal_packet_key == other.goal_packet_key:
+                score += 0.65
             elif record.surplus_group and record.surplus_group == other.surplus_group:
                 score += 0.50
             elif record.bundle_key and record.bundle_key == other.bundle_key:
@@ -357,6 +374,10 @@ def cluster_records(
                 selected = cluster
                 best_score = 0.9
                 break
+            if record.goal_packet_key and record.goal_packet_key in cluster.get("goal_packet_keys", []):
+                selected = cluster
+                best_score = 0.85
+                break
             score = cosine(record.embedding, cluster.get("centroid", []))
             if record.surplus_group and record.surplus_group in cluster.get("surplus_groups", []):
                 score += 0.35
@@ -371,6 +392,7 @@ def cluster_records(
                 "task_ids": [],
                 "merge_keys": [],
                 "merge_families": [],
+                "goal_packet_keys": [],
                 "surplus_groups": [],
                 "ast_symbols": [],
                 "centroid": record.embedding,
@@ -382,6 +404,8 @@ def cluster_records(
             selected["merge_keys"].append(record.merge_key)
         if record.merge_family and record.merge_family not in selected["merge_families"]:
             selected["merge_families"].append(record.merge_family)
+        if record.goal_packet_key and record.goal_packet_key not in selected["goal_packet_keys"]:
+            selected["goal_packet_keys"].append(record.goal_packet_key)
         if record.surplus_group and record.surplus_group not in selected["surplus_groups"]:
             selected["surplus_groups"].append(record.surplus_group)
         selected_symbols = set(selected.get("ast_symbols") or [])
@@ -398,6 +422,7 @@ def cluster_records(
         cluster["task_ids"] = sorted(cluster["task_ids"])
         cluster["merge_keys"] = sorted(cluster["merge_keys"])
         cluster["merge_families"] = sorted(cluster["merge_families"])
+        cluster["goal_packet_keys"] = sorted(cluster["goal_packet_keys"])
         cluster["surplus_groups"] = sorted(cluster["surplus_groups"])
         cluster["centroid_sha1"] = sha1(
             json.dumps(cluster.pop("centroid", []), sort_keys=True).encode("utf-8")
@@ -432,11 +457,14 @@ def build_merge_candidate(
     ast_symbols = sorted_unique([symbol for record in records for symbol in record.ast_symbols])[:80]
     missing_evidence = sorted_unique([item for record in records for item in record.missing_evidence])
     work_counts = [record.work_item_count for record in records if record.work_item_count > 0]
+    packet_work_counts = [record.goal_packet_work_item_count for record in records if record.goal_packet_work_item_count > 0]
     graph_depths = [record.graph_depth for record in records if record.graph_depth >= 0]
     candidate_seed = json.dumps({"group_type": group_type, "group_value": group_value, "task_ids": task_ids}, sort_keys=True)
     exact_merge_key_count = len({record.merge_key for record in records if record.merge_key})
     if group_type == "merge_key":
         confidence = "high"
+    elif group_type == "goal_packet_key":
+        confidence = "high" if len({record.goal_id for record in records if record.goal_id}) > 1 else "medium"
     elif group_type == "merge_family" and shared_outputs:
         confidence = "high"
     elif group_type == "merge_family":
@@ -448,7 +476,7 @@ def build_merge_candidate(
     merge_ready_task_ids = (
         active_task_ids
         if len(active_task_ids) > 1
-        and (group_type in {"merge_key", "merge_family", "surplus_group"} or bool(shared_outputs))
+        and (group_type in {"merge_key", "goal_packet_key", "merge_family", "surplus_group"} or bool(shared_outputs))
         else []
     )
     return {
@@ -468,6 +496,11 @@ def build_merge_candidate(
         "merge_keys": sorted_unique([record.merge_key for record in records]),
         "merge_families": sorted_unique([record.merge_family for record in records]),
         "merge_roles": sorted_unique([record.merge_role for record in records]),
+        "goal_packet_keys": sorted_unique([record.goal_packet_key for record in records]),
+        "goal_packet_roles": sorted_unique([record.goal_packet_role for record in records]),
+        "goal_packet_goal_ids": sorted_unique([goal_id for record in records for goal_id in record.goal_packet_goal_ids]),
+        "goal_packet_task_count_max": max([record.goal_packet_task_count for record in records], default=0),
+        "goal_packet_work_item_count_max": max(packet_work_counts) if packet_work_counts else 0,
         "surplus_groups": sorted_unique([record.surplus_group for record in records]),
         "cluster_keys": sorted_unique([cluster_by_task.get(record.task_id, "") for record in records]),
         "shared_outputs": shared_outputs,
@@ -502,6 +535,7 @@ def build_merge_candidates(
     groups: list[tuple[str, str, list[TodoIndexRecord]]] = []
     for group_type, getter in (
         ("merge_key", lambda record: record.merge_key),
+        ("goal_packet_key", lambda record: record.goal_packet_key),
         ("merge_family", lambda record: record.merge_family),
         ("surplus_group", lambda record: record.surplus_group),
     ):
@@ -558,7 +592,9 @@ def _compact_context_text(context: Mapping[str, Any]) -> str:
         f"goals={', '.join(context.get('goal_ids') or [])}",
         f"parents={', '.join(context.get('graph_parent_ids') or [])}",
         f"merge_family={', '.join(context.get('merge_families') or [])}",
+        f"goal_packet={', '.join(context.get('goal_packet_keys') or [])}",
         f"work_items={context.get('work_item_count_min')}-{context.get('work_item_count_max')}",
+        f"packet_work={context.get('goal_packet_work_item_count_max') or 0}",
         f"missing={', '.join(context.get('missing_evidence') or [])}",
         f"outputs={', '.join((context.get('shared_outputs') or context.get('all_outputs') or [])[:4])}",
         f"ast={', '.join((context.get('ast_symbols') or [])[:12])}",
@@ -595,9 +631,10 @@ def build_bundle_context(
     )
     merge_ready = len(active_task_ids) > 1 and (
         bool(shared_outputs)
-        or source_type in {"merge_candidate", "merge_key", "merge_family", "surplus_group"}
+        or source_type in {"merge_candidate", "merge_key", "goal_packet_key", "merge_family", "surplus_group"}
         or bool(merge_families)
     )
+    packet_work_counts = [record.goal_packet_work_item_count for record in records if record.goal_packet_work_item_count > 0]
     representative_task_id = active_task_ids[0]
     context: dict[str, Any] = {
         "context_key": f"bundle_context/{sha1(context_seed.encode('utf-8')).hexdigest()[:12]}",
@@ -617,6 +654,11 @@ def build_bundle_context(
         "merge_keys": sorted_unique([record.merge_key for record in records]),
         "merge_families": merge_families,
         "merge_roles": sorted_unique([record.merge_role for record in records]),
+        "goal_packet_keys": sorted_unique([record.goal_packet_key for record in records]),
+        "goal_packet_roles": sorted_unique([record.goal_packet_role for record in records]),
+        "goal_packet_goal_ids": sorted_unique([goal_id for record in records for goal_id in record.goal_packet_goal_ids]),
+        "goal_packet_task_count_max": max([record.goal_packet_task_count for record in records], default=0),
+        "goal_packet_work_item_count_max": max(packet_work_counts) if packet_work_counts else 0,
         "work_scopes": sorted_unique([record.work_scope for record in records]),
         "work_item_count_min": min(work_counts) if work_counts else 0,
         "work_item_count_max": max(work_counts) if work_counts else 0,
@@ -714,7 +756,9 @@ def _compact_execution_packet_text(packet: Mapping[str, Any]) -> str:
         str(packet.get("packet_key") or ""),
         f"ids={','.join(packet.get('active_task_ids') or [])}",
         f"mf={','.join(packet.get('merge_families') or [])}",
+        f"gp={','.join(packet.get('goal_packet_keys') or [])}",
         f"w={packet.get('work_item_count_total') or 0}",
+        f"pw={packet.get('goal_packet_work_item_count_max') or 0}",
         f"miss={','.join((packet.get('missing_evidence') or [])[:10])}",
         f"out={','.join((packet.get('shared_outputs') or packet.get('all_outputs') or [])[:5])}",
         f"ast={','.join((packet.get('ast_symbols') or [])[:12])}",
@@ -745,6 +789,9 @@ def build_execution_packet(
     output_sets = [set(record.outputs) for record in selected_records if record.outputs]
     shared_outputs = sorted(output_sets[0].intersection(*output_sets[1:])) if output_sets else []
     work_counts = [record.work_item_count for record in selected_records if record.work_item_count > 0]
+    packet_work_counts = [
+        record.goal_packet_work_item_count for record in selected_records if record.goal_packet_work_item_count > 0
+    ]
     packet_seed = json.dumps(
         {
             "context_key": context.get("context_key"),
@@ -769,6 +816,13 @@ def build_execution_packet(
         "merge_keys": sorted_unique([record.merge_key for record in selected_records]),
         "merge_families": sorted_unique([record.merge_family for record in selected_records]),
         "merge_roles": sorted_unique([record.merge_role for record in selected_records]),
+        "goal_packet_keys": sorted_unique([record.goal_packet_key for record in selected_records]),
+        "goal_packet_roles": sorted_unique([record.goal_packet_role for record in selected_records]),
+        "goal_packet_goal_ids": sorted_unique(
+            [goal_id for record in selected_records for goal_id in record.goal_packet_goal_ids]
+        ),
+        "goal_packet_task_count_max": max([record.goal_packet_task_count for record in selected_records], default=0),
+        "goal_packet_work_item_count_max": max(packet_work_counts) if packet_work_counts else 0,
         "surplus_groups": sorted_unique([record.surplus_group for record in selected_records]),
         "candidate_kinds": sorted_unique([record.candidate_kind for record in selected_records]),
         "work_scopes": sorted_unique([record.work_scope for record in selected_records]),
@@ -982,6 +1036,14 @@ def update_bundle_index_with_todo_vectors(
             "task_count": len(bundle_records),
             "merge_keys": sorted({record.merge_key for record in bundle_records if record.merge_key}),
             "merge_families": sorted({record.merge_family for record in bundle_records if record.merge_family}),
+            "goal_packet_keys": sorted({record.goal_packet_key for record in bundle_records if record.goal_packet_key}),
+            "goal_packet_goal_ids": sorted(
+                {goal_id for record in bundle_records for goal_id in record.goal_packet_goal_ids}
+            ),
+            "goal_packet_work_item_count_max": max(
+                [record.goal_packet_work_item_count for record in bundle_records if record.goal_packet_work_item_count],
+                default=0,
+            ),
             "surplus_groups": sorted({record.surplus_group for record in bundle_records if record.surplus_group}),
             "estimated_prompt_tokens": sum(record.token_count for record in bundle_records),
             "compact_context_tokens": sum(
@@ -1036,6 +1098,11 @@ def update_bundle_index_with_todo_vectors(
             task["merge_role"] = record.merge_role
             task["work_item_count"] = record.work_item_count
             task["work_scope"] = record.work_scope
+            task["goal_packet_key"] = record.goal_packet_key
+            task["goal_packet_role"] = record.goal_packet_role
+            task["goal_packet_goal_ids"] = record.goal_packet_goal_ids
+            task["goal_packet_task_count"] = record.goal_packet_task_count
+            task["goal_packet_work_item_count"] = record.goal_packet_work_item_count
             task["surplus_group"] = record.surplus_group
             task["todo_vector_key"] = record.vector_key
             task["todo_cluster_key"] = cluster_by_task.get(record.task_id, "")

@@ -4161,6 +4161,10 @@ class PortalImplementationDaemon:
             ("Merge role", record.get("merge_role")),
             ("Work item count", record.get("work_item_count")),
             ("Work scope", record.get("work_scope")),
+            ("Goal packet", record.get("goal_packet_key")),
+            ("Goal packet role", record.get("goal_packet_role")),
+            ("Goal packet task count", record.get("goal_packet_task_count")),
+            ("Goal packet work item count", record.get("goal_packet_work_item_count")),
             ("Surplus group", record.get("surplus_group")),
             ("Candidate kind", record.get("candidate_kind")),
             ("Goal id", record.get("goal_id")),
@@ -4177,6 +4181,10 @@ class PortalImplementationDaemon:
         missing_evidence = self._compact_value_list(record.get("missing_evidence"), limit=8)
         if missing_evidence:
             lines.append(f"- Missing evidence: {', '.join(missing_evidence)}")
+
+        packet_goals = self._compact_value_list(record.get("goal_packet_goal_ids"), limit=8)
+        if packet_goals:
+            lines.append(f"- Goal packet goals: {', '.join(packet_goals)}")
 
         cluster_task_ids = self._compact_value_list(cluster.get("task_ids") if isinstance(cluster, dict) else [], limit=10)
         if cluster_task_ids:
@@ -4334,6 +4342,7 @@ Rules:
 - Do not revert unrelated local changes.
 - Prefer existing repo patterns and small, reviewable changes.
 - Implement the expected outputs for this task.
+- If a compact execution packet or goal packet is shown, prefer one cohesive implementation that advances the shared packet evidence without making unrelated edits.
 - Run the listed validation commands when practical.
 - The daemon will run the listed validation commands and will only commit and merge the worktree if they pass.
 - Leave generated artifacts and shared dependency paths alone; the daemon restores dist, screenshot artifacts, and linked node_modules before commit.
@@ -4530,22 +4539,24 @@ Rules:
 
         if record.get("merge_key") and record.get("merge_key") == anchor.get("merge_key"):
             relation_rank = 0
-        elif execution_packet_key and anchor_execution_packet_key and execution_packet_key == anchor_execution_packet_key:
+        elif record.get("goal_packet_key") and record.get("goal_packet_key") == anchor.get("goal_packet_key"):
             relation_rank = 1
-        elif bundle_context_key and anchor_bundle_context_key and bundle_context_key == anchor_bundle_context_key:
+        elif execution_packet_key and anchor_execution_packet_key and execution_packet_key == anchor_execution_packet_key:
             relation_rank = 2
-        elif cluster_key and anchor_cluster_key and cluster_key == anchor_cluster_key:
+        elif bundle_context_key and anchor_bundle_context_key and bundle_context_key == anchor_bundle_context_key:
             relation_rank = 3
-        elif task.task_id in anchor_related or (anchor_task_id and anchor_task_id in record_related):
+        elif cluster_key and anchor_cluster_key and cluster_key == anchor_cluster_key:
             relation_rank = 4
-        elif record.get("merge_family") and record.get("merge_family") == anchor.get("merge_family"):
+        elif task.task_id in anchor_related or (anchor_task_id and anchor_task_id in record_related):
             relation_rank = 5
-        elif record.get("surplus_group") and record.get("surplus_group") == anchor.get("surplus_group"):
+        elif record.get("merge_family") and record.get("merge_family") == anchor.get("merge_family"):
             relation_rank = 6
-        elif record.get("goal_id") and record.get("goal_id") == anchor.get("goal_id"):
+        elif record.get("surplus_group") and record.get("surplus_group") == anchor.get("surplus_group"):
             relation_rank = 7
-        else:
+        elif record.get("goal_id") and record.get("goal_id") == anchor.get("goal_id"):
             relation_rank = 8
+        else:
+            relation_rank = 9
         return (relation_rank, -ready_execution_packet_size, -ready_bundle_context_size, -ready_cluster_size, token_count)
 
     def _select_next_task(

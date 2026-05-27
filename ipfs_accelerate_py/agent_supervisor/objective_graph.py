@@ -155,6 +155,11 @@ class ObjectiveFinding:
     work_item_count: int = 0
     work_scope: str = ""
     todo_vector_key: str = ""
+    goal_packet_key: str = ""
+    goal_packet_role: str = ""
+    goal_packet_goal_ids: list[str] = field(default_factory=list)
+    goal_packet_task_count: int = 0
+    goal_packet_work_item_count: int = 0
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -649,6 +654,70 @@ def objective_todo_vector_key(goal: ObjectiveGoal, missing_terms: Sequence[str],
     return sha1(payload.encode("utf-8")).hexdigest()[:16]
 
 
+def objective_goal_packet_key(findings: Sequence[ObjectiveFinding]) -> str:
+    """Return a stable packet key for related goal/subgoal findings."""
+
+    goals = sorted({finding.goal_id for finding in findings if finding.goal_id})
+    parents = sorted({parent for finding in findings for parent in finding.parent_goal_ids})
+    tracks = sorted({finding.track for finding in findings if finding.track})
+    roots = sorted({finding_conflict_root(finding) for finding in findings})
+    ast_queries = sorted({finding.ast_query for finding in findings if finding.ast_query})
+    seed = {
+        "goals": goals,
+        "parents": parents or goals,
+        "tracks": tracks,
+        "roots": roots,
+        "ast_queries": ast_queries,
+    }
+    digest = sha1(json.dumps(seed, sort_keys=True).encode("utf-8")).hexdigest()[:12]
+    track = safe_bundle_key(tracks[0] if tracks else "ops").replace("-", "_") or "ops"
+    root = safe_bundle_key(roots[0] if roots else "general").replace("-", "_") or "general"
+    return f"goal_packet/{track}/{root}/{digest}"
+
+
+def _goal_packet_group_key(finding: ObjectiveFinding) -> tuple[str, tuple[str, ...], str]:
+    family = tuple(sorted(finding.parent_goal_ids or [finding.goal_id]))
+    return (finding.track, family, finding_conflict_root(finding))
+
+
+def assign_goal_subgoal_packets(findings: Sequence[ObjectiveFinding]) -> list[ObjectiveFinding]:
+    """Annotate findings with packet metadata for sibling goal/subgoal work."""
+
+    groups: dict[tuple[str, tuple[str, ...], str], list[ObjectiveFinding]] = {}
+    for finding in findings:
+        groups.setdefault(_goal_packet_group_key(finding), []).append(finding)
+
+    packet_by_fingerprint: dict[str, ObjectiveFinding] = {}
+    for group_findings in groups.values():
+        if len(group_findings) < 2:
+            continue
+        packet_key = objective_goal_packet_key(group_findings)
+        goal_ids = sorted({finding.goal_id for finding in group_findings if finding.goal_id})
+        task_count = len(group_findings)
+        packet_work_items = sum(finding.work_item_count or len(finding.missing_evidence) for finding in group_findings)
+        multi_goal_packet = len(goal_ids) > 1
+        for index, finding in enumerate(
+            sorted(group_findings, key=lambda item: (item.priority, item.goal_id, item.candidate_kind, item.fingerprint))
+        ):
+            role = "packet_anchor" if index == 0 else "packet_member"
+            merge_family = packet_key if multi_goal_packet else finding.merge_family
+            work_scope = finding.work_scope or "goal_subgoal_multi_evidence_batch"
+            if "goal_subgoal_packet" not in work_scope:
+                work_scope = f"{work_scope}; goal_subgoal_packet"
+            packet_by_fingerprint[finding.fingerprint] = replace(
+                finding,
+                merge_family=merge_family,
+                goal_packet_key=packet_key,
+                goal_packet_role=role,
+                goal_packet_goal_ids=goal_ids,
+                goal_packet_task_count=task_count,
+                goal_packet_work_item_count=packet_work_items,
+                work_scope=work_scope,
+            )
+
+    return [packet_by_fingerprint.get(finding.fingerprint, finding) for finding in findings]
+
+
 def surplus_missing_term_groups(
     missing_terms: Sequence[str],
     *,
@@ -907,7 +976,7 @@ def scan_objective_gaps(
                 break
         if len(findings) >= max_findings:
             break
-    return plan_semantic_ast_bundles(findings)
+    return assign_goal_subgoal_packets(plan_semantic_ast_bundles(findings))
 
 
 def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX) -> list[str]:
@@ -951,6 +1020,7 @@ def write_discovery(
         present_items.append(f"- {term}: {', '.join(str(path) for path in paths)}")
     present = "\n".join(present_items) if present_items else "- none found for this goal"
     parents = ", ".join(finding.parent_goal_ids) or "none"
+    packet_goals = ", ".join(finding.goal_packet_goal_ids) or "none"
     content = f"""# {task_id} Objective Goal Gap
 
 Date: {date}
@@ -965,6 +1035,11 @@ Graph depth: {finding.graph_depth}
 Bundle: {finding.bundle_key}
 Parallel lane: {finding.parallel_lane}
 Bundle strategy: {finding.bundle_strategy}
+Goal packet: {finding.goal_packet_key or "none"}
+Goal packet role: {finding.goal_packet_role or "none"}
+Goal packet goals: {packet_goals}
+Goal packet task count: {finding.goal_packet_task_count}
+Goal packet work item count: {finding.goal_packet_work_item_count}
 Evidence methods: {", ".join(finding.evidence_methods) or "none"}
 Embedding query: {finding.embedding_query}
 AST query: {finding.ast_query}
@@ -1005,6 +1080,13 @@ def render_task_block(
     missing = ", ".join(finding.missing_evidence)
     refinement = finding.refinement or "Refine the objective heap if the gap needs smaller child goals."
     parents = ", ".join(finding.parent_goal_ids) or "none"
+    packet_goals = ", ".join(finding.goal_packet_goal_ids)
+    packet_acceptance = (
+        f"This task is part of {finding.goal_packet_key}; when practical, make one cohesive change that advances "
+        f"the packet goals ({packet_goals}) and covers the shared packet evidence without expanding the prompt."
+        if finding.goal_packet_key and packet_goals
+        else ""
+    )
     bundle_shard = bundle_shard or f"data/agent_supervisor/objective_bundles/{safe_bundle_key(finding.bundle_key)}.todo.md"
     return f"""## {task_id} {finding.summary}
 
@@ -1032,9 +1114,14 @@ def render_task_block(
 - Merge role: {finding.merge_role or finding.candidate_kind}
 - Work item count: {finding.work_item_count or len(finding.missing_evidence)}
 - Work scope: {finding.work_scope or "goal_subgoal_multi_evidence_batch"}
+- Goal packet: {finding.goal_packet_key}
+- Goal packet role: {finding.goal_packet_role}
+- Goal packet goals: {packet_goals}
+- Goal packet task count: {finding.goal_packet_task_count}
+- Goal packet work item count: {finding.goal_packet_work_item_count}
 - Candidate kind: {finding.candidate_kind}
 - Todo vector key: {finding.todo_vector_key}
-- Acceptance: Objective scan filed this gap for {finding.goal_id}. Use evidence in {discovery_path}, add code/tests/docs or child goals that prove the missing evidence terms are covered ({missing}), and keep the supervisor-fed backlog aligned with the objective heap. {refinement}
+- Acceptance: Objective scan filed this gap for {finding.goal_id}. Use evidence in {discovery_path}, add code/tests/docs or child goals that prove the missing evidence terms are covered ({missing}), and keep the supervisor-fed backlog aligned with the objective heap. {packet_acceptance} {refinement}
 """
 
 
@@ -1112,6 +1199,11 @@ def write_bundle_shards(
                 "merge_role": record.finding.merge_role or record.finding.candidate_kind,
                 "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
                 "work_scope": record.finding.work_scope or "goal_subgoal_multi_evidence_batch",
+                "goal_packet_key": record.finding.goal_packet_key,
+                "goal_packet_role": record.finding.goal_packet_role,
+                "goal_packet_goal_ids": record.finding.goal_packet_goal_ids,
+                "goal_packet_task_count": record.finding.goal_packet_task_count,
+                "goal_packet_work_item_count": record.finding.goal_packet_work_item_count,
                 "candidate_kind": record.finding.candidate_kind,
                 "todo_vector_key": record.finding.todo_vector_key,
             }
