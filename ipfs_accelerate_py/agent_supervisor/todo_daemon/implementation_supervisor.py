@@ -36,6 +36,8 @@ from .supervisor_runtime import RestartPolicy
 
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor")
 
+RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
+
 
 def split_csv_values(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     items: list[str] = []
@@ -246,23 +248,63 @@ class PortalImplementationSupervisor:
         self.ensure_event_log_file()
         self.repair_main_checkout_merge_state()
         self.ensure_managed_daemon_pid_file()
-        loop = SupervisorLoop(
-            self.build_supervisor_loop_config(),
-            watchdog_hook=self._supervisor_loop_watchdog_decision,
-        )
-        result = loop.run()
-        self.restart_count = result.restart_count
-        self._record_event(
-            "supervisor_loop_finished",
-            {
+        while True:
+            loop = self.shared_supervisor_loop_class(
+                self.build_supervisor_loop_config(),
+                watchdog_hook=self._supervisor_loop_watchdog_decision,
+            )
+            result = loop.run()
+            self.restart_count = result.restart_count
+            result_payload = {
                 "status": result.status,
                 "restart_count": result.restart_count,
                 "last_exit_code": result.last_exit_code,
                 "last_recycle_reason": result.last_recycle_reason,
                 "last_run_id": result.last_run_id,
                 "last_log_path": result.last_log_path,
-            },
-        )
+            }
+            self._record_event("supervisor_loop_finished", result_payload)
+            if result.status not in RECOVERABLE_SUPERVISOR_LOOP_STATUSES:
+                return
+
+            try:
+                recovery = self.run_once()
+            except Exception as exc:
+                recovery = {
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                }
+                logger.warning("Supervisor recovery pass failed; restarting child loop anyway", exc_info=True)
+                self._record_event(
+                    "supervisor_loop_recovery_failed",
+                    {
+                        "loop_result": result_payload,
+                        "recovery": recovery,
+                    },
+                )
+            else:
+                self._record_event(
+                    "supervisor_loop_recovery_pass",
+                    {
+                        "loop_result": result_payload,
+                        "recovery": recovery,
+                    },
+                )
+
+            delay_seconds = self._supervisor_loop_recovery_delay_seconds()
+            self._record_event(
+                "supervisor_loop_restarting_after_recovery",
+                {
+                    "loop_result": result_payload,
+                    "delay_seconds": delay_seconds,
+                },
+            )
+            time.sleep(delay_seconds)
+
+    def _supervisor_loop_recovery_delay_seconds(self) -> float:
+        """Back off between outer loop recovery attempts without exceeding one check interval."""
+
+        return max(5.0, min(float(self.config.check_interval), 60.0))
 
     def build_supervisor_loop_config(self) -> SupervisorLoopConfig:
         command = tuple(self._build_daemon_command())

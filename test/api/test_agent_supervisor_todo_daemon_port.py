@@ -39,7 +39,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (
     SupervisorStatusContext,
     worktree_phase_worker_status,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import SupervisorLoop, SupervisorLoopConfig
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
+    SupervisorLoop,
+    SupervisorLoopConfig,
+    SupervisorLoopResult,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     RestartPolicy,
     SupervisedChildSpec,
@@ -291,6 +295,70 @@ def test_supervisor_loop_retries_child_launch_failures(tmp_path):
     assert status["status"] == "max_restarts_reached"
     assert status["last_recycle_reason"] == "launch_failed"
     assert status["last_exit_code"] == 127
+
+
+def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+
+    class RecoveringLoop:
+        calls = 0
+
+        def __init__(self, config, *, watchdog_hook=None):
+            self.config = config
+            self.watchdog_hook = watchdog_hook
+
+        def run(self):
+            RecoveringLoop.calls += 1
+            if RecoveringLoop.calls == 1:
+                return SupervisorLoopResult(
+                    status="max_restarts_reached",
+                    restart_count=2,
+                    last_exit_code=127,
+                    last_recycle_reason="launch_failed",
+                    last_run_id="first",
+                    last_log_path="first.log",
+                )
+            return SupervisorLoopResult(status="stopped", restart_count=0, last_run_id="second")
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            check_interval=0.01,
+            max_restarts=1,
+            repo_root=repo,
+        )
+    )
+    supervisor.shared_supervisor_loop_class = RecoveringLoop
+    supervisor.ensure_event_log_file = lambda: {"repaired": False, "reason": "valid"}
+    supervisor.repair_main_checkout_merge_state = lambda: {"attempted": False, "repaired": False, "reason": "clean"}
+    supervisor.ensure_managed_daemon_pid_file = lambda: {"adopted": False, "reason": "not_running"}
+    supervisor.run_once = lambda: {"stuck": False, "recovered": True}
+    supervisor._supervisor_loop_recovery_delay_seconds = lambda: 0.0
+
+    supervisor.run_forever()
+
+    assert RecoveringLoop.calls == 2
+    events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    assert [event["type"] for event in events] == [
+        "supervisor_loop_finished",
+        "supervisor_loop_recovery_pass",
+        "supervisor_loop_restarting_after_recovery",
+        "supervisor_loop_finished",
+    ]
+    assert events[0]["status"] == "max_restarts_reached"
+    assert events[1]["recovery"]["recovered"] is True
+    assert events[-1]["status"] == "stopped"
 
 
 def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
