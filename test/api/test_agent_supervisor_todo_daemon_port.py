@@ -2041,8 +2041,6 @@ def test_objective_daemon_generates_surplus_vector_indexed_todos(tmp_path):
             "ACCEL-",
             "--max-findings",
             "3",
-            "--surplus-findings-per-goal",
-            "3",
             "--no-persist-ast-dataset",
         ]
     )
@@ -2050,18 +2048,20 @@ def test_objective_daemon_generates_surplus_vector_indexed_todos(tmp_path):
     payload = run_objective_daemon(args)
 
     assert payload["generated_count"] == 3
+    assert payload["surplus_findings_per_goal"] == 3
+    assert payload["surplus_min_terms_per_todo"] == 3
     todo_text = todo_path.read_text(encoding="utf-8")
     assert todo_text.count("Surplus group: objective/VAIOS-G001") == 3
     assert todo_text.count("Merge family: objective/VAIOS-G001") == 3
     assert "Merge role: aggregate" in todo_text
     assert "Merge role: evidence_cluster" in todo_text
     assert "Work item count: 4" in todo_text
-    assert todo_text.count("Work item count: 2") == 2
+    assert todo_text.count("Work item count: 3") == 2
     assert "Candidate kind: aggregate" in todo_text
     assert "Candidate kind: evidence_cluster" in todo_text
     index_payload = json.loads((repo / "bundles" / "todo_vector_index.json").read_text(encoding="utf-8"))
     assert index_payload["task_count"] == 3
-    assert min(record["work_item_count"] for record in index_payload["records"]) >= 2
+    assert min(record["work_item_count"] for record in index_payload["records"]) >= 3
     surplus_groups = {record["surplus_group"] for record in index_payload["records"]}
     assert surplus_groups == {"objective/VAIOS-G001"}
     merge_families = {record["merge_family"] for record in index_payload["records"]}
@@ -2075,7 +2075,7 @@ def test_objective_daemon_generates_surplus_vector_indexed_todos(tmp_path):
     bundle_tasks = next(iter(bundle_index["bundles"].values()))["tasks"]
     assert all(task["merge_key"] for task in bundle_tasks)
     assert all(task["merge_family"] for task in bundle_tasks)
-    assert min(task["work_item_count"] for task in bundle_tasks) >= 2
+    assert min(task["work_item_count"] for task in bundle_tasks) >= 3
     assert all(task["todo_bundle_context_keys"] for task in bundle_tasks)
     assert all(task["todo_vector_key"] for task in bundle_tasks)
     bundle_summary = next(iter(bundle_index["bundles"].values()))["todo_vector_summary"]

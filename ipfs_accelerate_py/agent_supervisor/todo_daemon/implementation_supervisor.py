@@ -37,6 +37,12 @@ from .supervisor_runtime import RestartPolicy
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor")
 
 RECOVERABLE_SUPERVISOR_LOOP_STATUSES = {"child_exited", "launch_failed", "max_restarts_reached"}
+DEFAULT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL", "3")
+)
+DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO", "3")
+)
 
 
 def split_csv_values(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
@@ -120,8 +126,8 @@ class PortalSupervisorConfig:
     objective_persist_ast_dataset: bool = True
     objective_write_todo_vector_index: bool = True
     objective_todo_vector_index_path: Path | None = None
-    objective_surplus_findings_per_goal: int = 1
-    objective_surplus_min_terms_per_todo: int = 2
+    objective_surplus_findings_per_goal: int = DEFAULT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL
+    objective_surplus_min_terms_per_todo: int = DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO
     repo_root: Path = field(default_factory=Path.cwd)
     daemon_script_path: Path | None = None
     supervisor_script_path: Path | None = None
@@ -1024,9 +1030,11 @@ class PortalImplementationSupervisor:
         strategy["last_objective_refined_goal_ids"] = list(payload.get("refined_goal_ids") or [])
         strategy["last_objective_generated_task_ids"] = list(payload.get("task_ids") or [])
         strategy["last_objective_todo_vector_index_path"] = str(payload.get("todo_vector_index_path") or "")
-        strategy["last_objective_surplus_findings_per_goal"] = int(payload.get("surplus_findings_per_goal") or 1)
+        strategy["last_objective_surplus_findings_per_goal"] = int(
+            payload.get("surplus_findings_per_goal") or DEFAULT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL
+        )
         strategy["last_objective_surplus_min_terms_per_todo"] = int(
-            payload.get("surplus_min_terms_per_todo") or 2
+            payload.get("surplus_min_terms_per_todo") or DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO
         )
         strategy["last_objective_goal_count"] = int(payload.get("objective_goal_count") or 0)
         strategy["last_objective_active_goal_count"] = int(payload.get("objective_active_goal_count") or 0)
@@ -1042,8 +1050,10 @@ class PortalImplementationSupervisor:
                     "task_ids": payload.get("task_ids") or [],
                     "bundle_keys": payload.get("bundle_keys") or [],
                     "todo_vector_index_path": payload.get("todo_vector_index_path") or "",
-                    "surplus_findings_per_goal": payload.get("surplus_findings_per_goal") or 1,
-                    "surplus_min_terms_per_todo": payload.get("surplus_min_terms_per_todo") or 2,
+                    "surplus_findings_per_goal": payload.get("surplus_findings_per_goal")
+                    or DEFAULT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL,
+                    "surplus_min_terms_per_todo": payload.get("surplus_min_terms_per_todo")
+                    or DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO,
                 },
             )
         return payload
@@ -1846,7 +1856,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--objective-surplus-findings-per-goal",
         type=int,
-        default=1,
+        default=DEFAULT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL,
         help=(
             "Generate surplus structured objective todos per missing goal. "
             "Additional candidates are vector-indexed and bundled with related work."
@@ -1855,7 +1865,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--objective-surplus-min-terms-per-todo",
         type=int,
-        default=2,
+        default=DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO,
         help="Minimum missing-evidence terms for non-aggregate objective surplus todos.",
     )
     parser.add_argument(

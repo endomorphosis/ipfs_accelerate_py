@@ -18,6 +18,8 @@ from typing import Any, Iterable, Sequence
 from .objective_graph import (
     DEFAULT_DISCOVERY_OUTPUT_PATH,
     DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+    DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
+    DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     DEFAULT_TASK_PREFIX,
     generate_objective_todos,
     repo_relative_path,
@@ -101,7 +103,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--surplus-findings-per-goal",
         type=int,
-        default=1,
+        default=DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
         help=(
             "Generate up to this many structured candidate todos per missing goal. "
             "The first candidate is the aggregate gap; additional candidates form multi-evidence batches "
@@ -111,7 +113,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--surplus-min-terms-per-todo",
         type=int,
-        default=2,
+        default=DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
         help="Minimum missing-evidence terms for non-aggregate surplus todos when enough terms are available.",
     )
     parser.add_argument("--ensure-tracking-document", action="store_true")
@@ -206,8 +208,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         persist_ast_dataset=not args.no_persist_ast_dataset,
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
         todo_vector_index_path=getattr(args, "todo_vector_index_path", None),
-        surplus_findings_per_goal=getattr(args, "surplus_findings_per_goal", 1),
-        surplus_min_terms_per_todo=getattr(args, "surplus_min_terms_per_todo", 2),
+        surplus_findings_per_goal=getattr(args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL),
+        surplus_min_terms_per_todo=getattr(args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO),
         summary_prefix=getattr(args, "objective_summary_prefix", DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX),
         discovery_output_path=getattr(args, "discovery_output_path", DEFAULT_DISCOVERY_OUTPUT_PATH),
     )
@@ -242,8 +244,8 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "objective_goal_count": graph_payload["goal_count"],
         "objective_active_goal_count": graph_payload["active_goal_count"],
         "generated_count": len(records),
-        "surplus_findings_per_goal": getattr(args, "surplus_findings_per_goal", 1),
-        "surplus_min_terms_per_todo": getattr(args, "surplus_min_terms_per_todo", 2),
+        "surplus_findings_per_goal": getattr(args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL),
+        "surplus_min_terms_per_todo": getattr(args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO),
         "task_ids": [record.task_id for record in records],
         "discovery_paths": [repo_relative_path(repo_root, record.discovery_path) for record in records],
         "bundle_keys": sorted({record.finding.bundle_key for record in records}),

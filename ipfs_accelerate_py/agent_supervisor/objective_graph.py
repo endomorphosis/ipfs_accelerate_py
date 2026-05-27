@@ -35,6 +35,12 @@ DEFAULT_DISCOVERY_OUTPUT_PATH = os.environ.get(
     "IPFS_ACCELERATE_AGENT_DISCOVERY_OUTPUT_PATH",
     "data/agent_supervisor/discovery",
 )
+DEFAULT_SURPLUS_FINDINGS_PER_GOAL = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL", "3")
+)
+DEFAULT_SURPLUS_MIN_TERMS_PER_TODO = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO", "3")
+)
 DEFAULT_TASK_PREFIX = "AUTO-"
 DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
 SCAN_SUFFIXES = {
@@ -646,8 +652,8 @@ def objective_todo_vector_key(goal: ObjectiveGoal, missing_terms: Sequence[str],
 def surplus_missing_term_groups(
     missing_terms: Sequence[str],
     *,
-    surplus_findings_per_goal: int = 1,
-    min_terms_per_todo: int = 2,
+    surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
+    min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
 ) -> list[tuple[str, list[str]]]:
     """Return mergeable objective-gap candidate groups for one goal.
 
@@ -811,8 +817,8 @@ def scan_objective_gaps(
     seen_fingerprints: Iterable[str] = (),
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
-    surplus_findings_per_goal: int = 1,
-    surplus_min_terms_per_todo: int = 2,
+    surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
+    surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
 ) -> list[ObjectiveFinding]:
     if max_findings <= 0 or not objective_path.exists():
         return []
@@ -1141,8 +1147,8 @@ def generate_objective_todos(
     persist_ast_dataset: bool = True,
     write_todo_vector_index: bool = True,
     todo_vector_index_path: Path | None = None,
-    surplus_findings_per_goal: int = 1,
-    surplus_min_terms_per_todo: int = 2,
+    surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
+    surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
 ) -> list[ObjectiveTaskRecord]:
