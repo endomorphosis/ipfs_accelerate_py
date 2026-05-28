@@ -2183,7 +2183,10 @@ def test_objective_daemon_packs_sibling_subgoals_for_vector_bundling(tmp_path):
     assert payload["generated_count"] == 2
     todo_text = todo_path.read_text(encoding="utf-8")
     assert todo_text.count("Goal packet: goal_packet/runtime/src/") == 2
-    assert todo_text.count("Goal packet task count: 2") == 2
+    assert "Candidate kind: goal_packet_aggregate" in todo_text
+    assert "Goal packet role: packet_aggregate" in todo_text
+    assert todo_text.count("Goal packet task count: 2") == 1
+    assert todo_text.count("Goal packet task count: 3") == 1
     assert todo_text.count("Goal packet work item count: 6") == 2
     assert "Goal packet goals: VAIOS-G101, VAIOS-G102" in todo_text
     assert "Merge family: goal_packet/runtime/src/" in todo_text
@@ -2193,6 +2196,7 @@ def test_objective_daemon_packs_sibling_subgoals_for_vector_bundling(tmp_path):
     assert {tuple(record["goal_packet_goal_ids"]) for record in index_payload["records"]} == {
         ("VAIOS-G101", "VAIOS-G102")
     }
+    assert "goal_packet_aggregate" in index_payload["execution_packets"][0]["candidate_kinds"]
     assert index_payload["execution_packets"][0]["goal_packet_work_item_count_max"] == 6
     bundle_index = json.loads((repo / "bundles" / "index.json").read_text(encoding="utf-8"))
     bundle_summary = next(iter(bundle_index["bundles"].values()))["todo_vector_summary"]

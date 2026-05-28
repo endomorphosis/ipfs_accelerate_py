@@ -41,6 +41,9 @@ DEFAULT_SURPLUS_FINDINGS_PER_GOAL = int(
 DEFAULT_SURPLUS_MIN_TERMS_PER_TODO = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO", "3")
 )
+DEFAULT_SCAN_OVERSAMPLE_MULTIPLIER = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SCAN_OVERSAMPLE_MULTIPLIER", "2")
+)
 DEFAULT_TASK_PREFIX = "AUTO-"
 DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
 SCAN_SUFFIXES = {
@@ -800,6 +803,9 @@ def add_goal_packet_aggregate_findings(
             group_findings,
             key=lambda item: (item.priority, item.goal_id, item.candidate_kind, item.fingerprint),
         )
+        goal_ids = _unique_strings(finding.goal_id for finding in sorted_group)
+        if len(goal_ids) < 2:
+            continue
         missing_terms = _unique_strings(term for finding in sorted_group for term in finding.missing_evidence)
         if len(missing_terms) < 2:
             continue
@@ -808,7 +814,6 @@ def add_goal_packet_aggregate_findings(
             continue
 
         anchor = sorted_group[0]
-        goal_ids = _unique_strings(finding.goal_id for finding in sorted_group)
         parent_goal_ids = _unique_strings(parent for finding in sorted_group for parent in finding.parent_goal_ids)
         outputs = _unique_strings(output for finding in sorted_group for output in finding.outputs)
         evidence_methods = _unique_strings(method for finding in sorted_group for method in finding.evidence_methods)
@@ -879,6 +884,58 @@ def add_goal_packet_aggregate_findings(
         planned.append(aggregate)
         seen.add(fingerprint)
     return planned[:max_findings]
+
+
+def objective_scan_candidate_limit(*, max_findings: int, surplus_findings_per_goal: int) -> int:
+    """Return the internal candidate pool size used before final todo selection."""
+
+    try:
+        surplus_count = max(1, int(surplus_findings_per_goal))
+    except (TypeError, ValueError):
+        surplus_count = DEFAULT_SURPLUS_FINDINGS_PER_GOAL
+    try:
+        oversample_multiplier = max(1, int(DEFAULT_SCAN_OVERSAMPLE_MULTIPLIER))
+    except (TypeError, ValueError):
+        oversample_multiplier = 2
+    return max_findings * max(2, surplus_count, oversample_multiplier)
+
+
+def prioritize_larger_work_surface_findings(
+    findings: Sequence[ObjectiveFinding],
+    *,
+    max_findings: int,
+) -> list[ObjectiveFinding]:
+    """Select findings that give each Codex invocation a larger coherent work surface."""
+
+    if max_findings <= 0:
+        return []
+
+    def candidate_rank(finding: ObjectiveFinding) -> int:
+        if finding.candidate_kind == "goal_packet_aggregate":
+            return 0
+        if finding.candidate_kind == "aggregate":
+            return 1
+        if finding.candidate_kind == "evidence_cluster":
+            return 2
+        return 3
+
+    def sort_key(finding: ObjectiveFinding) -> tuple[Any, ...]:
+        packet_goal_count = len(finding.goal_packet_goal_ids)
+        packet_work_items = finding.goal_packet_work_item_count or 0
+        work_items = finding.work_item_count or len(finding.missing_evidence)
+        return (
+            candidate_rank(finding),
+            -packet_goal_count,
+            -packet_work_items,
+            -work_items,
+            finding.priority,
+            finding.graph_depth,
+            finding.goal_id,
+            finding.candidate_kind,
+            finding.fingerprint,
+        )
+
+    return sorted(findings, key=sort_key)[:max_findings]
 
 
 def surplus_missing_term_groups(
@@ -1073,6 +1130,10 @@ def scan_objective_gaps(
     )
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
     findings: list[ObjectiveFinding] = []
+    candidate_limit = objective_scan_candidate_limit(
+        max_findings=max_findings,
+        surplus_findings_per_goal=surplus_findings_per_goal,
+    )
 
     for goal in sorted(goals, key=lambda item: item.priority):
         terms = goal.required_evidence
@@ -1135,17 +1196,18 @@ def scan_objective_gaps(
             )
             findings.append(finding)
             seen.add(fingerprint)
-            if len(findings) >= max_findings:
+            if len(findings) >= candidate_limit:
                 break
-        if len(findings) >= max_findings:
+        if len(findings) >= candidate_limit:
             break
     packeted_findings = assign_goal_subgoal_packets(plan_semantic_ast_bundles(findings))
-    return add_goal_packet_aggregate_findings(
+    expanded_findings = add_goal_packet_aggregate_findings(
         packeted_findings,
-        max_findings=max_findings,
+        max_findings=candidate_limit,
         seen_fingerprints=seen_fingerprints,
         summary_prefix=summary_prefix,
     )
+    return prioritize_larger_work_surface_findings(expanded_findings, max_findings=max_findings)
 
 
 def task_ids_from_todo(todo_text: str, *, task_prefix: str = DEFAULT_TASK_PREFIX) -> list[str]:

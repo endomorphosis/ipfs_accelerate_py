@@ -29,6 +29,8 @@ from .event_log import read_jsonl_events
 from .objective_graph import (
     DEFAULT_DISCOVERY_OUTPUT_PATH,
     DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+    DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
+    DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     bundle_path,
     generate_objective_todos,
     repo_relative_path,
@@ -1739,6 +1741,10 @@ def record_objective_backlog_findings(
     cooldown_seconds: int = DEFAULT_OBJECTIVE_SCAN_COOLDOWN_SECONDS,
     force: bool = False,
     persist_ast_dataset: bool = True,
+    write_todo_vector_index: bool = True,
+    todo_vector_index_path: Path | None = None,
+    surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
+    surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
     commit_outputs: bool = False,
@@ -1777,6 +1783,10 @@ def record_objective_backlog_findings(
         max_findings=max_findings,
         seen_fingerprints=seen,
         persist_ast_dataset=persist_ast_dataset,
+        write_todo_vector_index=write_todo_vector_index,
+        todo_vector_index_path=todo_vector_index_path,
+        surplus_findings_per_goal=surplus_findings_per_goal,
+        surplus_min_terms_per_todo=surplus_min_terms_per_todo,
         summary_prefix=summary_prefix,
         discovery_output_path=discovery_output_path,
     )
@@ -1800,10 +1810,27 @@ def record_objective_backlog_findings(
             "bundle_strategy": record.finding.bundle_strategy,
             "graph_depth": record.finding.graph_depth,
             "parent_goal_ids": record.finding.parent_goal_ids,
+            "candidate_kind": record.finding.candidate_kind,
+            "merge_key": record.finding.merge_key,
+            "merge_family": record.finding.merge_family or record.finding.surplus_group,
+            "merge_role": record.finding.merge_role or record.finding.candidate_kind,
+            "work_item_count": record.finding.work_item_count or len(record.finding.missing_evidence),
+            "work_scope": record.finding.work_scope,
+            "goal_packet_key": record.finding.goal_packet_key,
+            "goal_packet_role": record.finding.goal_packet_role,
+            "goal_packet_goal_ids": record.finding.goal_packet_goal_ids,
+            "goal_packet_task_count": record.finding.goal_packet_task_count,
+            "goal_packet_work_item_count": record.finding.goal_packet_work_item_count,
+            "todo_vector_key": record.finding.todo_vector_key,
             "discovery_path": str(record.discovery_path),
         }
         for record in records
     ]
+    strategy["last_objective_todo_vector_index_path"] = str(
+        todo_vector_index_path or bundle_dir / "todo_vector_index.json"
+    )
+    strategy["last_objective_surplus_findings_per_goal"] = surplus_findings_per_goal
+    strategy["last_objective_surplus_min_terms_per_todo"] = surplus_min_terms_per_todo
     strategy["last_objective_goal_scan_findings"] = appended
     write_json(strategy_path, strategy)
     if commit_outputs and records:
@@ -1851,6 +1878,18 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--merge-retry-budget", type=int, default=DEFAULT_MERGE_RETRY_BUDGET)
     parser.add_argument("--implementation-retry-budget", type=int, default=DEFAULT_IMPLEMENTATION_RETRY_BUDGET)
     parser.add_argument("--no-persist-ast-dataset", action="store_true")
+    parser.add_argument("--no-objective-todo-vector-index", action="store_true")
+    parser.add_argument("--objective-todo-vector-index-path", type=Path, default=None)
+    parser.add_argument(
+        "--objective-surplus-findings-per-goal",
+        type=int,
+        default=DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
+    )
+    parser.add_argument(
+        "--objective-surplus-min-terms-per-todo",
+        type=int,
+        default=DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
+    )
     parser.add_argument("--objective-summary-prefix", default=DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX)
     parser.add_argument("--commit-generated-outputs", action="store_true")
     return parser
@@ -1891,6 +1930,10 @@ def run_backlog_refinery(args: argparse.Namespace) -> dict[str, Any]:
             cooldown_seconds=args.cooldown_seconds,
             force=args.force,
             persist_ast_dataset=not args.no_persist_ast_dataset,
+            write_todo_vector_index=not args.no_objective_todo_vector_index,
+            todo_vector_index_path=args.objective_todo_vector_index_path,
+            surplus_findings_per_goal=args.objective_surplus_findings_per_goal,
+            surplus_min_terms_per_todo=args.objective_surplus_min_terms_per_todo,
             summary_prefix=args.objective_summary_prefix,
             discovery_output_path=args.discovery_output_path,
             commit_outputs=args.commit_generated_outputs,
