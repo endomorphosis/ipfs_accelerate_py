@@ -4125,15 +4125,40 @@ class PortalImplementationDaemon:
                 packet_task_ids = execution_packet.get("active_task_ids") or execution_packet.get("task_ids")
                 if isinstance(packet_task_ids, list) and task.task_id in {str(task_id) for task_id in packet_task_ids}:
                     execution_packets.append(execution_packet)
+            aggregate_primary = (
+                str(record.get("candidate_kind") or "").strip().lower() == "goal_packet_aggregate"
+                or str(record.get("goal_packet_role") or "").strip().lower() == "packet_aggregate"
+                or str(record.get("merge_role") or "").strip().lower() == "packet_aggregate"
+            )
+            covered_packet_task_ids: list[str] = []
+            if aggregate_primary:
+                for execution_packet in execution_packets:
+                    packet_task_ids = execution_packet.get("active_task_ids") or execution_packet.get("task_ids")
+                    if not isinstance(packet_task_ids, list):
+                        continue
+                    primary_task_id = str(execution_packet.get("primary_task_id") or "")
+                    if primary_task_id and primary_task_id != task.task_id:
+                        continue
+                    for packet_task_id in packet_task_ids:
+                        normalized = str(packet_task_id)
+                        if normalized and normalized != task.task_id and normalized not in covered_packet_task_ids:
+                            covered_packet_task_ids.append(normalized)
+            related_record_limit = 0 if aggregate_primary and covered_packet_task_ids else 5
 
             return {
                 "index_path": index_path,
                 "record": record,
                 "cluster": cluster or {},
-                "related_records": [by_task[task_id] for task_id in related_ids if task_id in by_task][:5],
+                "related_records": [
+                    by_task[task_id]
+                    for task_id in related_ids
+                    if task_id in by_task and task_id not in set(covered_packet_task_ids)
+                ][:related_record_limit],
                 "merge_candidates": merge_candidates[:3],
                 "bundle_contexts": bundle_contexts[:2],
                 "execution_packets": execution_packets[:2],
+                "aggregate_primary": aggregate_primary,
+                "covered_packet_task_ids": covered_packet_task_ids,
             }
         return None
 
@@ -4285,6 +4310,10 @@ class PortalImplementationDaemon:
                 execution_packet_entries.append("; ".join(details))
         if execution_packet_entries:
             required_lines.insert(1, f"- Execution packets: {' | '.join(execution_packet_entries)}")
+
+        covered_packet_task_ids = self._compact_value_list(context.get("covered_packet_task_ids"), limit=12)
+        if covered_packet_task_ids:
+            required_lines.append(f"- Packet sibling tasks covered by primary: {', '.join(covered_packet_task_ids)}")
 
         bundle_context_entries: list[str] = []
         for bundle_context in context.get("bundle_contexts", []):

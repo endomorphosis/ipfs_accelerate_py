@@ -2704,6 +2704,10 @@ def test_implementation_daemon_prefers_goal_packet_aggregate_as_primary_work(tmp
 
     assert selected is not None
     assert selected.task_id == "ACCEL-003"
+    prompt = daemon._build_implementation_prompt(selected, attempt=1)
+    assert "primary=ACCEL-003" in prompt
+    assert "Packet sibling tasks covered by primary: ACCEL-001, ACCEL-002" in prompt
+    assert "Related tasks:" not in prompt
 
 
 def test_objective_daemon_suppresses_existing_discovery_fingerprint(tmp_path):
