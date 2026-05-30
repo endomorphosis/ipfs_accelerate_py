@@ -31,9 +31,11 @@ from .objective_tracker import (
     DEFAULT_ROOT_GOAL_TITLE,
     DEFAULT_TRACKING_DOCUMENT_TITLE,
     DEFAULT_ULTIMATE_GOAL,
+    append_interoperability_goals,
     append_refinement_goals,
     ensure_objective_tracking_document,
     parse_root_evidence,
+    reconcile_objective_goal_completion,
     write_objective_graph_artifact,
 )
 
@@ -126,6 +128,26 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--refine-objective-heap", action="store_true")
     parser.add_argument("--max-refinement-children", type=int, default=3)
     parser.add_argument("--max-refinement-depth", type=int, default=4)
+    parser.add_argument(
+        "--no-reconcile-goal-completion",
+        action="store_true",
+        help="Skip marking active goals completed when all required evidence is already present.",
+    )
+    parser.add_argument(
+        "--seed-interoperability-goals",
+        action="store_true",
+        help="Seed objective subgoals for cross-submodule interoperability and integration tests.",
+    )
+    parser.add_argument(
+        "--interoperability-focus",
+        action="append",
+        default=[],
+        help=(
+            "Submodule path to pair with other submodules when seeding interoperability goals. "
+            "If omitted, all submodule pairs are eligible."
+        ),
+    )
+    parser.add_argument("--max-interoperability-goals", type=int, default=12)
     parser.add_argument("--no-persist-ast-dataset", action="store_true")
     parser.add_argument(
         "--no-todo-vector-index",
@@ -174,6 +196,29 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         )
         tracking_created = tracking.created
         ensured_goal_ids = tracking.appended_goal_ids
+
+    seeded_interoperability_goal_ids: list[str] = []
+    if getattr(args, "seed_interoperability_goals", False) and objective_path.exists():
+        interoperability = append_interoperability_goals(
+            objective_path,
+            repo_root=repo_root,
+            focus=getattr(args, "interoperability_focus", []) or (),
+            max_goals=getattr(args, "max_interoperability_goals", 12),
+            goal_prefix=getattr(args, "goal_prefix", None),
+        )
+        seeded_interoperability_goal_ids = interoperability.appended_goal_ids
+
+    completed_goal_ids: list[str] = []
+    objective_completed_goal_count = 0
+    objective_completion_validation_results: dict[str, Any] = {}
+    if not getattr(args, "no_reconcile_goal_completion", False) and objective_path.exists():
+        completion = reconcile_objective_goal_completion(
+            repo_root=repo_root,
+            objective_path=objective_path,
+        )
+        completed_goal_ids = completion.completed_goal_ids
+        objective_completed_goal_count = completion.completed_goal_count
+        objective_completion_validation_results = completion.validation_results
 
     refined_goal_ids: list[str] = []
     if getattr(args, "refine_objective_heap", False) and objective_path.exists():
@@ -240,9 +285,14 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         "graph_path": repo_relative_path(repo_root, graph_path),
         "tracking_document_created": tracking_created,
         "ensured_goal_ids": ensured_goal_ids,
+        "seeded_interoperability_goal_ids": seeded_interoperability_goal_ids,
+        "completed_goal_ids": completed_goal_ids,
+        "objective_completion_validation_results": objective_completion_validation_results,
         "refined_goal_ids": refined_goal_ids,
         "objective_goal_count": graph_payload["goal_count"],
         "objective_active_goal_count": graph_payload["active_goal_count"],
+        "objective_completed_goal_count": graph_payload.get("completed_goal_count", objective_completed_goal_count),
+        "objective_heap_schedule_count": len(graph_payload.get("heap_schedule") or []),
         "generated_count": len(records),
         "surplus_findings_per_goal": getattr(args, "surplus_findings_per_goal", DEFAULT_SURPLUS_FINDINGS_PER_GOAL),
         "surplus_min_terms_per_todo": getattr(args, "surplus_min_terms_per_todo", DEFAULT_SURPLUS_MIN_TERMS_PER_TODO),

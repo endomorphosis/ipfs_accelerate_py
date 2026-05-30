@@ -14,7 +14,7 @@ import time
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Sequence
 
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
@@ -254,6 +254,25 @@ class PortalTask:
     acceptance: str = ""
     source_line: int = 0
     metadata: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class BundleWorkOrder:
+    """A packet aggregate that can close multiple todo records after validation."""
+
+    primary_task_id: str
+    covered_task_ids: list[str]
+    packet_key: str
+    goal_ids: list[str]
+    work_item_count: int
+    index_path: str
+
+    @property
+    def task_ids(self) -> list[str]:
+        return [self.primary_task_id, *self.covered_task_ids]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass
@@ -968,7 +987,7 @@ class PortalImplementationDaemon:
                 if not validation_result.get("passed", False):
                     effective_returncode = int(validation_result.get("returncode") or 1)
             if effective_returncode == 0:
-                todo_update_result = self._mark_task_completed_in_todo(task.task_id)
+                todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
             finished_at = utc_now()
             state.implementation_attempts[task.task_id] = attempt
             state.last_implementation_task_id = task.task_id
@@ -1047,38 +1066,90 @@ class PortalImplementationDaemon:
                 logger.warning("Failed to remove implementation lock %s", lock_path)
 
     def _mark_task_completed_in_todo(self, task_id: str) -> dict[str, Any]:
+        return self._mark_tasks_completed_in_todo(
+            [task_id],
+            primary_task_id=task_id,
+            completion_reason="single_task",
+        )
+
+    def _mark_task_or_bundle_completed_in_todo(self, task: PortalTask) -> dict[str, Any]:
+        work_order = self._bundle_work_order_for_task(task)
+        if work_order is None:
+            return self._mark_task_completed_in_todo(task.task_id)
+        return self._mark_tasks_completed_in_todo(
+            work_order.task_ids,
+            primary_task_id=work_order.primary_task_id,
+            completion_reason="bundle_work_order",
+            bundle_work_order=work_order.to_dict(),
+        )
+
+    def _mark_tasks_completed_in_todo(
+        self,
+        task_ids: Sequence[str],
+        *,
+        primary_task_id: str,
+        completion_reason: str,
+        bundle_work_order: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         todo_path = self.todo_path
         try:
             lines = todo_path.read_text(encoding="utf-8").splitlines(keepends=True)
         except OSError as exc:
-            result = {"updated": False, "task_id": task_id, "reason": "read_failed", "error": str(exc)}
+            result = {"updated": False, "task_id": primary_task_id, "reason": "read_failed", "error": str(exc)}
             self._record_event("todo_status_update_failed", result)
             return result
 
-        heading = f"## {task_id}"
-        in_task = False
-        status_index: int | None = None
+        target_task_ids = [
+            str(task_id).strip()
+            for task_id in dict.fromkeys(task_ids)
+            if str(task_id).strip()
+        ]
+        target_set = set(target_task_ids)
+        current_task_id = ""
+        status_indices: dict[str, int] = {}
         for index, line in enumerate(lines):
             if line.startswith(self.task_header_prefix):
-                if in_task:
-                    break
-                in_task = line.startswith(heading)
+                header = line[3:].strip()
+                current_task_id = header.split(" ", 1)[0] if header else ""
                 continue
-            if in_task and line.startswith("- Status:"):
-                status_index = index
-                break
+            if current_task_id in target_set and line.startswith("- Status:"):
+                status_indices[current_task_id] = index
+                current_task_id = ""
 
-        if status_index is None:
-            result = {"updated": False, "task_id": task_id, "reason": "status_line_missing"}
+        missing_task_ids = [task_id for task_id in target_task_ids if task_id not in status_indices]
+        if primary_task_id in missing_task_ids:
+            result = {
+                "updated": False,
+                "task_id": primary_task_id,
+                "reason": "status_line_missing",
+                "missing_task_ids": missing_task_ids,
+            }
             self._record_event("todo_status_update_failed", result)
             return result
 
-        current = lines[status_index].split(":", 1)[1].strip()
-        if normalize_status(current) == "completed":
-            return {"updated": False, "task_id": task_id, "reason": "already_completed"}
+        updated_task_ids: list[str] = []
+        already_completed_task_ids: list[str] = []
+        for task_id in target_task_ids:
+            status_index = status_indices.get(task_id)
+            if status_index is None:
+                continue
+            current = lines[status_index].split(":", 1)[1].strip()
+            if normalize_status(current) == "completed":
+                already_completed_task_ids.append(task_id)
+                continue
+            newline = "\n" if lines[status_index].endswith("\n") else ""
+            lines[status_index] = "- Status: completed" + newline
+            updated_task_ids.append(task_id)
 
-        newline = "\n" if lines[status_index].endswith("\n") else ""
-        lines[status_index] = "- Status: completed" + newline
+        if not updated_task_ids:
+            return {
+                "updated": False,
+                "task_id": primary_task_id,
+                "reason": "already_completed",
+                "updated_task_ids": [],
+                "already_completed_task_ids": already_completed_task_ids,
+                "missing_task_ids": missing_task_ids,
+            }
         tmp_path = todo_path.with_name(f".{todo_path.name}.tmp")
         try:
             tmp_path.write_text("".join(lines), encoding="utf-8")
@@ -1088,16 +1159,26 @@ class PortalImplementationDaemon:
                 tmp_path.unlink()
             except OSError:
                 pass
-            result = {"updated": False, "task_id": task_id, "reason": "write_failed", "error": str(exc)}
+            result = {"updated": False, "task_id": primary_task_id, "reason": "write_failed", "error": str(exc)}
             self._record_event("todo_status_update_failed", result)
             return result
 
         commit_result = self._commit_generated_file_update(
             todo_path,
-            task_id=task_id,
-            subject=f"{task_id}: mark todo completed",
+            task_id=primary_task_id,
+            subject=f"{primary_task_id}: mark todo completed",
         )
-        result = {"updated": True, "task_id": task_id, "path": str(todo_path)}
+        result = {
+            "updated": True,
+            "task_id": primary_task_id,
+            "path": str(todo_path),
+            "completion_reason": completion_reason,
+            "updated_task_ids": updated_task_ids,
+            "already_completed_task_ids": already_completed_task_ids,
+            "missing_task_ids": missing_task_ids,
+        }
+        if bundle_work_order is not None:
+            result["bundle_work_order"] = bundle_work_order
         if commit_result:
             result["commit_result"] = commit_result
         self._record_event("todo_status_updated", result)
@@ -1437,7 +1518,7 @@ class PortalImplementationDaemon:
         )
         state.last_merge_error = str(merge_result.get("stderr") or merge_result.get("reason") or "")
         if returncode == 0:
-            todo_update_result = self._mark_task_completed_in_todo(task.task_id)
+            todo_update_result = self._mark_task_or_bundle_completed_in_todo(task)
         self._mark_implementation_finished(state, finished_at=finished_at)
         state.save(self.state_path)
         result = {
@@ -4162,6 +4243,38 @@ class PortalImplementationDaemon:
             }
         return None
 
+    def _bundle_work_order_for_task(self, task: PortalTask) -> BundleWorkOrder | None:
+        """Return bundle completion metadata for a packet aggregate task."""
+
+        context = self._load_todo_vector_context(task)
+        if context is None or not context.get("aggregate_primary"):
+            return None
+        covered_task_ids = [
+            str(task_id).strip()
+            for task_id in context.get("covered_packet_task_ids", [])
+            if str(task_id).strip() and str(task_id).strip() != task.task_id
+        ]
+        if not covered_task_ids:
+            return None
+        record = context.get("record")
+        if not isinstance(record, dict):
+            return None
+        packet_key = str(record.get("goal_packet_key") or record.get("merge_family") or "").strip()
+        goal_ids = self._compact_value_list(record.get("goal_packet_goal_ids"), limit=24)
+        work_item_count = self._todo_vector_record_int(record, "goal_packet_work_item_count")
+        if work_item_count <= 0:
+            work_item_count = self._todo_vector_record_int(record, "work_item_count")
+        index_path = context.get("index_path")
+        display_index_path = self._display_context_path(index_path) if isinstance(index_path, Path) else ""
+        return BundleWorkOrder(
+            primary_task_id=task.task_id,
+            covered_task_ids=list(dict.fromkeys(covered_task_ids)),
+            packet_key=packet_key,
+            goal_ids=goal_ids,
+            work_item_count=work_item_count,
+            index_path=display_index_path,
+        )
+
     def _display_context_path(self, path: Path) -> str:
         try:
             return str(path.relative_to(self.repo_root))
@@ -4313,6 +4426,9 @@ class PortalImplementationDaemon:
 
         covered_packet_task_ids = self._compact_value_list(context.get("covered_packet_task_ids"), limit=12)
         if covered_packet_task_ids:
+            required_lines.append(
+                f"- Bundle work order: primary={task.task_id}; covers={', '.join(covered_packet_task_ids)}; completion_propagates=true"
+            )
             required_lines.append(f"- Packet sibling tasks covered by primary: {', '.join(covered_packet_task_ids)}")
 
         bundle_context_entries: list[str] = []
@@ -4702,6 +4818,35 @@ Rules:
             token_count,
         )
 
+    @staticmethod
+    def _task_metadata_int(task: PortalTask, key: str) -> int:
+        try:
+            return int(str(task.metadata.get(key, "0")).strip() or "0")
+        except (TypeError, ValueError):
+            return 0
+
+    @staticmethod
+    def _task_candidate_rank(task: PortalTask) -> int:
+        candidate_kind = str(task.metadata.get("candidate kind", "")).strip().lower()
+        goal_packet_role = str(task.metadata.get("goal packet role", "")).strip().lower()
+        merge_role = str(task.metadata.get("merge role", "")).strip().lower()
+        if candidate_kind == "goal_packet_aggregate" or goal_packet_role == "packet_aggregate" or merge_role == "packet_aggregate":
+            return 0
+        if goal_packet_role == "packet_anchor":
+            return 1
+        if candidate_kind == "aggregate":
+            return 2
+        if candidate_kind == "evidence_cluster":
+            return 3
+        if goal_packet_role == "packet_member":
+            return 4
+        return 5
+
+    def _task_work_surface_rank(self, task: PortalTask) -> tuple[int, int, int]:
+        packet_work_items = self._task_metadata_int(task, "goal packet work item count")
+        work_items = self._task_metadata_int(task, "work item count")
+        return (self._task_candidate_rank(task), -packet_work_items, -work_items)
+
     def _select_next_task(
         self,
         tasks: list[PortalTask],
@@ -4730,12 +4875,14 @@ Rules:
             if self._task_has_recent_no_change_outcome(task.task_id, recent_outcomes):
                 selection_penalty += NO_CHANGE_SELECTION_PENALTY
             vector_rank = self._todo_vector_selection_rank(task, vector_context)
+            work_surface_rank = self._task_work_surface_rank(task)
             return (
                 selection_penalty,
                 PRIORITY_ORDER.get(task.priority, 99),
                 1 if task.task_id in deprioritized else 0,
                 focus_order.get(task.track, len(focus_order)),
                 *vector_rank,
+                *work_surface_rank,
                 len(task.depends_on),
                 task.task_id,
             )

@@ -495,6 +495,7 @@ def test_implementation_daemon_repairs_directory_strategy_file(tmp_path):
         strategy_path=strategy_path,
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
+        task_header_prefix="## ACCEL-",
     )
 
     result = daemon.run_once()
@@ -1724,6 +1725,90 @@ def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
     assert list((repo / "discovery").glob("*-auto-002-codebase-scan-*.md"))
 
 
+def test_implementation_supervisor_defers_codebase_scan_when_objective_refills(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        """def route_request(request):
+    # TODO: this would be found by the codebase scanner
+    return request
+""",
+        encoding="utf-8",
+    )
+    objective_path = repo / "objective-heap.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 Runtime objective
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Prove runtime integration before low-level scan work.
+- Evidence: missing_runtime_integration_contract
+- Outputs: src/runtime.py, tests
+- Validation: test -f objective-heap.md
+""",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed seed
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: Seed task.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md", "objective-heap.md", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed objective and scan finding")
+    state_dir = repo / "state"
+    config = TodoSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        task_prefix="## AUTO-",
+        objective_refill_enabled=True,
+        objective_path=objective_path,
+        objective_graph_path=repo / "objective-graph.json",
+        objective_scan_min_open_tasks=0,
+        objective_scan_max_findings=1,
+        objective_persist_ast_dataset=False,
+        codebase_refill_enabled=True,
+        codebase_scan_discovery_dir=repo / "discovery",
+        codebase_scan_min_open_tasks=0,
+        codebase_scan_max_findings=1,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert result["objective_refill_count"] == 1
+    assert result["codebase_refill_count"] == 0
+    assert result["codebase_deferred_reason"] == "objective_refill_produced_goal_work"
+    assert "Close objective gap" in todo_text
+    assert "Resolve code annotation" not in todo_text
+
+
 def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, monkeypatch):
     from ipfs_accelerate_py.agent_supervisor import backlog_refinery
 
@@ -2445,6 +2530,7 @@ def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
         strategy_path=strategy_path,
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
+        task_header_prefix="## ACCEL-",
     )
 
     prompt = daemon._build_implementation_prompt(task, attempt=1)
@@ -2477,6 +2563,7 @@ def test_implementation_daemon_budgets_todo_vector_context_packet_first(tmp_path
         strategy_path=state_dir / "strategy.json",
         events_path=state_dir / "events.jsonl",
         repo_root=repo,
+        task_header_prefix="## ACCEL-",
     )
 
     rendered = daemon._budgeted_todo_vector_context(
@@ -2590,6 +2677,200 @@ def test_implementation_daemon_prefers_ready_task_from_last_vector_cluster(tmp_p
 
     assert selected is not None
     assert selected.task_id == "ACCEL-011"
+
+
+def test_implementation_daemon_prefers_larger_goal_work_without_vector_index(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Small objective follow-up
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Work item count: 1
+- Candidate kind: evidence_cluster
+- Acceptance: Add one proof.
+
+## ACCEL-002 Larger objective aggregate
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Work item count: 6
+- Goal packet work item count: 6
+- Candidate kind: aggregate
+- Acceptance: Add the larger integration proof.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+
+    selected = daemon._select_next_task(
+        tasks,
+        {"ACCEL-001": "ready", "ACCEL-002": "ready"},
+        {},
+        {},
+        {},
+    )
+
+    assert selected is not None
+    assert selected.task_id == "ACCEL-002"
+
+
+def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Close scheduler gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Work item count: 3
+- Goal packet: goal_packet/runtime/src/abc
+- Goal packet role: packet_anchor
+- Goal packet work item count: 6
+- Candidate kind: aggregate
+- Acceptance: Add scheduler proof.
+
+## ACCEL-002 Close fallback gap
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Work item count: 3
+- Goal packet: goal_packet/runtime/src/abc
+- Goal packet role: packet_member
+- Goal packet work item count: 6
+- Candidate kind: aggregate
+- Acceptance: Add fallback proof.
+
+## ACCEL-003 Close packet aggregate
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/bridge.py
+- Validation: test -f src/bridge.py
+- Work item count: 6
+- Merge family: goal_packet/runtime/src/abc
+- Merge role: packet_aggregate
+- Goal packet: goal_packet/runtime/src/abc
+- Goal packet role: packet_aggregate
+- Goal packet goals: VAIOS-G101, VAIOS-G102
+- Goal packet work item count: 6
+- Candidate kind: goal_packet_aggregate
+- Acceptance: Add the shared packet proof.
+""",
+        encoding="utf-8",
+    )
+    index_path = repo / "objective_bundles" / "todo_vector_index.json"
+    index_path.parent.mkdir(parents=True)
+    index_path.write_text(
+        json.dumps(
+            {
+                "records": [
+                    {
+                        "task_id": "ACCEL-001",
+                        "title": "Close scheduler gap",
+                        "candidate_kind": "aggregate",
+                        "goal_packet_key": "goal_packet/runtime/src/abc",
+                        "goal_packet_role": "packet_anchor",
+                        "goal_packet_goal_ids": ["VAIOS-G101", "VAIOS-G102"],
+                        "goal_packet_work_item_count": 6,
+                        "work_item_count": 3,
+                    },
+                    {
+                        "task_id": "ACCEL-002",
+                        "title": "Close fallback gap",
+                        "candidate_kind": "aggregate",
+                        "goal_packet_key": "goal_packet/runtime/src/abc",
+                        "goal_packet_role": "packet_member",
+                        "goal_packet_goal_ids": ["VAIOS-G101", "VAIOS-G102"],
+                        "goal_packet_work_item_count": 6,
+                        "work_item_count": 3,
+                    },
+                    {
+                        "task_id": "ACCEL-003",
+                        "title": "Close packet aggregate",
+                        "candidate_kind": "goal_packet_aggregate",
+                        "merge_role": "packet_aggregate",
+                        "merge_family": "goal_packet/runtime/src/abc",
+                        "goal_packet_key": "goal_packet/runtime/src/abc",
+                        "goal_packet_role": "packet_aggregate",
+                        "goal_packet_goal_ids": ["VAIOS-G101", "VAIOS-G102"],
+                        "goal_packet_work_item_count": 6,
+                        "work_item_count": 6,
+                    },
+                ],
+                "execution_packets": [
+                    {
+                        "packet_key": "execution_packet/runtime/src/abc",
+                        "primary_task_id": "ACCEL-003",
+                        "active_task_ids": ["ACCEL-001", "ACCEL-002", "ACCEL-003"],
+                        "work_item_count_total": 12,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    strategy_path = state_dir / "strategy.json"
+    strategy_path.write_text(
+        json.dumps({"last_objective_todo_vector_index_path": "objective_bundles/todo_vector_index.json"}),
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=strategy_path,
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    aggregate_task = next(task for task in tasks if task.task_id == "ACCEL-003")
+
+    result = daemon._mark_task_or_bundle_completed_in_todo(aggregate_task)
+
+    assert result["updated"] is True
+    assert result["completion_reason"] == "bundle_work_order"
+    assert result["updated_task_ids"] == ["ACCEL-003", "ACCEL-001", "ACCEL-002"]
+    assert result["bundle_work_order"]["covered_task_ids"] == ["ACCEL-001", "ACCEL-002"]
+    updated_tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+    assert {task.task_id: task.status for task in updated_tasks} == {
+        "ACCEL-001": "completed",
+        "ACCEL-002": "completed",
+        "ACCEL-003": "completed",
+    }
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "todo_status_updated"
+    assert events[-1]["completion_reason"] == "bundle_work_order"
 
 
 def test_implementation_daemon_prefers_goal_packet_aggregate_as_primary_work(tmp_path):
@@ -2792,8 +3073,284 @@ def test_objective_daemon_creates_tracking_document_and_graph(tmp_path):
     assert graph_path.exists()
     graph = json.loads(graph_path.read_text(encoding="utf-8"))
     assert graph["graph"]["roots"] == ["OBJ-G000"]
+    assert graph["thought_graph"]["node_count"] >= 3
+    assert {node["kind"] for node in graph["thought_graph"]["nodes"]} >= {
+        "goal",
+        "evidence_requirement",
+        "validation_strategy",
+    }
     assert "missing_meta_display_bridge" in objective_path.read_text(encoding="utf-8")
     assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
+
+
+def test_objective_daemon_reconciles_completed_goals_from_evidence(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "proof.py"
+    source.parent.mkdir()
+    source.write_text("COMPLETE_RUNTIME_PROOF = True\n", encoding="utf-8")
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 Completed runtime proof
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Prove runtime evidence reconciliation.
+- Evidence: COMPLETE_RUNTIME_PROOF
+- Outputs: src/proof.py
+- Validation: test -f src/proof.py
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    _git(repo, "add", "objective-heap.md", "todo.md", "src/proof.py")
+    _git(repo, "commit", "-m", "seed completed objective")
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "1",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["completed_goal_ids"] == ["VAIOS-G001"]
+    assert payload["objective_active_goal_count"] == 0
+    assert payload["objective_completed_goal_count"] == 1
+    assert payload["generated_count"] == 0
+    assert payload["objective_completion_validation_results"]["VAIOS-G001"]["passed"] is True
+    objective_text = objective_path.read_text(encoding="utf-8")
+    assert "- Status: completed" in objective_text
+    assert "- Completion evidence: COMPLETE_RUNTIME_PROOF => src/proof.py (exact)" in objective_text
+    assert "- Completion validation: 0" in objective_text
+
+
+def test_objective_daemon_does_not_complete_goal_when_validation_fails(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "proof.py"
+    source.parent.mkdir()
+    source.write_text("COMPLETE_RUNTIME_PROOF = True\n", encoding="utf-8")
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 Runtime proof with failing validation
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Prove runtime evidence reconciliation.
+- Evidence: COMPLETE_RUNTIME_PROOF
+- Outputs: src/proof.py
+- Validation: test -f missing-validation-proof.txt
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    _git(repo, "add", "objective-heap.md", "todo.md", "src/proof.py")
+    _git(repo, "commit", "-m", "seed incomplete validated objective")
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "1",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["completed_goal_ids"] == []
+    assert payload["objective_active_goal_count"] == 1
+    assert payload["objective_completed_goal_count"] == 0
+    assert payload["objective_completion_validation_results"]["VAIOS-G001"]["passed"] is False
+    assert payload["generated_count"] == 0
+    objective_text = objective_path.read_text(encoding="utf-8")
+    assert "- Status: active" in objective_text
+    assert "Completion evidence:" not in objective_text
+
+
+def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitmodules").write_text(
+        """[submodule "hallucinate_app"]
+    path = hallucinate_app
+    url = https://github.com/endomorphosis/hallucinate_app
+[submodule "swissknife"]
+    path = swissknife
+    url = https://github.com/endomorphosis/swissknife
+[submodule "mcp_plus_plus"]
+    path = mcp_plus_plus
+    url = https://github.com/endomorphosis/mcp_plus_plus
+""",
+        encoding="utf-8",
+    )
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G000 Virtual AI OS root
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: ops
+- Priority: P0
+- Goal: Make the virtual AI OS interoperable.
+- Evidence: root_virtual_ai_os_proof
+- Outputs: docs
+- Validation: test -f objective-heap.md
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    _git(repo, "add", ".gitmodules", "objective-heap.md", "todo.md")
+    _git(repo, "commit", "-m", "seed interop objective")
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--seed-interoperability-goals",
+            "--interoperability-focus",
+            "hallucinate_app",
+            "--max-interoperability-goals",
+            "2",
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "2",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["seeded_interoperability_goal_ids"] == ["VAIOS-G001", "VAIOS-G002"]
+    objective_text = objective_path.read_text(encoding="utf-8")
+    assert "Interoperate hallucinate_app with swissknife" in objective_text
+    assert "Interoperate hallucinate_app with mcp_plus_plus" in objective_text
+    assert "- Goal kind: interoperability" in objective_text
+    assert "tests/integration/test_hallucinate_app_swissknife_interop.py" in objective_text
+    assert payload["objective_heap_schedule_count"] >= 1
+    assert payload["generated_count"] == 2
+    graph = json.loads((repo / "data" / "agent_supervisor" / "objective_graph.json").read_text(encoding="utf-8"))
+    thought_kinds = {node["kind"] for node in graph["thought_graph"]["nodes"]}
+    assert "interoperability_pair" in thought_kinds
+    assert "test_strategy" in thought_kinds
+
+
+def test_objective_daemon_seeds_all_interoperability_pairs_without_focus(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitmodules").write_text(
+        """[submodule "component_a"]
+    path = component_a
+    url = https://example.invalid/component_a
+[submodule "component_b"]
+    path = component_b
+    url = https://example.invalid/component_b
+[submodule "component_c"]
+    path = component_c
+    url = https://example.invalid/component_c
+""",
+        encoding="utf-8",
+    )
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## OBJ-G000 Reusable integration root
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: ops
+- Priority: P0
+- Goal: Make the package interoperable with configured components.
+- Evidence: root_integration_proof
+- Outputs: docs
+- Validation: test -f objective-heap.md
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    _git(repo, "add", ".gitmodules", "objective-heap.md", "todo.md")
+    _git(repo, "commit", "-m", "seed generic interop objective")
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--seed-interoperability-goals",
+            "--max-interoperability-goals",
+            "3",
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "3",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["seeded_interoperability_goal_ids"] == ["OBJ-G001", "OBJ-G002", "OBJ-G003"]
+    objective_text = objective_path.read_text(encoding="utf-8")
+    assert "Interoperate component_a with component_b" in objective_text
+    assert "Interoperate component_a with component_c" in objective_text
+    assert "Interoperate component_b with component_c" in objective_text
 
 
 def test_objective_daemon_refines_missing_evidence_into_child_goals(tmp_path):

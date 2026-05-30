@@ -10,6 +10,7 @@ task queue so multiple Codex workers can drain independent lanes.
 from __future__ import annotations
 
 import ast
+import heapq
 import json
 import math
 import os
@@ -176,6 +177,29 @@ class ObjectiveTaskRecord:
     task_block: str
     finding: ObjectiveFinding
     discovery_path: Path
+
+
+@dataclass(frozen=True)
+class ObjectiveHeapRecord:
+    """One scheduled objective-heap entry."""
+
+    heap_index: int
+    goal_id: str
+    title: str
+    status: str
+    fib_priority: int
+    priority: str
+    priority_rank: int
+    track: str
+    graph_depth: int
+    work_surface_score: int
+    required_evidence_count: int
+    output_count: int
+    parents: list[str]
+    sort_key: list[Any]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -623,6 +647,78 @@ def goal_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, Any]:
         "roots": sorted(roots),
         "depths": depths,
     }
+
+
+def priority_rank(value: str) -> int:
+    normalized = str(value or "").strip().upper()
+    if normalized.startswith("P"):
+        try:
+            return max(0, int(normalized[1:]))
+        except ValueError:
+            pass
+    return 9
+
+
+def objective_goal_work_surface(goal: ObjectiveGoal) -> int:
+    """Estimate how much coherent work one goal can support."""
+
+    evidence_count = len(goal.required_evidence)
+    output_count = len(split_terms(str(goal.fields.get("outputs") or "")))
+    ast_count = len(split_terms(str(goal.fields.get("ast_query") or "")))
+    interface_count = len(split_terms(str(goal.fields.get("interfaces") or goal.fields.get("interface_contracts") or "")))
+    submodule_count = len(split_terms(str(goal.fields.get("submodules") or goal.fields.get("interoperability_pair") or "")))
+    return evidence_count * 4 + output_count * 2 + ast_count + interface_count * 3 + submodule_count * 3
+
+
+def objective_heap_schedule(goals: Sequence[ObjectiveGoal]) -> list[ObjectiveHeapRecord]:
+    """Return active goals in Fibonacci-priority heap order.
+
+    The persisted objective heap stores Fibonacci priority buckets in markdown.
+    This function materializes those buckets as a deterministic heap schedule and
+    adds work-surface tie breakers so larger integration goals win within the
+    same Fibonacci band.
+    """
+
+    graph = goal_graph(goals)
+    heap: list[tuple[tuple[Any, ...], ObjectiveGoal]] = []
+    for goal in goals:
+        if goal.status not in {"active", "todo", "open"}:
+            continue
+        fib_priority = goal.priority[0]
+        rank = priority_rank(str(goal.fields.get("priority") or "P2"))
+        work_surface = objective_goal_work_surface(goal)
+        graph_depth = int(graph["depths"].get(goal.goal_id, 0))
+        sort_key = (
+            fib_priority,
+            rank,
+            -work_surface,
+            graph_depth,
+            goal.goal_id,
+        )
+        heapq.heappush(heap, (sort_key, goal))
+
+    records: list[ObjectiveHeapRecord] = []
+    while heap:
+        sort_key, goal = heapq.heappop(heap)
+        records.append(
+            ObjectiveHeapRecord(
+                heap_index=len(records),
+                goal_id=goal.goal_id,
+                title=goal.title,
+                status=goal.status,
+                fib_priority=goal.priority[0],
+                priority=str(goal.fields.get("priority") or "P2"),
+                priority_rank=priority_rank(str(goal.fields.get("priority") or "P2")),
+                track=str(goal.fields.get("track") or "ops"),
+                graph_depth=int(graph["depths"].get(goal.goal_id, 0)),
+                work_surface_score=objective_goal_work_surface(goal),
+                required_evidence_count=len(goal.required_evidence),
+                output_count=len(split_terms(str(goal.fields.get("outputs") or ""))),
+                parents=goal.parent_goal_ids,
+                sort_key=list(sort_key),
+            )
+        )
+    return records
 
 
 def objective_fingerprint(goal: ObjectiveGoal, missing_terms: Sequence[str]) -> str:
@@ -1135,7 +1231,9 @@ def scan_objective_gaps(
         surplus_findings_per_goal=surplus_findings_per_goal,
     )
 
-    for goal in sorted(goals, key=lambda item: item.priority):
+    goals_by_id = {goal.goal_id: goal for goal in goals}
+    scheduled_goals = [goals_by_id[record.goal_id] for record in objective_heap_schedule(goals) if record.goal_id in goals_by_id]
+    for goal in scheduled_goals:
         terms = goal.required_evidence
         missing_terms = [term for term in terms if not evidence.get(term)]
         if not missing_terms:

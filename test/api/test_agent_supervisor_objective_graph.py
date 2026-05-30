@@ -9,6 +9,7 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor import (
     build_bundle_task_payloads,
     generate_objective_todos,
+    objective_heap_schedule,
     parse_goal_heap,
     persist_objective_ast_dataset,
     resolver_payload,
@@ -124,6 +125,44 @@ def test_objective_goal_heap_accepts_package_specific_goal_ids():
     assert len(goals) == 1
     assert goals[0].goal_id == "APP.GOAL-001"
     assert goals[0].title == "Package-specific proof"
+
+
+def test_objective_heap_schedule_uses_fibonacci_then_work_surface():
+    goals = parse_goal_heap(
+        """# Objective Heap
+
+## VAIOS-G001 Small earlier band
+
+- Status: active
+- Fib priority: 1
+- Priority: P1
+- Evidence: one
+- Outputs: docs
+
+## VAIOS-G002 Large same band
+
+- Status: active
+- Fib priority: 2
+- Priority: P1
+- Evidence: one, two, three
+- Outputs: src, tests, docs
+- Interoperability pair: hallucinate_app, swissknife
+
+## VAIOS-G003 Small same band
+
+- Status: active
+- Fib priority: 2
+- Priority: P1
+- Evidence: one
+- Outputs: docs
+"""
+    )
+
+    schedule = objective_heap_schedule(goals)
+
+    assert [record.goal_id for record in schedule] == ["VAIOS-G001", "VAIOS-G002", "VAIOS-G003"]
+    assert schedule[1].work_surface_score > schedule[2].work_surface_score
+    assert schedule[1].sort_key[2] < schedule[2].sort_key[2]
 
 
 def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
