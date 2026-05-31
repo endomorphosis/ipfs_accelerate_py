@@ -322,7 +322,11 @@ from .implementation_daemon import (
     normalize_relative_path_list,
     parse_task_file,
 )
-from .implementation_supervisor import TodoImplementationSupervisor, TodoSupervisorConfig
+from .implementation_supervisor import (
+    TodoImplementationSupervisor,
+    TodoSupervisorConfig,
+    supervisor_config_from_args,
+)
 from .runner import PreTaskBlock, TodoDaemonHooks, TodoDaemonRunner
 from .status import (
     ActiveStatusSnapshot,
@@ -764,6 +768,7 @@ __all__ = [
     "supervisor_is_running",
     "supervisor_pid_matches",
     "supervisor_runtime_paths",
+    "supervisor_config_from_args",
     "todo_daemon_exit_code",
     "todo_daemon_proposals_payload",
     "todo_daemon_run_summary",

@@ -33,6 +33,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     TodoImplementationSupervisor,
     TodoSupervisorConfig,
     parse_args as parse_implementation_supervisor_args,
+    supervisor_config_from_args,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec, stop_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.runner import TodoDaemonRunner
@@ -194,6 +195,46 @@ def test_supervisor_runtime_repairs_stale_markers(tmp_path):
 def test_background_supervisor_args_removes_once_and_defaults_implement():
     assert background_supervisor_args(["--once", "--flag"]) == ["--implement", "--flag"]
     assert background_supervisor_args(["--no-implement", "--once"]) == ["--no-implement"]
+
+
+def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "agent",
+            "--worktree-submodule-path",
+            "ignored",
+            "--objective-interoperability-focus",
+            "hallucinate_app,swissknife",
+            "--objective-interoperability-component-path",
+            "hallucinate_app, external/ipfs_accelerate",
+        ]
+    )
+    config = supervisor_config_from_args(
+        args,
+        repo_root=tmp_path,
+        daemon_script_path=tmp_path / "daemon.py",
+        supervisor_script_path=tmp_path / "supervisor.py",
+        worktree_submodule_paths=("submodule", "nested/path"),
+    )
+
+    assert config.todo_path == tmp_path / "board.md"
+    assert config.state_path == tmp_path / "state" / "agent_task_state.json"
+    assert config.strategy_path == tmp_path / "state" / "agent_strategy.json"
+    assert config.events_path == tmp_path / "state" / "agent_supervisor_events.jsonl"
+    assert config.repo_root == tmp_path
+    assert config.daemon_script_path == tmp_path / "daemon.py"
+    assert config.supervisor_script_path == tmp_path / "supervisor.py"
+    assert config.worktree_submodule_paths == ("submodule", "nested/path")
+    assert config.objective_interoperability_focus == ("hallucinate_app", "swissknife")
+    assert config.objective_interoperability_component_paths == (
+        "hallucinate_app",
+        "external/ipfs_accelerate",
+    )
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
