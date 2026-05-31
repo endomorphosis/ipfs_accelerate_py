@@ -114,6 +114,7 @@ class PortalSupervisorConfig:
     objective_reconcile_goal_completion: bool = True
     objective_seed_interoperability_goals: bool = False
     objective_interoperability_focus: tuple[str, ...] = field(default_factory=tuple)
+    objective_interoperability_component_paths: tuple[str, ...] = field(default_factory=tuple)
     objective_max_interoperability_goals: int = 12
     objective_ensure_tracking_document: bool = False
     objective_ultimate_goal: str = ""
@@ -1028,6 +1029,10 @@ class PortalImplementationSupervisor:
                 no_reconcile_goal_completion=not self.config.objective_reconcile_goal_completion,
                 seed_interoperability_goals=self.config.objective_seed_interoperability_goals,
                 interoperability_focus=list(self.config.objective_interoperability_focus),
+                interoperability_component_path=list(
+                    self.config.objective_interoperability_component_paths
+                    or self.config.worktree_submodule_paths
+                ),
                 max_interoperability_goals=self.config.objective_max_interoperability_goals,
                 max_refinement_children=self.config.objective_max_refinement_children,
                 max_refinement_depth=self.config.objective_max_refinement_depth,
@@ -1901,6 +1906,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "If omitted, all submodule pairs are eligible."
         ),
     )
+    parser.add_argument(
+        "--objective-interoperability-component-path",
+        action="append",
+        default=[],
+        help=(
+            "Repo-relative component path to include when seeding interoperability goals. "
+            "Defaults to configured worktree submodule paths when omitted."
+        ),
+    )
     parser.add_argument("--objective-max-interoperability-goals", type=int, default=12)
     parser.add_argument(
         "--objective-ensure-tracking-document",
@@ -2033,6 +2047,9 @@ def main(argv: list[str] | None = None) -> None:
             objective_reconcile_goal_completion=args.objective_reconcile_goal_completion,
             objective_seed_interoperability_goals=args.objective_seed_interoperability_goals,
             objective_interoperability_focus=split_csv_values(args.objective_interoperability_focus),
+            objective_interoperability_component_paths=split_csv_values(
+                args.objective_interoperability_component_path
+            ),
             objective_max_interoperability_goals=args.objective_max_interoperability_goals,
             objective_ensure_tracking_document=args.objective_ensure_tracking_document,
             objective_ultimate_goal=args.objective_ultimate_goal,

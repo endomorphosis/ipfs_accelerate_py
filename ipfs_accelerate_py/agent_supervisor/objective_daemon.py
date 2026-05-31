@@ -147,6 +147,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "If omitted, all submodule pairs are eligible."
         ),
     )
+    parser.add_argument(
+        "--interoperability-component-path",
+        action="append",
+        default=[],
+        help="Repo-relative component path to include when seeding interoperability goals.",
+    )
     parser.add_argument("--max-interoperability-goals", type=int, default=12)
     parser.add_argument("--no-persist-ast-dataset", action="store_true")
     parser.add_argument(
@@ -203,6 +209,7 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
             objective_path,
             repo_root=repo_root,
             focus=getattr(args, "interoperability_focus", []) or (),
+            component_paths=getattr(args, "interoperability_component_path", []) or (),
             max_goals=getattr(args, "max_interoperability_goals", 12),
             goal_prefix=getattr(args, "goal_prefix", None),
         )

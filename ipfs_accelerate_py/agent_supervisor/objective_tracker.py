@@ -6,7 +6,7 @@ import json
 import os
 import re
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from hashlib import sha1
 from pathlib import Path
 from typing import Any, Iterable, Mapping, Sequence
@@ -73,6 +73,24 @@ class ObjectiveCompletionResult:
         payload = asdict(self)
         payload["objective_path"] = str(self.objective_path)
         return payload
+
+
+@dataclass(frozen=True)
+class RepositoryComponent:
+    """A repository component that can participate in interoperability goals."""
+
+    path: str
+    sources: list[str] = field(default_factory=list)
+    exists: bool = False
+    is_gitlink: bool = False
+    is_gitmodule: bool = False
+    manifests: list[str] = field(default_factory=list)
+    interface_descriptors: list[str] = field(default_factory=list)
+    mcp_descriptors: list[str] = field(default_factory=list)
+    python_import_roots: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 def fibonacci_number(index: int) -> int:
@@ -396,8 +414,41 @@ def ensure_objective_tracking_document(
     return ObjectiveTrackingResult(objective_path=objective_path, created=True, appended_goal_ids=[root_goal_id])
 
 
-def discover_submodule_paths(repo_root: Path) -> list[str]:
-    """Return repo-relative Git submodule paths from .gitmodules."""
+COMPONENT_SCAN_SKIP_DIRS = {
+    ".git",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    "__pycache__",
+    "build",
+    "dist",
+    "node_modules",
+}
+COMPONENT_MANIFEST_NAMES = {
+    "package.json",
+    "pyproject.toml",
+    "requirements.txt",
+    "setup.cfg",
+    "setup.py",
+    "Cargo.toml",
+    "go.mod",
+}
+INTERFACE_DESCRIPTOR_SUFFIXES = {".idl", ".proto", ".thrift", ".graphql", ".graphqls"}
+
+
+def _unique_paths(paths: Iterable[str]) -> list[str]:
+    unique: list[str] = []
+    for raw in paths:
+        path = str(raw).strip().strip("/")
+        if not path or "\0" in path or ".." in Path(path).parts:
+            continue
+        if path not in unique:
+            unique.append(path)
+    return unique
+
+
+def discover_gitmodule_paths(repo_root: Path) -> list[str]:
+    """Return repo-relative Git submodule paths declared in .gitmodules."""
 
     gitmodules = repo_root / ".gitmodules"
     if not gitmodules.exists():
@@ -414,10 +465,153 @@ def discover_submodule_paths(repo_root: Path) -> list[str]:
     return paths
 
 
+def discover_gitlink_paths(repo_root: Path) -> list[str]:
+    """Return repo-relative gitlink paths from the Git index.
+
+    Gitlinks are the authoritative submodule entries in the index.  Some repos
+    can have stale or incomplete .gitmodules mappings, so interoperability
+    planning must not rely on .gitmodules alone.
+    """
+
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(repo_root), "ls-files", "--stage"],
+            text=True,
+            stdin=subprocess.DEVNULL,
+            capture_output=True,
+            timeout=30,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    if completed.returncode != 0:
+        return []
+
+    paths: list[str] = []
+    for line in completed.stdout.splitlines():
+        parts = line.split(None, 3)
+        if len(parts) != 4 or parts[0] != "160000":
+            continue
+        path = parts[3].strip()
+        if path and path not in paths:
+            paths.append(path)
+    return paths
+
+
+def discover_submodule_paths(repo_root: Path) -> list[str]:
+    """Return repo-relative component paths from .gitmodules and Git gitlinks."""
+
+    return _unique_paths([*discover_gitmodule_paths(repo_root), *discover_gitlink_paths(repo_root)])
+
+
+def _component_relative_path(repo_root: Path, path: Path) -> str:
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _scan_component_metadata(repo_root: Path, component_path: str, *, max_files: int = 256) -> dict[str, list[str]]:
+    root = repo_root / component_path
+    metadata = {
+        "manifests": [],
+        "interface_descriptors": [],
+        "mcp_descriptors": [],
+        "python_import_roots": [],
+    }
+    if not root.exists() or not root.is_dir():
+        return metadata
+
+    import_roots: set[str] = set()
+    scanned = 0
+    for current_root, dirnames, filenames in os.walk(root):
+        dirnames[:] = [name for name in dirnames if name not in COMPONENT_SCAN_SKIP_DIRS]
+        current = Path(current_root)
+        try:
+            depth = len(current.relative_to(root).parts)
+        except ValueError:
+            depth = 0
+        if depth > 4:
+            dirnames[:] = []
+            continue
+        for filename in sorted(filenames):
+            path = current / filename
+            relative = _component_relative_path(repo_root, path)
+            lowered = filename.lower()
+            suffix = path.suffix.lower()
+            if filename in COMPONENT_MANIFEST_NAMES:
+                metadata["manifests"].append(relative)
+            if suffix in INTERFACE_DESCRIPTOR_SUFFIXES or any(
+                token in lowered for token in ("interface", "descriptor", "contract", "schema")
+            ):
+                metadata["interface_descriptors"].append(relative)
+            if "mcp" in lowered or "orb" in lowered:
+                metadata["mcp_descriptors"].append(relative)
+            if suffix == ".py" and scanned < max_files:
+                scanned += 1
+                try:
+                    text = path.read_text(encoding="utf-8", errors="replace")
+                except OSError:
+                    continue
+                for match in re.finditer(r"^\s*(?:from|import)\s+([A-Za-z_][A-Za-z0-9_\.]*)", text, flags=re.MULTILINE):
+                    import_roots.add(match.group(1).split(".", 1)[0])
+
+    metadata["manifests"] = sorted(dict.fromkeys(metadata["manifests"]))[:40]
+    metadata["interface_descriptors"] = sorted(dict.fromkeys(metadata["interface_descriptors"]))[:80]
+    metadata["mcp_descriptors"] = sorted(dict.fromkeys(metadata["mcp_descriptors"]))[:80]
+    metadata["python_import_roots"] = sorted(import_roots)[:80]
+    return metadata
+
+
+def discover_repository_components(
+    repo_root: Path,
+    *,
+    component_paths: Sequence[str] = (),
+) -> list[RepositoryComponent]:
+    """Discover repository components for interoperability planning.
+
+    Callers may provide explicit component paths, but the function also uses
+    .gitmodules and Git gitlinks so it works in repos with incomplete
+    .gitmodules metadata.
+    """
+
+    gitmodule_path_list = discover_gitmodule_paths(repo_root)
+    gitlink_path_list = discover_gitlink_paths(repo_root)
+    gitmodule_paths = set(gitmodule_path_list)
+    gitlink_paths = set(gitlink_path_list)
+    configured_paths = set(_unique_paths(component_paths))
+    paths = _unique_paths([*component_paths, *gitmodule_path_list, *gitlink_path_list])
+    components: list[RepositoryComponent] = []
+    for path in paths:
+        sources: list[str] = []
+        if path in configured_paths:
+            sources.append("configured")
+        if path in gitmodule_paths:
+            sources.append("gitmodules")
+        if path in gitlink_paths:
+            sources.append("gitlink")
+        metadata = _scan_component_metadata(repo_root, path)
+        components.append(
+            RepositoryComponent(
+                path=path,
+                sources=sources,
+                exists=(repo_root / path).exists(),
+                is_gitlink=path in gitlink_paths,
+                is_gitmodule=path in gitmodule_paths,
+                manifests=metadata["manifests"],
+                interface_descriptors=metadata["interface_descriptors"],
+                mcp_descriptors=metadata["mcp_descriptors"],
+                python_import_roots=metadata["python_import_roots"],
+            )
+        )
+    return components
+
+
 def interoperability_pairs(submodules: Sequence[str], *, focus: Sequence[str] = ()) -> list[tuple[str, str]]:
     paths = [path for path in dict.fromkeys(str(item).strip() for item in submodules) if path]
     focus_paths = [path for path in dict.fromkeys(str(item).strip() for item in focus) if path]
     pairs: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
     if focus_paths:
         for left in focus_paths:
             if left not in paths:
@@ -425,9 +619,11 @@ def interoperability_pairs(submodules: Sequence[str], *, focus: Sequence[str] = 
             for right in paths:
                 if right == left:
                     continue
-                pair = tuple(sorted((left, right)))
-                if pair not in pairs:
-                    pairs.append(pair)
+                pair_key = tuple(sorted((left, right)))
+                if pair_key in seen:
+                    continue
+                pairs.append((left, right))
+                seen.add(pair_key)
         return pairs
     for left_index, left in enumerate(paths):
         for right in paths[left_index + 1 :]:
@@ -435,11 +631,43 @@ def interoperability_pairs(submodules: Sequence[str], *, focus: Sequence[str] = 
     return pairs
 
 
+def _component_pair_metadata(
+    left: RepositoryComponent | None,
+    right: RepositoryComponent | None,
+) -> dict[str, Any]:
+    components = [component for component in (left, right) if component is not None]
+    manifests = sorted({path for component in components for path in component.manifests})
+    interface_descriptors = sorted({path for component in components for path in component.interface_descriptors})
+    mcp_descriptors = sorted({path for component in components for path in component.mcp_descriptors})
+    python_import_roots = sorted({root for component in components for root in component.python_import_roots})
+    sources = sorted({source for component in components for source in component.sources})
+    score = 1
+    score += len(components)
+    score += min(6, len(manifests) * 2)
+    score += min(9, len(interface_descriptors) * 3)
+    score += min(9, len(mcp_descriptors) * 3)
+    score += min(6, len(python_import_roots))
+    score += 2 if any(component.is_gitlink for component in components) else 0
+    return {
+        "score": score,
+        "manifests": manifests[:12],
+        "interface_descriptors": interface_descriptors[:16],
+        "mcp_descriptors": mcp_descriptors[:16],
+        "python_import_roots": python_import_roots[:24],
+        "sources": sources,
+    }
+
+
+def _join_or_none(values: Sequence[str]) -> str:
+    return ", ".join(str(value) for value in values if str(value))
+
+
 def append_interoperability_goals(
     objective_path: Path,
     *,
     repo_root: Path,
     focus: Sequence[str] = (),
+    component_paths: Sequence[str] = (),
     max_goals: int = 12,
     goal_prefix: str | None = None,
 ) -> ObjectiveTrackingResult:
@@ -448,7 +676,9 @@ def append_interoperability_goals(
     if not objective_path.exists() or max_goals <= 0:
         return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
 
-    submodules = discover_submodule_paths(repo_root)
+    components = discover_repository_components(repo_root, component_paths=component_paths)
+    component_by_path = {component.path: component for component in components}
+    submodules = [component.path for component in components]
     pairs = interoperability_pairs(submodules, focus=focus)
     if not pairs:
         return ObjectiveTrackingResult(objective_path=objective_path, created=False, appended_goal_ids=[])
@@ -479,10 +709,21 @@ def append_interoperability_goals(
         if pair_key in existing_pairs:
             continue
         goal_id = allocate_goal_id()
+        metadata = _component_pair_metadata(component_by_path.get(left), component_by_path.get(right))
         safe_left = safe_bundle_key(left).replace("-", "_")
         safe_right = safe_bundle_key(right).replace("-", "_")
         test_path = f"tests/integration/test_{safe_left}_{safe_right}_interop.py"
         doc_path = f"docs/integration/{safe_left}-{safe_right}.md"
+        descriptor_terms = [
+            *metadata["interface_descriptors"],
+            *metadata["mcp_descriptors"],
+        ]
+        evidence_terms = [
+            test_path,
+            doc_path,
+            f"interface contract {left} {right}",
+            *descriptor_terms[:6],
+        ]
         fields = {
             "Status": "active",
             "Parent": root_goal_id,
@@ -493,16 +734,33 @@ def append_interoperability_goals(
             "Goal kind": "interoperability",
             "Interoperability pair": f"{left}, {right}",
             "Submodules": f"{left}, {right}",
+            "Interoperability score": str(metadata["score"]),
+            "Discovery sources": _join_or_none(metadata["sources"]),
+            "Package manifests": _join_or_none(metadata["manifests"]),
+            "Interface descriptors": _join_or_none(metadata["interface_descriptors"]),
+            "MCP descriptors": _join_or_none(metadata["mcp_descriptors"]),
+            "Python import roots": _join_or_none(metadata["python_import_roots"]),
             "Goal": (
                 f"Prove `{left}` interoperates with `{right}` through importable contracts, "
                 "interface descriptors, runtime handoff behavior, and integration tests."
             ),
-            "Evidence": f"{test_path}, {doc_path}, interface contract {left} {right}",
-            "Outputs": f"{test_path}, {doc_path}, {left}, {right}",
+            "Evidence": ", ".join(evidence_terms),
+            "Outputs": ", ".join([test_path, doc_path, left, right, *descriptor_terms[:4]]),
             "Validation": "python -m pytest tests/integration -q",
             "Refinement depth": "1",
-            "Embedding query": f"{left} {right} interoperability integration test interface descriptor",
-            "AST query": f"{left}, {right}, interface contract, integration test",
+            "Embedding query": (
+                f"{left} {right} interoperability integration test interface descriptor "
+                f"{' '.join(metadata['python_import_roots'][:12])}"
+            ),
+            "AST query": ", ".join(
+                [
+                    left,
+                    right,
+                    "interface contract",
+                    "integration test",
+                    *metadata["python_import_roots"][:12],
+                ]
+            ),
             "Parallel lane": f"objective/interoperability/{safe_left}-{safe_right}",
             "Conflict policy": "keep pair-specific integration edits isolated; use the LLM merge resolver for conflicts",
             "Gap task": (
@@ -652,6 +910,9 @@ def build_objective_thought_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, A
         validation = str(goal.fields.get("validation") or "").strip()
         interop_pair = split_terms(str(goal.fields.get("interoperability_pair") or ""))
         submodules = split_terms(str(goal.fields.get("submodules") or ""))
+        package_manifests = split_terms(str(goal.fields.get("package_manifests") or ""))
+        interface_descriptors = split_terms(str(goal.fields.get("interface_descriptors") or ""))
+        mcp_descriptors = split_terms(str(goal.fields.get("mcp_descriptors") or ""))
         add_node(
             goal_node,
             kind="goal",
@@ -715,6 +976,36 @@ def build_objective_thought_graph(goals: Sequence[ObjectiveGoal]) -> dict[str, A
                 thought="Write or update integration tests that exercise the shared runtime boundary.",
             )
             add_edge(interop_node, test_node, "needs_test_strategy")
+            for manifest in package_manifests:
+                manifest_node = thought_node_id("package_manifest", goal.goal_id, manifest)
+                add_node(
+                    manifest_node,
+                    kind="package_manifest",
+                    goal_id=goal.goal_id,
+                    path=manifest,
+                    thought=f"Use `{manifest}` to identify package entrypoints and dependency surfaces.",
+                )
+                add_edge(interop_node, manifest_node, "uses_package_manifest")
+            for descriptor in interface_descriptors:
+                descriptor_node = thought_node_id("interface_descriptor", goal.goal_id, descriptor)
+                add_node(
+                    descriptor_node,
+                    kind="interface_descriptor",
+                    goal_id=goal.goal_id,
+                    path=descriptor,
+                    thought=f"Map `{descriptor}` into the interoperability contract.",
+                )
+                add_edge(interop_node, descriptor_node, "uses_interface_descriptor")
+            for descriptor in mcp_descriptors:
+                mcp_node = thought_node_id("mcp_descriptor", goal.goal_id, descriptor)
+                add_node(
+                    mcp_node,
+                    kind="mcp_descriptor",
+                    goal_id=goal.goal_id,
+                    path=descriptor,
+                    thought=f"Use `{descriptor}` as an MCP or ORB capability boundary.",
+                )
+                add_edge(interop_node, mcp_node, "uses_mcp_descriptor")
 
     return {
         "schema": "ipfs_accelerate_py.agent_supervisor.objective_thought_graph",

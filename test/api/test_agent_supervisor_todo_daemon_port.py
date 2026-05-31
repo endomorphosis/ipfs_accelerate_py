@@ -3224,6 +3224,29 @@ def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path)
 """,
         encoding="utf-8",
     )
+    (repo / "hallucinate_app" / "interfaces").mkdir(parents=True)
+    (repo / "hallucinate_app" / "interfaces" / "control_surface.idl").write_text(
+        "interface ControlSurface { void dispatch(); }\n",
+        encoding="utf-8",
+    )
+    (repo / "hallucinate_app" / "pyproject.toml").write_text(
+        "[project]\nname = \"hallucinate-app\"\n",
+        encoding="utf-8",
+    )
+    (repo / "swissknife" / "mcp").mkdir(parents=True)
+    (repo / "swissknife" / "package.json").write_text(
+        "{\"name\":\"swissknife\"}\n",
+        encoding="utf-8",
+    )
+    (repo / "swissknife" / "mcp" / "orb_descriptor.json").write_text(
+        "{\"name\":\"orb\"}\n",
+        encoding="utf-8",
+    )
+    (repo / "mcp_plus_plus").mkdir(parents=True)
+    (repo / "mcp_plus_plus" / "mcp_descriptor.json").write_text(
+        "{\"name\":\"mcp-plus-plus\"}\n",
+        encoding="utf-8",
+    )
     objective_path = repo / "objective-heap.md"
     todo_path = repo / "todo.md"
     objective_path.write_text(
@@ -3244,7 +3267,7 @@ def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path)
         encoding="utf-8",
     )
     todo_path.write_text("# Agent Todos\n", encoding="utf-8")
-    _git(repo, "add", ".gitmodules", "objective-heap.md", "todo.md")
+    _git(repo, "add", ".")
     _git(repo, "commit", "-m", "seed interop objective")
     args = build_arg_parser().parse_args(
         [
@@ -3274,13 +3297,21 @@ def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path)
     assert "Interoperate hallucinate_app with swissknife" in objective_text
     assert "Interoperate hallucinate_app with mcp_plus_plus" in objective_text
     assert "- Goal kind: interoperability" in objective_text
+    assert "- Package manifests:" in objective_text
+    assert "- Interface descriptors:" in objective_text
+    assert "- MCP descriptors:" in objective_text
     assert "tests/integration/test_hallucinate_app_swissknife_interop.py" in objective_text
+    assert "hallucinate_app/interfaces/control_surface.idl" in objective_text
+    assert "swissknife/mcp/orb_descriptor.json" in objective_text
     assert payload["objective_heap_schedule_count"] >= 1
     assert payload["generated_count"] == 2
     graph = json.loads((repo / "data" / "agent_supervisor" / "objective_graph.json").read_text(encoding="utf-8"))
     thought_kinds = {node["kind"] for node in graph["thought_graph"]["nodes"]}
     assert "interoperability_pair" in thought_kinds
     assert "test_strategy" in thought_kinds
+    assert "interface_descriptor" in thought_kinds
+    assert "mcp_descriptor" in thought_kinds
+    assert "package_manifest" in thought_kinds
 
 
 def test_objective_daemon_seeds_all_interoperability_pairs_without_focus(tmp_path):
@@ -3351,6 +3382,75 @@ def test_objective_daemon_seeds_all_interoperability_pairs_without_focus(tmp_pat
     assert "Interoperate component_a with component_b" in objective_text
     assert "Interoperate component_a with component_c" in objective_text
     assert "Interoperate component_b with component_c" in objective_text
+
+
+def test_objective_daemon_seeds_interoperability_goals_from_gitlinks_without_gitmodules_mapping(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / ".gitmodules").write_text(
+        """[submodule "external/ipfs_accelerate"]
+    path = external/ipfs_accelerate
+    url = https://github.com/endomorphosis/ipfs_accelerate
+""",
+        encoding="utf-8",
+    )
+    objective_path = repo / "objective-heap.md"
+    todo_path = repo / "todo.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G000 Virtual AI OS root
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: ops
+- Priority: P0
+- Goal: Make the virtual AI OS interoperable.
+- Evidence: root_virtual_ai_os_proof
+- Outputs: docs
+- Validation: test -f objective-heap.md
+""",
+        encoding="utf-8",
+    )
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    _git(repo, "add", ".gitmodules", "objective-heap.md", "todo.md")
+    _git(repo, "update-index", "--add", "--cacheinfo", "160000", "a" * 40, "hallucinate_app")
+    _git(repo, "update-index", "--add", "--cacheinfo", "160000", "b" * 40, "swissknife")
+    _git(repo, "update-index", "--add", "--cacheinfo", "160000", "c" * 40, "Mcp-Plus-Plus")
+    _git(repo, "commit", "-m", "seed gitlink interop objective")
+    args = build_arg_parser().parse_args(
+        [
+            "--repo-root",
+            str(repo),
+            "--objective-path",
+            str(objective_path),
+            "--todo-path",
+            str(todo_path),
+            "--seed-interoperability-goals",
+            "--interoperability-focus",
+            "hallucinate_app",
+            "--max-interoperability-goals",
+            "3",
+            "--task-prefix",
+            "ACCEL-",
+            "--max-findings",
+            "3",
+            "--no-persist-ast-dataset",
+        ]
+    )
+
+    payload = run_objective_daemon(args)
+
+    assert payload["seeded_interoperability_goal_ids"] == ["VAIOS-G001", "VAIOS-G002", "VAIOS-G003"]
+    objective_text = objective_path.read_text(encoding="utf-8")
+    assert "Interoperate hallucinate_app with" in objective_text
+    assert "hallucinate_app, swissknife" in objective_text
+    assert "hallucinate_app, Mcp-Plus-Plus" in objective_text
 
 
 def test_objective_daemon_refines_missing_evidence_into_child_goals(tmp_path):
