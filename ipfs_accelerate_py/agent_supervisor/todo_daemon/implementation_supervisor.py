@@ -15,6 +15,7 @@ from typing import Any
 REPO_ROOT = Path.cwd()
 
 from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
+from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
 from .core import ManagedDaemonSpec
 from .implementation_daemon import (
     DEFAULT_TRACKS,
@@ -193,6 +194,7 @@ class PortalImplementationSupervisor:
     def run_once(self) -> dict[str, Any]:
         event_log_repair = self.ensure_event_log_file()
         main_checkout_repair = self.repair_main_checkout_merge_state()
+        worktree_cleanup = self.cleanup_backlogged_worktrees()
         strategy_file_repair = self.ensure_strategy_file()
         state_file_repair = self.ensure_state_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
@@ -218,6 +220,7 @@ class PortalImplementationSupervisor:
                 "state_file_repair": state_file_repair,
                 "todo_board_repair": todo_board_repair,
                 "main_checkout_repair": main_checkout_repair,
+                "worktree_cleanup": worktree_cleanup,
                 "guardrail_unblock_count": len(guardrail_releases),
             }
         retry_budget_findings = self.record_retry_budget_guardrails()
@@ -269,6 +272,7 @@ class PortalImplementationSupervisor:
             "state_file_repair": state_file_repair,
             "todo_board_repair": todo_board_repair,
             "main_checkout_repair": main_checkout_repair,
+            "worktree_cleanup": worktree_cleanup,
         }
 
     def run_forever(self) -> None:
@@ -396,6 +400,9 @@ class PortalImplementationSupervisor:
                 "main_checkout_merge_state_repaired",
                 detail=main_checkout_repair,
             )
+        worktree_cleanup = self.cleanup_backlogged_worktrees()
+        if worktree_cleanup.get("removed_count"):
+            self._record_event("backlogged_worktree_cleanup", worktree_cleanup)
         state = PortalTaskState.load(self.config.state_path)
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if not stuck:
@@ -441,6 +448,24 @@ class PortalImplementationSupervisor:
             result["reason"] = "unmerged_paths_without_merge_head"
             self._record_event("main_checkout_merge_state_repair", result)
             return result
+
+        deterministic_repair = self.repair_generated_main_checkout_conflicts(repo_root)
+        if deterministic_repair:
+            result["deterministic_conflict_repair"] = deterministic_repair
+            if not self._git_unmerged_paths(repo_root):
+                commit_result = self._commit_supervisor_resolved_merge(repo_root)
+                result["commit_result"] = commit_result
+                if commit_result.get("completed") or commit_result.get("reason") == "resolver_committed_merge":
+                    result.update(
+                        {
+                            "repaired": True,
+                            "reason": "deterministic_generated_markdown_conflict_repair",
+                            "final_unmerged_paths": [],
+                            "merge_in_progress_after": bool(self._git_merge_head(repo_root)),
+                        }
+                    )
+                    self._record_event("main_checkout_merge_state_repair", result)
+                    return result
 
         if self.config.llm_merge_resolver_command:
             llm_result = self._invoke_main_checkout_merge_resolver(
@@ -493,6 +518,36 @@ class PortalImplementationSupervisor:
         result["merge_in_progress_after"] = bool(self._git_merge_head(repo_root))
         self._record_event("main_checkout_merge_state_repair", result)
         return result
+
+    def repair_generated_main_checkout_conflicts(self, repo_root: Path) -> list[dict[str, object]]:
+        """Resolve configured append-only generated markdown conflicts without LLM calls."""
+
+        allowed_paths, allowed_dirs = self._append_only_markdown_conflict_targets()
+        if not allowed_paths and not allowed_dirs:
+            return []
+        repairs = resolve_append_only_markdown_conflicts(
+            repo_root=repo_root,
+            allowed_paths=allowed_paths,
+            allowed_dirs=allowed_dirs,
+        )
+        if repairs:
+            self._record_event(
+                "generated_markdown_conflict_repair",
+                {
+                    "repo_root": str(repo_root),
+                    "results": repairs,
+                },
+            )
+        return repairs
+
+    def _append_only_markdown_conflict_targets(self) -> tuple[list[Path], list[Path]]:
+        allowed_paths: list[Path] = []
+        allowed_dirs: list[Path] = []
+        if self.config.objective_path is not None:
+            allowed_paths.append(self.config.objective_path)
+        if self.config.objective_bundle_dir is not None:
+            allowed_dirs.append(self.config.objective_bundle_dir)
+        return allowed_paths, allowed_dirs
 
     def _invoke_main_checkout_merge_resolver(
         self,
@@ -679,6 +734,172 @@ class PortalImplementationSupervisor:
         if result.returncode != 0:
             return ""
         return result.stdout.strip()
+
+    def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
+        """Remove inactive implementation worktrees whose branches are already merged."""
+
+        worktree_root = self.config.worktree_root
+        if worktree_root is None:
+            return {"attempted": False, "reason": "worktree_root_not_configured"}
+        repo_root = self.config.repo_root
+        prune = subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        records = self._git_worktree_records(repo_root)
+        try:
+            root_resolved = worktree_root.resolve()
+        except OSError:
+            root_resolved = worktree_root
+        process_lines = self._list_process_commands()
+        active_worktree = ""
+        try:
+            active_worktree = PortalTaskState.load(self.config.state_path).active_worktree_path
+        except Exception:
+            active_worktree = ""
+        target_ref = self._git_current_branch(repo_root) or "HEAD"
+        removed: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        for record in records:
+            path_text = str(record.get("worktree") or "")
+            if not path_text:
+                continue
+            path = Path(path_text)
+            try:
+                path_resolved = path.resolve()
+                path_resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+            if active_worktree and path_resolved == Path(active_worktree).resolve():
+                skipped.append({"path": str(path), "reason": "active_state_worktree"})
+                continue
+            if any(str(path_resolved) in line for line in process_lines):
+                skipped.append({"path": str(path), "reason": "active_process"})
+                continue
+
+            branch = str(record.get("branch") or "").removeprefix("refs/heads/")
+            head = str(record.get("HEAD") or "")
+            branch_merged = bool(branch) and self._git_ref_is_ancestor(repo_root, branch, target_ref)
+            head_merged = bool(head) and self._git_ref_is_ancestor(repo_root, head, target_ref)
+            if not (branch_merged or head_merged):
+                skipped.append({"path": str(path), "branch": branch, "reason": "not_merged"})
+                continue
+            dirty = self._git_status_short(path) if path.exists() else []
+            if dirty:
+                skipped.append(
+                    {
+                        "path": str(path),
+                        "branch": branch,
+                        "reason": "dirty_worktree",
+                        "status_short": dirty[:20],
+                    }
+                )
+                continue
+
+            remove = subprocess.run(
+                ["git", "worktree", "remove", "--force", str(path)],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            branch_delete: dict[str, Any] = {}
+            if remove.returncode == 0 and branch.startswith("implementation/") and branch_merged:
+                delete = subprocess.run(
+                    ["git", "branch", "-D", branch],
+                    cwd=repo_root,
+                    text=True,
+                    capture_output=True,
+                    check=False,
+                )
+                branch_delete = {
+                    "attempted": True,
+                    "deleted": delete.returncode == 0,
+                    "returncode": delete.returncode,
+                    "stdout": delete.stdout[-4000:],
+                    "stderr": delete.stderr[-4000:],
+                }
+            removed.append(
+                {
+                    "path": str(path),
+                    "branch": branch,
+                    "head": head,
+                    "removed": remove.returncode == 0,
+                    "returncode": remove.returncode,
+                    "stdout": remove.stdout[-4000:],
+                    "stderr": remove.stderr[-4000:],
+                    "branch_delete": branch_delete,
+                }
+            )
+
+        result = {
+            "attempted": True,
+            "worktree_root": str(worktree_root),
+            "prune_returncode": prune.returncode,
+            "prune_stdout": prune.stdout[-4000:],
+            "prune_stderr": prune.stderr[-4000:],
+            "removed_count": sum(1 for item in removed if item.get("removed")),
+            "skipped_count": len(skipped),
+            "removed": removed,
+            "skipped": skipped[:50],
+        }
+        if removed:
+            self._record_event("merged_worktree_cleanup", result)
+        return result
+
+    @staticmethod
+    def _git_worktree_records(repo_root: Path) -> list[dict[str, str]]:
+        result = subprocess.run(
+            ["git", "worktree", "list", "--porcelain"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        records: list[dict[str, str]] = []
+        current: dict[str, str] = {}
+        for line in result.stdout.splitlines():
+            if not line.strip():
+                if current:
+                    records.append(current)
+                    current = {}
+                continue
+            key, _, value = line.partition(" ")
+            current[key] = value
+        if current:
+            records.append(current)
+        return records
+
+    @staticmethod
+    def _git_ref_is_ancestor(repo_root: Path, ancestor: str, descendant: str) -> bool:
+        if not ancestor or not descendant:
+            return False
+        result = subprocess.run(
+            ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return result.returncode == 0
+
+    @staticmethod
+    def _list_process_commands() -> list[str]:
+        result = subprocess.run(
+            ["ps", "-eo", "args="],
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return []
+        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     def ensure_todo_board_for_refill(self) -> dict[str, Any]:
         """Create an empty todo board when refill machinery is expected to populate it."""
@@ -1210,12 +1431,12 @@ class PortalImplementationSupervisor:
         now_ts: float,
         ignore_progress_until_ts: float | None = None,
     ) -> tuple[bool, str]:
+        worktree_phase_stall_reason = self._worktree_phase_without_worker_reason(state, now_ts=now_ts)
+        if worktree_phase_stall_reason:
+            return True, worktree_phase_stall_reason
         log_stall_reason = self._implementation_log_stall_reason(state, now_ts=now_ts)
         if log_stall_reason:
             return True, log_stall_reason
-        merge_phase_stall_reason = self._merge_phase_without_worker_reason(state, now_ts=now_ts)
-        if merge_phase_stall_reason:
-            return True, merge_phase_stall_reason
         if self._implementation_attempt_is_active(state, now_ts=now_ts):
             return False, ""
         heartbeat_age = self._age_seconds(state.heartbeat_at, now_ts)
@@ -1244,8 +1465,8 @@ class PortalImplementationSupervisor:
             return True, f"unresolved merge failure on active task {state.active_task_id}: {detail}"
         return False, ""
 
-    def _merge_phase_without_worker_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
-        if not state.active_task_id or state.active_phase not in {"merge_reconciliation", "merge_resolver"}:
+    def _worktree_phase_without_worker_reason(self, state: PortalTaskState, *, now_ts: float) -> str:
+        if not state.active_task_id:
             return ""
         threshold = max(30.0, min(120.0, float(self.config.check_interval) * 2.0))
         worker_status = worktree_phase_worker_status(
@@ -1260,7 +1481,7 @@ class PortalImplementationSupervisor:
         if not worker_status.get("stalled_without_active_worker"):
             return ""
         self._record_event(
-            "merge_phase_without_worker",
+            "worktree_phase_without_worker",
             {
                 "active_task_id": state.active_task_id,
                 "active_phase": state.active_phase,
@@ -1270,7 +1491,7 @@ class PortalImplementationSupervisor:
         )
         return (
             f"{state.active_phase} stalled for active task {state.active_task_id}: "
-            f"no active resolver worker for {worker_status.get('phase_age_seconds')}s"
+            f"no active worker for {worker_status.get('phase_age_seconds')}s"
         )
 
     def rewrite_strategy(self, state: PortalTaskState, reason: str) -> dict[str, Any]:
@@ -1317,7 +1538,7 @@ class PortalImplementationSupervisor:
 
         if not state.active_task_id:
             return {"repaired": False, "reason": "no_active_task"}
-        if self._implementation_attempt_is_active(state, now_ts=now_ts):
+        if self._implementation_attempt_is_active(state, now_ts=now_ts) and "no active worker" not in reason:
             return {"repaired": False, "reason": "implementation_attempt_active"}
         if reason.startswith("implementation log stalled"):
             return {"repaired": False, "reason": "implementation_log_stalled"}
@@ -1475,6 +1696,10 @@ class PortalImplementationSupervisor:
                 command.extend(["--worktree-root", str(self.config.worktree_root)])
             for relative in self.config.worktree_submodule_paths:
                 command.extend(["--worktree-submodule-path", relative])
+            if self.config.objective_path is not None:
+                command.extend(["--objective-path", str(self.config.objective_path)])
+            if self.config.objective_bundle_dir is not None:
+                command.extend(["--objective-bundle-dir", str(self.config.objective_bundle_dir)])
         return command
 
     def _managed_daemon_pid_path(self) -> Path:

@@ -159,11 +159,18 @@ def active_codex_exec_workers(root_pid: Any) -> list[JsonDict]:
 
     workers: list[JsonDict] = []
     for item in descendant_processes(root_pid):
-        cmdline = str(item.get("cmdline") or "").lower()
-        normalized = " " + " ".join(cmdline.split())
-        if "codex" in cmdline and " exec" in normalized:
+        if _is_agent_worker_command(str(item.get("cmdline") or "")):
             workers.append(item)
     return workers
+
+
+def _is_agent_worker_command(cmdline: str) -> bool:
+    normalized = " " + " ".join(cmdline.lower().split())
+    return (
+        ("codex" in normalized and " exec" in normalized)
+        or "copilot" in normalized
+        or "llm_merge_resolver_fallback.sh" in normalized
+    )
 
 
 def worktree_phase_worker_status(
@@ -193,12 +200,7 @@ def worktree_phase_worker_status(
     age = None if started is None else max(0.0, (now_at - started).total_seconds())
     root_pid = daemon_pid or current.get("heartbeat_pid") or current.get("pid")
     descendants = descendant_processes(root_pid)
-    workers = [
-        item
-        for item in descendants
-        if "codex" in str(item.get("cmdline") or "").lower()
-        and " exec" in (" " + " ".join(str(item.get("cmdline") or "").lower().split()))
-    ]
+    workers = [item for item in descendants if _is_agent_worker_command(str(item.get("cmdline") or ""))]
     stalled = bool(age is not None and threshold_seconds > 0 and age >= threshold_seconds and not workers)
     return {
         "required": True,

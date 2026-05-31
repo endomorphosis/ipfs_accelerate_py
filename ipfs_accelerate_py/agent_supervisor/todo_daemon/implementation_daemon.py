@@ -20,6 +20,7 @@ from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
 from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
+from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
 REPO_ROOT = Path.cwd()
@@ -533,6 +534,8 @@ class PortalImplementationDaemon:
         use_ephemeral_worktree: bool = False,
         worktree_root: Path | None = None,
         worktree_submodule_paths: Any = None,
+        objective_path: Path | None = None,
+        objective_bundle_dir: Path | None = None,
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
     ) -> None:
@@ -548,6 +551,8 @@ class PortalImplementationDaemon:
         self.implementation_log_dir = implementation_log_dir or self.state_path.parent / "implementation_logs"
         self.use_ephemeral_worktree = use_ephemeral_worktree
         self.worktree_root = worktree_root or Path(tempfile.gettempdir()) / "211-ai-implementation-worktrees"
+        self.objective_path = objective_path
+        self.objective_bundle_dir = objective_bundle_dir
         self.llm_merge_resolver_command = (
             llm_merge_resolver_command
             if llm_merge_resolver_command is not None
@@ -2630,15 +2635,24 @@ class PortalImplementationDaemon:
             merge_abort_result: dict[str, Any] = {}
             llm_merge_resolver: dict[str, Any] = {}
             llm_merge_commit_result: dict[str, Any] = {}
+            deterministic_conflict_repair: list[dict[str, object]] = []
             merge_returncode = merge.returncode
             if merge_returncode != 0:
-                submodule_conflict_repair = self._repair_submodule_gitlink_merge_conflicts(
-                    merge_workspace,
-                    task=task,
-                )
-                if submodule_conflict_repair.get("repaired", False):
+                deterministic_conflict_repair = self._resolve_generated_markdown_conflicts(merge_workspace)
+                if deterministic_conflict_repair and not self._unmerged_worktree_paths(merge_workspace):
+                    llm_merge_commit_result = self._commit_llm_resolved_merge(merge_workspace)
+                    if llm_merge_commit_result.get("completed", False):
+                        merge_returncode = 0
+                    else:
+                        merge_abort_result = self._abort_failed_merge(merge_workspace)
+                if merge_returncode != 0 and not merge_abort_result:
+                    submodule_conflict_repair = self._repair_submodule_gitlink_merge_conflicts(
+                        merge_workspace,
+                        task=task,
+                    )
+                if merge_returncode != 0 and submodule_conflict_repair.get("repaired", False):
                     merge_returncode = 0
-                else:
+                elif merge_returncode != 0 and not merge_abort_result:
                     llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
                         workspace=merge_workspace,
                         task=task,
@@ -2696,6 +2710,7 @@ class PortalImplementationDaemon:
                 "used_ephemeral_main_worktree": merge_workspace_ephemeral,
                 "identical_untracked_paths": identical_untracked_paths,
                 "resolved_generated_conflicts": resolved_add_add_conflicts,
+                "deterministic_conflict_repair": deterministic_conflict_repair,
                 "submodule_merge_results": submodule_merge_results,
             }
             if submodule_conflict_repair:
@@ -3473,6 +3488,27 @@ class PortalImplementationDaemon:
             self._record_event(
                 "generated_add_add_conflict_repair",
                 {"main_worktree_path": str(workspace), "results": results},
+            )
+        return results
+
+    def _resolve_generated_markdown_conflicts(self, cwd: Path) -> list[dict[str, object]]:
+        allowed_paths: list[Path] = []
+        allowed_dirs: list[Path] = []
+        if self.objective_path is not None:
+            allowed_paths.append(self.objective_path)
+        if self.objective_bundle_dir is not None:
+            allowed_dirs.append(self.objective_bundle_dir)
+        if not allowed_paths and not allowed_dirs:
+            return []
+        results = resolve_append_only_markdown_conflicts(
+            repo_root=cwd,
+            allowed_paths=allowed_paths,
+            allowed_dirs=allowed_dirs,
+        )
+        if results:
+            self._record_event(
+                "generated_markdown_conflict_repair",
+                {"main_worktree_path": str(cwd), "results": results},
             )
         return results
 
@@ -4964,6 +5000,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--objective-path",
+        type=Path,
+        default=None,
+        help="Configured objective/goal markdown path that may be deterministically repaired during merges.",
+    )
+    parser.add_argument(
+        "--objective-bundle-dir",
+        type=Path,
+        default=None,
+        help="Directory of generated objective bundle markdown files that may be deterministically repaired.",
+    )
+    parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["DEBUG", "INFO", "WARNING", "ERROR"],
@@ -5000,6 +5048,8 @@ def main(argv: list[str] | None = None) -> None:
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         worktree_submodule_paths=args.worktree_submodule_path or None,
+        objective_path=args.objective_path,
+        objective_bundle_dir=args.objective_bundle_dir,
         llm_merge_resolver_command=args.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
     )

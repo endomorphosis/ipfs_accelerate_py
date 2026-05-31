@@ -91,6 +91,7 @@ __all__ = [
     "record_objective_backlog_findings",
     "record_retry_budget_findings",
     "reconcile_objective_goal_completion",
+    "resolve_append_only_markdown_conflicts",
     "resolver_payload",
     "run_backlog_refinery",
     "run_goal_validation",
@@ -104,6 +105,7 @@ __all__ = [
     "write_bundle_lane_manifest",
     "write_todo_vector_index",
     "TodoIndexRecord",
+    "merge_append_only_markdown_sections",
 ]
 
 
@@ -133,6 +135,10 @@ def __getattr__(name: str):
         from . import merge_resolver
 
         return getattr(merge_resolver, name)
+    if name in {"merge_append_only_markdown_sections", "resolve_append_only_markdown_conflicts"}:
+        from . import merge_conflict_repair
+
+        return getattr(merge_conflict_repair, name)
     if name == "build_objective_daemon_arg_parser":
         from .objective_daemon import build_arg_parser
 

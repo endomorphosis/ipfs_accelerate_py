@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import shlex
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
@@ -373,11 +374,15 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
         llm_merge_resolver_command="true",
         llm_merge_resolver_timeout_seconds=5,
         worktree_submodule_paths=["packages/app,external/lib", "vendor/tools"],
+        objective_path=repo / "objective-heap.md",
+        objective_bundle_dir=repo / "objective_bundles",
     )
 
     assert daemon.worktree_submodule_paths == ("packages/app", "external/lib", "vendor/tools")
     assert daemon.llm_merge_resolver_command == "true"
     assert daemon.llm_merge_resolver_timeout_seconds == 5
+    assert daemon.objective_path == repo / "objective-heap.md"
+    assert daemon.objective_bundle_dir == repo / "objective_bundles"
 
     args = parse_implementation_daemon_args(
         [
@@ -391,11 +396,17 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
             "packages/app",
             "--worktree-submodule-path",
             "external/lib,vendor/tools",
+            "--objective-path",
+            str(repo / "objective-heap.md"),
+            "--objective-bundle-dir",
+            str(repo / "objective_bundles"),
         ]
     )
     assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
     assert args.llm_merge_resolver_command == "true"
     assert args.llm_merge_resolver_timeout_seconds == 5
+    assert args.objective_path == repo / "objective-heap.md"
+    assert args.objective_bundle_dir == repo / "objective_bundles"
 
 
 def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monkeypatch):
@@ -859,6 +870,8 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
         llm_merge_resolver_command="true",
         llm_merge_resolver_timeout_seconds=5,
         worktree_submodule_paths=("packages/app", "external/lib"),
+        objective_path=repo / "objective-heap.md",
+        objective_bundle_dir=repo / "objective_bundles",
         daemon_script_path=daemon_script,
     )
     supervisor = TodoImplementationSupervisor(config)
@@ -871,6 +884,8 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert "external/lib" in command
     assert command[command.index("--llm-merge-resolver-command") + 1] == "true"
     assert command[command.index("--llm-merge-resolver-timeout-seconds") + 1] == "5"
+    assert command[command.index("--objective-path") + 1] == str(repo / "objective-heap.md")
+    assert command[command.index("--objective-bundle-dir") + 1] == str(repo / "objective_bundles")
 
     args = parse_implementation_supervisor_args(
         [
@@ -900,6 +915,10 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
             "0",
             "--codebase-scan-depends-on",
             "AUTO-001,AUTO-002",
+            "--objective-path",
+            str(repo / "objective-heap.md"),
+            "--objective-bundle-dir",
+            str(repo / "objective_bundles"),
         ]
     )
     assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
@@ -912,6 +931,8 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert args.dependency_guardrail_discovery_dir == repo / "dependency-discovery"
     assert args.dependency_guardrail_discovery_output_path == "dependency-discovery"
     assert args.dependency_guardrail_max_findings == 2
+    assert args.objective_path == repo / "objective-heap.md"
+    assert args.objective_bundle_dir == repo / "objective_bundles"
 
 
 def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_path):
@@ -985,7 +1006,108 @@ def test_implementation_supervisor_repairs_stale_merge_resolver_without_worker(t
     repaired_state = TodoTaskState.load(state_path)
     assert repaired_state.active_task_id == ""
     events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
-    assert any(event["type"] == "merge_phase_without_worker" for event in events)
+    assert any(event["type"] == "worktree_phase_without_worker" for event in events)
+
+
+def test_implementation_supervisor_repairs_implementation_without_worker(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    now = datetime.now(timezone.utc)
+    started = now - timedelta(minutes=2)
+    TodoTaskState(
+        active_task_id="AUTO-002",
+        active_task_title="Stale implementation worker",
+        active_task_track="ops",
+        active_task_started_at=started.isoformat(),
+        active_attempt=1,
+        active_phase="implementing",
+        active_phase_started_at=started.isoformat(),
+        active_phase_detail="agent worker",
+        implementation_in_progress=True,
+        last_implementation_task_id="AUTO-002",
+        last_implementation_started_at=started.isoformat(),
+        heartbeat_at=now.isoformat(),
+        last_progress_at=now.isoformat(),
+        ready_count=1,
+    ).save(state_path)
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        check_interval=1,
+        stale_seconds=3600,
+        implementation_timeout=3600,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["stuck"] is True
+    assert "implementing stalled" in result["reason"]
+    assert result["state_repair"]["repaired"] is True
+    repaired_state = TodoTaskState.load(state_path)
+    assert repaired_state.active_task_id == ""
+    assert repaired_state.implementation_in_progress is False
+
+
+def test_implementation_supervisor_prefers_worker_stall_over_log_stall(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    log_dir = state_dir / "implementation_logs"
+    log_dir.mkdir()
+    log_path = log_dir / "auto-003-attempt-1.log"
+    log_path.write_text("stale output\n", encoding="utf-8")
+    now = datetime.now(timezone.utc)
+    started = now - timedelta(minutes=2)
+    os.utime(log_path, (started.timestamp(), started.timestamp()))
+    TodoTaskState(
+        active_task_id="AUTO-003",
+        active_task_title="Stale implementation worker with stale log",
+        active_task_track="ops",
+        active_task_started_at=started.isoformat(),
+        active_attempt=1,
+        active_phase="implementing",
+        active_phase_started_at=started.isoformat(),
+        active_phase_detail="agent worker",
+        active_log_path=str(log_path),
+        implementation_in_progress=True,
+        last_implementation_task_id="AUTO-003",
+        last_implementation_started_at=started.isoformat(),
+        last_implementation_log_path=str(log_path),
+        heartbeat_at=now.isoformat(),
+        last_progress_at=now.isoformat(),
+        ready_count=1,
+    ).save(state_path)
+    config = TodoSupervisorConfig(
+        todo_path=repo / "todo.md",
+        state_path=state_path,
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        check_interval=1,
+        stale_seconds=3600,
+        implementation_timeout=3600,
+        implementation_log_stall_seconds=1,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["stuck"] is True
+    assert "implementing stalled" in result["reason"]
+    assert "implementation log stalled" not in result["reason"]
+    assert result["state_repair"]["repaired"] is True
+    repaired_state = TodoTaskState.load(state_path)
+    assert repaired_state.active_task_id == ""
+    assert repaired_state.implementation_in_progress is False
 
 
 def test_supervisor_worker_watchdog_detects_active_merge_resolver_without_worker(tmp_path):
@@ -3763,6 +3885,186 @@ def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_mer
     assert "supervisor_main_checkout_merge_in_progress" in prompt
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "main_checkout_merge_state_repair"
+
+
+def test_implementation_supervisor_deterministically_repairs_objective_heap_merge(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "implementation_plan" / "docs" / "objective-goal-heap.md"
+    objective_path.parent.mkdir(parents=True)
+    objective_path.write_text(
+        "# Objective Heap\n\n"
+        "## VAIOS-G001 Root\n\n"
+        "- Status: active\n"
+        "- Goal: Keep the root goal.\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "implementation_plan/docs/objective-goal-heap.md")
+    _git(repo, "commit", "-m", "seed objective heap")
+
+    _git(repo, "checkout", "-b", "implementation/objective-feature")
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8")
+        + "\n## VAIOS-G002 Feature goal\n\n- Status: active\n- Goal: Keep the feature goal.\n",
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-am", "feature objective")
+
+    _git(repo, "checkout", "main")
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8")
+        + "\n## VAIOS-G003 Main goal\n\n- Status: active\n- Goal: Keep the main goal.\n",
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-am", "main objective")
+    merge = subprocess.run(
+        ["git", "merge", "--no-ff", "--no-edit", "implementation/objective-feature"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert merge.returncode != 0
+    assert "implementation_plan/docs/objective-goal-heap.md" in _git(repo, "diff", "--name-only", "--diff-filter=U")
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            objective_path=objective_path,
+        )
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result["repaired"] is True
+    assert result["reason"] == "deterministic_generated_markdown_conflict_repair"
+    assert supervisor._git_merge_head(repo) == ""
+    assert supervisor._git_unmerged_paths(repo) == []
+    text = objective_path.read_text(encoding="utf-8")
+    assert "## VAIOS-G001 Root" in text
+    assert "## VAIOS-G002 Feature goal" in text
+    assert "## VAIOS-G003 Main goal" in text
+    assert _git(repo, "merge-base", "--is-ancestor", "implementation/objective-feature", "HEAD") == ""
+
+
+def test_implementation_supervisor_cleans_merged_backlogged_worktrees(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/auto-clean")
+    marker.write_text("merged\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "merged branch")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "implementation/auto-clean")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "auto-clean"
+    _git(repo, "worktree", "add", str(worktree_path), "implementation/auto-clean")
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 1
+    assert not worktree_path.exists()
+    branch_exists = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", "implementation/auto-clean"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert branch_exists.returncode != 0
+
+
+def test_implementation_daemon_deterministically_repairs_objective_heap_merge(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective-heap.md"
+    objective_path.write_text(
+        "# Objective Heap\n\n"
+        "## VAIOS-G001 Root\n\n"
+        "- Status: active\n"
+        "- Goal: Keep the root goal.\n",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective-heap.md")
+    _git(repo, "commit", "-m", "seed objective heap")
+
+    _git(repo, "checkout", "-b", "implementation/auto-objective")
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8")
+        + "\n## VAIOS-G002 Feature goal\n\n- Status: active\n- Goal: Keep the feature goal.\n",
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-am", "feature objective")
+    _git(repo, "checkout", "main")
+    objective_path.write_text(
+        objective_path.read_text(encoding="utf-8")
+        + "\n## VAIOS-G003 Main goal\n\n- Status: active\n- Goal: Keep the main goal.\n",
+        encoding="utf-8",
+    )
+    _git(repo, "commit", "-am", "main objective")
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        objective_path=objective_path,
+    )
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-objective",
+        PortalTask(
+            task_id="AUTO-OBJECTIVE",
+            title="Merge objective heap",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["merged"] is True
+    assert result["deterministic_conflict_repair"][0]["resolved"] is True
+    assert daemon._unmerged_worktree_paths(repo) == set()
+    text = objective_path.read_text(encoding="utf-8")
+    assert "## VAIOS-G002 Feature goal" in text
+    assert "## VAIOS-G003 Main goal" in text
+    assert _git(repo, "merge-base", "--is-ancestor", "implementation/auto-objective", "HEAD") == ""
 
 
 def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(tmp_path):
