@@ -51,6 +51,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     launch_supervised_child,
     terminate_supervised_child,
 )
+from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
+    default_llm_merge_resolver_command,
+    ensure_runtime_pythonpath,
+    with_default,
+    with_flag_default,
+    with_repeated_default,
+)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -107,6 +114,45 @@ def _seed_repo(tmp_path: Path) -> tuple[Path, Path, Path]:
     _git(repo, "add", "objective-heap.md", "todo.md", "src/control_surface.py")
     _git(repo, "commit", "-m", "seed objective heap")
     return repo, objective_path, todo_path
+
+
+def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
+    assert with_default(["--flag", "caller"], "--flag", "default") == ["--flag", "caller"]
+    assert with_default(["tail"], "--flag", "default") == ["--flag", "default", "tail"]
+    assert with_flag_default(["tail"], "--enabled") == ["--enabled", "tail"]
+    assert with_flag_default(["--enabled"], "--enabled") == ["--enabled"]
+    assert with_repeated_default(["tail"], "--path", ("a", "b")) == [
+        "--path",
+        "a",
+        "--path",
+        "b",
+        "tail",
+    ]
+    assert with_repeated_default(["--path", "caller"], "--path", ("a", "b")) == ["--path", "caller"]
+
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(second), "existing"]))
+    original_sys_path = list(sys.path)
+    monkeypatch.setattr(sys, "path", list(original_sys_path))
+
+    ensure_runtime_pythonpath((first, second))
+
+    assert sys.path[:2] == [str(first), str(second)]
+    assert os.environ["PYTHONPATH"].split(os.pathsep) == [str(first), str(second), "existing"]
+
+
+def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
+    monkeypatch.setenv("PRIMARY_RESOLVER_COMMAND", "primary-command")
+    monkeypatch.setenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND", "fallback-command")
+    assert default_llm_merge_resolver_command(primary_env_var="PRIMARY_RESOLVER_COMMAND") == "primary-command"
+
+    monkeypatch.delenv("PRIMARY_RESOLVER_COMMAND")
+    assert default_llm_merge_resolver_command(primary_env_var="PRIMARY_RESOLVER_COMMAND") == "fallback-command"
+
+    monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND")
+    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
+    assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == "/usr/bin/codex exec -"
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:

@@ -76,6 +76,8 @@ __all__ = [
     "discover_gitmodule_paths",
     "discover_repository_components",
     "discover_submodule_paths",
+    "default_llm_merge_resolver_command",
+    "ensure_runtime_pythonpath",
     "fibonacci_priority",
     "goal_graph",
     "objective_heap_schedule",
@@ -104,6 +106,9 @@ __all__ = [
     "write_bundle_shards",
     "write_bundle_lane_manifest",
     "write_todo_vector_index",
+    "with_default",
+    "with_flag_default",
+    "with_repeated_default",
     "TodoIndexRecord",
     "merge_append_only_markdown_sections",
 ]
@@ -147,4 +152,14 @@ def __getattr__(name: str):
         from .objective_daemon import run_objective_daemon
 
         return run_objective_daemon
+    if name in {
+        "default_llm_merge_resolver_command",
+        "ensure_runtime_pythonpath",
+        "with_default",
+        "with_flag_default",
+        "with_repeated_default",
+    }:
+        from . import wrapper_utils
+
+        return getattr(wrapper_utils, name)
     raise AttributeError(name)
