@@ -48,7 +48,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     RestartPolicy,
     SupervisedChildSpec,
+    background_supervisor_args,
     launch_supervised_child,
+    repair_supervisor_runtime,
+    supervisor_is_running,
+    supervisor_runtime_paths,
     terminate_supervised_child,
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
@@ -153,6 +157,43 @@ def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND")
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
     assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == "/usr/bin/codex exec -"
+
+
+def test_supervisor_runtime_repairs_stale_markers(tmp_path):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    prefix = "agent"
+    paths = supervisor_runtime_paths(state_dir, prefix)
+    stale_pid = 99999999
+    paths["managed_daemon_pid"].write_text(f"{stale_pid}\n", encoding="utf-8")
+    paths["wrapper_pid"].write_text(f"{stale_pid}\n", encoding="utf-8")
+    paths["implementation_lock"].write_text(json.dumps({"pid": stale_pid}), encoding="utf-8")
+    paths["supervisor_status"].write_text(
+        json.dumps({"status": "running", "supervisor_pid": stale_pid, "daemon_pid": stale_pid}),
+        encoding="utf-8",
+    )
+
+    repairs = repair_supervisor_runtime(state_dir, prefix)
+
+    assert str(paths["managed_daemon_pid"]) in repairs["removed"]
+    assert str(paths["wrapper_pid"]) in repairs["removed"]
+    assert str(paths["implementation_lock"]) in repairs["removed"]
+    assert repairs["updated_status"] is True
+    assert not paths["managed_daemon_pid"].exists()
+    assert not paths["wrapper_pid"].exists()
+    assert not paths["implementation_lock"].exists()
+    status = json.loads(paths["supervisor_status"].read_text(encoding="utf-8"))
+    assert status["status"] == "stale"
+    assert status["repair_reason"] == "supervisor_pid_not_running"
+    assert not supervisor_is_running(state_dir, prefix, process_match_any=("definitely-not-this-process",))
+
+    paths["wrapper_pid"].write_text(f"{os.getpid()}\n", encoding="utf-8")
+    assert supervisor_is_running(state_dir, prefix, process_predicate=lambda pid: pid == os.getpid())
+
+
+def test_background_supervisor_args_removes_once_and_defaults_implement():
+    assert background_supervisor_args(["--once", "--flag"]) == ["--implement", "--flag"]
+    assert background_supervisor_args(["--no-implement", "--once"]) == ["--no-implement"]
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:

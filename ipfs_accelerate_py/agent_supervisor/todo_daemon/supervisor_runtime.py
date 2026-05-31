@@ -9,10 +9,10 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Mapping, Optional, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 from ..event_log import unique_backup_path
-from .core import terminate_pid_tree
+from .core import now_iso, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
 
 
 @dataclass(frozen=True)
@@ -62,6 +62,241 @@ class SupervisedChild:
     child_pid_path: Path
     latest_log_path: Optional[Path] = None
     started_at: str = ""
+
+
+DEFAULT_SUPERVISOR_RUNNING_STATES = frozenset({"running", "starting", "recycling", "restarting"})
+
+
+def pop_bool_flag(argv: list[str], flag: str) -> bool:
+    """Remove a boolean flag from argv in place and return whether it was present."""
+
+    found = False
+    kept: list[str] = []
+    for item in argv:
+        if item == flag:
+            found = True
+            continue
+        kept.append(item)
+    argv[:] = kept
+    return found
+
+
+def supervisor_runtime_paths(
+    state_dir: Path,
+    state_prefix: str,
+    *,
+    implementation_lock_name: str = "implementation.lock",
+) -> dict[str, Path]:
+    """Return the conventional runtime marker paths for an implementation supervisor."""
+
+    return {
+        "supervisor_status": state_dir / f"{state_prefix}_supervisor_status.json",
+        "managed_daemon_pid": state_dir / f"{state_prefix}_managed_daemon.pid",
+        "wrapper_pid": state_dir / f"{state_prefix}_supervisor_wrapper.pid",
+        "wrapper_out": state_dir / f"{state_prefix}_supervisor_wrapper.out",
+        "implementation_lock": state_dir / implementation_lock_name,
+    }
+
+
+def runtime_lock_owner_is_alive(path: Path) -> bool:
+    """Return whether an implementation lock still belongs to a live owner process."""
+
+    metadata = read_json(path)
+    try:
+        pid = int(metadata.get("pid") or 0)
+    except (TypeError, ValueError):
+        return False
+    if not pid_alive(pid):
+        return False
+    owner_script = str(metadata.get("owner_script") or "")
+    if owner_script and owner_script not in process_args(pid):
+        return False
+    return True
+
+
+def repair_supervisor_runtime(
+    state_dir: Path,
+    state_prefix: str,
+    *,
+    running_states: frozenset[str] = DEFAULT_SUPERVISOR_RUNNING_STATES,
+    implementation_lock_name: str = "implementation.lock",
+) -> dict[str, Any]:
+    """Clear stale supervisor pid files, daemon pid files, locks, and running status."""
+
+    paths = supervisor_runtime_paths(
+        state_dir,
+        state_prefix,
+        implementation_lock_name=implementation_lock_name,
+    )
+    repairs: dict[str, Any] = {"removed": [], "updated_status": False}
+    for key in ("managed_daemon_pid", "wrapper_pid"):
+        path = paths[key]
+        pid = read_pid_file(path)
+        if not path.exists():
+            continue
+        if pid and pid_alive(pid):
+            continue
+        if remove_runtime_marker(path):
+            repairs["removed"].append(str(path))
+
+    lock_path = paths["implementation_lock"]
+    if lock_path.exists() and not runtime_lock_owner_is_alive(lock_path):
+        if remove_runtime_marker(lock_path):
+            repairs["removed"].append(str(lock_path))
+
+    status_path = paths["supervisor_status"]
+    status = read_json(status_path)
+    try:
+        supervisor_pid = int(status.get("supervisor_pid") or 0)
+    except (TypeError, ValueError):
+        supervisor_pid = 0
+    try:
+        daemon_pid = int(status.get("daemon_pid") or 0)
+    except (TypeError, ValueError):
+        daemon_pid = 0
+    status_value = str(status.get("status") or "")
+    supervisor_alive = pid_alive(supervisor_pid)
+    daemon_alive = pid_alive(daemon_pid)
+    if status and status_value in running_states and not supervisor_alive:
+        status.update(
+            {
+                "status": "stale",
+                "repaired_at": now_iso(),
+                "repair_reason": "supervisor_pid_not_running",
+                "supervisor_pid_alive": False,
+                "daemon_pid_alive": daemon_alive,
+            }
+        )
+        write_json(status_path, status)
+        repairs["updated_status"] = True
+    return repairs
+
+
+def supervisor_pid_matches(
+    pid: int,
+    *,
+    process_match_any: Sequence[str] = (),
+    process_predicate: Callable[[int], bool] | None = None,
+) -> bool:
+    """Return whether a live pid looks like the expected supervisor process."""
+
+    if not pid_alive(pid):
+        return False
+    if process_predicate is not None and process_predicate(pid):
+        return True
+    if not process_match_any:
+        return True
+    command_line = process_args(pid)
+    return any(marker and marker in command_line for marker in process_match_any)
+
+
+def supervisor_is_running(
+    state_dir: Path,
+    state_prefix: str,
+    *,
+    process_match_any: Sequence[str] = (),
+    process_predicate: Callable[[int], bool] | None = None,
+    implementation_lock_name: str = "implementation.lock",
+) -> bool:
+    """Return whether the conventional wrapper/status markers point to a live supervisor."""
+
+    paths = supervisor_runtime_paths(
+        state_dir,
+        state_prefix,
+        implementation_lock_name=implementation_lock_name,
+    )
+    supervisor_status = read_json(paths["supervisor_status"])
+    candidates = [
+        read_pid_file(paths["wrapper_pid"]),
+        supervisor_status.get("supervisor_pid"),
+    ]
+    for candidate in candidates:
+        try:
+            pid = int(candidate or 0)
+        except (TypeError, ValueError):
+            continue
+        if supervisor_pid_matches(pid, process_match_any=process_match_any, process_predicate=process_predicate):
+            return True
+    return False
+
+
+def background_supervisor_args(
+    argv: Sequence[str],
+    *,
+    once_flag: str = "--once",
+    implement_flag: str = "--implement",
+    no_implement_flag: str = "--no-implement",
+) -> list[str]:
+    """Return argv suitable for background execution of a supervisor."""
+
+    args = [item for item in argv if item != once_flag]
+    if implement_flag not in args and no_implement_flag not in args:
+        args = [implement_flag, *args]
+    return args
+
+
+def ensure_supervisor_running(
+    argv: Sequence[str],
+    *,
+    state_dir: Path,
+    state_prefix: str,
+    repo_root: Path,
+    script_path: Path,
+    process_match_any: Sequence[str] = (),
+    process_predicate: Callable[[int], bool] | None = None,
+    prepare_environment: Callable[[], None] | None = None,
+    implementation_lock_name: str = "implementation.lock",
+    startup_delay_seconds: float = 1.0,
+) -> dict[str, Any]:
+    """Repair stale markers and launch a background supervisor when none is live."""
+
+    repairs = repair_supervisor_runtime(
+        state_dir,
+        state_prefix,
+        implementation_lock_name=implementation_lock_name,
+    )
+    if supervisor_is_running(
+        state_dir,
+        state_prefix,
+        process_match_any=process_match_any,
+        process_predicate=process_predicate,
+        implementation_lock_name=implementation_lock_name,
+    ):
+        return {"started": False, "reason": "already_running", "repairs": repairs}
+
+    paths = supervisor_runtime_paths(
+        state_dir,
+        state_prefix,
+        implementation_lock_name=implementation_lock_name,
+    )
+    launch_args = background_supervisor_args(argv)
+    command = [sys.executable, str(script_path), *launch_args]
+    if prepare_environment is not None:
+        prepare_environment()
+    env = dict(os.environ)
+    paths["wrapper_out"].parent.mkdir(parents=True, exist_ok=True)
+    out_handle = paths["wrapper_out"].open("ab")
+    try:
+        process = subprocess.Popen(
+            command,
+            cwd=repo_root,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=out_handle,
+            stderr=subprocess.STDOUT,
+            start_new_session=True,
+        )
+    finally:
+        out_handle.close()
+    paths["wrapper_pid"].write_text(f"{process.pid}\n", encoding="utf-8")
+    time.sleep(max(0.0, float(startup_delay_seconds)))
+    return {
+        "started": pid_alive(process.pid),
+        "pid": process.pid,
+        "command": command,
+        "wrapper_out": str(paths["wrapper_out"]),
+        "repairs": repairs,
+    }
 
 
 def supervisor_run_id(now: Optional[datetime] = None) -> str:
