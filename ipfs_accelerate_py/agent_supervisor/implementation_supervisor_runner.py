@@ -40,6 +40,14 @@ RefillHookEntry = tuple[str, SupervisorRunHookCallback]
 
 
 @dataclass(frozen=True)
+class SupervisorRuntimeCallbacks:
+    """Runtime repair and ensure callbacks bound to a supervisor wrapper."""
+
+    ensure_running: SupervisorRunHookCallback
+    repair_runtime: SupervisorRunHookCallback
+
+
+@dataclass(frozen=True)
 class ImplementationSupervisorDefaults:
     """Default CLI values for a project-specific implementation supervisor wrapper."""
 
@@ -279,6 +287,50 @@ def build_supervisor_refill_hooks(
             for finding_label, callback in _ordered_refill_entries(entries, after_once_order)
         )
     return tuple(hooks)
+
+
+def build_supervisor_runtime_callbacks(
+    argv: Sequence[str],
+    *,
+    repo_root: Path,
+    script_path: Path,
+    process_match_any: Sequence[str] = (),
+    process_predicate: Callable[[int], bool] | None = None,
+    prepare_environment: Callable[[], None] | None = None,
+    implementation_lock_name: str = "implementation.lock",
+    startup_delay_seconds: float = 1.0,
+) -> SupervisorRuntimeCallbacks:
+    """Build standard runtime repair/ensure callbacks for a supervisor wrapper."""
+
+    from .todo_daemon.supervisor_runtime import ensure_supervisor_running, repair_supervisor_runtime
+
+    args = tuple(argv)
+
+    def ensure_running(ctx: ImplementationSupervisorRunContext) -> dict[str, Any]:
+        return ensure_supervisor_running(
+            args,
+            state_dir=ctx.parsed.state_dir,
+            state_prefix=ctx.parsed.state_prefix,
+            repo_root=repo_root,
+            script_path=script_path,
+            process_match_any=process_match_any,
+            process_predicate=process_predicate,
+            prepare_environment=prepare_environment,
+            implementation_lock_name=implementation_lock_name,
+            startup_delay_seconds=startup_delay_seconds,
+        )
+
+    def repair_runtime(ctx: ImplementationSupervisorRunContext) -> dict[str, Any]:
+        return repair_supervisor_runtime(
+            ctx.parsed.state_dir,
+            ctx.parsed.state_prefix,
+            implementation_lock_name=implementation_lock_name,
+        )
+
+    return SupervisorRuntimeCallbacks(
+        ensure_running=ensure_running,
+        repair_runtime=repair_runtime,
+    )
 
 
 def configure_supervisor_logging(

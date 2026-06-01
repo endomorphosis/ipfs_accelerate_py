@@ -132,6 +132,7 @@ __all__ = [
     "build_portal_implementation_supervisor_from_args",
     "build_daemon_refill_hooks",
     "build_supervisor_refill_hooks",
+    "build_supervisor_runtime_callbacks",
     "configure_daemon_logging",
     "configure_supervisor_logging",
     "apply_merge_resolver_environment",
@@ -152,6 +153,7 @@ __all__ = [
     "ObjectiveRefillDefaults",
     "CodebaseRefillDefaults",
     "SupervisorRunHook",
+    "SupervisorRuntimeCallbacks",
     "TaskProposalRouterConfig",
     "TaskProposalRouterCliConfig",
     "TaskProposalRouterError",
@@ -230,6 +232,7 @@ def __getattr__(name: str):
     if name in {
         "build_portal_implementation_supervisor_from_args",
         "build_supervisor_refill_hooks",
+        "build_supervisor_runtime_callbacks",
         "configure_supervisor_logging",
         "apply_portal_implementation_supervisor_defaults",
         "run_portal_implementation_supervisor",
@@ -238,6 +241,7 @@ def __getattr__(name: str):
         "ObjectiveRefillDefaults",
         "CodebaseRefillDefaults",
         "SupervisorRunHook",
+        "SupervisorRuntimeCallbacks",
     }:
         from . import implementation_supervisor_runner
 

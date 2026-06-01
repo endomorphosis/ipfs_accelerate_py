@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     apply_portal_implementation_supervisor_defaults,
     build_portal_implementation_supervisor_from_args,
     build_supervisor_refill_hooks,
+    build_supervisor_runtime_callbacks,
     run_portal_implementation_supervisor,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import parse_args
@@ -203,3 +204,40 @@ def test_build_supervisor_refill_hooks_formats_standard_messages():
         ("after_once", "Recorded Hallucinate codebase-scan findings after supervisor pass: %s"),
         ("after_once", "Recorded Hallucinate retry-budget findings after supervisor pass: %s"),
     ]
+
+
+def test_build_supervisor_runtime_callbacks_repairs_stale_markers(tmp_path: Path):
+    state_dir = tmp_path / "state"
+    state_dir.mkdir()
+    prefix = "example"
+    stale_pid = 99999999
+    managed_pid = state_dir / f"{prefix}_managed_daemon.pid"
+    wrapper_pid = state_dir / f"{prefix}_supervisor_wrapper.pid"
+    status_path = state_dir / f"{prefix}_supervisor_status.json"
+    lock_path = state_dir / "implementation.lock"
+    managed_pid.write_text(f"{stale_pid}\n", encoding="utf-8")
+    wrapper_pid.write_text(f"{stale_pid}\n", encoding="utf-8")
+    lock_path.write_text('{"pid": 99999999}\n', encoding="utf-8")
+    status_path.write_text('{"status": "running", "supervisor_pid": 99999999}\n', encoding="utf-8")
+    parsed = argparse.Namespace(state_dir=state_dir, state_prefix=prefix)
+    context = ImplementationSupervisorRunContext(
+        parsed=parsed,
+        config=object(),
+        state_path=state_dir / f"{prefix}_task_state.json",
+        strategy_path=state_dir / f"{prefix}_strategy.json",
+        events_path=state_dir / f"{prefix}_supervisor_events.jsonl",
+        daemon_events_path=state_dir / f"{prefix}_events.jsonl",
+    )
+
+    callbacks = build_supervisor_runtime_callbacks(
+        ["--once"],
+        repo_root=tmp_path,
+        script_path=tmp_path / "supervisor.py",
+        process_match_any=("supervisor.py",),
+    )
+    repairs = callbacks.repair_runtime(context)
+
+    assert str(managed_pid) in repairs["removed"]
+    assert str(wrapper_pid) in repairs["removed"]
+    assert str(lock_path) in repairs["removed"]
+    assert repairs["updated_status"] is True
