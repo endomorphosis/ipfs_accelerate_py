@@ -49,6 +49,7 @@ from .todo_vector_index import (
 __all__ = [
     "BundleWriteResult",
     "BundleLaneSpec",
+    "AndroidValidationCallbacks",
     "BootstrapPathSpec",
     "CodebaseFinding",
     "ConfiguredCodebaseScanRecorder",
@@ -81,6 +82,7 @@ __all__ = [
     "build_resolver_payload_callback",
     "build_bootstrap_path_ensurer",
     "build_bootstrap_path_resolver",
+    "build_android_validation_callbacks",
     "build_default_llm_merge_resolver_command_callback",
     "build_runtime_environment_callback",
     "collect_ast_dataset_records",
@@ -249,9 +251,11 @@ def __getattr__(name: str):
     if name in {
         "default_llm_merge_resolver_command",
         "android_validation_command_needs_environment",
+        "AndroidValidationCallbacks",
         "android_validation_environment_contract",
         "apply_environment_contract",
         "BootstrapPathSpec",
+        "build_android_validation_callbacks",
         "build_bootstrap_path_ensurer",
         "build_bootstrap_path_resolver",
         "build_default_llm_merge_resolver_command_callback",

@@ -67,6 +67,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     android_validation_environment_contract,
     apply_environment_contract,
     bootstrap_runtime_environment,
+    build_android_validation_callbacks,
     build_bootstrap_path_ensurer,
     build_bootstrap_path_resolver,
     build_default_llm_merge_resolver_command_callback,
@@ -320,6 +321,19 @@ def test_wrapper_utils_android_validation_environment_contract(tmp_path):
     updated = todo_path.read_text(encoding="utf-8")
     assert "env JAVA_HOME=" in updated
     assert not enforce_android_validation_environment(todo_path, tmp_path)
+
+    callback_todo_path = tmp_path / "callback-tasks.md"
+    callback_todo_path.write_text(
+        "# Tasks\n\n## TST-002 Android\n\n- Validation: cd mobile/android && ./gradlew test\n",
+        encoding="utf-8",
+    )
+    callbacks = build_android_validation_callbacks(tmp_path, todo_path=callback_todo_path)
+    assert callbacks.environment_contract()["env"]["JAVA_HOME"] == str(java.parents[1])
+    assert callbacks.wrap_command(command).startswith("cd mobile/android && env JAVA_HOME=")
+    assert callbacks.enforce_todo()
+    assert "ANDROID_SDK_ROOT=" in callback_todo_path.read_text(encoding="utf-8")
+    applied = callbacks.apply_environment()
+    assert applied["env"]["JAVA_HOME"] == str(java.parents[1])
 
 
 def test_supervisor_runtime_repairs_stale_markers(tmp_path):

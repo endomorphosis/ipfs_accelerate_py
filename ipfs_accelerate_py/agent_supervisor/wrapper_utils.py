@@ -405,6 +405,57 @@ def enforce_android_validation_environment(
     )
 
 
+@dataclass(frozen=True)
+class AndroidValidationCallbacks:
+    """Callbacks bound to a repo-local Android validation environment."""
+
+    environment_contract: Callable[[Path | str | None], dict[str, Any]]
+    apply_environment: Callable[[Path | str | None], dict[str, Any]]
+    wrap_command: Callable[[str, Path | str | None], str]
+    enforce_todo: Callable[[Path | str | None, Path | str | None], bool]
+
+
+def build_android_validation_callbacks(
+    repo_root: Path | str,
+    *,
+    todo_path: Path | None = None,
+    command_options: Mapping[str, Any] | None = None,
+) -> AndroidValidationCallbacks:
+    """Build repo-bound callbacks for Android validation command wrapping."""
+
+    default_repo_root = Path(repo_root)
+    default_todo_path = todo_path
+    options = dict(command_options or {})
+
+    def resolved_repo_root(repo_root_override: Path | str | None = None) -> Path:
+        return Path(repo_root_override) if repo_root_override is not None else default_repo_root
+
+    def environment_contract(repo_root_override: Path | str | None = None) -> dict[str, Any]:
+        return android_validation_environment_contract(resolved_repo_root(repo_root_override))
+
+    def apply_environment(repo_root_override: Path | str | None = None) -> dict[str, Any]:
+        return apply_environment_contract(environment_contract(repo_root_override))
+
+    def wrap_command(command: str, repo_root_override: Path | str | None = None) -> str:
+        return with_android_validation_environment(command, resolved_repo_root(repo_root_override), **options)
+
+    def enforce_todo(
+        todo_path_override: Path | str | None = None,
+        repo_root_override: Path | str | None = None,
+    ) -> bool:
+        path = todo_path_override or default_todo_path
+        if path is None:
+            raise ValueError("todo_path is required when no default todo path is configured")
+        return enforce_android_validation_environment(Path(path), resolved_repo_root(repo_root_override), **options)
+
+    return AndroidValidationCallbacks(
+        environment_contract=environment_contract,
+        apply_environment=apply_environment,
+        wrap_command=wrap_command,
+        enforce_todo=enforce_todo,
+    )
+
+
 def ensure_runtime_pythonpath(paths: Sequence[Path | str], *, env_var: str = "PYTHONPATH") -> None:
     """Make local package roots importable for the current process and child processes."""
 
