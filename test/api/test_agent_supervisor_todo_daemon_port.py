@@ -22,6 +22,11 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
 from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
+from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
+    parse_track_spec,
+    run_supervisor_tracks,
+    supervisor_track_payload,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoTaskState,
@@ -35,7 +40,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor i
     parse_args as parse_implementation_supervisor_args,
     supervisor_config_from_args,
 )
-from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec, stop_daemon
+from ipfs_accelerate_py.agent_supervisor.todo_daemon.core import ManagedDaemonSpec, pid_alive, stop_daemon
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.runner import TodoDaemonRunner
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (
     SupervisorStatusContext,
@@ -251,6 +256,53 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
         "hallucinate_app",
         "external/ipfs_accelerate",
     )
+
+
+def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
+    worker = tmp_path / "worker.py"
+    worker.write_text(
+        "\n".join(
+            [
+                "import signal",
+                "import sys",
+                "import time",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "print('worker started', flush=True)",
+                "while True:",
+                "    time.sleep(0.05)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    track = parse_track_spec(
+        "T|worker.py|logs/{stamp}.log|state/supervisor.pid|state/daemon.pid",
+        stamp="RUN",
+    )
+
+    assert supervisor_track_payload(track)["log_path"] == "logs/RUN.log"
+
+    output: list[str] = []
+    result = run_supervisor_tracks(
+        [track],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=0.15,
+        heartbeat_interval_seconds=0.05,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        master_pid_path=tmp_path / "state" / "master.pid",
+        label="test runner",
+        output=output.append,
+    )
+
+    pid = int((tmp_path / "state" / "supervisor.pid").read_text(encoding="utf-8").strip())
+    assert result["completed"] is True
+    assert result["track_count"] == 1
+    assert (tmp_path / "state" / "master.pid").read_text(encoding="utf-8").strip() == str(os.getpid())
+    assert "worker started" in (tmp_path / "logs" / "RUN.log").read_text(encoding="utf-8")
+    assert any("started T supervisor" in line for line in output)
+    assert not pid_alive(pid)
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:

@@ -116,6 +116,9 @@ __all__ = [
     "with_repeated_default",
     "TodoIndexRecord",
     "merge_append_only_markdown_sections",
+    "parse_supervisor_track_spec",
+    "run_supervisor_tracks",
+    "SupervisorTrack",
 ]
 
 
@@ -172,4 +175,10 @@ def __getattr__(name: str):
         from . import wrapper_utils
 
         return getattr(wrapper_utils, name)
+    if name in {"parse_supervisor_track_spec", "run_supervisor_tracks", "SupervisorTrack"}:
+        from . import multi_supervisor_runner
+
+        if name == "parse_supervisor_track_spec":
+            return multi_supervisor_runner.parse_track_spec
+        return getattr(multi_supervisor_runner, name)
     raise AttributeError(name)
