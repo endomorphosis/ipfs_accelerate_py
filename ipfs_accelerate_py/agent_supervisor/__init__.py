@@ -119,6 +119,12 @@ __all__ = [
     "parse_supervisor_track_spec",
     "run_supervisor_tracks",
     "SupervisorTrack",
+    "build_task_proposal_prompt",
+    "run_task_proposal_router",
+    "select_proposal_task",
+    "TaskProposalRouterConfig",
+    "TaskProposalRouterError",
+    "task_metadata_lines",
 ]
 
 
@@ -181,4 +187,15 @@ def __getattr__(name: str):
         if name == "parse_supervisor_track_spec":
             return multi_supervisor_runner.parse_track_spec
         return getattr(multi_supervisor_runner, name)
+    if name in {
+        "build_task_proposal_prompt",
+        "run_task_proposal_router",
+        "select_proposal_task",
+        "TaskProposalRouterConfig",
+        "TaskProposalRouterError",
+        "task_metadata_lines",
+    }:
+        from . import task_proposal_router
+
+        return getattr(task_proposal_router, name)
     raise AttributeError(name)
