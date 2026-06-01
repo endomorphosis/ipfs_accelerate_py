@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     iter_jsonl,
+    ensure_task_blocks_present,
     load_strategy,
     release_completed_guardrail_blocks,
     record_codebase_scan_findings,
@@ -56,6 +57,41 @@ def _write_todo(path: Path) -> None:
 """,
         encoding="utf-8",
     )
+
+
+def test_backlog_refinery_appends_missing_task_blocks_in_order(tmp_path):
+    todo_path = tmp_path / "tasks.todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Existing task
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: Existing task.
+""",
+        encoding="utf-8",
+    )
+
+    changed = ensure_task_blocks_present(
+        todo_path,
+        (
+            ("AUTO-001", "## AUTO-001 Duplicate task\n\n- Status: todo"),
+            ("AUTO-002", "## AUTO-002 First appended task\n\n- Status: todo"),
+            ("AUTO-003", "## AUTO-003 Second appended task\n\n- Status: todo"),
+        ),
+    )
+
+    updated = todo_path.read_text(encoding="utf-8")
+    assert changed
+    assert "Duplicate task" not in updated
+    assert updated.index("## AUTO-002 First appended task") < updated.index("## AUTO-003 Second appended task")
+    assert not ensure_task_blocks_present(todo_path, (("AUTO-002", "## AUTO-002 First appended task"),))
 
 
 def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):

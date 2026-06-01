@@ -159,6 +159,36 @@ def task_ids_from_todo_text(todo_text: str, *, task_prefix: str = DEFAULT_TASK_I
     return ids
 
 
+def task_block_is_present(todo_text: str, task_id: str) -> bool:
+    """Return whether a markdown task block for ``task_id`` is already present."""
+
+    escaped_task_id = re.escape(str(task_id).strip())
+    if not escaped_task_id:
+        return False
+    return re.search(rf"^##\s+{escaped_task_id}(?:\s|$)", todo_text, flags=re.MULTILINE) is not None
+
+
+def ensure_task_blocks_present(
+    todo_path: Path,
+    task_blocks: Mapping[str, str] | Sequence[tuple[str, str]],
+) -> bool:
+    """Append missing markdown task blocks to a todo board in caller-provided order."""
+
+    if not todo_path.exists():
+        return False
+    todo_text = todo_path.read_text(encoding="utf-8")
+    entries = task_blocks.items() if isinstance(task_blocks, Mapping) else task_blocks
+    additions = [
+        block.strip()
+        for task_id, block in entries
+        if block.strip() and not task_block_is_present(todo_text, task_id)
+    ]
+    if not additions:
+        return False
+    todo_path.write_text(todo_text.rstrip() + "\n\n" + "\n\n".join(additions) + "\n", encoding="utf-8")
+    return True
+
+
 def next_task_id(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> str:
     prefix = task_id_prefix(task_prefix)
     highest = 0

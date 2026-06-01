@@ -8,7 +8,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, MutableMapping, Sequence
 
 
 def with_default(argv: Sequence[str], flag: str, value: str) -> list[str]:
@@ -143,6 +143,85 @@ def ensure_named_directories(paths: Mapping[str, Path], keys: Iterable[str]) -> 
     for key in keys:
         resolved[key].mkdir(parents=True, exist_ok=True)
     return resolved
+
+
+def _string_mapping(value: object) -> dict[str, str]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {str(key): str(item) for key, item in value.items()}
+
+
+def _string_list(value: object) -> list[str]:
+    if isinstance(value, str):
+        return [value] if value else []
+    if not isinstance(value, Iterable):
+        return []
+    return [str(item) for item in value if str(item)]
+
+
+def apply_environment_contract(
+    contract: Mapping[str, Any],
+    *,
+    environ: MutableMapping[str, str] | None = None,
+    path_key: str = "PATH",
+) -> dict[str, Any]:
+    """Apply an ``env``/``path_entries`` contract and return a mutable copy."""
+
+    target_env = os.environ if environ is None else environ
+    resolved = dict(contract)
+    env_values = _string_mapping(contract.get("env"))
+    path_entries = unique_path_entries(_string_list(contract.get("path_entries")))
+    for key, value in env_values.items():
+        target_env[key] = value
+    if path_entries:
+        current_path = target_env.get(path_key, "")
+        existing_entries = current_path.split(os.pathsep) if current_path else []
+        target_env[path_key] = os.pathsep.join(unique_path_entries([*path_entries, *existing_entries]))
+    resolved["effective_path"] = target_env.get(path_key, "")
+    return resolved
+
+
+def environment_assignment_prefix(
+    contract: Mapping[str, Any],
+    *,
+    env_keys: Sequence[str],
+    path_suffix: str = "$PATH",
+) -> str:
+    """Render shell assignments for a validation environment contract."""
+
+    env_values = _string_mapping(contract.get("env"))
+    assignments = [f"{key}={env_values[key]}" for key in env_keys if key in env_values]
+    path_entries = unique_path_entries(_string_list(contract.get("path_entries")))
+    if path_entries:
+        assignments.append(f"PATH={os.pathsep.join(path_entries)}:{path_suffix}")
+    return " ".join(assignments)
+
+
+def rewrite_validation_commands(todo_path: Path, transform: Callable[[str], str]) -> bool:
+    """Rewrite commands in markdown ``- Validation:`` lines with ``transform``."""
+
+    if not todo_path.exists():
+        return False
+    lines = todo_path.read_text(encoding="utf-8").splitlines(keepends=True)
+    changed = False
+    updated_lines: list[str] = []
+    for line in lines:
+        if not line.startswith("- Validation:"):
+            updated_lines.append(line)
+            continue
+        newline = "\n" if line.endswith("\n") else ""
+        body = line[len("- Validation:") :].strip()
+        commands = [item.strip() for item in body.split(";")]
+        updated_commands = [transform(command) for command in commands]
+        if updated_commands != commands:
+            changed = True
+            updated_lines.append("- Validation: " + "; ".join(updated_commands) + newline)
+        else:
+            updated_lines.append(line)
+    if not changed:
+        return False
+    todo_path.write_text("".join(updated_lines), encoding="utf-8")
+    return True
 
 
 def ensure_runtime_pythonpath(paths: Sequence[Path | str], *, env_var: str = "PYTHONPATH") -> None:

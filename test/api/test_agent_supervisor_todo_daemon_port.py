@@ -63,13 +63,16 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     BootstrapPathSpec,
+    apply_environment_contract,
     csv_tuple,
     default_llm_merge_resolver_command,
     ensure_named_directories,
     ensure_runtime_pythonpath,
+    environment_assignment_prefix,
     env_csv_tuple,
     repo_relative_or_default,
     resolve_bootstrap_paths,
+    rewrite_validation_commands,
     unique_path_entries,
     with_default,
     with_flag_default,
@@ -170,6 +173,29 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert ensured == paths
     assert paths["state_dir"].is_dir()
     assert paths["worktree_root"].is_dir()
+
+    contract = {
+        "env": {"JAVA_HOME": "/jdk", "ANDROID_HOME": "/sdk"},
+        "path_entries": ["/jdk/bin", "/sdk/bin", "/jdk/bin"],
+    }
+    target_env = {"PATH": "/usr/bin"}
+    applied = apply_environment_contract(contract, environ=target_env)
+    assert target_env["JAVA_HOME"] == "/jdk"
+    assert target_env["PATH"].split(os.pathsep) == ["/jdk/bin", "/sdk/bin", "/usr/bin"]
+    assert applied["effective_path"] == target_env["PATH"]
+    assert environment_assignment_prefix(
+        contract,
+        env_keys=("JAVA_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT"),
+    ) == "JAVA_HOME=/jdk ANDROID_HOME=/sdk PATH=/jdk/bin:/sdk/bin:$PATH"
+
+    todo_path = tmp_path / "tasks.todo.md"
+    todo_path.write_text(
+        "# Tasks\n\n## TST-001 Build\n\n- Validation: first; second\n",
+        encoding="utf-8",
+    )
+    assert rewrite_validation_commands(todo_path, lambda command: command.upper())
+    assert "- Validation: FIRST; SECOND" in todo_path.read_text(encoding="utf-8")
+    assert not rewrite_validation_commands(todo_path, lambda command: command)
 
     first = tmp_path / "first"
     second = tmp_path / "second"
