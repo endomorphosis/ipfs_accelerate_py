@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     ConfiguredRetryBudgetRecorder,
+    build_task_blocks_ensurer,
     iter_jsonl,
     ensure_task_blocks_present,
     load_strategy,
@@ -93,6 +94,16 @@ def test_backlog_refinery_appends_missing_task_blocks_in_order(tmp_path):
     assert "Duplicate task" not in updated
     assert updated.index("## AUTO-002 First appended task") < updated.index("## AUTO-003 Second appended task")
     assert not ensure_task_blocks_present(todo_path, (("AUTO-002", "## AUTO-002 First appended task"),))
+
+    callback_path = tmp_path / "callback-tasks.todo.md"
+    callback_path.write_text("# Agent Todos\n", encoding="utf-8")
+    ensure_callback_blocks = build_task_blocks_ensurer(
+        (("AUTO-004", "## AUTO-004 Callback task\n\n- Status: todo"),),
+        default_todo_path=callback_path,
+    )
+    assert ensure_callback_blocks()
+    assert "## AUTO-004 Callback task" in callback_path.read_text(encoding="utf-8")
+    assert not ensure_callback_blocks()
 
 
 def test_backlog_refinery_codebase_scan_refills_low_backlog(tmp_path):

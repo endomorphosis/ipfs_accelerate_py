@@ -189,6 +189,24 @@ def ensure_task_blocks_present(
     return True
 
 
+def build_task_blocks_ensurer(
+    task_blocks: Mapping[str, str] | Sequence[tuple[str, str]],
+    *,
+    default_todo_path: Path | None = None,
+) -> Callable[[Path | None], bool]:
+    """Build a callback that appends configured task blocks to a todo board."""
+
+    configured_blocks = dict(task_blocks.items() if isinstance(task_blocks, Mapping) else task_blocks)
+
+    def ensurer(todo_path: Path | None = None) -> bool:
+        path = todo_path or default_todo_path
+        if path is None:
+            raise ValueError("todo_path is required when no default todo path is configured")
+        return ensure_task_blocks_present(path, configured_blocks)
+
+    return ensurer
+
+
 def next_task_id(todo_text: str, *, task_prefix: str = DEFAULT_TASK_ID_PREFIX) -> str:
     prefix = task_id_prefix(task_prefix)
     highest = 0
