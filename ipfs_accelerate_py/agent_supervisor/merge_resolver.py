@@ -16,6 +16,8 @@ from .event_log import read_jsonl_events
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
 DEFAULT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS = 600.0
+DEFAULT_PROMPT_HEADING = "Resolve the autonomous-agent supervisor merge conflict in this repository."
+DEFAULT_COMPLETION_RULE = "Do not unblock the source task until validation passes."
 
 
 def iter_jsonl(path: Path) -> list[dict[str, Any]]:
@@ -79,7 +81,14 @@ def _merge_result(event: dict[str, Any]) -> dict[str, Any]:
     return value if isinstance(value, dict) else event
 
 
-def build_merge_prompt(*, event: dict[str, Any], repo_root: Path) -> str:
+def build_merge_prompt(
+    *,
+    event: dict[str, Any],
+    repo_root: Path,
+    prompt_heading: str = DEFAULT_PROMPT_HEADING,
+    completion_rule: str = DEFAULT_COMPLETION_RULE,
+    extra_rules: Sequence[str] | None = None,
+) -> str:
     """Build an LLM prompt that can resolve a semantic merge conflict."""
 
     merge_result = _merge_result(event)
@@ -90,9 +99,19 @@ def build_merge_prompt(*, event: dict[str, Any], repo_root: Path) -> str:
         command_text = str(command)
     paths = unmerged_paths(repo_root)
     dirty_paths = merge_result.get("dirty_paths") or []
+    rules = [
+        "Inspect the conflicted files and implementation branch before editing.",
+        "Preserve the semantic intent of both sides when possible.",
+        "Keep changes scoped to the task and conflict resolution.",
+        "Run the task validation after resolving the conflict.",
+        "Commit the merge resolution in the owning repository or submodule.",
+        completion_rule,
+    ]
+    if extra_rules:
+        rules.extend(str(rule) for rule in extra_rules if str(rule).strip())
     return "\n".join(
         [
-            "Resolve the autonomous-agent supervisor merge conflict in this repository.",
+            prompt_heading,
             "",
             f"Task id: {event.get('task_id') or merge_result.get('task_id')}",
             f"Attempt: {event.get('attempt') or merge_result.get('attempt')}",
@@ -105,12 +124,7 @@ def build_merge_prompt(*, event: dict[str, Any], repo_root: Path) -> str:
             f"Dirty paths: {', '.join(str(item) for item in dirty_paths) or 'none recorded'}",
             "",
             "Rules:",
-            "1. Inspect the conflicted files and implementation branch before editing.",
-            "2. Preserve the semantic intent of both sides when possible.",
-            "3. Keep changes scoped to the task and conflict resolution.",
-            "4. Run the task validation after resolving the conflict.",
-            "5. Commit the merge resolution in the owning repository or submodule.",
-            "6. Do not unblock the source task until validation passes.",
+            *(f"{index}. {rule}" for index, rule in enumerate(rules, start=1)),
             "",
             "Merge stdout excerpt:",
             compact_text(merge_result.get("stdout")),
@@ -121,7 +135,15 @@ def build_merge_prompt(*, event: dict[str, Any], repo_root: Path) -> str:
     )
 
 
-def resolver_payload(*, events_path: Path, repo_root: Path, task_id: str | None = None) -> dict[str, Any]:
+def resolver_payload(
+    *,
+    events_path: Path,
+    repo_root: Path,
+    task_id: str | None = None,
+    prompt_heading: str = DEFAULT_PROMPT_HEADING,
+    completion_rule: str = DEFAULT_COMPLETION_RULE,
+    extra_rules: Sequence[str] | None = None,
+) -> dict[str, Any]:
     """Return a dry-run JSON payload for the latest merge failure."""
 
     event = latest_failed_merge_event(iter_jsonl(events_path), task_id=task_id)
@@ -146,7 +168,13 @@ def resolver_payload(*, events_path: Path, repo_root: Path, task_id: str | None 
         "reason": str(merge_result.get("reason") or ""),
         "dirty_paths": merge_result.get("dirty_paths") or [],
         "unmerged_paths": unmerged_paths(repo_root),
-        "prompt": build_merge_prompt(event=event, repo_root=repo_root),
+        "prompt": build_merge_prompt(
+            event=event,
+            repo_root=repo_root,
+            prompt_heading=prompt_heading,
+            completion_rule=completion_rule,
+            extra_rules=extra_rules,
+        ),
     }
 
 
@@ -208,6 +236,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--task-id", default=None)
     parser.add_argument("--apply", action="store_true", help="Invoke the configured resolver command")
     parser.add_argument("--command", default=None, help="Resolver command template. Defaults to env var.")
+    parser.add_argument("--prompt-heading", default=DEFAULT_PROMPT_HEADING)
+    parser.add_argument("--completion-rule", default=DEFAULT_COMPLETION_RULE)
+    parser.add_argument("--extra-rule", action="append", default=[])
     parser.add_argument(
         "--timeout-seconds",
         type=float,
@@ -219,7 +250,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = build_arg_parser().parse_args(argv)
-    payload = resolver_payload(events_path=args.events_path, repo_root=args.repo_root.resolve(), task_id=args.task_id)
+    payload = resolver_payload(
+        events_path=args.events_path,
+        repo_root=args.repo_root.resolve(),
+        task_id=args.task_id,
+        prompt_heading=args.prompt_heading,
+        completion_rule=args.completion_rule,
+        extra_rules=args.extra_rule,
+    )
     if args.apply:
         payload = invoke_llm_resolver(payload, command_template=args.command, timeout_seconds=args.timeout_seconds)
     print(json.dumps(payload, indent=2, sort_keys=True))

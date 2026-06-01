@@ -373,6 +373,45 @@ def test_merge_resolver_builds_dry_run_payload(tmp_path):
     assert "ipfs_accelerate_py/agent_supervisor" in payload["prompt"]
 
 
+def test_merge_resolver_payload_accepts_project_prompt_customization(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    events_path = tmp_path / "events.jsonl"
+    events_path.write_text(
+        json.dumps(
+            {
+                "type": "merge_finished",
+                "task_id": "CUSTOM-001",
+                "attempted": True,
+                "merged": False,
+                "branch": "implementation/custom-001",
+                "target_branch": "main",
+                "command": ["git", "merge", "implementation/custom-001"],
+                "reason": "content_conflict",
+                "dirty_paths": ["custom-module"],
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    payload = resolver_payload(
+        events_path=events_path,
+        repo_root=repo,
+        task_id="CUSTOM-001",
+        prompt_heading="Resolve the project-specific daemon merge conflict.",
+        completion_rule="Do not remove the project task from blocked_tasks until validation passes.",
+        extra_rules=["Prefer project-local adapters over package-specific defaults."],
+    )
+
+    assert payload["found"] is True
+    assert "Resolve the project-specific daemon merge conflict." in payload["prompt"]
+    assert "Do not remove the project task from blocked_tasks" in payload["prompt"]
+    assert "Prefer project-local adapters" in payload["prompt"]
+
+
 def test_merge_resolver_cli_prints_payload(tmp_path, capsys):
     repo = tmp_path / "repo"
     repo.mkdir()
