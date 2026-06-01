@@ -125,6 +125,7 @@ __all__ = [
     "configure_daemon_logging",
     "configure_supervisor_logging",
     "apply_merge_resolver_environment",
+    "apply_portal_implementation_supervisor_defaults",
     "implementation_state_paths",
     "run_portal_implementation_daemon_loop",
     "run_portal_implementation_supervisor",
@@ -133,6 +134,9 @@ __all__ = [
     "DaemonLoopHook",
     "ImplementationDaemonRunContext",
     "ImplementationSupervisorRunContext",
+    "ImplementationSupervisorDefaults",
+    "ObjectiveRefillDefaults",
+    "CodebaseRefillDefaults",
     "SupervisorRunHook",
     "TaskProposalRouterConfig",
     "TaskProposalRouterError",
@@ -202,8 +206,12 @@ def __getattr__(name: str):
     if name in {
         "build_portal_implementation_supervisor_from_args",
         "configure_supervisor_logging",
+        "apply_portal_implementation_supervisor_defaults",
         "run_portal_implementation_supervisor",
         "ImplementationSupervisorRunContext",
+        "ImplementationSupervisorDefaults",
+        "ObjectiveRefillDefaults",
+        "CodebaseRefillDefaults",
         "SupervisorRunHook",
     }:
         from . import implementation_supervisor_runner

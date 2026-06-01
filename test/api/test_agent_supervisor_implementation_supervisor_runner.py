@@ -5,12 +5,70 @@ import logging
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+    CodebaseRefillDefaults,
     ImplementationSupervisorRunContext,
+    ImplementationSupervisorDefaults,
+    ObjectiveRefillDefaults,
     SupervisorRunHook,
+    apply_portal_implementation_supervisor_defaults,
     build_portal_implementation_supervisor_from_args,
     run_portal_implementation_supervisor,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import parse_args
+
+
+def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(tmp_path: Path):
+    args = apply_portal_implementation_supervisor_defaults(
+        ["--state-prefix", "custom", "--objective-scan-max-findings", "99"],
+        defaults=ImplementationSupervisorDefaults(
+            todo_path=tmp_path / "tasks.todo.md",
+            state_dir=tmp_path / "state",
+            task_prefix="## EX-",
+            state_prefix="example",
+            worktree_root=tmp_path / "worktrees",
+            daemon_script_path=tmp_path / "daemon.py",
+            supervisor_script_path=tmp_path / "supervisor.py",
+            llm_merge_resolver_command="codex exec -",
+            worktree_submodule_paths=("module-a", "module-b"),
+        ),
+        objective=ObjectiveRefillDefaults(
+            objective_path=tmp_path / "objective.md",
+            objective_graph_path=tmp_path / "objective.json",
+            objective_bundle_dir=tmp_path / "bundles",
+            objective_dataset_dir=tmp_path / "datasets",
+            objective_discovery_dir=tmp_path / "discovery",
+            objective_discovery_output_path="data/discovery",
+            objective_scan_min_open_tasks=3,
+            objective_scan_max_findings=7,
+            objective_scan_cooldown_seconds=60,
+            objective_todo_vector_index_path=tmp_path / "bundles" / "todo_vector_index.json",
+            objective_surplus_findings_per_goal=4,
+            objective_surplus_min_terms_per_todo=2,
+            objective_interoperability_focus=("hallucinate_app",),
+            seed_interoperability_goals=True,
+        ),
+        codebase=CodebaseRefillDefaults(
+            codebase_scan_discovery_dir=tmp_path / "codebase",
+            codebase_scan_discovery_output_path="data/codebase",
+            codebase_scan_min_open_tasks=1,
+            codebase_scan_max_findings=5,
+            codebase_scan_cooldown_seconds=120,
+            codebase_scan_skip_prefixes=("data/state/", "scripts/"),
+        ),
+    )
+
+    assert args[args.index("--state-prefix") + 1] == "custom"
+    assert args[args.index("--objective-scan-max-findings") + 1] == "99"
+    assert args.count("--worktree-submodule-path") == 2
+    assert args.count("--codebase-scan-skip-prefix") == 2
+    assert "--objective-refill-scan" in args
+    assert "--objective-seed-interoperability-goals" in args
+    assert "--codebase-refill-scan" in args
+    parsed = parse_args(args)
+    assert parsed.todo_path == tmp_path / "tasks.todo.md"
+    assert parsed.state_prefix == "custom"
+    assert parsed.objective_scan_max_findings == 99
+    assert parsed.codebase_scan_cooldown_seconds == 120
 
 
 def test_build_portal_implementation_supervisor_from_args_applies_defaults(tmp_path: Path):

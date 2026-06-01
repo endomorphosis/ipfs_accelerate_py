@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from .wrapper_utils import with_default, with_flag_default, with_repeated_default
+
 
 @dataclass(frozen=True)
 class ImplementationSupervisorRunContext:
@@ -32,6 +34,175 @@ class SupervisorRunHook:
     message: str
     callback: SupervisorRunHookCallback
     log_level: int = logging.WARNING
+
+
+@dataclass(frozen=True)
+class ImplementationSupervisorDefaults:
+    """Default CLI values for a project-specific implementation supervisor wrapper."""
+
+    todo_path: Path
+    state_dir: Path
+    task_prefix: str
+    state_prefix: str
+    worktree_root: Path
+    daemon_script_path: Path
+    supervisor_script_path: Path
+    todo_path_flag: str = "--todo-path"
+    max_restarts: int | str = 0
+    llm_merge_resolver_command: str = ""
+    worktree_submodule_paths: Sequence[str] = ()
+
+
+@dataclass(frozen=True)
+class ObjectiveRefillDefaults:
+    """Default objective-refill CLI values for an implementation supervisor."""
+
+    objective_path: Path | None = None
+    objective_graph_path: Path | None = None
+    objective_bundle_dir: Path | None = None
+    objective_dataset_dir: Path | None = None
+    objective_discovery_dir: Path | None = None
+    objective_discovery_output_path: str | None = None
+    objective_scan_min_open_tasks: int | None = None
+    objective_scan_max_findings: int | None = None
+    objective_scan_cooldown_seconds: int | None = None
+    objective_todo_vector_index_path: Path | None = None
+    objective_surplus_findings_per_goal: int | None = None
+    objective_surplus_min_terms_per_todo: int | None = None
+    objective_interoperability_focus: Sequence[str] = ()
+    refill_scan: bool = True
+    seed_interoperability_goals: bool = False
+
+
+@dataclass(frozen=True)
+class CodebaseRefillDefaults:
+    """Default codebase-refill CLI values for an implementation supervisor."""
+
+    codebase_scan_discovery_dir: Path | None = None
+    codebase_scan_discovery_output_path: str | None = None
+    codebase_scan_min_open_tasks: int | None = None
+    codebase_scan_max_findings: int | None = None
+    codebase_scan_cooldown_seconds: int | None = None
+    codebase_scan_skip_prefixes: Sequence[str] = ()
+    refill_scan: bool = True
+
+
+def _with_optional_default(args: Sequence[str], flag: str, value: object | None) -> list[str]:
+    if value is None:
+        return list(args)
+    return with_default(args, flag, str(value))
+
+
+def apply_portal_implementation_supervisor_defaults(
+    argv: Sequence[str],
+    *,
+    defaults: ImplementationSupervisorDefaults,
+    objective: ObjectiveRefillDefaults | None = None,
+    codebase: CodebaseRefillDefaults | None = None,
+) -> list[str]:
+    """Apply reusable implementation-supervisor CLI defaults to ``argv``."""
+
+    args = list(argv)
+    args = with_default(args, defaults.todo_path_flag, str(defaults.todo_path))
+    args = with_default(args, "--state-dir", str(defaults.state_dir))
+    args = with_default(args, "--task-prefix", defaults.task_prefix)
+    args = with_default(args, "--state-prefix", defaults.state_prefix)
+    args = with_default(args, "--worktree-root", str(defaults.worktree_root))
+    args = with_default(args, "--daemon-script-path", str(defaults.daemon_script_path))
+    args = with_default(args, "--supervisor-script-path", str(defaults.supervisor_script_path))
+    args = with_default(args, "--max-restarts", str(defaults.max_restarts))
+    if defaults.llm_merge_resolver_command:
+        args = with_default(args, "--llm-merge-resolver-command", defaults.llm_merge_resolver_command)
+    if defaults.worktree_submodule_paths:
+        args = with_repeated_default(args, "--worktree-submodule-path", defaults.worktree_submodule_paths)
+
+    if objective is not None:
+        if objective.refill_scan:
+            args = with_flag_default(args, "--objective-refill-scan")
+        if objective.seed_interoperability_goals:
+            args = with_flag_default(args, "--objective-seed-interoperability-goals")
+        if objective.objective_interoperability_focus:
+            args = with_repeated_default(
+                args,
+                "--objective-interoperability-focus",
+                objective.objective_interoperability_focus,
+            )
+        args = _with_optional_default(args, "--objective-path", objective.objective_path)
+        args = _with_optional_default(args, "--objective-graph-path", objective.objective_graph_path)
+        args = _with_optional_default(args, "--objective-bundle-dir", objective.objective_bundle_dir)
+        args = _with_optional_default(args, "--objective-dataset-dir", objective.objective_dataset_dir)
+        args = _with_optional_default(args, "--objective-discovery-dir", objective.objective_discovery_dir)
+        args = _with_optional_default(
+            args,
+            "--objective-discovery-output-path",
+            objective.objective_discovery_output_path,
+        )
+        args = _with_optional_default(
+            args,
+            "--objective-scan-min-open-tasks",
+            objective.objective_scan_min_open_tasks,
+        )
+        args = _with_optional_default(
+            args,
+            "--objective-scan-max-findings",
+            objective.objective_scan_max_findings,
+        )
+        args = _with_optional_default(
+            args,
+            "--objective-scan-cooldown-seconds",
+            objective.objective_scan_cooldown_seconds,
+        )
+        args = _with_optional_default(
+            args,
+            "--objective-todo-vector-index-path",
+            objective.objective_todo_vector_index_path,
+        )
+        args = _with_optional_default(
+            args,
+            "--objective-surplus-findings-per-goal",
+            objective.objective_surplus_findings_per_goal,
+        )
+        args = _with_optional_default(
+            args,
+            "--objective-surplus-min-terms-per-todo",
+            objective.objective_surplus_min_terms_per_todo,
+        )
+
+    if codebase is not None:
+        if codebase.refill_scan:
+            args = with_flag_default(args, "--codebase-refill-scan")
+        args = _with_optional_default(
+            args,
+            "--codebase-scan-discovery-dir",
+            codebase.codebase_scan_discovery_dir,
+        )
+        args = _with_optional_default(
+            args,
+            "--codebase-scan-discovery-output-path",
+            codebase.codebase_scan_discovery_output_path,
+        )
+        args = _with_optional_default(
+            args,
+            "--codebase-scan-min-open-tasks",
+            codebase.codebase_scan_min_open_tasks,
+        )
+        args = _with_optional_default(
+            args,
+            "--codebase-scan-max-findings",
+            codebase.codebase_scan_max_findings,
+        )
+        args = _with_optional_default(
+            args,
+            "--codebase-scan-cooldown-seconds",
+            codebase.codebase_scan_cooldown_seconds,
+        )
+        if codebase.codebase_scan_skip_prefixes:
+            args = with_repeated_default(
+                args,
+                "--codebase-scan-skip-prefix",
+                codebase.codebase_scan_skip_prefixes,
+            )
+    return args
 
 
 def configure_supervisor_logging(
