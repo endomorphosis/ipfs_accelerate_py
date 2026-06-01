@@ -137,6 +137,8 @@ __all__ = [
     "run_supervisor_tracks",
     "SupervisorTrack",
     "build_task_proposal_prompt",
+    "build_task_proposal_prompt_builder",
+    "build_task_proposal_router_cli_config",
     "build_portal_implementation_daemon_from_args",
     "build_portal_implementation_supervisor_from_args",
     "build_daemon_refill_hooks",
@@ -299,6 +301,8 @@ def __getattr__(name: str):
         return getattr(implementation_daemon_runner, name)
     if name in {
         "build_task_proposal_prompt",
+        "build_task_proposal_prompt_builder",
+        "build_task_proposal_router_cli_config",
         "run_task_proposal_router",
         "run_task_proposal_router_cli",
         "select_proposal_task",

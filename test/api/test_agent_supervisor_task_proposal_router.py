@@ -6,7 +6,9 @@ from pathlib import Path
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     TaskProposalRouterConfig,
     TaskProposalRouterCliConfig,
+    build_task_proposal_prompt_builder,
     build_task_proposal_prompt,
+    build_task_proposal_router_cli_config,
     run_task_proposal_router,
     run_task_proposal_router_cli,
 )
@@ -149,3 +151,84 @@ def test_task_proposal_router_cli_reuses_common_dry_run_flow(tmp_path: Path, cap
     assert payload["model"] == "cli-model"
     assert payload["generate"] is False
     assert not artifacts.exists()
+
+
+def test_task_proposal_router_cli_config_factory_reuses_prompt_builder(tmp_path: Path, capsys):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    board = repo / "tasks.todo.md"
+    plan = repo / "plan.md"
+    artifacts = repo / "artifacts"
+    board.write_text(
+        "\n".join(
+            [
+                "# Tasks",
+                "",
+                "## TST-001 Ready task",
+                "- Status: ready",
+                "- Priority: P1",
+                "- Track: runtime",
+                "- Depends on:",
+                "- Outputs: runtime.py",
+                "- Validation: pytest tests/test_runtime.py",
+                "- Acceptance: Runtime proposal is generated.",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    plan.write_text("Reusable factory router roadmap context.", encoding="utf-8")
+    bootstrap_calls: list[str] = []
+
+    config = build_task_proposal_router_cli_config(
+        repo_root=repo,
+        task_board_path=board,
+        task_header_prefix="## TST-",
+        plan_path=plan,
+        artifact_dir=artifacts,
+        prompt_intro="You are helping implement reusable supervisor work.",
+        requested_outputs=("exact files to edit", "validation commands"),
+        description="Generate a reusable proposal.",
+        task_id_help="Specific test task.",
+        task_board_option="--todo-path",
+        hidden_task_board_options=("--task-board-path",),
+        bootstrap=lambda: bootstrap_calls.append("called"),
+    )
+
+    result = run_task_proposal_router_cli(
+        config,
+        ["--task-id", "TST-001", "--provider", "factory-provider", "--model", "factory-model"],
+    )
+
+    payload = json.loads(capsys.readouterr().out)
+    assert result == 0
+    assert bootstrap_calls == ["called"]
+    assert payload["task_id"] == "TST-001"
+    assert payload["provider"] == "factory-provider"
+    assert payload["model"] == "factory-model"
+    assert payload["generate"] is False
+    assert not artifacts.exists()
+
+
+def test_task_proposal_prompt_builder_applies_plan_limit():
+    class Task:
+        task_id = "TST-001"
+        title = "Ready task"
+        priority = "P1"
+        track = "runtime"
+        depends_on: list[str] = []
+        outputs: list[str] = []
+        validation: list[str] = []
+        acceptance = "Runtime proposal is generated."
+
+    prompt_builder = build_task_proposal_prompt_builder(
+        intro="You are helping implement reusable supervisor work.",
+        requested_outputs=("validation commands",),
+        plan_char_limit=4,
+    )
+
+    prompt = prompt_builder(Task(), "abcdef")
+
+    assert "abcd" in prompt
+    assert "abcdef" not in prompt
+    assert "validation commands" in prompt
