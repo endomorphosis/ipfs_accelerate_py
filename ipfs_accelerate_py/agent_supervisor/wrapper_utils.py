@@ -370,3 +370,21 @@ def bootstrap_runtime_environment(
     if chdir:
         os.chdir(Path(repo_root))
     ensure_runtime_pythonpath(import_paths, env_var=env_var)
+
+
+def build_runtime_environment_callback(
+    repo_root: Path | str,
+    import_paths: Sequence[Path | str],
+    *,
+    chdir: bool = True,
+    env_var: str = "PYTHONPATH",
+) -> Callable[[], None]:
+    """Build a no-argument callback that bootstraps a local runtime environment."""
+
+    root = Path(repo_root)
+    paths = tuple(Path(path) for path in import_paths)
+
+    def callback() -> None:
+        bootstrap_runtime_environment(root, paths, chdir=chdir, env_var=env_var)
+
+    return callback

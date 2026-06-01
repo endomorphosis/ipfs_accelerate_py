@@ -67,6 +67,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     android_validation_environment_contract,
     apply_environment_contract,
     bootstrap_runtime_environment,
+    build_runtime_environment_callback,
     csv_tuple,
     default_llm_merge_resolver_command,
     enforce_android_validation_environment,
@@ -240,6 +241,13 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         assert os.environ["PYTHONPATH"].split(os.pathsep)[0] == str(third)
     finally:
         os.chdir(cwd)
+
+    fourth = tmp_path / "fourth"
+    callback = build_runtime_environment_callback(repo, (fourth,), chdir=False)
+    callback()
+    assert Path.cwd() == cwd
+    assert sys.path[0] == str(fourth)
+    assert os.environ["PYTHONPATH"].split(os.pathsep)[0] == str(fourth)
 
 
 def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
