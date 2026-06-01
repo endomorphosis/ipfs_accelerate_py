@@ -16,7 +16,14 @@ from ipfs_accelerate_py.agent_supervisor import (
     scan_objective_gaps,
     submit_bundle_tasks,
 )
-from ipfs_accelerate_py.agent_supervisor.merge_resolver import main as merge_resolver_main
+from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
+    MergeResolverCliConfig,
+    build_llm_merge_resolver_invoker,
+    build_merge_prompt_callback,
+    build_resolver_payload_callback,
+    main as merge_resolver_main,
+    run_configured_merge_resolver_cli,
+)
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -410,6 +417,71 @@ def test_merge_resolver_payload_accepts_project_prompt_customization(tmp_path):
     assert "Resolve the project-specific daemon merge conflict." in payload["prompt"]
     assert "Do not remove the project task from blocked_tasks" in payload["prompt"]
     assert "Prefer project-local adapters" in payload["prompt"]
+
+
+def test_merge_resolver_configured_callbacks_and_cli(tmp_path, capsys):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    events_path = tmp_path / "events.jsonl"
+    events_path.write_text(
+        json.dumps(
+            {
+                "type": "merge_finished",
+                "task_id": "CUSTOM-002",
+                "attempted": True,
+                "merged": False,
+                "branch": "implementation/custom-002",
+                "target_branch": "main",
+                "reason": "content_conflict",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    prompt_callback = build_merge_prompt_callback(
+        prompt_heading="Resolve the configured merge conflict.",
+        completion_rule="Keep configured blocked_tasks intact until validation passes.",
+    )
+    payload_callback = build_resolver_payload_callback(
+        prompt_heading="Resolve the configured merge conflict.",
+        completion_rule="Keep configured blocked_tasks intact until validation passes.",
+    )
+    event = json.loads(events_path.read_text(encoding="utf-8"))
+    prompt = prompt_callback(event=event, repo_root=repo)
+    payload = payload_callback(events_path=events_path, repo_root=repo, task_id="CUSTOM-002")
+
+    assert "Resolve the configured merge conflict." in prompt
+    assert payload["found"] is True
+    assert "Keep configured blocked_tasks intact" in payload["prompt"]
+
+    assert run_configured_merge_resolver_cli(
+        MergeResolverCliConfig(
+            default_events_path=events_path,
+            default_repo_root=repo,
+            prompt_heading="Resolve the configured merge conflict.",
+            completion_rule="Keep configured blocked_tasks intact until validation passes.",
+        ),
+        ["--task-id", "CUSTOM-002"],
+    ) == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["task_id"] == "CUSTOM-002"
+    assert "Resolve the configured merge conflict." in output["prompt"]
+
+
+def test_merge_resolver_invoker_reports_configured_env_names(monkeypatch):
+    monkeypatch.delenv("PROJECT_MERGE_COMMAND", raising=False)
+    monkeypatch.delenv("FALLBACK_MERGE_COMMAND", raising=False)
+    invoker = build_llm_merge_resolver_invoker(
+        primary_command_env_var="PROJECT_MERGE_COMMAND",
+        fallback_command_env_var="FALLBACK_MERGE_COMMAND",
+    )
+
+    result = invoker({"found": True, "prompt": "resolve"})
+
+    assert result["applied"] is False
+    assert result["apply_error"] == "PROJECT_MERGE_COMMAND or FALLBACK_MERGE_COMMAND is not set"
 
 
 def test_merge_resolver_cli_prints_payload(tmp_path, capsys):

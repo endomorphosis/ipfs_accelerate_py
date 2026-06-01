@@ -73,8 +73,12 @@ __all__ = [
     "build_execution_packet",
     "build_execution_packets",
     "build_merge_prompt",
+    "build_configured_merge_resolver_arg_parser",
+    "build_llm_merge_resolver_invoker",
+    "build_merge_prompt_callback",
     "build_objective_daemon_arg_parser",
     "build_objective_thought_graph",
+    "build_resolver_payload_callback",
     "build_bootstrap_path_ensurer",
     "build_bootstrap_path_resolver",
     "build_default_llm_merge_resolver_command_callback",
@@ -164,6 +168,7 @@ __all__ = [
     "run_portal_implementation_supervisor",
     "run_configured_portal_implementation_daemon",
     "run_configured_portal_implementation_supervisor",
+    "run_configured_merge_resolver_cli",
     "run_task_proposal_router",
     "run_task_proposal_router_cli",
     "rewrite_validation_commands",
@@ -173,6 +178,7 @@ __all__ = [
     "ImplementationDaemonDefaults",
     "ImplementationSupervisorRunContext",
     "ImplementationSupervisorDefaults",
+    "MergeResolverCliConfig",
     "ObjectiveRefillDefaults",
     "CodebaseRefillDefaults",
     "SupervisorRunHook",
@@ -214,6 +220,17 @@ def __getattr__(name: str):
 
         return getattr(bundle_supervisor, name)
     if name in {"build_merge_prompt", "invoke_llm_resolver", "latest_failed_merge_event", "resolver_payload"}:
+        from . import merge_resolver
+
+        return getattr(merge_resolver, name)
+    if name in {
+        "build_configured_merge_resolver_arg_parser",
+        "build_llm_merge_resolver_invoker",
+        "build_merge_prompt_callback",
+        "build_resolver_payload_callback",
+        "MergeResolverCliConfig",
+        "run_configured_merge_resolver_cli",
+    }:
         from . import merge_resolver
 
         return getattr(merge_resolver, name)
