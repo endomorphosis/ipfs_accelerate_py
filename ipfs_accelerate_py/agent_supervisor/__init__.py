@@ -76,7 +76,10 @@ __all__ = [
     "discover_gitmodule_paths",
     "discover_repository_components",
     "discover_submodule_paths",
+    "csv_tuple",
     "default_llm_merge_resolver_command",
+    "env_csv_tuple",
+    "ensure_named_directories",
     "ensure_runtime_pythonpath",
     "fibonacci_priority",
     "goal_graph",
@@ -156,6 +159,9 @@ def __getattr__(name: str):
         return run_objective_daemon
     if name in {
         "default_llm_merge_resolver_command",
+        "csv_tuple",
+        "env_csv_tuple",
+        "ensure_named_directories",
         "ensure_runtime_pythonpath",
         "repo_relative_or_default",
         "unique_path_entries",

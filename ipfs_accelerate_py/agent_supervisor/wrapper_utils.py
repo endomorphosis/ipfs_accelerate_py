@@ -7,7 +7,7 @@ import shlex
 import shutil
 import sys
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 
 def with_default(argv: Sequence[str], flag: str, value: str) -> list[str]:
@@ -38,6 +38,25 @@ def with_repeated_default(argv: Sequence[str], flag: str, values: Iterable[str])
     for value in values:
         defaults.extend([flag, str(value)])
     return [*defaults, *args]
+
+
+def csv_tuple(value: str | Iterable[str]) -> tuple[str, ...]:
+    """Return a de-duplicated tuple of comma-separated values."""
+
+    raw_values = [value] if isinstance(value, str) else list(value)
+    items: list[str] = []
+    for raw_value in raw_values:
+        for raw_item in str(raw_value).split(","):
+            item = raw_item.strip()
+            if item and item not in items:
+                items.append(item)
+    return tuple(items)
+
+
+def env_csv_tuple(env_var: str, default: str = "") -> tuple[str, ...]:
+    """Return a comma-separated environment setting as a tuple."""
+
+    return csv_tuple(os.environ.get(env_var, default))
 
 
 def default_llm_merge_resolver_command(
@@ -82,6 +101,15 @@ def repo_relative_or_default(path: Path | str, repo_root: Path | str, default: s
         return Path(path).resolve().relative_to(Path(repo_root).resolve()).as_posix()
     except ValueError:
         return default
+
+
+def ensure_named_directories(paths: Mapping[str, Path], keys: Iterable[str]) -> dict[str, Path]:
+    """Create selected directory entries from a path mapping and return a mutable copy."""
+
+    resolved = dict(paths)
+    for key in keys:
+        resolved[key].mkdir(parents=True, exist_ok=True)
+    return resolved
 
 
 def ensure_runtime_pythonpath(paths: Sequence[Path | str], *, env_var: str = "PYTHONPATH") -> None:
