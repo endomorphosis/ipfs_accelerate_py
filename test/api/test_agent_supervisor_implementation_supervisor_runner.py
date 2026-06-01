@@ -14,6 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_portal_implementation_supervisor_from_args,
     build_supervisor_refill_hooks,
     build_supervisor_runtime_callbacks,
+    run_configured_portal_implementation_supervisor,
     run_portal_implementation_supervisor,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import parse_args
@@ -181,6 +182,42 @@ def test_run_portal_implementation_supervisor_can_delegate_ensure_running():
     )
 
     assert result == {"state": "state.json"}
+
+
+def test_run_configured_portal_implementation_supervisor_builds_and_runs_once(tmp_path: Path):
+    board = tmp_path / "tasks.todo.md"
+    daemon_script = tmp_path / "daemon.py"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    daemon_script.write_text("print('daemon')\n", encoding="utf-8")
+    calls: list[Path] = []
+
+    def before(ctx: ImplementationSupervisorRunContext) -> list[str]:
+        calls.append(ctx.parsed.todo_path)
+        return []
+
+    result = run_configured_portal_implementation_supervisor(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--state-prefix",
+            "example",
+            "--task-prefix",
+            "## EX-",
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+            "--daemon-script-path",
+            str(daemon_script),
+            "--once",
+        ],
+        repo_root=tmp_path,
+        logger=logging.getLogger("test-configured-supervisor-runner"),
+        hooks=(SupervisorRunHook("before", "before: %s", before),),
+    )
+
+    assert calls == [board]
+    assert isinstance(result, dict)
 
 
 def test_build_supervisor_refill_hooks_formats_standard_messages():

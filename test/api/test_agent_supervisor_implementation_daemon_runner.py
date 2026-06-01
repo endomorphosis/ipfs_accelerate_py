@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_portal_implementation_daemon_from_args,
     build_daemon_refill_hooks,
     implementation_state_paths,
+    run_configured_portal_implementation_daemon,
     run_portal_implementation_daemon_loop,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_args
@@ -134,6 +135,37 @@ def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
     assert calls == ["before:0", "after:0"]
     assert "before hook: ['before-result']" in caplog.text
     assert "after hook: ['after-result']" in caplog.text
+
+
+def test_run_configured_portal_implementation_daemon_builds_and_runs_once(tmp_path: Path):
+    board = tmp_path / "tasks.todo.md"
+    board.write_text("# Tasks\n", encoding="utf-8")
+    calls: list[Path] = []
+
+    def before(ctx: ImplementationDaemonRunContext) -> list[str]:
+        calls.append(ctx.parsed.todo_path)
+        return []
+
+    run_configured_portal_implementation_daemon(
+        [
+            "--todo-path",
+            str(board),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--task-prefix",
+            "## EX-",
+            "--state-prefix",
+            "example",
+            "--worktree-root",
+            str(tmp_path / "worktrees"),
+            "--once",
+        ],
+        repo_root=tmp_path,
+        logger=logging.getLogger("test-configured-daemon-runner"),
+        hooks=(DaemonLoopHook("before", "before: %s", before),),
+    )
+
+    assert calls == [board]
 
 
 def test_build_daemon_refill_hooks_formats_standard_messages():

@@ -282,3 +282,36 @@ def run_portal_implementation_daemon_loop(
             break
         pass_index += 1
         time.sleep(parsed.interval)
+
+
+def run_configured_portal_implementation_daemon(
+    argv: Sequence[str],
+    *,
+    repo_root: Path,
+    logger: logging.Logger,
+    default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_objective_path: Path | None = None,
+    default_objective_bundle_dir: Path | None = None,
+    hooks: Sequence[DaemonLoopHook] = (),
+    pass_complete_message: str = "Portal implementation daemon pass complete: %s",
+) -> None:
+    """Parse, build, and run a configured portal implementation daemon."""
+
+    from .todo_daemon.implementation_daemon import parse_args
+
+    parsed = parse_args(list(argv))
+    configure_daemon_logging(parsed)
+    daemon, context = build_portal_implementation_daemon_from_args(
+        parsed,
+        repo_root=repo_root,
+        default_worktree_submodule_paths=default_worktree_submodule_paths,
+        default_objective_path=default_objective_path,
+        default_objective_bundle_dir=default_objective_bundle_dir,
+    )
+    run_portal_implementation_daemon_loop(
+        daemon,
+        context,
+        logger=logger,
+        hooks=hooks,
+        pass_complete_message=pass_complete_message,
+    )

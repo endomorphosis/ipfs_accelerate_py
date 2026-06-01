@@ -424,3 +424,44 @@ def run_portal_implementation_supervisor(
         logger.info(once_complete_message, result)
         return result
     return supervisor.run_forever()
+
+
+def run_configured_portal_implementation_supervisor(
+    argv: Sequence[str],
+    *,
+    repo_root: Path,
+    logger: logging.Logger,
+    daemon_script_path: Path | None = None,
+    worktree_submodule_paths: Sequence[str] | None = None,
+    hooks: Sequence[SupervisorRunHook] = (),
+    once_complete_message: str = "Portal implementation supervisor check complete: %s",
+    ensure_running: bool = False,
+    ensure_running_callback: SupervisorRunHookCallback | None = None,
+    ensure_running_message: str = "Supervisor ensure complete: %s",
+    repair_runtime_callback: SupervisorRunHookCallback | None = None,
+    repair_runtime_message: str = "Repaired stale supervisor runtime markers: %s",
+) -> Any:
+    """Parse, build, and run a configured portal implementation supervisor."""
+
+    from .todo_daemon.implementation_supervisor import parse_args
+
+    parsed = parse_args(list(argv))
+    configure_supervisor_logging(parsed)
+    supervisor, context = build_portal_implementation_supervisor_from_args(
+        parsed,
+        repo_root=repo_root,
+        daemon_script_path=getattr(parsed, "daemon_script_path", None) or daemon_script_path,
+        worktree_submodule_paths=getattr(parsed, "worktree_submodule_path", None) or worktree_submodule_paths,
+    )
+    return run_portal_implementation_supervisor(
+        supervisor,
+        context,
+        logger=logger,
+        hooks=hooks,
+        once_complete_message=once_complete_message,
+        ensure_running=ensure_running,
+        ensure_running_callback=ensure_running_callback,
+        ensure_running_message=ensure_running_message,
+        repair_runtime_callback=repair_runtime_callback,
+        repair_runtime_message=repair_runtime_message,
+    )
