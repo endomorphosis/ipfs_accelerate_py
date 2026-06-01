@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+    ConfiguredRetryBudgetRecorder,
     iter_jsonl,
     ensure_task_blocks_present,
     load_strategy,
@@ -620,6 +621,65 @@ def test_backlog_refinery_configured_retry_budget_adds_present_dependency(tmp_pa
     todo_text = todo_path.read_text(encoding="utf-8")
     assert "## AUTO-003 Resolve validation retry-budget failure for AUTO-001" in todo_text
     assert "- Depends on: AUTO-002" in todo_text
+    assert "- Validation: env TOOL=1 pytest tests/test_runtime.py" in todo_text
+
+
+def test_backlog_refinery_configured_retry_budget_recorder_uses_aliases(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    events_path = repo / "state" / "events.jsonl"
+    strategy_path = repo / "state" / "strategy.json"
+    discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Fix validation
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: pytest tests/test_runtime.py
+- Acceptance: Fix the runtime validation failure.
+""",
+        encoding="utf-8",
+    )
+    events_path.parent.mkdir(parents=True)
+    failure = {
+        "type": "implementation_finished",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "failed_command": "pytest tests/test_runtime.py",
+        },
+        "log_path": "state/implementation_logs/auto-001-attempt-1.log",
+    }
+    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    prepared: list[str] = []
+
+    recorder = ConfiguredRetryBudgetRecorder(
+        todo_path=todo_path,
+        events_path=events_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_header_prefix_value="## AUTO-",
+        validation_retry_budget=5,
+        merge_retry_budget=0,
+        implementation_retry_budget=0,
+        validation_task_command_transform=lambda command: f"env TOOL=1 {command}",
+        prepare_environment=lambda: prepared.append("prepared"),
+    )
+
+    findings = recorder(retry_budget=2)
+
+    assert prepared == ["prepared"]
+    assert len(findings) == 1
+    assert findings[0]["follow_up_task_id"] == "AUTO-002"
+    todo_text = todo_path.read_text(encoding="utf-8")
     assert "- Validation: env TOOL=1 pytest tests/test_runtime.py" in todo_text
 
 

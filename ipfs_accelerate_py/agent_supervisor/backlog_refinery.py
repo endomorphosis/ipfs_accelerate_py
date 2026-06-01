@@ -19,7 +19,7 @@ import os
 import re
 import shlex
 import subprocess
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 from hashlib import sha1
 from pathlib import Path
@@ -2079,6 +2079,146 @@ def record_configured_retry_budget_findings(
             if finding.get("failure_kind") == "validation":
                 finding.pop("failure_kind", None)
     return findings
+
+
+def _configured_recorder_kwargs(
+    recorder: object,
+    overrides: Mapping[str, Any],
+    *,
+    aliases: Mapping[str, str] | None = None,
+) -> dict[str, Any]:
+    params = {
+        field.name: getattr(recorder, field.name)
+        for field in fields(recorder)
+        if field.name != "prepare_environment"
+    }
+    translated = dict(overrides)
+    translated.pop("prepare_environment", None)
+    for source, target in (aliases or {}).items():
+        if source not in translated:
+            continue
+        if target in translated:
+            raise TypeError(f"received both {source!r} and {target!r}")
+        translated[target] = translated.pop(source)
+    params.update(translated)
+    return params
+
+
+def _prepare_configured_recorder(callback: Callable[[], None] | None) -> None:
+    if callback is not None:
+        callback()
+
+
+@dataclass(frozen=True)
+class ConfiguredObjectiveBacklogRecorder:
+    """Callable objective-refill recorder with wrapper-specific defaults."""
+
+    repo_root: Path
+    objective_path: Path
+    todo_path: Path
+    discovery_dir: Path
+    strategy_path: Path
+    state_path: Path | None = None
+    bundle_dir: Path | None = None
+    dataset_dir: Path | None = None
+    default_bundle_dir: Path | None = None
+    default_dataset_dir: Path | None = None
+    todo_vector_index_path: Path | None = None
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX
+    depends_on_if_present: Sequence[str] = ()
+    min_open_tasks: int = DEFAULT_OBJECTIVE_SCAN_MIN_OPEN_TASKS
+    max_findings: int = DEFAULT_OBJECTIVE_SCAN_MAX_FINDINGS
+    cooldown_seconds: int = DEFAULT_OBJECTIVE_SCAN_COOLDOWN_SECONDS
+    force: bool = False
+    persist_ast_dataset: bool = True
+    write_todo_vector_index: bool = True
+    surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL
+    surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO
+    summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
+    discovery_output_path: str | None = None
+    discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH
+    commit_outputs: bool = False
+    commit_subject: str = "Agent: record objective backlog findings"
+    prepare_environment: Callable[[], None] | None = None
+
+    def __call__(self, **overrides: Any) -> list[dict[str, Any]]:
+        _prepare_configured_recorder(self.prepare_environment)
+        return record_configured_objective_backlog_findings(
+            **_configured_recorder_kwargs(
+                self,
+                overrides,
+                aliases={"task_header_prefix": "task_header_prefix_value"},
+            )
+        )
+
+
+@dataclass(frozen=True)
+class ConfiguredCodebaseScanRecorder:
+    """Callable codebase-scan recorder with wrapper-specific defaults."""
+
+    todo_path: Path
+    state_path: Path | None
+    strategy_path: Path
+    discovery_dir: Path
+    repo_root: Path
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX
+    depends_on_if_present: Sequence[str] = ()
+    min_open_tasks: int = DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS
+    max_findings: int = DEFAULT_CODEBASE_SCAN_MAX_FINDINGS
+    cooldown_seconds: int = DEFAULT_CODEBASE_SCAN_COOLDOWN_SECONDS
+    force: bool = False
+    discovery_output_path: str | None = None
+    discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH
+    skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES
+    commit_outputs: bool = False
+    commit_subject: str = "Agent: record codebase scan backlog findings"
+    prepare_environment: Callable[[], None] | None = None
+
+    def __call__(self, **overrides: Any) -> list[dict[str, Any]]:
+        _prepare_configured_recorder(self.prepare_environment)
+        return record_configured_codebase_scan_findings(
+            **_configured_recorder_kwargs(
+                self,
+                overrides,
+                aliases={"task_header_prefix": "task_header_prefix_value"},
+            )
+        )
+
+
+@dataclass(frozen=True)
+class ConfiguredRetryBudgetRecorder:
+    """Callable retry-budget recorder with wrapper-specific defaults."""
+
+    todo_path: Path
+    events_path: Path
+    strategy_path: Path
+    discovery_dir: Path
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX
+    validation_retry_budget: int = DEFAULT_VALIDATION_RETRY_BUDGET
+    merge_retry_budget: int = DEFAULT_MERGE_RETRY_BUDGET
+    implementation_retry_budget: int = DEFAULT_IMPLEMENTATION_RETRY_BUDGET
+    validation_depends_on_if_present: Sequence[str] = ()
+    validation_task_command_transform: Callable[[str], str] | None = None
+    discovery_output_path: str | None = None
+    discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH
+    strip_validation_failure_kind: bool = False
+    commit_outputs: bool = False
+    repo_root: Path | None = None
+    commit_subject: str = "Agent: record retry-budget guardrail outputs"
+    prepare_environment: Callable[[], None] | None = None
+
+    def __call__(self, **overrides: Any) -> list[dict[str, Any]]:
+        _prepare_configured_recorder(self.prepare_environment)
+        return record_configured_retry_budget_findings(
+            **_configured_recorder_kwargs(
+                self,
+                overrides,
+                aliases={
+                    "retry_budget": "validation_retry_budget",
+                    "task_header_prefix": "task_header_prefix_value",
+                },
+            )
+        )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

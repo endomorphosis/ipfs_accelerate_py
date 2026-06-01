@@ -51,6 +51,9 @@ __all__ = [
     "BundleLaneSpec",
     "BootstrapPathSpec",
     "CodebaseFinding",
+    "ConfiguredCodebaseScanRecorder",
+    "ConfiguredObjectiveBacklogRecorder",
+    "ConfiguredRetryBudgetRecorder",
     "DatasetArtifact",
     "ObjectiveFinding",
     "ObjectiveGoal",
@@ -179,6 +182,9 @@ __all__ = [
 def __getattr__(name: str):
     if name in {
         "CodebaseFinding",
+        "ConfiguredCodebaseScanRecorder",
+        "ConfiguredObjectiveBacklogRecorder",
+        "ConfiguredRetryBudgetRecorder",
         "ensure_task_blocks_present",
         "record_configured_codebase_scan_findings",
         "record_configured_objective_backlog_findings",
