@@ -121,14 +121,19 @@ __all__ = [
     "SupervisorTrack",
     "build_task_proposal_prompt",
     "build_portal_implementation_daemon_from_args",
+    "build_portal_implementation_supervisor_from_args",
     "configure_daemon_logging",
+    "configure_supervisor_logging",
     "apply_merge_resolver_environment",
     "implementation_state_paths",
     "run_portal_implementation_daemon_loop",
+    "run_portal_implementation_supervisor",
     "run_task_proposal_router",
     "select_proposal_task",
     "DaemonLoopHook",
     "ImplementationDaemonRunContext",
+    "ImplementationSupervisorRunContext",
+    "SupervisorRunHook",
     "TaskProposalRouterConfig",
     "TaskProposalRouterError",
     "task_metadata_lines",
@@ -194,6 +199,16 @@ def __getattr__(name: str):
         if name == "parse_supervisor_track_spec":
             return multi_supervisor_runner.parse_track_spec
         return getattr(multi_supervisor_runner, name)
+    if name in {
+        "build_portal_implementation_supervisor_from_args",
+        "configure_supervisor_logging",
+        "run_portal_implementation_supervisor",
+        "ImplementationSupervisorRunContext",
+        "SupervisorRunHook",
+    }:
+        from . import implementation_supervisor_runner
+
+        return getattr(implementation_supervisor_runner, name)
     if name in {
         "build_portal_implementation_daemon_from_args",
         "configure_daemon_logging",
