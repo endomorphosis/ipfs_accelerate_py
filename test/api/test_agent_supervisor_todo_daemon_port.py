@@ -75,6 +75,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     environment_assignment_prefix,
     env_csv_tuple,
     repo_relative_or_default,
+    resolve_and_ensure_bootstrap_paths,
     resolve_bootstrap_paths,
     rewrite_validation_commands,
     unique_path_entries,
@@ -178,6 +179,21 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert ensured == paths
     assert paths["state_dir"].is_dir()
     assert paths["worktree_root"].is_dir()
+
+    ensured_bootstrap = resolve_and_ensure_bootstrap_paths(
+        tmp_path,
+        (BootstrapPathSpec("cache_dir", "cache"),),
+        ("cache_dir",),
+    )
+    assert ensured_bootstrap["cache_dir"] == tmp_path / "cache"
+    assert ensured_bootstrap["cache_dir"].is_dir()
+    provided_bootstrap = resolve_and_ensure_bootstrap_paths(
+        tmp_path,
+        (),
+        ("cache_dir",),
+        paths={"cache_dir": tmp_path / "provided-cache"},
+    )
+    assert provided_bootstrap["cache_dir"].is_dir()
 
     contract = {
         "env": {"JAVA_HOME": "/jdk", "ANDROID_HOME": "/sdk"},

@@ -145,6 +145,24 @@ def ensure_named_directories(paths: Mapping[str, Path], keys: Iterable[str]) -> 
     return resolved
 
 
+def resolve_and_ensure_bootstrap_paths(
+    repo_root: Path | str,
+    specs: Iterable[BootstrapPathSpec],
+    directory_keys: Iterable[str],
+    *,
+    paths: Mapping[str, Path] | None = None,
+    repo_root_key: str = "repo_root",
+) -> dict[str, Path]:
+    """Resolve bootstrap paths and create selected runtime directories."""
+
+    resolved = dict(paths) if paths is not None else resolve_bootstrap_paths(
+        repo_root,
+        specs,
+        repo_root_key=repo_root_key,
+    )
+    return ensure_named_directories(resolved, directory_keys)
+
+
 def _string_mapping(value: object) -> dict[str, str]:
     if not isinstance(value, Mapping):
         return {}
