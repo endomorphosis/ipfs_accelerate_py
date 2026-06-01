@@ -46,6 +46,9 @@ class DaemonLoopHook:
     log_level: int = logging.WARNING
 
 
+RefillHookEntry = tuple[str, DaemonLoopHookCallback]
+
+
 @dataclass(frozen=True)
 class ImplementationDaemonDefaults:
     """Default CLI values for a project-specific implementation daemon wrapper."""
@@ -85,6 +88,79 @@ def apply_portal_implementation_daemon_defaults(
     if defaults.worktree_submodule_paths:
         args = with_repeated_default(args, "--worktree-submodule-path", defaults.worktree_submodule_paths)
     return args
+
+
+def _ordered_refill_entries(
+    entries: Sequence[RefillHookEntry],
+    order: Sequence[str] | None,
+) -> list[RefillHookEntry]:
+    if order is None:
+        return list(entries)
+    by_name = {name: callback for name, callback in entries}
+    ordered: list[RefillHookEntry] = [
+        (name, by_name[name])
+        for name in order
+        if name in by_name
+    ]
+    ordered_names = {name for name, _callback in ordered}
+    ordered.extend((name, callback) for name, callback in entries if name not in ordered_names)
+    return ordered
+
+
+def _refill_hook_message(
+    *,
+    scope_label: str,
+    finding_label: str,
+    phase_label: str,
+    runner_label: str,
+) -> str:
+    label = " ".join(part for part in (scope_label.strip(), finding_label.strip()) if part)
+    return f"Recorded {label} findings {phase_label} {runner_label} pass: %s"
+
+
+def build_daemon_refill_hooks(
+    entries: Sequence[RefillHookEntry],
+    *,
+    scope_label: str = "",
+    before: bool = True,
+    after: bool = True,
+    after_order: Sequence[str] | None = None,
+    log_level: int = logging.WARNING,
+) -> tuple[DaemonLoopHook, ...]:
+    """Build standard before/after refill hooks for a daemon wrapper."""
+
+    hooks: list[DaemonLoopHook] = []
+    if before:
+        hooks.extend(
+            DaemonLoopHook(
+                "before",
+                _refill_hook_message(
+                    scope_label=scope_label,
+                    finding_label=finding_label,
+                    phase_label="before",
+                    runner_label="daemon",
+                ),
+                callback,
+                log_level=log_level,
+            )
+            for finding_label, callback in entries
+        )
+    if after:
+        hooks.extend(
+            DaemonLoopHook(
+                "after",
+                _refill_hook_message(
+                    scope_label=scope_label,
+                    finding_label=finding_label,
+                    phase_label="after",
+                    runner_label="daemon",
+                ),
+                callback,
+                log_level=log_level,
+            )
+            for finding_label, callback in _ordered_refill_entries(entries, after_order)
+        )
+    return tuple(hooks)
 
 
 def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:

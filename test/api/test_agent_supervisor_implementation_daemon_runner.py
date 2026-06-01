@@ -10,6 +10,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     ImplementationDaemonRunContext,
     apply_portal_implementation_daemon_defaults,
     build_portal_implementation_daemon_from_args,
+    build_daemon_refill_hooks,
     implementation_state_paths,
     run_portal_implementation_daemon_loop,
 )
@@ -133,3 +134,27 @@ def test_run_portal_implementation_daemon_loop_runs_hooks_once(caplog):
     assert calls == ["before:0", "after:0"]
     assert "before hook: ['before-result']" in caplog.text
     assert "after hook: ['after-result']" in caplog.text
+
+
+def test_build_daemon_refill_hooks_formats_standard_messages():
+    def callback(ctx: ImplementationDaemonRunContext) -> list[str]:
+        return [str(ctx.pass_index)]
+
+    hooks = build_daemon_refill_hooks(
+        (
+            ("objective-goal", callback),
+            ("codebase-scan", callback),
+            ("retry-budget", callback),
+        ),
+        scope_label="Hallucinate",
+        after_order=("retry-budget", "objective-goal"),
+    )
+
+    assert [(hook.phase, hook.message) for hook in hooks] == [
+        ("before", "Recorded Hallucinate objective-goal findings before daemon pass: %s"),
+        ("before", "Recorded Hallucinate codebase-scan findings before daemon pass: %s"),
+        ("before", "Recorded Hallucinate retry-budget findings before daemon pass: %s"),
+        ("after", "Recorded Hallucinate retry-budget findings after daemon pass: %s"),
+        ("after", "Recorded Hallucinate objective-goal findings after daemon pass: %s"),
+        ("after", "Recorded Hallucinate codebase-scan findings after daemon pass: %s"),
+    ]

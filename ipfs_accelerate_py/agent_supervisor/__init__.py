@@ -127,6 +127,8 @@ __all__ = [
     "build_task_proposal_prompt",
     "build_portal_implementation_daemon_from_args",
     "build_portal_implementation_supervisor_from_args",
+    "build_daemon_refill_hooks",
+    "build_supervisor_refill_hooks",
     "configure_daemon_logging",
     "configure_supervisor_logging",
     "apply_merge_resolver_environment",
@@ -219,6 +221,7 @@ def __getattr__(name: str):
         return getattr(multi_supervisor_runner, name)
     if name in {
         "build_portal_implementation_supervisor_from_args",
+        "build_supervisor_refill_hooks",
         "configure_supervisor_logging",
         "apply_portal_implementation_supervisor_defaults",
         "run_portal_implementation_supervisor",
@@ -233,6 +236,7 @@ def __getattr__(name: str):
         return getattr(implementation_supervisor_runner, name)
     if name in {
         "build_portal_implementation_daemon_from_args",
+        "build_daemon_refill_hooks",
         "configure_daemon_logging",
         "apply_merge_resolver_environment",
         "apply_portal_implementation_daemon_defaults",

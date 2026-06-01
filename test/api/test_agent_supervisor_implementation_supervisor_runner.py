@@ -12,6 +12,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     SupervisorRunHook,
     apply_portal_implementation_supervisor_defaults,
     build_portal_implementation_supervisor_from_args,
+    build_supervisor_refill_hooks,
     run_portal_implementation_supervisor,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_supervisor import parse_args
@@ -179,3 +180,26 @@ def test_run_portal_implementation_supervisor_can_delegate_ensure_running():
     )
 
     assert result == {"state": "state.json"}
+
+
+def test_build_supervisor_refill_hooks_formats_standard_messages():
+    def callback(ctx: ImplementationSupervisorRunContext) -> list[str]:
+        return [str(ctx.state_path)]
+
+    hooks = build_supervisor_refill_hooks(
+        (
+            ("objective-goal", callback),
+            ("codebase-scan", callback),
+            ("retry-budget", callback),
+        ),
+        scope_label="Hallucinate",
+    )
+
+    assert [(hook.phase, hook.message) for hook in hooks] == [
+        ("before", "Recorded Hallucinate objective-goal findings before supervisor pass: %s"),
+        ("before", "Recorded Hallucinate codebase-scan findings before supervisor pass: %s"),
+        ("before", "Recorded Hallucinate retry-budget findings before supervisor pass: %s"),
+        ("after_once", "Recorded Hallucinate objective-goal findings after supervisor pass: %s"),
+        ("after_once", "Recorded Hallucinate codebase-scan findings after supervisor pass: %s"),
+        ("after_once", "Recorded Hallucinate retry-budget findings after supervisor pass: %s"),
+    ]
