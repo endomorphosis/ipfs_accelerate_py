@@ -67,6 +67,8 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     android_validation_environment_contract,
     apply_environment_contract,
     bootstrap_runtime_environment,
+    build_bootstrap_path_ensurer,
+    build_bootstrap_path_resolver,
     build_runtime_environment_callback,
     csv_tuple,
     default_llm_merge_resolver_command,
@@ -195,6 +197,20 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         paths={"cache_dir": tmp_path / "provided-cache"},
     )
     assert provided_bootstrap["cache_dir"].is_dir()
+    resolver = build_bootstrap_path_resolver(
+        tmp_path,
+        (BootstrapPathSpec("cache_dir", "callback-cache"),),
+    )
+    assert resolver()["cache_dir"] == tmp_path / "callback-cache"
+    ensurer = build_bootstrap_path_ensurer(
+        tmp_path,
+        (BootstrapPathSpec("cache_dir", "callback-cache"),),
+        ("cache_dir",),
+    )
+    ensured_callback = ensurer()
+    assert ensured_callback["cache_dir"].is_dir()
+    provided_callback = ensurer({"cache_dir": tmp_path / "provided-callback-cache"})
+    assert provided_callback["cache_dir"].is_dir()
 
     contract = {
         "env": {"JAVA_HOME": "/jdk", "ANDROID_HOME": "/sdk"},

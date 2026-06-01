@@ -163,6 +163,48 @@ def resolve_and_ensure_bootstrap_paths(
     return ensure_named_directories(resolved, directory_keys)
 
 
+def build_bootstrap_path_resolver(
+    repo_root: Path | str,
+    specs: Iterable[BootstrapPathSpec],
+    *,
+    repo_root_key: str = "repo_root",
+) -> Callable[[], dict[str, Path]]:
+    """Build a no-argument callback that resolves bootstrap paths."""
+
+    root = Path(repo_root)
+    path_specs = tuple(specs)
+
+    def resolver() -> dict[str, Path]:
+        return resolve_bootstrap_paths(root, path_specs, repo_root_key=repo_root_key)
+
+    return resolver
+
+
+def build_bootstrap_path_ensurer(
+    repo_root: Path | str,
+    specs: Iterable[BootstrapPathSpec],
+    directory_keys: Iterable[str],
+    *,
+    repo_root_key: str = "repo_root",
+) -> Callable[[Mapping[str, Path] | None], dict[str, Path]]:
+    """Build a callback that resolves bootstrap paths and creates selected directories."""
+
+    root = Path(repo_root)
+    path_specs = tuple(specs)
+    keys = tuple(directory_keys)
+
+    def ensurer(paths: Mapping[str, Path] | None = None) -> dict[str, Path]:
+        return resolve_and_ensure_bootstrap_paths(
+            root,
+            path_specs,
+            keys,
+            paths=paths,
+            repo_root_key=repo_root_key,
+        )
+
+    return ensurer
+
+
 def _string_mapping(value: object) -> dict[str, str]:
     if not isinstance(value, Mapping):
         return {}
