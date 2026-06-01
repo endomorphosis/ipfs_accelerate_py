@@ -114,6 +114,24 @@ def default_llm_merge_resolver_command(
     return " ".join(shlex.quote(part) for part in (codex, *codex_args))
 
 
+def build_default_llm_merge_resolver_command_callback(
+    *,
+    primary_env_var: str = "",
+    fallback_env_var: str = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
+    codex_args: Sequence[str] = ("exec", "--dangerously-bypass-approvals-and-sandbox", "-C", ".", "-"),
+) -> Callable[[], str]:
+    """Build a no-argument callback for resolving the default LLM merge command."""
+
+    def resolver() -> str:
+        return default_llm_merge_resolver_command(
+            primary_env_var=primary_env_var,
+            fallback_env_var=fallback_env_var,
+            codex_args=codex_args,
+        )
+
+    return resolver
+
+
 def unique_path_entries(entries: Iterable[str]) -> list[str]:
     """Return non-empty path entries in first-seen order without duplicates."""
 
