@@ -59,6 +59,8 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     default_llm_merge_resolver_command,
     ensure_runtime_pythonpath,
+    repo_relative_or_default,
+    unique_path_entries,
     with_default,
     with_flag_default,
     with_repeated_default,
@@ -134,6 +136,9 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         "tail",
     ]
     assert with_repeated_default(["--path", "caller"], "--path", ("a", "b")) == ["--path", "caller"]
+    assert unique_path_entries(["a", "", "b", "a"]) == ["a", "b"]
+    assert repo_relative_or_default(tmp_path / "first", tmp_path, "fallback") == "first"
+    assert repo_relative_or_default(Path("/"), tmp_path / "repo", "fallback") == "fallback"
 
     first = tmp_path / "first"
     second = tmp_path / "second"

@@ -62,7 +62,9 @@ def default_llm_merge_resolver_command(
     return " ".join(shlex.quote(part) for part in (codex, *codex_args))
 
 
-def _unique_path_entries(entries: Iterable[str]) -> list[str]:
+def unique_path_entries(entries: Iterable[str]) -> list[str]:
+    """Return non-empty path entries in first-seen order without duplicates."""
+
     seen: set[str] = set()
     unique: list[str] = []
     for entry in entries:
@@ -71,6 +73,15 @@ def _unique_path_entries(entries: Iterable[str]) -> list[str]:
         seen.add(entry)
         unique.append(entry)
     return unique
+
+
+def repo_relative_or_default(path: Path | str, repo_root: Path | str, default: str) -> str:
+    """Return a repo-relative POSIX path, or ``default`` when the path is outside the repo."""
+
+    try:
+        return Path(path).resolve().relative_to(Path(repo_root).resolve()).as_posix()
+    except ValueError:
+        return default
 
 
 def ensure_runtime_pythonpath(paths: Sequence[Path | str], *, env_var: str = "PYTHONPATH") -> None:
@@ -83,4 +94,4 @@ def ensure_runtime_pythonpath(paths: Sequence[Path | str], *, env_var: str = "PY
 
     existing = os.environ.get(env_var, "")
     existing_paths = existing.split(os.pathsep) if existing else []
-    os.environ[env_var] = os.pathsep.join(_unique_path_entries([*normalized_paths, *existing_paths]))
+    os.environ[env_var] = os.pathsep.join(unique_path_entries([*normalized_paths, *existing_paths]))
