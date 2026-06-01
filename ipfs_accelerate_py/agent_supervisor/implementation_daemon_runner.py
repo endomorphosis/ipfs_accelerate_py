@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
+from .wrapper_utils import with_default, with_repeated_default
+
 
 @dataclass(frozen=True)
 class ImplementationDaemonRunContext:
@@ -42,6 +44,47 @@ class DaemonLoopHook:
     message: str
     callback: DaemonLoopHookCallback
     log_level: int = logging.WARNING
+
+
+@dataclass(frozen=True)
+class ImplementationDaemonDefaults:
+    """Default CLI values for a project-specific implementation daemon wrapper."""
+
+    todo_path: Path
+    state_dir: Path
+    task_prefix: str
+    state_prefix: str
+    worktree_root: Path
+    todo_path_flag: str = "--todo-path"
+    objective_path: Path | None = None
+    objective_bundle_dir: Path | None = None
+    worktree_submodule_paths: Sequence[str] = ()
+
+
+def _with_optional_default(args: Sequence[str], flag: str, value: object | None) -> list[str]:
+    if value is None:
+        return list(args)
+    return with_default(args, flag, str(value))
+
+
+def apply_portal_implementation_daemon_defaults(
+    argv: Sequence[str],
+    *,
+    defaults: ImplementationDaemonDefaults,
+) -> list[str]:
+    """Apply reusable implementation-daemon CLI defaults to ``argv``."""
+
+    args = list(argv)
+    args = with_default(args, defaults.todo_path_flag, str(defaults.todo_path))
+    args = with_default(args, "--state-dir", str(defaults.state_dir))
+    args = with_default(args, "--task-prefix", defaults.task_prefix)
+    args = with_default(args, "--state-prefix", defaults.state_prefix)
+    args = with_default(args, "--worktree-root", str(defaults.worktree_root))
+    args = _with_optional_default(args, "--objective-path", defaults.objective_path)
+    args = _with_optional_default(args, "--objective-bundle-dir", defaults.objective_bundle_dir)
+    if defaults.worktree_submodule_paths:
+        args = with_repeated_default(args, "--worktree-submodule-path", defaults.worktree_submodule_paths)
+    return args
 
 
 def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:

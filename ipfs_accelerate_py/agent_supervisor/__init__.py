@@ -125,6 +125,7 @@ __all__ = [
     "configure_daemon_logging",
     "configure_supervisor_logging",
     "apply_merge_resolver_environment",
+    "apply_portal_implementation_daemon_defaults",
     "apply_portal_implementation_supervisor_defaults",
     "implementation_state_paths",
     "run_portal_implementation_daemon_loop",
@@ -133,6 +134,7 @@ __all__ = [
     "select_proposal_task",
     "DaemonLoopHook",
     "ImplementationDaemonRunContext",
+    "ImplementationDaemonDefaults",
     "ImplementationSupervisorRunContext",
     "ImplementationSupervisorDefaults",
     "ObjectiveRefillDefaults",
@@ -221,10 +223,12 @@ def __getattr__(name: str):
         "build_portal_implementation_daemon_from_args",
         "configure_daemon_logging",
         "apply_merge_resolver_environment",
+        "apply_portal_implementation_daemon_defaults",
         "implementation_state_paths",
         "run_portal_implementation_daemon_loop",
         "DaemonLoopHook",
         "ImplementationDaemonRunContext",
+        "ImplementationDaemonDefaults",
     }:
         from . import implementation_daemon_runner
 

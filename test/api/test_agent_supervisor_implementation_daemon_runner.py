@@ -6,7 +6,9 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     DaemonLoopHook,
+    ImplementationDaemonDefaults,
     ImplementationDaemonRunContext,
+    apply_portal_implementation_daemon_defaults,
     build_portal_implementation_daemon_from_args,
     implementation_state_paths,
     run_portal_implementation_daemon_loop,
@@ -22,6 +24,34 @@ def test_implementation_state_paths_follow_state_prefix(tmp_path: Path):
     assert paths["state_path"] == tmp_path / "state" / "example_task_state.json"
     assert paths["strategy_path"] == tmp_path / "state" / "example_strategy.json"
     assert paths["events_path"] == tmp_path / "state" / "example_events.jsonl"
+
+
+def test_apply_portal_implementation_daemon_defaults_preserves_user_values(tmp_path: Path):
+    args = apply_portal_implementation_daemon_defaults(
+        ["--state-prefix", "custom", "--worktree-submodule-path", "user-module"],
+        defaults=ImplementationDaemonDefaults(
+            todo_path=tmp_path / "tasks.todo.md",
+            state_dir=tmp_path / "state",
+            task_prefix="## EX-",
+            state_prefix="example",
+            worktree_root=tmp_path / "worktrees",
+            objective_path=tmp_path / "objective.md",
+            objective_bundle_dir=tmp_path / "bundles",
+            worktree_submodule_paths=("module-a", "module-b"),
+        ),
+    )
+
+    assert args[args.index("--state-prefix") + 1] == "custom"
+    assert args.count("--worktree-submodule-path") == 1
+    parsed = parse_args(args)
+    assert parsed.todo_path == tmp_path / "tasks.todo.md"
+    assert parsed.state_dir == tmp_path / "state"
+    assert parsed.task_prefix == "## EX-"
+    assert parsed.state_prefix == "custom"
+    assert parsed.worktree_root == tmp_path / "worktrees"
+    assert parsed.objective_path == tmp_path / "objective.md"
+    assert parsed.objective_bundle_dir == tmp_path / "bundles"
+    assert parsed.worktree_submodule_path == ["user-module"]
 
 
 def test_build_portal_implementation_daemon_from_args_applies_defaults(tmp_path: Path):
