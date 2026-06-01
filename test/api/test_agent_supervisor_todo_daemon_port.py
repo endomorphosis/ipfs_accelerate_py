@@ -62,12 +62,14 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     terminate_supervised_child,
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
+    BootstrapPathSpec,
     csv_tuple,
     default_llm_merge_resolver_command,
     ensure_named_directories,
     ensure_runtime_pythonpath,
     env_csv_tuple,
     repo_relative_or_default,
+    resolve_bootstrap_paths,
     unique_path_entries,
     with_default,
     with_flag_default,
@@ -150,6 +152,19 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert unique_path_entries(["a", "", "b", "a"]) == ["a", "b"]
     assert repo_relative_or_default(tmp_path / "first", tmp_path, "fallback") == "first"
     assert repo_relative_or_default(Path("/"), tmp_path / "repo", "fallback") == "fallback"
+    monkeypatch.setenv("WRAPPER_UTILS_STATE_DIR", str(tmp_path / "custom-state"))
+    bootstrap_paths = resolve_bootstrap_paths(
+        tmp_path,
+        (
+            BootstrapPathSpec("state_dir", "state", "WRAPPER_UTILS_STATE_DIR"),
+            BootstrapPathSpec("worktree_root", tmp_path / "worktrees"),
+        ),
+    )
+    assert bootstrap_paths == {
+        "repo_root": tmp_path,
+        "state_dir": tmp_path / "custom-state",
+        "worktree_root": tmp_path / "worktrees",
+    }
     paths = {"state_dir": tmp_path / "state", "worktree_root": tmp_path / "worktrees"}
     ensured = ensure_named_directories(paths, ("state_dir", "worktree_root"))
     assert ensured == paths

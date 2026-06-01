@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import argparse
+import json
+import os
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Sequence
 
 
 PromptBuilder = Callable[[object, str], str]
+BootstrapCallback = Callable[[], None]
 DEFAULT_OPEN_TASK_STATUSES = ("to" "do", "ready")
 
 
@@ -28,6 +32,24 @@ class TaskProposalRouterConfig:
     no_open_task_message: str = "No open task found."
     open_statuses: Sequence[str] = field(default_factory=lambda: DEFAULT_OPEN_TASK_STATUSES)
     plan_char_limit: int = 40000
+
+
+@dataclass(frozen=True)
+class TaskProposalRouterCliConfig:
+    """Common CLI defaults for project-specific task proposal wrappers."""
+
+    router_config: TaskProposalRouterConfig
+    description: str
+    task_id_help: str
+    task_board_option: str = "--task-board-path"
+    hidden_task_board_options: Sequence[str] = field(default_factory=tuple)
+    include_dry_run_flag: bool = False
+    bootstrap: BootstrapCallback | None = None
+    provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER"
+    model_env: str = "IPFS_DATASETS_PY_LLM_MODEL"
+    default_model: str = "gpt-5.3-codex-spark"
+    default_max_new_tokens: int = 2048
+    default_timeout_seconds: int = 300
 
 
 def _task_values(task: object, name: str) -> list[str]:
@@ -166,3 +188,65 @@ def run_task_proposal_router(
     output_path.write_text(proposal, encoding="utf-8")
     payload["artifact"] = _artifact_relative_path(output_path, config.repo_root)
     return payload
+
+
+def build_task_proposal_router_parser(config: TaskProposalRouterCliConfig) -> argparse.ArgumentParser:
+    """Build the standard CLI parser for a project-specific proposal wrapper."""
+
+    parser = argparse.ArgumentParser(description=config.description)
+    parser.add_argument("--task-id", default="", help=config.task_id_help)
+    parser.add_argument(
+        config.task_board_option,
+        dest="task_board_path",
+        type=Path,
+        default=config.router_config.task_board_path,
+    )
+    for option in config.hidden_task_board_options:
+        parser.add_argument(option, dest="task_board_path", type=Path, help=argparse.SUPPRESS)
+    parser.add_argument("--plan-path", type=Path, default=config.router_config.plan_path)
+    parser.add_argument("--artifact-dir", type=Path, default=config.router_config.artifact_dir)
+    parser.add_argument("--generate", action="store_true", help="Actually call llm_router. Default is dry-run/preflight.")
+    if config.include_dry_run_flag:
+        parser.add_argument(
+            "--dry-run",
+            action="store_true",
+            help="Explicit preflight mode. This is the default when --generate is not set.",
+        )
+    parser.add_argument("--provider", default=os.environ.get(config.provider_env, ""))
+    parser.add_argument("--model", default=os.environ.get(config.model_env, config.default_model))
+    parser.add_argument("--max-new-tokens", type=int, default=config.default_max_new_tokens)
+    parser.add_argument("--timeout", type=int, default=config.default_timeout_seconds)
+    parser.add_argument("--allow-local-fallback", action="store_true")
+    return parser
+
+
+def run_task_proposal_router_cli(config: TaskProposalRouterCliConfig, argv: list[str] | None = None) -> int:
+    """Run the standard dry-run/generate CLI for one project-specific task board."""
+
+    parser = build_task_proposal_router_parser(config)
+    args = parser.parse_args(argv)
+    if config.include_dry_run_flag and bool(getattr(args, "dry_run", False)) and args.generate:
+        raise SystemExit("Choose either --generate or --dry-run, not both.")
+    if config.bootstrap is not None:
+        config.bootstrap()
+    router_config = replace(
+        config.router_config,
+        task_board_path=args.task_board_path,
+        plan_path=args.plan_path,
+        artifact_dir=args.artifact_dir,
+    )
+    try:
+        payload = run_task_proposal_router(
+            router_config,
+            task_id=args.task_id,
+            generate=bool(args.generate),
+            provider=args.provider,
+            model=args.model,
+            max_new_tokens=int(args.max_new_tokens),
+            timeout_seconds=int(args.timeout),
+            allow_local_fallback=bool(args.allow_local_fallback),
+        )
+    except TaskProposalRouterError as exc:
+        raise SystemExit(str(exc)) from exc
+    print(json.dumps(payload, indent=2, sort_keys=True))
+    return 0

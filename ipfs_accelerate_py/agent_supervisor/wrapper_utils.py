@@ -6,6 +6,7 @@ import os
 import shlex
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, Mapping, Sequence
 
@@ -57,6 +58,38 @@ def env_csv_tuple(env_var: str, default: str = "") -> tuple[str, ...]:
     """Return a comma-separated environment setting as a tuple."""
 
     return csv_tuple(os.environ.get(env_var, default))
+
+
+@dataclass(frozen=True)
+class BootstrapPathSpec:
+    """One repo-local path that may be overridden by an environment variable."""
+
+    key: str
+    default: Path | str
+    env_var: str = ""
+
+
+def _repo_path(repo_root: Path, path: Path | str) -> Path:
+    resolved = Path(path)
+    if resolved.is_absolute():
+        return resolved
+    return repo_root / resolved
+
+
+def resolve_bootstrap_paths(
+    repo_root: Path | str,
+    specs: Iterable[BootstrapPathSpec],
+    *,
+    repo_root_key: str = "repo_root",
+) -> dict[str, Path]:
+    """Resolve repo-local path defaults with environment overrides."""
+
+    root = Path(repo_root)
+    paths: dict[str, Path] = {repo_root_key: root}
+    for spec in specs:
+        configured = os.environ.get(spec.env_var, "").strip() if spec.env_var else ""
+        paths[spec.key] = Path(configured) if configured else _repo_path(root, spec.default)
+    return paths
 
 
 def default_llm_merge_resolver_command(
