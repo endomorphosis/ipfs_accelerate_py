@@ -64,6 +64,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     BootstrapPathSpec,
     apply_environment_contract,
+    bootstrap_runtime_environment,
     csv_tuple,
     default_llm_merge_resolver_command,
     ensure_named_directories,
@@ -207,6 +208,18 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
 
     assert sys.path[:2] == [str(first), str(second)]
     assert os.environ["PYTHONPATH"].split(os.pathsep) == [str(first), str(second), "existing"]
+
+    cwd = Path.cwd()
+    repo = tmp_path / "repo"
+    third = tmp_path / "third"
+    repo.mkdir()
+    try:
+        bootstrap_runtime_environment(repo, (third,))
+        assert Path.cwd() == repo
+        assert sys.path[0] == str(third)
+        assert os.environ["PYTHONPATH"].split(os.pathsep)[0] == str(third)
+    finally:
+        os.chdir(cwd)
 
 
 def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):

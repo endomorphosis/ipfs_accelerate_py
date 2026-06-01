@@ -235,3 +235,17 @@ def ensure_runtime_pythonpath(paths: Sequence[Path | str], *, env_var: str = "PY
     existing = os.environ.get(env_var, "")
     existing_paths = existing.split(os.pathsep) if existing else []
     os.environ[env_var] = os.pathsep.join(unique_path_entries([*normalized_paths, *existing_paths]))
+
+
+def bootstrap_runtime_environment(
+    repo_root: Path | str,
+    import_paths: Sequence[Path | str],
+    *,
+    chdir: bool = True,
+    env_var: str = "PYTHONPATH",
+) -> None:
+    """Optionally enter a repo root and make local package roots importable."""
+
+    if chdir:
+        os.chdir(Path(repo_root))
+    ensure_runtime_pythonpath(import_paths, env_var=env_var)
