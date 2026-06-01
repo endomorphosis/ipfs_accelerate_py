@@ -408,29 +408,30 @@ def build_supervisor_runtime_callbacks(
 ) -> SupervisorRuntimeCallbacks:
     """Build standard runtime repair/ensure callbacks for a supervisor wrapper."""
 
-    from .todo_daemon.supervisor_runtime import ensure_supervisor_running, repair_supervisor_runtime
+    from .todo_daemon.supervisor_runtime import build_supervisor_runtime_operations
 
     args = tuple(argv)
+    operations = build_supervisor_runtime_operations(
+        repo_root=repo_root,
+        script_path=script_path,
+        process_match_any=process_match_any,
+        process_predicate=process_predicate,
+        prepare_environment=prepare_environment,
+        implementation_lock_name=implementation_lock_name,
+        startup_delay_seconds=startup_delay_seconds,
+    )
 
     def ensure_running(ctx: ImplementationSupervisorRunContext) -> dict[str, Any]:
-        return ensure_supervisor_running(
+        return operations.ensure_running(
             args,
             state_dir=ctx.parsed.state_dir,
             state_prefix=ctx.parsed.state_prefix,
-            repo_root=repo_root,
-            script_path=script_path,
-            process_match_any=process_match_any,
-            process_predicate=process_predicate,
-            prepare_environment=prepare_environment,
-            implementation_lock_name=implementation_lock_name,
-            startup_delay_seconds=startup_delay_seconds,
         )
 
     def repair_runtime(ctx: ImplementationSupervisorRunContext) -> dict[str, Any]:
-        return repair_supervisor_runtime(
+        return operations.repair_runtime(
             ctx.parsed.state_dir,
             ctx.parsed.state_prefix,
-            implementation_lock_name=implementation_lock_name,
         )
 
     return SupervisorRuntimeCallbacks(

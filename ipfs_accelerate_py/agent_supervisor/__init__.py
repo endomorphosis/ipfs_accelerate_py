@@ -160,6 +160,7 @@ __all__ = [
     "build_supervisor_objective_refill_callback",
     "build_supervisor_retry_budget_refill_callback",
     "build_supervisor_runtime_callbacks",
+    "build_supervisor_runtime_operations",
     "bootstrap_runtime_environment",
     "configure_daemon_logging",
     "configure_supervisor_logging",
@@ -186,6 +187,7 @@ __all__ = [
     "CodebaseRefillDefaults",
     "SupervisorRunHook",
     "SupervisorRuntimeCallbacks",
+    "SupervisorRuntimeOperations",
     "TaskProposalRouterConfig",
     "TaskProposalRouterCliConfig",
     "TaskProposalRouterError",
@@ -288,6 +290,13 @@ def __getattr__(name: str):
         if name == "parse_supervisor_track_spec":
             return multi_supervisor_runner.parse_track_spec
         return getattr(multi_supervisor_runner, name)
+    if name in {
+        "build_supervisor_runtime_operations",
+        "SupervisorRuntimeOperations",
+    }:
+        from .todo_daemon import supervisor_runtime
+
+        return getattr(supervisor_runtime, name)
     if name in {
         "build_portal_implementation_supervisor_from_args",
         "build_supervisor_codebase_scan_refill_callback",

@@ -9,7 +9,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Mapping, Optional, Sequence
+from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
 from ..event_log import unique_backup_path
 from .core import now_iso, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
@@ -65,6 +65,22 @@ class SupervisedChild:
 
 
 DEFAULT_SUPERVISOR_RUNNING_STATES = frozenset({"running", "starting", "recycling", "restarting"})
+
+
+class SupervisorRuntimeEnsureCallback(Protocol):
+    """Callable signature for launching a project-bound supervisor wrapper."""
+
+    def __call__(self, argv: Sequence[str], *, state_dir: Path, state_prefix: str) -> dict[str, Any]:
+        ...
+
+
+@dataclass(frozen=True)
+class SupervisorRuntimeOperations:
+    """Project-bound runtime operations for a reusable supervisor wrapper."""
+
+    repair_runtime: Callable[[Path, str], dict[str, Any]]
+    is_running: Callable[[Path, str], bool]
+    ensure_running: SupervisorRuntimeEnsureCallback
 
 
 def pop_bool_flag(argv: list[str], flag: str) -> bool:
@@ -297,6 +313,55 @@ def ensure_supervisor_running(
         "wrapper_out": str(paths["wrapper_out"]),
         "repairs": repairs,
     }
+
+
+def build_supervisor_runtime_operations(
+    *,
+    repo_root: Path,
+    script_path: Path,
+    process_match_any: Sequence[str] = (),
+    process_predicate: Callable[[int], bool] | None = None,
+    prepare_environment: Callable[[], None] | None = None,
+    implementation_lock_name: str = "implementation.lock",
+    startup_delay_seconds: float = 1.0,
+) -> SupervisorRuntimeOperations:
+    """Bind generic supervisor runtime helpers to a project wrapper."""
+
+    def repair_runtime(state_dir: Path, state_prefix: str) -> dict[str, Any]:
+        return repair_supervisor_runtime(
+            state_dir,
+            state_prefix,
+            implementation_lock_name=implementation_lock_name,
+        )
+
+    def is_running(state_dir: Path, state_prefix: str) -> bool:
+        return supervisor_is_running(
+            state_dir,
+            state_prefix,
+            process_match_any=process_match_any,
+            process_predicate=process_predicate,
+            implementation_lock_name=implementation_lock_name,
+        )
+
+    def ensure_running(argv: Sequence[str], *, state_dir: Path, state_prefix: str) -> dict[str, Any]:
+        return ensure_supervisor_running(
+            argv,
+            state_dir=state_dir,
+            state_prefix=state_prefix,
+            repo_root=repo_root,
+            script_path=script_path,
+            process_match_any=process_match_any,
+            process_predicate=process_predicate,
+            prepare_environment=prepare_environment,
+            implementation_lock_name=implementation_lock_name,
+            startup_delay_seconds=startup_delay_seconds,
+        )
+
+    return SupervisorRuntimeOperations(
+        repair_runtime=repair_runtime,
+        is_running=is_running,
+        ensure_running=ensure_running,
+    )
 
 
 def supervisor_run_id(now: Optional[datetime] = None) -> str:

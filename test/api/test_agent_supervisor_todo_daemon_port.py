@@ -46,6 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor import (
     SupervisorStatusContext,
     worktree_phase_worker_status,
 )
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoop,
     SupervisorLoopConfig,
@@ -55,6 +56,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     RestartPolicy,
     SupervisedChildSpec,
     background_supervisor_args,
+    build_supervisor_runtime_operations,
     launch_supervised_child,
     repair_supervisor_runtime,
     supervisor_is_running,
@@ -371,6 +373,55 @@ def test_supervisor_runtime_repairs_stale_markers(tmp_path):
 def test_background_supervisor_args_removes_once_and_defaults_implement():
     assert background_supervisor_args(["--once", "--flag"]) == ["--implement", "--flag"]
     assert background_supervisor_args(["--no-implement", "--once"]) == ["--no-implement"]
+
+
+def test_build_supervisor_runtime_operations_binds_project_wrapper(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    state_dir = repo / "state"
+    script_path = repo / "custom_supervisor.py"
+    repo.mkdir()
+    state_dir.mkdir()
+    script_path.write_text("# test wrapper\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+    prepared: list[str] = []
+
+    class FakeProcess:
+        pid = 424242
+
+    def fake_popen(command, *, cwd, env, stdin, stdout, stderr, start_new_session):
+        captured["command"] = command
+        captured["cwd"] = cwd
+        captured["stdin"] = stdin
+        captured["stderr"] = stderr
+        captured["start_new_session"] = start_new_session
+        return FakeProcess()
+
+    monkeypatch.setattr(supervisor_runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(supervisor_runtime, "pid_alive", lambda pid: int(pid) == FakeProcess.pid)
+    monkeypatch.setattr(supervisor_runtime.time, "sleep", lambda seconds: captured.setdefault("sleep", seconds))
+
+    operations = build_supervisor_runtime_operations(
+        repo_root=repo,
+        script_path=script_path,
+        process_predicate=lambda pid: int(pid) == FakeProcess.pid,
+        prepare_environment=lambda: prepared.append("prepared"),
+        startup_delay_seconds=0.25,
+    )
+
+    result = operations.ensure_running(["--once", "--flag"], state_dir=state_dir, state_prefix="agent")
+
+    assert result["started"] is True
+    assert result["pid"] == FakeProcess.pid
+    assert captured["command"] == [sys.executable, str(script_path), "--implement", "--flag"]
+    assert captured["cwd"] == repo
+    assert captured["stdin"] == subprocess.DEVNULL
+    assert captured["stderr"] == subprocess.STDOUT
+    assert captured["start_new_session"] is True
+    assert captured["sleep"] == 0.25
+    assert prepared == ["prepared"]
+    assert (state_dir / "agent_supervisor_wrapper.pid").read_text(encoding="utf-8") == "424242\n"
+    assert operations.is_running(state_dir, "agent") is True
+    assert operations.repair_runtime(state_dir, "agent") == {"removed": [], "updated_status": False}
 
 
 def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
