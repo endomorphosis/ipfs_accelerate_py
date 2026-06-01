@@ -474,6 +474,36 @@ def path_is_under(path: Path, root: Path) -> bool:
     return True
 
 
+def discovery_output_path_for(
+    repo_root: Path,
+    discovery_dir: Path,
+    *,
+    default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+) -> str:
+    """Return a repo-relative discovery output path, or a stable fallback."""
+
+    try:
+        return discovery_dir.resolve().relative_to(repo_root.resolve()).as_posix()
+    except ValueError:
+        return default
+
+
+def task_dependencies_if_present(
+    todo_path: Path,
+    *,
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
+    dependency_ids: Sequence[str] = (),
+) -> list[str]:
+    """Return dependency ids that are already declared in a todo board."""
+
+    if not dependency_ids or not todo_path.exists():
+        return []
+    todo_text = todo_path.read_text(encoding="utf-8")
+    task_prefix = task_id_prefix(task_header_prefix_value)
+    declared_task_ids = set(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
+    return [dependency_id for dependency_id in dependency_ids if dependency_id in declared_task_ids]
+
+
 def codebase_scan_path_skipped(
     path: Path,
     *,
@@ -1847,6 +1877,178 @@ def record_objective_backlog_findings(
             strategy["last_objective_goal_commit_results"] = commit_results
             write_json(strategy_path, strategy)
     return appended
+
+
+def record_configured_objective_backlog_findings(
+    *,
+    repo_root: Path,
+    objective_path: Path,
+    todo_path: Path,
+    discovery_dir: Path,
+    strategy_path: Path,
+    state_path: Path | None = None,
+    bundle_dir: Path | None = None,
+    dataset_dir: Path | None = None,
+    default_bundle_dir: Path | None = None,
+    default_dataset_dir: Path | None = None,
+    todo_vector_index_path: Path | None = None,
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
+    depends_on_if_present: Sequence[str] = (),
+    min_open_tasks: int = DEFAULT_OBJECTIVE_SCAN_MIN_OPEN_TASKS,
+    max_findings: int = DEFAULT_OBJECTIVE_SCAN_MAX_FINDINGS,
+    cooldown_seconds: int = DEFAULT_OBJECTIVE_SCAN_COOLDOWN_SECONDS,
+    force: bool = False,
+    persist_ast_dataset: bool = True,
+    write_todo_vector_index: bool = True,
+    surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
+    surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
+    summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+    discovery_output_path: str | None = None,
+    discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    commit_outputs: bool = False,
+    commit_subject: str = "Agent: record objective backlog findings",
+) -> list[dict[str, Any]]:
+    """Run objective backlog refill with common wrapper-level defaults."""
+
+    resolved_bundle_dir = (
+        bundle_dir
+        or default_bundle_dir
+        or repo_root / "data" / "agent_supervisor" / "objective_bundles"
+    )
+    resolved_dataset_dir = dataset_dir if dataset_dir is not None else default_dataset_dir
+    return record_objective_backlog_findings(
+        repo_root=repo_root,
+        objective_path=objective_path,
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        bundle_dir=resolved_bundle_dir,
+        dataset_dir=resolved_dataset_dir,
+        strategy_path=strategy_path,
+        state_path=state_path,
+        task_prefix=task_id_prefix(task_header_prefix_value),
+        depends_on=task_dependencies_if_present(
+            todo_path,
+            task_header_prefix_value=task_header_prefix_value,
+            dependency_ids=depends_on_if_present,
+        ),
+        min_open_tasks=min_open_tasks,
+        max_findings=max_findings,
+        cooldown_seconds=cooldown_seconds,
+        force=force,
+        persist_ast_dataset=persist_ast_dataset,
+        write_todo_vector_index=write_todo_vector_index,
+        todo_vector_index_path=todo_vector_index_path,
+        surplus_findings_per_goal=surplus_findings_per_goal,
+        surplus_min_terms_per_todo=surplus_min_terms_per_todo,
+        summary_prefix=summary_prefix,
+        discovery_output_path=discovery_output_path
+        or discovery_output_path_for(repo_root, discovery_dir, default=discovery_output_path_default),
+        commit_outputs=commit_outputs,
+        commit_subject=commit_subject,
+    )
+
+
+def record_configured_codebase_scan_findings(
+    *,
+    todo_path: Path,
+    state_path: Path | None,
+    strategy_path: Path,
+    discovery_dir: Path,
+    repo_root: Path,
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
+    depends_on_if_present: Sequence[str] = (),
+    min_open_tasks: int = DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS,
+    max_findings: int = DEFAULT_CODEBASE_SCAN_MAX_FINDINGS,
+    cooldown_seconds: int = DEFAULT_CODEBASE_SCAN_COOLDOWN_SECONDS,
+    force: bool = False,
+    discovery_output_path: str | None = None,
+    discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    commit_outputs: bool = False,
+    commit_subject: str = "Agent: record codebase scan backlog findings",
+) -> list[dict[str, Any]]:
+    """Run codebase backlog refill with common wrapper-level defaults."""
+
+    return record_codebase_scan_findings(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        repo_root=repo_root,
+        task_prefix=task_id_prefix(task_header_prefix_value),
+        depends_on=task_dependencies_if_present(
+            todo_path,
+            task_header_prefix_value=task_header_prefix_value,
+            dependency_ids=depends_on_if_present,
+        ),
+        min_open_tasks=min_open_tasks,
+        max_findings=max_findings,
+        cooldown_seconds=cooldown_seconds,
+        force=force,
+        discovery_output_path=discovery_output_path
+        or discovery_output_path_for(repo_root, discovery_dir, default=discovery_output_path_default),
+        skip_prefixes=skip_prefixes,
+        commit_outputs=commit_outputs,
+        commit_subject=commit_subject,
+    )
+
+
+def record_configured_retry_budget_findings(
+    *,
+    todo_path: Path,
+    events_path: Path,
+    strategy_path: Path,
+    discovery_dir: Path,
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
+    validation_retry_budget: int = DEFAULT_VALIDATION_RETRY_BUDGET,
+    merge_retry_budget: int = DEFAULT_MERGE_RETRY_BUDGET,
+    implementation_retry_budget: int = DEFAULT_IMPLEMENTATION_RETRY_BUDGET,
+    validation_depends_on_if_present: Sequence[str] = (),
+    validation_task_command_transform: Callable[[str], str] | None = None,
+    discovery_output_path: str | None = None,
+    discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    strip_validation_failure_kind: bool = False,
+    commit_outputs: bool = False,
+    repo_root: Path | None = None,
+    commit_subject: str = "Agent: record retry-budget guardrail outputs",
+) -> list[dict[str, Any]]:
+    """Run retry-budget guardrails with common wrapper-level defaults."""
+
+    if not todo_path.exists():
+        return []
+    resolved_repo_root = repo_root or git_toplevel_for_path(todo_path.parent) or todo_path.parent
+    task_prefix_value = task_id_prefix(task_header_prefix_value)
+    findings = record_retry_budget_findings(
+        todo_path=todo_path,
+        events_path=events_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        task_header_prefix_value=task_header_prefix_value,
+        task_prefix=task_prefix_value,
+        validation_retry_budget=validation_retry_budget,
+        merge_retry_budget=merge_retry_budget,
+        implementation_retry_budget=implementation_retry_budget,
+        validation_depends_on=task_dependencies_if_present(
+            todo_path,
+            task_header_prefix_value=task_header_prefix_value,
+            dependency_ids=validation_depends_on_if_present,
+        ),
+        validation_task_command_transform=validation_task_command_transform,
+        discovery_output_path=discovery_output_path
+        or discovery_output_path_for(
+            resolved_repo_root,
+            discovery_dir,
+            default=discovery_output_path_default,
+        ),
+        commit_outputs=commit_outputs,
+        repo_root=resolved_repo_root,
+        commit_subject=commit_subject,
+    )
+    if strip_validation_failure_kind:
+        for finding in findings:
+            if finding.get("failure_kind") == "validation":
+                finding.pop("failure_kind", None)
+    return findings
 
 
 def build_arg_parser() -> argparse.ArgumentParser:

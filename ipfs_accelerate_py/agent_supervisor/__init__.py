@@ -49,6 +49,7 @@ from .todo_vector_index import (
 __all__ = [
     "BundleWriteResult",
     "BundleLaneSpec",
+    "BootstrapPathSpec",
     "CodebaseFinding",
     "DatasetArtifact",
     "ObjectiveFinding",
@@ -92,11 +93,15 @@ __all__ = [
     "plan_semantic_ast_bundles",
     "plan_bundle_lanes",
     "persist_objective_ast_dataset",
+    "record_configured_codebase_scan_findings",
+    "record_configured_objective_backlog_findings",
+    "record_configured_retry_budget_findings",
     "record_codebase_scan_findings",
     "record_objective_backlog_findings",
     "record_retry_budget_findings",
     "reconcile_objective_goal_completion",
     "repo_relative_or_default",
+    "resolve_bootstrap_paths",
     "resolve_append_only_markdown_conflicts",
     "resolver_payload",
     "run_backlog_refinery",
@@ -131,6 +136,7 @@ __all__ = [
     "run_portal_implementation_daemon_loop",
     "run_portal_implementation_supervisor",
     "run_task_proposal_router",
+    "run_task_proposal_router_cli",
     "select_proposal_task",
     "DaemonLoopHook",
     "ImplementationDaemonRunContext",
@@ -141,6 +147,7 @@ __all__ = [
     "CodebaseRefillDefaults",
     "SupervisorRunHook",
     "TaskProposalRouterConfig",
+    "TaskProposalRouterCliConfig",
     "TaskProposalRouterError",
     "task_metadata_lines",
 ]
@@ -149,6 +156,9 @@ __all__ = [
 def __getattr__(name: str):
     if name in {
         "CodebaseFinding",
+        "record_configured_codebase_scan_findings",
+        "record_configured_objective_backlog_findings",
+        "record_configured_retry_budget_findings",
         "record_codebase_scan_findings",
         "record_objective_backlog_findings",
         "record_retry_budget_findings",
@@ -186,11 +196,13 @@ def __getattr__(name: str):
         return run_objective_daemon
     if name in {
         "default_llm_merge_resolver_command",
+        "BootstrapPathSpec",
         "csv_tuple",
         "env_csv_tuple",
         "ensure_named_directories",
         "ensure_runtime_pythonpath",
         "repo_relative_or_default",
+        "resolve_bootstrap_paths",
         "unique_path_entries",
         "with_default",
         "with_flag_default",
@@ -236,8 +248,10 @@ def __getattr__(name: str):
     if name in {
         "build_task_proposal_prompt",
         "run_task_proposal_router",
+        "run_task_proposal_router_cli",
         "select_proposal_task",
         "TaskProposalRouterConfig",
+        "TaskProposalRouterCliConfig",
         "TaskProposalRouterError",
         "task_metadata_lines",
     }:
