@@ -63,10 +63,13 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     BootstrapPathSpec,
+    android_validation_command_needs_environment,
+    android_validation_environment_contract,
     apply_environment_contract,
     bootstrap_runtime_environment,
     csv_tuple,
     default_llm_merge_resolver_command,
+    enforce_android_validation_environment,
     ensure_named_directories,
     ensure_runtime_pythonpath,
     environment_assignment_prefix,
@@ -75,6 +78,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     resolve_bootstrap_paths,
     rewrite_validation_commands,
     unique_path_entries,
+    with_android_validation_environment,
     with_default,
     with_flag_default,
     with_repeated_default,
@@ -233,6 +237,43 @@ def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND")
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
     assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == "/usr/bin/codex exec -"
+
+
+def test_wrapper_utils_android_validation_environment_contract(tmp_path):
+    java = tmp_path / ".tools" / "jdk17" / "jdk-17.0.18+8" / "bin" / "java"
+    java.parent.mkdir(parents=True)
+    java.touch()
+    (tmp_path / ".tools" / "android-sdk" / "platform-tools").mkdir(parents=True)
+
+    contract = android_validation_environment_contract(tmp_path)
+
+    assert contract["env"]["JAVA_HOME"] == str(java.parents[1])
+    assert contract["env"]["ANDROID_HOME"] == str(tmp_path / ".tools" / "android-sdk")
+    assert contract["path_entries"][:2] == [
+        str(java.parent),
+        str(tmp_path / ".tools" / "android-sdk" / "platform-tools"),
+    ]
+    assert contract["missing"] == []
+    assert android_validation_command_needs_environment("cd mobile/android && ./gradlew test")
+    assert not android_validation_command_needs_environment("cd mobile/android && JAVA_HOME=/jdk ./gradlew test")
+    assert not android_validation_command_needs_environment("npm test")
+
+    command = "cd mobile/android && ./gradlew :app:assembleDebug"
+    wrapped = with_android_validation_environment(command, tmp_path)
+
+    assert "env JAVA_HOME=" in wrapped
+    assert "ANDROID_SDK_ROOT=" in wrapped
+    assert wrapped.endswith("./gradlew :app:assembleDebug")
+
+    todo_path = tmp_path / "tasks.md"
+    todo_path.write_text(
+        "# Tasks\n\n## TST-001 Android\n\n- Validation: cd mobile/android && ./gradlew build; true\n",
+        encoding="utf-8",
+    )
+    assert enforce_android_validation_environment(todo_path, tmp_path)
+    updated = todo_path.read_text(encoding="utf-8")
+    assert "env JAVA_HOME=" in updated
+    assert not enforce_android_validation_environment(todo_path, tmp_path)
 
 
 def test_supervisor_runtime_repairs_stale_markers(tmp_path):

@@ -224,6 +224,109 @@ def rewrite_validation_commands(todo_path: Path, transform: Callable[[str], str]
     return True
 
 
+def android_validation_environment_contract(
+    repo_root: Path | str,
+    *,
+    jdk_path: Path | str = ".tools/jdk17/jdk-17.0.18+8",
+    android_sdk_path: Path | str = ".tools/android-sdk",
+    jdk_java_path: Path | str = "bin/java",
+    jdk_bin_path: Path | str = "bin",
+    android_sdk_tool_dirs: Sequence[Path | str] = (
+        "platform-tools",
+        "cmdline-tools/latest/bin",
+        "cmdline-tools/bin",
+    ),
+) -> dict[str, Any]:
+    """Return an environment contract for repo-local Android validation tools."""
+
+    root = Path(repo_root)
+    local_jdk = _repo_path(root, jdk_path)
+    local_android_sdk = _repo_path(root, android_sdk_path)
+    env: dict[str, str] = {}
+    path_entries: list[str] = []
+    missing: list[str] = []
+
+    java_binary = local_jdk / jdk_java_path
+    if java_binary.exists():
+        env["JAVA_HOME"] = str(local_jdk)
+        path_entries.append(str(local_jdk / jdk_bin_path))
+    else:
+        missing.append(str(java_binary))
+
+    if local_android_sdk.exists():
+        env["ANDROID_HOME"] = str(local_android_sdk)
+        env["ANDROID_SDK_ROOT"] = str(local_android_sdk)
+        for candidate in android_sdk_tool_dirs:
+            candidate_path = local_android_sdk / candidate
+            if candidate_path.exists():
+                path_entries.append(str(candidate_path))
+    else:
+        missing.append(str(local_android_sdk))
+
+    return {
+        "env": env,
+        "path_entries": unique_path_entries(path_entries),
+        "missing": missing,
+        "repo_root": str(root),
+    }
+
+
+def android_validation_command_needs_environment(
+    command: str,
+    *,
+    gradle_token: str = "./gradlew",
+    android_markers: Sequence[str] = ("mobile/android", "cd android"),
+    configured_markers: Sequence[str] = ("JAVA_HOME=", "org.gradle.java.home"),
+) -> bool:
+    """Return whether a validation command should be wrapped with Android tool env."""
+
+    normalized = " ".join(command.split())
+    if gradle_token not in normalized:
+        return False
+    if android_markers and not any(marker in normalized for marker in android_markers):
+        return False
+    return not any(marker in normalized for marker in configured_markers)
+
+
+def with_android_validation_environment(
+    command: str,
+    repo_root: Path | str,
+    *,
+    contract: Mapping[str, Any] | None = None,
+    env_keys: Sequence[str] = ("JAVA_HOME", "ANDROID_HOME", "ANDROID_SDK_ROOT"),
+    gradle_token: str = "./gradlew",
+    android_markers: Sequence[str] = ("mobile/android", "cd android"),
+    configured_markers: Sequence[str] = ("JAVA_HOME=", "org.gradle.java.home"),
+) -> str:
+    """Wrap an Android Gradle command with a repo-local validation environment."""
+
+    if not android_validation_command_needs_environment(
+        command,
+        gradle_token=gradle_token,
+        android_markers=android_markers,
+        configured_markers=configured_markers,
+    ):
+        return command
+    resolved_contract = contract or android_validation_environment_contract(repo_root)
+    prefix = environment_assignment_prefix(resolved_contract, env_keys=env_keys)
+    if not prefix:
+        return command
+    return command.replace(gradle_token, f"env {prefix} {gradle_token}", 1)
+
+
+def enforce_android_validation_environment(
+    todo_path: Path,
+    repo_root: Path | str,
+    **command_options: Any,
+) -> bool:
+    """Rewrite Android Gradle validation lines to use a repo-local toolchain."""
+
+    return rewrite_validation_commands(
+        todo_path,
+        lambda command: with_android_validation_environment(command, repo_root, **command_options),
+    )
+
+
 def ensure_runtime_pythonpath(paths: Sequence[Path | str], *, env_var: str = "PYTHONPATH") -> None:
     """Make local package roots importable for the current process and child processes."""
 
