@@ -9,8 +9,11 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     ImplementationDaemonDefaults,
     ImplementationDaemonRunContext,
     apply_portal_implementation_daemon_defaults,
+    build_daemon_codebase_scan_refill_callback,
+    build_daemon_objective_refill_callback,
     build_portal_implementation_daemon_from_args,
     build_daemon_refill_hooks,
+    build_daemon_retry_budget_refill_callback,
     implementation_state_paths,
     run_configured_portal_implementation_daemon,
     run_portal_implementation_daemon_loop,
@@ -190,3 +193,51 @@ def test_build_daemon_refill_hooks_formats_standard_messages():
         ("after", "Recorded Hallucinate objective-goal findings after daemon pass: %s"),
         ("after", "Recorded Hallucinate codebase-scan findings after daemon pass: %s"),
     ]
+
+
+def test_build_daemon_context_refill_callbacks(tmp_path: Path):
+    parsed = argparse.Namespace(
+        todo_path=tmp_path / "tasks.todo.md",
+        task_prefix="## EX-",
+        objective_path=None,
+    )
+    context = ImplementationDaemonRunContext(
+        parsed=parsed,
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+    )
+    captured: dict[str, dict[str, object]] = {}
+
+    def recorder(label: str):
+        def callback(**kwargs: object) -> list[str]:
+            captured[label] = kwargs
+            return [label]
+
+        return callback
+
+    objective_hook = build_daemon_objective_refill_callback(
+        recorder("objective"),
+        discovery_dir=tmp_path / "discovery",
+        objective_path=tmp_path / "objective.md",
+        repo_root=tmp_path,
+    )
+    codebase_hook = build_daemon_codebase_scan_refill_callback(
+        recorder("codebase"),
+        discovery_dir=tmp_path / "discovery",
+        repo_root=tmp_path,
+    )
+    retry_hook = build_daemon_retry_budget_refill_callback(
+        recorder("retry"),
+        discovery_dir=tmp_path / "discovery",
+    )
+
+    assert objective_hook(context) == ["objective"]
+    assert codebase_hook(context) == ["codebase"]
+    assert retry_hook(context) == ["retry"]
+    assert captured["objective"]["objective_path"] == tmp_path / "objective.md"
+    assert captured["objective"]["state_path"] == tmp_path / "state.json"
+    assert captured["objective"]["repo_root"] == tmp_path
+    assert captured["codebase"]["strategy_path"] == tmp_path / "strategy.json"
+    assert captured["retry"]["events_path"] == tmp_path / "events.jsonl"
+    assert captured["retry"]["task_header_prefix"] == "## EX-"

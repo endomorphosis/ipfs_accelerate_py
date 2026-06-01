@@ -34,6 +34,7 @@ class ImplementationDaemonRunContext:
 
 
 DaemonLoopHookCallback = Callable[[ImplementationDaemonRunContext], Any]
+DaemonRefillRecordCallback = Callable[..., Any]
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,15 @@ class DaemonLoopHook:
 
 
 RefillHookEntry = tuple[str, DaemonLoopHookCallback]
+
+
+def _with_extra_kwargs(
+    kwargs: dict[str, Any],
+    extra_kwargs: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if extra_kwargs:
+        kwargs.update(extra_kwargs)
+    return kwargs
 
 
 @dataclass(frozen=True)
@@ -161,6 +171,83 @@ def build_daemon_refill_hooks(
             for finding_label, callback in _ordered_refill_entries(entries, after_order)
         )
     return tuple(hooks)
+
+
+def build_daemon_objective_refill_callback(
+    callback: DaemonRefillRecordCallback,
+    *,
+    discovery_dir: Path,
+    objective_path: Path | None = None,
+    repo_root: Path | None = None,
+    extra_kwargs: dict[str, Any] | None = None,
+) -> DaemonLoopHookCallback:
+    """Build a daemon hook that records objective-refill findings."""
+
+    def hook(ctx: ImplementationDaemonRunContext) -> Any:
+        kwargs: dict[str, Any] = {
+            "todo_path": ctx.parsed.todo_path,
+            "state_path": ctx.state_path,
+            "strategy_path": ctx.strategy_path,
+            "discovery_dir": discovery_dir,
+            "task_header_prefix": ctx.parsed.task_prefix,
+        }
+        resolved_objective_path = getattr(ctx.parsed, "objective_path", None) or objective_path
+        if resolved_objective_path is not None:
+            kwargs["objective_path"] = resolved_objective_path
+        if repo_root is not None:
+            kwargs["repo_root"] = repo_root
+        return callback(**_with_extra_kwargs(kwargs, extra_kwargs))
+
+    return hook
+
+
+def build_daemon_codebase_scan_refill_callback(
+    callback: DaemonRefillRecordCallback,
+    *,
+    discovery_dir: Path,
+    repo_root: Path | None = None,
+    extra_kwargs: dict[str, Any] | None = None,
+) -> DaemonLoopHookCallback:
+    """Build a daemon hook that records codebase-scan findings."""
+
+    def hook(ctx: ImplementationDaemonRunContext) -> Any:
+        kwargs: dict[str, Any] = {
+            "todo_path": ctx.parsed.todo_path,
+            "state_path": ctx.state_path,
+            "strategy_path": ctx.strategy_path,
+            "discovery_dir": discovery_dir,
+            "task_header_prefix": ctx.parsed.task_prefix,
+        }
+        if repo_root is not None:
+            kwargs["repo_root"] = repo_root
+        return callback(**_with_extra_kwargs(kwargs, extra_kwargs))
+
+    return hook
+
+
+def build_daemon_retry_budget_refill_callback(
+    callback: DaemonRefillRecordCallback,
+    *,
+    discovery_dir: Path,
+    extra_kwargs: dict[str, Any] | None = None,
+) -> DaemonLoopHookCallback:
+    """Build a daemon hook that records retry-budget findings."""
+
+    def hook(ctx: ImplementationDaemonRunContext) -> Any:
+        return callback(
+            **_with_extra_kwargs(
+                {
+                    "todo_path": ctx.parsed.todo_path,
+                    "events_path": ctx.events_path,
+                    "strategy_path": ctx.strategy_path,
+                    "discovery_dir": discovery_dir,
+                    "task_header_prefix": ctx.parsed.task_prefix,
+                },
+                extra_kwargs,
+            )
+        )
+
+    return hook
 
 
 def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:

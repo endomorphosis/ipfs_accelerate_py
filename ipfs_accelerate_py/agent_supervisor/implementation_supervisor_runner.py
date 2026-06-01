@@ -24,6 +24,7 @@ class ImplementationSupervisorRunContext:
 
 
 SupervisorRunHookCallback = Callable[[ImplementationSupervisorRunContext], Any]
+SupervisorRefillRecordCallback = Callable[..., Any]
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,21 @@ class SupervisorRunHook:
 
 
 RefillHookEntry = tuple[str, SupervisorRunHookCallback]
+
+
+def _with_extra_kwargs(
+    kwargs: dict[str, Any],
+    extra_kwargs: dict[str, Any] | None,
+) -> dict[str, Any]:
+    if extra_kwargs:
+        kwargs.update(extra_kwargs)
+    return kwargs
+
+
+def _set_present(kwargs: dict[str, Any], **values: Any) -> None:
+    for key, value in values.items():
+        if value is not None:
+            kwargs[key] = value
 
 
 @dataclass(frozen=True)
@@ -287,6 +303,96 @@ def build_supervisor_refill_hooks(
             for finding_label, callback in _ordered_refill_entries(entries, after_once_order)
         )
     return tuple(hooks)
+
+
+def build_supervisor_objective_refill_callback(
+    callback: SupervisorRefillRecordCallback,
+    *,
+    discovery_dir: Path,
+    objective_path: Path | None = None,
+    repo_root: Path | None = None,
+    extra_kwargs: dict[str, Any] | None = None,
+) -> SupervisorRunHookCallback:
+    """Build a supervisor hook that records objective-refill findings."""
+
+    def hook(ctx: ImplementationSupervisorRunContext) -> Any:
+        kwargs: dict[str, Any] = {
+            "todo_path": ctx.parsed.todo_path,
+            "state_path": ctx.state_path,
+            "strategy_path": ctx.strategy_path,
+            "discovery_dir": discovery_dir,
+            "task_header_prefix": ctx.parsed.task_prefix,
+        }
+        _set_present(
+            kwargs,
+            objective_path=getattr(ctx.parsed, "objective_path", None) or objective_path,
+            bundle_dir=getattr(ctx.parsed, "objective_bundle_dir", None),
+            dataset_dir=getattr(ctx.parsed, "objective_dataset_dir", None),
+            todo_vector_index_path=getattr(ctx.parsed, "objective_todo_vector_index_path", None),
+            repo_root=repo_root,
+            min_open_tasks=getattr(ctx.parsed, "objective_scan_min_open_tasks", None),
+            max_findings=getattr(ctx.parsed, "objective_scan_max_findings", None),
+            cooldown_seconds=getattr(ctx.parsed, "objective_scan_cooldown_seconds", None),
+            surplus_findings_per_goal=getattr(ctx.parsed, "objective_surplus_findings_per_goal", None),
+            surplus_min_terms_per_todo=getattr(ctx.parsed, "objective_surplus_min_terms_per_todo", None),
+        )
+        return callback(**_with_extra_kwargs(kwargs, extra_kwargs))
+
+    return hook
+
+
+def build_supervisor_codebase_scan_refill_callback(
+    callback: SupervisorRefillRecordCallback,
+    *,
+    discovery_dir: Path,
+    repo_root: Path | None = None,
+    extra_kwargs: dict[str, Any] | None = None,
+) -> SupervisorRunHookCallback:
+    """Build a supervisor hook that records codebase-scan findings."""
+
+    def hook(ctx: ImplementationSupervisorRunContext) -> Any:
+        kwargs: dict[str, Any] = {
+            "todo_path": ctx.parsed.todo_path,
+            "state_path": ctx.state_path,
+            "strategy_path": ctx.strategy_path,
+            "discovery_dir": discovery_dir,
+            "task_header_prefix": ctx.parsed.task_prefix,
+        }
+        _set_present(
+            kwargs,
+            repo_root=repo_root,
+            min_open_tasks=getattr(ctx.parsed, "codebase_scan_min_open_tasks", None),
+            max_findings=getattr(ctx.parsed, "codebase_scan_max_findings", None),
+            cooldown_seconds=getattr(ctx.parsed, "codebase_scan_cooldown_seconds", None),
+        )
+        return callback(**_with_extra_kwargs(kwargs, extra_kwargs))
+
+    return hook
+
+
+def build_supervisor_retry_budget_refill_callback(
+    callback: SupervisorRefillRecordCallback,
+    *,
+    discovery_dir: Path,
+    extra_kwargs: dict[str, Any] | None = None,
+) -> SupervisorRunHookCallback:
+    """Build a supervisor hook that records retry-budget findings."""
+
+    def hook(ctx: ImplementationSupervisorRunContext) -> Any:
+        return callback(
+            **_with_extra_kwargs(
+                {
+                    "todo_path": ctx.parsed.todo_path,
+                    "events_path": ctx.daemon_events_path,
+                    "strategy_path": ctx.strategy_path,
+                    "discovery_dir": discovery_dir,
+                    "task_header_prefix": ctx.parsed.task_prefix,
+                },
+                extra_kwargs,
+            )
+        )
+
+    return hook
 
 
 def build_supervisor_runtime_callbacks(

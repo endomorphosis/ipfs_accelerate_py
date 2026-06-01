@@ -136,7 +136,13 @@ __all__ = [
     "build_portal_implementation_daemon_from_args",
     "build_portal_implementation_supervisor_from_args",
     "build_daemon_refill_hooks",
+    "build_daemon_codebase_scan_refill_callback",
+    "build_daemon_objective_refill_callback",
+    "build_daemon_retry_budget_refill_callback",
     "build_supervisor_refill_hooks",
+    "build_supervisor_codebase_scan_refill_callback",
+    "build_supervisor_objective_refill_callback",
+    "build_supervisor_retry_budget_refill_callback",
     "build_supervisor_runtime_callbacks",
     "bootstrap_runtime_environment",
     "configure_daemon_logging",
@@ -245,7 +251,10 @@ def __getattr__(name: str):
         return getattr(multi_supervisor_runner, name)
     if name in {
         "build_portal_implementation_supervisor_from_args",
+        "build_supervisor_codebase_scan_refill_callback",
+        "build_supervisor_objective_refill_callback",
         "build_supervisor_refill_hooks",
+        "build_supervisor_retry_budget_refill_callback",
         "build_supervisor_runtime_callbacks",
         "configure_supervisor_logging",
         "apply_portal_implementation_supervisor_defaults",
@@ -263,7 +272,10 @@ def __getattr__(name: str):
         return getattr(implementation_supervisor_runner, name)
     if name in {
         "build_portal_implementation_daemon_from_args",
+        "build_daemon_codebase_scan_refill_callback",
+        "build_daemon_objective_refill_callback",
         "build_daemon_refill_hooks",
+        "build_daemon_retry_budget_refill_callback",
         "configure_daemon_logging",
         "apply_merge_resolver_environment",
         "apply_portal_implementation_daemon_defaults",
