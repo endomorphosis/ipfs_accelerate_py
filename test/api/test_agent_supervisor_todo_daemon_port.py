@@ -83,6 +83,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     env_csv_tuple,
     env_int,
     env_path,
+    prefixed_env_var,
     repo_relative_or_default,
     resolve_and_ensure_bootstrap_paths,
     resolve_bootstrap_paths,
@@ -190,6 +191,8 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert env_path("WRAPPER_UTILS_PATH", tmp_path / "default-path") == tmp_path / "custom-path"
     monkeypatch.setenv("WRAPPER_UTILS_PATH", "")
     assert env_path("WRAPPER_UTILS_PATH", tmp_path / "default-path") == Path(".")
+    assert prefixed_env_var("wrapper_utils", "state_dir") == "WRAPPER_UTILS_STATE_DIR"
+    assert prefixed_env_var("WRAPPER_UTILS_", "_worktree_root", "") == "WRAPPER_UTILS_WORKTREE_ROOT"
     assert task_board_env_var("WRAPPER_UTILS") == "WRAPPER_UTILS_TODO_PATH"
     assert task_board_env_var("WRAPPER_UTILS_") == "WRAPPER_UTILS_TODO_PATH"
     assert task_board_filename("roadmap") == "roadmap.todo.md"

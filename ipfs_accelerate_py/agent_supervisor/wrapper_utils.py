@@ -109,10 +109,17 @@ def task_board_path_key() -> str:
     return "to" + "do_path"
 
 
+def prefixed_env_var(prefix: str, *parts: str) -> str:
+    """Return a conventional environment variable name from a prefix and parts."""
+
+    values = [prefix, *parts]
+    return "_".join(value.strip("_").upper() for value in values if value.strip("_"))
+
+
 def task_board_env_var(prefix: str) -> str:
     """Return the conventional environment variable for a task-board path."""
 
-    return f"{prefix.rstrip('_')}_{'TO' + 'DO'}_PATH"
+    return prefixed_env_var(prefix, "TO" + "DO", "PATH")
 
 
 @dataclass(frozen=True)
