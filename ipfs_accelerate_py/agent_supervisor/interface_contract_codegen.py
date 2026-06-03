@@ -1,0 +1,225 @@
+"""Reusable interface-descriptor action contract rendering helpers."""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable, Mapping, Sequence
+
+
+ActionDefinition = dict[str, str]
+
+
+@dataclass(frozen=True)
+class PythonActionContractConfig:
+    """Export names and docstring for a generated Python action contract module."""
+
+    contract_name: str
+    definitions_name: str
+    ids_name: str
+    operations_name: str
+    docstring: str
+    definition_fields: Sequence[str] = ("action", "operation", "id", "label", "phrase")
+
+
+@dataclass(frozen=True)
+class JavaScriptActionContractConfig:
+    """Export names for a generated JavaScript action contract module."""
+
+    contract_name: str
+    ids_name: str
+    ids_set_name: str
+    action_by_id_name: str
+    operation_by_id_name: str
+    validator_function_name: str
+    extra_id_maps: Mapping[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class ActionContractSyncTarget:
+    """One generated contract artifact to verify or update."""
+
+    path: Path
+    content: str
+
+
+def operation_action_mapper(mapping: Mapping[str, str], *, label: str = "operation"):
+    """Return a mapper that converts descriptor operation names into action names."""
+
+    values = dict(mapping)
+
+    def mapper(operation: str) -> str:
+        try:
+            return values[operation]
+        except KeyError as exc:
+            raise ValueError(f"Unsupported {label}: {operation}") from exc
+
+    return mapper
+
+
+def _python_string(value: str) -> str:
+    return json.dumps(str(value))
+
+
+def _js_string(value: str) -> str:
+    escaped = str(value).replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n")
+    return f"'{escaped}'"
+
+
+def _method_action_id(method: Mapping[str, Any]) -> str:
+    try:
+        return str(method["outputSchema"]["properties"]["type"]["const"])
+    except KeyError as exc:
+        operation = str(method.get("name") or "<unknown>")
+        raise ValueError(f"Descriptor method {operation!r} is missing outputSchema.properties.type.const") from exc
+
+
+def load_action_definitions_from_descriptor(
+    descriptor_path: Path,
+    *,
+    operation_to_action: Callable[[str], str],
+    action_metadata: Mapping[str, Mapping[str, str]],
+) -> list[ActionDefinition]:
+    """Load ordered action definitions from an interface descriptor JSON file."""
+
+    descriptor = json.loads(descriptor_path.read_text(encoding="utf-8"))
+    definitions: list[ActionDefinition] = []
+    for method in descriptor.get("methods", ()):
+        operation = str(method["name"])
+        action = str(operation_to_action(operation))
+        metadata = dict(action_metadata.get(action, {}))
+        definitions.append(
+            {
+                "action": action,
+                "operation": operation,
+                "id": _method_action_id(method),
+                **metadata,
+            }
+        )
+    return definitions
+
+
+def render_python_action_contract(
+    definitions: Sequence[Mapping[str, str]],
+    *,
+    contract: str,
+    config: PythonActionContractConfig,
+) -> str:
+    """Render a Python constants module for action ids and ORB operations."""
+
+    tuple_entries = "\n".join(
+        [
+            "    {\n"
+            + "\n".join(
+                f'        "{field_name}": {_python_string(definition[field_name])},'
+                for field_name in config.definition_fields
+            )
+            + "\n    },"
+            for definition in definitions
+        ]
+    )
+    docstring = config.docstring.strip()
+    return (
+        f'"""{docstring}\n"""\n\n'
+        "from __future__ import annotations\n\n"
+        "from typing import Final\n\n\n"
+        f"{config.contract_name}: Final = {_python_string(contract)}\n\n"
+        f"{config.definitions_name}: Final[tuple[dict[str, str], ...]] = (\n"
+        f"{tuple_entries}\n"
+        ")\n\n"
+        f"{config.ids_name}: Final[tuple[str, ...]] = tuple(\n"
+        f'    definition["id"] for definition in {config.definitions_name}\n'
+        ")\n\n"
+        f"{config.operations_name}: Final[tuple[str, ...]] = tuple(\n"
+        f'    definition["operation"] for definition in {config.definitions_name}\n'
+        ")\n"
+    )
+
+
+def _render_js_id_map(definitions: Sequence[Mapping[str, str]], definition_key: str) -> str:
+    return "\n".join(
+        f"  {definition['id']}: {_js_string(definition[definition_key])},"
+        for definition in definitions
+    )
+
+
+def render_js_action_contract(
+    definitions: Sequence[Mapping[str, str]],
+    *,
+    contract: str,
+    config: JavaScriptActionContractConfig,
+) -> str:
+    """Render a JavaScript constants module for action ids and bridge maps."""
+
+    action_ids = "\n".join(f"  {_js_string(definition['id'])}," for definition in definitions)
+    chunks = [
+        f"export const {config.contract_name} =\n  {_js_string(contract)};\n\n",
+        f"export const {config.ids_name} = [\n{action_ids}\n];\n\n",
+        f"export const {config.action_by_id_name} = {{\n"
+        f"{_render_js_id_map(definitions, 'action')}\n"
+        "};\n\n",
+        f"export const {config.operation_by_id_name} = {{\n"
+        f"{_render_js_id_map(definitions, 'operation')}\n"
+        "};\n\n",
+    ]
+    for definition_key, export_name in config.extra_id_maps.items():
+        chunks.append(
+            f"export const {export_name} = {{\n"
+            f"{_render_js_id_map(definitions, definition_key)}\n"
+            "};\n\n"
+        )
+    chunks.extend(
+        [
+            f"const {config.ids_set_name} = new Set({config.ids_name});\n\n",
+            f"export function {config.validator_function_name}(actionId) {{\n"
+            f"  return {config.ids_set_name}.has(actionId);\n"
+            "}\n",
+        ]
+    )
+    return "".join(chunks)
+
+
+def write_contract_target(
+    target: ActionContractSyncTarget,
+    *,
+    check: bool,
+    write: bool,
+    repo_root: Path | None = None,
+) -> bool:
+    """Verify or update one generated artifact and report whether it changed."""
+
+    existing = target.path.read_text(encoding="utf-8") if target.path.exists() else ""
+    if existing == target.content:
+        return False
+    label = target.path
+    if repo_root is not None:
+        try:
+            label = target.path.relative_to(repo_root)
+        except ValueError:
+            label = target.path
+    if check:
+        print(f"drift:{label}")
+        return True
+    if write:
+        target.path.parent.mkdir(parents=True, exist_ok=True)
+        target.path.write_text(target.content, encoding="utf-8")
+        print(f"updated:{label}")
+        return True
+    print(f"would-update:{label}")
+    return True
+
+
+def sync_contract_targets(
+    targets: Sequence[ActionContractSyncTarget],
+    *,
+    check: bool,
+    write: bool,
+    repo_root: Path | None = None,
+) -> bool:
+    """Verify or update generated contract artifacts and return whether any changed."""
+
+    changed = False
+    for target in targets:
+        changed |= write_contract_target(target, check=check, write=write, repo_root=repo_root)
+    return changed

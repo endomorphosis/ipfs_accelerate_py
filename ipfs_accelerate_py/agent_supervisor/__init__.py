@@ -49,6 +49,7 @@ from .todo_vector_index import (
 __all__ = [
     "BundleWriteResult",
     "BundleLaneSpec",
+    "ActionContractSyncTarget",
     "AndroidValidationCallbacks",
     "BootstrapPathSpec",
     "CodebaseFinding",
@@ -106,11 +107,15 @@ __all__ = [
     "objective_heap_schedule",
     "launch_bundle_lanes",
     "invoke_llm_resolver",
+    "JavaScriptActionContractConfig",
     "latest_failed_merge_event",
+    "load_action_definitions_from_descriptor",
+    "operation_action_mapper",
     "parse_goal_heap",
     "parse_todo_vector_records",
     "plan_semantic_ast_bundles",
     "plan_bundle_lanes",
+    "PythonActionContractConfig",
     "persist_objective_ast_dataset",
     "record_configured_codebase_scan_findings",
     "record_configured_objective_backlog_findings",
@@ -120,6 +125,8 @@ __all__ = [
     "record_retry_budget_findings",
     "reconcile_objective_goal_completion",
     "repo_relative_or_default",
+    "render_js_action_contract",
+    "render_python_action_contract",
     "resolve_and_ensure_bootstrap_paths",
     "resolve_bootstrap_paths",
     "resolve_append_only_markdown_conflicts",
@@ -131,6 +138,7 @@ __all__ = [
     "scan_codebase_findings",
     "scan_objective_gaps",
     "submit_bundle_tasks",
+    "sync_contract_targets",
     "write_objective_graph_artifact",
     "write_bundle_shards",
     "write_bundle_lane_manifest",
@@ -244,6 +252,19 @@ def __getattr__(name: str):
         from . import merge_conflict_repair
 
         return getattr(merge_conflict_repair, name)
+    if name in {
+        "ActionContractSyncTarget",
+        "JavaScriptActionContractConfig",
+        "load_action_definitions_from_descriptor",
+        "operation_action_mapper",
+        "PythonActionContractConfig",
+        "render_js_action_contract",
+        "render_python_action_contract",
+        "sync_contract_targets",
+    }:
+        from . import interface_contract_codegen
+
+        return getattr(interface_contract_codegen, name)
     if name == "build_objective_daemon_arg_parser":
         from .objective_daemon import build_arg_parser
 
