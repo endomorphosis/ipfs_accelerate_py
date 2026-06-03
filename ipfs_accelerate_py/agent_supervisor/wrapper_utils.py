@@ -75,6 +75,12 @@ def env_int(env_var: str, default: int | str, *, minimum: int | None = None, max
     return value
 
 
+def env_path(env_var: str, default: Path | str) -> Path:
+    """Return a path environment setting with an explicit default."""
+
+    return Path(os.environ.get(env_var, str(default)))
+
+
 @dataclass(frozen=True)
 class BootstrapPathSpec:
     """One repo-local path that may be overridden by an environment variable."""

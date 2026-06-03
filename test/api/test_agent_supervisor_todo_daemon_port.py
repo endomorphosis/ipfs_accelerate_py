@@ -82,6 +82,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     environment_assignment_prefix,
     env_csv_tuple,
     env_int,
+    env_path,
     repo_relative_or_default,
     resolve_and_ensure_bootstrap_paths,
     resolve_bootstrap_paths,
@@ -170,6 +171,12 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert env_int("WRAPPER_UTILS_INT", 7) == 7
     monkeypatch.setenv("WRAPPER_UTILS_INT", "11")
     assert env_int("WRAPPER_UTILS_INT", 7, minimum=10, maximum=12) == 11
+    monkeypatch.delenv("WRAPPER_UTILS_PATH", raising=False)
+    assert env_path("WRAPPER_UTILS_PATH", tmp_path / "default-path") == tmp_path / "default-path"
+    monkeypatch.setenv("WRAPPER_UTILS_PATH", str(tmp_path / "custom-path"))
+    assert env_path("WRAPPER_UTILS_PATH", tmp_path / "default-path") == tmp_path / "custom-path"
+    monkeypatch.setenv("WRAPPER_UTILS_PATH", "")
+    assert env_path("WRAPPER_UTILS_PATH", tmp_path / "default-path") == Path(".")
     monkeypatch.setenv("WRAPPER_UTILS_PRIMARY_MERGE_COMMAND", "primary-merge")
     merge_command_callback = build_default_llm_merge_resolver_command_callback(
         primary_env_var="WRAPPER_UTILS_PRIMARY_MERGE_COMMAND"
