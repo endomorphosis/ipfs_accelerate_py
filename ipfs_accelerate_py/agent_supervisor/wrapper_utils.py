@@ -60,6 +60,21 @@ def env_csv_tuple(env_var: str, default: str = "") -> tuple[str, ...]:
     return csv_tuple(os.environ.get(env_var, default))
 
 
+def env_int(env_var: str, default: int | str, *, minimum: int | None = None, maximum: int | None = None) -> int:
+    """Return an integer environment setting with an explicit default."""
+
+    raw_value = os.environ.get(env_var, str(default))
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{env_var} must be an integer, got {raw_value!r}") from exc
+    if minimum is not None and value < minimum:
+        raise ValueError(f"{env_var} must be >= {minimum}, got {value}")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{env_var} must be <= {maximum}, got {value}")
+    return value
+
+
 @dataclass(frozen=True)
 class BootstrapPathSpec:
     """One repo-local path that may be overridden by an environment variable."""
