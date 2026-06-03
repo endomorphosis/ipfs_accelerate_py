@@ -93,6 +93,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     unique_path_entries,
     with_android_validation_environment,
     with_default,
+    with_exclusive_flag_default,
     with_flag_default,
     with_repeated_default,
 )
@@ -159,6 +160,14 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert with_default(["tail"], "--flag", "default") == ["--flag", "default", "tail"]
     assert with_flag_default(["tail"], "--enabled") == ["--enabled", "tail"]
     assert with_flag_default(["--enabled"], "--enabled") == ["--enabled"]
+    assert with_exclusive_flag_default(["tail"], "--implement", ("--no-implement",)) == [
+        "--implement",
+        "tail",
+    ]
+    assert with_exclusive_flag_default(["--implement"], "--implement", ("--no-implement",)) == ["--implement"]
+    assert with_exclusive_flag_default(["--no-implement"], "--implement", ("--no-implement",)) == [
+        "--no-implement"
+    ]
     assert with_repeated_default(["tail"], "--path", ("a", "b")) == [
         "--path",
         "a",

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
 from ..event_log import unique_backup_path
+from ..wrapper_utils import with_exclusive_flag_default
 from .core import now_iso, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
 
 
@@ -246,9 +247,7 @@ def background_supervisor_args(
     """Return argv suitable for background execution of a supervisor."""
 
     args = [item for item in argv if item != once_flag]
-    if implement_flag not in args and no_implement_flag not in args:
-        args = [implement_flag, *args]
-    return args
+    return with_exclusive_flag_default(args, implement_flag, (no_implement_flag,))
 
 
 def ensure_supervisor_running(

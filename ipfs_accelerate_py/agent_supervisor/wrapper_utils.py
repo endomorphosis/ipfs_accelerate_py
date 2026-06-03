@@ -29,6 +29,16 @@ def with_flag_default(argv: Sequence[str], flag: str) -> list[str]:
     return [flag, *args]
 
 
+def with_exclusive_flag_default(argv: Sequence[str], flag: str, exclusive_flags: Iterable[str]) -> list[str]:
+    """Prepend a default flag unless any mutually exclusive flag is present."""
+
+    args = list(argv)
+    blockers = {flag, *exclusive_flags}
+    if any(blocker in args for blocker in blockers):
+        return args
+    return [flag, *args]
+
+
 def with_repeated_default(argv: Sequence[str], flag: str, values: Iterable[str]) -> list[str]:
     """Prepend repeated default flag/value pairs unless the caller already provided the flag."""
 

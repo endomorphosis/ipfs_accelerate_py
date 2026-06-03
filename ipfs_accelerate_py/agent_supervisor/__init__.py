@@ -155,6 +155,7 @@ __all__ = [
     "unique_path_entries",
     "with_android_validation_environment",
     "with_default",
+    "with_exclusive_flag_default",
     "with_flag_default",
     "with_repeated_default",
     "TodoIndexRecord",
@@ -317,6 +318,7 @@ def __getattr__(name: str):
         "unique_path_entries",
         "with_android_validation_environment",
         "with_default",
+        "with_exclusive_flag_default",
         "with_flag_default",
         "with_repeated_default",
     }:
