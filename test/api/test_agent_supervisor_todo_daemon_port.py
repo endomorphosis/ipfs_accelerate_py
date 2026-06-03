@@ -87,6 +87,9 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     resolve_and_ensure_bootstrap_paths,
     resolve_bootstrap_paths,
     rewrite_validation_commands,
+    task_board_filename,
+    task_board_path_key,
+    task_board_path_option,
     unique_path_entries,
     with_android_validation_environment,
     with_default,
@@ -177,6 +180,10 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert env_path("WRAPPER_UTILS_PATH", tmp_path / "default-path") == tmp_path / "custom-path"
     monkeypatch.setenv("WRAPPER_UTILS_PATH", "")
     assert env_path("WRAPPER_UTILS_PATH", tmp_path / "default-path") == Path(".")
+    assert task_board_filename("roadmap") == "roadmap.todo.md"
+    assert task_board_filename("roadmap", ".markdown") == "roadmap.todo.markdown"
+    assert task_board_path_option() == "--todo-path"
+    assert task_board_path_key() == "todo_path"
     monkeypatch.setenv("WRAPPER_UTILS_PRIMARY_MERGE_COMMAND", "primary-merge")
     merge_command_callback = build_default_llm_merge_resolver_command_callback(
         primary_env_var="WRAPPER_UTILS_PRIMARY_MERGE_COMMAND"

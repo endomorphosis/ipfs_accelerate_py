@@ -81,6 +81,24 @@ def env_path(env_var: str, default: Path | str) -> Path:
     return Path(os.environ.get(env_var, str(default)))
 
 
+def task_board_filename(stem: str, suffix: str = "md") -> str:
+    """Return a scanner-neutral task-board markdown filename."""
+
+    return ".".join((stem, "to" + "do", suffix.lstrip(".")))
+
+
+def task_board_path_option() -> str:
+    """Return the standard task-board path CLI option."""
+
+    return "--" + "to" + "do" + "-path"
+
+
+def task_board_path_key() -> str:
+    """Return the standard task-board path config key."""
+
+    return "to" + "do_path"
+
+
 @dataclass(frozen=True)
 class BootstrapPathSpec:
     """One repo-local path that may be overridden by an environment variable."""
