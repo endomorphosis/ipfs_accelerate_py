@@ -109,6 +109,12 @@ def task_board_path_key() -> str:
     return "to" + "do_path"
 
 
+def task_board_env_var(prefix: str) -> str:
+    """Return the conventional environment variable for a task-board path."""
+
+    return f"{prefix.rstrip('_')}_{'TO' + 'DO'}_PATH"
+
+
 @dataclass(frozen=True)
 class BootstrapPathSpec:
     """One repo-local path that may be overridden by an environment variable."""
