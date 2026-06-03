@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -42,6 +43,22 @@ class ActionContractSyncTarget:
 
     path: Path
     content: str
+
+
+@dataclass(frozen=True)
+class ActionContractCodegenConfig:
+    """Inputs for syncing generated action contract modules from a descriptor."""
+
+    descriptor_path: Path
+    contract: str
+    operation_to_action: Callable[[str], str]
+    action_metadata: Mapping[str, Mapping[str, str]]
+    python_target_path: Path
+    python_config: PythonActionContractConfig
+    js_target_path: Path
+    js_config: JavaScriptActionContractConfig
+    repo_root: Path | None = None
+    description: str = "Sync or verify generated action contract modules."
 
 
 def operation_action_mapper(mapping: Mapping[str, str], *, label: str = "operation"):
@@ -223,3 +240,63 @@ def sync_contract_targets(
     for target in targets:
         changed |= write_contract_target(target, check=check, write=write, repo_root=repo_root)
     return changed
+
+
+def build_action_contract_sync_targets(config: ActionContractCodegenConfig) -> tuple[ActionContractSyncTarget, ...]:
+    """Render the configured generated contract artifacts."""
+
+    definitions = load_action_definitions_from_descriptor(
+        config.descriptor_path,
+        operation_to_action=config.operation_to_action,
+        action_metadata=config.action_metadata,
+    )
+    return (
+        ActionContractSyncTarget(
+            config.python_target_path,
+            render_python_action_contract(
+                definitions,
+                contract=config.contract,
+                config=config.python_config,
+            ),
+        ),
+        ActionContractSyncTarget(
+            config.js_target_path,
+            render_js_action_contract(
+                definitions,
+                contract=config.contract,
+                config=config.js_config,
+            ),
+        ),
+    )
+
+
+def build_action_contract_sync_arg_parser(config: ActionContractCodegenConfig) -> argparse.ArgumentParser:
+    """Build the standard check/write parser for action contract sync wrappers."""
+
+    parser = argparse.ArgumentParser(description=config.description)
+    parser.add_argument(
+        "--write",
+        action="store_true",
+        help="Overwrite generated contract modules with rendered content.",
+    )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="Fail if rendered content differs from checked-in modules.",
+    )
+    return parser
+
+
+def run_action_contract_sync(config: ActionContractCodegenConfig, argv: Sequence[str] | None = None) -> int:
+    """Run the standard action-contract sync CLI."""
+
+    args = build_action_contract_sync_arg_parser(config).parse_args(argv)
+    if not args.check and not args.write:
+        args.check = True
+    changed = sync_contract_targets(
+        build_action_contract_sync_targets(config),
+        check=bool(args.check),
+        write=bool(args.write),
+        repo_root=config.repo_root,
+    )
+    return 1 if args.check and changed else 0

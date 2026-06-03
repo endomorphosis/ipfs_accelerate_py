@@ -49,6 +49,7 @@ from .todo_vector_index import (
 __all__ = [
     "BundleWriteResult",
     "BundleLaneSpec",
+    "ActionContractCodegenConfig",
     "ActionContractSyncTarget",
     "AndroidValidationCallbacks",
     "BootstrapPathSpec",
@@ -74,6 +75,8 @@ __all__ = [
     "build_bundle_task_payloads",
     "build_execution_packet",
     "build_execution_packets",
+    "build_action_contract_sync_arg_parser",
+    "build_action_contract_sync_targets",
     "build_merge_prompt",
     "build_configured_merge_resolver_arg_parser",
     "build_llm_merge_resolver_invoker",
@@ -132,6 +135,7 @@ __all__ = [
     "resolve_append_only_markdown_conflicts",
     "resolver_payload",
     "run_backlog_refinery",
+    "run_action_contract_sync",
     "run_goal_validation",
     "run_bundle_supervisor",
     "run_objective_daemon",
@@ -254,12 +258,16 @@ def __getattr__(name: str):
         return getattr(merge_conflict_repair, name)
     if name in {
         "ActionContractSyncTarget",
+        "ActionContractCodegenConfig",
+        "build_action_contract_sync_arg_parser",
+        "build_action_contract_sync_targets",
         "JavaScriptActionContractConfig",
         "load_action_definitions_from_descriptor",
         "operation_action_mapper",
         "PythonActionContractConfig",
         "render_js_action_contract",
         "render_python_action_contract",
+        "run_action_contract_sync",
         "sync_contract_targets",
     }:
         from . import interface_contract_codegen

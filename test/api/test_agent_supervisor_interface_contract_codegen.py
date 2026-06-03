@@ -6,13 +6,17 @@ from pathlib import Path
 import pytest
 
 from ipfs_accelerate_py.agent_supervisor.interface_contract_codegen import (
+    ActionContractCodegenConfig,
     ActionContractSyncTarget,
     JavaScriptActionContractConfig,
     PythonActionContractConfig,
+    build_action_contract_sync_arg_parser,
+    build_action_contract_sync_targets,
     load_action_definitions_from_descriptor,
     operation_action_mapper,
     render_js_action_contract,
     render_python_action_contract,
+    run_action_contract_sync,
     sync_contract_targets,
 )
 
@@ -153,3 +157,68 @@ def test_interface_contract_codegen_rejects_unknown_operation(tmp_path: Path):
             ),
             action_metadata={"render": {}},
         )
+
+
+def test_interface_contract_codegen_runner_defaults_to_check_and_can_write(tmp_path: Path, capsys):
+    descriptor_path = tmp_path / "interface.json"
+    _write_descriptor(descriptor_path)
+    config = ActionContractCodegenConfig(
+        descriptor_path=descriptor_path,
+        contract="example.contract@1",
+        operation_to_action=operation_action_mapper(
+            {
+                "render_widget": "render",
+                "focus_next": "focus",
+            }
+        ),
+        action_metadata={
+            "render": {
+                "label": "Render Widget",
+                "phrase": "render the widget",
+                "dat_method": "renderWidget",
+            },
+            "focus": {
+                "label": "Focus Widget",
+                "phrase": "focus the widget",
+                "dat_method": "focusWidget",
+            },
+        },
+        python_target_path=tmp_path / "pkg" / "widget_contract.py",
+        python_config=PythonActionContractConfig(
+            contract_name="WIDGET_CONTRACT",
+            definitions_name="WIDGET_DEFINITIONS",
+            ids_name="WIDGET_IDS",
+            operations_name="WIDGET_OPERATIONS",
+            docstring="Generated widget contract.",
+        ),
+        js_target_path=tmp_path / "web" / "widgetContract.js",
+        js_config=JavaScriptActionContractConfig(
+            contract_name="WIDGET_CONTRACT",
+            ids_name="WIDGET_IDS",
+            ids_set_name="WIDGET_ID_SET",
+            action_by_id_name="WIDGET_ACTION_BY_ID",
+            operation_by_id_name="WIDGET_OPERATION_BY_ID",
+            validator_function_name="isWidgetActionId",
+            extra_id_maps={"dat_method": "WIDGET_DAT_METHOD_BY_ID"},
+        ),
+        repo_root=tmp_path,
+        description="Sync test widget contracts.",
+    )
+
+    parser = build_action_contract_sync_arg_parser(config)
+    assert parser.description == "Sync test widget contracts."
+    targets = build_action_contract_sync_targets(config)
+    assert [target.path for target in targets] == [config.python_target_path, config.js_target_path]
+
+    assert run_action_contract_sync(config, []) == 1
+    assert capsys.readouterr().out == "drift:pkg/widget_contract.py\ndrift:web/widgetContract.js\n"
+    assert not config.python_target_path.exists()
+    assert not config.js_target_path.exists()
+
+    assert run_action_contract_sync(config, ["--write"]) == 0
+    assert capsys.readouterr().out == "updated:pkg/widget_contract.py\nupdated:web/widgetContract.js\n"
+    assert config.python_target_path.exists()
+    assert config.js_target_path.exists()
+
+    assert run_action_contract_sync(config, ["--check"]) == 0
+    assert capsys.readouterr().out == ""
