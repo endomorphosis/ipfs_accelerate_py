@@ -25,7 +25,12 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
 from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
-from ipfs_accelerate_py.agent_supervisor.task_proposal_router import run_configured_task_proposal_router_cli
+from ipfs_accelerate_py.agent_supervisor import task_proposal_router
+from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
+    ConfiguredTaskProposalRouterRunner,
+    build_configured_task_proposal_router_runner,
+    run_configured_task_proposal_router_cli,
+)
 from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     build_arg_parser as build_multi_supervisor_arg_parser,
     common_args_from_parsed_args,
@@ -827,6 +832,60 @@ def test_run_configured_task_proposal_router_cli_dry_run(tmp_path, capsys):
     assert payload["task_id"] == "AUTO-001"
     assert payload["generate"] is False
     assert payload["llm_router_importable"] is True
+
+
+def test_build_configured_task_proposal_router_runner_reuses_binding(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    task_board = repo / "tasks.md"
+    plan_path = repo / "plan.md"
+    artifact_dir = repo / "artifacts"
+    repo.mkdir()
+    captured: dict[str, object] = {}
+    bootstrapped: list[str] = []
+
+    def fake_run_task_proposal_router_cli(config, argv=None):
+        captured["config"] = config
+        captured["argv"] = tuple(argv or ())
+        return 0
+
+    monkeypatch.setattr(
+        task_proposal_router,
+        "run_task_proposal_router_cli",
+        fake_run_task_proposal_router_cli,
+    )
+
+    runner = build_configured_task_proposal_router_runner(
+        repo_root=repo,
+        task_board_path=task_board,
+        task_header_prefix="## AUTO-",
+        plan_path=plan_path,
+        artifact_dir=artifact_dir,
+        prompt_intro="Help implement the test roadmap.",
+        requested_outputs=("files", "tests"),
+        no_open_task_message="No open tasks.",
+        description="Test proposal router",
+        task_id_help="Task id",
+        include_dry_run_flag=True,
+        bootstrap=lambda: bootstrapped.append("bootstrapped"),
+    )
+
+    result = runner.run(["--task-id", "AUTO-001"])
+
+    assert isinstance(runner, ConfiguredTaskProposalRouterRunner)
+    assert result == 0
+    assert captured["argv"] == ("--task-id", "AUTO-001")
+    config = captured["config"]
+    assert config.router_config.repo_root == repo
+    assert config.router_config.task_board_path == task_board
+    assert config.router_config.task_header_prefix == "## AUTO-"
+    assert config.router_config.plan_path == plan_path
+    assert config.router_config.artifact_dir == artifact_dir
+    assert config.router_config.no_open_task_message == "No open tasks."
+    assert config.description == "Test proposal router"
+    assert config.task_id_help == "Task id"
+    assert config.include_dry_run_flag is True
+    config.bootstrap()
+    assert bootstrapped == ["bootstrapped"]
 
 
 def test_build_supervisor_runtime_operations_binds_project_wrapper(tmp_path, monkeypatch):

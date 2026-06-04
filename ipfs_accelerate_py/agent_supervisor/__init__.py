@@ -61,6 +61,7 @@ __all__ = [
     "ConfiguredObjectiveBacklogRecorder",
     "ConfiguredRetryBudgetRecorder",
     "ConfiguredSupervisorRuntime",
+    "ConfiguredTaskProposalRouterRunner",
     "DatasetArtifact",
     "ObjectiveFinding",
     "ObjectiveGoal",
@@ -86,6 +87,7 @@ __all__ = [
     "build_configured_merge_resolver_arg_parser",
     "build_configured_implementation_daemon_runner",
     "build_configured_supervisor_runtime",
+    "build_configured_task_proposal_router_runner",
     "build_llm_merge_resolver_invoker",
     "build_merge_prompt_callback",
     "build_objective_daemon_arg_parser",
@@ -457,6 +459,7 @@ def __getattr__(name: str):
         "build_task_proposal_prompt",
         "build_task_proposal_prompt_builder",
         "build_task_proposal_router_cli_config",
+        "build_configured_task_proposal_router_runner",
         "run_configured_task_proposal_router_cli",
         "run_task_proposal_router",
         "run_task_proposal_router_cli",
@@ -464,6 +467,7 @@ def __getattr__(name: str):
         "TaskProposalRouterConfig",
         "TaskProposalRouterCliConfig",
         "TaskProposalRouterError",
+        "ConfiguredTaskProposalRouterRunner",
         "task_metadata_lines",
     }:
         from . import task_proposal_router
