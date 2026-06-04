@@ -30,9 +30,12 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     build_arg_parser as build_multi_supervisor_arg_parser,
     common_args_from_parsed_args,
     implementation_supervisor_common_args,
+    implementation_supervisor_track_spec,
+    parse_implementation_track_spec,
     parse_track_spec,
     run_supervisor_tracks,
     supervisor_track_payload,
+    tracks_from_parsed_args,
 )
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     ImplementationDaemonDefaults,
@@ -986,6 +989,33 @@ def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
     assert not pid_alive(pid)
 
 
+def test_implementation_supervisor_track_spec_uses_standard_state_layout():
+    spec = implementation_supervisor_track_spec(
+        name="VAI",
+        script_path="scripts/virtual_ai_os_todo_supervisor.py",
+        state_dir="data/virtual_ai_os/state",
+        state_prefix="virtual_ai_os",
+    )
+    track = parse_implementation_track_spec(
+        "VAI|scripts/virtual_ai_os_todo_supervisor.py|data/virtual_ai_os/state|virtual_ai_os",
+        stamp="RUN",
+    )
+
+    assert spec == (
+        "VAI|scripts/virtual_ai_os_todo_supervisor.py|"
+        "data/virtual_ai_os/state/virtual_ai_os_8h_run_{stamp}.log|"
+        "data/virtual_ai_os/state/virtual_ai_os_supervisor.pid|"
+        "data/virtual_ai_os/state/virtual_ai_os_managed_daemon.pid"
+    )
+    assert supervisor_track_payload(track) == {
+        "name": "VAI",
+        "script_path": "scripts/virtual_ai_os_todo_supervisor.py",
+        "log_path": "data/virtual_ai_os/state/virtual_ai_os_8h_run_RUN.log",
+        "supervisor_pid_path": "data/virtual_ai_os/state/virtual_ai_os_supervisor.pid",
+        "daemon_pid_path": "data/virtual_ai_os/state/virtual_ai_os_managed_daemon.pid",
+    }
+
+
 def test_implementation_supervisor_common_args_include_long_run_defaults():
     args = implementation_supervisor_common_args(
         implementation_command="bash resolve.sh",
@@ -1009,8 +1039,8 @@ def test_multi_supervisor_common_args_from_parsed_defaults(monkeypatch):
     monkeypatch.setenv("OBJECTIVE_SCAN_MIN_OPEN_TASKS", "22")
     parsed = build_multi_supervisor_arg_parser().parse_args(
         [
-            "--track",
-            "T|worker.py|run.log|supervisor.pid|daemon.pid",
+            "--implementation-track",
+            "T|worker.py|state|agent",
             "--implementation-supervisor-defaults",
             "--implementation-supervisor-command",
             "bash resolve.sh",
@@ -1020,11 +1050,13 @@ def test_multi_supervisor_common_args_from_parsed_defaults(monkeypatch):
     )
 
     args = common_args_from_parsed_args(parsed)
+    tracks = tracks_from_parsed_args(parsed)
 
     assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
     assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "22"
     assert args[-2:] == ["--objective-scan-min-open-tasks", "99"]
+    assert supervisor_track_payload(tracks[0])["log_path"].endswith("/agent_8h_run_" + parsed.stamp + ".log")
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:

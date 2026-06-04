@@ -88,6 +88,45 @@ def parse_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
     )
 
 
+def implementation_supervisor_track_spec(
+    *,
+    name: str,
+    script_path: Path | str,
+    state_dir: Path | str,
+    state_prefix: str,
+) -> str:
+    """Return a standard implementation-supervisor track spec."""
+
+    state_path = Path(state_dir).as_posix()
+    return "|".join(
+        (
+            str(name),
+            Path(script_path).as_posix(),
+            f"{state_path}/{state_prefix}_8h_run_{{stamp}}.log",
+            f"{state_path}/{state_prefix}_supervisor.pid",
+            f"{state_path}/{state_prefix}_managed_daemon.pid",
+        )
+    )
+
+
+def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
+    """Parse ``NAME|SCRIPT|STATE_DIR|STATE_PREFIX`` implementation-track specs."""
+
+    parts = [part.strip() for part in spec.split("|")]
+    if len(parts) != 4 or not parts[0]:
+        raise ValueError("implementation track specs must have NAME|SCRIPT|STATE_DIR|STATE_PREFIX")
+    name, script, state_dir, state_prefix = parts
+    return parse_track_spec(
+        implementation_supervisor_track_spec(
+            name=name,
+            script_path=script,
+            state_dir=state_dir,
+            state_prefix=state_prefix,
+        ),
+        stamp=stamp,
+    )
+
+
 def supervisor_track_payload(track: SupervisorTrack) -> dict[str, str]:
     """Return a serializable track description for tests and diagnostics."""
 
@@ -337,7 +376,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--master-pid-path", type=Path, default=None)
     parser.add_argument("--label", default="multi-supervisor")
     parser.add_argument("--python-executable", default="python3")
-    parser.add_argument("--track", action="append", default=[], required=True)
+    parser.add_argument("--track", action="append", default=[])
+    parser.add_argument(
+        "--implementation-track",
+        action="append",
+        default=[],
+        help="Compact NAME|SCRIPT|STATE_DIR|STATE_PREFIX implementation-supervisor track.",
+    )
     parser.add_argument("--common-arg", action="append", default=[])
     parser.add_argument(
         "--implementation-supervisor-defaults",
@@ -464,10 +509,23 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
     return common_args
 
 
+def tracks_from_parsed_args(args: argparse.Namespace) -> list[SupervisorTrack]:
+    """Return supervisor tracks from raw and compact parsed track specs."""
+
+    tracks = [parse_track_spec(track, stamp=args.stamp) for track in args.track]
+    tracks.extend(
+        parse_implementation_track_spec(track, stamp=args.stamp)
+        for track in args.implementation_track
+    )
+    return tracks
+
+
 def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     parser = build_arg_parser()
     args = parser.parse_args(args_list)
+    if not args.track and not args.implementation_track:
+        parser.error("at least one --track or --implementation-track is required")
     if args.detach:
         payload = launch_detached(args, args_list)
         for key in ("stamp", "master_pid", "master_log", "master_pid_file"):
@@ -475,7 +533,7 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     master_log, master_pid = _master_paths(args)
-    tracks = [parse_track_spec(track, stamp=args.stamp) for track in args.track]
+    tracks = tracks_from_parsed_args(args)
     master_log.parent.mkdir(parents=True, exist_ok=True)
     with master_log.open("ab") as log_handle:
         def output(message: str) -> None:

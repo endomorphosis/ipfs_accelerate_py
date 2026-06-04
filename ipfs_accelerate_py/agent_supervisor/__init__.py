@@ -178,6 +178,8 @@ __all__ = [
     "merge_append_only_markdown_sections",
     "common_supervisor_args_from_parsed_args",
     "implementation_supervisor_common_args",
+    "implementation_supervisor_track_spec",
+    "parse_implementation_supervisor_track_spec",
     "parse_supervisor_track_spec",
     "run_supervisor_tracks",
     "SupervisorTrack",
@@ -373,6 +375,8 @@ def __getattr__(name: str):
     if name in {
         "common_supervisor_args_from_parsed_args",
         "implementation_supervisor_common_args",
+        "implementation_supervisor_track_spec",
+        "parse_implementation_supervisor_track_spec",
         "parse_supervisor_track_spec",
         "run_supervisor_tracks",
         "SupervisorTrack",
@@ -381,6 +385,8 @@ def __getattr__(name: str):
 
         if name == "parse_supervisor_track_spec":
             return multi_supervisor_runner.parse_track_spec
+        if name == "parse_implementation_supervisor_track_spec":
+            return multi_supervisor_runner.parse_implementation_track_spec
         if name == "common_supervisor_args_from_parsed_args":
             return multi_supervisor_runner.common_args_from_parsed_args
         return getattr(multi_supervisor_runner, name)
