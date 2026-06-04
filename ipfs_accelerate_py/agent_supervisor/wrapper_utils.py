@@ -167,6 +167,25 @@ def prefixed_bootstrap_path_spec(
     return BootstrapPathSpec(key, default, prefixed_env_var(prefix, setting or key))
 
 
+def prefixed_bootstrap_path_specs(
+    prefix: str,
+    entries: Iterable[tuple[str, Path | str] | tuple[str, Path | str, str | None]],
+) -> tuple[BootstrapPathSpec, ...]:
+    """Build prefixed bootstrap path specs from key/default entries."""
+
+    specs: list[BootstrapPathSpec] = []
+    for entry in entries:
+        if len(entry) == 2:
+            key, default = entry
+            setting = None
+        elif len(entry) == 3:
+            key, default, setting = entry
+        else:
+            raise ValueError(f"bootstrap path entries must have 2 or 3 fields, got {len(entry)}")
+        specs.append(prefixed_bootstrap_path_spec(key, default, prefix, setting))
+    return tuple(specs)
+
+
 def _repo_path(repo_root: Path, path: Path | str) -> Path:
     resolved = Path(path)
     if resolved.is_absolute():

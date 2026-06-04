@@ -9,6 +9,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.objective_daemon import (
     build_arg_parser,
     discovery_fingerprints,
@@ -84,6 +86,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     env_int,
     env_path,
     prefixed_bootstrap_path_spec,
+    prefixed_bootstrap_path_specs,
     prefixed_env_csv_tuple,
     prefixed_env_int,
     prefixed_env_path,
@@ -212,6 +215,18 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         "tasks.md",
         "WRAPPER_UTILS_TODO_PATH",
     )
+    assert prefixed_bootstrap_path_specs(
+        "WRAPPER_UTILS",
+        (
+            ("state_dir", "state"),
+            ("task_board_path", "tasks.md", "todo_path"),
+        ),
+    ) == (
+        BootstrapPathSpec("state_dir", "state", "WRAPPER_UTILS_STATE_DIR"),
+        BootstrapPathSpec("task_board_path", "tasks.md", "WRAPPER_UTILS_TODO_PATH"),
+    )
+    with pytest.raises(ValueError, match="2 or 3 fields"):
+        prefixed_bootstrap_path_specs("WRAPPER_UTILS", (("bad", "path", "setting", "extra"),))
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_CSV", "one,two")
     assert prefixed_env_csv_tuple("WRAPPER_UTILS", "TYPED_CSV") == ("one", "two")
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_INT", "12")
