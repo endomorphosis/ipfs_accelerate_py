@@ -270,6 +270,17 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         max_findings=8,
         cooldown_seconds=120,
     )
+    codebase_settings = prefixed_codebase_scan_env_settings("WRAPPER_UTILS")
+    assert codebase_settings.recorder_kwargs() == {
+        "min_open_tasks": 6,
+        "max_findings": 8,
+        "cooldown_seconds": 120,
+    }
+    assert codebase_settings.codebase_refill_kwargs() == {
+        "codebase_scan_min_open_tasks": 6,
+        "codebase_scan_max_findings": 8,
+        "codebase_scan_cooldown_seconds": 120,
+    }
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MIN_OPEN_TASKS", "21")
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MAX_FINDINGS", "13")
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_COOLDOWN_SECONDS", "901")
@@ -282,6 +293,21 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         surplus_findings_per_goal=7,
         surplus_min_terms_per_todo=5,
     )
+    objective_settings = prefixed_objective_refill_env_settings("WRAPPER_UTILS")
+    assert objective_settings.recorder_kwargs() == {
+        "min_open_tasks": 21,
+        "max_findings": 13,
+        "cooldown_seconds": 901,
+        "surplus_findings_per_goal": 7,
+        "surplus_min_terms_per_todo": 5,
+    }
+    assert objective_settings.objective_refill_kwargs() == {
+        "objective_scan_min_open_tasks": 21,
+        "objective_scan_max_findings": 13,
+        "objective_scan_cooldown_seconds": 901,
+        "objective_surplus_findings_per_goal": 7,
+        "objective_surplus_min_terms_per_todo": 5,
+    }
     assert task_board_env_var("WRAPPER_UTILS") == "WRAPPER_UTILS_TODO_PATH"
     assert task_board_env_var("WRAPPER_UTILS_") == "WRAPPER_UTILS_TODO_PATH"
     assert task_board_filename("roadmap") == "roadmap.todo.md"

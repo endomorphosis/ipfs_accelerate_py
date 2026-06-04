@@ -155,6 +155,24 @@ class CodebaseScanEnvSettings:
     max_findings: int
     cooldown_seconds: int
 
+    def recorder_kwargs(self) -> dict[str, int]:
+        """Return keyword arguments for scan/backlog recorder defaults."""
+
+        return {
+            "min_open_tasks": self.min_open_tasks,
+            "max_findings": self.max_findings,
+            "cooldown_seconds": self.cooldown_seconds,
+        }
+
+    def codebase_refill_kwargs(self) -> dict[str, int]:
+        """Return keyword arguments for codebase-refill supervisor defaults."""
+
+        return {
+            "codebase_scan_min_open_tasks": self.min_open_tasks,
+            "codebase_scan_max_findings": self.max_findings,
+            "codebase_scan_cooldown_seconds": self.cooldown_seconds,
+        }
+
 
 def prefixed_codebase_scan_env_settings(
     prefix: str,
@@ -181,6 +199,28 @@ class ObjectiveRefillEnvSettings:
     cooldown_seconds: int
     surplus_findings_per_goal: int
     surplus_min_terms_per_todo: int
+
+    def recorder_kwargs(self) -> dict[str, int]:
+        """Return keyword arguments for objective-refill recorder defaults."""
+
+        return {
+            "min_open_tasks": self.min_open_tasks,
+            "max_findings": self.max_findings,
+            "cooldown_seconds": self.cooldown_seconds,
+            "surplus_findings_per_goal": self.surplus_findings_per_goal,
+            "surplus_min_terms_per_todo": self.surplus_min_terms_per_todo,
+        }
+
+    def objective_refill_kwargs(self) -> dict[str, int]:
+        """Return keyword arguments for objective-refill supervisor defaults."""
+
+        return {
+            "objective_scan_min_open_tasks": self.min_open_tasks,
+            "objective_scan_max_findings": self.max_findings,
+            "objective_scan_cooldown_seconds": self.cooldown_seconds,
+            "objective_surplus_findings_per_goal": self.surplus_findings_per_goal,
+            "objective_surplus_min_terms_per_todo": self.surplus_min_terms_per_todo,
+        }
 
 
 def prefixed_objective_refill_env_settings(
