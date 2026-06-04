@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
 from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
+from ipfs_accelerate_py.agent_supervisor.task_proposal_router import run_configured_task_proposal_router_cli
 from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     parse_track_spec,
     run_supervisor_tracks,
@@ -694,6 +695,48 @@ def test_build_refill_defaults_from_paths(tmp_path):
         codebase_scan_cooldown_seconds=120,
         codebase_scan_skip_prefixes=("data/", "scripts/"),
     )
+
+
+def test_run_configured_task_proposal_router_cli_dry_run(tmp_path, capsys):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    task_board = repo / "tasks.md"
+    plan_path = repo / "plan.md"
+    artifact_dir = repo / "artifacts"
+    task_board.write_text(
+        """# Tasks
+
+## AUTO-001 Build reusable router
+
+- Status: todo
+- Priority: P1
+- Track: ops
+- Outputs: src/router.py
+- Validation: pytest tests/test_router.py
+- Acceptance: Router preflight returns JSON.
+""",
+        encoding="utf-8",
+    )
+    plan_path.write_text("Build reusable routing helpers.\n", encoding="utf-8")
+
+    result = run_configured_task_proposal_router_cli(
+        ["--task-id", "AUTO-001"],
+        repo_root=repo,
+        task_board_path=task_board,
+        task_header_prefix="## AUTO-",
+        plan_path=plan_path,
+        artifact_dir=artifact_dir,
+        prompt_intro="Help implement the test roadmap.",
+        requested_outputs=("files", "tests"),
+        description="Test proposal router",
+        task_id_help="Task id",
+    )
+
+    assert result == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["task_id"] == "AUTO-001"
+    assert payload["generate"] is False
+    assert payload["llm_router_importable"] is True
 
 
 def test_build_supervisor_runtime_operations_binds_project_wrapper(tmp_path, monkeypatch):

@@ -182,6 +182,61 @@ def build_task_proposal_router_cli_config(
     )
 
 
+def run_configured_task_proposal_router_cli(
+    argv: list[str] | None = None,
+    *,
+    repo_root: Path,
+    task_board_path: Path,
+    task_header_prefix: str,
+    plan_path: Path,
+    artifact_dir: Path,
+    prompt_intro: str,
+    requested_outputs: Sequence[str],
+    description: str,
+    task_id_help: str,
+    no_open_task_message: str = "No open task found.",
+    task_board_option: str = "--task-board-path",
+    hidden_task_board_options: Sequence[str] = (),
+    include_dry_run_flag: bool = False,
+    bootstrap: BootstrapCallback | None = None,
+    open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
+    plan_char_limit: int = 40000,
+    provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
+    model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
+    default_model: str = "gpt-5.3-codex-spark",
+    default_max_new_tokens: int = 2048,
+    default_timeout_seconds: int = 300,
+) -> int:
+    """Build and run the standard task-proposal router CLI from wrapper-specific values."""
+
+    return run_task_proposal_router_cli(
+        build_task_proposal_router_cli_config(
+            repo_root=repo_root,
+            task_board_path=task_board_path,
+            task_header_prefix=task_header_prefix,
+            plan_path=plan_path,
+            artifact_dir=artifact_dir,
+            prompt_intro=prompt_intro,
+            requested_outputs=requested_outputs,
+            description=description,
+            task_id_help=task_id_help,
+            no_open_task_message=no_open_task_message,
+            task_board_option=task_board_option,
+            hidden_task_board_options=hidden_task_board_options,
+            include_dry_run_flag=include_dry_run_flag,
+            bootstrap=bootstrap,
+            open_statuses=open_statuses,
+            plan_char_limit=plan_char_limit,
+            provider_env=provider_env,
+            model_env=model_env,
+            default_model=default_model,
+            default_max_new_tokens=default_max_new_tokens,
+            default_timeout_seconds=default_timeout_seconds,
+        ),
+        argv,
+    )
+
+
 def select_proposal_task(
     tasks: Sequence[object],
     requested_task_id: str = "",
