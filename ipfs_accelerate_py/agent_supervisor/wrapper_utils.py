@@ -148,6 +148,31 @@ def prefixed_env_path(prefix: str, setting: str, default: Path | str) -> Path:
 
 
 @dataclass(frozen=True)
+class CodebaseScanEnvSettings:
+    """Prefixed environment settings for codebase-scan behavior."""
+
+    min_open_tasks: int
+    max_findings: int
+    cooldown_seconds: int
+
+
+def prefixed_codebase_scan_env_settings(
+    prefix: str,
+    *,
+    min_open_tasks: int = 5,
+    max_findings: int = 5,
+    cooldown_seconds: int = 21600,
+) -> CodebaseScanEnvSettings:
+    """Return codebase-scan settings from conventional prefixed environment variables."""
+
+    return CodebaseScanEnvSettings(
+        min_open_tasks=prefixed_env_int(prefix, "CODEBASE_SCAN_MIN_OPEN_TASKS", min_open_tasks),
+        max_findings=prefixed_env_int(prefix, "CODEBASE_SCAN_MAX_FINDINGS", max_findings),
+        cooldown_seconds=prefixed_env_int(prefix, "CODEBASE_SCAN_COOLDOWN_SECONDS", cooldown_seconds),
+    )
+
+
+@dataclass(frozen=True)
 class ObjectiveRefillEnvSettings:
     """Prefixed environment settings for objective-refill scan behavior."""
 

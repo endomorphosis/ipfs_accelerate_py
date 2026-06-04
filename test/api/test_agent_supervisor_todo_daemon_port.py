@@ -68,6 +68,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     BootstrapPathCallbacks,
     BootstrapPathSpec,
+    CodebaseScanEnvSettings,
     android_validation_command_needs_environment,
     android_validation_environment_contract,
     apply_environment_contract,
@@ -91,6 +92,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     ObjectiveRefillEnvSettings,
     prefixed_bootstrap_path_spec,
     prefixed_bootstrap_path_specs,
+    prefixed_codebase_scan_env_settings,
     prefixed_env_csv_tuple,
     prefixed_env_int,
     prefixed_env_path,
@@ -241,6 +243,14 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert prefixed_env_int("WRAPPER_UTILS", "TYPED_INT", 7, minimum=10, maximum=20) == 12
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_PATH", str(tmp_path / "typed-path"))
     assert prefixed_env_path("WRAPPER_UTILS", "TYPED_PATH", tmp_path / "default-path") == tmp_path / "typed-path"
+    monkeypatch.setenv("WRAPPER_UTILS_CODEBASE_SCAN_MIN_OPEN_TASKS", "6")
+    monkeypatch.setenv("WRAPPER_UTILS_CODEBASE_SCAN_MAX_FINDINGS", "8")
+    monkeypatch.setenv("WRAPPER_UTILS_CODEBASE_SCAN_COOLDOWN_SECONDS", "120")
+    assert prefixed_codebase_scan_env_settings("WRAPPER_UTILS") == CodebaseScanEnvSettings(
+        min_open_tasks=6,
+        max_findings=8,
+        cooldown_seconds=120,
+    )
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MIN_OPEN_TASKS", "21")
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MAX_FINDINGS", "13")
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_COOLDOWN_SECONDS", "901")
