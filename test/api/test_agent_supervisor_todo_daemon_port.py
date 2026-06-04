@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import os
 import shlex
 import subprocess
@@ -46,6 +47,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_implementation_supervisor_defaults_from_paths,
     build_objective_refill_defaults_from_paths,
 )
+from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoTaskState,
@@ -812,6 +814,79 @@ def test_build_supervisor_runtime_operations_binds_project_wrapper(tmp_path, mon
     assert (state_dir / "agent_supervisor_wrapper.pid").read_text(encoding="utf-8") == "424242\n"
     assert operations.is_running(state_dir, "agent") is True
     assert operations.repair_runtime(state_dir, "agent") == {"removed": [], "updated_status": False}
+
+
+def test_run_configured_supervisor_with_runtime_composes_callbacks(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    script_path = repo / "custom_supervisor.py"
+    daemon_path = repo / "custom_daemon.py"
+    repo.mkdir()
+    script_path.write_text("# supervisor\n", encoding="utf-8")
+    daemon_path.write_text("# daemon\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+    prepared: list[str] = []
+
+    class FakeRuntimeCallbacks:
+        def ensure_running(self, context):
+            return {"ensured": context}
+
+        def repair_runtime(self, context):
+            return {"repaired": context}
+
+    runtime_callbacks = FakeRuntimeCallbacks()
+
+    def fake_build_supervisor_runtime_callbacks(argv, **kwargs):
+        captured["runtime_argv"] = tuple(argv)
+        captured["runtime_kwargs"] = kwargs
+        return runtime_callbacks
+
+    def fake_run_configured_portal_implementation_supervisor(argv, **kwargs):
+        captured["run_argv"] = tuple(argv)
+        captured["run_kwargs"] = kwargs
+        return kwargs["ensure_running_callback"]("ctx")
+
+    monkeypatch.setattr(
+        implementation_supervisor_runner,
+        "build_supervisor_runtime_callbacks",
+        fake_build_supervisor_runtime_callbacks,
+    )
+    monkeypatch.setattr(
+        implementation_supervisor_runner,
+        "run_configured_portal_implementation_supervisor",
+        fake_run_configured_portal_implementation_supervisor,
+    )
+
+    result = implementation_supervisor_runner.run_configured_portal_implementation_supervisor_with_runtime(
+        ["--once"],
+        repo_root=repo,
+        logger=logging.getLogger("test-runtime-helper"),
+        script_path=script_path,
+        process_match_any=("custom_supervisor.py",),
+        prepare_environment=lambda: prepared.append("prepared"),
+        implementation_lock_name="custom.lock",
+        startup_delay_seconds=0.25,
+        daemon_script_path=daemon_path,
+        worktree_submodule_paths=("submodule",),
+        ensure_running=True,
+        repair_runtime=False,
+    )
+
+    assert result == {"ensured": "ctx"}
+    assert captured["runtime_argv"] == ("--once",)
+    assert captured["runtime_kwargs"]["repo_root"] == repo
+    assert captured["runtime_kwargs"]["script_path"] == script_path
+    assert captured["runtime_kwargs"]["process_match_any"] == ("custom_supervisor.py",)
+    assert captured["runtime_kwargs"]["implementation_lock_name"] == "custom.lock"
+    assert captured["runtime_kwargs"]["startup_delay_seconds"] == 0.25
+    captured["runtime_kwargs"]["prepare_environment"]()
+    assert prepared == ["prepared"]
+    assert captured["run_argv"] == ("--once",)
+    assert captured["run_kwargs"]["repo_root"] == repo
+    assert captured["run_kwargs"]["daemon_script_path"] == daemon_path
+    assert captured["run_kwargs"]["worktree_submodule_paths"] == ("submodule",)
+    assert captured["run_kwargs"]["ensure_running"] is True
+    assert captured["run_kwargs"]["ensure_running_callback"] == runtime_callbacks.ensure_running
+    assert captured["run_kwargs"]["repair_runtime_callback"] is None
 
 
 def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):

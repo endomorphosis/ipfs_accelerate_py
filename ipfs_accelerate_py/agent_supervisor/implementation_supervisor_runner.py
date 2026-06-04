@@ -757,3 +757,51 @@ def run_configured_portal_implementation_supervisor(
         repair_runtime_callback=repair_runtime_callback,
         repair_runtime_message=repair_runtime_message,
     )
+
+
+def run_configured_portal_implementation_supervisor_with_runtime(
+    argv: Sequence[str],
+    *,
+    repo_root: Path,
+    logger: logging.Logger,
+    script_path: Path,
+    process_match_any: Sequence[str] = (),
+    process_predicate: Callable[[int], bool] | None = None,
+    prepare_environment: Callable[[], None] | None = None,
+    implementation_lock_name: str = "implementation.lock",
+    startup_delay_seconds: float = 1.0,
+    daemon_script_path: Path | None = None,
+    worktree_submodule_paths: Sequence[str] | None = None,
+    hooks: Sequence[SupervisorRunHook] = (),
+    once_complete_message: str = "Portal implementation supervisor check complete: %s",
+    ensure_running: bool = False,
+    ensure_running_message: str = "Supervisor ensure complete: %s",
+    repair_runtime: bool = True,
+    repair_runtime_message: str = "Repaired stale supervisor runtime markers: %s",
+) -> Any:
+    """Run a configured supervisor with standard runtime repair/ensure wiring."""
+
+    runtime_callbacks = build_supervisor_runtime_callbacks(
+        argv,
+        repo_root=repo_root,
+        script_path=script_path,
+        process_match_any=process_match_any,
+        process_predicate=process_predicate,
+        prepare_environment=prepare_environment,
+        implementation_lock_name=implementation_lock_name,
+        startup_delay_seconds=startup_delay_seconds,
+    )
+    return run_configured_portal_implementation_supervisor(
+        argv,
+        repo_root=repo_root,
+        logger=logger,
+        daemon_script_path=daemon_script_path,
+        worktree_submodule_paths=worktree_submodule_paths,
+        hooks=hooks,
+        once_complete_message=once_complete_message,
+        ensure_running=ensure_running,
+        ensure_running_callback=runtime_callbacks.ensure_running,
+        ensure_running_message=ensure_running_message,
+        repair_runtime_callback=runtime_callbacks.repair_runtime if repair_runtime else None,
+        repair_runtime_message=repair_runtime_message,
+    )
