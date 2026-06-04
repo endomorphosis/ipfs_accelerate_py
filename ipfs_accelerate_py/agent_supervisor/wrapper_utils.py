@@ -161,8 +161,15 @@ class BootstrapPathCallbacks:
     """Resolved bootstrap specs plus callbacks for wrapper entry points."""
 
     specs: tuple[BootstrapPathSpec, ...]
+    repo_root: Path
     resolve: Callable[[], dict[str, Path]]
     ensure: Callable[[Mapping[str, Path] | None], dict[str, Path]]
+
+    def output_path(self, key: str, default: str, paths: Mapping[str, Path] | None = None) -> str:
+        """Return a repo-relative output path for a resolved bootstrap path."""
+
+        resolved = self.resolve() if paths is None else paths
+        return repo_relative_or_default(resolved[key], self.repo_root, default)
 
 
 def prefixed_bootstrap_path_spec(
@@ -360,10 +367,12 @@ def build_prefixed_bootstrap_path_callbacks(
     """Build prefixed path specs plus resolver and directory-ensurer callbacks."""
 
     specs = prefixed_bootstrap_path_specs(prefix, entries)
+    root = Path(repo_root)
     return BootstrapPathCallbacks(
         specs=specs,
-        resolve=build_bootstrap_path_resolver(repo_root, specs, repo_root_key=repo_root_key),
-        ensure=build_bootstrap_path_ensurer(repo_root, specs, directory_keys, repo_root_key=repo_root_key),
+        repo_root=root,
+        resolve=build_bootstrap_path_resolver(root, specs, repo_root_key=repo_root_key),
+        ensure=build_bootstrap_path_ensurer(root, specs, directory_keys, repo_root_key=repo_root_key),
     )
 
 

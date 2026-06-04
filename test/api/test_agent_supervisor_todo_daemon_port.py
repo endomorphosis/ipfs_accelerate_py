@@ -306,11 +306,14 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         ("state_dir",),
     )
     assert isinstance(callback_bundle, BootstrapPathCallbacks)
+    assert callback_bundle.repo_root == tmp_path
     assert callback_bundle.specs == (
         BootstrapPathSpec("state_dir", "state", "WRAPPER_UTILS_CALLBACKS_STATE_DIR"),
         BootstrapPathSpec("task_board_path", "tasks.md", "WRAPPER_UTILS_CALLBACKS_TODO_PATH"),
     )
     assert callback_bundle.resolve()["task_board_path"] == tmp_path / "tasks.md"
+    assert callback_bundle.output_path("task_board_path", "fallback.md") == "tasks.md"
+    assert callback_bundle.output_path("state_dir", "fallback", {"state_dir": Path("/")}) == "fallback"
     ensured_callback_bundle = callback_bundle.ensure()
     assert ensured_callback_bundle["state_dir"].is_dir()
 
