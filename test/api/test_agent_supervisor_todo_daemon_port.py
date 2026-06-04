@@ -31,12 +31,16 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
 )
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     ImplementationDaemonDefaults,
+    apply_portal_implementation_daemon_defaults,
+    apply_portal_implementation_daemon_defaults_from_paths,
     build_implementation_daemon_defaults_from_paths,
 )
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ImplementationSupervisorDefaults,
     ObjectiveRefillDefaults,
+    apply_portal_implementation_supervisor_defaults,
+    apply_portal_implementation_supervisor_defaults_from_paths,
     build_codebase_refill_defaults_from_paths,
     build_implementation_supervisor_defaults_from_paths,
     build_objective_refill_defaults_from_paths,
@@ -566,6 +570,17 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
         objective_bundle_dir=tmp_path / "bundles",
         worktree_submodule_paths=("packages/app", "external/lib"),
     )
+    assert apply_portal_implementation_daemon_defaults_from_paths(
+        ["--once"],
+        paths,
+        todo_path_key="task_board_path",
+        task_prefix="## AUTO-",
+        state_prefix="agent",
+        todo_path_flag="--task-board",
+        objective_path_key="objective_heap_path",
+        objective_bundle_dir=tmp_path / "bundles",
+        worktree_submodule_paths=("packages/app", "external/lib"),
+    ) == apply_portal_implementation_daemon_defaults(["--once"], defaults=defaults)
 
 
 def test_build_implementation_supervisor_defaults_from_paths(tmp_path):
@@ -603,6 +618,19 @@ def test_build_implementation_supervisor_defaults_from_paths(tmp_path):
         llm_merge_resolver_command="resolve-conflict",
         worktree_submodule_paths=("packages/app", "external/lib"),
     )
+    assert apply_portal_implementation_supervisor_defaults_from_paths(
+        ["--once"],
+        paths,
+        todo_path_key="task_board_path",
+        task_prefix="## AUTO-",
+        state_prefix="agent",
+        daemon_script_path=daemon_script,
+        supervisor_script_path=supervisor_script,
+        todo_path_flag="--task-board",
+        max_restarts=3,
+        llm_merge_resolver_command="resolve-conflict",
+        worktree_submodule_paths=("packages/app", "external/lib"),
+    ) == apply_portal_implementation_supervisor_defaults(["--once"], defaults=defaults)
 
 
 def test_build_refill_defaults_from_paths(tmp_path):
