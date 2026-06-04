@@ -25,6 +25,11 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
 from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
+from ipfs_accelerate_py.agent_supervisor import merge_resolver
+from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
+    ConfiguredMergeResolverRunner,
+    build_configured_merge_resolver_runner,
+)
 from ipfs_accelerate_py.agent_supervisor import task_proposal_router
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     ConfiguredTaskProposalRouterRunner,
@@ -677,6 +682,56 @@ def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, 
 
     runner.run_configured(["--once"], pass_complete_message="override complete: %s")
     assert captured["kwargs"]["pass_complete_message"] == "override complete: %s"
+
+
+def test_build_configured_merge_resolver_runner_reuses_binding(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    events_path = repo / "events.jsonl"
+    repo.mkdir()
+    captured: dict[str, object] = {}
+
+    def fake_run_configured_merge_resolver_cli(config, argv=None):
+        captured["config"] = config
+        captured["argv"] = tuple(argv or ())
+        return 0
+
+    monkeypatch.setattr(
+        merge_resolver,
+        "run_configured_merge_resolver_cli",
+        fake_run_configured_merge_resolver_cli,
+    )
+
+    runner = build_configured_merge_resolver_runner(
+        default_events_path=str(events_path),
+        default_repo_root=str(repo),
+        prompt_heading="Resolve test conflicts.",
+        completion_rule="Keep the task blocked until validation passes.",
+        extra_rules=("Preserve both sides.",),
+        primary_command_env_var="TEST_PRIMARY_RESOLVER",
+        description="Test merge resolver",
+        missing_event_exit_code=3,
+        apply_failed_exit_code=4,
+    )
+
+    parsed = runner.parse_args(["--task-id", "AUTO-001"])
+    result = runner.run(["--apply", "--task-id", "AUTO-001"])
+
+    assert isinstance(runner, ConfiguredMergeResolverRunner)
+    assert parsed.task_id == "AUTO-001"
+    assert parsed.events_path == events_path
+    assert parsed.repo_root == repo
+    assert result == 0
+    assert captured["argv"] == ("--apply", "--task-id", "AUTO-001")
+    config = captured["config"]
+    assert config.default_events_path == events_path
+    assert config.default_repo_root == repo
+    assert config.prompt_heading == "Resolve test conflicts."
+    assert config.completion_rule == "Keep the task blocked until validation passes."
+    assert config.extra_rules == ("Preserve both sides.",)
+    assert config.primary_command_env_var == "TEST_PRIMARY_RESOLVER"
+    assert config.description == "Test merge resolver"
+    assert config.missing_event_exit_code == 3
+    assert config.apply_failed_exit_code == 4
 
 
 def test_build_implementation_supervisor_defaults_from_paths(tmp_path):

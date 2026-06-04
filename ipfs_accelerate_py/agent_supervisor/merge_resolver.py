@@ -40,6 +40,54 @@ class MergeResolverCliConfig:
     apply_failed_exit_code: int = 1
 
 
+@dataclass(frozen=True)
+class ConfiguredMergeResolverRunner:
+    """Project-bound runner wiring for a merge-resolver CLI."""
+
+    config: MergeResolverCliConfig
+
+    def parse_args(self, argv: Sequence[str] | None = None) -> argparse.Namespace:
+        """Parse merge-resolver CLI args using the bound config."""
+
+        return build_configured_merge_resolver_arg_parser(self.config).parse_args(argv)
+
+    def run(self, argv: Sequence[str] | None = None) -> int:
+        """Run the configured merge-resolver CLI."""
+
+        return run_configured_merge_resolver_cli(self.config, argv)
+
+
+def build_configured_merge_resolver_runner(
+    *,
+    default_events_path: Path | str,
+    default_repo_root: Path | str,
+    prompt_heading: str = DEFAULT_PROMPT_HEADING,
+    completion_rule: str = DEFAULT_COMPLETION_RULE,
+    extra_rules: Sequence[str] = (),
+    primary_command_env_var: str = "",
+    fallback_command_env_var: str = LLM_MERGE_RESOLVER_COMMAND_ENV,
+    description: str = "Build or invoke an LLM merge resolver for agent-supervisor events",
+    missing_event_exit_code: int = 0,
+    apply_failed_exit_code: int = 1,
+) -> ConfiguredMergeResolverRunner:
+    """Build reusable merge-resolver runner wiring bound to project inputs."""
+
+    return ConfiguredMergeResolverRunner(
+        MergeResolverCliConfig(
+            default_events_path=Path(default_events_path),
+            default_repo_root=Path(default_repo_root),
+            prompt_heading=prompt_heading,
+            completion_rule=completion_rule,
+            extra_rules=tuple(extra_rules),
+            primary_command_env_var=primary_command_env_var,
+            fallback_command_env_var=fallback_command_env_var,
+            description=description,
+            missing_event_exit_code=missing_event_exit_code,
+            apply_failed_exit_code=apply_failed_exit_code,
+        )
+    )
+
+
 def iter_jsonl(path: Path) -> list[dict[str, Any]]:
     return read_jsonl_events(path, repair=True)
 
