@@ -88,12 +88,14 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     env_csv_tuple,
     env_int,
     env_path,
+    ObjectiveRefillEnvSettings,
     prefixed_bootstrap_path_spec,
     prefixed_bootstrap_path_specs,
     prefixed_env_csv_tuple,
     prefixed_env_int,
     prefixed_env_path,
     prefixed_env_var,
+    prefixed_objective_refill_env_settings,
     repo_relative_or_default,
     resolve_and_ensure_bootstrap_paths,
     resolve_bootstrap_paths,
@@ -236,6 +238,18 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert prefixed_env_int("WRAPPER_UTILS", "TYPED_INT", 7, minimum=10, maximum=20) == 12
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_PATH", str(tmp_path / "typed-path"))
     assert prefixed_env_path("WRAPPER_UTILS", "TYPED_PATH", tmp_path / "default-path") == tmp_path / "typed-path"
+    monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MIN_OPEN_TASKS", "21")
+    monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MAX_FINDINGS", "13")
+    monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_COOLDOWN_SECONDS", "901")
+    monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL", "7")
+    monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO", "5")
+    assert prefixed_objective_refill_env_settings("WRAPPER_UTILS") == ObjectiveRefillEnvSettings(
+        min_open_tasks=21,
+        max_findings=13,
+        cooldown_seconds=901,
+        surplus_findings_per_goal=7,
+        surplus_min_terms_per_todo=5,
+    )
     assert task_board_env_var("WRAPPER_UTILS") == "WRAPPER_UTILS_TODO_PATH"
     assert task_board_env_var("WRAPPER_UTILS_") == "WRAPPER_UTILS_TODO_PATH"
     assert task_board_filename("roadmap") == "roadmap.todo.md"

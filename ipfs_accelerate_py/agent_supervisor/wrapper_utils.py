@@ -141,6 +141,45 @@ def prefixed_env_path(prefix: str, setting: str, default: Path | str) -> Path:
     return env_path(prefixed_env_var(prefix, setting), default)
 
 
+@dataclass(frozen=True)
+class ObjectiveRefillEnvSettings:
+    """Prefixed environment settings for objective-refill scan behavior."""
+
+    min_open_tasks: int
+    max_findings: int
+    cooldown_seconds: int
+    surplus_findings_per_goal: int
+    surplus_min_terms_per_todo: int
+
+
+def prefixed_objective_refill_env_settings(
+    prefix: str,
+    *,
+    min_open_tasks: int = 20,
+    max_findings: int = 12,
+    cooldown_seconds: int = 900,
+    surplus_findings_per_goal: int = 6,
+    surplus_min_terms_per_todo: int = 4,
+) -> ObjectiveRefillEnvSettings:
+    """Return objective-refill settings from conventional prefixed environment variables."""
+
+    return ObjectiveRefillEnvSettings(
+        min_open_tasks=prefixed_env_int(prefix, "OBJECTIVE_SCAN_MIN_OPEN_TASKS", min_open_tasks),
+        max_findings=prefixed_env_int(prefix, "OBJECTIVE_SCAN_MAX_FINDINGS", max_findings),
+        cooldown_seconds=prefixed_env_int(prefix, "OBJECTIVE_SCAN_COOLDOWN_SECONDS", cooldown_seconds),
+        surplus_findings_per_goal=prefixed_env_int(
+            prefix,
+            "OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL",
+            surplus_findings_per_goal,
+        ),
+        surplus_min_terms_per_todo=prefixed_env_int(
+            prefix,
+            "OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO",
+            surplus_min_terms_per_todo,
+        ),
+    )
+
+
 def task_board_env_var(prefix: str) -> str:
     """Return the conventional environment variable for a task-board path."""
 
