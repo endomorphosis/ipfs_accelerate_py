@@ -116,6 +116,31 @@ def prefixed_env_var(prefix: str, *parts: str) -> str:
     return "_".join(value.strip("_").upper() for value in values if value.strip("_"))
 
 
+def prefixed_env_csv_tuple(prefix: str, setting: str, default: str = "") -> tuple[str, ...]:
+    """Return a prefixed comma-separated environment setting as a tuple."""
+
+    return env_csv_tuple(prefixed_env_var(prefix, setting), default)
+
+
+def prefixed_env_int(
+    prefix: str,
+    setting: str,
+    default: int | str,
+    *,
+    minimum: int | None = None,
+    maximum: int | None = None,
+) -> int:
+    """Return a prefixed integer environment setting with an explicit default."""
+
+    return env_int(prefixed_env_var(prefix, setting), default, minimum=minimum, maximum=maximum)
+
+
+def prefixed_env_path(prefix: str, setting: str, default: Path | str) -> Path:
+    """Return a prefixed path environment setting with an explicit default."""
+
+    return env_path(prefixed_env_var(prefix, setting), default)
+
+
 def task_board_env_var(prefix: str) -> str:
     """Return the conventional environment variable for a task-board path."""
 

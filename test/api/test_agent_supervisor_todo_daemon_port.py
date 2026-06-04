@@ -83,6 +83,9 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     env_csv_tuple,
     env_int,
     env_path,
+    prefixed_env_csv_tuple,
+    prefixed_env_int,
+    prefixed_env_path,
     prefixed_env_var,
     repo_relative_or_default,
     resolve_and_ensure_bootstrap_paths,
@@ -193,6 +196,12 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert env_path("WRAPPER_UTILS_PATH", tmp_path / "default-path") == Path(".")
     assert prefixed_env_var("wrapper_utils", "state_dir") == "WRAPPER_UTILS_STATE_DIR"
     assert prefixed_env_var("WRAPPER_UTILS_", "_worktree_root", "") == "WRAPPER_UTILS_WORKTREE_ROOT"
+    monkeypatch.setenv("WRAPPER_UTILS_TYPED_CSV", "one,two")
+    assert prefixed_env_csv_tuple("WRAPPER_UTILS", "TYPED_CSV") == ("one", "two")
+    monkeypatch.setenv("WRAPPER_UTILS_TYPED_INT", "12")
+    assert prefixed_env_int("WRAPPER_UTILS", "TYPED_INT", 7, minimum=10, maximum=20) == 12
+    monkeypatch.setenv("WRAPPER_UTILS_TYPED_PATH", str(tmp_path / "typed-path"))
+    assert prefixed_env_path("WRAPPER_UTILS", "TYPED_PATH", tmp_path / "default-path") == tmp_path / "typed-path"
     assert task_board_env_var("WRAPPER_UTILS") == "WRAPPER_UTILS_TODO_PATH"
     assert task_board_env_var("WRAPPER_UTILS_") == "WRAPPER_UTILS_TODO_PATH"
     assert task_board_filename("roadmap") == "roadmap.todo.md"
