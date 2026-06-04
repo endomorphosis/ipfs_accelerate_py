@@ -50,6 +50,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     apply_portal_implementation_supervisor_defaults,
     apply_portal_implementation_supervisor_defaults_from_paths,
     build_codebase_refill_defaults_from_paths,
+    build_configured_supervisor_runtime,
     build_implementation_supervisor_defaults_from_paths,
     build_objective_refill_defaults_from_paths,
 )
@@ -829,6 +830,61 @@ def test_build_supervisor_runtime_operations_binds_project_wrapper(tmp_path, mon
     assert operations.repair_runtime(state_dir, "agent") == {"removed": [], "updated_status": False}
 
 
+def test_build_configured_supervisor_runtime_binds_project_wrapper(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    state_dir = repo / "state"
+    script_path = repo / "custom_supervisor.py"
+    repo.mkdir()
+    state_dir.mkdir()
+    script_path.write_text("# test wrapper\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+    prepared: list[str] = []
+
+    class FakeProcess:
+        pid = 525252
+
+    def fake_popen(command, *, cwd, env, stdin, stdout, stderr, start_new_session):
+        captured["command"] = command
+        captured["cwd"] = cwd
+        captured["stdin"] = stdin
+        captured["stderr"] = stderr
+        captured["start_new_session"] = start_new_session
+        return FakeProcess()
+
+    monkeypatch.setattr(supervisor_runtime.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(supervisor_runtime, "pid_alive", lambda pid: int(pid) == FakeProcess.pid)
+    monkeypatch.setattr(supervisor_runtime.time, "sleep", lambda seconds: captured.setdefault("sleep", seconds))
+
+    runtime = build_configured_supervisor_runtime(
+        repo_root=repo,
+        script_path=script_path,
+        process_match_any=("custom_supervisor.py",),
+        process_predicate=lambda pid: int(pid) == FakeProcess.pid,
+        prepare_environment=lambda: prepared.append("prepared"),
+        implementation_lock_name="custom.lock",
+        startup_delay_seconds=0.25,
+    )
+
+    result = runtime.ensure_running(["--once", "--flag"], state_dir=state_dir, state_prefix="agent")
+
+    assert runtime.repo_root == repo
+    assert runtime.script_path == script_path
+    assert runtime.process_match_any == ("custom_supervisor.py",)
+    assert runtime.implementation_lock_name == "custom.lock"
+    assert result["started"] is True
+    assert result["pid"] == FakeProcess.pid
+    assert captured["command"] == [sys.executable, str(script_path), "--implement", "--flag"]
+    assert captured["cwd"] == repo
+    assert captured["stdin"] == subprocess.DEVNULL
+    assert captured["stderr"] == subprocess.STDOUT
+    assert captured["start_new_session"] is True
+    assert captured["sleep"] == 0.25
+    assert prepared == ["prepared"]
+    assert (state_dir / "agent_supervisor_wrapper.pid").read_text(encoding="utf-8") == "525252\n"
+    assert runtime.is_running(state_dir, "agent") is True
+    assert runtime.repair_runtime(state_dir, "agent") == {"removed": [], "updated_status": False}
+
+
 def test_run_configured_supervisor_with_runtime_composes_callbacks(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     script_path = repo / "custom_supervisor.py"
@@ -900,6 +956,73 @@ def test_run_configured_supervisor_with_runtime_composes_callbacks(tmp_path, mon
     assert captured["run_kwargs"]["ensure_running"] is True
     assert captured["run_kwargs"]["ensure_running_callback"] == runtime_callbacks.ensure_running
     assert captured["run_kwargs"]["repair_runtime_callback"] is None
+
+
+def test_configured_supervisor_runtime_run_configured_reuses_binding(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    script_path = repo / "custom_supervisor.py"
+    daemon_path = repo / "custom_daemon.py"
+    repo.mkdir()
+    script_path.write_text("# supervisor\n", encoding="utf-8")
+    daemon_path.write_text("# daemon\n", encoding="utf-8")
+    captured: dict[str, object] = {}
+    prepared: list[str] = []
+
+    def prepare_environment():
+        prepared.append("prepared")
+
+    def fake_run_configured_portal_implementation_supervisor_with_runtime(argv, **kwargs):
+        captured["argv"] = tuple(argv)
+        captured["kwargs"] = kwargs
+        return "configured"
+
+    monkeypatch.setattr(
+        implementation_supervisor_runner,
+        "run_configured_portal_implementation_supervisor_with_runtime",
+        fake_run_configured_portal_implementation_supervisor_with_runtime,
+    )
+
+    runtime = build_configured_supervisor_runtime(
+        repo_root=repo,
+        script_path=script_path,
+        process_match_any=("custom_supervisor.py",),
+        prepare_environment=prepare_environment,
+        implementation_lock_name="custom.lock",
+        startup_delay_seconds=0.25,
+    )
+    hook = implementation_supervisor_runner.SupervisorRunHook("before", "hook: %s", lambda context: None)
+
+    result = runtime.run_configured(
+        ["--once"],
+        logger=logging.getLogger("test-configured-runtime"),
+        daemon_script_path=daemon_path,
+        worktree_submodule_paths=("external/custom",),
+        hooks=(hook,),
+        once_complete_message="complete: %s",
+        ensure_running=True,
+        ensure_running_message="ensure: %s",
+        repair_runtime=False,
+        repair_runtime_message="repair: %s",
+    )
+
+    assert result == "configured"
+    assert captured["argv"] == ("--once",)
+    assert captured["kwargs"]["repo_root"] == repo
+    assert captured["kwargs"]["script_path"] == script_path
+    assert captured["kwargs"]["process_match_any"] == ("custom_supervisor.py",)
+    assert captured["kwargs"]["prepare_environment"] is prepare_environment
+    assert captured["kwargs"]["implementation_lock_name"] == "custom.lock"
+    assert captured["kwargs"]["startup_delay_seconds"] == 0.25
+    assert captured["kwargs"]["daemon_script_path"] == daemon_path
+    assert captured["kwargs"]["worktree_submodule_paths"] == ("external/custom",)
+    assert captured["kwargs"]["hooks"] == (hook,)
+    assert captured["kwargs"]["once_complete_message"] == "complete: %s"
+    assert captured["kwargs"]["ensure_running"] is True
+    assert captured["kwargs"]["ensure_running_message"] == "ensure: %s"
+    assert captured["kwargs"]["repair_runtime"] is False
+    assert captured["kwargs"]["repair_runtime_message"] == "repair: %s"
+    captured["kwargs"]["prepare_environment"]()
+    assert prepared == ["prepared"]
 
 
 def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):

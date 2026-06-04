@@ -64,6 +64,109 @@ class SupervisorRuntimeCallbacks:
 
 
 @dataclass(frozen=True)
+class ConfiguredSupervisorRuntime:
+    """Project-bound runtime operations and runner wiring for a supervisor wrapper."""
+
+    repo_root: Path
+    script_path: Path
+    process_match_any: Sequence[str]
+    process_predicate: Callable[[int], bool] | None
+    prepare_environment: Callable[[], None] | None
+    implementation_lock_name: str
+    startup_delay_seconds: float
+    operations: Any
+
+    def repair_runtime(self, state_dir: Path, state_prefix: str) -> dict[str, Any]:
+        """Repair stale supervisor runtime markers for this wrapper."""
+
+        return self.operations.repair_runtime(state_dir, state_prefix)
+
+    def is_running(self, state_dir: Path, state_prefix: str) -> bool:
+        """Return whether this supervisor wrapper appears to be running."""
+
+        return self.operations.is_running(state_dir, state_prefix)
+
+    def ensure_running(self, argv: Sequence[str], *, state_dir: Path, state_prefix: str) -> dict[str, Any]:
+        """Ensure this supervisor wrapper is running in the background."""
+
+        return self.operations.ensure_running(argv, state_dir=state_dir, state_prefix=state_prefix)
+
+    def run_configured(
+        self,
+        argv: Sequence[str],
+        *,
+        logger: logging.Logger,
+        daemon_script_path: Path | None = None,
+        worktree_submodule_paths: Sequence[str] | None = None,
+        hooks: Sequence[SupervisorRunHook] = (),
+        once_complete_message: str = "Portal implementation supervisor check complete: %s",
+        ensure_running: bool = False,
+        ensure_running_message: str = "Supervisor ensure complete: %s",
+        repair_runtime: bool = True,
+        repair_runtime_message: str = "Repaired stale supervisor runtime markers: %s",
+    ) -> Any:
+        """Run a configured supervisor using this runtime binding."""
+
+        return run_configured_portal_implementation_supervisor_with_runtime(
+            argv,
+            repo_root=self.repo_root,
+            logger=logger,
+            script_path=self.script_path,
+            process_match_any=self.process_match_any,
+            process_predicate=self.process_predicate,
+            prepare_environment=self.prepare_environment,
+            implementation_lock_name=self.implementation_lock_name,
+            startup_delay_seconds=self.startup_delay_seconds,
+            daemon_script_path=daemon_script_path,
+            worktree_submodule_paths=worktree_submodule_paths,
+            hooks=hooks,
+            once_complete_message=once_complete_message,
+            ensure_running=ensure_running,
+            ensure_running_message=ensure_running_message,
+            repair_runtime=repair_runtime,
+            repair_runtime_message=repair_runtime_message,
+        )
+
+
+def build_configured_supervisor_runtime(
+    *,
+    repo_root: Path | str,
+    script_path: Path | str,
+    process_match_any: Sequence[str] = (),
+    process_predicate: Callable[[int], bool] | None = None,
+    prepare_environment: Callable[[], None] | None = None,
+    implementation_lock_name: str = "implementation.lock",
+    startup_delay_seconds: float = 1.0,
+) -> ConfiguredSupervisorRuntime:
+    """Build reusable runtime operations bound to a project supervisor wrapper."""
+
+    from .todo_daemon.supervisor_runtime import build_supervisor_runtime_operations
+
+    resolved_repo_root = Path(repo_root)
+    resolved_script_path = Path(script_path)
+    process_markers = tuple(process_match_any)
+    operations = build_supervisor_runtime_operations(
+        repo_root=resolved_repo_root,
+        script_path=resolved_script_path,
+        process_match_any=process_markers,
+        process_predicate=process_predicate,
+        prepare_environment=prepare_environment,
+        implementation_lock_name=implementation_lock_name,
+        startup_delay_seconds=startup_delay_seconds,
+    )
+    return ConfiguredSupervisorRuntime(
+        repo_root=resolved_repo_root,
+        script_path=resolved_script_path,
+        process_match_any=process_markers,
+        process_predicate=process_predicate,
+        prepare_environment=prepare_environment,
+        implementation_lock_name=implementation_lock_name,
+        startup_delay_seconds=startup_delay_seconds,
+        operations=operations,
+    )
+
+
+@dataclass(frozen=True)
 class ImplementationSupervisorDefaults:
     """Default CLI values for a project-specific implementation supervisor wrapper."""
 

@@ -59,6 +59,7 @@ __all__ = [
     "ConfiguredCodebaseScanRecorder",
     "ConfiguredObjectiveBacklogRecorder",
     "ConfiguredRetryBudgetRecorder",
+    "ConfiguredSupervisorRuntime",
     "DatasetArtifact",
     "ObjectiveFinding",
     "ObjectiveGoal",
@@ -82,6 +83,7 @@ __all__ = [
     "build_action_contract_sync_targets",
     "build_merge_prompt",
     "build_configured_merge_resolver_arg_parser",
+    "build_configured_supervisor_runtime",
     "build_llm_merge_resolver_invoker",
     "build_merge_prompt_callback",
     "build_objective_daemon_arg_parser",
@@ -400,6 +402,7 @@ def __getattr__(name: str):
         return getattr(supervisor_runtime, name)
     if name in {
         "build_portal_implementation_supervisor_from_args",
+        "build_configured_supervisor_runtime",
         "build_codebase_refill_defaults_from_paths",
         "build_implementation_supervisor_defaults_from_paths",
         "build_objective_refill_defaults_from_paths",
@@ -420,6 +423,7 @@ def __getattr__(name: str):
         "CodebaseRefillDefaults",
         "SupervisorRunHook",
         "SupervisorRuntimeCallbacks",
+        "ConfiguredSupervisorRuntime",
     }:
         from . import implementation_supervisor_runner
 
