@@ -156,6 +156,17 @@ class BootstrapPathSpec:
     env_var: str = ""
 
 
+def prefixed_bootstrap_path_spec(
+    key: str,
+    default: Path | str,
+    prefix: str,
+    setting: str | None = None,
+) -> BootstrapPathSpec:
+    """Build a bootstrap path spec with a conventional prefixed environment name."""
+
+    return BootstrapPathSpec(key, default, prefixed_env_var(prefix, setting or key))
+
+
 def _repo_path(repo_root: Path, path: Path | str) -> Path:
     resolved = Path(path)
     if resolved.is_absolute():

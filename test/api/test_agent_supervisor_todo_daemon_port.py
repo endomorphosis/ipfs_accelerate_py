@@ -83,6 +83,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     env_csv_tuple,
     env_int,
     env_path,
+    prefixed_bootstrap_path_spec,
     prefixed_env_csv_tuple,
     prefixed_env_int,
     prefixed_env_path,
@@ -196,6 +197,21 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert env_path("WRAPPER_UTILS_PATH", tmp_path / "default-path") == Path(".")
     assert prefixed_env_var("wrapper_utils", "state_dir") == "WRAPPER_UTILS_STATE_DIR"
     assert prefixed_env_var("WRAPPER_UTILS_", "_worktree_root", "") == "WRAPPER_UTILS_WORKTREE_ROOT"
+    assert prefixed_bootstrap_path_spec("state_dir", "state", "WRAPPER_UTILS") == BootstrapPathSpec(
+        "state_dir",
+        "state",
+        "WRAPPER_UTILS_STATE_DIR",
+    )
+    assert prefixed_bootstrap_path_spec(
+        "task_board_path",
+        "tasks.md",
+        "WRAPPER_UTILS",
+        "todo_path",
+    ) == BootstrapPathSpec(
+        "task_board_path",
+        "tasks.md",
+        "WRAPPER_UTILS_TODO_PATH",
+    )
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_CSV", "one,two")
     assert prefixed_env_csv_tuple("WRAPPER_UTILS", "TYPED_CSV") == ("one", "two")
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_INT", "12")
