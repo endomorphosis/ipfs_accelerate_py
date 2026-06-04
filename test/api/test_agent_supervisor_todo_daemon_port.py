@@ -66,6 +66,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     terminate_supervised_child,
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
+    BootstrapPathCallbacks,
     BootstrapPathSpec,
     android_validation_command_needs_environment,
     android_validation_environment_contract,
@@ -75,6 +76,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     build_bootstrap_path_ensurer,
     build_bootstrap_path_resolver,
     build_default_llm_merge_resolver_command_callback,
+    build_prefixed_bootstrap_path_callbacks,
     build_runtime_environment_callback,
     csv_tuple,
     default_llm_merge_resolver_command,
@@ -294,6 +296,23 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert ensured_callback["cache_dir"].is_dir()
     provided_callback = ensurer({"cache_dir": tmp_path / "provided-callback-cache"})
     assert provided_callback["cache_dir"].is_dir()
+    callback_bundle = build_prefixed_bootstrap_path_callbacks(
+        tmp_path,
+        "WRAPPER_UTILS_CALLBACKS",
+        (
+            ("state_dir", "state"),
+            ("task_board_path", "tasks.md", "todo_path"),
+        ),
+        ("state_dir",),
+    )
+    assert isinstance(callback_bundle, BootstrapPathCallbacks)
+    assert callback_bundle.specs == (
+        BootstrapPathSpec("state_dir", "state", "WRAPPER_UTILS_CALLBACKS_STATE_DIR"),
+        BootstrapPathSpec("task_board_path", "tasks.md", "WRAPPER_UTILS_CALLBACKS_TODO_PATH"),
+    )
+    assert callback_bundle.resolve()["task_board_path"] == tmp_path / "tasks.md"
+    ensured_callback_bundle = callback_bundle.ensure()
+    assert ensured_callback_bundle["state_dir"].is_dir()
 
     contract = {
         "env": {"JAVA_HOME": "/jdk", "ANDROID_HOME": "/sdk"},

@@ -156,6 +156,15 @@ class BootstrapPathSpec:
     env_var: str = ""
 
 
+@dataclass(frozen=True)
+class BootstrapPathCallbacks:
+    """Resolved bootstrap specs plus callbacks for wrapper entry points."""
+
+    specs: tuple[BootstrapPathSpec, ...]
+    resolve: Callable[[], dict[str, Path]]
+    ensure: Callable[[Mapping[str, Path] | None], dict[str, Path]]
+
+
 def prefixed_bootstrap_path_spec(
     key: str,
     default: Path | str,
@@ -338,6 +347,24 @@ def build_bootstrap_path_ensurer(
         )
 
     return ensurer
+
+
+def build_prefixed_bootstrap_path_callbacks(
+    repo_root: Path | str,
+    prefix: str,
+    entries: Iterable[tuple[str, Path | str] | tuple[str, Path | str, str | None]],
+    directory_keys: Iterable[str],
+    *,
+    repo_root_key: str = "repo_root",
+) -> BootstrapPathCallbacks:
+    """Build prefixed path specs plus resolver and directory-ensurer callbacks."""
+
+    specs = prefixed_bootstrap_path_specs(prefix, entries)
+    return BootstrapPathCallbacks(
+        specs=specs,
+        resolve=build_bootstrap_path_resolver(repo_root, specs, repo_root_key=repo_root_key),
+        ensure=build_bootstrap_path_ensurer(repo_root, specs, directory_keys, repo_root_key=repo_root_key),
+    )
 
 
 def _string_mapping(value: object) -> dict[str, str]:
