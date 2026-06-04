@@ -61,6 +61,59 @@ class ActionContractCodegenConfig:
     description: str = "Sync or verify generated action contract modules."
 
 
+@dataclass(frozen=True)
+class ConfiguredActionContractSyncRunner:
+    """Project-bound runner wiring for action-contract sync CLIs."""
+
+    config: ActionContractCodegenConfig
+
+    def parse_args(self, argv: Sequence[str] | None = None) -> argparse.Namespace:
+        """Parse action-contract sync CLI args using the bound config."""
+
+        return build_action_contract_sync_arg_parser(self.config).parse_args(argv)
+
+    def build_targets(self) -> tuple[ActionContractSyncTarget, ...]:
+        """Render sync targets from the bound config."""
+
+        return build_action_contract_sync_targets(self.config)
+
+    def run(self, argv: Sequence[str] | None = None) -> int:
+        """Run the configured action-contract sync CLI."""
+
+        return run_action_contract_sync(self.config, argv)
+
+
+def build_configured_action_contract_sync_runner(
+    *,
+    descriptor_path: Path | str,
+    contract: str,
+    operation_to_action: Callable[[str], str],
+    action_metadata: Mapping[str, Mapping[str, str]],
+    python_target_path: Path | str,
+    python_config: PythonActionContractConfig,
+    js_target_path: Path | str,
+    js_config: JavaScriptActionContractConfig,
+    repo_root: Path | str | None = None,
+    description: str = "Sync or verify generated action contract modules.",
+) -> ConfiguredActionContractSyncRunner:
+    """Build reusable action-contract sync runner wiring bound to project inputs."""
+
+    return ConfiguredActionContractSyncRunner(
+        ActionContractCodegenConfig(
+            descriptor_path=Path(descriptor_path),
+            contract=contract,
+            operation_to_action=operation_to_action,
+            action_metadata=action_metadata,
+            python_target_path=Path(python_target_path),
+            python_config=python_config,
+            js_target_path=Path(js_target_path),
+            js_config=js_config,
+            repo_root=Path(repo_root) if repo_root is not None else None,
+            description=description,
+        )
+    )
+
+
 def operation_action_mapper(mapping: Mapping[str, str], *, label: str = "operation"):
     """Return a mapper that converts descriptor operation names into action names."""
 
