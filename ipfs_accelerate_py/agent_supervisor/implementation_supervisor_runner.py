@@ -6,7 +6,7 @@ import argparse
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from .wrapper_utils import with_default, with_flag_default, with_repeated_default
 
@@ -78,6 +78,42 @@ class ImplementationSupervisorDefaults:
     max_restarts: int | str = 0
     llm_merge_resolver_command: str = ""
     worktree_submodule_paths: Sequence[str] = ()
+
+
+def _path_from_mapping(paths: Mapping[str, Path | str], key: str) -> Path:
+    return Path(paths[key])
+
+
+def build_implementation_supervisor_defaults_from_paths(
+    paths: Mapping[str, Path | str],
+    *,
+    task_prefix: str,
+    state_prefix: str,
+    daemon_script_path: Path | str,
+    supervisor_script_path: Path | str,
+    todo_path_key: str = "todo_path",
+    state_dir_key: str = "state_dir",
+    worktree_root_key: str = "worktree_root",
+    todo_path_flag: str = "--todo-path",
+    max_restarts: int | str = 0,
+    llm_merge_resolver_command: str = "",
+    worktree_submodule_paths: Sequence[str] = (),
+) -> ImplementationSupervisorDefaults:
+    """Build reusable implementation-supervisor defaults from resolved wrapper paths."""
+
+    return ImplementationSupervisorDefaults(
+        todo_path=_path_from_mapping(paths, todo_path_key),
+        state_dir=_path_from_mapping(paths, state_dir_key),
+        task_prefix=task_prefix,
+        state_prefix=state_prefix,
+        worktree_root=_path_from_mapping(paths, worktree_root_key),
+        daemon_script_path=Path(daemon_script_path),
+        supervisor_script_path=Path(supervisor_script_path),
+        todo_path_flag=todo_path_flag,
+        max_restarts=max_restarts,
+        llm_merge_resolver_command=llm_merge_resolver_command,
+        worktree_submodule_paths=worktree_submodule_paths,
+    )
 
 
 @dataclass(frozen=True)

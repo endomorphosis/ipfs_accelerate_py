@@ -33,6 +33,10 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     ImplementationDaemonDefaults,
     build_implementation_daemon_defaults_from_paths,
 )
+from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+    ImplementationSupervisorDefaults,
+    build_implementation_supervisor_defaults_from_paths,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoTaskState,
@@ -534,6 +538,43 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
         todo_path_flag="--task-board",
         objective_path=tmp_path / "objective-heap.md",
         objective_bundle_dir=tmp_path / "bundles",
+        worktree_submodule_paths=("packages/app", "external/lib"),
+    )
+
+
+def test_build_implementation_supervisor_defaults_from_paths(tmp_path):
+    paths = {
+        "task_board_path": tmp_path / "tasks.md",
+        "state_dir": tmp_path / "state",
+        "worktree_root": tmp_path / "worktrees",
+    }
+    daemon_script = tmp_path / "daemon.py"
+    supervisor_script = tmp_path / "supervisor.py"
+
+    defaults = build_implementation_supervisor_defaults_from_paths(
+        paths,
+        todo_path_key="task_board_path",
+        task_prefix="## AUTO-",
+        state_prefix="agent",
+        daemon_script_path=daemon_script,
+        supervisor_script_path=supervisor_script,
+        todo_path_flag="--task-board",
+        max_restarts=3,
+        llm_merge_resolver_command="resolve-conflict",
+        worktree_submodule_paths=("packages/app", "external/lib"),
+    )
+
+    assert defaults == ImplementationSupervisorDefaults(
+        todo_path=tmp_path / "tasks.md",
+        state_dir=tmp_path / "state",
+        task_prefix="## AUTO-",
+        state_prefix="agent",
+        worktree_root=tmp_path / "worktrees",
+        daemon_script_path=daemon_script,
+        supervisor_script_path=supervisor_script,
+        todo_path_flag="--task-board",
+        max_restarts=3,
+        llm_merge_resolver_command="resolve-conflict",
         worktree_submodule_paths=("packages/app", "external/lib"),
     )
 
