@@ -186,6 +186,7 @@ __all__ = [
     "build_portal_implementation_supervisor_from_args",
     "build_daemon_refill_hooks",
     "build_daemon_codebase_scan_refill_callback",
+    "build_implementation_daemon_defaults_from_paths",
     "build_daemon_objective_refill_callback",
     "build_daemon_retry_budget_refill_callback",
     "build_supervisor_refill_hooks",
@@ -392,6 +393,7 @@ def __getattr__(name: str):
     if name in {
         "build_portal_implementation_daemon_from_args",
         "build_daemon_codebase_scan_refill_callback",
+        "build_implementation_daemon_defaults_from_paths",
         "build_daemon_objective_refill_callback",
         "build_daemon_refill_hooks",
         "build_daemon_retry_budget_refill_callback",

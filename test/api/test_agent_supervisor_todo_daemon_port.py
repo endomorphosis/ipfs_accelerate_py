@@ -29,6 +29,10 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     run_supervisor_tracks,
     supervisor_track_payload,
 )
+from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+    ImplementationDaemonDefaults,
+    build_implementation_daemon_defaults_from_paths,
+)
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoTaskState,
@@ -500,6 +504,38 @@ def test_supervisor_runtime_repairs_stale_markers(tmp_path):
 def test_background_supervisor_args_removes_once_and_defaults_implement():
     assert background_supervisor_args(["--once", "--flag"]) == ["--implement", "--flag"]
     assert background_supervisor_args(["--no-implement", "--once"]) == ["--no-implement"]
+
+
+def test_build_implementation_daemon_defaults_from_paths(tmp_path):
+    paths = {
+        "task_board_path": tmp_path / "tasks.md",
+        "state_dir": tmp_path / "state",
+        "worktree_root": tmp_path / "worktrees",
+        "objective_heap_path": tmp_path / "objective-heap.md",
+    }
+
+    defaults = build_implementation_daemon_defaults_from_paths(
+        paths,
+        todo_path_key="task_board_path",
+        task_prefix="## AUTO-",
+        state_prefix="agent",
+        todo_path_flag="--task-board",
+        objective_path_key="objective_heap_path",
+        objective_bundle_dir=tmp_path / "bundles",
+        worktree_submodule_paths=("packages/app", "external/lib"),
+    )
+
+    assert defaults == ImplementationDaemonDefaults(
+        todo_path=tmp_path / "tasks.md",
+        state_dir=tmp_path / "state",
+        task_prefix="## AUTO-",
+        state_prefix="agent",
+        worktree_root=tmp_path / "worktrees",
+        todo_path_flag="--task-board",
+        objective_path=tmp_path / "objective-heap.md",
+        objective_bundle_dir=tmp_path / "bundles",
+        worktree_submodule_paths=("packages/app", "external/lib"),
+    )
 
 
 def test_build_supervisor_runtime_operations_binds_project_wrapper(tmp_path, monkeypatch):

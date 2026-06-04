@@ -8,7 +8,7 @@ import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from .wrapper_utils import with_default, with_repeated_default
 
@@ -72,6 +72,57 @@ class ImplementationDaemonDefaults:
     objective_path: Path | None = None
     objective_bundle_dir: Path | None = None
     worktree_submodule_paths: Sequence[str] = ()
+
+
+def _path_from_mapping(paths: Mapping[str, Path | str], key: str) -> Path:
+    return Path(paths[key])
+
+
+def _optional_path_from_mapping(
+    paths: Mapping[str, Path | str],
+    *,
+    key: str | None = None,
+    value: Path | str | None = None,
+) -> Path | None:
+    if value is not None:
+        return Path(value)
+    if key is None:
+        return None
+    return _path_from_mapping(paths, key)
+
+
+def build_implementation_daemon_defaults_from_paths(
+    paths: Mapping[str, Path | str],
+    *,
+    task_prefix: str,
+    state_prefix: str,
+    todo_path_key: str = "todo_path",
+    state_dir_key: str = "state_dir",
+    worktree_root_key: str = "worktree_root",
+    todo_path_flag: str = "--todo-path",
+    objective_path_key: str | None = None,
+    objective_path: Path | str | None = None,
+    objective_bundle_dir_key: str | None = None,
+    objective_bundle_dir: Path | str | None = None,
+    worktree_submodule_paths: Sequence[str] = (),
+) -> ImplementationDaemonDefaults:
+    """Build reusable implementation-daemon defaults from resolved wrapper paths."""
+
+    return ImplementationDaemonDefaults(
+        todo_path=_path_from_mapping(paths, todo_path_key),
+        state_dir=_path_from_mapping(paths, state_dir_key),
+        task_prefix=task_prefix,
+        state_prefix=state_prefix,
+        worktree_root=_path_from_mapping(paths, worktree_root_key),
+        todo_path_flag=todo_path_flag,
+        objective_path=_optional_path_from_mapping(paths, key=objective_path_key, value=objective_path),
+        objective_bundle_dir=_optional_path_from_mapping(
+            paths,
+            key=objective_bundle_dir_key,
+            value=objective_bundle_dir,
+        ),
+        worktree_submodule_paths=worktree_submodule_paths,
+    )
 
 
 def _with_optional_default(args: Sequence[str], flag: str, value: object | None) -> list[str]:
