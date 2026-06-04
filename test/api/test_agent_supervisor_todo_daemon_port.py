@@ -27,6 +27,9 @@ from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vec
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import run_configured_task_proposal_router_cli
 from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
+    build_arg_parser as build_multi_supervisor_arg_parser,
+    common_args_from_parsed_args,
+    implementation_supervisor_common_args,
     parse_track_spec,
     run_supervisor_tracks,
     supervisor_track_payload,
@@ -981,6 +984,47 @@ def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
     assert "worker started" in (tmp_path / "logs" / "RUN.log").read_text(encoding="utf-8")
     assert any("started T supervisor" in line for line in output)
     assert not pid_alive(pid)
+
+
+def test_implementation_supervisor_common_args_include_long_run_defaults():
+    args = implementation_supervisor_common_args(
+        implementation_command="bash resolve.sh",
+        objective_scan_min_open_tasks=21,
+        objective_scan_max_findings=13,
+        objective_surplus_findings_per_goal=8,
+        objective_surplus_min_terms_per_todo=5,
+    )
+
+    assert args[:3] == ["--implement", "--stale-seconds", "1800"]
+    assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
+    assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
+    assert args[args.index("--objective-scan-min-open-tasks") + 1] == "21"
+    assert args[args.index("--objective-scan-max-findings") + 1] == "13"
+    assert args[args.index("--objective-surplus-findings-per-goal") + 1] == "8"
+    assert args[args.index("--objective-surplus-min-terms-per-todo") + 1] == "5"
+    assert args[args.index("--codebase-scan-cooldown-seconds") + 1] == "900"
+
+
+def test_multi_supervisor_common_args_from_parsed_defaults(monkeypatch):
+    monkeypatch.setenv("OBJECTIVE_SCAN_MIN_OPEN_TASKS", "22")
+    parsed = build_multi_supervisor_arg_parser().parse_args(
+        [
+            "--track",
+            "T|worker.py|run.log|supervisor.pid|daemon.pid",
+            "--implementation-supervisor-defaults",
+            "--implementation-supervisor-command",
+            "bash resolve.sh",
+            "--common-arg=--objective-scan-min-open-tasks",
+            "--common-arg=99",
+        ]
+    )
+
+    args = common_args_from_parsed_args(parsed)
+
+    assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
+    assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
+    assert args[args.index("--objective-scan-min-open-tasks") + 1] == "22"
+    assert args[-2:] == ["--objective-scan-min-open-tasks", "99"]
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:

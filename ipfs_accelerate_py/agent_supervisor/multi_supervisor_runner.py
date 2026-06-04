@@ -19,6 +19,16 @@ from .todo_daemon.core import pid_alive, read_pid_file, terminate_pid_tree
 OutputFn = Callable[[str], None]
 
 
+def _env_int(name: str, default: int) -> int:
+    raw_value = os.environ.get(name, "").strip()
+    if not raw_value:
+        return int(default)
+    try:
+        return int(raw_value)
+    except ValueError as exc:
+        raise ValueError(f"{name} must be an integer, got {raw_value!r}") from exc
+
+
 @dataclass(frozen=True)
 class SupervisorTrack:
     """One supervisor process managed by the multi-supervisor runner."""
@@ -88,6 +98,63 @@ def supervisor_track_payload(track: SupervisorTrack) -> dict[str, str]:
         "supervisor_pid_path": str(track.supervisor_pid_path),
         "daemon_pid_path": str(track.daemon_pid_path),
     }
+
+
+def implementation_supervisor_common_args(
+    *,
+    implementation_command: str = "",
+    llm_merge_resolver_command: str = "",
+    stale_seconds: int = 1800,
+    check_interval: int = 60,
+    daemon_interval: int = 120,
+    implementation_timeout: int = 1800,
+    implementation_log_stall_seconds: int = 900,
+    max_restarts: int = 0,
+    objective_scan_min_open_tasks: int = 20,
+    objective_scan_max_findings: int = 12,
+    objective_scan_cooldown_seconds: int = 900,
+    objective_surplus_findings_per_goal: int = 6,
+    objective_surplus_min_terms_per_todo: int = 4,
+    codebase_scan_cooldown_seconds: int = 900,
+    llm_merge_resolver_timeout_seconds: int = 1800,
+) -> list[str]:
+    """Return standard common args for long-running implementation supervisors."""
+
+    effective_llm_merge_resolver_command = llm_merge_resolver_command or implementation_command
+    args = [
+        "--implement",
+        "--stale-seconds",
+        str(stale_seconds),
+        "--check-interval",
+        str(check_interval),
+        "--daemon-interval",
+        str(daemon_interval),
+        "--implementation-timeout",
+        str(implementation_timeout),
+        "--implementation-log-stall-seconds",
+        str(implementation_log_stall_seconds),
+        "--max-restarts",
+        str(max_restarts),
+        "--objective-scan-min-open-tasks",
+        str(objective_scan_min_open_tasks),
+        "--objective-scan-max-findings",
+        str(objective_scan_max_findings),
+        "--objective-scan-cooldown-seconds",
+        str(objective_scan_cooldown_seconds),
+        "--objective-surplus-findings-per-goal",
+        str(objective_surplus_findings_per_goal),
+        "--objective-surplus-min-terms-per-todo",
+        str(objective_surplus_min_terms_per_todo),
+        "--codebase-scan-cooldown-seconds",
+        str(codebase_scan_cooldown_seconds),
+        "--llm-merge-resolver-timeout-seconds",
+        str(llm_merge_resolver_timeout_seconds),
+    ]
+    if implementation_command:
+        args.extend(["--implementation-command", implementation_command])
+    if effective_llm_merge_resolver_command:
+        args.extend(["--llm-merge-resolver-command", effective_llm_merge_resolver_command])
+    return args
 
 
 def _emit(output: OutputFn, message: str) -> None:
@@ -272,6 +339,42 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--python-executable", default="python3")
     parser.add_argument("--track", action="append", default=[], required=True)
     parser.add_argument("--common-arg", action="append", default=[])
+    parser.add_argument(
+        "--implementation-supervisor-defaults",
+        action="store_true",
+        help="Prepend standard long-running implementation-supervisor args before --common-arg values.",
+    )
+    parser.add_argument("--implementation-supervisor-command", default="")
+    parser.add_argument("--implementation-supervisor-stale-seconds", type=int, default=1800)
+    parser.add_argument("--implementation-supervisor-check-interval", type=int, default=60)
+    parser.add_argument("--implementation-supervisor-daemon-interval", type=int, default=120)
+    parser.add_argument("--implementation-supervisor-timeout", type=int, default=1800)
+    parser.add_argument("--implementation-supervisor-log-stall-seconds", type=int, default=900)
+    parser.add_argument("--implementation-supervisor-max-restarts", type=int, default=0)
+    parser.add_argument(
+        "--implementation-supervisor-objective-scan-min-open-tasks",
+        type=int,
+        default=_env_int("OBJECTIVE_SCAN_MIN_OPEN_TASKS", 20),
+    )
+    parser.add_argument(
+        "--implementation-supervisor-objective-scan-max-findings",
+        type=int,
+        default=_env_int("OBJECTIVE_SCAN_MAX_FINDINGS", 12),
+    )
+    parser.add_argument("--implementation-supervisor-objective-scan-cooldown-seconds", type=int, default=900)
+    parser.add_argument(
+        "--implementation-supervisor-objective-surplus-findings-per-goal",
+        type=int,
+        default=_env_int("OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL", 6),
+    )
+    parser.add_argument(
+        "--implementation-supervisor-objective-surplus-min-terms-per-todo",
+        type=int,
+        default=_env_int("OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO", 4),
+    )
+    parser.add_argument("--implementation-supervisor-codebase-scan-cooldown-seconds", type=int, default=900)
+    parser.add_argument("--implementation-supervisor-llm-merge-resolver-command", default="")
+    parser.add_argument("--implementation-supervisor-llm-merge-resolver-timeout-seconds", type=int, default=1800)
     parser.add_argument("--detach", action="store_true")
     return parser
 
@@ -332,6 +435,35 @@ def launch_detached(args: argparse.Namespace, argv: Sequence[str]) -> dict[str, 
     }
 
 
+def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
+    """Return the effective common supervisor args for parsed runner options."""
+
+    common_args: list[str] = []
+    if args.implementation_supervisor_defaults:
+        command = args.implementation_supervisor_command
+        common_args.extend(
+            implementation_supervisor_common_args(
+                implementation_command=command,
+                llm_merge_resolver_command=args.implementation_supervisor_llm_merge_resolver_command or command,
+                stale_seconds=args.implementation_supervisor_stale_seconds,
+                check_interval=args.implementation_supervisor_check_interval,
+                daemon_interval=args.implementation_supervisor_daemon_interval,
+                implementation_timeout=args.implementation_supervisor_timeout,
+                implementation_log_stall_seconds=args.implementation_supervisor_log_stall_seconds,
+                max_restarts=args.implementation_supervisor_max_restarts,
+                objective_scan_min_open_tasks=args.implementation_supervisor_objective_scan_min_open_tasks,
+                objective_scan_max_findings=args.implementation_supervisor_objective_scan_max_findings,
+                objective_scan_cooldown_seconds=args.implementation_supervisor_objective_scan_cooldown_seconds,
+                objective_surplus_findings_per_goal=args.implementation_supervisor_objective_surplus_findings_per_goal,
+                objective_surplus_min_terms_per_todo=args.implementation_supervisor_objective_surplus_min_terms_per_todo,
+                codebase_scan_cooldown_seconds=args.implementation_supervisor_codebase_scan_cooldown_seconds,
+                llm_merge_resolver_timeout_seconds=args.implementation_supervisor_llm_merge_resolver_timeout_seconds,
+            )
+        )
+    common_args.extend(args.common_arg)
+    return common_args
+
+
 def main(argv: list[str] | None = None) -> int:
     args_list = list(sys.argv[1:] if argv is None else argv)
     parser = build_arg_parser()
@@ -354,7 +486,7 @@ def main(argv: list[str] | None = None) -> int:
         run_supervisor_tracks(
             tracks,
             repo_root=args.repo_root,
-            common_args=args.common_arg,
+            common_args=common_args_from_parsed_args(args),
             duration_seconds=args.duration_seconds,
             heartbeat_interval_seconds=args.heartbeat_interval_seconds,
             stop_grace_seconds=args.stop_grace_seconds,
