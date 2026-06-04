@@ -50,6 +50,71 @@ class DaemonLoopHook:
 RefillHookEntry = tuple[str, DaemonLoopHookCallback]
 
 
+@dataclass(frozen=True)
+class ConfiguredImplementationDaemonRunner:
+    """Project-bound runner wiring for a configured implementation daemon."""
+
+    repo_root: Path
+    logger: logging.Logger
+    default_worktree_submodule_paths: Sequence[str] | None = None
+    default_objective_path: Path | None = None
+    default_objective_bundle_dir: Path | None = None
+    pass_complete_message: str = "Portal implementation daemon pass complete: %s"
+
+    def run_configured(
+        self,
+        argv: Sequence[str],
+        *,
+        hooks: Sequence[DaemonLoopHook] = (),
+        pass_complete_message: str | None = None,
+    ) -> Any:
+        """Run a configured implementation daemon using this project binding."""
+
+        return run_configured_portal_implementation_daemon(
+            argv,
+            repo_root=self.repo_root,
+            logger=self.logger,
+            default_worktree_submodule_paths=self.default_worktree_submodule_paths,
+            default_objective_path=self.default_objective_path,
+            default_objective_bundle_dir=self.default_objective_bundle_dir,
+            hooks=hooks,
+            pass_complete_message=pass_complete_message or self.pass_complete_message,
+        )
+
+
+def build_configured_implementation_daemon_runner(
+    *,
+    repo_root: Path | str,
+    logger: logging.Logger,
+    default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_objective_path: Path | str | None = None,
+    default_objective_bundle_dir: Path | str | None = None,
+    pass_complete_message: str = "Portal implementation daemon pass complete: %s",
+) -> ConfiguredImplementationDaemonRunner:
+    """Build reusable daemon runner wiring bound to a project repository."""
+
+    return ConfiguredImplementationDaemonRunner(
+        repo_root=Path(repo_root),
+        logger=logger,
+        default_worktree_submodule_paths=(
+            tuple(default_worktree_submodule_paths)
+            if default_worktree_submodule_paths is not None
+            else None
+        ),
+        default_objective_path=(
+            Path(default_objective_path)
+            if default_objective_path is not None
+            else None
+        ),
+        default_objective_bundle_dir=(
+            Path(default_objective_bundle_dir)
+            if default_objective_bundle_dir is not None
+            else None
+        ),
+        pass_complete_message=pass_complete_message,
+    )
+
+
 def _with_extra_kwargs(
     kwargs: dict[str, Any],
     extra_kwargs: dict[str, Any] | None,

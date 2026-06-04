@@ -38,11 +38,14 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     tracks_from_parsed_args,
 )
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+    ConfiguredImplementationDaemonRunner,
     ImplementationDaemonDefaults,
     apply_portal_implementation_daemon_defaults,
     apply_portal_implementation_daemon_defaults_from_paths,
+    build_configured_implementation_daemon_runner,
     build_implementation_daemon_defaults_from_paths,
 )
+from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
     ImplementationSupervisorDefaults,
@@ -624,6 +627,51 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
         objective_bundle_dir=tmp_path / "bundles",
         worktree_submodule_paths=("packages/app", "external/lib"),
     ) == apply_portal_implementation_daemon_defaults(["--once"], defaults=defaults)
+
+
+def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    objective_path = repo / "objective.md"
+    bundle_dir = repo / "bundles"
+    repo.mkdir()
+    captured: dict[str, object] = {}
+
+    def fake_run_configured_portal_implementation_daemon(argv, **kwargs):
+        captured["argv"] = tuple(argv)
+        captured["kwargs"] = kwargs
+        return "daemon-ran"
+
+    monkeypatch.setattr(
+        implementation_daemon_runner,
+        "run_configured_portal_implementation_daemon",
+        fake_run_configured_portal_implementation_daemon,
+    )
+
+    runner = build_configured_implementation_daemon_runner(
+        repo_root=str(repo),
+        logger=logging.getLogger("test-configured-daemon-runner"),
+        default_worktree_submodule_paths=("external/custom",),
+        default_objective_path=str(objective_path),
+        default_objective_bundle_dir=str(bundle_dir),
+        pass_complete_message="custom complete: %s",
+    )
+    hook = implementation_daemon_runner.DaemonLoopHook("before", "hook: %s", lambda context: None)
+
+    result = runner.run_configured(["--once"], hooks=(hook,))
+
+    assert isinstance(runner, ConfiguredImplementationDaemonRunner)
+    assert result == "daemon-ran"
+    assert captured["argv"] == ("--once",)
+    assert captured["kwargs"]["repo_root"] == repo
+    assert captured["kwargs"]["logger"] == runner.logger
+    assert captured["kwargs"]["default_worktree_submodule_paths"] == ("external/custom",)
+    assert captured["kwargs"]["default_objective_path"] == objective_path
+    assert captured["kwargs"]["default_objective_bundle_dir"] == bundle_dir
+    assert captured["kwargs"]["hooks"] == (hook,)
+    assert captured["kwargs"]["pass_complete_message"] == "custom complete: %s"
+
+    runner.run_configured(["--once"], pass_complete_message="override complete: %s")
+    assert captured["kwargs"]["pass_complete_message"] == "override complete: %s"
 
 
 def test_build_implementation_supervisor_defaults_from_paths(tmp_path):

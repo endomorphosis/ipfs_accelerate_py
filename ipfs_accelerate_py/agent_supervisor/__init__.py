@@ -57,6 +57,7 @@ __all__ = [
     "CodebaseScanEnvSettings",
     "CodebaseFinding",
     "ConfiguredCodebaseScanRecorder",
+    "ConfiguredImplementationDaemonRunner",
     "ConfiguredObjectiveBacklogRecorder",
     "ConfiguredRetryBudgetRecorder",
     "ConfiguredSupervisorRuntime",
@@ -83,6 +84,7 @@ __all__ = [
     "build_action_contract_sync_targets",
     "build_merge_prompt",
     "build_configured_merge_resolver_arg_parser",
+    "build_configured_implementation_daemon_runner",
     "build_configured_supervisor_runtime",
     "build_llm_merge_resolver_invoker",
     "build_merge_prompt_callback",
@@ -430,6 +432,7 @@ def __getattr__(name: str):
         return getattr(implementation_supervisor_runner, name)
     if name in {
         "build_portal_implementation_daemon_from_args",
+        "build_configured_implementation_daemon_runner",
         "build_daemon_codebase_scan_refill_callback",
         "build_implementation_daemon_defaults_from_paths",
         "build_daemon_objective_refill_callback",
@@ -443,6 +446,7 @@ def __getattr__(name: str):
         "run_portal_implementation_daemon_loop",
         "run_configured_portal_implementation_daemon",
         "DaemonLoopHook",
+        "ConfiguredImplementationDaemonRunner",
         "ImplementationDaemonRunContext",
         "ImplementationDaemonDefaults",
     }:
