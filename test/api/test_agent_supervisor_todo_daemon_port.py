@@ -78,6 +78,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     SupervisedChildSpec,
     background_supervisor_args,
     build_supervisor_runtime_operations,
+    implementation_supervisor_args,
     launch_supervised_child,
     repair_supervisor_runtime,
     supervisor_is_running,
@@ -567,6 +568,12 @@ def test_supervisor_runtime_repairs_stale_markers(tmp_path):
 def test_background_supervisor_args_removes_once_and_defaults_implement():
     assert background_supervisor_args(["--once", "--flag"]) == ["--implement", "--flag"]
     assert background_supervisor_args(["--no-implement", "--once"]) == ["--no-implement"]
+
+
+def test_implementation_supervisor_args_defaults_implement_without_removing_once():
+    assert implementation_supervisor_args(["--once", "--flag"]) == ["--implement", "--once", "--flag"]
+    assert implementation_supervisor_args(["--implement", "--once"]) == ["--implement", "--once"]
+    assert implementation_supervisor_args(["--no-implement", "--once"]) == ["--no-implement", "--once"]
 
 
 def test_build_implementation_daemon_defaults_from_paths(tmp_path):

@@ -247,7 +247,22 @@ def background_supervisor_args(
     """Return argv suitable for background execution of a supervisor."""
 
     args = [item for item in argv if item != once_flag]
-    return with_exclusive_flag_default(args, implement_flag, (no_implement_flag,))
+    return implementation_supervisor_args(
+        args,
+        implement_flag=implement_flag,
+        no_implement_flag=no_implement_flag,
+    )
+
+
+def implementation_supervisor_args(
+    argv: Sequence[str],
+    *,
+    implement_flag: str = "--implement",
+    no_implement_flag: str = "--no-implement",
+) -> list[str]:
+    """Return supervisor argv with implementation mode enabled unless explicitly disabled."""
+
+    return with_exclusive_flag_default(argv, implement_flag, (no_implement_flag,))
 
 
 def ensure_supervisor_running(

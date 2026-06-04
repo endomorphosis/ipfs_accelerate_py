@@ -208,6 +208,7 @@ __all__ = [
     "apply_portal_implementation_supervisor_defaults",
     "apply_portal_implementation_supervisor_defaults_from_paths",
     "implementation_state_paths",
+    "implementation_supervisor_args",
     "run_portal_implementation_daemon_loop",
     "run_portal_implementation_supervisor",
     "run_configured_portal_implementation_daemon",
@@ -376,6 +377,7 @@ def __getattr__(name: str):
     if name in {
         "build_supervisor_runtime_operations",
         "SupervisorRuntimeOperations",
+        "implementation_supervisor_args",
     }:
         from .todo_daemon import supervisor_runtime
 
