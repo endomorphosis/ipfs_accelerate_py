@@ -81,6 +81,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     BootstrapPathCallbacks,
     BootstrapPathSpec,
     CodebaseScanEnvSettings,
+    RuntimeEnvironmentCallbacks,
     android_validation_command_needs_environment,
     android_validation_environment_contract,
     apply_environment_contract,
@@ -92,6 +93,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     build_prefixed_bootstrap_path_callbacks,
     build_prefixed_default_llm_merge_resolver_command_callback,
     build_runtime_environment_callback,
+    build_runtime_environment_callbacks,
     csv_tuple,
     default_llm_merge_resolver_command,
     enforce_android_validation_environment,
@@ -412,6 +414,26 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert Path.cwd() == cwd
     assert sys.path[0] == str(fourth)
     assert os.environ["PYTHONPATH"].split(os.pathsep)[0] == str(fourth)
+
+    fifth = tmp_path / "fifth"
+    sixth = tmp_path / "sixth"
+    callbacks = build_runtime_environment_callbacks(
+        repo,
+        (fifth, sixth),
+        primary_import_paths=(fifth,),
+    )
+    assert isinstance(callbacks, RuntimeEnvironmentCallbacks)
+    callbacks.ensure_primary_pythonpath()
+    assert Path.cwd() == cwd
+    assert sys.path[0] == str(fifth)
+    monkeypatch.setattr(sys, "path", list(original_sys_path))
+    callbacks.ensure_pythonpath()
+    assert sys.path[:2] == [str(fifth), str(sixth)]
+    try:
+        callbacks.enter()
+        assert Path.cwd() == repo
+    finally:
+        os.chdir(cwd)
 
 
 def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):

@@ -722,6 +722,15 @@ def bootstrap_runtime_environment(
     ensure_runtime_pythonpath(import_paths, env_var=env_var)
 
 
+@dataclass(frozen=True)
+class RuntimeEnvironmentCallbacks:
+    """Reusable runtime environment callbacks for wrapper entry points."""
+
+    enter: Callable[[], None]
+    ensure_pythonpath: Callable[[], None]
+    ensure_primary_pythonpath: Callable[[], None]
+
+
 def build_runtime_environment_callback(
     repo_root: Path | str,
     import_paths: Sequence[Path | str],
@@ -738,3 +747,30 @@ def build_runtime_environment_callback(
         bootstrap_runtime_environment(root, paths, chdir=chdir, env_var=env_var)
 
     return callback
+
+
+def build_runtime_environment_callbacks(
+    repo_root: Path | str,
+    import_paths: Sequence[Path | str],
+    *,
+    primary_import_paths: Sequence[Path | str] | None = None,
+    env_var: str = "PYTHONPATH",
+) -> RuntimeEnvironmentCallbacks:
+    """Build standard enter/ensure callbacks for a local wrapper runtime."""
+
+    primary_paths = tuple(import_paths if primary_import_paths is None else primary_import_paths)
+    return RuntimeEnvironmentCallbacks(
+        enter=build_runtime_environment_callback(repo_root, import_paths, env_var=env_var),
+        ensure_pythonpath=build_runtime_environment_callback(
+            repo_root,
+            import_paths,
+            chdir=False,
+            env_var=env_var,
+        ),
+        ensure_primary_pythonpath=build_runtime_environment_callback(
+            repo_root,
+            primary_paths,
+            chdir=False,
+            env_var=env_var,
+        ),
+    )
