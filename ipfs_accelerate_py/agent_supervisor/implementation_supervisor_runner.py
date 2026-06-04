@@ -84,6 +84,19 @@ def _path_from_mapping(paths: Mapping[str, Path | str], key: str) -> Path:
     return Path(paths[key])
 
 
+def _optional_path_from_mapping(
+    paths: Mapping[str, Path | str],
+    *,
+    key: str | None = None,
+    value: Path | str | None = None,
+) -> Path | None:
+    if value is not None:
+        return Path(value)
+    if key is None:
+        return None
+    return _path_from_mapping(paths, key)
+
+
 def build_implementation_supervisor_defaults_from_paths(
     paths: Mapping[str, Path | str],
     *,
@@ -148,6 +161,101 @@ class CodebaseRefillDefaults:
     codebase_scan_cooldown_seconds: int | None = None
     codebase_scan_skip_prefixes: Sequence[str] = ()
     refill_scan: bool = True
+
+
+def build_objective_refill_defaults_from_paths(
+    paths: Mapping[str, Path | str],
+    *,
+    objective_path_key: str | None = None,
+    objective_path: Path | str | None = None,
+    objective_graph_path_key: str | None = None,
+    objective_graph_path: Path | str | None = None,
+    objective_bundle_dir_key: str | None = None,
+    objective_bundle_dir: Path | str | None = None,
+    objective_dataset_dir_key: str | None = None,
+    objective_dataset_dir: Path | str | None = None,
+    objective_discovery_dir_key: str | None = None,
+    objective_discovery_dir: Path | str | None = None,
+    objective_discovery_output_path: str | None = None,
+    objective_scan_min_open_tasks: int | None = None,
+    objective_scan_max_findings: int | None = None,
+    objective_scan_cooldown_seconds: int | None = None,
+    objective_todo_vector_index_path_key: str | None = None,
+    objective_todo_vector_index_path: Path | str | None = None,
+    objective_surplus_findings_per_goal: int | None = None,
+    objective_surplus_min_terms_per_todo: int | None = None,
+    objective_interoperability_focus: Sequence[str] = (),
+    refill_scan: bool = True,
+    seed_interoperability_goals: bool = False,
+) -> ObjectiveRefillDefaults:
+    """Build reusable objective-refill defaults from resolved wrapper paths."""
+
+    return ObjectiveRefillDefaults(
+        objective_path=_optional_path_from_mapping(paths, key=objective_path_key, value=objective_path),
+        objective_graph_path=_optional_path_from_mapping(
+            paths,
+            key=objective_graph_path_key,
+            value=objective_graph_path,
+        ),
+        objective_bundle_dir=_optional_path_from_mapping(
+            paths,
+            key=objective_bundle_dir_key,
+            value=objective_bundle_dir,
+        ),
+        objective_dataset_dir=_optional_path_from_mapping(
+            paths,
+            key=objective_dataset_dir_key,
+            value=objective_dataset_dir,
+        ),
+        objective_discovery_dir=_optional_path_from_mapping(
+            paths,
+            key=objective_discovery_dir_key,
+            value=objective_discovery_dir,
+        ),
+        objective_discovery_output_path=objective_discovery_output_path,
+        objective_scan_min_open_tasks=objective_scan_min_open_tasks,
+        objective_scan_max_findings=objective_scan_max_findings,
+        objective_scan_cooldown_seconds=objective_scan_cooldown_seconds,
+        objective_todo_vector_index_path=_optional_path_from_mapping(
+            paths,
+            key=objective_todo_vector_index_path_key,
+            value=objective_todo_vector_index_path,
+        ),
+        objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
+        objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
+        objective_interoperability_focus=objective_interoperability_focus,
+        refill_scan=refill_scan,
+        seed_interoperability_goals=seed_interoperability_goals,
+    )
+
+
+def build_codebase_refill_defaults_from_paths(
+    paths: Mapping[str, Path | str],
+    *,
+    codebase_scan_discovery_dir_key: str | None = None,
+    codebase_scan_discovery_dir: Path | str | None = None,
+    codebase_scan_discovery_output_path: str | None = None,
+    codebase_scan_min_open_tasks: int | None = None,
+    codebase_scan_max_findings: int | None = None,
+    codebase_scan_cooldown_seconds: int | None = None,
+    codebase_scan_skip_prefixes: Sequence[str] = (),
+    refill_scan: bool = True,
+) -> CodebaseRefillDefaults:
+    """Build reusable codebase-refill defaults from resolved wrapper paths."""
+
+    return CodebaseRefillDefaults(
+        codebase_scan_discovery_dir=_optional_path_from_mapping(
+            paths,
+            key=codebase_scan_discovery_dir_key,
+            value=codebase_scan_discovery_dir,
+        ),
+        codebase_scan_discovery_output_path=codebase_scan_discovery_output_path,
+        codebase_scan_min_open_tasks=codebase_scan_min_open_tasks,
+        codebase_scan_max_findings=codebase_scan_max_findings,
+        codebase_scan_cooldown_seconds=codebase_scan_cooldown_seconds,
+        codebase_scan_skip_prefixes=codebase_scan_skip_prefixes,
+        refill_scan=refill_scan,
+    )
 
 
 def _with_optional_default(args: Sequence[str], flag: str, value: object | None) -> list[str]:

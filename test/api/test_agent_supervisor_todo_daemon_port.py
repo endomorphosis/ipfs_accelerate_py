@@ -34,8 +34,12 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_implementation_daemon_defaults_from_paths,
 )
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
+    CodebaseRefillDefaults,
     ImplementationSupervisorDefaults,
+    ObjectiveRefillDefaults,
+    build_codebase_refill_defaults_from_paths,
     build_implementation_supervisor_defaults_from_paths,
+    build_objective_refill_defaults_from_paths,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
@@ -576,6 +580,69 @@ def test_build_implementation_supervisor_defaults_from_paths(tmp_path):
         max_restarts=3,
         llm_merge_resolver_command="resolve-conflict",
         worktree_submodule_paths=("packages/app", "external/lib"),
+    )
+
+
+def test_build_refill_defaults_from_paths(tmp_path):
+    paths = {
+        "objective_path": tmp_path / "objective-heap.md",
+        "objective_graph_path": tmp_path / "objective-graph.json",
+        "objective_bundle_dir": tmp_path / "objective-bundles",
+        "objective_dataset_dir": tmp_path / "objective-datasets",
+        "discovery_dir": tmp_path / "discovery",
+        "objective_todo_vector_index_path": tmp_path / "todo-vector-index.json",
+    }
+
+    objective = build_objective_refill_defaults_from_paths(
+        paths,
+        objective_path_key="objective_path",
+        objective_graph_path_key="objective_graph_path",
+        objective_bundle_dir_key="objective_bundle_dir",
+        objective_dataset_dir_key="objective_dataset_dir",
+        objective_discovery_dir_key="discovery_dir",
+        objective_discovery_output_path="data/discovery",
+        objective_scan_min_open_tasks=9,
+        objective_scan_max_findings=4,
+        objective_scan_cooldown_seconds=60,
+        objective_todo_vector_index_path_key="objective_todo_vector_index_path",
+        objective_surplus_findings_per_goal=7,
+        objective_surplus_min_terms_per_todo=5,
+        objective_interoperability_focus=("hallucinate_app",),
+        seed_interoperability_goals=True,
+    )
+    codebase = build_codebase_refill_defaults_from_paths(
+        paths,
+        codebase_scan_discovery_dir_key="discovery_dir",
+        codebase_scan_discovery_output_path="data/discovery",
+        codebase_scan_min_open_tasks=3,
+        codebase_scan_max_findings=8,
+        codebase_scan_cooldown_seconds=120,
+        codebase_scan_skip_prefixes=("data/", "scripts/"),
+    )
+
+    assert objective == ObjectiveRefillDefaults(
+        objective_path=tmp_path / "objective-heap.md",
+        objective_graph_path=tmp_path / "objective-graph.json",
+        objective_bundle_dir=tmp_path / "objective-bundles",
+        objective_dataset_dir=tmp_path / "objective-datasets",
+        objective_discovery_dir=tmp_path / "discovery",
+        objective_discovery_output_path="data/discovery",
+        objective_scan_min_open_tasks=9,
+        objective_scan_max_findings=4,
+        objective_scan_cooldown_seconds=60,
+        objective_todo_vector_index_path=tmp_path / "todo-vector-index.json",
+        objective_surplus_findings_per_goal=7,
+        objective_surplus_min_terms_per_todo=5,
+        objective_interoperability_focus=("hallucinate_app",),
+        seed_interoperability_goals=True,
+    )
+    assert codebase == CodebaseRefillDefaults(
+        codebase_scan_discovery_dir=tmp_path / "discovery",
+        codebase_scan_discovery_output_path="data/discovery",
+        codebase_scan_min_open_tasks=3,
+        codebase_scan_max_findings=8,
+        codebase_scan_cooldown_seconds=120,
+        codebase_scan_skip_prefixes=("data/", "scripts/"),
     )
 
 
