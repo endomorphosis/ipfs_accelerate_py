@@ -77,6 +77,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     build_bootstrap_path_resolver,
     build_default_llm_merge_resolver_command_callback,
     build_prefixed_bootstrap_path_callbacks,
+    build_prefixed_default_llm_merge_resolver_command_callback,
     build_runtime_environment_callback,
     csv_tuple,
     default_llm_merge_resolver_command,
@@ -246,6 +247,9 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         primary_env_var="WRAPPER_UTILS_PRIMARY_MERGE_COMMAND"
     )
     assert merge_command_callback() == "primary-merge"
+    monkeypatch.setenv("WRAPPER_UTILS_LLM_MERGE_RESOLVER_COMMAND", "prefixed-merge")
+    prefixed_merge_command_callback = build_prefixed_default_llm_merge_resolver_command_callback("WRAPPER_UTILS")
+    assert prefixed_merge_command_callback() == "prefixed-merge"
     assert unique_path_entries(["a", "", "b", "a"]) == ["a", "b"]
     assert repo_relative_or_default(tmp_path / "first", tmp_path, "fallback") == "first"
     assert repo_relative_or_default(Path("/"), tmp_path / "repo", "fallback") == "fallback"
