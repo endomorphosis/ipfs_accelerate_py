@@ -122,6 +122,12 @@ def prefixed_env_csv_tuple(prefix: str, setting: str, default: str = "") -> tupl
     return env_csv_tuple(prefixed_env_var(prefix, setting), default)
 
 
+def prefixed_interoperability_focus(prefix: str, default: str = "") -> tuple[str, ...]:
+    """Return the conventional prefixed interoperability-focus setting."""
+
+    return prefixed_env_csv_tuple(prefix, "INTEROPERABILITY_FOCUS", default)
+
+
 def prefixed_env_int(
     prefix: str,
     setting: str,

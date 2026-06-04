@@ -95,6 +95,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     prefixed_env_int,
     prefixed_env_path,
     prefixed_env_var,
+    prefixed_interoperability_focus,
     prefixed_objective_refill_env_settings,
     repo_relative_or_default,
     resolve_and_ensure_bootstrap_paths,
@@ -234,6 +235,8 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         prefixed_bootstrap_path_specs("WRAPPER_UTILS", (("bad", "path", "setting", "extra"),))
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_CSV", "one,two")
     assert prefixed_env_csv_tuple("WRAPPER_UTILS", "TYPED_CSV") == ("one", "two")
+    monkeypatch.setenv("WRAPPER_UTILS_INTEROPERABILITY_FOCUS", "hallucinate_app,swissknife")
+    assert prefixed_interoperability_focus("WRAPPER_UTILS", "fallback") == ("hallucinate_app", "swissknife")
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_INT", "12")
     assert prefixed_env_int("WRAPPER_UTILS", "TYPED_INT", 7, minimum=10, maximum=20) == 12
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_PATH", str(tmp_path / "typed-path"))
