@@ -77,6 +77,25 @@ def env_str(env_var: str, default: str = "") -> str:
     return value or default
 
 
+def apply_env_defaults(
+    defaults: Mapping[str, str],
+    *,
+    environ: MutableMapping[str, str] | None = None,
+    replace_empty: bool = False,
+) -> dict[str, str]:
+    """Apply environment defaults and return the effective values for those keys."""
+
+    target_env = os.environ if environ is None else environ
+    effective: dict[str, str] = {}
+    for key, value in defaults.items():
+        name = str(key)
+        default_value = str(value)
+        if name not in target_env or (replace_empty and not target_env.get(name, "")):
+            target_env[name] = default_value
+        effective[name] = target_env[name]
+    return effective
+
+
 def env_int(env_var: str, default: int | str, *, minimum: int | None = None, maximum: int | None = None) -> int:
     """Return an integer environment setting with an explicit default."""
 

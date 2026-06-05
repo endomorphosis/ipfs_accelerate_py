@@ -117,6 +117,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     RuntimeEnvironmentCallbacks,
     android_validation_command_needs_environment,
     android_validation_environment_contract,
+    apply_env_defaults,
     apply_environment_contract,
     bootstrap_runtime_environment,
     build_android_validation_callbacks,
@@ -249,6 +250,13 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert env_str("WRAPPER_UTILS_STRING", "fallback") == "fallback"
     monkeypatch.setenv("WRAPPER_UTILS_STRING", " custom ")
     assert env_str("WRAPPER_UTILS_STRING", "fallback") == "custom"
+    target_env = {"EXISTING": "caller", "EMPTY": ""}
+    assert apply_env_defaults(
+        {"EXISTING": "default", "MISSING": "default", "EMPTY": "default"},
+        environ=target_env,
+    ) == {"EXISTING": "caller", "MISSING": "default", "EMPTY": ""}
+    assert target_env["MISSING"] == "default"
+    assert apply_env_defaults({"EMPTY": "filled"}, environ=target_env, replace_empty=True)["EMPTY"] == "filled"
     monkeypatch.delenv("WRAPPER_UTILS_INT", raising=False)
     assert env_int("WRAPPER_UTILS_INT", 7) == 7
     monkeypatch.setenv("WRAPPER_UTILS_INT", "11")
