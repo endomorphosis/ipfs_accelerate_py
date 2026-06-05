@@ -125,6 +125,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS,
     AgentSupervisorNamespacePaths,
+    AgentSupervisorRuntimeBootstrapCallbacks,
     BootstrapPathCallbacks,
     BootstrapPathSpec,
     CodebaseScanEnvSettings,
@@ -140,6 +141,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     bootstrap_runtime_environment,
     build_android_validation_callbacks,
     build_agent_supervisor_bootstrap_path_callbacks,
+    build_agent_supervisor_runtime_bootstrap_callbacks,
     build_bootstrap_path_ensurer,
     build_bootstrap_path_resolver,
     build_default_llm_merge_resolver_command_callback,
@@ -695,6 +697,50 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert sys.path[0] == str(repo / "external" / "pkg_a")
     monkeypatch.setattr(sys, "path", list(original_sys_path))
     repo_callbacks.ensure_pythonpath()
+    assert sys.path[:2] == [
+        str(repo / "external" / "pkg_a"),
+        str(repo / "external" / "pkg_b"),
+    ]
+    monkeypatch.setattr(sys, "path", list(original_sys_path))
+    runtime_bootstrap = build_agent_supervisor_runtime_bootstrap_callbacks(
+        repo,
+        "WRAPPER_UTILS_RUNTIME",
+        repo / "runtime-tasks.md",
+        agent_supervisor_namespace_paths(repo, "runtime_namespace"),
+        objective_path=repo / "objective.md",
+        namespace_keys=("state_dir", "worktree_root", "discovery_dir"),
+        runtime_package_names=("pkg_a", "pkg_b"),
+        runtime_primary_package_names=("pkg_a",),
+    )
+    assert isinstance(runtime_bootstrap, AgentSupervisorRuntimeBootstrapCallbacks)
+    assert runtime_bootstrap.specs == (
+        BootstrapPathSpec("todo_path", repo / "runtime-tasks.md", "WRAPPER_UTILS_RUNTIME_TODO_PATH"),
+        BootstrapPathSpec("objective_heap_path", repo / "objective.md", "WRAPPER_UTILS_RUNTIME_OBJECTIVE_HEAP_PATH"),
+        BootstrapPathSpec(
+            "state_dir",
+            repo / "data" / "runtime_namespace" / "state",
+            "WRAPPER_UTILS_RUNTIME_STATE_DIR",
+        ),
+        BootstrapPathSpec(
+            "worktree_root",
+            repo / "data" / "runtime_namespace" / "worktrees",
+            "WRAPPER_UTILS_RUNTIME_WORKTREE_ROOT",
+        ),
+        BootstrapPathSpec(
+            "discovery_dir",
+            repo / "data" / "runtime_namespace" / "discovery",
+            "WRAPPER_UTILS_RUNTIME_DISCOVERY_DIR",
+        ),
+    )
+    assert runtime_bootstrap.resolve()["todo_path"] == repo / "runtime-tasks.md"
+    ensured_runtime_bootstrap = runtime_bootstrap.ensure(None)
+    assert ensured_runtime_bootstrap["state_dir"].is_dir()
+    assert ensured_runtime_bootstrap["worktree_root"].is_dir()
+    assert ensured_runtime_bootstrap["discovery_dir"].is_dir()
+    runtime_bootstrap.ensure_primary_pythonpath()
+    assert sys.path[0] == str(repo / "external" / "pkg_a")
+    monkeypatch.setattr(sys, "path", list(original_sys_path))
+    runtime_bootstrap.ensure_pythonpath()
     assert sys.path[:2] == [
         str(repo / "external" / "pkg_a"),
         str(repo / "external" / "pkg_b"),

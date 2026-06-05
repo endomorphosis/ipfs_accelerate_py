@@ -1123,6 +1123,50 @@ class RuntimeEnvironmentCallbacks:
     ensure_primary_pythonpath: Callable[[], None]
 
 
+@dataclass(frozen=True)
+class AgentSupervisorRuntimeBootstrapCallbacks:
+    """Standard bootstrap paths and runtime callbacks for one supervisor namespace."""
+
+    bootstrap_paths: BootstrapPathCallbacks
+    runtime_environment: RuntimeEnvironmentCallbacks
+
+    @property
+    def specs(self) -> tuple[BootstrapPathSpec, ...]:
+        """Return the underlying bootstrap path specs."""
+
+        return self.bootstrap_paths.specs
+
+    @property
+    def resolve(self) -> Callable[[], dict[str, Path]]:
+        """Return the bootstrap path resolver callback."""
+
+        return self.bootstrap_paths.resolve
+
+    @property
+    def ensure(self) -> Callable[[Mapping[str, Path] | None], dict[str, Path]]:
+        """Return the bootstrap path directory-ensurer callback."""
+
+        return self.bootstrap_paths.ensure
+
+    @property
+    def enter(self) -> Callable[[], None]:
+        """Return the runtime environment enter callback."""
+
+        return self.runtime_environment.enter
+
+    @property
+    def ensure_pythonpath(self) -> Callable[[], None]:
+        """Return the callback that only ensures all runtime import paths."""
+
+        return self.runtime_environment.ensure_pythonpath
+
+    @property
+    def ensure_primary_pythonpath(self) -> Callable[[], None]:
+        """Return the callback that only ensures primary runtime import paths."""
+
+        return self.runtime_environment.ensure_primary_pythonpath
+
+
 def build_runtime_environment_callback(
     repo_root: Path | str,
     import_paths: Sequence[Path | str],
@@ -1197,4 +1241,52 @@ def build_repo_runtime_environment_callbacks(
         package_roots,
         primary_import_paths=primary_package_roots,
         env_var=env_var,
+    )
+
+
+def build_agent_supervisor_runtime_bootstrap_callbacks(
+    repo_root: Path | str,
+    prefix: str,
+    todo_path: Path | str,
+    namespace_paths: AgentSupervisorNamespacePaths,
+    *,
+    todo_key: str = "todo_path",
+    todo_setting: str | None = None,
+    objective_path: Path | str | None = None,
+    objective_path_key: str = "objective_heap_path",
+    objective_path_setting: str | None = None,
+    namespace_keys: Iterable[str] = ("state_dir", "worktree_root"),
+    directory_keys: Iterable[str] | None = None,
+    extra_entries: Iterable[tuple[str, Path | str] | tuple[str, Path | str, str | None]] = (),
+    repo_root_key: str = "repo_root",
+    runtime_package_names: Sequence[Path | str] = ("ipfs_accelerate", "ipfs_datasets"),
+    runtime_external_dir: Path | str = "external",
+    runtime_primary_package_names: Sequence[Path | str] | None = None,
+    runtime_env_var: str = "PYTHONPATH",
+) -> AgentSupervisorRuntimeBootstrapCallbacks:
+    """Build standard bootstrap path and runtime callbacks for a namespace wrapper."""
+
+    return AgentSupervisorRuntimeBootstrapCallbacks(
+        bootstrap_paths=build_agent_supervisor_bootstrap_path_callbacks(
+            repo_root,
+            prefix,
+            todo_path,
+            namespace_paths,
+            todo_key=todo_key,
+            todo_setting=todo_setting,
+            objective_path=objective_path,
+            objective_path_key=objective_path_key,
+            objective_path_setting=objective_path_setting,
+            namespace_keys=namespace_keys,
+            directory_keys=directory_keys,
+            extra_entries=extra_entries,
+            repo_root_key=repo_root_key,
+        ),
+        runtime_environment=build_repo_runtime_environment_callbacks(
+            repo_root,
+            runtime_package_names,
+            external_dir=runtime_external_dir,
+            primary_package_names=runtime_primary_package_names,
+            env_var=runtime_env_var,
+        ),
     )
