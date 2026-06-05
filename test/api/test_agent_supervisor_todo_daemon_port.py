@@ -122,6 +122,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     BootstrapPathCallbacks,
     BootstrapPathSpec,
     CodebaseScanEnvSettings,
+    DEFAULT_CODEBASE_SCAN_DATA_SUBDIRS,
     RuntimeEnvironmentCallbacks,
     android_validation_command_needs_environment,
     android_validation_environment_contract,
@@ -138,6 +139,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     build_runtime_environment_callback,
     build_runtime_environment_callbacks,
     csv_tuple,
+    data_namespace_scan_skip_prefixes,
     default_llm_merge_resolver_command,
     enforce_android_validation_environment,
     ensure_named_directories,
@@ -257,6 +259,36 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     ]
     assert with_repeated_default(["--path", "caller"], "--path", ("a", "b")) == ["--path", "caller"]
     assert csv_tuple(["a,b", "b,c"]) == ("a", "b", "c")
+    assert DEFAULT_CODEBASE_SCAN_DATA_SUBDIRS == (
+        "discovery",
+        "objective_bundles",
+        "objective_datasets",
+        "state",
+        "worktrees",
+    )
+    assert data_namespace_scan_skip_prefixes(
+        {
+            "virtual_ai_os": ("discovery", "state"),
+            "meta_glasses_display_widgets": ("discovery",),
+        },
+        include_scripts=True,
+    ) == (
+        "scripts/",
+        "data/virtual_ai_os/discovery/",
+        "data/virtual_ai_os/state/",
+        "data/meta_glasses_display_widgets/discovery/",
+    )
+    assert data_namespace_scan_skip_prefixes(
+        ("agent_supervisor",),
+        root="runtime/data/",
+        subdirs=("state",),
+        script_prefix="tools",
+        include_scripts=True,
+        extra_prefixes=("runtime/data/agent_supervisor/state/",),
+    ) == (
+        "tools/",
+        "runtime/data/agent_supervisor/state/",
+    )
     monkeypatch.setenv("WRAPPER_UTILS_CSV", "alpha,beta")
     assert env_csv_tuple("WRAPPER_UTILS_CSV", "fallback") == ("alpha", "beta")
     monkeypatch.delenv("WRAPPER_UTILS_STRING", raising=False)

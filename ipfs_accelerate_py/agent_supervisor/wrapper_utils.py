@@ -51,6 +51,57 @@ def with_repeated_default(argv: Sequence[str], flag: str, values: Iterable[str])
     return [*defaults, *args]
 
 
+DEFAULT_CODEBASE_SCAN_DATA_SUBDIRS = (
+    "discovery",
+    "objective_bundles",
+    "objective_datasets",
+    "state",
+    "worktrees",
+)
+
+
+def _prefix_path(*parts: object) -> str:
+    normalized = [str(part).strip().strip("/") for part in parts if str(part).strip().strip("/")]
+    if not normalized:
+        return ""
+    return "/".join(normalized) + "/"
+
+
+def _string_tuple(value: str | Iterable[str]) -> tuple[str, ...]:
+    if isinstance(value, str):
+        return (value,) if value else ()
+    return tuple(str(item) for item in value if str(item))
+
+
+def data_namespace_scan_skip_prefixes(
+    namespaces: Iterable[str] | Mapping[str, Iterable[str]],
+    *,
+    root: str = "data",
+    subdirs: Iterable[str] = DEFAULT_CODEBASE_SCAN_DATA_SUBDIRS,
+    include_scripts: bool = False,
+    script_prefix: str = "scripts/",
+    extra_prefixes: Iterable[str] = (),
+) -> tuple[str, ...]:
+    """Build repo-relative generated-data prefixes to skip during codebase scans."""
+
+    prefixes: list[str] = []
+    if include_scripts:
+        prefixes.append(_prefix_path(script_prefix))
+
+    default_subdirs = _string_tuple(subdirs)
+    if isinstance(namespaces, Mapping):
+        namespace_items = namespaces.items()
+    else:
+        namespace_items = ((namespace, default_subdirs) for namespace in namespaces)
+
+    for namespace, namespace_subdirs in namespace_items:
+        for subdir in _string_tuple(namespace_subdirs):
+            prefixes.append(_prefix_path(root, namespace, subdir))
+
+    prefixes.extend(_prefix_path(prefix) for prefix in extra_prefixes)
+    return tuple(unique_path_entries(prefix for prefix in prefixes if prefix))
+
+
 def csv_tuple(value: str | Iterable[str]) -> tuple[str, ...]:
     """Return a de-duplicated tuple of comma-separated values."""
 

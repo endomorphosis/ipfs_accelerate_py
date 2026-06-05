@@ -68,6 +68,7 @@ __all__ = [
     "ConfiguredSupervisorRuntime",
     "ConfiguredTaskProposalRouterRunner",
     "DatasetArtifact",
+    "DEFAULT_CODEBASE_SCAN_DATA_SUBDIRS",
     "ObjectiveFinding",
     "ObjectiveGoal",
     "ObjectiveHeapRecord",
@@ -124,6 +125,7 @@ __all__ = [
     "discover_submodule_paths",
     "csv_tuple",
     "default_llm_merge_resolver_command",
+    "data_namespace_scan_skip_prefixes",
     "env_csv_tuple",
     "env_int",
     "env_path",
@@ -362,6 +364,7 @@ def __getattr__(name: str):
         return run_objective_daemon
     if name in {
         "default_llm_merge_resolver_command",
+        "data_namespace_scan_skip_prefixes",
         "android_validation_command_needs_environment",
         "AndroidValidationCallbacks",
         "android_validation_environment_contract",
@@ -370,6 +373,7 @@ def __getattr__(name: str):
         "BootstrapPathCallbacks",
         "BootstrapPathSpec",
         "CodebaseScanEnvSettings",
+        "DEFAULT_CODEBASE_SCAN_DATA_SUBDIRS",
         "build_android_validation_callbacks",
         "build_bootstrap_path_ensurer",
         "build_bootstrap_path_resolver",
