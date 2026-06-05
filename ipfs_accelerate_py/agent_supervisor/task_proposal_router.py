@@ -15,6 +15,7 @@ from typing import Callable, Sequence
 PromptBuilder = Callable[[object, str], str]
 BootstrapCallback = Callable[[], None]
 DEFAULT_OPEN_TASK_STATUSES = ("to" "do", "ready")
+DEFAULT_TASK_PROPOSAL_TEST_OUTPUT = "tests and fixtures needed"
 
 
 class TaskProposalRouterError(RuntimeError):
@@ -106,6 +107,20 @@ def build_task_proposal_prompt(
             "",
         ]
     )
+
+
+def standard_task_proposal_requested_outputs(
+    *domain_outputs: str,
+    test_output: str = DEFAULT_TASK_PROPOSAL_TEST_OUTPUT,
+) -> tuple[str, ...]:
+    """Return a standard implementation-proposal output checklist."""
+
+    outputs = ["exact files to edit"]
+    outputs.extend(str(item) for item in domain_outputs if str(item))
+    if test_output:
+        outputs.append(str(test_output))
+    outputs.extend(("validation commands", "risks or blockers"))
+    return tuple(outputs)
 
 
 def build_task_proposal_prompt_builder(

@@ -35,6 +35,7 @@ from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     ConfiguredTaskProposalRouterRunner,
     build_configured_task_proposal_router_runner,
     run_configured_task_proposal_router_cli,
+    standard_task_proposal_requested_outputs,
 )
 from ipfs_accelerate_py.agent_supervisor import multi_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
@@ -943,6 +944,26 @@ def test_build_refill_defaults_from_paths(tmp_path):
         codebase_scan_max_findings=8,
         codebase_scan_cooldown_seconds=120,
         codebase_scan_skip_prefixes=("data/", "scripts/"),
+    )
+
+
+def test_standard_task_proposal_requested_outputs_builds_shared_checklist():
+    assert standard_task_proposal_requested_outputs("runtime contracts to add") == (
+        "exact files to edit",
+        "runtime contracts to add",
+        "tests and fixtures needed",
+        "validation commands",
+        "risks or blockers",
+    )
+    assert standard_task_proposal_requested_outputs(
+        "data contracts or APIs to add",
+        test_output="mocks/fixtures/tests needed to run without hardware",
+    ) == (
+        "exact files to edit",
+        "data contracts or APIs to add",
+        "mocks/fixtures/tests needed to run without hardware",
+        "validation commands",
+        "risks or blockers",
     )
 
 
