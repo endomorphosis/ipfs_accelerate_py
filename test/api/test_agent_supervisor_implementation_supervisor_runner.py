@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     SupervisorRunHook,
     apply_portal_implementation_supervisor_defaults,
     build_codebase_refill_defaults_factory,
+    build_configured_supervisor_bootstrap_runner,
     build_configured_supervisor_runtime,
     build_objective_refill_defaults_factory,
     build_portal_implementation_supervisor_from_args,
@@ -380,6 +381,81 @@ def test_configured_supervisor_runtime_resolves_bootstrap_paths(monkeypatch, tmp
         daemon_script_path=daemon_script,
     )
     assert calls[0:2] == ["enter", "paths"]
+
+
+def test_configured_supervisor_bootstrap_runner_dispatches_runtime(monkeypatch, tmp_path: Path):
+    paths = {
+        "todo_path": tmp_path / "tasks.todo.md",
+        "state_dir": tmp_path / "state",
+        "worktree_root": tmp_path / "worktrees",
+    }
+    daemon_script = tmp_path / "daemon.py"
+    supervisor_script = tmp_path / "supervisor.py"
+    objective = ObjectiveRefillDefaults(objective_path=tmp_path / "objective.md")
+    codebase = CodebaseRefillDefaults(codebase_scan_discovery_dir=tmp_path / "discovery")
+    hook = SupervisorRunHook("before", "hook: %s", lambda ctx: [])
+    captured: dict[str, object] = {}
+    calls: list[str] = []
+
+    def fake_run_configured_from_bootstrap(self, argv, **kwargs):
+        captured["runtime"] = self
+        captured["argv"] = tuple(argv)
+        captured["kwargs"] = kwargs
+        return {"ran": True}
+
+    monkeypatch.setattr(
+        ConfiguredSupervisorRuntime,
+        "run_configured_from_bootstrap",
+        fake_run_configured_from_bootstrap,
+    )
+
+    runtime = build_configured_supervisor_runtime(
+        repo_root=tmp_path,
+        script_path=supervisor_script,
+    )
+    runner = build_configured_supervisor_bootstrap_runner(
+        runtime=runtime,
+        logger=logging.getLogger("test-configured-supervisor-bootstrap-runner"),
+        ensure_paths=lambda: paths,
+        enter_runtime_environment=lambda: calls.append("enter"),
+        path_callbacks=(lambda resolved: calls.append(str(resolved["todo_path"])),),
+        objective_factory=lambda _paths: objective,
+        codebase_factory=lambda _paths: codebase,
+        hooks_factory=lambda _paths: (hook,),
+        task_prefix="## EX-",
+        state_prefix="example",
+        daemon_script_path=daemon_script,
+        supervisor_script_path=supervisor_script,
+        todo_path_flag="--task-board",
+        llm_merge_resolver_command=lambda: "codex exec resolver",
+        worktree_submodule_paths=("module-a",),
+        once_complete_message="complete: %s",
+        ensure_running_message="ensure: %s",
+        repair_runtime_message="repair: %s",
+    )
+
+    assert runner.run(["--once"]) == {"ran": True}
+    assert captured["runtime"] is runtime
+    assert captured["argv"] == ("--once",)
+    kwargs = captured["kwargs"]
+    assert kwargs["logger"] is runner.logger
+    assert kwargs["ensure_paths"]() == paths
+    assert kwargs["task_prefix"] == "## EX-"
+    assert kwargs["state_prefix"] == "example"
+    assert kwargs["daemon_script_path"] == daemon_script
+    assert kwargs["supervisor_script_path"] == supervisor_script
+    assert kwargs["todo_path_flag"] == "--task-board"
+    assert kwargs["llm_merge_resolver_command"] == "codex exec resolver"
+    assert kwargs["worktree_submodule_paths"] == ("module-a",)
+    assert kwargs["objective_factory"](paths) == objective
+    assert kwargs["codebase_factory"](paths) == codebase
+    assert kwargs["hooks_factory"](paths) == (hook,)
+    assert kwargs["once_complete_message"] == "complete: %s"
+    assert kwargs["ensure_running_message"] == "ensure: %s"
+    assert kwargs["repair_runtime_message"] == "repair: %s"
+    kwargs["enter_runtime_environment"]()
+    kwargs["path_callbacks"][0](paths)
+    assert calls == ["enter", str(paths["todo_path"])]
 
 
 def test_build_supervisor_refill_hooks_formats_standard_messages():

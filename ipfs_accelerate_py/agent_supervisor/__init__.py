@@ -64,6 +64,7 @@ __all__ = [
     "ConfiguredMultiSupervisorCliRunner",
     "ConfiguredObjectiveBacklogRecorder",
     "ConfiguredRetryBudgetRecorder",
+    "ConfiguredSupervisorBootstrapRunner",
     "ConfiguredSupervisorEntrypoint",
     "ConfiguredSupervisorRuntime",
     "ConfiguredTaskProposalRouterRunner",
@@ -105,6 +106,7 @@ __all__ = [
     "build_configured_multi_supervisor_cli_runner",
     "build_repo_implementation_multi_supervisor_launcher",
     "build_configured_implementation_supervisor_entrypoint",
+    "build_configured_supervisor_bootstrap_runner",
     "build_configured_supervisor_runtime",
     "build_configured_task_proposal_router_runner",
     "build_llm_merge_resolver_invoker",
@@ -490,7 +492,9 @@ def __getattr__(name: str):
         return getattr(supervisor_runtime, name)
     if name in {
         "build_portal_implementation_supervisor_from_args",
+        "build_configured_supervisor_bootstrap_runner",
         "build_configured_supervisor_runtime",
+        "ConfiguredSupervisorBootstrapRunner",
         "build_codebase_refill_defaults_from_paths",
         "build_codebase_refill_defaults_factory",
         "build_namespace_codebase_refill_defaults_factory",

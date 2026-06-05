@@ -48,6 +48,7 @@ SupervisorBootstrapFactory = Callable[[Mapping[str, Path | str]], Any]
 SupervisorBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence[SupervisorRunHook]]
 SupervisorBootstrapOutputPathFactory = Callable[[Mapping[str, Path | str]], str | None]
 SupervisorBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
+SupervisorMergeResolverCommand = str | Callable[[], str]
 
 
 def _with_extra_kwargs(
@@ -272,6 +273,139 @@ class ConfiguredSupervisorRuntime:
             repair_runtime=repair_runtime,
             repair_runtime_message=repair_runtime_message,
         )
+
+
+@dataclass(frozen=True)
+class ConfiguredSupervisorBootstrapRunner:
+    """Project-bound supervisor bootstrap wiring with reusable run dispatch."""
+
+    runtime: ConfiguredSupervisorRuntime
+    logger: logging.Logger
+    ensure_paths: Callable[[], Mapping[str, Path | str]]
+    task_prefix: str
+    state_prefix: str
+    daemon_script_path: Path | str
+    supervisor_script_path: Path | str | None = None
+    enter_runtime_environment: Callable[[], Any] | None = None
+    enter_runtime_before_paths: bool = False
+    path_callbacks: Sequence[SupervisorBootstrapPathCallback] = ()
+    objective_factory: SupervisorBootstrapFactory | None = None
+    codebase_factory: SupervisorBootstrapFactory | None = None
+    hooks_factory: SupervisorBootstrapHookFactory | None = None
+    hooks: Sequence[SupervisorRunHook] = ()
+    ensure_running_flag: str = "--ensure-running"
+    ensure_running: bool | None = None
+    todo_path_key: str = "todo_path"
+    state_dir_key: str = "state_dir"
+    worktree_root_key: str = "worktree_root"
+    todo_path_flag: str = "--todo-path"
+    max_restarts: int | str = 0
+    llm_merge_resolver_command: SupervisorMergeResolverCommand = ""
+    worktree_submodule_paths: Sequence[str] = ()
+    once_complete_message: str = "Portal implementation supervisor check complete: %s"
+    ensure_running_message: str = "Supervisor ensure complete: %s"
+    repair_runtime: bool = True
+    repair_runtime_message: str = "Repaired stale supervisor runtime markers: %s"
+
+    def _resolved_llm_merge_resolver_command(self) -> str:
+        command = self.llm_merge_resolver_command
+        return str(command()) if callable(command) else str(command or "")
+
+    def run(self, argv: Sequence[str]) -> Any:
+        """Run the configured supervisor from bootstrap paths."""
+
+        return self.runtime.run_configured_from_bootstrap(
+            argv,
+            logger=self.logger,
+            ensure_paths=self.ensure_paths,
+            enter_runtime_environment=self.enter_runtime_environment,
+            enter_runtime_before_paths=self.enter_runtime_before_paths,
+            path_callbacks=self.path_callbacks,
+            objective_factory=self.objective_factory,
+            codebase_factory=self.codebase_factory,
+            hooks_factory=self.hooks_factory,
+            hooks=self.hooks,
+            ensure_running_flag=self.ensure_running_flag,
+            ensure_running=self.ensure_running,
+            todo_path_key=self.todo_path_key,
+            state_dir_key=self.state_dir_key,
+            worktree_root_key=self.worktree_root_key,
+            todo_path_flag=self.todo_path_flag,
+            task_prefix=self.task_prefix,
+            state_prefix=self.state_prefix,
+            daemon_script_path=self.daemon_script_path,
+            supervisor_script_path=self.supervisor_script_path,
+            max_restarts=self.max_restarts,
+            llm_merge_resolver_command=self._resolved_llm_merge_resolver_command(),
+            worktree_submodule_paths=self.worktree_submodule_paths,
+            once_complete_message=self.once_complete_message,
+            ensure_running_message=self.ensure_running_message,
+            repair_runtime=self.repair_runtime,
+            repair_runtime_message=self.repair_runtime_message,
+        )
+
+
+def build_configured_supervisor_bootstrap_runner(
+    *,
+    runtime: ConfiguredSupervisorRuntime,
+    logger: logging.Logger,
+    ensure_paths: Callable[[], Mapping[str, Path | str]],
+    task_prefix: str,
+    state_prefix: str,
+    daemon_script_path: Path | str,
+    supervisor_script_path: Path | str | None = None,
+    enter_runtime_environment: Callable[[], Any] | None = None,
+    enter_runtime_before_paths: bool = False,
+    path_callbacks: Sequence[SupervisorBootstrapPathCallback] = (),
+    objective_factory: SupervisorBootstrapFactory | None = None,
+    codebase_factory: SupervisorBootstrapFactory | None = None,
+    hooks_factory: SupervisorBootstrapHookFactory | None = None,
+    hooks: Sequence[SupervisorRunHook] = (),
+    ensure_running_flag: str = "--ensure-running",
+    ensure_running: bool | None = None,
+    todo_path_key: str = "todo_path",
+    state_dir_key: str = "state_dir",
+    worktree_root_key: str = "worktree_root",
+    todo_path_flag: str = "--todo-path",
+    max_restarts: int | str = 0,
+    llm_merge_resolver_command: SupervisorMergeResolverCommand = "",
+    worktree_submodule_paths: Sequence[str] = (),
+    once_complete_message: str = "Portal implementation supervisor check complete: %s",
+    ensure_running_message: str = "Supervisor ensure complete: %s",
+    repair_runtime: bool = True,
+    repair_runtime_message: str = "Repaired stale supervisor runtime markers: %s",
+) -> ConfiguredSupervisorBootstrapRunner:
+    """Build reusable supervisor bootstrap/run wiring for a project wrapper."""
+
+    return ConfiguredSupervisorBootstrapRunner(
+        runtime=runtime,
+        logger=logger,
+        ensure_paths=ensure_paths,
+        task_prefix=task_prefix,
+        state_prefix=state_prefix,
+        daemon_script_path=daemon_script_path,
+        supervisor_script_path=supervisor_script_path,
+        enter_runtime_environment=enter_runtime_environment,
+        enter_runtime_before_paths=enter_runtime_before_paths,
+        path_callbacks=tuple(path_callbacks),
+        objective_factory=objective_factory,
+        codebase_factory=codebase_factory,
+        hooks_factory=hooks_factory,
+        hooks=tuple(hooks),
+        ensure_running_flag=ensure_running_flag,
+        ensure_running=ensure_running,
+        todo_path_key=todo_path_key,
+        state_dir_key=state_dir_key,
+        worktree_root_key=worktree_root_key,
+        todo_path_flag=todo_path_flag,
+        max_restarts=max_restarts,
+        llm_merge_resolver_command=llm_merge_resolver_command,
+        worktree_submodule_paths=tuple(worktree_submodule_paths),
+        once_complete_message=once_complete_message,
+        ensure_running_message=ensure_running_message,
+        repair_runtime=repair_runtime,
+        repair_runtime_message=repair_runtime_message,
+    )
 
 
 def build_configured_supervisor_runtime(
