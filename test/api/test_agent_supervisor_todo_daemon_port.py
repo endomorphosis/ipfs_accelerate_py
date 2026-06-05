@@ -131,6 +131,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     CodebaseScanEnvSettings,
     DEFAULT_CODEBASE_SCAN_DATA_SUBDIRS,
     DEFAULT_REPO_DOCS_DIR,
+    RepoScriptBootstrap,
     RuntimeEnvironmentCallbacks,
     android_validation_command_needs_environment,
     android_validation_environment_contract,
@@ -148,6 +149,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     build_prefixed_bootstrap_path_callbacks,
     build_prefixed_default_llm_merge_resolver_command_callback,
     build_repo_runtime_environment_callbacks,
+    build_repo_script_bootstrap,
     build_runtime_environment_callback,
     build_runtime_environment_callbacks,
     csv_tuple,
@@ -156,6 +158,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     enforce_android_validation_environment,
     ensure_named_directories,
     ensure_runtime_pythonpath,
+    ensure_sys_path,
     environment_assignment_prefix,
     env_csv_tuple,
     env_int,
@@ -409,6 +412,32 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert repo_root_from_env(environ={"REPO_ROOT": str(tmp_path / "override")}, fallback=tmp_path / "fallback") == (
         tmp_path / "override"
     ).resolve()
+    script_path = tmp_path / "bootstrap-repo" / "scripts" / "run.py"
+    script_path.parent.mkdir(parents=True)
+    script_path.write_text("#!/usr/bin/env python3\n", encoding="utf-8")
+    bootstrap_sys_path = list(sys.path)
+    monkeypatch.setattr(sys, "path", list(bootstrap_sys_path))
+    bootstrap = build_repo_script_bootstrap(
+        script_path,
+        environ={"REPO_ROOT": str(tmp_path / "runtime-repo")},
+    )
+    assert isinstance(bootstrap, RepoScriptBootstrap)
+    assert bootstrap.script_path == script_path.resolve()
+    assert bootstrap.script_repo_root == tmp_path / "bootstrap-repo"
+    assert bootstrap.repo_root == (tmp_path / "runtime-repo").resolve()
+    assert bootstrap.package_root == tmp_path / "bootstrap-repo" / "external" / "ipfs_accelerate"
+    assert sys.path[0] == str(bootstrap.package_root)
+    monkeypatch.setattr(sys, "path", list(bootstrap_sys_path))
+    custom_bootstrap = build_repo_script_bootstrap(
+        script_path,
+        package_name="accelerator_pkg",
+        external_dir="vendor",
+        ensure_package_path=False,
+        environ={},
+    )
+    assert custom_bootstrap.package_root == tmp_path / "bootstrap-repo" / "vendor" / "accelerator_pkg"
+    assert custom_bootstrap.repo_root == (tmp_path / "bootstrap-repo").resolve()
+    assert sys.path == bootstrap_sys_path
     assert repo_external_package_root(tmp_path, "ipfs_accelerate") == tmp_path / "external" / "ipfs_accelerate"
     assert repo_external_package_root(tmp_path, "custom", external_dir="vendor") == tmp_path / "vendor" / "custom"
     absolute_package = tmp_path / "absolute-package"
@@ -647,6 +676,10 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     second = tmp_path / "second"
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join([str(second), "existing"]))
     original_sys_path = list(sys.path)
+    monkeypatch.setattr(sys, "path", list(original_sys_path))
+
+    ensure_sys_path((second, first))
+    assert sys.path[:2] == [str(second), str(first)]
     monkeypatch.setattr(sys, "path", list(original_sys_path))
 
     ensure_runtime_pythonpath((first, second))

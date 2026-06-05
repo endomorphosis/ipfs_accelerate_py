@@ -231,6 +231,15 @@ def env_path(env_var: str, default: Path | str) -> Path:
     return Path(os.environ.get(env_var, str(default)))
 
 
+def ensure_sys_path(paths: Sequence[Path | str]) -> None:
+    """Make local import paths importable for the current process only."""
+
+    normalized_paths = [str(Path(path)) for path in paths]
+    for path in reversed(normalized_paths):
+        if path not in sys.path:
+            sys.path.insert(0, path)
+
+
 def repo_root_from_env(
     env_var: str = "REPO_ROOT",
     *,
@@ -242,6 +251,49 @@ def repo_root_from_env(
     source = os.environ if environ is None else environ
     configured = source.get(env_var, "").strip() if env_var else ""
     return Path(configured or fallback or Path.cwd()).resolve()
+
+
+@dataclass(frozen=True)
+class RepoScriptBootstrap:
+    """Resolved root and package path information for a repo-local wrapper script."""
+
+    script_path: Path
+    script_repo_root: Path
+    repo_root: Path
+    package_root: Path
+
+
+def build_repo_script_bootstrap(
+    script_file: Path | str,
+    *,
+    package_name: Path | str = "ipfs_accelerate",
+    external_dir: Path | str = "external",
+    repo_root_env_var: str = "REPO_ROOT",
+    script_repo_root_parent: int = 1,
+    ensure_package_path: bool = True,
+    environ: Mapping[str, str] | None = None,
+) -> RepoScriptBootstrap:
+    """Build env-aware bootstrap paths for a repo-local wrapper script."""
+
+    script_path = Path(script_file).resolve()
+    script_repo_root = script_path.parents[script_repo_root_parent]
+    package_root = repo_external_package_root(
+        script_repo_root,
+        package_name,
+        external_dir=external_dir,
+    )
+    if ensure_package_path:
+        ensure_sys_path((package_root,))
+    return RepoScriptBootstrap(
+        script_path=script_path,
+        script_repo_root=script_repo_root,
+        repo_root=repo_root_from_env(
+            repo_root_env_var,
+            fallback=script_repo_root,
+            environ=environ,
+        ),
+        package_root=package_root,
+    )
 
 
 def repo_external_package_root(
@@ -1091,9 +1143,7 @@ def ensure_runtime_pythonpath(paths: Sequence[Path | str], *, env_var: str = "PY
     """Make local package roots importable for the current process and child processes."""
 
     normalized_paths = [str(Path(path)) for path in paths]
-    for path in reversed(normalized_paths):
-        if path not in sys.path:
-            sys.path.insert(0, path)
+    ensure_sys_path(normalized_paths)
 
     existing = os.environ.get(env_var, "")
     existing_paths = existing.split(os.pathsep) if existing else []
