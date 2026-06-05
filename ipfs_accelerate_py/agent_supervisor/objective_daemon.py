@@ -1,9 +1,8 @@
-"""CLI bridge for objective-graph backlog generation.
+"""CLI bridge for reusable objective-graph backlog generation.
 
-The script-level Hallucinate backlog scanner lives here as a reusable accelerator
-entry point: scan an objective heap, append missing-evidence tasks, persist AST
-records, write parallel bundle shards, and optionally submit those bundles to
-the local task queue.
+This package-level entry point scans an objective heap, appends missing-evidence
+tasks, persists AST records, writes parallel bundle shards, and optionally
+submits those bundles to a local task queue.
 """
 
 from __future__ import annotations
