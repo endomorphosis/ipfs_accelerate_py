@@ -119,6 +119,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     terminate_supervised_child,
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
+    AgentSupervisorNamespacePaths,
     BootstrapPathCallbacks,
     BootstrapPathSpec,
     CodebaseScanEnvSettings,
@@ -126,6 +127,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     RuntimeEnvironmentCallbacks,
     android_validation_command_needs_environment,
     android_validation_environment_contract,
+    agent_supervisor_namespace_paths,
     apply_env_defaults,
     apply_environment_contract,
     bootstrap_runtime_environment,
@@ -288,6 +290,32 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     ) == (
         "tools/",
         "runtime/data/agent_supervisor/state/",
+    )
+    namespace_paths = agent_supervisor_namespace_paths(tmp_path, "agent_supervisor")
+    assert isinstance(namespace_paths, AgentSupervisorNamespacePaths)
+    assert namespace_paths.namespace_root == tmp_path / "data" / "agent_supervisor"
+    assert namespace_paths.discovery_dir == tmp_path / "data" / "agent_supervisor" / "discovery"
+    assert namespace_paths.state_dir == tmp_path / "data" / "agent_supervisor" / "state"
+    assert namespace_paths.worktree_root == tmp_path / "data" / "agent_supervisor" / "worktrees"
+    assert namespace_paths.objective_graph_path == tmp_path / "data" / "agent_supervisor" / "objective_graph.json"
+    assert namespace_paths.objective_bundle_dir == tmp_path / "data" / "agent_supervisor" / "objective_bundles"
+    assert namespace_paths.objective_dataset_dir == tmp_path / "data" / "agent_supervisor" / "objective_datasets"
+    assert namespace_paths.objective_todo_vector_index_path == (
+        tmp_path / "data" / "agent_supervisor" / "objective_bundles" / "todo_vector_index.json"
+    )
+    assert namespace_paths.repo_relative_path("discovery_dir", "fallback") == "data/agent_supervisor/discovery"
+    custom_namespace_paths = agent_supervisor_namespace_paths(
+        tmp_path,
+        "agent_supervisor",
+        data_root="runtime",
+        objective_bundle_subdir="bundles",
+        objective_dataset_subdir="datasets",
+        todo_vector_index_filename="index.json",
+    )
+    assert custom_namespace_paths.objective_bundle_dir == tmp_path / "runtime" / "agent_supervisor" / "bundles"
+    assert custom_namespace_paths.objective_dataset_dir == tmp_path / "runtime" / "agent_supervisor" / "datasets"
+    assert custom_namespace_paths.objective_todo_vector_index_path == (
+        tmp_path / "runtime" / "agent_supervisor" / "bundles" / "index.json"
     )
     monkeypatch.setenv("WRAPPER_UTILS_CSV", "alpha,beta")
     assert env_csv_tuple("WRAPPER_UTILS_CSV", "fallback") == ("alpha", "beta")

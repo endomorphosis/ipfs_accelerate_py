@@ -102,6 +102,63 @@ def data_namespace_scan_skip_prefixes(
     return tuple(unique_path_entries(prefix for prefix in prefixes if prefix))
 
 
+@dataclass(frozen=True)
+class AgentSupervisorNamespacePaths:
+    """Standard repo-local data paths for one supervisor namespace."""
+
+    repo_root: Path
+    namespace: str
+    data_root: Path
+    namespace_root: Path
+    discovery_dir: Path
+    state_dir: Path
+    worktree_root: Path
+    objective_graph_path: Path
+    objective_bundle_dir: Path
+    objective_dataset_dir: Path
+    objective_todo_vector_index_path: Path
+
+    def repo_relative_path(self, key: str, default: str) -> str:
+        """Return one stored path as repo-relative text, falling back to ``default``."""
+
+        value = getattr(self, key)
+        return repo_relative_or_default(value, self.repo_root, default)
+
+
+def agent_supervisor_namespace_paths(
+    repo_root: Path | str,
+    namespace: str,
+    *,
+    data_root: Path | str = "data",
+    discovery_subdir: str = "discovery",
+    state_subdir: str = "state",
+    worktree_subdir: str = "worktrees",
+    objective_graph_filename: str = "objective_graph.json",
+    objective_bundle_subdir: str = "objective_bundles",
+    objective_dataset_subdir: str = "objective_datasets",
+    todo_vector_index_filename: str = "todo_vector_index.json",
+) -> AgentSupervisorNamespacePaths:
+    """Return the conventional generated-data paths for a supervisor namespace."""
+
+    root = Path(repo_root)
+    data_root_path = _repo_path(root, data_root)
+    namespace_root = data_root_path / namespace
+    objective_bundle_dir = namespace_root / objective_bundle_subdir
+    return AgentSupervisorNamespacePaths(
+        repo_root=root,
+        namespace=namespace,
+        data_root=data_root_path,
+        namespace_root=namespace_root,
+        discovery_dir=namespace_root / discovery_subdir,
+        state_dir=namespace_root / state_subdir,
+        worktree_root=namespace_root / worktree_subdir,
+        objective_graph_path=namespace_root / objective_graph_filename,
+        objective_bundle_dir=objective_bundle_dir,
+        objective_dataset_dir=namespace_root / objective_dataset_subdir,
+        objective_todo_vector_index_path=objective_bundle_dir / todo_vector_index_filename,
+    )
+
+
 def csv_tuple(value: str | Iterable[str]) -> tuple[str, ...]:
     """Return a de-duplicated tuple of comma-separated values."""
 
