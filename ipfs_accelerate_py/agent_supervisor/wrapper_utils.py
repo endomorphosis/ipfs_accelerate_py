@@ -117,6 +117,19 @@ def env_path(env_var: str, default: Path | str) -> Path:
     return Path(os.environ.get(env_var, str(default)))
 
 
+def repo_root_from_env(
+    env_var: str = "REPO_ROOT",
+    *,
+    fallback: Path | str | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> Path:
+    """Resolve a wrapper repo root from an environment override or fallback path."""
+
+    source = os.environ if environ is None else environ
+    configured = source.get(env_var, "").strip() if env_var else ""
+    return Path(configured or fallback or Path.cwd()).resolve()
+
+
 def task_board_filename(stem: str, suffix: str = "md") -> str:
     """Return a scanner-neutral task-board markdown filename."""
 
