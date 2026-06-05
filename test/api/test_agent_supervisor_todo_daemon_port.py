@@ -46,6 +46,7 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     build_arg_parser as build_multi_supervisor_arg_parser,
     build_configured_multi_supervisor_launcher,
     build_configured_multi_supervisor_cli_runner,
+    build_repo_implementation_multi_supervisor_launcher,
     common_args_from_parsed_args,
     implementation_supervisor_compact_track_spec,
     implementation_supervisor_compact_track_specs,
@@ -1791,6 +1792,53 @@ def test_configured_multi_supervisor_launcher_prepares_environment(tmp_path, mon
     assert "--implementation-track" in launcher.args()
     assert launcher.run(["--duration-seconds", "0.01"]) == 0
     assert os.environ["MULTI_SUPERVISOR_TEST_DEFAULT"] == "1"
+    assert prepared == ["called"]
+    assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
+
+
+def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_path, monkeypatch):
+    captured: dict[str, tuple[str, ...]] = {}
+    prepared: list[str] = []
+
+    def fake_main(argv):
+        captured["argv"] = tuple(argv)
+        return 0
+
+    monkeypatch.setattr(multi_supervisor_runner, "main", fake_main)
+    monkeypatch.delenv("MULTI_SUPERVISOR_REPO_DEFAULT", raising=False)
+
+    launcher = build_repo_implementation_multi_supervisor_launcher(
+        repo_root=tmp_path,
+        duration_seconds=12,
+        stamp="RUN",
+        resolver_script_path="scripts/resolve.sh",
+        label="repo implementation run",
+        implementation_track_configs=(
+            ImplementationSupervisorTrackConfig(
+                name="VAI",
+                script_path="scripts/vai.py",
+                state_dir="data/vai/state",
+                state_prefix="vai",
+            ),
+        ),
+        common_args=("--flag", "value"),
+        env_defaults={"MULTI_SUPERVISOR_REPO_DEFAULT": "1"},
+        prepare_environment=lambda: prepared.append("called"),
+    )
+
+    args = launcher.args()
+    assert isinstance(launcher, ConfiguredMultiSupervisorLauncher)
+    assert args[args.index("--label") + 1] == "repo implementation run"
+    assert args[args.index("--implementation-supervisor-command") + 1] == (
+        f"bash {tmp_path / 'scripts' / 'resolve.sh'}"
+    )
+    assert "--implementation-supervisor-defaults" in args
+    assert args[args.index("--implementation-track") + 1] == "VAI|scripts/vai.py|data/vai/state|vai"
+    assert args[args.index("--common-arg") + 1] == "--flag"
+    assert args[args.index("--common-arg", args.index("--common-arg") + 1) + 1] == "value"
+
+    assert launcher.run(["--duration-seconds", "0.01"]) == 0
+    assert os.environ["MULTI_SUPERVISOR_REPO_DEFAULT"] == "1"
     assert prepared == ["called"]
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
 

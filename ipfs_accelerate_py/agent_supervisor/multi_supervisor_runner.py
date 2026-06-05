@@ -397,6 +397,72 @@ def build_configured_multi_supervisor_launcher(
     )
 
 
+def build_repo_implementation_multi_supervisor_launcher(
+    *,
+    repo_root: Path | str,
+    implementation_track_configs: Sequence[
+        ImplementationSupervisorTrackConfig | tuple[str, Path | str, Path | str, str]
+    ],
+    resolver_script_path: Path | str = "scripts/llm_merge_resolver_fallback.sh",
+    implementation_supervisor_command: str = "",
+    duration_seconds: float | int | str = 28800.0,
+    duration_seconds_env_var: str = "DURATION_SECONDS",
+    heartbeat_interval_seconds: float | int | str | None = None,
+    stop_grace_seconds: float | int | str | None = None,
+    stamp: str = "",
+    stamp_env_var: str = "STAMP",
+    master_dir: Path | str = Path("data/agent_supervisor"),
+    master_log: Path | str | None = None,
+    master_pid_path: Path | str | None = None,
+    label: str = "implementation supervisor run",
+    python_executable: str = "python3",
+    common_args: Sequence[str] = (),
+    detach: bool = False,
+    env_defaults: Mapping[str, str] | Sequence[tuple[str, str]] = (),
+    prepare_environment: Callable[[], None] | None = None,
+    runtime_package_names: Sequence[Path | str] | None = ("ipfs_accelerate", "ipfs_datasets"),
+    runtime_external_dir: Path | str = "external",
+    runtime_env_var: str = "PYTHONPATH",
+) -> ConfiguredMultiSupervisorLauncher:
+    """Build a repo-local implementation multi-supervisor launcher."""
+
+    from .wrapper_utils import build_repo_runtime_environment_callbacks, repo_script_command
+
+    command = implementation_supervisor_command
+    if not command and resolver_script_path:
+        command = repo_script_command(repo_root, resolver_script_path)
+    effective_prepare_environment = prepare_environment
+    if effective_prepare_environment is None and runtime_package_names is not None:
+        runtime_environment = build_repo_runtime_environment_callbacks(
+            repo_root,
+            package_names=runtime_package_names,
+            external_dir=runtime_external_dir,
+            env_var=runtime_env_var,
+        )
+        effective_prepare_environment = runtime_environment.ensure_pythonpath
+    return build_configured_multi_supervisor_launcher(
+        repo_root=repo_root,
+        duration_seconds=duration_seconds,
+        duration_seconds_env_var=duration_seconds_env_var,
+        heartbeat_interval_seconds=heartbeat_interval_seconds,
+        stop_grace_seconds=stop_grace_seconds,
+        stamp=stamp,
+        stamp_env_var=stamp_env_var,
+        master_dir=master_dir,
+        master_log=master_log,
+        master_pid_path=master_pid_path,
+        label=label,
+        python_executable=python_executable,
+        implementation_supervisor_defaults=True,
+        implementation_supervisor_command=command,
+        implementation_track_configs=implementation_track_configs,
+        common_args=common_args,
+        detach=detach,
+        env_defaults=env_defaults,
+        prepare_environment=effective_prepare_environment,
+    )
+
+
 def implementation_supervisor_common_args(
     *,
     implementation_command: str = "",
