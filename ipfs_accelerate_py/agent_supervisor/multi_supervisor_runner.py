@@ -11,9 +11,10 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable, Mapping, Sequence
 
 from .todo_daemon.core import pid_alive, read_pid_file, terminate_pid_tree
+from .wrapper_utils import apply_env_defaults
 
 
 OutputFn = Callable[[str], None]
@@ -94,6 +95,34 @@ class ConfiguredMultiSupervisorCliRunner:
         """Run the multi-supervisor CLI with configured args plus any overrides."""
 
         return main([*self.argv, *(extra_argv or ())])
+
+
+@dataclass(frozen=True)
+class ConfiguredMultiSupervisorLauncher:
+    """Prepared launcher for a configured multi-supervisor runner."""
+
+    runner: ConfiguredMultiSupervisorCliRunner
+    env_defaults: tuple[tuple[str, str], ...] = ()
+    prepare_environment: Callable[[], None] | None = None
+
+    def args(self) -> list[str]:
+        """Return the configured runner argv as a mutable list."""
+
+        return self.runner.args()
+
+    def prepare(self) -> None:
+        """Apply environment defaults and run the optional preparation callback."""
+
+        if self.env_defaults:
+            apply_env_defaults(dict(self.env_defaults))
+        if self.prepare_environment is not None:
+            self.prepare_environment()
+
+    def run(self, extra_argv: Sequence[str] | None = None) -> int:
+        """Prepare the environment and run the configured multi-supervisor CLI."""
+
+        self.prepare()
+        return self.runner.run(extra_argv)
 
 
 class SupervisorRunInterrupted(Exception):
@@ -227,6 +256,16 @@ def supervisor_track_payload(track: SupervisorTrack) -> dict[str, str]:
     }
 
 
+def _env_default_items(
+    defaults: Mapping[str, str] | Sequence[tuple[str, str]],
+) -> tuple[tuple[str, str], ...]:
+    if isinstance(defaults, Mapping):
+        iterable = defaults.items()
+    else:
+        iterable = defaults
+    return tuple((str(name), str(value)) for name, value in iterable)
+
+
 def build_configured_multi_supervisor_cli_runner(
     *,
     repo_root: Path | str,
@@ -289,6 +328,57 @@ def build_configured_multi_supervisor_cli_runner(
     if detach:
         argv.append("--detach")
     return ConfiguredMultiSupervisorCliRunner(tuple(argv))
+
+
+def build_configured_multi_supervisor_launcher(
+    *,
+    repo_root: Path | str,
+    duration_seconds: float | int | str = 28800.0,
+    heartbeat_interval_seconds: float | int | str | None = None,
+    stop_grace_seconds: float | int | str | None = None,
+    stamp: str = "",
+    master_dir: Path | str = Path("data/agent_supervisor"),
+    master_log: Path | str | None = None,
+    master_pid_path: Path | str | None = None,
+    label: str = "multi-supervisor",
+    python_executable: str = "python3",
+    implementation_supervisor_defaults: bool = False,
+    implementation_supervisor_command: str = "",
+    implementation_tracks: Sequence[str] = (),
+    implementation_track_configs: Sequence[
+        ImplementationSupervisorTrackConfig | tuple[str, Path | str, Path | str, str]
+    ] = (),
+    tracks: Sequence[str] = (),
+    common_args: Sequence[str] = (),
+    detach: bool = False,
+    env_defaults: Mapping[str, str] | Sequence[tuple[str, str]] = (),
+    prepare_environment: Callable[[], None] | None = None,
+) -> ConfiguredMultiSupervisorLauncher:
+    """Build a prepared multi-supervisor launcher from project-specific inputs."""
+
+    return ConfiguredMultiSupervisorLauncher(
+        runner=build_configured_multi_supervisor_cli_runner(
+            repo_root=repo_root,
+            duration_seconds=duration_seconds,
+            heartbeat_interval_seconds=heartbeat_interval_seconds,
+            stop_grace_seconds=stop_grace_seconds,
+            stamp=stamp,
+            master_dir=master_dir,
+            master_log=master_log,
+            master_pid_path=master_pid_path,
+            label=label,
+            python_executable=python_executable,
+            implementation_supervisor_defaults=implementation_supervisor_defaults,
+            implementation_supervisor_command=implementation_supervisor_command,
+            implementation_tracks=implementation_tracks,
+            implementation_track_configs=implementation_track_configs,
+            tracks=tracks,
+            common_args=common_args,
+            detach=detach,
+        ),
+        env_defaults=_env_default_items(env_defaults),
+        prepare_environment=prepare_environment,
+    )
 
 
 def implementation_supervisor_common_args(

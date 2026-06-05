@@ -39,8 +39,10 @@ from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
 from ipfs_accelerate_py.agent_supervisor import multi_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     ConfiguredMultiSupervisorCliRunner,
+    ConfiguredMultiSupervisorLauncher,
     ImplementationSupervisorTrackConfig,
     build_arg_parser as build_multi_supervisor_arg_parser,
+    build_configured_multi_supervisor_launcher,
     build_configured_multi_supervisor_cli_runner,
     common_args_from_parsed_args,
     implementation_supervisor_compact_track_spec,
@@ -1491,6 +1493,41 @@ def test_configured_multi_supervisor_cli_runner_builds_base_args_and_dispatches(
     assert args[-1] == "--detach"
 
     assert runner.run(["--duration-seconds", "0.01"]) == 0
+    assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
+
+
+def test_configured_multi_supervisor_launcher_prepares_environment(tmp_path, monkeypatch):
+    captured: dict[str, tuple[str, ...]] = {}
+    prepared: list[str] = []
+
+    def fake_main(argv):
+        captured["argv"] = tuple(argv)
+        return 0
+
+    monkeypatch.setattr(multi_supervisor_runner, "main", fake_main)
+    monkeypatch.delenv("MULTI_SUPERVISOR_TEST_DEFAULT", raising=False)
+
+    launcher = build_configured_multi_supervisor_launcher(
+        repo_root=tmp_path,
+        duration_seconds=12,
+        stamp="RUN",
+        implementation_track_configs=(
+            ImplementationSupervisorTrackConfig(
+                name="VAI",
+                script_path="scripts/vai.py",
+                state_dir="data/vai/state",
+                state_prefix="vai",
+            ),
+        ),
+        env_defaults={"MULTI_SUPERVISOR_TEST_DEFAULT": "1"},
+        prepare_environment=lambda: prepared.append("called"),
+    )
+
+    assert isinstance(launcher, ConfiguredMultiSupervisorLauncher)
+    assert "--implementation-track" in launcher.args()
+    assert launcher.run(["--duration-seconds", "0.01"]) == 0
+    assert os.environ["MULTI_SUPERVISOR_TEST_DEFAULT"] == "1"
+    assert prepared == ["called"]
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
 
 
