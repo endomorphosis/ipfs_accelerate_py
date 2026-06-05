@@ -364,11 +364,32 @@ class BootstrapPathCallbacks:
     resolve: Callable[[], dict[str, Path]]
     ensure: Callable[[Mapping[str, Path] | None], dict[str, Path]]
 
-    def output_path(self, key: str, default: str, paths: Mapping[str, Path] | None = None) -> str:
+    def output_path(self, key: str, default: str, paths: Mapping[str, Path | str] | None = None) -> str:
         """Return a repo-relative output path for a resolved bootstrap path."""
 
         resolved = self.resolve() if paths is None else paths
         return repo_relative_or_default(resolved[key], self.repo_root, default)
+
+    def output_path_factory(self, key: str, default: str) -> Callable[[Mapping[str, Path | str] | None], str]:
+        """Return a callback that resolves one repo-relative bootstrap output path."""
+
+        def factory(paths: Mapping[str, Path | str] | None = None) -> str:
+            return self.output_path(key, default, paths)
+
+        return factory
+
+    def output_path_kwargs_factory(
+        self,
+        output_key: str,
+        path_key: str,
+        default: str,
+    ) -> Callable[[Mapping[str, Path | str] | None], dict[str, str]]:
+        """Return a callback that exposes one bootstrap output path as kwargs."""
+
+        def factory(paths: Mapping[str, Path | str] | None = None) -> dict[str, str]:
+            return {output_key: self.output_path(path_key, default, paths)}
+
+        return factory
 
 
 def prefixed_bootstrap_path_spec(

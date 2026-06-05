@@ -466,6 +466,18 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert callback_bundle.resolve()["task_board_path"] == tmp_path / "tasks.md"
     assert callback_bundle.output_path("task_board_path", "fallback.md") == "tasks.md"
     assert callback_bundle.output_path("state_dir", "fallback", {"state_dir": Path("/")}) == "fallback"
+    task_board_output_path = callback_bundle.output_path_factory("task_board_path", "fallback.md")
+    assert task_board_output_path() == "tasks.md"
+    assert task_board_output_path({"task_board_path": Path("/")}) == "fallback.md"
+    task_board_output_kwargs = callback_bundle.output_path_kwargs_factory(
+        "discovery_output_path",
+        "task_board_path",
+        "fallback.md",
+    )
+    assert task_board_output_kwargs() == {"discovery_output_path": "tasks.md"}
+    assert task_board_output_kwargs({"task_board_path": Path("/")}) == {
+        "discovery_output_path": "fallback.md",
+    }
     ensured_callback_bundle = callback_bundle.ensure()
     assert ensured_callback_bundle["state_dir"].is_dir()
 
