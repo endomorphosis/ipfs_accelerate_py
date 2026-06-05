@@ -6,11 +6,13 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
+    ConfiguredSupervisorRuntime,
     ImplementationSupervisorRunContext,
     ImplementationSupervisorDefaults,
     ObjectiveRefillDefaults,
     SupervisorRunHook,
     apply_portal_implementation_supervisor_defaults,
+    build_configured_supervisor_runtime,
     build_portal_implementation_supervisor_from_args,
     build_supervisor_codebase_scan_refill_callback,
     build_supervisor_objective_refill_callback,
@@ -222,6 +224,114 @@ def test_run_configured_portal_implementation_supervisor_builds_and_runs_once(tm
 
     assert calls == [board]
     assert isinstance(result, dict)
+
+
+def test_configured_supervisor_runtime_resolves_bootstrap_paths(monkeypatch, tmp_path: Path):
+    calls: list[object] = []
+    paths = {
+        "todo_path": tmp_path / "tasks.todo.md",
+        "state_dir": tmp_path / "state",
+        "worktree_root": tmp_path / "worktrees",
+        "objective_path": tmp_path / "objective.md",
+    }
+    daemon_script = tmp_path / "daemon.py"
+    supervisor_script = tmp_path / "supervisor.py"
+    hook = SupervisorRunHook("before", "hook: %s", lambda ctx: [])
+    objective = ObjectiveRefillDefaults(objective_path=paths["objective_path"])
+    codebase = CodebaseRefillDefaults(codebase_scan_discovery_dir=tmp_path / "discovery")
+    captured: dict[str, object] = {}
+
+    def fake_run_configured_from_paths(self, argv, resolved_paths, **kwargs):
+        calls.append("run")
+        captured["argv"] = tuple(argv)
+        captured["paths"] = resolved_paths
+        captured["kwargs"] = kwargs
+        return {"ran": True}
+
+    monkeypatch.setattr(
+        ConfiguredSupervisorRuntime,
+        "run_configured_from_paths",
+        fake_run_configured_from_paths,
+    )
+
+    def ensure_paths():
+        calls.append("paths")
+        return paths
+
+    def enter_runtime():
+        calls.append("enter")
+
+    def path_callback(resolved_paths):
+        calls.append(("path-callback", resolved_paths["todo_path"]))
+
+    def objective_factory(resolved_paths):
+        calls.append(("objective", resolved_paths["objective_path"]))
+        return objective
+
+    def codebase_factory(resolved_paths):
+        calls.append(("codebase", resolved_paths["state_dir"]))
+        return codebase
+
+    def hooks_factory(resolved_paths):
+        calls.append(("hooks", resolved_paths["worktree_root"]))
+        return (hook,)
+
+    runtime = build_configured_supervisor_runtime(
+        repo_root=tmp_path,
+        script_path=supervisor_script,
+    )
+    result = runtime.run_configured_from_bootstrap(
+        ["--ensure-running", "--once"],
+        logger=logging.getLogger("test-bootstrap-supervisor-runtime"),
+        ensure_paths=ensure_paths,
+        enter_runtime_environment=enter_runtime,
+        path_callbacks=(path_callback,),
+        objective_factory=objective_factory,
+        codebase_factory=codebase_factory,
+        hooks_factory=hooks_factory,
+        task_prefix="## EX-",
+        state_prefix="example",
+        daemon_script_path=daemon_script,
+        supervisor_script_path=supervisor_script,
+        once_complete_message="complete: %s",
+        ensure_running_message="ensure: %s",
+    )
+
+    assert result == {"ran": True}
+    assert calls == [
+        "paths",
+        "enter",
+        ("path-callback", paths["todo_path"]),
+        ("objective", paths["objective_path"]),
+        ("codebase", paths["state_dir"]),
+        ("hooks", paths["worktree_root"]),
+        "run",
+    ]
+    assert captured["argv"] == ("--once",)
+    assert captured["paths"] == paths
+    assert captured["kwargs"]["task_prefix"] == "## EX-"
+    assert captured["kwargs"]["state_prefix"] == "example"
+    assert captured["kwargs"]["daemon_script_path"] == daemon_script
+    assert captured["kwargs"]["supervisor_script_path"] == supervisor_script
+    assert captured["kwargs"]["objective"] == objective
+    assert captured["kwargs"]["codebase"] == codebase
+    assert captured["kwargs"]["hooks"] == (hook,)
+    assert captured["kwargs"]["ensure_running"] is True
+    assert captured["kwargs"]["once_complete_message"] == "complete: %s"
+    assert captured["kwargs"]["ensure_running_message"] == "ensure: %s"
+
+    calls.clear()
+    runtime.run_configured_from_bootstrap(
+        [],
+        logger=logging.getLogger("test-bootstrap-supervisor-runtime"),
+        ensure_paths=ensure_paths,
+        enter_runtime_environment=enter_runtime,
+        enter_runtime_before_paths=True,
+        task_prefix="## EX-",
+        state_prefix="example",
+        daemon_script_path=daemon_script,
+    )
+    assert calls[0:2] == ["enter", "paths"]
 
 
 def test_build_supervisor_refill_hooks_formats_standard_messages():

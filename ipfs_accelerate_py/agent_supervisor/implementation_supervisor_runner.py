@@ -38,6 +38,9 @@ class SupervisorRunHook:
 
 
 RefillHookEntry = tuple[str, SupervisorRunHookCallback]
+SupervisorBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
+SupervisorBootstrapFactory = Callable[[Mapping[str, Path | str]], Any]
+SupervisorBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence[SupervisorRunHook]]
 
 
 def _with_extra_kwargs(
@@ -181,6 +184,83 @@ class ConfiguredSupervisorRuntime:
             hooks=hooks,
             once_complete_message=once_complete_message,
             ensure_running=ensure_running,
+            ensure_running_message=ensure_running_message,
+            repair_runtime=repair_runtime,
+            repair_runtime_message=repair_runtime_message,
+        )
+
+    def run_configured_from_bootstrap(
+        self,
+        argv: Sequence[str],
+        *,
+        logger: logging.Logger,
+        ensure_paths: Callable[[], Mapping[str, Path | str]],
+        task_prefix: str,
+        state_prefix: str,
+        daemon_script_path: Path | str,
+        supervisor_script_path: Path | str | None = None,
+        enter_runtime_environment: Callable[[], Any] | None = None,
+        enter_runtime_before_paths: bool = False,
+        path_callbacks: Sequence[SupervisorBootstrapPathCallback] = (),
+        objective_factory: SupervisorBootstrapFactory | None = None,
+        codebase_factory: SupervisorBootstrapFactory | None = None,
+        hooks_factory: SupervisorBootstrapHookFactory | None = None,
+        hooks: Sequence[SupervisorRunHook] = (),
+        ensure_running_flag: str = "--ensure-running",
+        ensure_running: bool | None = None,
+        todo_path_key: str = "todo_path",
+        state_dir_key: str = "state_dir",
+        worktree_root_key: str = "worktree_root",
+        todo_path_flag: str = "--todo-path",
+        max_restarts: int | str = 0,
+        llm_merge_resolver_command: str = "",
+        worktree_submodule_paths: Sequence[str] = (),
+        once_complete_message: str = "Portal implementation supervisor check complete: %s",
+        ensure_running_message: str = "Supervisor ensure complete: %s",
+        repair_runtime: bool = True,
+        repair_runtime_message: str = "Repaired stale supervisor runtime markers: %s",
+    ) -> Any:
+        """Resolve bootstrap paths, build refill defaults, and start the supervisor."""
+
+        args = list(argv)
+        effective_ensure_running = ensure_running
+        if effective_ensure_running is None:
+            if ensure_running_flag:
+                from .todo_daemon.supervisor_runtime import pop_bool_flag
+
+                effective_ensure_running = pop_bool_flag(args, ensure_running_flag)
+            else:
+                effective_ensure_running = False
+        if enter_runtime_environment is not None and enter_runtime_before_paths:
+            enter_runtime_environment()
+        paths = ensure_paths()
+        if enter_runtime_environment is not None and not enter_runtime_before_paths:
+            enter_runtime_environment()
+        for callback in path_callbacks:
+            callback(paths)
+        objective = objective_factory(paths) if objective_factory is not None else None
+        codebase = codebase_factory(paths) if codebase_factory is not None else None
+        effective_hooks = hooks_factory(paths) if hooks_factory is not None else hooks
+        return self.run_configured_from_paths(
+            args,
+            paths,
+            logger=logger,
+            task_prefix=task_prefix,
+            state_prefix=state_prefix,
+            daemon_script_path=daemon_script_path,
+            supervisor_script_path=supervisor_script_path,
+            todo_path_key=todo_path_key,
+            state_dir_key=state_dir_key,
+            worktree_root_key=worktree_root_key,
+            todo_path_flag=todo_path_flag,
+            max_restarts=max_restarts,
+            llm_merge_resolver_command=llm_merge_resolver_command,
+            worktree_submodule_paths=worktree_submodule_paths,
+            objective=objective,
+            codebase=codebase,
+            hooks=effective_hooks,
+            once_complete_message=once_complete_message,
+            ensure_running=effective_ensure_running,
             ensure_running_message=ensure_running_message,
             repair_runtime=repair_runtime,
             repair_runtime_message=repair_runtime_message,
