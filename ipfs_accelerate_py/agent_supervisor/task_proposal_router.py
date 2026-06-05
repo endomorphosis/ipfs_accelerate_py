@@ -83,11 +83,9 @@ def build_task_proposal_route_paths(
 ) -> TaskProposalRoutePaths:
     """Build standard repo-local paths for a task-proposal wrapper."""
 
-    from .wrapper_utils import task_board_filename
+    from .wrapper_utils import repo_doc_path, repo_task_board_path
 
     root = Path(repo_root)
-    resolved_task_board_dir = _repo_path(root, task_board_dir)
-    resolved_plan_dir = _repo_path(root, plan_dir if plan_dir is not None else task_board_dir)
     if artifact_dir is not None:
         resolved_artifact_dir = _repo_path(root, artifact_dir)
     else:
@@ -95,8 +93,8 @@ def build_task_proposal_route_paths(
             raise ValueError("artifact_namespace is required when artifact_dir is not configured")
         resolved_artifact_dir = _repo_path(root, artifact_root) / str(artifact_namespace) / Path(artifact_leaf)
     return TaskProposalRoutePaths(
-        task_board_path=resolved_task_board_dir / task_board_filename(task_board_stem),
-        plan_path=resolved_plan_dir / f"{plan_stem or task_board_stem}.md",
+        task_board_path=repo_task_board_path(root, task_board_stem, docs_dir=task_board_dir),
+        plan_path=repo_doc_path(root, f"{plan_stem or task_board_stem}.md", docs_dir=plan_dir or task_board_dir),
         artifact_dir=resolved_artifact_dir,
     )
 

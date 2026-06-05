@@ -125,6 +125,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     BootstrapPathSpec,
     CodebaseScanEnvSettings,
     DEFAULT_CODEBASE_SCAN_DATA_SUBDIRS,
+    DEFAULT_REPO_DOCS_DIR,
     RuntimeEnvironmentCallbacks,
     android_validation_command_needs_environment,
     android_validation_environment_contract,
@@ -165,11 +166,13 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     prefixed_env_var,
     prefixed_interoperability_focus,
     prefixed_objective_refill_env_settings,
+    repo_doc_path,
     repo_external_package_root,
     repo_external_package_roots,
     repo_root_from_env,
     repo_relative_or_default,
     repo_script_command,
+    repo_task_board_path,
     resolve_and_ensure_bootstrap_paths,
     resolve_bootstrap_paths,
     rewrite_validation_commands,
@@ -497,6 +500,19 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert task_board_env_var("WRAPPER_UTILS_") == "WRAPPER_UTILS_TODO_PATH"
     assert task_board_filename("roadmap") == "roadmap.todo.md"
     assert task_board_filename("roadmap", ".markdown") == "roadmap.todo.markdown"
+    assert DEFAULT_REPO_DOCS_DIR == "implementation_plan/docs"
+    assert repo_doc_path(tmp_path, "roadmap.md") == tmp_path / "implementation_plan" / "docs" / "roadmap.md"
+    assert repo_doc_path(tmp_path, "docs/roadmap.md") == tmp_path / "docs" / "roadmap.md"
+    assert repo_doc_path(tmp_path, tmp_path / "absolute.md") == tmp_path / "absolute.md"
+    assert repo_doc_path(tmp_path, "roadmap.md", docs_dir="project/docs") == (
+        tmp_path / "project" / "docs" / "roadmap.md"
+    )
+    assert repo_task_board_path(tmp_path, "roadmap") == (
+        tmp_path / "implementation_plan" / "docs" / "roadmap.todo.md"
+    )
+    assert repo_task_board_path(tmp_path, "roadmap", docs_dir="project/docs", suffix=".markdown") == (
+        tmp_path / "project" / "docs" / "roadmap.todo.markdown"
+    )
     assert task_board_path_option() == "--todo-path"
     assert task_board_path_key() == "todo_path"
     monkeypatch.setenv("WRAPPER_UTILS_PRIMARY_MERGE_COMMAND", "primary-merge")

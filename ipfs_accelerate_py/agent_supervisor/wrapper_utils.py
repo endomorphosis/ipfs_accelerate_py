@@ -288,6 +288,38 @@ def task_board_filename(stem: str, suffix: str = "md") -> str:
     return ".".join((stem, "to" + "do", suffix.lstrip(".")))
 
 
+DEFAULT_REPO_DOCS_DIR = "implementation_plan/docs"
+
+
+def repo_doc_path(
+    repo_root: Path | str,
+    filename: Path | str,
+    *,
+    docs_dir: Path | str = DEFAULT_REPO_DOCS_DIR,
+) -> Path:
+    """Return a repo-local documentation path from a filename or relative path."""
+
+    root = Path(repo_root)
+    path = Path(filename)
+    if path.is_absolute():
+        return path
+    if path.parent != Path("."):
+        return _repo_path(root, path)
+    return _repo_path(root, Path(docs_dir) / path)
+
+
+def repo_task_board_path(
+    repo_root: Path | str,
+    stem: str,
+    *,
+    docs_dir: Path | str = DEFAULT_REPO_DOCS_DIR,
+    suffix: str = "md",
+) -> Path:
+    """Return a repo-local task-board path using the standard task-board filename."""
+
+    return repo_doc_path(repo_root, task_board_filename(stem, suffix), docs_dir=docs_dir)
+
+
 def task_board_path_option() -> str:
     """Return the standard task-board path CLI option."""
 
