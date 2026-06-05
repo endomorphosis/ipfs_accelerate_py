@@ -903,3 +903,35 @@ def build_runtime_environment_callbacks(
             env_var=env_var,
         ),
     )
+
+
+def build_repo_runtime_environment_callbacks(
+    repo_root: Path | str,
+    package_names: Sequence[Path | str] = ("ipfs_accelerate", "ipfs_datasets"),
+    *,
+    external_dir: Path | str = "external",
+    primary_package_names: Sequence[Path | str] | None = None,
+    env_var: str = "PYTHONPATH",
+) -> RuntimeEnvironmentCallbacks:
+    """Build runtime callbacks for repo-local external package roots."""
+
+    package_roots = repo_external_package_roots(
+        repo_root,
+        package_names,
+        external_dir=external_dir,
+    )
+    primary_package_roots = (
+        None
+        if primary_package_names is None
+        else repo_external_package_roots(
+            repo_root,
+            primary_package_names,
+            external_dir=external_dir,
+        )
+    )
+    return build_runtime_environment_callbacks(
+        repo_root,
+        package_roots,
+        primary_import_paths=primary_package_roots,
+        env_var=env_var,
+    )

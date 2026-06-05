@@ -132,6 +132,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     build_default_llm_merge_resolver_command_callback,
     build_prefixed_bootstrap_path_callbacks,
     build_prefixed_default_llm_merge_resolver_command_callback,
+    build_repo_runtime_environment_callbacks,
     build_runtime_environment_callback,
     build_runtime_environment_callbacks,
     csv_tuple,
@@ -533,6 +534,20 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     monkeypatch.setattr(sys, "path", list(original_sys_path))
     callbacks.ensure_pythonpath()
     assert sys.path[:2] == [str(fifth), str(sixth)]
+    monkeypatch.setattr(sys, "path", list(original_sys_path))
+    repo_callbacks = build_repo_runtime_environment_callbacks(
+        repo,
+        ("pkg_a", "pkg_b"),
+        primary_package_names=("pkg_a",),
+    )
+    repo_callbacks.ensure_primary_pythonpath()
+    assert sys.path[0] == str(repo / "external" / "pkg_a")
+    monkeypatch.setattr(sys, "path", list(original_sys_path))
+    repo_callbacks.ensure_pythonpath()
+    assert sys.path[:2] == [
+        str(repo / "external" / "pkg_a"),
+        str(repo / "external" / "pkg_b"),
+    ]
     try:
         callbacks.enter()
         assert Path.cwd() == repo
