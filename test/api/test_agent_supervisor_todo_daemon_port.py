@@ -52,6 +52,7 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     build_configured_multi_supervisor_cli_runner,
     build_repo_implementation_multi_supervisor_launcher,
     common_args_from_parsed_args,
+    implementation_multi_supervisor_env_defaults,
     implementation_supervisor_compact_track_spec,
     implementation_supervisor_compact_track_specs,
     implementation_supervisor_common_args,
@@ -2026,6 +2027,22 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
     assert args[args.index("--objective-surplus-findings-per-goal") + 1] == "8"
     assert args[args.index("--objective-surplus-min-terms-per-todo") + 1] == "5"
     assert args[args.index("--codebase-scan-cooldown-seconds") + 1] == "900"
+
+
+def test_implementation_multi_supervisor_env_defaults_are_reusable():
+    assert implementation_multi_supervisor_env_defaults() == {
+        "PYTHONUNBUFFERED": "1",
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
+    }
+    assert implementation_multi_supervisor_env_defaults(
+        python_unbuffered=False,
+        codex_merge_resolver_timeout_seconds=0,
+        prefer_copilot_merge_resolver=True,
+    ) == {
+        "PYTHONUNBUFFERED": "0",
+        "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
+        "PREFER_COPILOT_MERGE_RESOLVER": "1",
+    }
 
 
 def test_multi_supervisor_common_args_from_parsed_defaults(monkeypatch):

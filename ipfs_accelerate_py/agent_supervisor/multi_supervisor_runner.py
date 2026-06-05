@@ -294,6 +294,34 @@ def _env_default_items(
     return tuple((str(name), str(value)) for name, value in iterable)
 
 
+def _env_default_value(value: bool | int | str) -> str:
+    if isinstance(value, bool):
+        return "1" if value else "0"
+    return str(value)
+
+
+def implementation_multi_supervisor_env_defaults(
+    *,
+    python_unbuffered: bool | int | str | None = True,
+    codex_merge_resolver_timeout_seconds: int | str | None = 60,
+    prefer_copilot_merge_resolver: bool | int | str | None = None,
+) -> dict[str, str]:
+    """Return reusable environment defaults for long-running implementation supervisors."""
+
+    defaults: dict[str, str] = {}
+    if python_unbuffered is not None:
+        defaults["PYTHONUNBUFFERED"] = _env_default_value(python_unbuffered)
+    if codex_merge_resolver_timeout_seconds is not None:
+        defaults["CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
+            codex_merge_resolver_timeout_seconds
+        )
+    if prefer_copilot_merge_resolver is not None:
+        defaults["PREFER_COPILOT_MERGE_RESOLVER"] = _env_default_value(
+            prefer_copilot_merge_resolver
+        )
+    return defaults
+
+
 def build_configured_multi_supervisor_cli_runner(
     *,
     repo_root: Path | str,
