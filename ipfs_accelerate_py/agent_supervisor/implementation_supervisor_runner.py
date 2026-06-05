@@ -41,6 +41,8 @@ RefillHookEntry = tuple[str, SupervisorRunHookCallback]
 SupervisorBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
 SupervisorBootstrapFactory = Callable[[Mapping[str, Path | str]], Any]
 SupervisorBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence[SupervisorRunHook]]
+SupervisorBootstrapOutputPathFactory = Callable[[Mapping[str, Path | str]], str | None]
+SupervisorBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
 
 
 def _with_extra_kwargs(
@@ -500,6 +502,123 @@ def build_codebase_refill_defaults_from_paths(
     )
 
 
+def _output_path_from_factory(
+    paths: Mapping[str, Path | str],
+    *,
+    value: str | None = None,
+    factory: SupervisorBootstrapOutputPathFactory | None = None,
+) -> str | None:
+    if factory is not None:
+        return factory(paths)
+    return value
+
+
+def _extra_kwargs_from_factory(
+    paths: Mapping[str, Path | str],
+    *,
+    values: Mapping[str, Any] | None = None,
+    factory: SupervisorBootstrapExtraKwargsFactory | None = None,
+) -> dict[str, Any] | None:
+    kwargs = dict(values or {})
+    if factory is not None:
+        kwargs.update(factory(paths) or {})
+    return kwargs or None
+
+
+def build_objective_refill_defaults_factory(
+    *,
+    objective_path_key: str | None = None,
+    objective_path: Path | str | None = None,
+    objective_graph_path_key: str | None = None,
+    objective_graph_path: Path | str | None = None,
+    objective_bundle_dir_key: str | None = None,
+    objective_bundle_dir: Path | str | None = None,
+    objective_dataset_dir_key: str | None = None,
+    objective_dataset_dir: Path | str | None = None,
+    objective_discovery_dir_key: str | None = None,
+    objective_discovery_dir: Path | str | None = None,
+    objective_discovery_output_path: str | None = None,
+    objective_discovery_output_path_factory: SupervisorBootstrapOutputPathFactory | None = None,
+    objective_scan_min_open_tasks: int | None = None,
+    objective_scan_max_findings: int | None = None,
+    objective_scan_cooldown_seconds: int | None = None,
+    objective_todo_vector_index_path_key: str | None = None,
+    objective_todo_vector_index_path: Path | str | None = None,
+    objective_surplus_findings_per_goal: int | None = None,
+    objective_surplus_min_terms_per_todo: int | None = None,
+    objective_interoperability_focus: Sequence[str] = (),
+    refill_scan: bool = True,
+    seed_interoperability_goals: bool = False,
+) -> SupervisorBootstrapFactory:
+    """Build a reusable bootstrap factory for objective-refill defaults."""
+
+    def factory(paths: Mapping[str, Path | str]) -> ObjectiveRefillDefaults:
+        return build_objective_refill_defaults_from_paths(
+            paths,
+            objective_path_key=objective_path_key,
+            objective_path=objective_path,
+            objective_graph_path_key=objective_graph_path_key,
+            objective_graph_path=objective_graph_path,
+            objective_bundle_dir_key=objective_bundle_dir_key,
+            objective_bundle_dir=objective_bundle_dir,
+            objective_dataset_dir_key=objective_dataset_dir_key,
+            objective_dataset_dir=objective_dataset_dir,
+            objective_discovery_dir_key=objective_discovery_dir_key,
+            objective_discovery_dir=objective_discovery_dir,
+            objective_discovery_output_path=_output_path_from_factory(
+                paths,
+                value=objective_discovery_output_path,
+                factory=objective_discovery_output_path_factory,
+            ),
+            objective_scan_min_open_tasks=objective_scan_min_open_tasks,
+            objective_scan_max_findings=objective_scan_max_findings,
+            objective_scan_cooldown_seconds=objective_scan_cooldown_seconds,
+            objective_todo_vector_index_path_key=objective_todo_vector_index_path_key,
+            objective_todo_vector_index_path=objective_todo_vector_index_path,
+            objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
+            objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
+            objective_interoperability_focus=objective_interoperability_focus,
+            refill_scan=refill_scan,
+            seed_interoperability_goals=seed_interoperability_goals,
+        )
+
+    return factory
+
+
+def build_codebase_refill_defaults_factory(
+    *,
+    codebase_scan_discovery_dir_key: str | None = None,
+    codebase_scan_discovery_dir: Path | str | None = None,
+    codebase_scan_discovery_output_path: str | None = None,
+    codebase_scan_discovery_output_path_factory: SupervisorBootstrapOutputPathFactory | None = None,
+    codebase_scan_min_open_tasks: int | None = None,
+    codebase_scan_max_findings: int | None = None,
+    codebase_scan_cooldown_seconds: int | None = None,
+    codebase_scan_skip_prefixes: Sequence[str] = (),
+    refill_scan: bool = True,
+) -> SupervisorBootstrapFactory:
+    """Build a reusable bootstrap factory for codebase-refill defaults."""
+
+    def factory(paths: Mapping[str, Path | str]) -> CodebaseRefillDefaults:
+        return build_codebase_refill_defaults_from_paths(
+            paths,
+            codebase_scan_discovery_dir_key=codebase_scan_discovery_dir_key,
+            codebase_scan_discovery_dir=codebase_scan_discovery_dir,
+            codebase_scan_discovery_output_path=_output_path_from_factory(
+                paths,
+                value=codebase_scan_discovery_output_path,
+                factory=codebase_scan_discovery_output_path_factory,
+            ),
+            codebase_scan_min_open_tasks=codebase_scan_min_open_tasks,
+            codebase_scan_max_findings=codebase_scan_max_findings,
+            codebase_scan_cooldown_seconds=codebase_scan_cooldown_seconds,
+            codebase_scan_skip_prefixes=codebase_scan_skip_prefixes,
+            refill_scan=refill_scan,
+        )
+
+    return factory
+
+
 def _with_optional_default(args: Sequence[str], flag: str, value: object | None) -> list[str]:
     if value is None:
         return list(args)
@@ -886,6 +1005,74 @@ def build_supervisor_refill_hooks_from_recorders(
         after_once_order=after_once_order,
         log_level=log_level,
     )
+
+
+def build_supervisor_refill_hooks_factory_from_recorders(
+    *,
+    discovery_dir_key: str | None = None,
+    discovery_dir: Path | str | None = None,
+    objective_recorder: SupervisorRefillRecordCallback | None = None,
+    codebase_scan_recorder: SupervisorRefillRecordCallback | None = None,
+    retry_budget_recorder: SupervisorRefillRecordCallback | None = None,
+    objective_path_key: str | None = None,
+    objective_path: Path | str | None = None,
+    repo_root: Path | None = None,
+    objective_extra_kwargs: Mapping[str, Any] | None = None,
+    objective_extra_kwargs_factory: SupervisorBootstrapExtraKwargsFactory | None = None,
+    codebase_scan_extra_kwargs: Mapping[str, Any] | None = None,
+    codebase_scan_extra_kwargs_factory: SupervisorBootstrapExtraKwargsFactory | None = None,
+    retry_budget_extra_kwargs: Mapping[str, Any] | None = None,
+    retry_budget_extra_kwargs_factory: SupervisorBootstrapExtraKwargsFactory | None = None,
+    scope_label: str = "",
+    before: bool = True,
+    after_once: bool = True,
+    after_once_order: Sequence[str] | None = None,
+    log_level: int = logging.WARNING,
+) -> SupervisorBootstrapHookFactory:
+    """Build a reusable bootstrap factory for supervisor refill hooks."""
+
+    def factory(paths: Mapping[str, Path | str]) -> tuple[SupervisorRunHook, ...]:
+        resolved_discovery_dir = _optional_path_from_mapping(
+            paths,
+            key=discovery_dir_key,
+            value=discovery_dir,
+        )
+        if resolved_discovery_dir is None:
+            raise ValueError("discovery_dir or discovery_dir_key is required")
+        return build_supervisor_refill_hooks_from_recorders(
+            objective_recorder=objective_recorder,
+            codebase_scan_recorder=codebase_scan_recorder,
+            retry_budget_recorder=retry_budget_recorder,
+            discovery_dir=resolved_discovery_dir,
+            objective_path=_optional_path_from_mapping(
+                paths,
+                key=objective_path_key,
+                value=objective_path,
+            ),
+            repo_root=repo_root,
+            objective_extra_kwargs=_extra_kwargs_from_factory(
+                paths,
+                values=objective_extra_kwargs,
+                factory=objective_extra_kwargs_factory,
+            ),
+            codebase_scan_extra_kwargs=_extra_kwargs_from_factory(
+                paths,
+                values=codebase_scan_extra_kwargs,
+                factory=codebase_scan_extra_kwargs_factory,
+            ),
+            retry_budget_extra_kwargs=_extra_kwargs_from_factory(
+                paths,
+                values=retry_budget_extra_kwargs,
+                factory=retry_budget_extra_kwargs_factory,
+            ),
+            scope_label=scope_label,
+            before=before,
+            after_once=after_once,
+            after_once_order=after_once_order,
+            log_level=log_level,
+        )
+
+    return factory
 
 
 def build_supervisor_runtime_callbacks(

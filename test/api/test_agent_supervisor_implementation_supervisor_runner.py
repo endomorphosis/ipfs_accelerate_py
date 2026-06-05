@@ -12,11 +12,14 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     ObjectiveRefillDefaults,
     SupervisorRunHook,
     apply_portal_implementation_supervisor_defaults,
+    build_codebase_refill_defaults_factory,
     build_configured_supervisor_runtime,
+    build_objective_refill_defaults_factory,
     build_portal_implementation_supervisor_from_args,
     build_supervisor_codebase_scan_refill_callback,
     build_supervisor_objective_refill_callback,
     build_supervisor_refill_hooks,
+    build_supervisor_refill_hooks_factory_from_recorders,
     build_supervisor_refill_hooks_from_recorders,
     build_supervisor_retry_budget_refill_callback,
     build_supervisor_runtime_callbacks,
@@ -78,6 +81,51 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert parsed.state_prefix == "custom"
     assert parsed.objective_scan_max_findings == 99
     assert parsed.codebase_scan_cooldown_seconds == 120
+
+
+def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_path: Path):
+    paths = {
+        "objective_path": tmp_path / "objective.md",
+        "objective_graph_path": tmp_path / "objective.json",
+        "bundle_dir": tmp_path / "bundles",
+        "dataset_dir": tmp_path / "datasets",
+        "discovery_dir": tmp_path / "discovery",
+        "todo_vector_index_path": tmp_path / "bundles" / "todo_vector_index.json",
+    }
+
+    objective_factory = build_objective_refill_defaults_factory(
+        objective_path_key="objective_path",
+        objective_graph_path_key="objective_graph_path",
+        objective_bundle_dir_key="bundle_dir",
+        objective_dataset_dir_key="dataset_dir",
+        objective_discovery_dir_key="discovery_dir",
+        objective_discovery_output_path_factory=lambda resolved: f"out/{Path(resolved['discovery_dir']).name}",
+        objective_todo_vector_index_path_key="todo_vector_index_path",
+        objective_interoperability_focus=("hallucinate_app",),
+        objective_scan_max_findings=11,
+        seed_interoperability_goals=True,
+    )
+    codebase_factory = build_codebase_refill_defaults_factory(
+        codebase_scan_discovery_dir_key="discovery_dir",
+        codebase_scan_discovery_output_path_factory=lambda resolved: f"scan/{Path(resolved['discovery_dir']).name}",
+        codebase_scan_skip_prefixes=("data/state/",),
+    )
+
+    objective = objective_factory(paths)
+    codebase = codebase_factory(paths)
+
+    assert objective.objective_path == paths["objective_path"]
+    assert objective.objective_graph_path == paths["objective_graph_path"]
+    assert objective.objective_bundle_dir == paths["bundle_dir"]
+    assert objective.objective_dataset_dir == paths["dataset_dir"]
+    assert objective.objective_discovery_output_path == "out/discovery"
+    assert objective.objective_todo_vector_index_path == paths["todo_vector_index_path"]
+    assert objective.objective_interoperability_focus == ("hallucinate_app",)
+    assert objective.objective_scan_max_findings == 11
+    assert objective.seed_interoperability_goals is True
+    assert codebase.codebase_scan_discovery_dir == paths["discovery_dir"]
+    assert codebase.codebase_scan_discovery_output_path == "scan/discovery"
+    assert codebase.codebase_scan_skip_prefixes == ("data/state/",)
 
 
 def test_build_portal_implementation_supervisor_from_args_applies_defaults(tmp_path: Path):
@@ -479,6 +527,76 @@ def test_build_supervisor_refill_hooks_from_recorders(tmp_path: Path):
     assert captured["objective"]["bundle_dir"] == tmp_path / "bundles"
     assert captured["codebase"]["max_findings"] == 5
     assert captured["codebase"]["repo_root"] == tmp_path
+    assert captured["retry"]["discovery_output_path"] == "data/discovery"
+
+
+def test_build_supervisor_refill_hooks_factory_from_recorders(tmp_path: Path):
+    paths = {
+        "discovery_dir": tmp_path / "discovery",
+        "objective_path": tmp_path / "objective.md",
+    }
+    parsed = argparse.Namespace(
+        todo_path=tmp_path / "tasks.todo.md",
+        task_prefix="## EX-",
+        objective_path=None,
+        objective_bundle_dir=tmp_path / "bundles",
+        objective_dataset_dir=tmp_path / "datasets",
+        objective_todo_vector_index_path=tmp_path / "bundles" / "todo_vector_index.json",
+        objective_scan_min_open_tasks=3,
+        objective_scan_max_findings=7,
+        objective_scan_cooldown_seconds=60,
+        objective_surplus_findings_per_goal=4,
+        objective_surplus_min_terms_per_todo=2,
+        codebase_scan_min_open_tasks=1,
+        codebase_scan_max_findings=5,
+        codebase_scan_cooldown_seconds=120,
+    )
+    context = ImplementationSupervisorRunContext(
+        parsed=parsed,
+        config=object(),
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "supervisor-events.jsonl",
+        daemon_events_path=tmp_path / "daemon-events.jsonl",
+    )
+    captured: dict[str, dict[str, object]] = {}
+
+    def recorder(label: str):
+        def callback(**kwargs: object) -> list[str]:
+            captured[label] = kwargs
+            return [label]
+
+        return callback
+
+    hooks_factory = build_supervisor_refill_hooks_factory_from_recorders(
+        objective_recorder=recorder("objective"),
+        codebase_scan_recorder=recorder("codebase"),
+        retry_budget_recorder=recorder("retry"),
+        discovery_dir_key="discovery_dir",
+        objective_path_key="objective_path",
+        repo_root=tmp_path,
+        retry_budget_extra_kwargs_factory=lambda resolved: {
+            "discovery_output_path": f"data/{Path(resolved['discovery_dir']).name}",
+        },
+        scope_label="Example",
+        after_once_order=("retry-budget", "objective-goal"),
+    )
+
+    hooks = hooks_factory(paths)
+
+    assert [(hook.phase, hook.message) for hook in hooks] == [
+        ("before", "Recorded Example objective-goal findings before supervisor pass: %s"),
+        ("before", "Recorded Example codebase-scan findings before supervisor pass: %s"),
+        ("before", "Recorded Example retry-budget findings before supervisor pass: %s"),
+        ("after_once", "Recorded Example retry-budget findings after supervisor pass: %s"),
+        ("after_once", "Recorded Example objective-goal findings after supervisor pass: %s"),
+        ("after_once", "Recorded Example codebase-scan findings after supervisor pass: %s"),
+    ]
+    assert hooks[0].callback(context) == ["objective"]
+    assert hooks[1].callback(context) == ["codebase"]
+    assert hooks[2].callback(context) == ["retry"]
+    assert captured["objective"]["objective_path"] == paths["objective_path"]
+    assert captured["codebase"]["discovery_dir"] == paths["discovery_dir"]
     assert captured["retry"]["discovery_output_path"] == "data/discovery"
 
 

@@ -37,6 +37,7 @@ DaemonLoopHookCallback = Callable[[ImplementationDaemonRunContext], Any]
 DaemonRefillRecordCallback = Callable[..., Any]
 DaemonBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
 DaemonBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence["DaemonLoopHook"]]
+DaemonBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
 
 
 @dataclass(frozen=True)
@@ -217,6 +218,18 @@ def _with_extra_kwargs(
     if extra_kwargs:
         kwargs.update(extra_kwargs)
     return kwargs
+
+
+def _extra_kwargs_from_factory(
+    paths: Mapping[str, Path | str],
+    *,
+    values: Mapping[str, Any] | None = None,
+    factory: DaemonBootstrapExtraKwargsFactory | None = None,
+) -> dict[str, Any] | None:
+    kwargs = dict(values or {})
+    if factory is not None:
+        kwargs.update(factory(paths) or {})
+    return kwargs or None
 
 
 @dataclass(frozen=True)
@@ -562,6 +575,74 @@ def build_daemon_refill_hooks_from_recorders(
         after_order=after_order,
         log_level=log_level,
     )
+
+
+def build_daemon_refill_hooks_factory_from_recorders(
+    *,
+    discovery_dir_key: str | None = None,
+    discovery_dir: Path | str | None = None,
+    objective_recorder: DaemonRefillRecordCallback | None = None,
+    codebase_scan_recorder: DaemonRefillRecordCallback | None = None,
+    retry_budget_recorder: DaemonRefillRecordCallback | None = None,
+    objective_path_key: str | None = None,
+    objective_path: Path | str | None = None,
+    repo_root: Path | None = None,
+    objective_extra_kwargs: Mapping[str, Any] | None = None,
+    objective_extra_kwargs_factory: DaemonBootstrapExtraKwargsFactory | None = None,
+    codebase_scan_extra_kwargs: Mapping[str, Any] | None = None,
+    codebase_scan_extra_kwargs_factory: DaemonBootstrapExtraKwargsFactory | None = None,
+    retry_budget_extra_kwargs: Mapping[str, Any] | None = None,
+    retry_budget_extra_kwargs_factory: DaemonBootstrapExtraKwargsFactory | None = None,
+    scope_label: str = "",
+    before: bool = True,
+    after: bool = True,
+    after_order: Sequence[str] | None = None,
+    log_level: int = logging.WARNING,
+) -> DaemonBootstrapHookFactory:
+    """Build a reusable bootstrap factory for daemon refill hooks."""
+
+    def factory(paths: Mapping[str, Path | str]) -> tuple[DaemonLoopHook, ...]:
+        resolved_discovery_dir = _optional_path_from_mapping(
+            paths,
+            key=discovery_dir_key,
+            value=discovery_dir,
+        )
+        if resolved_discovery_dir is None:
+            raise ValueError("discovery_dir or discovery_dir_key is required")
+        return build_daemon_refill_hooks_from_recorders(
+            objective_recorder=objective_recorder,
+            codebase_scan_recorder=codebase_scan_recorder,
+            retry_budget_recorder=retry_budget_recorder,
+            discovery_dir=resolved_discovery_dir,
+            objective_path=_optional_path_from_mapping(
+                paths,
+                key=objective_path_key,
+                value=objective_path,
+            ),
+            repo_root=repo_root,
+            objective_extra_kwargs=_extra_kwargs_from_factory(
+                paths,
+                values=objective_extra_kwargs,
+                factory=objective_extra_kwargs_factory,
+            ),
+            codebase_scan_extra_kwargs=_extra_kwargs_from_factory(
+                paths,
+                values=codebase_scan_extra_kwargs,
+                factory=codebase_scan_extra_kwargs_factory,
+            ),
+            retry_budget_extra_kwargs=_extra_kwargs_from_factory(
+                paths,
+                values=retry_budget_extra_kwargs,
+                factory=retry_budget_extra_kwargs_factory,
+            ),
+            scope_label=scope_label,
+            before=before,
+            after=after,
+            after_order=after_order,
+            log_level=log_level,
+        )
+
+    return factory
 
 
 def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:
