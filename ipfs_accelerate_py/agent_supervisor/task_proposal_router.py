@@ -319,6 +319,73 @@ def build_configured_task_proposal_router_runner(
     )
 
 
+def build_repo_task_proposal_router_runner(
+    *,
+    repo_root: Path | str,
+    task_board_path: Path | str,
+    task_header_prefix: str,
+    plan_path: Path | str,
+    artifact_dir: Path | str,
+    prompt_intro: str,
+    requested_outputs: Sequence[str],
+    description: str,
+    task_id_help: str,
+    no_open_task_message: str = "No open task found.",
+    task_board_option: str = "--task-board-path",
+    hidden_task_board_options: Sequence[str] = (),
+    include_dry_run_flag: bool = False,
+    bootstrap: BootstrapCallback | None = None,
+    runtime_package_names: Sequence[Path | str] = ("ipfs_accelerate", "ipfs_datasets"),
+    runtime_external_dir: Path | str = "external",
+    runtime_primary_package_names: Sequence[Path | str] | None = None,
+    runtime_env_var: str = "PYTHONPATH",
+    open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
+    plan_char_limit: int = 40000,
+    provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
+    model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
+    default_model: str = "gpt-5.3-codex-spark",
+    default_max_new_tokens: int = 2048,
+    default_timeout_seconds: int = 300,
+) -> ConfiguredTaskProposalRouterRunner:
+    """Build a task-proposal runner with the standard repo runtime bootstrap."""
+
+    resolved_repo_root = Path(repo_root)
+    effective_bootstrap = bootstrap
+    if effective_bootstrap is None:
+        from .wrapper_utils import build_repo_runtime_environment_callbacks
+
+        effective_bootstrap = build_repo_runtime_environment_callbacks(
+            resolved_repo_root,
+            runtime_package_names,
+            external_dir=runtime_external_dir,
+            primary_package_names=runtime_primary_package_names,
+            env_var=runtime_env_var,
+        ).enter
+    return build_configured_task_proposal_router_runner(
+        repo_root=resolved_repo_root,
+        task_board_path=Path(task_board_path),
+        task_header_prefix=task_header_prefix,
+        plan_path=Path(plan_path),
+        artifact_dir=Path(artifact_dir),
+        prompt_intro=prompt_intro,
+        requested_outputs=requested_outputs,
+        description=description,
+        task_id_help=task_id_help,
+        no_open_task_message=no_open_task_message,
+        task_board_option=task_board_option,
+        hidden_task_board_options=hidden_task_board_options,
+        include_dry_run_flag=include_dry_run_flag,
+        bootstrap=effective_bootstrap,
+        open_statuses=open_statuses,
+        plan_char_limit=plan_char_limit,
+        provider_env=provider_env,
+        model_env=model_env,
+        default_model=default_model,
+        default_max_new_tokens=default_max_new_tokens,
+        default_timeout_seconds=default_timeout_seconds,
+    )
+
+
 def select_proposal_task(
     tasks: Sequence[object],
     requested_task_id: str = "",

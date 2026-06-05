@@ -34,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor import task_proposal_router
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     ConfiguredTaskProposalRouterRunner,
     build_configured_task_proposal_router_runner,
+    build_repo_task_proposal_router_runner,
     run_configured_task_proposal_router_cli,
     standard_task_proposal_requested_outputs,
 )
@@ -1079,6 +1080,59 @@ def test_build_configured_task_proposal_router_runner_reuses_binding(tmp_path, m
     assert config.include_dry_run_flag is True
     config.bootstrap()
     assert bootstrapped == ["bootstrapped"]
+
+
+def test_build_repo_task_proposal_router_runner_uses_repo_runtime_bootstrap(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    task_board = repo / "tasks.md"
+    plan_path = repo / "plan.md"
+    artifact_dir = repo / "artifacts"
+    repo.mkdir()
+    captured: dict[str, object] = {}
+    bootstrapped: list[str] = []
+
+    class RuntimeCallbacks:
+        def enter(self):
+            bootstrapped.append("entered")
+
+    def fake_build_repo_runtime_environment_callbacks(repo_root, package_names, **kwargs):
+        captured["repo_root"] = repo_root
+        captured["package_names"] = tuple(package_names)
+        captured["kwargs"] = kwargs
+        return RuntimeCallbacks()
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.wrapper_utils.build_repo_runtime_environment_callbacks",
+        fake_build_repo_runtime_environment_callbacks,
+    )
+
+    runner = build_repo_task_proposal_router_runner(
+        repo_root=repo,
+        task_board_path=task_board,
+        task_header_prefix="## AUTO-",
+        plan_path=plan_path,
+        artifact_dir=artifact_dir,
+        prompt_intro="Help implement the test roadmap.",
+        requested_outputs=("files", "tests"),
+        description="Test repo proposal router",
+        task_id_help="Task id",
+        runtime_package_names=("pkg_a", "pkg_b"),
+        runtime_external_dir="vendor",
+        runtime_primary_package_names=("pkg_a",),
+        runtime_env_var="TEST_PYTHONPATH",
+    )
+
+    assert isinstance(runner, ConfiguredTaskProposalRouterRunner)
+    assert captured["repo_root"] == repo
+    assert captured["package_names"] == ("pkg_a", "pkg_b")
+    assert captured["kwargs"] == {
+        "external_dir": "vendor",
+        "primary_package_names": ("pkg_a",),
+        "env_var": "TEST_PYTHONPATH",
+    }
+    assert runner.config.bootstrap is not None
+    runner.config.bootstrap()
+    assert bootstrapped == ["entered"]
 
 
 def test_build_supervisor_runtime_operations_binds_project_wrapper(tmp_path, monkeypatch):
