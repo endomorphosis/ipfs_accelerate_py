@@ -135,6 +135,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS,
+    AgentSupervisorNamespaceContext,
     AgentSupervisorNamespacePaths,
     AgentSupervisorRuntimeBootstrapCallbacks,
     BootstrapPathCallbacks,
@@ -153,6 +154,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     bootstrap_runtime_environment,
     build_android_validation_callbacks,
     build_agent_supervisor_bootstrap_path_callbacks,
+    build_agent_supervisor_namespace_context,
     build_agent_supervisor_runtime_bootstrap_callbacks,
     build_bootstrap_path_ensurer,
     build_bootstrap_path_resolver,
@@ -794,6 +796,60 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         assert Path.cwd() == repo
     finally:
         os.chdir(cwd)
+
+
+def test_wrapper_utils_namespace_context_binds_standard_wrapper_layout(tmp_path):
+    repo = tmp_path / "repo"
+    objective_path = repo / "docs" / "objective.md"
+    context = build_agent_supervisor_namespace_context(
+        repo,
+        "WRAPPER_UTILS_CONTEXT",
+        namespace="context_namespace",
+        task_board_stem="roadmap",
+        task_board_key="task_board_path",
+        task_board_setting="todo_path",
+        objective_path=objective_path,
+        namespace_keys=("state_dir", "worktree_root", "objective_bundle_dir"),
+        runtime_package_names=("pkg_a", "pkg_b"),
+        runtime_primary_package_names=("pkg_a",),
+    )
+
+    assert isinstance(context, AgentSupervisorNamespaceContext)
+    assert context.repo_root == repo
+    assert context.env_prefix == "WRAPPER_UTILS_CONTEXT"
+    assert context.task_board_path == repo / "implementation_plan" / "docs" / "roadmap.todo.md"
+    assert context.task_board_path_key == "task_board_path"
+    assert context.task_board_path_option == "--todo-path"
+    assert context.namespace_paths == agent_supervisor_namespace_paths(repo, "context_namespace")
+    assert context.bootstrap_paths is context.runtime_bootstrap.bootstrap_paths
+    assert context.runtime_environment is context.runtime_bootstrap.runtime_environment
+    assert context.specs == (
+        BootstrapPathSpec(
+            "task_board_path",
+            repo / "implementation_plan" / "docs" / "roadmap.todo.md",
+            "WRAPPER_UTILS_CONTEXT_TODO_PATH",
+        ),
+        BootstrapPathSpec("objective_heap_path", objective_path, "WRAPPER_UTILS_CONTEXT_OBJECTIVE_HEAP_PATH"),
+        BootstrapPathSpec(
+            "state_dir",
+            repo / "data" / "context_namespace" / "state",
+            "WRAPPER_UTILS_CONTEXT_STATE_DIR",
+        ),
+        BootstrapPathSpec(
+            "worktree_root",
+            repo / "data" / "context_namespace" / "worktrees",
+            "WRAPPER_UTILS_CONTEXT_WORKTREE_ROOT",
+        ),
+        BootstrapPathSpec(
+            "objective_bundle_dir",
+            repo / "data" / "context_namespace" / "objective_bundles",
+            "WRAPPER_UTILS_CONTEXT_OBJECTIVE_BUNDLE_DIR",
+        ),
+    )
+    ensured_paths = context.bootstrap_paths.ensure(None)
+    assert ensured_paths["state_dir"].is_dir()
+    assert ensured_paths["worktree_root"].is_dir()
+    assert ensured_paths["objective_bundle_dir"].is_dir()
 
 
 def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):

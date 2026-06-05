@@ -1217,6 +1217,37 @@ class AgentSupervisorRuntimeBootstrapCallbacks:
         return self.runtime_environment.ensure_primary_pythonpath
 
 
+@dataclass(frozen=True)
+class AgentSupervisorNamespaceContext:
+    """Reusable namespace wrapper context for repo-local daemon/supervisor scripts."""
+
+    repo_root: Path
+    env_prefix: str
+    task_board_path: Path
+    task_board_path_key: str
+    task_board_path_option: str
+    namespace_paths: AgentSupervisorNamespacePaths
+    runtime_bootstrap: AgentSupervisorRuntimeBootstrapCallbacks
+
+    @property
+    def bootstrap_paths(self) -> BootstrapPathCallbacks:
+        """Return bootstrap path callbacks for this namespace context."""
+
+        return self.runtime_bootstrap.bootstrap_paths
+
+    @property
+    def runtime_environment(self) -> RuntimeEnvironmentCallbacks:
+        """Return runtime environment callbacks for this namespace context."""
+
+        return self.runtime_bootstrap.runtime_environment
+
+    @property
+    def specs(self) -> tuple[BootstrapPathSpec, ...]:
+        """Return bootstrap path specs for this namespace context."""
+
+        return self.runtime_bootstrap.specs
+
+
 def build_runtime_environment_callback(
     repo_root: Path | str,
     import_paths: Sequence[Path | str],
@@ -1339,4 +1370,78 @@ def build_agent_supervisor_runtime_bootstrap_callbacks(
             primary_package_names=runtime_primary_package_names,
             env_var=runtime_env_var,
         ),
+    )
+
+
+def build_agent_supervisor_namespace_context(
+    repo_root: Path | str,
+    prefix: str,
+    *,
+    namespace: str | None = None,
+    namespace_paths: AgentSupervisorNamespacePaths | None = None,
+    task_board_stem: str | None = None,
+    task_board_path: Path | str | None = None,
+    task_board_docs_dir: Path | str = DEFAULT_REPO_DOCS_DIR,
+    task_board_suffix: str = "md",
+    task_board_key: str = "todo_path",
+    task_board_setting: str | None = None,
+    task_board_option: str | None = None,
+    objective_path: Path | str | None = None,
+    objective_path_key: str = "objective_heap_path",
+    objective_path_setting: str | None = None,
+    namespace_keys: Iterable[str] = ("state_dir", "worktree_root"),
+    directory_keys: Iterable[str] | None = None,
+    extra_entries: Iterable[tuple[str, Path | str] | tuple[str, Path | str, str | None]] = (),
+    repo_root_key: str = "repo_root",
+    runtime_package_names: Sequence[Path | str] = ("ipfs_accelerate", "ipfs_datasets"),
+    runtime_external_dir: Path | str = "external",
+    runtime_primary_package_names: Sequence[Path | str] | None = None,
+    runtime_env_var: str = "PYTHONPATH",
+) -> AgentSupervisorNamespaceContext:
+    """Build standard repo, namespace, bootstrap, and runtime bindings for a wrapper."""
+
+    root = Path(repo_root)
+    if namespace_paths is None:
+        if namespace is None:
+            raise ValueError("namespace is required when namespace_paths is not provided")
+        namespace_paths = agent_supervisor_namespace_paths(root, namespace)
+    if task_board_path is None:
+        if task_board_stem is None:
+            raise ValueError("task_board_stem or task_board_path is required")
+        resolved_task_board_path = repo_task_board_path(
+            root,
+            task_board_stem,
+            docs_dir=task_board_docs_dir,
+            suffix=task_board_suffix,
+        )
+    else:
+        resolved_task_board_path = _repo_path(root, task_board_path)
+    resolved_task_board_option = task_board_path_option() if task_board_option is None else task_board_option
+    runtime_bootstrap = build_agent_supervisor_runtime_bootstrap_callbacks(
+        root,
+        prefix,
+        resolved_task_board_path,
+        namespace_paths,
+        todo_key=task_board_key,
+        todo_setting=task_board_setting,
+        objective_path=objective_path,
+        objective_path_key=objective_path_key,
+        objective_path_setting=objective_path_setting,
+        namespace_keys=namespace_keys,
+        directory_keys=directory_keys,
+        extra_entries=extra_entries,
+        repo_root_key=repo_root_key,
+        runtime_package_names=runtime_package_names,
+        runtime_external_dir=runtime_external_dir,
+        runtime_primary_package_names=runtime_primary_package_names,
+        runtime_env_var=runtime_env_var,
+    )
+    return AgentSupervisorNamespaceContext(
+        repo_root=root,
+        env_prefix=prefix,
+        task_board_path=resolved_task_board_path,
+        task_board_path_key=task_board_key,
+        task_board_path_option=resolved_task_board_option,
+        namespace_paths=namespace_paths,
+        runtime_bootstrap=runtime_bootstrap,
     )
