@@ -76,6 +76,8 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_codebase_refill_defaults_from_paths,
     build_configured_supervisor_runtime,
     build_implementation_supervisor_defaults_from_paths,
+    build_namespace_codebase_refill_defaults_factory,
+    build_namespace_objective_refill_defaults_factory,
     build_objective_refill_defaults_from_paths,
 )
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
@@ -1145,6 +1147,90 @@ def test_build_refill_defaults_from_paths(tmp_path):
         codebase_scan_max_findings=8,
         codebase_scan_cooldown_seconds=120,
         codebase_scan_skip_prefixes=("data/", "scripts/"),
+    )
+
+
+def test_build_namespace_refill_defaults_factories(tmp_path):
+    namespace_paths = agent_supervisor_namespace_paths(tmp_path, "agent_supervisor")
+
+    objective_factory = build_namespace_objective_refill_defaults_factory(
+        namespace_paths,
+        objective_path=tmp_path / "objective-heap.md",
+        objective_discovery_output_path="data/agent_supervisor/discovery",
+        objective_scan_min_open_tasks=7,
+        objective_scan_max_findings=3,
+        objective_scan_cooldown_seconds=90,
+        objective_surplus_findings_per_goal=6,
+        objective_surplus_min_terms_per_todo=4,
+        objective_interoperability_focus=("hallucinate_app",),
+        seed_interoperability_goals=True,
+    )
+    codebase_factory = build_namespace_codebase_refill_defaults_factory(
+        namespace_paths,
+        codebase_scan_discovery_output_path="data/agent_supervisor/discovery",
+        codebase_scan_min_open_tasks=2,
+        codebase_scan_max_findings=5,
+        codebase_scan_cooldown_seconds=180,
+        codebase_scan_skip_prefixes=("data/agent_supervisor/state/",),
+    )
+
+    assert objective_factory({}) == ObjectiveRefillDefaults(
+        objective_path=tmp_path / "objective-heap.md",
+        objective_graph_path=namespace_paths.objective_graph_path,
+        objective_bundle_dir=namespace_paths.objective_bundle_dir,
+        objective_dataset_dir=namespace_paths.objective_dataset_dir,
+        objective_discovery_dir=namespace_paths.discovery_dir,
+        objective_discovery_output_path="data/agent_supervisor/discovery",
+        objective_scan_min_open_tasks=7,
+        objective_scan_max_findings=3,
+        objective_scan_cooldown_seconds=90,
+        objective_todo_vector_index_path=namespace_paths.objective_todo_vector_index_path,
+        objective_surplus_findings_per_goal=6,
+        objective_surplus_min_terms_per_todo=4,
+        objective_interoperability_focus=("hallucinate_app",),
+        seed_interoperability_goals=True,
+    )
+    assert codebase_factory({}) == CodebaseRefillDefaults(
+        codebase_scan_discovery_dir=namespace_paths.discovery_dir,
+        codebase_scan_discovery_output_path="data/agent_supervisor/discovery",
+        codebase_scan_min_open_tasks=2,
+        codebase_scan_max_findings=5,
+        codebase_scan_cooldown_seconds=180,
+        codebase_scan_skip_prefixes=("data/agent_supervisor/state/",),
+    )
+
+    resolved_paths = {
+        "objective_heap_path": tmp_path / "custom-objective.md",
+        "objective_graph_path": tmp_path / "custom-graph.json",
+        "objective_bundle_dir": tmp_path / "custom-bundles",
+        "objective_dataset_dir": tmp_path / "custom-datasets",
+        "objective_todo_vector_index_path": tmp_path / "custom-vector.json",
+        "discovery_dir": tmp_path / "custom-discovery",
+    }
+    keyed_objective_factory = build_namespace_objective_refill_defaults_factory(
+        namespace_paths,
+        objective_path_key="objective_heap_path",
+        use_bootstrap_keys=True,
+        objective_discovery_output_path_factory=lambda _paths: "custom/discovery",
+    )
+    keyed_codebase_factory = build_namespace_codebase_refill_defaults_factory(
+        namespace_paths,
+        use_bootstrap_keys=True,
+        codebase_scan_discovery_output_path_factory=lambda _paths: "custom/discovery",
+    )
+
+    assert keyed_objective_factory(resolved_paths) == ObjectiveRefillDefaults(
+        objective_path=resolved_paths["objective_heap_path"],
+        objective_graph_path=resolved_paths["objective_graph_path"],
+        objective_bundle_dir=resolved_paths["objective_bundle_dir"],
+        objective_dataset_dir=resolved_paths["objective_dataset_dir"],
+        objective_discovery_dir=resolved_paths["discovery_dir"],
+        objective_discovery_output_path="custom/discovery",
+        objective_todo_vector_index_path=resolved_paths["objective_todo_vector_index_path"],
+    )
+    assert keyed_codebase_factory(resolved_paths) == CodebaseRefillDefaults(
+        codebase_scan_discovery_dir=resolved_paths["discovery_dir"],
+        codebase_scan_discovery_output_path="custom/discovery",
     )
 
 

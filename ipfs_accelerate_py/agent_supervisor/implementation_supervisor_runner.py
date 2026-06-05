@@ -8,7 +8,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from .wrapper_utils import with_default, with_flag_default, with_repeated_default
+from .wrapper_utils import (
+    AgentSupervisorNamespacePaths,
+    with_default,
+    with_flag_default,
+    with_repeated_default,
+)
 
 
 @dataclass(frozen=True)
@@ -617,6 +622,86 @@ def build_codebase_refill_defaults_factory(
         )
 
     return factory
+
+
+def build_namespace_objective_refill_defaults_factory(
+    namespace_paths: AgentSupervisorNamespacePaths,
+    *,
+    objective_path_key: str | None = None,
+    objective_path: Path | str | None = None,
+    use_bootstrap_keys: bool = False,
+    objective_discovery_output_path: str | None = None,
+    objective_discovery_output_path_factory: SupervisorBootstrapOutputPathFactory | None = None,
+    objective_scan_min_open_tasks: int | None = None,
+    objective_scan_max_findings: int | None = None,
+    objective_scan_cooldown_seconds: int | None = None,
+    objective_surplus_findings_per_goal: int | None = None,
+    objective_surplus_min_terms_per_todo: int | None = None,
+    objective_interoperability_focus: Sequence[str] = (),
+    refill_scan: bool = True,
+    seed_interoperability_goals: bool = False,
+) -> SupervisorBootstrapFactory:
+    """Build objective-refill defaults from a standard namespace path bundle."""
+
+    path_kwargs: dict[str, Any]
+    if use_bootstrap_keys:
+        path_kwargs = {
+            "objective_graph_path_key": "objective_graph_path",
+            "objective_bundle_dir_key": "objective_bundle_dir",
+            "objective_dataset_dir_key": "objective_dataset_dir",
+            "objective_discovery_dir_key": "discovery_dir",
+            "objective_todo_vector_index_path_key": "objective_todo_vector_index_path",
+        }
+    else:
+        path_kwargs = {
+            "objective_graph_path": namespace_paths.objective_graph_path,
+            "objective_bundle_dir": namespace_paths.objective_bundle_dir,
+            "objective_dataset_dir": namespace_paths.objective_dataset_dir,
+            "objective_discovery_dir": namespace_paths.discovery_dir,
+            "objective_todo_vector_index_path": namespace_paths.objective_todo_vector_index_path,
+        }
+    return build_objective_refill_defaults_factory(
+        objective_path_key=objective_path_key,
+        objective_path=objective_path,
+        objective_discovery_output_path=objective_discovery_output_path,
+        objective_discovery_output_path_factory=objective_discovery_output_path_factory,
+        objective_scan_min_open_tasks=objective_scan_min_open_tasks,
+        objective_scan_max_findings=objective_scan_max_findings,
+        objective_scan_cooldown_seconds=objective_scan_cooldown_seconds,
+        objective_surplus_findings_per_goal=objective_surplus_findings_per_goal,
+        objective_surplus_min_terms_per_todo=objective_surplus_min_terms_per_todo,
+        objective_interoperability_focus=objective_interoperability_focus,
+        refill_scan=refill_scan,
+        seed_interoperability_goals=seed_interoperability_goals,
+        **path_kwargs,
+    )
+
+
+def build_namespace_codebase_refill_defaults_factory(
+    namespace_paths: AgentSupervisorNamespacePaths,
+    *,
+    use_bootstrap_keys: bool = False,
+    codebase_scan_discovery_output_path: str | None = None,
+    codebase_scan_discovery_output_path_factory: SupervisorBootstrapOutputPathFactory | None = None,
+    codebase_scan_min_open_tasks: int | None = None,
+    codebase_scan_max_findings: int | None = None,
+    codebase_scan_cooldown_seconds: int | None = None,
+    codebase_scan_skip_prefixes: Sequence[str] = (),
+    refill_scan: bool = True,
+) -> SupervisorBootstrapFactory:
+    """Build codebase-refill defaults from a standard namespace path bundle."""
+
+    return build_codebase_refill_defaults_factory(
+        codebase_scan_discovery_dir_key="discovery_dir" if use_bootstrap_keys else None,
+        codebase_scan_discovery_dir=None if use_bootstrap_keys else namespace_paths.discovery_dir,
+        codebase_scan_discovery_output_path=codebase_scan_discovery_output_path,
+        codebase_scan_discovery_output_path_factory=codebase_scan_discovery_output_path_factory,
+        codebase_scan_min_open_tasks=codebase_scan_min_open_tasks,
+        codebase_scan_max_findings=codebase_scan_max_findings,
+        codebase_scan_cooldown_seconds=codebase_scan_cooldown_seconds,
+        codebase_scan_skip_prefixes=codebase_scan_skip_prefixes,
+        refill_scan=refill_scan,
+    )
 
 
 def _with_optional_default(args: Sequence[str], flag: str, value: object | None) -> list[str]:
