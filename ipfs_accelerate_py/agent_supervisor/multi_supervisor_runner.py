@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 from .todo_daemon.core import pid_alive, read_pid_file, terminate_pid_tree
-from .wrapper_utils import apply_env_defaults
+from .wrapper_utils import apply_env_defaults, env_str
 
 
 OutputFn = Callable[[str], None]
@@ -270,9 +270,11 @@ def build_configured_multi_supervisor_cli_runner(
     *,
     repo_root: Path | str,
     duration_seconds: float | int | str = 28800.0,
+    duration_seconds_env_var: str = "",
     heartbeat_interval_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
+    stamp_env_var: str = "",
     master_dir: Path | str = Path("data/agent_supervisor"),
     master_log: Path | str | None = None,
     master_pid_path: Path | str | None = None,
@@ -290,12 +292,22 @@ def build_configured_multi_supervisor_cli_runner(
 ) -> ConfiguredMultiSupervisorCliRunner:
     """Build reusable multi-supervisor CLI argv from project-specific tracks."""
 
-    effective_stamp = stamp or utc_run_stamp()
+    effective_duration_seconds = (
+        env_str(duration_seconds_env_var, str(duration_seconds))
+        if duration_seconds_env_var
+        else duration_seconds
+    )
+    effective_stamp_default = stamp or utc_run_stamp()
+    effective_stamp = (
+        env_str(stamp_env_var, effective_stamp_default)
+        if stamp_env_var
+        else effective_stamp_default
+    )
     argv = [
         "--repo-root",
         str(repo_root),
         "--duration-seconds",
-        str(duration_seconds),
+        str(effective_duration_seconds),
         "--stamp",
         effective_stamp,
         "--master-dir",
@@ -334,9 +346,11 @@ def build_configured_multi_supervisor_launcher(
     *,
     repo_root: Path | str,
     duration_seconds: float | int | str = 28800.0,
+    duration_seconds_env_var: str = "",
     heartbeat_interval_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
+    stamp_env_var: str = "",
     master_dir: Path | str = Path("data/agent_supervisor"),
     master_log: Path | str | None = None,
     master_pid_path: Path | str | None = None,
@@ -360,9 +374,11 @@ def build_configured_multi_supervisor_launcher(
         runner=build_configured_multi_supervisor_cli_runner(
             repo_root=repo_root,
             duration_seconds=duration_seconds,
+            duration_seconds_env_var=duration_seconds_env_var,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
             stop_grace_seconds=stop_grace_seconds,
             stamp=stamp,
+            stamp_env_var=stamp_env_var,
             master_dir=master_dir,
             master_log=master_log,
             master_pid_path=master_pid_path,

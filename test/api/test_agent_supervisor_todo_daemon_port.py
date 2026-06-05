@@ -1501,6 +1501,31 @@ def test_configured_multi_supervisor_cli_runner_builds_base_args_and_dispatches(
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
 
 
+def test_configured_multi_supervisor_cli_runner_can_read_launch_settings_from_env(tmp_path, monkeypatch):
+    monkeypatch.setenv("MULTI_SUPERVISOR_TEST_DURATION", "34")
+    monkeypatch.setenv("MULTI_SUPERVISOR_TEST_STAMP", "ENVSTAMP")
+
+    runner = build_configured_multi_supervisor_cli_runner(
+        repo_root=tmp_path,
+        duration_seconds=12,
+        duration_seconds_env_var="MULTI_SUPERVISOR_TEST_DURATION",
+        stamp="DEFAULTSTAMP",
+        stamp_env_var="MULTI_SUPERVISOR_TEST_STAMP",
+        implementation_track_configs=(
+            ImplementationSupervisorTrackConfig(
+                name="VAI",
+                script_path="scripts/vai.py",
+                state_dir="data/vai/state",
+                state_prefix="vai",
+            ),
+        ),
+    )
+
+    args = runner.args()
+    assert args[args.index("--duration-seconds") + 1] == "34"
+    assert args[args.index("--stamp") + 1] == "ENVSTAMP"
+
+
 def test_configured_multi_supervisor_launcher_prepares_environment(tmp_path, monkeypatch):
     captured: dict[str, tuple[str, ...]] = {}
     prepared: list[str] = []
