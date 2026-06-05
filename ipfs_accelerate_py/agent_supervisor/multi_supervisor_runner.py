@@ -113,6 +113,11 @@ class ConfiguredMultiSupervisorCliRunner:
 
         return main([*self.argv, *(extra_argv or ())])
 
+    def run_cli(self, argv: Sequence[str] | None = None) -> int:
+        """Run from a wrapper CLI, defaulting overrides from ``sys.argv``."""
+
+        return self.run(sys.argv[1:] if argv is None else argv)
+
 
 @dataclass(frozen=True)
 class ConfiguredMultiSupervisorLauncher:
@@ -140,6 +145,12 @@ class ConfiguredMultiSupervisorLauncher:
 
         self.prepare()
         return self.runner.run(extra_argv)
+
+    def run_cli(self, argv: Sequence[str] | None = None) -> int:
+        """Prepare and run from a wrapper CLI, defaulting overrides from ``sys.argv``."""
+
+        self.prepare()
+        return self.runner.run_cli(argv)
 
 
 class SupervisorRunInterrupted(Exception):

@@ -2069,6 +2069,9 @@ def test_configured_multi_supervisor_cli_runner_builds_base_args_and_dispatches(
 
     assert runner.run(["--duration-seconds", "0.01"]) == 0
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
+    monkeypatch.setattr(sys, "argv", ["multi-supervisor", "--duration-seconds", "0.02"])
+    assert runner.run_cli() == 0
+    assert captured["argv"][-2:] == ("--duration-seconds", "0.02")
 
 
 def test_configured_multi_supervisor_cli_runner_can_read_launch_settings_from_env(tmp_path, monkeypatch):
@@ -2129,6 +2132,10 @@ def test_configured_multi_supervisor_launcher_prepares_environment(tmp_path, mon
     assert os.environ["MULTI_SUPERVISOR_TEST_DEFAULT"] == "1"
     assert prepared == ["called"]
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
+    monkeypatch.setattr(sys, "argv", ["multi-supervisor", "--duration-seconds", "0.02"])
+    assert launcher.run_cli() == 0
+    assert prepared == ["called", "called"]
+    assert captured["argv"][-2:] == ("--duration-seconds", "0.02")
 
 
 def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_path, monkeypatch):
