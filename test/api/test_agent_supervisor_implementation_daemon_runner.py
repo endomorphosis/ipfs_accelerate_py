@@ -18,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_daemon_refill_hooks_factory_from_recorders,
     build_daemon_refill_hooks_from_recorders,
     build_daemon_retry_budget_refill_callback,
+    implementation_state_artifact_paths,
     implementation_state_paths,
     run_configured_portal_implementation_daemon,
     run_portal_implementation_daemon_loop,
@@ -33,6 +34,16 @@ def test_implementation_state_paths_follow_state_prefix(tmp_path: Path):
     assert paths["state_path"] == tmp_path / "state" / "example_task_state.json"
     assert paths["strategy_path"] == tmp_path / "state" / "example_strategy.json"
     assert paths["events_path"] == tmp_path / "state" / "example_events.jsonl"
+
+    supervisor_paths = implementation_state_artifact_paths(
+        tmp_path / "state",
+        "example",
+        supervisor_events=True,
+    )
+    assert supervisor_paths["state_path"] == tmp_path / "state" / "example_task_state.json"
+    assert supervisor_paths["strategy_path"] == tmp_path / "state" / "example_strategy.json"
+    assert supervisor_paths["events_path"] == tmp_path / "state" / "example_supervisor_events.jsonl"
+    assert supervisor_paths["daemon_events_path"] == tmp_path / "state" / "example_events.jsonl"
 
 
 def test_apply_portal_implementation_daemon_defaults_preserves_user_values(tmp_path: Path):

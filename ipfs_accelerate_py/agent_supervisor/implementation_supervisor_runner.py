@@ -1151,13 +1151,20 @@ def build_portal_implementation_supervisor_from_args(
         daemon_script_path=daemon_script_path,
         worktree_submodule_paths=worktree_submodule_paths,
     )
+    from .implementation_daemon_runner import implementation_state_artifact_paths
+
+    state_paths = implementation_state_artifact_paths(
+        parsed.state_dir,
+        parsed.state_prefix,
+        supervisor_events=True,
+    )
     context = ImplementationSupervisorRunContext(
         parsed=parsed,
         config=config,
         state_path=config.state_path,
         strategy_path=config.strategy_path,
         events_path=config.events_path,
-        daemon_events_path=parsed.state_dir / f"{parsed.state_prefix}_events.jsonl",
+        daemon_events_path=state_paths["daemon_events_path"],
     )
     return PortalImplementationSupervisor(config), context
 

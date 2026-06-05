@@ -645,16 +645,34 @@ def build_daemon_refill_hooks_factory_from_recorders(
     return factory
 
 
+def implementation_state_artifact_paths(
+    state_dir: Path | str,
+    state_prefix: str,
+    *,
+    supervisor_events: bool = False,
+) -> dict[str, Path]:
+    """Return standard task-state, strategy, and event-log artifact paths."""
+
+    resolved_state_dir = Path(state_dir)
+    resolved_state_prefix = str(state_prefix)
+    paths = {
+        "state_path": resolved_state_dir / f"{resolved_state_prefix}_task_state.json",
+        "strategy_path": resolved_state_dir / f"{resolved_state_prefix}_strategy.json",
+        "events_path": resolved_state_dir
+        / f"{resolved_state_prefix}_{'supervisor_' if supervisor_events else ''}events.jsonl",
+    }
+    if supervisor_events:
+        paths["daemon_events_path"] = resolved_state_dir / f"{resolved_state_prefix}_events.jsonl"
+    return paths
+
+
 def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:
     """Return standard task-state, strategy, and event-log paths for parsed daemon args."""
 
-    state_dir = Path(parsed.state_dir)
-    state_prefix = str(parsed.state_prefix)
-    return {
-        "state_path": state_dir / f"{state_prefix}_task_state.json",
-        "strategy_path": state_dir / f"{state_prefix}_strategy.json",
-        "events_path": state_dir / f"{state_prefix}_events.jsonl",
-    }
+    return implementation_state_artifact_paths(
+        Path(parsed.state_dir),
+        str(parsed.state_prefix),
+    )
 
 
 def configure_daemon_logging(
