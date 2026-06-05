@@ -56,6 +56,32 @@ class ConfiguredMergeResolverRunner:
 
         return run_configured_merge_resolver_cli(self.config, argv)
 
+    def build_merge_prompt(self) -> MergePromptCallback:
+        """Build a prompt callback using the bound project wording."""
+
+        return build_merge_prompt_callback(
+            prompt_heading=self.config.prompt_heading,
+            completion_rule=self.config.completion_rule,
+            extra_rules=self.config.extra_rules,
+        )
+
+    def resolver_payload(self) -> MergeResolverPayloadCallback:
+        """Build a resolver payload callback using the bound project wording."""
+
+        return build_resolver_payload_callback(
+            prompt_heading=self.config.prompt_heading,
+            completion_rule=self.config.completion_rule,
+            extra_rules=self.config.extra_rules,
+        )
+
+    def llm_resolver_invoker(self) -> MergeResolverInvoker:
+        """Build an LLM resolver invoker using the bound command env vars."""
+
+        return build_llm_merge_resolver_invoker(
+            primary_command_env_var=self.config.primary_command_env_var,
+            fallback_command_env_var=self.config.fallback_command_env_var,
+        )
+
 
 def build_configured_merge_resolver_runner(
     *,

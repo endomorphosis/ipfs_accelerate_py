@@ -849,6 +849,53 @@ def test_build_configured_merge_resolver_runner_reuses_binding(tmp_path, monkeyp
     assert config.missing_event_exit_code == 3
     assert config.apply_failed_exit_code == 4
 
+    event = {
+        "type": "merge_finished",
+        "task_id": "AUTO-001",
+        "attempt": 2,
+        "merge_result": {
+            "attempted": True,
+            "merged": False,
+            "branch": "implementation/auto-001",
+            "target_branch": "main",
+            "command": ["git", "merge", "main"],
+            "reason": "conflict",
+            "stdout": "merge stdout",
+            "stderr": "merge stderr",
+            "dirty_paths": ["src/conflicted.py"],
+        },
+    }
+    prompt = runner.build_merge_prompt()(event=event, repo_root=repo)
+    assert "Resolve test conflicts." in prompt
+    assert "Keep the task blocked until validation passes." in prompt
+    assert "Preserve both sides." in prompt
+    assert "AUTO-001" in prompt
+
+    events_path.write_text(json.dumps(event) + "\n")
+    payload = runner.resolver_payload()(events_path=events_path, repo_root=repo, task_id="AUTO-001")
+    assert payload["found"] is True
+    assert payload["task_id"] == "AUTO-001"
+    assert payload["prompt"].startswith("Resolve test conflicts.")
+    assert "Preserve both sides." in payload["prompt"]
+
+    monkeypatch.delenv("TEST_PRIMARY_RESOLVER", raising=False)
+    monkeypatch.delenv(merge_resolver.LLM_MERGE_RESOLVER_COMMAND_ENV, raising=False)
+    missing = runner.llm_resolver_invoker()({"repo_root": str(repo), "prompt": "prompt"})
+    assert missing["applied"] is False
+    assert "TEST_PRIMARY_RESOLVER" in missing["apply_error"]
+
+    def fake_invoke_llm_resolver(payload, *, command_template=None, timeout_seconds=None):
+        captured["command_template"] = command_template
+        captured["timeout_seconds"] = timeout_seconds
+        return {**payload, "applied": True}
+
+    monkeypatch.setattr(merge_resolver, "invoke_llm_resolver", fake_invoke_llm_resolver)
+    monkeypatch.setenv("TEST_PRIMARY_RESOLVER", "resolver --apply")
+    applied = runner.llm_resolver_invoker()({"repo_root": str(repo), "prompt": "prompt"}, timeout_seconds=12.0)
+    assert applied["applied"] is True
+    assert captured["command_template"] == "resolver --apply"
+    assert captured["timeout_seconds"] == 12.0
+
 
 def test_build_implementation_supervisor_defaults_from_paths(tmp_path):
     paths = {
