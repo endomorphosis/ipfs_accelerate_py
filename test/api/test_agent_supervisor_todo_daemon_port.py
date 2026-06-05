@@ -748,6 +748,40 @@ def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, 
     runner.run_configured(["--once"], pass_complete_message="override complete: %s")
     assert captured["kwargs"]["pass_complete_message"] == "override complete: %s"
 
+    paths = {
+        "task_board_path": repo / "tasks.md",
+        "state_dir": repo / "state",
+        "worktree_root": repo / "worktrees",
+        "objective_heap_path": objective_path,
+        "objective_bundle_dir": bundle_dir,
+    }
+
+    runner.run_configured_from_paths(
+        ["--once"],
+        paths,
+        todo_path_key="task_board_path",
+        task_prefix="## AUTO-",
+        state_prefix="agent",
+        todo_path_flag="--task-board",
+        objective_path_key="objective_heap_path",
+        objective_bundle_dir_key="objective_bundle_dir",
+        worktree_submodule_paths=("external/path-default",),
+        hooks=(hook,),
+        pass_complete_message="paths complete: %s",
+    )
+
+    forwarded = captured["argv"]
+    assert forwarded[0:2] == ("--worktree-submodule-path", "external/path-default")
+    assert forwarded[forwarded.index("--task-board") + 1] == str(repo / "tasks.md")
+    assert forwarded[forwarded.index("--state-dir") + 1] == str(repo / "state")
+    assert forwarded[forwarded.index("--task-prefix") + 1] == "## AUTO-"
+    assert forwarded[forwarded.index("--state-prefix") + 1] == "agent"
+    assert forwarded[forwarded.index("--worktree-root") + 1] == str(repo / "worktrees")
+    assert forwarded[forwarded.index("--objective-path") + 1] == str(objective_path)
+    assert forwarded[forwarded.index("--objective-bundle-dir") + 1] == str(bundle_dir)
+    assert captured["kwargs"]["hooks"] == (hook,)
+    assert captured["kwargs"]["pass_complete_message"] == "paths complete: %s"
+
 
 def test_build_configured_merge_resolver_runner_reuses_binding(tmp_path, monkeypatch):
     repo = tmp_path / "repo"

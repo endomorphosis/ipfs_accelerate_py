@@ -81,6 +81,48 @@ class ConfiguredImplementationDaemonRunner:
             pass_complete_message=pass_complete_message or self.pass_complete_message,
         )
 
+    def run_configured_from_paths(
+        self,
+        argv: Sequence[str],
+        paths: Mapping[str, Path | str],
+        *,
+        task_prefix: str,
+        state_prefix: str,
+        todo_path_key: str = "todo_path",
+        state_dir_key: str = "state_dir",
+        worktree_root_key: str = "worktree_root",
+        todo_path_flag: str = "--todo-path",
+        objective_path_key: str | None = None,
+        objective_path: Path | str | None = None,
+        objective_bundle_dir_key: str | None = None,
+        objective_bundle_dir: Path | str | None = None,
+        worktree_submodule_paths: Sequence[str] = (),
+        hooks: Sequence[DaemonLoopHook] = (),
+        pass_complete_message: str | None = None,
+    ) -> Any:
+        """Apply path-derived defaults and run this configured daemon."""
+
+        args = apply_portal_implementation_daemon_defaults_from_paths(
+            argv,
+            paths,
+            task_prefix=task_prefix,
+            state_prefix=state_prefix,
+            todo_path_key=todo_path_key,
+            state_dir_key=state_dir_key,
+            worktree_root_key=worktree_root_key,
+            todo_path_flag=todo_path_flag,
+            objective_path_key=objective_path_key,
+            objective_path=objective_path,
+            objective_bundle_dir_key=objective_bundle_dir_key,
+            objective_bundle_dir=objective_bundle_dir,
+            worktree_submodule_paths=worktree_submodule_paths,
+        )
+        return self.run_configured(
+            args,
+            hooks=hooks,
+            pass_complete_message=pass_complete_message,
+        )
+
 
 def build_configured_implementation_daemon_runner(
     *,
