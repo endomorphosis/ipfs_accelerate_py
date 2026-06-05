@@ -119,6 +119,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     terminate_supervised_child,
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
+    AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS,
     AgentSupervisorNamespacePaths,
     BootstrapPathCallbacks,
     BootstrapPathSpec,
@@ -127,11 +128,13 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     RuntimeEnvironmentCallbacks,
     android_validation_command_needs_environment,
     android_validation_environment_contract,
+    agent_supervisor_bootstrap_path_entries,
     agent_supervisor_namespace_paths,
     apply_env_defaults,
     apply_environment_contract,
     bootstrap_runtime_environment,
     build_android_validation_callbacks,
+    build_agent_supervisor_bootstrap_path_callbacks,
     build_bootstrap_path_ensurer,
     build_bootstrap_path_resolver,
     build_default_llm_merge_resolver_command_callback,
@@ -317,6 +320,52 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert custom_namespace_paths.objective_todo_vector_index_path == (
         tmp_path / "runtime" / "agent_supervisor" / "bundles" / "index.json"
     )
+    assert AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS == (
+        "state_dir",
+        "worktree_root",
+        "discovery_dir",
+        "objective_bundle_dir",
+        "objective_dataset_dir",
+    )
+    assert agent_supervisor_bootstrap_path_entries(
+        tmp_path / "tasks.md",
+        namespace_paths,
+        todo_key="task_board_path",
+        todo_setting="todo_path",
+        objective_path=tmp_path / "objective.md",
+        namespace_keys=("state_dir", "discovery_dir", "objective_bundle_dir"),
+    ) == (
+        ("task_board_path", tmp_path / "tasks.md", "todo_path"),
+        ("objective_heap_path", tmp_path / "objective.md"),
+        ("state_dir", namespace_paths.state_dir),
+        ("discovery_dir", namespace_paths.discovery_dir),
+        ("objective_bundle_dir", namespace_paths.objective_bundle_dir),
+    )
+    bootstrap_callbacks = build_agent_supervisor_bootstrap_path_callbacks(
+        tmp_path,
+        "WRAPPER_UTILS",
+        tmp_path / "tasks.md",
+        namespace_paths,
+        todo_key="task_board_path",
+        todo_setting="todo_path",
+        objective_path=tmp_path / "objective.md",
+        namespace_keys=("state_dir", "discovery_dir", "objective_graph_path"),
+    )
+    assert bootstrap_callbacks.specs == (
+        BootstrapPathSpec("task_board_path", tmp_path / "tasks.md", "WRAPPER_UTILS_TODO_PATH"),
+        BootstrapPathSpec("objective_heap_path", tmp_path / "objective.md", "WRAPPER_UTILS_OBJECTIVE_HEAP_PATH"),
+        BootstrapPathSpec("state_dir", namespace_paths.state_dir, "WRAPPER_UTILS_STATE_DIR"),
+        BootstrapPathSpec("discovery_dir", namespace_paths.discovery_dir, "WRAPPER_UTILS_DISCOVERY_DIR"),
+        BootstrapPathSpec(
+            "objective_graph_path",
+            namespace_paths.objective_graph_path,
+            "WRAPPER_UTILS_OBJECTIVE_GRAPH_PATH",
+        ),
+    )
+    ensured = bootstrap_callbacks.ensure(None)
+    assert ensured["state_dir"].is_dir()
+    assert ensured["discovery_dir"].is_dir()
+    assert not ensured["objective_graph_path"].exists()
     monkeypatch.setenv("WRAPPER_UTILS_CSV", "alpha,beta")
     assert env_csv_tuple("WRAPPER_UTILS_CSV", "fallback") == ("alpha", "beta")
     monkeypatch.delenv("WRAPPER_UTILS_STRING", raising=False)

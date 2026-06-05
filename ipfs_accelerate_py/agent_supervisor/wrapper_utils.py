@@ -530,6 +530,85 @@ def prefixed_bootstrap_path_specs(
     return tuple(specs)
 
 
+AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS = (
+    "state_dir",
+    "worktree_root",
+    "discovery_dir",
+    "objective_bundle_dir",
+    "objective_dataset_dir",
+)
+
+
+def agent_supervisor_bootstrap_path_entries(
+    todo_path: Path | str,
+    namespace_paths: AgentSupervisorNamespacePaths,
+    *,
+    todo_key: str = "todo_path",
+    todo_setting: str | None = None,
+    objective_path: Path | str | None = None,
+    objective_path_key: str = "objective_heap_path",
+    objective_path_setting: str | None = None,
+    namespace_keys: Iterable[str] = ("state_dir", "worktree_root"),
+    extra_entries: Iterable[tuple[str, Path | str] | tuple[str, Path | str, str | None]] = (),
+) -> tuple[tuple[str, Path | str] | tuple[str, Path | str, str | None], ...]:
+    """Build standard bootstrap entries from a task board and namespace paths."""
+
+    entries: list[tuple[str, Path | str] | tuple[str, Path | str, str | None]] = []
+    entries.append((todo_key, todo_path) if todo_setting is None else (todo_key, todo_path, todo_setting))
+    if objective_path is not None:
+        entries.append(
+            (objective_path_key, objective_path)
+            if objective_path_setting is None
+            else (objective_path_key, objective_path, objective_path_setting)
+        )
+    for key in namespace_keys:
+        entries.append((key, getattr(namespace_paths, key)))
+    entries.extend(extra_entries)
+    return tuple(entries)
+
+
+def build_agent_supervisor_bootstrap_path_callbacks(
+    repo_root: Path | str,
+    prefix: str,
+    todo_path: Path | str,
+    namespace_paths: AgentSupervisorNamespacePaths,
+    *,
+    todo_key: str = "todo_path",
+    todo_setting: str | None = None,
+    objective_path: Path | str | None = None,
+    objective_path_key: str = "objective_heap_path",
+    objective_path_setting: str | None = None,
+    namespace_keys: Iterable[str] = ("state_dir", "worktree_root"),
+    directory_keys: Iterable[str] | None = None,
+    extra_entries: Iterable[tuple[str, Path | str] | tuple[str, Path | str, str | None]] = (),
+    repo_root_key: str = "repo_root",
+) -> BootstrapPathCallbacks:
+    """Build prefixed bootstrap callbacks for the standard supervisor namespace layout."""
+
+    keys = tuple(namespace_keys)
+    entries = agent_supervisor_bootstrap_path_entries(
+        todo_path,
+        namespace_paths,
+        todo_key=todo_key,
+        todo_setting=todo_setting,
+        objective_path=objective_path,
+        objective_path_key=objective_path_key,
+        objective_path_setting=objective_path_setting,
+        namespace_keys=keys,
+        extra_entries=extra_entries,
+    )
+    resolved_directory_keys = tuple(
+        key for key in keys if key in AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS
+    ) if directory_keys is None else tuple(directory_keys)
+    return build_prefixed_bootstrap_path_callbacks(
+        repo_root,
+        prefix,
+        entries,
+        resolved_directory_keys,
+        repo_root_key=repo_root_key,
+    )
+
+
 def _repo_path(repo_root: Path, path: Path | str) -> Path:
     resolved = Path(path)
     if resolved.is_absolute():
