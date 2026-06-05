@@ -70,6 +70,13 @@ def env_csv_tuple(env_var: str, default: str = "") -> tuple[str, ...]:
     return csv_tuple(os.environ.get(env_var, default))
 
 
+def env_str(env_var: str, default: str = "") -> str:
+    """Return a stripped string environment setting with an explicit default."""
+
+    value = os.environ.get(env_var, "").strip()
+    return value or default
+
+
 def env_int(env_var: str, default: int | str, *, minimum: int | None = None, maximum: int | None = None) -> int:
     """Return an integer environment setting with an explicit default."""
 
@@ -120,6 +127,12 @@ def prefixed_env_csv_tuple(prefix: str, setting: str, default: str = "") -> tupl
     """Return a prefixed comma-separated environment setting as a tuple."""
 
     return env_csv_tuple(prefixed_env_var(prefix, setting), default)
+
+
+def prefixed_env_str(prefix: str, setting: str, default: str = "") -> str:
+    """Return a prefixed string environment setting with an explicit default."""
+
+    return env_str(prefixed_env_var(prefix, setting), default)
 
 
 def prefixed_interoperability_focus(prefix: str, default: str = "") -> tuple[str, ...]:

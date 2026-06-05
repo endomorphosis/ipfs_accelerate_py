@@ -136,6 +136,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     env_csv_tuple,
     env_int,
     env_path,
+    env_str,
     ObjectiveRefillEnvSettings,
     prefixed_bootstrap_path_spec,
     prefixed_bootstrap_path_specs,
@@ -143,6 +144,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     prefixed_env_csv_tuple,
     prefixed_env_int,
     prefixed_env_path,
+    prefixed_env_str,
     prefixed_env_var,
     prefixed_interoperability_focus,
     prefixed_objective_refill_env_settings,
@@ -243,6 +245,10 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert csv_tuple(["a,b", "b,c"]) == ("a", "b", "c")
     monkeypatch.setenv("WRAPPER_UTILS_CSV", "alpha,beta")
     assert env_csv_tuple("WRAPPER_UTILS_CSV", "fallback") == ("alpha", "beta")
+    monkeypatch.delenv("WRAPPER_UTILS_STRING", raising=False)
+    assert env_str("WRAPPER_UTILS_STRING", "fallback") == "fallback"
+    monkeypatch.setenv("WRAPPER_UTILS_STRING", " custom ")
+    assert env_str("WRAPPER_UTILS_STRING", "fallback") == "custom"
     monkeypatch.delenv("WRAPPER_UTILS_INT", raising=False)
     assert env_int("WRAPPER_UTILS_INT", 7) == 7
     monkeypatch.setenv("WRAPPER_UTILS_INT", "11")
@@ -284,6 +290,8 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         prefixed_bootstrap_path_specs("WRAPPER_UTILS", (("bad", "path", "setting", "extra"),))
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_CSV", "one,two")
     assert prefixed_env_csv_tuple("WRAPPER_UTILS", "TYPED_CSV") == ("one", "two")
+    monkeypatch.setenv("WRAPPER_UTILS_TYPED_STRING", " typed ")
+    assert prefixed_env_str("WRAPPER_UTILS", "TYPED_STRING", "fallback") == "typed"
     monkeypatch.setenv("WRAPPER_UTILS_INTEROPERABILITY_FOCUS", "hallucinate_app,swissknife")
     assert prefixed_interoperability_focus("WRAPPER_UTILS", "fallback") == ("hallucinate_app", "swissknife")
     monkeypatch.setenv("WRAPPER_UTILS_TYPED_INT", "12")
