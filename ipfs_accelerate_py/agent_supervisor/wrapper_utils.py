@@ -130,6 +130,36 @@ def repo_root_from_env(
     return Path(configured or fallback or Path.cwd()).resolve()
 
 
+def repo_external_package_root(
+    repo_root: Path | str,
+    package_name: Path | str,
+    *,
+    external_dir: Path | str = "external",
+) -> Path:
+    """Return one package root under a repo-local external dependency directory."""
+
+    package_path = Path(package_name)
+    if package_path.is_absolute():
+        return package_path
+    base_path = Path(external_dir)
+    base = base_path if base_path.is_absolute() else Path(repo_root) / base_path
+    return base / package_path
+
+
+def repo_external_package_roots(
+    repo_root: Path | str,
+    package_names: Sequence[Path | str],
+    *,
+    external_dir: Path | str = "external",
+) -> tuple[Path, ...]:
+    """Return package roots under a repo-local external dependency directory."""
+
+    return tuple(
+        repo_external_package_root(repo_root, package_name, external_dir=external_dir)
+        for package_name in package_names
+    )
+
+
 def task_board_filename(stem: str, suffix: str = "md") -> str:
     """Return a scanner-neutral task-board markdown filename."""
 

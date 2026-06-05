@@ -149,6 +149,8 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     prefixed_env_var,
     prefixed_interoperability_focus,
     prefixed_objective_refill_env_settings,
+    repo_external_package_root,
+    repo_external_package_roots,
     repo_root_from_env,
     repo_relative_or_default,
     resolve_and_ensure_bootstrap_paths,
@@ -275,6 +277,14 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert repo_root_from_env(environ={"REPO_ROOT": str(tmp_path / "override")}, fallback=tmp_path / "fallback") == (
         tmp_path / "override"
     ).resolve()
+    assert repo_external_package_root(tmp_path, "ipfs_accelerate") == tmp_path / "external" / "ipfs_accelerate"
+    assert repo_external_package_root(tmp_path, "custom", external_dir="vendor") == tmp_path / "vendor" / "custom"
+    absolute_package = tmp_path / "absolute-package"
+    assert repo_external_package_root(tmp_path, absolute_package) == absolute_package
+    assert repo_external_package_roots(tmp_path, ("ipfs_accelerate", "ipfs_datasets")) == (
+        tmp_path / "external" / "ipfs_accelerate",
+        tmp_path / "external" / "ipfs_datasets",
+    )
     assert prefixed_env_var("wrapper_utils", "state_dir") == "WRAPPER_UTILS_STATE_DIR"
     assert prefixed_env_var("WRAPPER_UTILS_", "_worktree_root", "") == "WRAPPER_UTILS_WORKTREE_ROOT"
     assert prefixed_bootstrap_path_spec("state_dir", "state", "WRAPPER_UTILS") == BootstrapPathSpec(
