@@ -28,7 +28,9 @@ from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_prio
 from ipfs_accelerate_py.agent_supervisor import merge_resolver
 from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     ConfiguredMergeResolverRunner,
+    MergeResolverNamespaceSpec,
     build_configured_merge_resolver_runner,
+    build_namespace_merge_resolver_runner_from_spec,
 )
 from ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback import (
     llm_merge_resolver_fallback_command,
@@ -1156,6 +1158,36 @@ def test_build_configured_merge_resolver_runner_reuses_binding(tmp_path, monkeyp
     assert applied["applied"] is True
     assert captured["command_template"] == "resolver --apply"
     assert captured["timeout_seconds"] == 12.0
+
+
+def test_build_namespace_merge_resolver_runner_from_spec_uses_namespace_defaults(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    resolver_spec = MergeResolverNamespaceSpec(
+        namespace="agent_supervisor",
+        env_prefix="AGENT",
+        prompt_heading="Resolve agent conflict.",
+        completion_rule="Keep blocked until validation passes.",
+        extra_rules=("Preserve both branches.",),
+        missing_event_exit_code=5,
+        apply_failed_exit_code=6,
+    )
+
+    runner = build_namespace_merge_resolver_runner_from_spec(
+        repo_root=repo,
+        resolver_spec=resolver_spec,
+    )
+
+    assert isinstance(runner, ConfiguredMergeResolverRunner)
+    config = runner.config
+    assert config.default_events_path == repo / "data" / "agent_supervisor" / "state" / "agent_supervisor_events.jsonl"
+    assert config.default_repo_root == repo
+    assert config.prompt_heading == "Resolve agent conflict."
+    assert config.completion_rule == "Keep blocked until validation passes."
+    assert config.extra_rules == ("Preserve both branches.",)
+    assert config.primary_command_env_var == "AGENT_LLM_MERGE_RESOLVER_COMMAND"
+    assert config.missing_event_exit_code == 5
+    assert config.apply_failed_exit_code == 6
 
 
 def test_build_implementation_supervisor_defaults_from_paths(tmp_path):

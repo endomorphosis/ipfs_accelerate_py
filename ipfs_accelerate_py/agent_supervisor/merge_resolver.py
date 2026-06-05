@@ -41,6 +41,23 @@ class MergeResolverCliConfig:
 
 
 @dataclass(frozen=True)
+class MergeResolverNamespaceSpec:
+    """Namespace merge-resolver values without repo-root binding."""
+
+    namespace: str
+    prompt_heading: str = DEFAULT_PROMPT_HEADING
+    completion_rule: str = DEFAULT_COMPLETION_RULE
+    extra_rules: Sequence[str] = field(default_factory=tuple)
+    state_prefix: str | None = None
+    env_prefix: str = ""
+    state_dir: Path | str | None = None
+    description: str = "Build or invoke an LLM merge resolver for agent-supervisor events"
+    missing_event_exit_code: int = 0
+    apply_failed_exit_code: int = 1
+    fallback_command_env_var: str = LLM_MERGE_RESOLVER_COMMAND_ENV
+
+
+@dataclass(frozen=True)
 class ConfiguredMergeResolverRunner:
     """Project-bound runner wiring for a merge-resolver CLI."""
 
@@ -154,6 +171,29 @@ def build_namespace_merge_resolver_runner(
         description=description,
         missing_event_exit_code=missing_event_exit_code,
         apply_failed_exit_code=apply_failed_exit_code,
+    )
+
+
+def build_namespace_merge_resolver_runner_from_spec(
+    *,
+    repo_root: Path | str,
+    resolver_spec: MergeResolverNamespaceSpec,
+) -> ConfiguredMergeResolverRunner:
+    """Build a namespace merge-resolver runner from a reusable namespace spec."""
+
+    return build_namespace_merge_resolver_runner(
+        repo_root=repo_root,
+        namespace=resolver_spec.namespace,
+        prompt_heading=resolver_spec.prompt_heading,
+        completion_rule=resolver_spec.completion_rule,
+        extra_rules=resolver_spec.extra_rules,
+        state_prefix=resolver_spec.state_prefix,
+        env_prefix=resolver_spec.env_prefix,
+        state_dir=resolver_spec.state_dir,
+        description=resolver_spec.description,
+        missing_event_exit_code=resolver_spec.missing_event_exit_code,
+        apply_failed_exit_code=resolver_spec.apply_failed_exit_code,
+        fallback_command_env_var=resolver_spec.fallback_command_env_var,
     )
 
 
