@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import sys
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -265,9 +266,10 @@ class ConfiguredDaemonBootstrapRunner:
     worktree_submodule_paths: Sequence[str] = ()
     pass_complete_message: str | None = None
 
-    def run(self, argv: Sequence[str]) -> Any:
+    def run(self, argv: Sequence[str] | None = None) -> Any:
         """Run the configured implementation daemon from bootstrap paths."""
 
+        args = list(sys.argv[1:] if argv is None else argv)
         kwargs: dict[str, Any] = {
             "ensure_paths": self.ensure_paths,
             "enter_runtime_environment": self.enter_runtime_environment,
@@ -291,8 +293,8 @@ class ConfiguredDaemonBootstrapRunner:
         if self.namespace_paths is not None:
             kwargs["namespace_paths"] = self.namespace_paths
             kwargs["use_bootstrap_keys"] = self.use_bootstrap_keys
-            return self.runner.run_namespace_configured_from_bootstrap(argv, **kwargs)
-        return self.runner.run_configured_from_bootstrap(argv, **kwargs)
+            return self.runner.run_namespace_configured_from_bootstrap(args, **kwargs)
+        return self.runner.run_configured_from_bootstrap(args, **kwargs)
 
 
 def build_configured_daemon_bootstrap_runner(

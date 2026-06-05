@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
@@ -356,6 +357,10 @@ def test_configured_daemon_bootstrap_runner_dispatches_without_namespace(
     assert payload["kwargs"]["task_prefix"] == "## EX-"
     assert payload["kwargs"]["state_prefix"] == "example"
     assert payload["kwargs"]["worktree_submodule_paths"] == ("module-a",)
+
+    monkeypatch.setattr(sys, "argv", ["example-daemon.py", "--status"])
+    assert bootstrap.run() == {"ran": True}
+    assert captured["payload"]["argv"] == ("--status",)
 
 
 def test_namespace_daemon_bootstrap_runner_dispatches_namespace_defaults(

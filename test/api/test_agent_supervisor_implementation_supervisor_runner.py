@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
@@ -512,6 +513,10 @@ def test_build_script_supervisor_bootstrap_runner_builds_runtime_and_dispatches(
     assert captured["kwargs"]["state_prefix"] == "example"
     assert captured["kwargs"]["daemon_script_path"] == daemon_script
     assert captured["kwargs"]["worktree_submodule_paths"] == ("module-a",)
+
+    monkeypatch.setattr(sys, "argv", ["example_supervisor.py", "--ensure-running"])
+    assert runner.run() == {"ran": True}
+    assert captured["argv"] == ("--ensure-running",)
 
 
 def test_build_script_supervisor_runtime_derives_script_marker(tmp_path: Path):

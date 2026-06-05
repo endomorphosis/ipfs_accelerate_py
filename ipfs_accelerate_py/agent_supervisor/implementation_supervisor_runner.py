@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
@@ -311,11 +312,12 @@ class ConfiguredSupervisorBootstrapRunner:
         command = self.llm_merge_resolver_command
         return str(command()) if callable(command) else str(command or "")
 
-    def run(self, argv: Sequence[str]) -> Any:
+    def run(self, argv: Sequence[str] | None = None) -> Any:
         """Run the configured supervisor from bootstrap paths."""
 
+        args = list(sys.argv[1:] if argv is None else argv)
         return self.runtime.run_configured_from_bootstrap(
-            argv,
+            args,
             logger=self.logger,
             ensure_paths=self.ensure_paths,
             enter_runtime_environment=self.enter_runtime_environment,
