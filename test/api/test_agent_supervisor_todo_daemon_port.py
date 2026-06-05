@@ -439,7 +439,19 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert bootstrap.script_repo_root == tmp_path / "bootstrap-repo"
     assert bootstrap.repo_root == (tmp_path / "runtime-repo").resolve()
     assert bootstrap.package_root == tmp_path / "bootstrap-repo" / "external" / "ipfs_accelerate"
+    assert bootstrap.script_dir == script_path.parent
     assert sys.path[0] == str(bootstrap.package_root)
+    monkeypatch.setattr(sys, "path", list(bootstrap_sys_path))
+    bootstrap_with_script_dir = build_repo_script_bootstrap(
+        script_path,
+        include_script_dir=True,
+        environ={},
+    )
+    assert bootstrap_with_script_dir.script_dir == script_path.parent
+    assert sys.path[:2] == [
+        str(bootstrap_with_script_dir.package_root),
+        str(script_path.parent),
+    ]
     monkeypatch.setattr(sys, "path", list(bootstrap_sys_path))
     custom_bootstrap = build_repo_script_bootstrap(
         script_path,

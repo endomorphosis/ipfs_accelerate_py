@@ -261,6 +261,7 @@ class RepoScriptBootstrap:
     script_repo_root: Path
     repo_root: Path
     package_root: Path
+    script_dir: Path
 
 
 def build_repo_script_bootstrap(
@@ -271,11 +272,13 @@ def build_repo_script_bootstrap(
     repo_root_env_var: str = "REPO_ROOT",
     script_repo_root_parent: int = 1,
     ensure_package_path: bool = True,
+    include_script_dir: bool = False,
     environ: Mapping[str, str] | None = None,
 ) -> RepoScriptBootstrap:
     """Build env-aware bootstrap paths for a repo-local wrapper script."""
 
     script_path = Path(script_file).resolve()
+    script_dir = script_path.parent
     script_repo_root = script_path.parents[script_repo_root_parent]
     package_root = repo_external_package_root(
         script_repo_root,
@@ -283,7 +286,8 @@ def build_repo_script_bootstrap(
         external_dir=external_dir,
     )
     if ensure_package_path:
-        ensure_sys_path((package_root,))
+        import_paths = (package_root, script_dir) if include_script_dir else (package_root,)
+        ensure_sys_path(import_paths)
     return RepoScriptBootstrap(
         script_path=script_path,
         script_repo_root=script_repo_root,
@@ -293,6 +297,7 @@ def build_repo_script_bootstrap(
             environ=environ,
         ),
         package_root=package_root,
+        script_dir=script_dir,
     )
 
 
