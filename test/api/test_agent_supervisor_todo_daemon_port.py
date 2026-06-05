@@ -39,6 +39,7 @@ from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
 from ipfs_accelerate_py.agent_supervisor import multi_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     ConfiguredMultiSupervisorCliRunner,
+    ImplementationSupervisorTrackConfig,
     build_arg_parser as build_multi_supervisor_arg_parser,
     build_configured_multi_supervisor_cli_runner,
     common_args_from_parsed_args,
@@ -1335,6 +1336,12 @@ def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
 
 
 def test_implementation_supervisor_track_spec_uses_standard_state_layout():
+    config = ImplementationSupervisorTrackConfig(
+        name="VAI",
+        script_path="scripts/virtual_ai_os_todo_supervisor.py",
+        state_dir="data/virtual_ai_os/state",
+        state_prefix="virtual_ai_os",
+    )
     compact_spec = implementation_supervisor_compact_track_spec(
         name="VAI",
         script_path="scripts/virtual_ai_os_todo_supervisor.py",
@@ -1343,7 +1350,7 @@ def test_implementation_supervisor_track_spec_uses_standard_state_layout():
     )
     compact_specs = implementation_supervisor_compact_track_specs(
         (
-            ("VAI", "scripts/virtual_ai_os_todo_supervisor.py", "data/virtual_ai_os/state", "virtual_ai_os"),
+            config,
             (
                 "MGW",
                 "scripts/meta_glasses_display_todo_supervisor.py",
@@ -1364,6 +1371,8 @@ def test_implementation_supervisor_track_spec_uses_standard_state_layout():
     )
 
     assert compact_spec == "VAI|scripts/virtual_ai_os_todo_supervisor.py|data/virtual_ai_os/state|virtual_ai_os"
+    assert config.compact_spec() == compact_spec
+    assert config.track_spec() == spec
     assert compact_specs == (
         compact_spec,
         "MGW|scripts/meta_glasses_display_todo_supervisor.py|data/meta_glasses_display_widgets/state|"

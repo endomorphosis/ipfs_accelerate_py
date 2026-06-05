@@ -50,6 +50,36 @@ class SupervisorTrack:
 
 
 @dataclass(frozen=True)
+class ImplementationSupervisorTrackConfig:
+    """Structured inputs for one implementation-supervisor track."""
+
+    name: str
+    script_path: Path | str
+    state_dir: Path | str
+    state_prefix: str
+
+    def compact_spec(self) -> str:
+        """Return the compact CLI ``--implementation-track`` spec."""
+
+        return implementation_supervisor_compact_track_spec(
+            name=self.name,
+            script_path=self.script_path,
+            state_dir=self.state_dir,
+            state_prefix=self.state_prefix,
+        )
+
+    def track_spec(self) -> str:
+        """Return the expanded supervisor track spec with log and PID paths."""
+
+        return implementation_supervisor_track_spec(
+            name=self.name,
+            script_path=self.script_path,
+            state_dir=self.state_dir,
+            state_prefix=self.state_prefix,
+        )
+
+
+@dataclass(frozen=True)
 class ConfiguredMultiSupervisorCliRunner:
     """Project-bound CLI argv for launching the reusable multi-supervisor runner."""
 
@@ -146,19 +176,25 @@ def implementation_supervisor_compact_track_spec(
 
 
 def implementation_supervisor_compact_track_specs(
-    track_configs: Sequence[tuple[str, Path | str, Path | str, str]],
+    track_configs: Sequence[ImplementationSupervisorTrackConfig | tuple[str, Path | str, Path | str, str]],
 ) -> tuple[str, ...]:
     """Return compact implementation-track specs from structured track configs."""
 
-    return tuple(
-        implementation_supervisor_compact_track_spec(
-            name=name,
-            script_path=script_path,
-            state_dir=state_dir,
-            state_prefix=state_prefix,
+    specs: list[str] = []
+    for config in track_configs:
+        if isinstance(config, ImplementationSupervisorTrackConfig):
+            specs.append(config.compact_spec())
+            continue
+        name, script_path, state_dir, state_prefix = config
+        specs.append(
+            implementation_supervisor_compact_track_spec(
+                name=name,
+                script_path=script_path,
+                state_dir=state_dir,
+                state_prefix=state_prefix,
+            )
         )
-        for name, script_path, state_dir, state_prefix in track_configs
-    )
+    return tuple(specs)
 
 
 def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
