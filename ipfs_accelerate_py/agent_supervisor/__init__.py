@@ -114,6 +114,7 @@ __all__ = [
     "build_configured_multi_supervisor_cli_runner",
     "build_repo_implementation_multi_supervisor_launcher",
     "build_configured_implementation_supervisor_entrypoint",
+    "build_module_implementation_supervisor_entrypoint",
     "build_configured_supervisor_bootstrap_runner",
     "build_configured_supervisor_runtime",
     "build_configured_supervisor_runtime_exports",
@@ -519,6 +520,7 @@ def __getattr__(name: str):
     if name in {
         "build_supervisor_runtime_operations",
         "build_configured_implementation_supervisor_entrypoint",
+        "build_module_implementation_supervisor_entrypoint",
         "ConfiguredSupervisorEntrypoint",
         "SupervisorRuntimeOperations",
         "implementation_supervisor_args",

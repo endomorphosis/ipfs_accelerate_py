@@ -120,6 +120,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     SupervisedChildSpec,
     background_supervisor_args,
     build_configured_implementation_supervisor_entrypoint,
+    build_module_implementation_supervisor_entrypoint,
     build_supervisor_runtime_operations,
     implementation_supervisor_args,
     launch_supervised_child,
@@ -914,6 +915,26 @@ def test_configured_implementation_supervisor_entrypoint_defaults_and_dispatches
     monkeypatch.setattr(sys, "argv", ["supervisor-autopilot", "--once"])
     assert entrypoint.run() == "ran"
     assert captured["argv"] == ["--implement", "--once"]
+
+
+def test_module_implementation_supervisor_entrypoint_imports_main(tmp_path, monkeypatch):
+    module_path = tmp_path / "example_supervisor.py"
+    output_path = tmp_path / "argv.txt"
+    module_path.write_text(
+        "from pathlib import Path\n\n"
+        f"OUTPUT_PATH = {str(output_path)!r}\n\n"
+        "def main(argv):\n"
+        "    Path(OUTPUT_PATH).write_text('|'.join(argv), encoding='utf-8')\n"
+        "    return 'module-ran'\n",
+        encoding="utf-8",
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    entrypoint = build_module_implementation_supervisor_entrypoint("example_supervisor")
+
+    assert isinstance(entrypoint, ConfiguredSupervisorEntrypoint)
+    assert entrypoint.run(["--once"]) == "module-ran"
+    assert output_path.read_text(encoding="utf-8") == "--implement|--once"
 
 
 def test_build_implementation_daemon_defaults_from_paths(tmp_path):

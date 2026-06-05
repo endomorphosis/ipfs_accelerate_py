@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib
 import os
 import subprocess
 import sys
@@ -292,6 +293,27 @@ def build_configured_implementation_supervisor_entrypoint(
 
     return ConfiguredSupervisorEntrypoint(
         supervisor_main=supervisor_main,
+        default_args=default_args,
+    )
+
+
+def build_module_implementation_supervisor_entrypoint(
+    module_name: str,
+    *,
+    main_name: str = "main",
+    default_args: Callable[[Sequence[str]], list[str]] = implementation_supervisor_args,
+) -> ConfiguredSupervisorEntrypoint:
+    """Build an implementation-supervisor entrypoint from an importable module main."""
+
+    def supervisor_main(argv: list[str]) -> Any:
+        module = importlib.import_module(module_name)
+        main = getattr(module, main_name)
+        if not callable(main):
+            raise TypeError(f"{module_name}.{main_name} is not callable")
+        return main(argv)
+
+    return build_configured_implementation_supervisor_entrypoint(
+        supervisor_main,
         default_args=default_args,
     )
 
