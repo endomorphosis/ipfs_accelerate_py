@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
+from contextlib import redirect_stdout
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable, Sequence
@@ -424,7 +426,8 @@ def run_task_proposal_router_cli(config: TaskProposalRouterCliConfig, argv: list
     if config.include_dry_run_flag and bool(getattr(args, "dry_run", False)) and args.generate:
         raise SystemExit("Choose either --generate or --dry-run, not both.")
     if config.bootstrap is not None:
-        config.bootstrap()
+        with redirect_stdout(sys.stderr):
+            config.bootstrap()
     router_config = replace(
         config.router_config,
         task_board_path=args.task_board_path,

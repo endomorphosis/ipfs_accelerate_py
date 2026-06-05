@@ -265,6 +265,37 @@ def implementation_supervisor_args(
     return with_exclusive_flag_default(argv, implement_flag, (no_implement_flag,))
 
 
+@dataclass(frozen=True)
+class ConfiguredSupervisorEntrypoint:
+    """Project-bound entrypoint that applies supervisor argv defaults before dispatch."""
+
+    supervisor_main: Callable[[list[str]], Any]
+    default_args: Callable[[Sequence[str]], list[str]] = implementation_supervisor_args
+
+    def with_defaults(self, argv: Sequence[str]) -> list[str]:
+        """Return argv with the configured supervisor defaults applied."""
+
+        return self.default_args(list(argv))
+
+    def run(self, argv: Sequence[str]) -> Any:
+        """Run the bound supervisor main after applying defaults."""
+
+        return self.supervisor_main(self.with_defaults(argv))
+
+
+def build_configured_implementation_supervisor_entrypoint(
+    supervisor_main: Callable[[list[str]], Any],
+    *,
+    default_args: Callable[[Sequence[str]], list[str]] = implementation_supervisor_args,
+) -> ConfiguredSupervisorEntrypoint:
+    """Build reusable implementation-supervisor entrypoint wiring."""
+
+    return ConfiguredSupervisorEntrypoint(
+        supervisor_main=supervisor_main,
+        default_args=default_args,
+    )
+
+
 def ensure_supervisor_running(
     argv: Sequence[str],
     *,

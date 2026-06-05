@@ -94,9 +94,11 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoopResult,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+    ConfiguredSupervisorEntrypoint,
     RestartPolicy,
     SupervisedChildSpec,
     background_supervisor_args,
+    build_configured_implementation_supervisor_entrypoint,
     build_supervisor_runtime_operations,
     implementation_supervisor_args,
     launch_supervised_child,
@@ -596,6 +598,22 @@ def test_implementation_supervisor_args_defaults_implement_without_removing_once
     assert implementation_supervisor_args(["--no-implement", "--once"]) == ["--no-implement", "--once"]
 
 
+def test_configured_implementation_supervisor_entrypoint_defaults_and_dispatches():
+    captured: dict[str, object] = {}
+
+    def supervisor_main(argv: list[str]) -> str:
+        captured["argv"] = argv
+        return "ran"
+
+    entrypoint = build_configured_implementation_supervisor_entrypoint(supervisor_main)
+
+    assert isinstance(entrypoint, ConfiguredSupervisorEntrypoint)
+    assert entrypoint.with_defaults(["--once"]) == ["--implement", "--once"]
+    assert entrypoint.with_defaults(["--no-implement", "--once"]) == ["--no-implement", "--once"]
+    assert entrypoint.run(["--once"]) == "ran"
+    assert captured["argv"] == ["--implement", "--once"]
+
+
 def test_build_implementation_daemon_defaults_from_paths(tmp_path):
     paths = {
         "task_board_path": tmp_path / "tasks.md",
@@ -880,10 +898,13 @@ def test_run_configured_task_proposal_router_cli_dry_run(tmp_path, capsys):
         requested_outputs=("files", "tests"),
         description="Test proposal router",
         task_id_help="Task id",
+        bootstrap=lambda: print("bootstrap noise"),
     )
 
     assert result == 0
-    payload = json.loads(capsys.readouterr().out)
+    captured = capsys.readouterr()
+    assert captured.err == "bootstrap noise\n"
+    payload = json.loads(captured.out)
     assert payload["task_id"] == "AUTO-001"
     assert payload["generate"] is False
     assert payload["llm_router_importable"] is True
