@@ -268,6 +268,23 @@ def repo_external_package_roots(
     )
 
 
+def repo_script_path(
+    repo_root: Path | str,
+    script_path: Path | str,
+    *,
+    scripts_dir: Path | str = "scripts",
+) -> Path:
+    """Return a repo-local script path from a filename or relative path."""
+
+    root = Path(repo_root)
+    path = Path(script_path)
+    if path.is_absolute():
+        return path
+    if path.parent != Path("."):
+        return _repo_path(root, path)
+    return _repo_path(root, Path(scripts_dir) / path)
+
+
 def repo_script_command(
     repo_root: Path | str,
     script_path: Path | str,
@@ -276,7 +293,7 @@ def repo_script_command(
 ) -> str:
     """Return a shell-safe command for a repo-local script."""
 
-    script = _repo_path(Path(repo_root), script_path)
+    script = repo_script_path(repo_root, script_path)
     parts = [str(part) for part in command]
     parts.append(str(script))
     return shlex.join(parts)

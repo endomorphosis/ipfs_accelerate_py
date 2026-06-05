@@ -174,6 +174,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     repo_root_from_env,
     repo_relative_or_default,
     repo_script_command,
+    repo_script_path,
     repo_task_board_path,
     resolve_and_ensure_bootstrap_paths,
     resolve_bootstrap_paths,
@@ -409,6 +410,10 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         tmp_path / "external" / "ipfs_accelerate",
         tmp_path / "external" / "ipfs_datasets",
     )
+    assert repo_script_path(tmp_path, "run.sh") == tmp_path / "scripts" / "run.sh"
+    assert repo_script_path(tmp_path, "tools/run.sh") == tmp_path / "tools" / "run.sh"
+    assert repo_script_path(tmp_path, tmp_path / "absolute-run.sh") == tmp_path / "absolute-run.sh"
+    assert repo_script_path(tmp_path, "run.sh", scripts_dir="bin") == tmp_path / "bin" / "run.sh"
     assert repo_script_command(tmp_path, "scripts/run.sh") == f"bash {tmp_path / 'scripts' / 'run.sh'}"
     assert repo_script_command(tmp_path, "scripts/path with space.sh", command=("python3", "-u")) == (
         "python3 -u " + shlex.quote(str(tmp_path / "scripts" / "path with space.sh"))
