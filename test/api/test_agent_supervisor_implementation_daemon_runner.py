@@ -13,6 +13,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_daemon_objective_refill_callback,
     build_portal_implementation_daemon_from_args,
     build_daemon_refill_hooks,
+    build_daemon_refill_hooks_from_recorders,
     build_daemon_retry_budget_refill_callback,
     implementation_state_paths,
     run_configured_portal_implementation_daemon,
@@ -241,3 +242,53 @@ def test_build_daemon_context_refill_callbacks(tmp_path: Path):
     assert captured["codebase"]["strategy_path"] == tmp_path / "strategy.json"
     assert captured["retry"]["events_path"] == tmp_path / "events.jsonl"
     assert captured["retry"]["task_header_prefix"] == "## EX-"
+
+
+def test_build_daemon_refill_hooks_from_recorders(tmp_path: Path):
+    parsed = argparse.Namespace(
+        todo_path=tmp_path / "tasks.todo.md",
+        task_prefix="## EX-",
+        objective_path=None,
+    )
+    context = ImplementationDaemonRunContext(
+        parsed=parsed,
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+    )
+    captured: dict[str, dict[str, object]] = {}
+
+    def recorder(label: str):
+        def callback(**kwargs: object) -> list[str]:
+            captured[label] = kwargs
+            return [label]
+
+        return callback
+
+    hooks = build_daemon_refill_hooks_from_recorders(
+        objective_recorder=recorder("objective"),
+        codebase_scan_recorder=recorder("codebase"),
+        retry_budget_recorder=recorder("retry"),
+        discovery_dir=tmp_path / "discovery",
+        objective_path=tmp_path / "objective.md",
+        repo_root=tmp_path,
+        retry_budget_extra_kwargs={"discovery_output_path": "data/discovery"},
+        scope_label="Example",
+        after_order=("retry-budget", "objective-goal"),
+    )
+
+    assert [(hook.phase, hook.message) for hook in hooks] == [
+        ("before", "Recorded Example objective-goal findings before daemon pass: %s"),
+        ("before", "Recorded Example codebase-scan findings before daemon pass: %s"),
+        ("before", "Recorded Example retry-budget findings before daemon pass: %s"),
+        ("after", "Recorded Example retry-budget findings after daemon pass: %s"),
+        ("after", "Recorded Example objective-goal findings after daemon pass: %s"),
+        ("after", "Recorded Example codebase-scan findings after daemon pass: %s"),
+    ]
+    assert hooks[0].callback(context) == ["objective"]
+    assert hooks[1].callback(context) == ["codebase"]
+    assert hooks[2].callback(context) == ["retry"]
+    assert captured["objective"]["objective_path"] == tmp_path / "objective.md"
+    assert captured["objective"]["repo_root"] == tmp_path
+    assert captured["codebase"]["repo_root"] == tmp_path
+    assert captured["retry"]["discovery_output_path"] == "data/discovery"

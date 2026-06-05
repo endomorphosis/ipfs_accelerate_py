@@ -15,6 +15,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_supervisor_codebase_scan_refill_callback,
     build_supervisor_objective_refill_callback,
     build_supervisor_refill_hooks,
+    build_supervisor_refill_hooks_from_recorders,
     build_supervisor_retry_budget_refill_callback,
     build_supervisor_runtime_callbacks,
     run_configured_portal_implementation_supervisor,
@@ -305,6 +306,70 @@ def test_build_supervisor_context_refill_callbacks(tmp_path: Path):
     assert captured["codebase"]["max_findings"] == 5
     assert captured["retry"]["events_path"] == tmp_path / "daemon-events.jsonl"
     assert captured["retry"]["task_header_prefix"] == "## EX-"
+
+
+def test_build_supervisor_refill_hooks_from_recorders(tmp_path: Path):
+    parsed = argparse.Namespace(
+        todo_path=tmp_path / "tasks.todo.md",
+        task_prefix="## EX-",
+        objective_path=None,
+        objective_bundle_dir=tmp_path / "bundles",
+        objective_dataset_dir=tmp_path / "datasets",
+        objective_todo_vector_index_path=tmp_path / "bundles" / "todo_vector_index.json",
+        objective_scan_min_open_tasks=3,
+        objective_scan_max_findings=7,
+        objective_scan_cooldown_seconds=60,
+        objective_surplus_findings_per_goal=4,
+        objective_surplus_min_terms_per_todo=2,
+        codebase_scan_min_open_tasks=1,
+        codebase_scan_max_findings=5,
+        codebase_scan_cooldown_seconds=120,
+    )
+    context = ImplementationSupervisorRunContext(
+        parsed=parsed,
+        config=object(),
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "supervisor-events.jsonl",
+        daemon_events_path=tmp_path / "daemon-events.jsonl",
+    )
+    captured: dict[str, dict[str, object]] = {}
+
+    def recorder(label: str):
+        def callback(**kwargs: object) -> list[str]:
+            captured[label] = kwargs
+            return [label]
+
+        return callback
+
+    hooks = build_supervisor_refill_hooks_from_recorders(
+        objective_recorder=recorder("objective"),
+        codebase_scan_recorder=recorder("codebase"),
+        retry_budget_recorder=recorder("retry"),
+        discovery_dir=tmp_path / "discovery",
+        objective_path=tmp_path / "objective.md",
+        repo_root=tmp_path,
+        retry_budget_extra_kwargs={"discovery_output_path": "data/discovery"},
+        scope_label="Example",
+        after_once_order=("retry-budget", "objective-goal"),
+    )
+
+    assert [(hook.phase, hook.message) for hook in hooks] == [
+        ("before", "Recorded Example objective-goal findings before supervisor pass: %s"),
+        ("before", "Recorded Example codebase-scan findings before supervisor pass: %s"),
+        ("before", "Recorded Example retry-budget findings before supervisor pass: %s"),
+        ("after_once", "Recorded Example retry-budget findings after supervisor pass: %s"),
+        ("after_once", "Recorded Example objective-goal findings after supervisor pass: %s"),
+        ("after_once", "Recorded Example codebase-scan findings after supervisor pass: %s"),
+    ]
+    assert hooks[0].callback(context) == ["objective"]
+    assert hooks[1].callback(context) == ["codebase"]
+    assert hooks[2].callback(context) == ["retry"]
+    assert captured["objective"]["objective_path"] == tmp_path / "objective.md"
+    assert captured["objective"]["bundle_dir"] == tmp_path / "bundles"
+    assert captured["codebase"]["max_findings"] == 5
+    assert captured["codebase"]["repo_root"] == tmp_path
+    assert captured["retry"]["discovery_output_path"] == "data/discovery"
 
 
 def test_build_supervisor_runtime_callbacks_repairs_stale_markers(tmp_path: Path):

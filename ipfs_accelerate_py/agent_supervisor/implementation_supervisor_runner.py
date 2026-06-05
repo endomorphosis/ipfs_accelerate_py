@@ -742,6 +742,72 @@ def build_supervisor_retry_budget_refill_callback(
     return hook
 
 
+def build_supervisor_refill_hooks_from_recorders(
+    *,
+    discovery_dir: Path,
+    objective_recorder: SupervisorRefillRecordCallback | None = None,
+    codebase_scan_recorder: SupervisorRefillRecordCallback | None = None,
+    retry_budget_recorder: SupervisorRefillRecordCallback | None = None,
+    objective_path: Path | None = None,
+    repo_root: Path | None = None,
+    objective_extra_kwargs: dict[str, Any] | None = None,
+    codebase_scan_extra_kwargs: dict[str, Any] | None = None,
+    retry_budget_extra_kwargs: dict[str, Any] | None = None,
+    scope_label: str = "",
+    before: bool = True,
+    after_once: bool = True,
+    after_once_order: Sequence[str] | None = None,
+    log_level: int = logging.WARNING,
+) -> tuple[SupervisorRunHook, ...]:
+    """Build standard supervisor refill hooks from configured recorder callbacks."""
+
+    entries: list[RefillHookEntry] = []
+    if objective_recorder is not None:
+        entries.append(
+            (
+                "objective-goal",
+                build_supervisor_objective_refill_callback(
+                    objective_recorder,
+                    discovery_dir=discovery_dir,
+                    objective_path=objective_path,
+                    repo_root=repo_root,
+                    extra_kwargs=objective_extra_kwargs,
+                ),
+            )
+        )
+    if codebase_scan_recorder is not None:
+        entries.append(
+            (
+                "codebase-scan",
+                build_supervisor_codebase_scan_refill_callback(
+                    codebase_scan_recorder,
+                    discovery_dir=discovery_dir,
+                    repo_root=repo_root,
+                    extra_kwargs=codebase_scan_extra_kwargs,
+                ),
+            )
+        )
+    if retry_budget_recorder is not None:
+        entries.append(
+            (
+                "retry-budget",
+                build_supervisor_retry_budget_refill_callback(
+                    retry_budget_recorder,
+                    discovery_dir=discovery_dir,
+                    extra_kwargs=retry_budget_extra_kwargs,
+                ),
+            )
+        )
+    return build_supervisor_refill_hooks(
+        tuple(entries),
+        scope_label=scope_label,
+        before=before,
+        after_once=after_once,
+        after_once_order=after_once_order,
+        log_level=log_level,
+    )
+
+
 def build_supervisor_runtime_callbacks(
     argv: Sequence[str],
     *,

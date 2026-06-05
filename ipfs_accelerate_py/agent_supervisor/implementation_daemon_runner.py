@@ -445,6 +445,72 @@ def build_daemon_retry_budget_refill_callback(
     return hook
 
 
+def build_daemon_refill_hooks_from_recorders(
+    *,
+    discovery_dir: Path,
+    objective_recorder: DaemonRefillRecordCallback | None = None,
+    codebase_scan_recorder: DaemonRefillRecordCallback | None = None,
+    retry_budget_recorder: DaemonRefillRecordCallback | None = None,
+    objective_path: Path | None = None,
+    repo_root: Path | None = None,
+    objective_extra_kwargs: dict[str, Any] | None = None,
+    codebase_scan_extra_kwargs: dict[str, Any] | None = None,
+    retry_budget_extra_kwargs: dict[str, Any] | None = None,
+    scope_label: str = "",
+    before: bool = True,
+    after: bool = True,
+    after_order: Sequence[str] | None = None,
+    log_level: int = logging.WARNING,
+) -> tuple[DaemonLoopHook, ...]:
+    """Build standard daemon refill hooks from configured recorder callbacks."""
+
+    entries: list[RefillHookEntry] = []
+    if objective_recorder is not None:
+        entries.append(
+            (
+                "objective-goal",
+                build_daemon_objective_refill_callback(
+                    objective_recorder,
+                    discovery_dir=discovery_dir,
+                    objective_path=objective_path,
+                    repo_root=repo_root,
+                    extra_kwargs=objective_extra_kwargs,
+                ),
+            )
+        )
+    if codebase_scan_recorder is not None:
+        entries.append(
+            (
+                "codebase-scan",
+                build_daemon_codebase_scan_refill_callback(
+                    codebase_scan_recorder,
+                    discovery_dir=discovery_dir,
+                    repo_root=repo_root,
+                    extra_kwargs=codebase_scan_extra_kwargs,
+                ),
+            )
+        )
+    if retry_budget_recorder is not None:
+        entries.append(
+            (
+                "retry-budget",
+                build_daemon_retry_budget_refill_callback(
+                    retry_budget_recorder,
+                    discovery_dir=discovery_dir,
+                    extra_kwargs=retry_budget_extra_kwargs,
+                ),
+            )
+        )
+    return build_daemon_refill_hooks(
+        tuple(entries),
+        scope_label=scope_label,
+        before=before,
+        after=after,
+        after_order=after_order,
+        log_level=log_level,
+    )
+
+
 def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:
     """Return standard task-state, strategy, and event-log paths for parsed daemon args."""
 
