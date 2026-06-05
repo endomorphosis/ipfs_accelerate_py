@@ -431,7 +431,7 @@ def build_repo_implementation_multi_supervisor_launcher(
     implementation_track_configs: Sequence[
         ImplementationSupervisorTrackConfig | tuple[str, Path | str, Path | str, str]
     ],
-    resolver_script_path: Path | str = "scripts/llm_merge_resolver_fallback.sh",
+    resolver_script_path: Path | str = "",
     implementation_supervisor_command: str = "",
     duration_seconds: float | int | str = 28800.0,
     duration_seconds_env_var: str = "DURATION_SECONDS",
@@ -454,11 +454,14 @@ def build_repo_implementation_multi_supervisor_launcher(
 ) -> ConfiguredMultiSupervisorLauncher:
     """Build a repo-local implementation multi-supervisor launcher."""
 
+    from .llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
     from .wrapper_utils import build_repo_runtime_environment_callbacks, repo_script_command
 
     command = implementation_supervisor_command
     if not command and resolver_script_path:
         command = repo_script_command(repo_root, resolver_script_path)
+    if not command:
+        command = llm_merge_resolver_fallback_command(python_executable=python_executable)
     effective_prepare_environment = prepare_environment
     if effective_prepare_environment is None and runtime_package_names is not None:
         runtime_environment = build_repo_runtime_environment_callbacks(

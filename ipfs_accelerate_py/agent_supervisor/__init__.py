@@ -121,6 +121,7 @@ __all__ = [
     "build_script_supervisor_runtime",
     "build_configured_task_proposal_router_runner",
     "build_llm_merge_resolver_invoker",
+    "llm_merge_resolver_fallback_command",
     "build_merge_prompt_callback",
     "build_namespace_codebase_scan_recorder",
     "build_objective_daemon_arg_parser",
@@ -355,6 +356,12 @@ def __getattr__(name: str):
         from . import merge_resolver
 
         return getattr(merge_resolver, name)
+    if name in {
+        "llm_merge_resolver_fallback_command",
+    }:
+        from . import llm_merge_resolver_fallback
+
+        return getattr(llm_merge_resolver_fallback, name)
     if name in {
         "build_configured_merge_resolver_arg_parser",
         "build_configured_merge_resolver_runner",

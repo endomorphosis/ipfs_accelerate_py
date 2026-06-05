@@ -30,6 +30,9 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     ConfiguredMergeResolverRunner,
     build_configured_merge_resolver_runner,
 )
+from ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback import (
+    llm_merge_resolver_fallback_command,
+)
 from ipfs_accelerate_py.agent_supervisor import task_proposal_router
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     ConfiguredTaskProposalRouterRunner,
@@ -2219,6 +2222,78 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
     assert os.environ["MULTI_SUPERVISOR_REPO_DEFAULT"] == "1"
     assert prepared == ["called"]
     assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
+
+
+def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_default(tmp_path, monkeypatch):
+    captured: dict[str, tuple[str, ...]] = {}
+
+    def fake_main(argv):
+        captured["argv"] = tuple(argv)
+        return 0
+
+    monkeypatch.setattr(multi_supervisor_runner, "main", fake_main)
+
+    launcher = build_repo_implementation_multi_supervisor_launcher(
+        repo_root=tmp_path,
+        duration_seconds=12,
+        python_executable="python-test",
+        label="repo implementation run",
+        implementation_track_configs=(
+            ImplementationSupervisorTrackConfig(
+                name="VAI",
+                script_path="scripts/vai.py",
+                state_dir="data/vai/state",
+                state_prefix="vai",
+            ),
+        ),
+    )
+
+    args = launcher.args()
+    assert args[args.index("--implementation-supervisor-command") + 1] == (
+        "python-test -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback"
+    )
+    assert llm_merge_resolver_fallback_command(python_executable="python-test") == (
+        "python-test -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback"
+    )
+
+
+def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
+    codex_log = tmp_path / "codex.prompt"
+    codex_bin = tmp_path / "codex"
+    codex_bin.write_text(
+        "#!/usr/bin/env bash\n"
+        "while (($#)); do\n"
+        "  if [[ \"$1\" == \"-C\" ]]; then shift; workspace=\"$1\"; fi\n"
+        "  shift || true\n"
+        "done\n"
+        "cat > \"$workspace/codex.prompt\"\n",
+        encoding="utf-8",
+    )
+    codex_bin.chmod(0o755)
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+        "CODEX_BIN": str(codex_bin),
+        "COPILOT_BIN": "",
+        "AGENT_RESOLVER_LOCK_BYPASS": "1",
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            str(tmp_path),
+        ],
+        input="resolve this conflict",
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert completed.returncode == 0, completed.stderr
+    assert codex_log.read_text(encoding="utf-8") == "resolve this conflict"
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:
