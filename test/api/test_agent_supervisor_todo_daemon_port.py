@@ -1288,6 +1288,69 @@ def test_configured_supervisor_runtime_run_configured_reuses_binding(tmp_path, m
     captured["kwargs"]["prepare_environment"]()
     assert prepared == ["prepared"]
 
+    paths = {
+        "task_board_path": repo / "tasks.md",
+        "state_dir": repo / "state",
+        "worktree_root": repo / "worktrees",
+        "objective_heap_path": repo / "objective.md",
+        "objective_graph_path": repo / "objective.json",
+        "discovery_dir": repo / "discovery",
+    }
+
+    result = runtime.run_configured_from_paths(
+        ["--once"],
+        paths,
+        logger=logging.getLogger("test-configured-runtime-from-paths"),
+        todo_path_key="task_board_path",
+        task_prefix="## AUTO-",
+        state_prefix="agent",
+        daemon_script_path=daemon_path,
+        todo_path_flag="--task-board",
+        llm_merge_resolver_command="bash resolve.sh",
+        worktree_submodule_paths=("external/from-paths",),
+        objective=ObjectiveRefillDefaults(
+            objective_path=paths["objective_heap_path"],
+            objective_graph_path=paths["objective_graph_path"],
+            objective_interoperability_focus=("hallucinate_app",),
+            seed_interoperability_goals=True,
+        ),
+        codebase=CodebaseRefillDefaults(
+            codebase_scan_discovery_dir=paths["discovery_dir"],
+            codebase_scan_min_open_tasks=4,
+            codebase_scan_skip_prefixes=("data/state/",),
+        ),
+        hooks=(hook,),
+        once_complete_message="paths complete: %s",
+        ensure_running=True,
+        ensure_running_message="paths ensure: %s",
+        repair_runtime=False,
+    )
+
+    forwarded = captured["argv"]
+    assert result == "configured"
+    assert forwarded[forwarded.index("--task-board") + 1] == str(repo / "tasks.md")
+    assert forwarded[forwarded.index("--state-dir") + 1] == str(repo / "state")
+    assert forwarded[forwarded.index("--task-prefix") + 1] == "## AUTO-"
+    assert forwarded[forwarded.index("--state-prefix") + 1] == "agent"
+    assert forwarded[forwarded.index("--worktree-root") + 1] == str(repo / "worktrees")
+    assert forwarded[forwarded.index("--daemon-script-path") + 1] == str(daemon_path)
+    assert forwarded[forwarded.index("--supervisor-script-path") + 1] == str(script_path)
+    assert forwarded[forwarded.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
+    assert forwarded[forwarded.index("--objective-path") + 1] == str(repo / "objective.md")
+    assert forwarded[forwarded.index("--objective-graph-path") + 1] == str(repo / "objective.json")
+    assert forwarded[forwarded.index("--objective-interoperability-focus") + 1] == "hallucinate_app"
+    assert "--objective-seed-interoperability-goals" in forwarded
+    assert forwarded[forwarded.index("--codebase-scan-discovery-dir") + 1] == str(repo / "discovery")
+    assert forwarded[forwarded.index("--codebase-scan-min-open-tasks") + 1] == "4"
+    assert forwarded[forwarded.index("--codebase-scan-skip-prefix") + 1] == "data/state/"
+    assert captured["kwargs"]["daemon_script_path"] == daemon_path
+    assert captured["kwargs"]["worktree_submodule_paths"] == ("external/from-paths",)
+    assert captured["kwargs"]["hooks"] == (hook,)
+    assert captured["kwargs"]["once_complete_message"] == "paths complete: %s"
+    assert captured["kwargs"]["ensure_running"] is True
+    assert captured["kwargs"]["ensure_running_message"] == "paths ensure: %s"
+    assert captured["kwargs"]["repair_runtime"] is False
+
 
 def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
     args = parse_implementation_supervisor_args(

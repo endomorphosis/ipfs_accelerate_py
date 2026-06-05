@@ -127,6 +127,65 @@ class ConfiguredSupervisorRuntime:
             repair_runtime_message=repair_runtime_message,
         )
 
+    def run_configured_from_paths(
+        self,
+        argv: Sequence[str],
+        paths: Mapping[str, Path | str],
+        *,
+        logger: logging.Logger,
+        task_prefix: str,
+        state_prefix: str,
+        daemon_script_path: Path | str,
+        supervisor_script_path: Path | str | None = None,
+        todo_path_key: str = "todo_path",
+        state_dir_key: str = "state_dir",
+        worktree_root_key: str = "worktree_root",
+        todo_path_flag: str = "--todo-path",
+        max_restarts: int | str = 0,
+        llm_merge_resolver_command: str = "",
+        worktree_submodule_paths: Sequence[str] = (),
+        objective: "ObjectiveRefillDefaults | None" = None,
+        codebase: "CodebaseRefillDefaults | None" = None,
+        hooks: Sequence[SupervisorRunHook] = (),
+        once_complete_message: str = "Portal implementation supervisor check complete: %s",
+        ensure_running: bool = False,
+        ensure_running_message: str = "Supervisor ensure complete: %s",
+        repair_runtime: bool = True,
+        repair_runtime_message: str = "Repaired stale supervisor runtime markers: %s",
+    ) -> Any:
+        """Apply path-derived defaults and run this configured supervisor."""
+
+        resolved_daemon_script_path = Path(daemon_script_path)
+        args = apply_portal_implementation_supervisor_defaults_from_paths(
+            argv,
+            paths,
+            task_prefix=task_prefix,
+            state_prefix=state_prefix,
+            daemon_script_path=resolved_daemon_script_path,
+            supervisor_script_path=supervisor_script_path or self.script_path,
+            todo_path_key=todo_path_key,
+            state_dir_key=state_dir_key,
+            worktree_root_key=worktree_root_key,
+            todo_path_flag=todo_path_flag,
+            max_restarts=max_restarts,
+            llm_merge_resolver_command=llm_merge_resolver_command,
+            worktree_submodule_paths=worktree_submodule_paths,
+            objective=objective,
+            codebase=codebase,
+        )
+        return self.run_configured(
+            args,
+            logger=logger,
+            daemon_script_path=resolved_daemon_script_path,
+            worktree_submodule_paths=worktree_submodule_paths,
+            hooks=hooks,
+            once_complete_message=once_complete_message,
+            ensure_running=ensure_running,
+            ensure_running_message=ensure_running_message,
+            repair_runtime=repair_runtime,
+            repair_runtime_message=repair_runtime_message,
+        )
+
 
 def build_configured_supervisor_runtime(
     *,
