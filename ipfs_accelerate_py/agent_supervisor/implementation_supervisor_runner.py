@@ -446,6 +446,35 @@ def build_configured_supervisor_runtime(
     )
 
 
+def build_script_supervisor_runtime(
+    *,
+    repo_root: Path | str,
+    script_path: Path | str,
+    process_match_any: Sequence[str] | None = None,
+    extra_process_match_any: Sequence[str] = (),
+    process_predicate: Callable[[int], bool] | None = None,
+    prepare_environment: Callable[[], None] | None = None,
+    implementation_lock_name: str = "implementation.lock",
+    startup_delay_seconds: float = 1.0,
+) -> ConfiguredSupervisorRuntime:
+    """Build supervisor runtime wiring for one wrapper script."""
+
+    resolved_script_path = Path(script_path).resolve()
+    if process_match_any is None:
+        markers = (resolved_script_path.name, *tuple(extra_process_match_any))
+    else:
+        markers = tuple(process_match_any)
+    return build_configured_supervisor_runtime(
+        repo_root=repo_root,
+        script_path=resolved_script_path,
+        process_match_any=markers,
+        process_predicate=process_predicate,
+        prepare_environment=prepare_environment,
+        implementation_lock_name=implementation_lock_name,
+        startup_delay_seconds=startup_delay_seconds,
+    )
+
+
 @dataclass(frozen=True)
 class ImplementationSupervisorDefaults:
     """Default CLI values for a project-specific implementation supervisor wrapper."""

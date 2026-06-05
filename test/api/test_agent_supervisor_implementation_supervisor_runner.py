@@ -17,6 +17,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_configured_supervisor_runtime,
     build_objective_refill_defaults_factory,
     build_portal_implementation_supervisor_from_args,
+    build_script_supervisor_runtime,
     build_supervisor_codebase_scan_refill_callback,
     build_supervisor_objective_refill_callback,
     build_supervisor_refill_hooks,
@@ -456,6 +457,26 @@ def test_configured_supervisor_bootstrap_runner_dispatches_runtime(monkeypatch, 
     kwargs["enter_runtime_environment"]()
     kwargs["path_callbacks"][0](paths)
     assert calls == ["enter", str(paths["todo_path"])]
+
+
+def test_build_script_supervisor_runtime_derives_script_marker(tmp_path: Path):
+    repo = tmp_path / "repo"
+    script_path = repo / "scripts" / "example_supervisor.py"
+    repo.mkdir()
+    script_path.parent.mkdir()
+    script_path.write_text("# supervisor\n", encoding="utf-8")
+
+    runtime = build_script_supervisor_runtime(
+        repo_root=repo,
+        script_path=script_path,
+        extra_process_match_any=("example_autopilot.py",),
+        startup_delay_seconds=0.5,
+    )
+
+    assert runtime.repo_root == repo
+    assert runtime.script_path == script_path.resolve()
+    assert runtime.process_match_any == ("example_supervisor.py", "example_autopilot.py")
+    assert runtime.startup_delay_seconds == 0.5
 
 
 def test_build_supervisor_refill_hooks_formats_standard_messages():
