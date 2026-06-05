@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_daemon_refill_hooks_from_recorders,
     build_daemon_retry_budget_refill_callback,
     implementation_state_artifact_paths,
+    namespace_implementation_state_artifact_paths,
     implementation_state_paths,
     run_configured_portal_implementation_daemon,
     run_portal_implementation_daemon_loop,
@@ -46,6 +47,27 @@ def test_implementation_state_paths_follow_state_prefix(tmp_path: Path):
     assert supervisor_paths["strategy_path"] == tmp_path / "state" / "example_strategy.json"
     assert supervisor_paths["events_path"] == tmp_path / "state" / "example_supervisor_events.jsonl"
     assert supervisor_paths["daemon_events_path"] == tmp_path / "state" / "example_events.jsonl"
+
+    namespace_paths = agent_supervisor_namespace_paths(tmp_path, "agent_supervisor")
+    namespace_state_paths = namespace_implementation_state_artifact_paths(namespace_paths)
+    assert namespace_state_paths["state_path"] == (
+        tmp_path / "data" / "agent_supervisor" / "state" / "agent_supervisor_task_state.json"
+    )
+    assert namespace_state_paths["strategy_path"] == (
+        tmp_path / "data" / "agent_supervisor" / "state" / "agent_supervisor_strategy.json"
+    )
+    assert namespace_state_paths["events_path"] == (
+        tmp_path / "data" / "agent_supervisor" / "state" / "agent_supervisor_events.jsonl"
+    )
+
+    overridden_namespace_state_paths = namespace_implementation_state_artifact_paths(
+        namespace_paths,
+        state_prefix="agent",
+        state_dir=tmp_path / "custom-state",
+        supervisor_events=True,
+    )
+    assert overridden_namespace_state_paths["events_path"] == tmp_path / "custom-state" / "agent_supervisor_events.jsonl"
+    assert overridden_namespace_state_paths["daemon_events_path"] == tmp_path / "custom-state" / "agent_events.jsonl"
 
 
 def test_apply_portal_implementation_daemon_defaults_preserves_user_values(tmp_path: Path):

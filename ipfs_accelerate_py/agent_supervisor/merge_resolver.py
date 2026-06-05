@@ -131,14 +131,16 @@ def build_namespace_merge_resolver_runner(
 ) -> ConfiguredMergeResolverRunner:
     """Build a merge-resolver runner using the standard namespace state layout."""
 
-    from .implementation_daemon_runner import implementation_state_artifact_paths
+    from .implementation_daemon_runner import namespace_implementation_state_artifact_paths
     from .wrapper_utils import agent_supervisor_namespace_paths, prefixed_env_var
 
     resolved_repo_root = Path(repo_root)
     namespace_paths = agent_supervisor_namespace_paths(resolved_repo_root, namespace)
-    resolved_state_prefix = state_prefix or namespace
-    resolved_state_dir = Path(state_dir) if state_dir is not None else namespace_paths.state_dir
-    state_paths = implementation_state_artifact_paths(resolved_state_dir, resolved_state_prefix)
+    state_paths = namespace_implementation_state_artifact_paths(
+        namespace_paths,
+        state_prefix=state_prefix,
+        state_dir=state_dir,
+    )
     return build_configured_merge_resolver_runner(
         default_events_path=state_paths["events_path"],
         default_repo_root=resolved_repo_root,

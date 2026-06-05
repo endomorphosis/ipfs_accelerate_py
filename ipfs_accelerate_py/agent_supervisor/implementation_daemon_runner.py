@@ -753,6 +753,22 @@ def implementation_state_artifact_paths(
     return paths
 
 
+def namespace_implementation_state_artifact_paths(
+    namespace_paths: AgentSupervisorNamespacePaths,
+    *,
+    state_prefix: str | None = None,
+    state_dir: Path | str | None = None,
+    supervisor_events: bool = False,
+) -> dict[str, Path]:
+    """Return standard state artifacts for a supervisor namespace."""
+
+    return implementation_state_artifact_paths(
+        state_dir or namespace_paths.state_dir,
+        state_prefix or namespace_paths.namespace,
+        supervisor_events=supervisor_events,
+    )
+
+
 def implementation_state_paths(parsed: argparse.Namespace) -> dict[str, Path]:
     """Return standard task-state, strategy, and event-log paths for parsed daemon args."""
 
