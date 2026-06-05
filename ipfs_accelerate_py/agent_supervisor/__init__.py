@@ -250,6 +250,7 @@ __all__ = [
     "build_task_proposal_router_cli_config",
     "build_repo_task_proposal_router_runner",
     "build_repo_task_proposal_route_runner",
+    "build_repo_task_proposal_route_runner_from_spec",
     "build_task_blocks_ensurer",
     "build_codebase_refill_defaults_from_paths",
     "build_namespace_codebase_refill_defaults_factory",
@@ -316,6 +317,7 @@ __all__ = [
     "TaskProposalRouterCliConfig",
     "TaskProposalRouterError",
     "TaskProposalRoutePaths",
+    "TaskProposalRouteSpec",
     "task_metadata_lines",
     "build_task_proposal_route_paths",
 ]
@@ -607,6 +609,7 @@ def __getattr__(name: str):
         "build_configured_task_proposal_router_runner",
         "build_repo_task_proposal_router_runner",
         "build_repo_task_proposal_route_runner",
+        "build_repo_task_proposal_route_runner_from_spec",
         "run_configured_task_proposal_router_cli",
         "run_task_proposal_router",
         "run_task_proposal_router_cli",
@@ -616,6 +619,7 @@ def __getattr__(name: str):
         "TaskProposalRouterCliConfig",
         "TaskProposalRouterError",
         "TaskProposalRoutePaths",
+        "TaskProposalRouteSpec",
         "ConfiguredTaskProposalRouterRunner",
         "task_metadata_lines",
     }:

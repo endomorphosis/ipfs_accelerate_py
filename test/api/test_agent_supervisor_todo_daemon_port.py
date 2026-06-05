@@ -36,8 +36,10 @@ from ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback import (
 from ipfs_accelerate_py.agent_supervisor import task_proposal_router
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     ConfiguredTaskProposalRouterRunner,
+    TaskProposalRouteSpec,
     build_configured_task_proposal_router_runner,
     build_repo_task_proposal_route_runner,
+    build_repo_task_proposal_route_runner_from_spec,
     build_repo_task_proposal_router_runner,
     run_configured_task_proposal_router_cli,
     standard_task_proposal_requested_outputs,
@@ -1557,6 +1559,46 @@ def test_build_repo_task_proposal_route_runner_derives_paths_and_outputs(tmp_pat
     prompt = config.router_config.prompt_builder(type("Task", (), {})(), "Plan text")
     assert "runtime contracts to add" in prompt
     assert "tests and fixtures needed" in prompt
+
+
+def test_build_repo_task_proposal_route_runner_from_spec_reuses_route_values(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    bootstrapped: list[str] = []
+    route_spec = TaskProposalRouteSpec(
+        task_board_stem="ROADMAP",
+        task_board_dir="docs",
+        artifact_namespace="agent_supervisor",
+        task_header_prefix="## AUTO-",
+        prompt_intro="Help implement the test roadmap.",
+        domain_outputs=("runtime contracts to add",),
+        description="Test routed proposal router",
+        task_id_help="Task id",
+        task_board_option="--task-board-path",
+        hidden_standard_task_board_option=True,
+        include_dry_run_flag=True,
+        bootstrap=lambda: bootstrapped.append("from-spec"),
+    )
+
+    runner = build_repo_task_proposal_route_runner_from_spec(
+        repo_root=repo,
+        route_spec=route_spec,
+    )
+
+    assert isinstance(runner, ConfiguredTaskProposalRouterRunner)
+    config = runner.config
+    assert config.router_config.repo_root == repo
+    assert config.router_config.task_board_path == repo / "docs" / "ROADMAP.todo.md"
+    assert config.router_config.plan_path == repo / "docs" / "ROADMAP.md"
+    assert config.router_config.artifact_dir == repo / "data" / "agent_supervisor" / "llm_router"
+    assert config.task_board_option == "--task-board-path"
+    assert config.hidden_task_board_options == ("--todo-path",)
+    assert config.include_dry_run_flag is True
+    assert config.bootstrap is not None
+    config.bootstrap()
+    assert bootstrapped == ["from-spec"]
+    prompt = config.router_config.prompt_builder(type("Task", (), {})(), "Plan text")
+    assert "runtime contracts to add" in prompt
 
 
 def test_build_supervisor_runtime_operations_binds_project_wrapper(tmp_path, monkeypatch):

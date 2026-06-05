@@ -64,6 +64,46 @@ class TaskProposalRoutePaths:
     artifact_dir: Path
 
 
+@dataclass(frozen=True)
+class TaskProposalRouteSpec:
+    """Project-specific task-proposal route values without repo-root binding."""
+
+    task_board_stem: str
+    task_board_dir: Path | str
+    artifact_namespace: str
+    task_header_prefix: str
+    prompt_intro: str
+    description: str
+    task_id_help: str
+    domain_outputs: Sequence[str] = field(default_factory=tuple)
+    test_output: str = DEFAULT_TASK_PROPOSAL_TEST_OUTPUT
+    requested_outputs: Sequence[str] | None = None
+    no_open_task_message: str = "No open task found."
+    task_board_option: str | None = None
+    hidden_task_board_options: Sequence[str] = field(default_factory=tuple)
+    hidden_standard_task_board_option: bool = False
+    include_dry_run_flag: bool = False
+    plan_stem: str | None = None
+    plan_dir: Path | str | None = None
+    artifact_dir: Path | str | None = None
+    artifact_root: Path | str = "data"
+    artifact_leaf: Path | str = "llm_router"
+    bootstrap: BootstrapCallback | None = None
+    runtime_package_names: Sequence[Path | str] = field(
+        default_factory=lambda: ("ipfs_accelerate", "ipfs_datasets")
+    )
+    runtime_external_dir: Path | str = "external"
+    runtime_primary_package_names: Sequence[Path | str] | None = None
+    runtime_env_var: str = "PYTHONPATH"
+    open_statuses: Sequence[str] = field(default_factory=lambda: DEFAULT_OPEN_TASK_STATUSES)
+    plan_char_limit: int = 40000
+    provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER"
+    model_env: str = "IPFS_DATASETS_PY_LLM_MODEL"
+    default_model: str = "gpt-5.3-codex-spark"
+    default_max_new_tokens: int = 2048
+    default_timeout_seconds: int = 300
+
+
 def _repo_path(repo_root: Path, path: Path | str) -> Path:
     resolved = Path(path)
     return resolved if resolved.is_absolute() else repo_root / resolved
@@ -524,6 +564,51 @@ def build_repo_task_proposal_route_runner(
         default_model=default_model,
         default_max_new_tokens=default_max_new_tokens,
         default_timeout_seconds=default_timeout_seconds,
+    )
+
+
+def build_repo_task_proposal_route_runner_from_spec(
+    *,
+    repo_root: Path | str,
+    route_spec: TaskProposalRouteSpec,
+    bootstrap: BootstrapCallback | None = None,
+) -> ConfiguredTaskProposalRouterRunner:
+    """Build a repo task-proposal runner from a reusable route spec."""
+
+    return build_repo_task_proposal_route_runner(
+        repo_root=repo_root,
+        task_board_stem=route_spec.task_board_stem,
+        task_board_dir=route_spec.task_board_dir,
+        artifact_namespace=route_spec.artifact_namespace,
+        task_header_prefix=route_spec.task_header_prefix,
+        prompt_intro=route_spec.prompt_intro,
+        description=route_spec.description,
+        task_id_help=route_spec.task_id_help,
+        domain_outputs=route_spec.domain_outputs,
+        test_output=route_spec.test_output,
+        requested_outputs=route_spec.requested_outputs,
+        no_open_task_message=route_spec.no_open_task_message,
+        task_board_option=route_spec.task_board_option,
+        hidden_task_board_options=route_spec.hidden_task_board_options,
+        hidden_standard_task_board_option=route_spec.hidden_standard_task_board_option,
+        include_dry_run_flag=route_spec.include_dry_run_flag,
+        plan_stem=route_spec.plan_stem,
+        plan_dir=route_spec.plan_dir,
+        artifact_dir=route_spec.artifact_dir,
+        artifact_root=route_spec.artifact_root,
+        artifact_leaf=route_spec.artifact_leaf,
+        bootstrap=bootstrap if bootstrap is not None else route_spec.bootstrap,
+        runtime_package_names=route_spec.runtime_package_names,
+        runtime_external_dir=route_spec.runtime_external_dir,
+        runtime_primary_package_names=route_spec.runtime_primary_package_names,
+        runtime_env_var=route_spec.runtime_env_var,
+        open_statuses=route_spec.open_statuses,
+        plan_char_limit=route_spec.plan_char_limit,
+        provider_env=route_spec.provider_env,
+        model_env=route_spec.model_env,
+        default_model=route_spec.default_model,
+        default_max_new_tokens=route_spec.default_max_new_tokens,
+        default_timeout_seconds=route_spec.default_timeout_seconds,
     )
 
 
