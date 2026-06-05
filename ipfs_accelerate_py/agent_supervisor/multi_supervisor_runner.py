@@ -126,6 +126,25 @@ def implementation_supervisor_track_spec(
     )
 
 
+def implementation_supervisor_compact_track_spec(
+    *,
+    name: str,
+    script_path: Path | str,
+    state_dir: Path | str,
+    state_prefix: str,
+) -> str:
+    """Return a compact ``NAME|SCRIPT|STATE_DIR|STATE_PREFIX`` implementation-track spec."""
+
+    return "|".join(
+        (
+            str(name),
+            Path(script_path).as_posix(),
+            Path(state_dir).as_posix(),
+            str(state_prefix),
+        )
+    )
+
+
 def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
     """Parse ``NAME|SCRIPT|STATE_DIR|STATE_PREFIX`` implementation-track specs."""
 
