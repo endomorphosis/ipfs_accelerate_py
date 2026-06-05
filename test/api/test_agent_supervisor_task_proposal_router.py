@@ -3,15 +3,59 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import pytest
+
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     TaskProposalRouterConfig,
     TaskProposalRouterCliConfig,
+    TaskProposalRoutePaths,
+    build_task_proposal_route_paths,
     build_task_proposal_prompt_builder,
     build_task_proposal_prompt,
     build_task_proposal_router_cli_config,
     run_task_proposal_router,
     run_task_proposal_router_cli,
 )
+
+
+def test_task_proposal_route_paths_resolve_repo_local_defaults(tmp_path: Path):
+    paths = build_task_proposal_route_paths(
+        repo_root=tmp_path,
+        task_board_stem="roadmap",
+        task_board_dir="docs",
+        artifact_namespace="agent_tracks",
+    )
+
+    assert isinstance(paths, TaskProposalRoutePaths)
+    assert paths.task_board_path == tmp_path / "docs" / "roadmap.todo.md"
+    assert paths.plan_path == tmp_path / "docs" / "roadmap.md"
+    assert paths.artifact_dir == tmp_path / "data" / "agent_tracks" / "llm_router"
+
+
+def test_task_proposal_route_paths_accept_plan_and_artifact_overrides(tmp_path: Path):
+    artifact_dir = tmp_path / "artifacts"
+
+    paths = build_task_proposal_route_paths(
+        repo_root=tmp_path,
+        task_board_stem="tasks",
+        task_board_dir="docs",
+        plan_stem="plan",
+        plan_dir="plans",
+        artifact_dir=artifact_dir,
+    )
+
+    assert paths.task_board_path == tmp_path / "docs" / "tasks.todo.md"
+    assert paths.plan_path == tmp_path / "plans" / "plan.md"
+    assert paths.artifact_dir == artifact_dir
+
+
+def test_task_proposal_route_paths_require_artifact_namespace_without_artifact_dir(tmp_path: Path):
+    with pytest.raises(ValueError, match="artifact_namespace is required"):
+        build_task_proposal_route_paths(
+            repo_root=tmp_path,
+            task_board_stem="roadmap",
+            task_board_dir="docs",
+        )
 
 
 def test_task_proposal_router_dry_run_selects_open_task(tmp_path: Path):

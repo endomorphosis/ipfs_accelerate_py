@@ -55,6 +55,52 @@ class TaskProposalRouterCliConfig:
     default_timeout_seconds: int = 300
 
 
+@dataclass(frozen=True)
+class TaskProposalRoutePaths:
+    """Standard repo-local paths for one task-proposal route."""
+
+    task_board_path: Path
+    plan_path: Path
+    artifact_dir: Path
+
+
+def _repo_path(repo_root: Path, path: Path | str) -> Path:
+    resolved = Path(path)
+    return resolved if resolved.is_absolute() else repo_root / resolved
+
+
+def build_task_proposal_route_paths(
+    *,
+    repo_root: Path | str,
+    task_board_stem: str,
+    task_board_dir: Path | str,
+    plan_stem: str | None = None,
+    plan_dir: Path | str | None = None,
+    artifact_dir: Path | str | None = None,
+    artifact_namespace: str | None = None,
+    artifact_root: Path | str = "data",
+    artifact_leaf: Path | str = "llm_router",
+) -> TaskProposalRoutePaths:
+    """Build standard repo-local paths for a task-proposal wrapper."""
+
+    from .wrapper_utils import task_board_filename
+
+    root = Path(repo_root)
+    resolved_task_board_dir = _repo_path(root, task_board_dir)
+    resolved_plan_dir = _repo_path(root, plan_dir if plan_dir is not None else task_board_dir)
+    if artifact_dir is not None:
+        resolved_artifact_dir = _repo_path(root, artifact_dir)
+    else:
+        if not artifact_namespace:
+            raise ValueError("artifact_namespace is required when artifact_dir is not configured")
+        resolved_artifact_dir = _repo_path(root, artifact_root) / str(artifact_namespace) / Path(artifact_leaf)
+    return TaskProposalRoutePaths(
+        task_board_path=resolved_task_board_dir / task_board_filename(task_board_stem),
+        plan_path=resolved_plan_dir / f"{plan_stem or task_board_stem}.md",
+        artifact_dir=resolved_artifact_dir,
+    )
+
+
 def _task_values(task: object, name: str) -> list[str]:
     value = getattr(task, name, []) or []
     if isinstance(value, str):

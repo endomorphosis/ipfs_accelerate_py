@@ -276,7 +276,9 @@ __all__ = [
     "TaskProposalRouterConfig",
     "TaskProposalRouterCliConfig",
     "TaskProposalRouterError",
+    "TaskProposalRoutePaths",
     "task_metadata_lines",
+    "build_task_proposal_route_paths",
 ]
 
 
@@ -518,6 +520,7 @@ def __getattr__(name: str):
     if name in {
         "build_task_proposal_prompt",
         "build_task_proposal_prompt_builder",
+        "build_task_proposal_route_paths",
         "build_task_proposal_router_cli_config",
         "build_configured_task_proposal_router_runner",
         "build_repo_task_proposal_router_runner",
@@ -529,6 +532,7 @@ def __getattr__(name: str):
         "TaskProposalRouterConfig",
         "TaskProposalRouterCliConfig",
         "TaskProposalRouterError",
+        "TaskProposalRoutePaths",
         "ConfiguredTaskProposalRouterRunner",
         "task_metadata_lines",
     }:
