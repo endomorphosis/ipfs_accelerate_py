@@ -51,6 +51,7 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     implementation_supervisor_compact_track_spec,
     implementation_supervisor_compact_track_specs,
     implementation_supervisor_common_args,
+    implementation_supervisor_namespace_track_config,
     implementation_supervisor_track_spec,
     parse_implementation_track_spec,
     parse_track_spec,
@@ -1809,11 +1810,23 @@ def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
 
 
 def test_implementation_supervisor_track_spec_uses_standard_state_layout():
+    namespace_paths = agent_supervisor_namespace_paths(Path("/repo"), "virtual_ai_os")
     config = ImplementationSupervisorTrackConfig(
         name="VAI",
         script_path="scripts/virtual_ai_os_todo_supervisor.py",
         state_dir="data/virtual_ai_os/state",
         state_prefix="virtual_ai_os",
+    )
+    namespace_config = implementation_supervisor_namespace_track_config(
+        name="VAI",
+        script_path="scripts/virtual_ai_os_todo_supervisor.py",
+        namespace_paths=namespace_paths,
+    )
+    overridden_namespace_config = implementation_supervisor_namespace_track_config(
+        name="MGW",
+        script_path="scripts/meta_glasses_display_todo_supervisor.py",
+        namespace_paths=agent_supervisor_namespace_paths(Path("/repo"), "meta_glasses_display_widgets"),
+        state_prefix="meta_glasses_display",
     )
     compact_spec = implementation_supervisor_compact_track_spec(
         name="VAI",
@@ -1845,6 +1858,16 @@ def test_implementation_supervisor_track_spec_uses_standard_state_layout():
 
     assert compact_spec == "VAI|scripts/virtual_ai_os_todo_supervisor.py|data/virtual_ai_os/state|virtual_ai_os"
     assert config.compact_spec() == compact_spec
+    assert namespace_config == ImplementationSupervisorTrackConfig(
+        name="VAI",
+        script_path="scripts/virtual_ai_os_todo_supervisor.py",
+        state_dir=Path("/repo/data/virtual_ai_os/state"),
+        state_prefix="virtual_ai_os",
+    )
+    assert overridden_namespace_config.compact_spec() == (
+        "MGW|scripts/meta_glasses_display_todo_supervisor.py|"
+        "/repo/data/meta_glasses_display_widgets/state|meta_glasses_display"
+    )
     assert config.track_spec() == spec
     assert compact_specs == (
         compact_spec,

@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
 from .todo_daemon.core import pid_alive, read_pid_file, terminate_pid_tree
-from .wrapper_utils import apply_env_defaults, env_str
+from .wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaults, env_str
 
 
 OutputFn = Callable[[str], None]
@@ -78,6 +78,23 @@ class ImplementationSupervisorTrackConfig:
             state_dir=self.state_dir,
             state_prefix=self.state_prefix,
         )
+
+
+def implementation_supervisor_namespace_track_config(
+    *,
+    name: str,
+    script_path: Path | str,
+    namespace_paths: AgentSupervisorNamespacePaths,
+    state_prefix: str | None = None,
+) -> ImplementationSupervisorTrackConfig:
+    """Return a track config using the standard namespace state directory."""
+
+    return ImplementationSupervisorTrackConfig(
+        name=name,
+        script_path=script_path,
+        state_dir=namespace_paths.state_dir,
+        state_prefix=state_prefix or namespace_paths.namespace,
+    )
 
 
 @dataclass(frozen=True)
