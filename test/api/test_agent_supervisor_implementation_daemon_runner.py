@@ -5,10 +5,12 @@ import logging
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+    ConfiguredImplementationDaemonRunner,
     DaemonLoopHook,
     ImplementationDaemonDefaults,
     ImplementationDaemonRunContext,
     apply_portal_implementation_daemon_defaults,
+    build_configured_implementation_daemon_runner,
     build_daemon_codebase_scan_refill_callback,
     build_daemon_objective_refill_callback,
     build_portal_implementation_daemon_from_args,
@@ -170,6 +172,88 @@ def test_run_configured_portal_implementation_daemon_builds_and_runs_once(tmp_pa
     )
 
     assert calls == [board]
+
+
+def test_configured_daemon_runner_resolves_bootstrap_paths(monkeypatch, tmp_path: Path):
+    calls: list[object] = []
+    paths = {
+        "todo_path": tmp_path / "tasks.todo.md",
+        "state_dir": tmp_path / "state",
+        "worktree_root": tmp_path / "worktrees",
+        "objective_path": tmp_path / "objective.md",
+    }
+    hook = DaemonLoopHook("before", "hook: %s", lambda ctx: [])
+    captured: dict[str, object] = {}
+
+    def fake_run_configured_from_paths(self, argv, resolved_paths, **kwargs):
+        calls.append("run")
+        captured["argv"] = tuple(argv)
+        captured["paths"] = resolved_paths
+        captured["kwargs"] = kwargs
+        return {"ran": True}
+
+    monkeypatch.setattr(
+        ConfiguredImplementationDaemonRunner,
+        "run_configured_from_paths",
+        fake_run_configured_from_paths,
+    )
+
+    def ensure_paths():
+        calls.append("paths")
+        return paths
+
+    def enter_runtime():
+        calls.append("enter")
+
+    def path_callback(resolved_paths):
+        calls.append(("path-callback", resolved_paths["todo_path"]))
+
+    def hooks_factory(resolved_paths):
+        calls.append(("hooks", resolved_paths["objective_path"]))
+        return (hook,)
+
+    runner = build_configured_implementation_daemon_runner(
+        repo_root=tmp_path,
+        logger=logging.getLogger("test-bootstrap-daemon-runner"),
+    )
+    result = runner.run_configured_from_bootstrap(
+        ["--once"],
+        ensure_paths=ensure_paths,
+        enter_runtime_environment=enter_runtime,
+        path_callbacks=(path_callback,),
+        hooks_factory=hooks_factory,
+        task_prefix="## EX-",
+        state_prefix="example",
+        objective_path_key="objective_path",
+        pass_complete_message="complete: %s",
+    )
+
+    assert result == {"ran": True}
+    assert calls == [
+        "paths",
+        "enter",
+        ("path-callback", paths["todo_path"]),
+        ("hooks", paths["objective_path"]),
+        "run",
+    ]
+    assert captured["argv"] == ("--once",)
+    assert captured["paths"] == paths
+    assert captured["kwargs"]["task_prefix"] == "## EX-"
+    assert captured["kwargs"]["state_prefix"] == "example"
+    assert captured["kwargs"]["objective_path_key"] == "objective_path"
+    assert captured["kwargs"]["hooks"] == (hook,)
+    assert captured["kwargs"]["pass_complete_message"] == "complete: %s"
+
+    calls.clear()
+    runner.run_configured_from_bootstrap(
+        [],
+        ensure_paths=ensure_paths,
+        enter_runtime_environment=enter_runtime,
+        enter_runtime_before_paths=True,
+        task_prefix="## EX-",
+        state_prefix="example",
+    )
+    assert calls[0:2] == ["enter", "paths"]
 
 
 def test_build_daemon_refill_hooks_formats_standard_messages():

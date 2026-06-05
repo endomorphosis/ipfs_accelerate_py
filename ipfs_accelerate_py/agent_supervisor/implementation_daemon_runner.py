@@ -35,6 +35,8 @@ class ImplementationDaemonRunContext:
 
 DaemonLoopHookCallback = Callable[[ImplementationDaemonRunContext], Any]
 DaemonRefillRecordCallback = Callable[..., Any]
+DaemonBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
+DaemonBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence["DaemonLoopHook"]]
 
 
 @dataclass(frozen=True)
@@ -120,6 +122,57 @@ class ConfiguredImplementationDaemonRunner:
         return self.run_configured(
             args,
             hooks=hooks,
+            pass_complete_message=pass_complete_message,
+        )
+
+    def run_configured_from_bootstrap(
+        self,
+        argv: Sequence[str],
+        *,
+        ensure_paths: Callable[[], Mapping[str, Path | str]],
+        task_prefix: str,
+        state_prefix: str,
+        enter_runtime_environment: Callable[[], Any] | None = None,
+        enter_runtime_before_paths: bool = False,
+        path_callbacks: Sequence[DaemonBootstrapPathCallback] = (),
+        hooks_factory: DaemonBootstrapHookFactory | None = None,
+        hooks: Sequence[DaemonLoopHook] = (),
+        todo_path_key: str = "todo_path",
+        state_dir_key: str = "state_dir",
+        worktree_root_key: str = "worktree_root",
+        todo_path_flag: str = "--todo-path",
+        objective_path_key: str | None = None,
+        objective_path: Path | str | None = None,
+        objective_bundle_dir_key: str | None = None,
+        objective_bundle_dir: Path | str | None = None,
+        worktree_submodule_paths: Sequence[str] = (),
+        pass_complete_message: str | None = None,
+    ) -> Any:
+        """Resolve bootstrap paths, run project callbacks, and start the daemon."""
+
+        if enter_runtime_environment is not None and enter_runtime_before_paths:
+            enter_runtime_environment()
+        paths = ensure_paths()
+        if enter_runtime_environment is not None and not enter_runtime_before_paths:
+            enter_runtime_environment()
+        for callback in path_callbacks:
+            callback(paths)
+        effective_hooks = hooks_factory(paths) if hooks_factory is not None else hooks
+        return self.run_configured_from_paths(
+            argv,
+            paths,
+            task_prefix=task_prefix,
+            state_prefix=state_prefix,
+            todo_path_key=todo_path_key,
+            state_dir_key=state_dir_key,
+            worktree_root_key=worktree_root_key,
+            todo_path_flag=todo_path_flag,
+            objective_path_key=objective_path_key,
+            objective_path=objective_path,
+            objective_bundle_dir_key=objective_bundle_dir_key,
+            objective_bundle_dir=objective_bundle_dir,
+            worktree_submodule_paths=worktree_submodule_paths,
+            hooks=effective_hooks,
             pass_complete_message=pass_complete_message,
         )
 
