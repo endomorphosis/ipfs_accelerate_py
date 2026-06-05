@@ -46,6 +46,22 @@ class ActionContractSyncTarget:
 
 
 @dataclass(frozen=True)
+class ActionContractSyncSpec:
+    """Portable action-contract sync inputs using repo-relative artifact paths."""
+
+    descriptor_path: Path | str
+    contract: str
+    operation_to_action: Mapping[str, str]
+    action_metadata: Mapping[str, Mapping[str, str]]
+    python_target_path: Path | str
+    python_config: PythonActionContractConfig
+    js_target_path: Path | str
+    js_config: JavaScriptActionContractConfig
+    operation_label: str = "operation"
+    description: str = "Sync or verify generated action contract modules."
+
+
+@dataclass(frozen=True)
 class ActionContractCodegenConfig:
     """Inputs for syncing generated action contract modules from a descriptor."""
 
@@ -111,6 +127,38 @@ def build_configured_action_contract_sync_runner(
             repo_root=Path(repo_root) if repo_root is not None else None,
             description=description,
         )
+    )
+
+
+def _repo_bound_path(repo_root: Path, path: Path | str) -> Path:
+    value = Path(path)
+    if value.is_absolute():
+        return value
+    return repo_root / value
+
+
+def build_action_contract_sync_runner_from_spec(
+    *,
+    repo_root: Path | str,
+    sync_spec: ActionContractSyncSpec,
+) -> ConfiguredActionContractSyncRunner:
+    """Build an action-contract sync runner from a reusable repo-relative spec."""
+
+    root = Path(repo_root)
+    return build_configured_action_contract_sync_runner(
+        descriptor_path=_repo_bound_path(root, sync_spec.descriptor_path),
+        contract=sync_spec.contract,
+        operation_to_action=operation_action_mapper(
+            sync_spec.operation_to_action,
+            label=sync_spec.operation_label,
+        ),
+        action_metadata=sync_spec.action_metadata,
+        python_target_path=_repo_bound_path(root, sync_spec.python_target_path),
+        python_config=sync_spec.python_config,
+        js_target_path=_repo_bound_path(root, sync_spec.js_target_path),
+        js_config=sync_spec.js_config,
+        repo_root=root,
+        description=sync_spec.description,
     )
 
 

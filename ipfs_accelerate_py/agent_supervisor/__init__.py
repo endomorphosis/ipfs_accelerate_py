@@ -50,6 +50,7 @@ __all__ = [
     "BundleWriteResult",
     "BundleLaneSpec",
     "ActionContractCodegenConfig",
+    "ActionContractSyncSpec",
     "ActionContractSyncTarget",
     "AndroidValidationCallbacks",
     "AgentSupervisorRuntimeBootstrapCallbacks",
@@ -97,6 +98,7 @@ __all__ = [
     "assign_goal_subgoal_packets",
     "build_bundle_task_payloads",
     "build_configured_backlog_recorder_bundle",
+    "build_action_contract_sync_runner_from_spec",
     "build_configured_action_contract_sync_runner",
     "build_execution_packet",
     "build_execution_packets",
@@ -392,8 +394,10 @@ def __getattr__(name: str):
         return getattr(merge_conflict_repair, name)
     if name in {
         "ActionContractSyncTarget",
+        "ActionContractSyncSpec",
         "ActionContractCodegenConfig",
         "build_action_contract_sync_arg_parser",
+        "build_action_contract_sync_runner_from_spec",
         "build_action_contract_sync_targets",
         "build_configured_action_contract_sync_runner",
         "ConfiguredActionContractSyncRunner",
