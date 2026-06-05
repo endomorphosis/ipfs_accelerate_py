@@ -100,6 +100,7 @@ __all__ = [
     "build_configured_merge_resolver_arg_parser",
     "build_configured_merge_resolver_runner",
     "build_configured_implementation_daemon_runner",
+    "build_namespace_configured_implementation_daemon_runner",
     "build_configured_multi_supervisor_launcher",
     "build_configured_multi_supervisor_cli_runner",
     "build_repo_implementation_multi_supervisor_launcher",
@@ -518,6 +519,7 @@ def __getattr__(name: str):
     if name in {
         "build_portal_implementation_daemon_from_args",
         "build_configured_implementation_daemon_runner",
+        "build_namespace_configured_implementation_daemon_runner",
         "build_daemon_codebase_scan_refill_callback",
         "build_implementation_daemon_defaults_from_paths",
         "build_daemon_objective_refill_callback",

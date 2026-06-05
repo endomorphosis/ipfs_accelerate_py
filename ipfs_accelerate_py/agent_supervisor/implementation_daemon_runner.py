@@ -10,7 +10,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Mapping, Sequence
 
-from .wrapper_utils import with_default, with_repeated_default
+from .wrapper_utils import (
+    AgentSupervisorNamespacePaths,
+    with_default,
+    with_repeated_default,
+)
 
 
 @dataclass(frozen=True)
@@ -177,6 +181,63 @@ class ConfiguredImplementationDaemonRunner:
             pass_complete_message=pass_complete_message,
         )
 
+    def run_namespace_configured_from_bootstrap(
+        self,
+        argv: Sequence[str],
+        *,
+        ensure_paths: Callable[[], Mapping[str, Path | str]],
+        namespace_paths: AgentSupervisorNamespacePaths,
+        task_prefix: str,
+        state_prefix: str,
+        use_bootstrap_keys: bool = False,
+        enter_runtime_environment: Callable[[], Any] | None = None,
+        enter_runtime_before_paths: bool = False,
+        path_callbacks: Sequence[DaemonBootstrapPathCallback] = (),
+        hooks_factory: DaemonBootstrapHookFactory | None = None,
+        hooks: Sequence[DaemonLoopHook] = (),
+        todo_path_key: str = "todo_path",
+        state_dir_key: str = "state_dir",
+        worktree_root_key: str = "worktree_root",
+        todo_path_flag: str = "--todo-path",
+        objective_path_key: str | None = None,
+        objective_path: Path | str | None = None,
+        objective_bundle_dir_key: str | None = None,
+        objective_bundle_dir: Path | str | None = None,
+        worktree_submodule_paths: Sequence[str] = (),
+        pass_complete_message: str | None = None,
+    ) -> Any:
+        """Run a configured daemon using standard namespace path defaults."""
+
+        resolved_objective_bundle_dir_key = objective_bundle_dir_key
+        resolved_objective_bundle_dir = objective_bundle_dir
+        if resolved_objective_bundle_dir_key is None and resolved_objective_bundle_dir is None:
+            if use_bootstrap_keys:
+                resolved_objective_bundle_dir_key = "objective_bundle_dir"
+            else:
+                resolved_objective_bundle_dir = namespace_paths.objective_bundle_dir
+
+        return self.run_configured_from_bootstrap(
+            argv,
+            ensure_paths=ensure_paths,
+            enter_runtime_environment=enter_runtime_environment,
+            enter_runtime_before_paths=enter_runtime_before_paths,
+            path_callbacks=path_callbacks,
+            hooks_factory=hooks_factory,
+            hooks=hooks,
+            todo_path_key=todo_path_key,
+            state_dir_key=state_dir_key,
+            worktree_root_key=worktree_root_key,
+            todo_path_flag=todo_path_flag,
+            task_prefix=task_prefix,
+            state_prefix=state_prefix,
+            objective_path_key=objective_path_key,
+            objective_path=objective_path,
+            objective_bundle_dir_key=resolved_objective_bundle_dir_key,
+            objective_bundle_dir=resolved_objective_bundle_dir,
+            worktree_submodule_paths=worktree_submodule_paths,
+            pass_complete_message=pass_complete_message,
+        )
+
 
 def build_configured_implementation_daemon_runner(
     *,
@@ -206,6 +267,32 @@ def build_configured_implementation_daemon_runner(
             Path(default_objective_bundle_dir)
             if default_objective_bundle_dir is not None
             else None
+        ),
+        pass_complete_message=pass_complete_message,
+    )
+
+
+def build_namespace_configured_implementation_daemon_runner(
+    *,
+    repo_root: Path | str,
+    logger: logging.Logger,
+    namespace_paths: AgentSupervisorNamespacePaths,
+    default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_objective_path: Path | str | None = None,
+    default_objective_bundle_dir: Path | str | None = None,
+    pass_complete_message: str = "Portal implementation daemon pass complete: %s",
+) -> ConfiguredImplementationDaemonRunner:
+    """Build a configured daemon runner using conventional namespace defaults."""
+
+    return build_configured_implementation_daemon_runner(
+        repo_root=repo_root,
+        logger=logger,
+        default_worktree_submodule_paths=default_worktree_submodule_paths,
+        default_objective_path=default_objective_path,
+        default_objective_bundle_dir=(
+            default_objective_bundle_dir
+            if default_objective_bundle_dir is not None
+            else namespace_paths.objective_bundle_dir
         ),
         pass_complete_message=pass_complete_message,
     )

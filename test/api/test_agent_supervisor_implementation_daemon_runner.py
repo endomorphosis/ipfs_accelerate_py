@@ -11,6 +11,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     ImplementationDaemonRunContext,
     apply_portal_implementation_daemon_defaults,
     build_configured_implementation_daemon_runner,
+    build_namespace_configured_implementation_daemon_runner,
     build_daemon_codebase_scan_refill_callback,
     build_daemon_objective_refill_callback,
     build_portal_implementation_daemon_from_args,
@@ -24,6 +25,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     run_portal_implementation_daemon_loop,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import parse_args
+from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
 
 
 def test_implementation_state_paths_follow_state_prefix(tmp_path: Path):
@@ -266,6 +268,88 @@ def test_configured_daemon_runner_resolves_bootstrap_paths(monkeypatch, tmp_path
         state_prefix="example",
     )
     assert calls[0:2] == ["enter", "paths"]
+
+
+def test_namespace_configured_daemon_runner_uses_namespace_defaults(tmp_path: Path):
+    namespace_paths = agent_supervisor_namespace_paths(tmp_path, "agent_supervisor")
+
+    runner = build_namespace_configured_implementation_daemon_runner(
+        repo_root=tmp_path,
+        logger=logging.getLogger("test-namespace-daemon-runner"),
+        namespace_paths=namespace_paths,
+        default_worktree_submodule_paths=("module-a", "module-b"),
+        default_objective_path=tmp_path / "objective.md",
+        pass_complete_message="namespace pass complete: %s",
+    )
+
+    assert runner.repo_root == tmp_path
+    assert runner.default_worktree_submodule_paths == ("module-a", "module-b")
+    assert runner.default_objective_path == tmp_path / "objective.md"
+    assert runner.default_objective_bundle_dir == namespace_paths.objective_bundle_dir
+    assert runner.pass_complete_message == "namespace pass complete: %s"
+
+
+def test_namespace_configured_daemon_bootstrap_applies_objective_bundle_defaults(
+    monkeypatch,
+    tmp_path: Path,
+):
+    namespace_paths = agent_supervisor_namespace_paths(tmp_path, "agent_supervisor")
+    paths = {
+        "todo_path": tmp_path / "tasks.todo.md",
+        "state_dir": tmp_path / "state",
+        "worktree_root": tmp_path / "worktrees",
+        "objective_heap_path": tmp_path / "objective.md",
+        "objective_bundle_dir": tmp_path / "runtime-bundles",
+    }
+    captured: list[dict[str, object]] = []
+
+    def fake_run_configured_from_bootstrap(self, argv, **kwargs):
+        captured.append({"argv": tuple(argv), "kwargs": kwargs})
+        return {"ran": True}
+
+    monkeypatch.setattr(
+        ConfiguredImplementationDaemonRunner,
+        "run_configured_from_bootstrap",
+        fake_run_configured_from_bootstrap,
+    )
+
+    runner = build_configured_implementation_daemon_runner(
+        repo_root=tmp_path,
+        logger=logging.getLogger("test-namespace-daemon-bootstrap"),
+    )
+
+    assert runner.run_namespace_configured_from_bootstrap(
+        ["--once"],
+        ensure_paths=lambda: paths,
+        namespace_paths=namespace_paths,
+        task_prefix="## EX-",
+        state_prefix="example",
+        objective_path=tmp_path / "static-objective.md",
+        worktree_submodule_paths=("module-a",),
+    ) == {"ran": True}
+
+    kwargs = captured[-1]["kwargs"]
+    assert captured[-1]["argv"] == ("--once",)
+    assert kwargs["task_prefix"] == "## EX-"
+    assert kwargs["state_prefix"] == "example"
+    assert kwargs["objective_path"] == tmp_path / "static-objective.md"
+    assert kwargs["objective_bundle_dir"] == namespace_paths.objective_bundle_dir
+    assert kwargs["worktree_submodule_paths"] == ("module-a",)
+
+    runner.run_namespace_configured_from_bootstrap(
+        [],
+        ensure_paths=lambda: paths,
+        namespace_paths=namespace_paths,
+        task_prefix="## EX-",
+        state_prefix="example",
+        use_bootstrap_keys=True,
+        objective_path_key="objective_heap_path",
+    )
+
+    kwargs = captured[-1]["kwargs"]
+    assert kwargs["objective_path_key"] == "objective_heap_path"
+    assert kwargs["objective_bundle_dir_key"] == "objective_bundle_dir"
+    assert kwargs["objective_bundle_dir"] is None
 
 
 def test_build_daemon_refill_hooks_formats_standard_messages():
