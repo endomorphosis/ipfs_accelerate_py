@@ -277,6 +277,31 @@ class ConfiguredSupervisorRuntime:
 
 
 @dataclass(frozen=True)
+class ConfiguredSupervisorRuntimeExports:
+    """Stable public bindings derived from a configured supervisor runtime."""
+
+    runtime: ConfiguredSupervisorRuntime
+    process_match_any: tuple[str, ...]
+    repair_runtime: Callable[[Path, str], dict[str, Any]]
+    is_running: Callable[[Path, str], bool]
+    ensure_running: Callable[..., dict[str, Any]]
+
+
+def build_configured_supervisor_runtime_exports(
+    runtime: ConfiguredSupervisorRuntime,
+) -> ConfiguredSupervisorRuntimeExports:
+    """Return reusable wrapper exports for a configured supervisor runtime."""
+
+    return ConfiguredSupervisorRuntimeExports(
+        runtime=runtime,
+        process_match_any=tuple(runtime.process_match_any),
+        repair_runtime=runtime.repair_runtime,
+        is_running=runtime.is_running,
+        ensure_running=runtime.ensure_running,
+    )
+
+
+@dataclass(frozen=True)
 class ConfiguredSupervisorBootstrapRunner:
     """Project-bound supervisor bootstrap wiring with reusable run dispatch."""
 

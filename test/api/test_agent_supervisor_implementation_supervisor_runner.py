@@ -9,6 +9,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     CodebaseRefillDefaults,
     ConfiguredSupervisorBootstrapRunner,
     ConfiguredSupervisorRuntime,
+    ConfiguredSupervisorRuntimeExports,
     ImplementationSupervisorRunContext,
     ImplementationSupervisorDefaults,
     ObjectiveRefillDefaults,
@@ -17,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_codebase_refill_defaults_factory,
     build_configured_supervisor_bootstrap_runner,
     build_configured_supervisor_runtime,
+    build_configured_supervisor_runtime_exports,
     build_objective_refill_defaults_factory,
     build_portal_implementation_supervisor_from_args,
     build_script_supervisor_bootstrap_runner,
@@ -537,6 +539,48 @@ def test_build_script_supervisor_runtime_derives_script_marker(tmp_path: Path):
     assert runtime.script_path == script_path.resolve()
     assert runtime.process_match_any == ("example_supervisor.py", "example_autopilot.py")
     assert runtime.startup_delay_seconds == 0.5
+
+
+def test_build_configured_supervisor_runtime_exports_binds_public_facade(tmp_path: Path):
+    state_dir = tmp_path / "state"
+
+    class Operations:
+        def repair_runtime(self, state_dir: Path, state_prefix: str) -> dict[str, object]:
+            return {"state_dir": state_dir, "state_prefix": state_prefix, "repair": True}
+
+        def is_running(self, state_dir: Path, state_prefix: str) -> bool:
+            return state_dir.name == "state" and state_prefix == "agent"
+
+        def ensure_running(self, argv: list[str], *, state_dir: Path, state_prefix: str) -> dict[str, object]:
+            return {"argv": tuple(argv), "state_dir": state_dir, "state_prefix": state_prefix}
+
+    runtime = ConfiguredSupervisorRuntime(
+        repo_root=tmp_path,
+        script_path=tmp_path / "supervisor.py",
+        process_match_any=("supervisor.py",),
+        process_predicate=None,
+        prepare_environment=None,
+        implementation_lock_name="implementation.lock",
+        startup_delay_seconds=0,
+        operations=Operations(),
+    )
+
+    exports = build_configured_supervisor_runtime_exports(runtime)
+
+    assert isinstance(exports, ConfiguredSupervisorRuntimeExports)
+    assert exports.runtime is runtime
+    assert exports.process_match_any == ("supervisor.py",)
+    assert exports.repair_runtime(state_dir, "agent") == {
+        "state_dir": state_dir,
+        "state_prefix": "agent",
+        "repair": True,
+    }
+    assert exports.is_running(state_dir, "agent") is True
+    assert exports.ensure_running(["--once"], state_dir=state_dir, state_prefix="agent") == {
+        "argv": ("--once",),
+        "state_dir": state_dir,
+        "state_prefix": "agent",
+    }
 
 
 def test_build_supervisor_refill_hooks_formats_standard_messages():
