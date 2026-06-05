@@ -114,6 +114,47 @@ def build_configured_merge_resolver_runner(
     )
 
 
+def build_namespace_merge_resolver_runner(
+    *,
+    repo_root: Path | str,
+    namespace: str,
+    prompt_heading: str = DEFAULT_PROMPT_HEADING,
+    completion_rule: str = DEFAULT_COMPLETION_RULE,
+    extra_rules: Sequence[str] = (),
+    state_prefix: str | None = None,
+    env_prefix: str = "",
+    state_dir: Path | str | None = None,
+    description: str = "Build or invoke an LLM merge resolver for agent-supervisor events",
+    missing_event_exit_code: int = 0,
+    apply_failed_exit_code: int = 1,
+    fallback_command_env_var: str = LLM_MERGE_RESOLVER_COMMAND_ENV,
+) -> ConfiguredMergeResolverRunner:
+    """Build a merge-resolver runner using the standard namespace state layout."""
+
+    from .implementation_daemon_runner import implementation_state_artifact_paths
+    from .wrapper_utils import agent_supervisor_namespace_paths, prefixed_env_var
+
+    resolved_repo_root = Path(repo_root)
+    namespace_paths = agent_supervisor_namespace_paths(resolved_repo_root, namespace)
+    resolved_state_prefix = state_prefix or namespace
+    resolved_state_dir = Path(state_dir) if state_dir is not None else namespace_paths.state_dir
+    state_paths = implementation_state_artifact_paths(resolved_state_dir, resolved_state_prefix)
+    return build_configured_merge_resolver_runner(
+        default_events_path=state_paths["events_path"],
+        default_repo_root=resolved_repo_root,
+        prompt_heading=prompt_heading,
+        completion_rule=completion_rule,
+        extra_rules=extra_rules,
+        primary_command_env_var=(
+            prefixed_env_var(env_prefix, "LLM_MERGE_RESOLVER_COMMAND") if env_prefix else ""
+        ),
+        fallback_command_env_var=fallback_command_env_var,
+        description=description,
+        missing_event_exit_code=missing_event_exit_code,
+        apply_failed_exit_code=apply_failed_exit_code,
+    )
+
+
 def iter_jsonl(path: Path) -> list[dict[str, Any]]:
     return read_jsonl_events(path, repair=True)
 

@@ -20,6 +20,7 @@ from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     MergeResolverCliConfig,
     build_llm_merge_resolver_invoker,
     build_merge_prompt_callback,
+    build_namespace_merge_resolver_runner,
     build_resolver_payload_callback,
     main as merge_resolver_main,
     run_configured_merge_resolver_cli,
@@ -468,6 +469,43 @@ def test_merge_resolver_configured_callbacks_and_cli(tmp_path, capsys):
     output = json.loads(capsys.readouterr().out)
     assert output["task_id"] == "CUSTOM-002"
     assert "Resolve the configured merge conflict." in output["prompt"]
+
+
+def test_namespace_merge_resolver_runner_uses_namespace_state_and_env(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    runner = build_namespace_merge_resolver_runner(
+        repo_root=repo,
+        namespace="agent_supervisor",
+        state_prefix="agent",
+        env_prefix="AGENT",
+        prompt_heading="Resolve the namespace merge conflict.",
+        completion_rule="Keep namespace blocked_tasks intact until validation passes.",
+        missing_event_exit_code=7,
+        apply_failed_exit_code=8,
+    )
+    parsed = runner.parse_args([])
+
+    assert parsed.events_path == repo / "data" / "agent_supervisor" / "state" / "agent_events.jsonl"
+    assert parsed.repo_root == repo
+    assert runner.config.primary_command_env_var == "AGENT_LLM_MERGE_RESOLVER_COMMAND"
+    assert runner.config.missing_event_exit_code == 7
+    assert runner.config.apply_failed_exit_code == 8
+    prompt = runner.build_merge_prompt()(
+        event={
+            "type": "merge_finished",
+            "task_id": "AGENT-001",
+            "attempted": True,
+            "merged": False,
+            "branch": "implementation/agent-001",
+            "target_branch": "main",
+            "reason": "content_conflict",
+        },
+        repo_root=repo,
+    )
+    assert "Resolve the namespace merge conflict." in prompt
+    assert "Keep namespace blocked_tasks intact" in prompt
 
 
 def test_merge_resolver_invoker_reports_configured_env_names(monkeypatch):

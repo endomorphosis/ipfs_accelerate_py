@@ -100,6 +100,7 @@ __all__ = [
     "build_merge_prompt",
     "build_configured_merge_resolver_arg_parser",
     "build_configured_merge_resolver_runner",
+    "build_namespace_merge_resolver_runner",
     "build_configured_implementation_daemon_runner",
     "build_namespace_configured_implementation_daemon_runner",
     "build_configured_multi_supervisor_launcher",
@@ -343,6 +344,7 @@ def __getattr__(name: str):
     if name in {
         "build_configured_merge_resolver_arg_parser",
         "build_configured_merge_resolver_runner",
+        "build_namespace_merge_resolver_runner",
         "build_llm_merge_resolver_invoker",
         "build_merge_prompt_callback",
         "build_resolver_payload_callback",
