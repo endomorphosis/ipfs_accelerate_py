@@ -6,6 +6,7 @@ from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
     CodebaseRefillDefaults,
+    ConfiguredSupervisorBootstrapRunner,
     ConfiguredSupervisorRuntime,
     ImplementationSupervisorRunContext,
     ImplementationSupervisorDefaults,
@@ -17,6 +18,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_configured_supervisor_runtime,
     build_objective_refill_defaults_factory,
     build_portal_implementation_supervisor_from_args,
+    build_script_supervisor_bootstrap_runner,
     build_script_supervisor_runtime,
     build_supervisor_codebase_scan_refill_callback,
     build_supervisor_objective_refill_callback,
@@ -457,6 +459,59 @@ def test_configured_supervisor_bootstrap_runner_dispatches_runtime(monkeypatch, 
     kwargs["enter_runtime_environment"]()
     kwargs["path_callbacks"][0](paths)
     assert calls == ["enter", str(paths["todo_path"])]
+
+
+def test_build_script_supervisor_bootstrap_runner_builds_runtime_and_dispatches(
+    monkeypatch,
+    tmp_path: Path,
+):
+    repo = tmp_path / "repo"
+    script_path = repo / "scripts" / "example_supervisor.py"
+    daemon_script = repo / "scripts" / "example_daemon.py"
+    script_path.parent.mkdir(parents=True)
+    script_path.write_text("# supervisor\n", encoding="utf-8")
+    daemon_script.write_text("# daemon\n", encoding="utf-8")
+    paths = {
+        "todo_path": tmp_path / "tasks.todo.md",
+        "state_dir": tmp_path / "state",
+        "worktree_root": tmp_path / "worktrees",
+    }
+    captured: dict[str, object] = {}
+
+    def fake_run_configured_from_bootstrap(self, argv, **kwargs):
+        captured["runtime"] = self
+        captured["argv"] = tuple(argv)
+        captured["kwargs"] = kwargs
+        return {"ran": True}
+
+    monkeypatch.setattr(
+        ConfiguredSupervisorRuntime,
+        "run_configured_from_bootstrap",
+        fake_run_configured_from_bootstrap,
+    )
+    runner = build_script_supervisor_bootstrap_runner(
+        repo_root=repo,
+        script_path=script_path,
+        logger=logging.getLogger("test-script-supervisor-bootstrap-runner"),
+        ensure_paths=lambda: paths,
+        prepare_environment=lambda: None,
+        extra_process_match_any=("example_autopilot.py",),
+        task_prefix="## EX-",
+        state_prefix="example",
+        daemon_script_path=daemon_script,
+        worktree_submodule_paths=("module-a",),
+    )
+
+    assert isinstance(runner, ConfiguredSupervisorBootstrapRunner)
+    assert runner.runtime.process_match_any == ("example_supervisor.py", "example_autopilot.py")
+    assert runner.run(["--once"]) == {"ran": True}
+    assert captured["runtime"] is runner.runtime
+    assert captured["argv"] == ("--once",)
+    assert captured["kwargs"]["ensure_paths"]() == paths
+    assert captured["kwargs"]["task_prefix"] == "## EX-"
+    assert captured["kwargs"]["state_prefix"] == "example"
+    assert captured["kwargs"]["daemon_script_path"] == daemon_script
+    assert captured["kwargs"]["worktree_submodule_paths"] == ("module-a",)
 
 
 def test_build_script_supervisor_runtime_derives_script_marker(tmp_path: Path):

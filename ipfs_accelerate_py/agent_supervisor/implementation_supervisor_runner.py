@@ -475,6 +475,86 @@ def build_script_supervisor_runtime(
     )
 
 
+def build_script_supervisor_bootstrap_runner(
+    *,
+    repo_root: Path | str,
+    script_path: Path | str,
+    logger: logging.Logger,
+    ensure_paths: Callable[[], Mapping[str, Path | str]],
+    task_prefix: str,
+    state_prefix: str,
+    daemon_script_path: Path | str,
+    supervisor_script_path: Path | str | None = None,
+    process_match_any: Sequence[str] | None = None,
+    extra_process_match_any: Sequence[str] = (),
+    process_predicate: Callable[[int], bool] | None = None,
+    prepare_environment: Callable[[], None] | None = None,
+    implementation_lock_name: str = "implementation.lock",
+    startup_delay_seconds: float = 1.0,
+    enter_runtime_environment: Callable[[], Any] | None = None,
+    enter_runtime_before_paths: bool = False,
+    path_callbacks: Sequence[SupervisorBootstrapPathCallback] = (),
+    objective_factory: SupervisorBootstrapFactory | None = None,
+    codebase_factory: SupervisorBootstrapFactory | None = None,
+    hooks_factory: SupervisorBootstrapHookFactory | None = None,
+    hooks: Sequence[SupervisorRunHook] = (),
+    ensure_running_flag: str = "--ensure-running",
+    ensure_running: bool | None = None,
+    todo_path_key: str = "todo_path",
+    state_dir_key: str = "state_dir",
+    worktree_root_key: str = "worktree_root",
+    todo_path_flag: str = "--todo-path",
+    max_restarts: int | str = 0,
+    llm_merge_resolver_command: SupervisorMergeResolverCommand = "",
+    worktree_submodule_paths: Sequence[str] = (),
+    once_complete_message: str = "Portal implementation supervisor check complete: %s",
+    ensure_running_message: str = "Supervisor ensure complete: %s",
+    repair_runtime: bool = True,
+    repair_runtime_message: str = "Repaired stale supervisor runtime markers: %s",
+) -> ConfiguredSupervisorBootstrapRunner:
+    """Build script-bound supervisor runtime and bootstrap/run wiring."""
+
+    runtime = build_script_supervisor_runtime(
+        repo_root=repo_root,
+        script_path=script_path,
+        process_match_any=process_match_any,
+        extra_process_match_any=extra_process_match_any,
+        process_predicate=process_predicate,
+        prepare_environment=prepare_environment,
+        implementation_lock_name=implementation_lock_name,
+        startup_delay_seconds=startup_delay_seconds,
+    )
+    return build_configured_supervisor_bootstrap_runner(
+        runtime=runtime,
+        logger=logger,
+        ensure_paths=ensure_paths,
+        task_prefix=task_prefix,
+        state_prefix=state_prefix,
+        daemon_script_path=daemon_script_path,
+        supervisor_script_path=supervisor_script_path,
+        enter_runtime_environment=enter_runtime_environment,
+        enter_runtime_before_paths=enter_runtime_before_paths,
+        path_callbacks=path_callbacks,
+        objective_factory=objective_factory,
+        codebase_factory=codebase_factory,
+        hooks_factory=hooks_factory,
+        hooks=hooks,
+        ensure_running_flag=ensure_running_flag,
+        ensure_running=ensure_running,
+        todo_path_key=todo_path_key,
+        state_dir_key=state_dir_key,
+        worktree_root_key=worktree_root_key,
+        todo_path_flag=todo_path_flag,
+        max_restarts=max_restarts,
+        llm_merge_resolver_command=llm_merge_resolver_command,
+        worktree_submodule_paths=worktree_submodule_paths,
+        once_complete_message=once_complete_message,
+        ensure_running_message=ensure_running_message,
+        repair_runtime=repair_runtime,
+        repair_runtime_message=repair_runtime_message,
+    )
+
+
 @dataclass(frozen=True)
 class ImplementationSupervisorDefaults:
     """Default CLI values for a project-specific implementation supervisor wrapper."""
