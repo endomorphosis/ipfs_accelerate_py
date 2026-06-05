@@ -160,6 +160,20 @@ def repo_external_package_roots(
     )
 
 
+def repo_script_command(
+    repo_root: Path | str,
+    script_path: Path | str,
+    *,
+    command: Sequence[str] = ("bash",),
+) -> str:
+    """Return a shell-safe command for a repo-local script."""
+
+    script = _repo_path(Path(repo_root), script_path)
+    parts = [str(part) for part in command]
+    parts.append(str(script))
+    return shlex.join(parts)
+
+
 def task_board_filename(stem: str, suffix: str = "md") -> str:
     """Return a scanner-neutral task-board markdown filename."""
 

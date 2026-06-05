@@ -158,6 +158,7 @@ from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
     repo_external_package_roots,
     repo_root_from_env,
     repo_relative_or_default,
+    repo_script_command,
     resolve_and_ensure_bootstrap_paths,
     resolve_bootstrap_paths,
     rewrite_validation_commands,
@@ -289,6 +290,10 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert repo_external_package_roots(tmp_path, ("ipfs_accelerate", "ipfs_datasets")) == (
         tmp_path / "external" / "ipfs_accelerate",
         tmp_path / "external" / "ipfs_datasets",
+    )
+    assert repo_script_command(tmp_path, "scripts/run.sh") == f"bash {tmp_path / 'scripts' / 'run.sh'}"
+    assert repo_script_command(tmp_path, "scripts/path with space.sh", command=("python3", "-u")) == (
+        "python3 -u " + shlex.quote(str(tmp_path / "scripts" / "path with space.sh"))
     )
     assert prefixed_env_var("wrapper_utils", "state_dir") == "WRAPPER_UTILS_STATE_DIR"
     assert prefixed_env_var("WRAPPER_UTILS_", "_worktree_root", "") == "WRAPPER_UTILS_WORKTREE_ROOT"
