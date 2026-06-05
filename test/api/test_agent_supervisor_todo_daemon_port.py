@@ -36,8 +36,11 @@ from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     build_configured_task_proposal_router_runner,
     run_configured_task_proposal_router_cli,
 )
+from ipfs_accelerate_py.agent_supervisor import multi_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
+    ConfiguredMultiSupervisorCliRunner,
     build_arg_parser as build_multi_supervisor_arg_parser,
+    build_configured_multi_supervisor_cli_runner,
     common_args_from_parsed_args,
     implementation_supervisor_common_args,
     implementation_supervisor_track_spec,
@@ -1363,6 +1366,53 @@ def test_multi_supervisor_common_args_from_parsed_defaults(monkeypatch):
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "22"
     assert args[-2:] == ["--objective-scan-min-open-tasks", "99"]
     assert supervisor_track_payload(tracks[0])["log_path"].endswith("/agent_8h_run_" + parsed.stamp + ".log")
+
+
+def test_configured_multi_supervisor_cli_runner_builds_base_args_and_dispatches(tmp_path, monkeypatch):
+    captured: dict[str, tuple[str, ...]] = {}
+
+    def fake_main(argv):
+        captured["argv"] = tuple(argv)
+        return 0
+
+    monkeypatch.setattr(multi_supervisor_runner, "main", fake_main)
+    implementation_track = "VAI|scripts/vai.py|data/vai/state|vai"
+    raw_track = "RAW|scripts/raw.py|logs/raw.log|state/raw_supervisor.pid|state/raw_daemon.pid"
+
+    runner = build_configured_multi_supervisor_cli_runner(
+        repo_root=tmp_path,
+        duration_seconds=12,
+        heartbeat_interval_seconds=0.5,
+        stop_grace_seconds=0.25,
+        stamp="RUN",
+        master_dir="data/agent_supervisor",
+        master_log="logs/master.log",
+        master_pid_path="state/master.pid",
+        label="test multi",
+        python_executable=sys.executable,
+        implementation_supervisor_defaults=True,
+        implementation_supervisor_command="bash resolve.sh",
+        implementation_tracks=(implementation_track,),
+        tracks=(raw_track,),
+        common_args=("--extra", "value"),
+        detach=True,
+    )
+
+    args = runner.args()
+    assert isinstance(runner, ConfiguredMultiSupervisorCliRunner)
+    assert args[args.index("--repo-root") + 1] == str(tmp_path)
+    assert args[args.index("--heartbeat-interval-seconds") + 1] == "0.5"
+    assert args[args.index("--stop-grace-seconds") + 1] == "0.25"
+    assert args[args.index("--master-log") + 1] == "logs/master.log"
+    assert args[args.index("--master-pid-path") + 1] == "state/master.pid"
+    assert args[args.index("--python-executable") + 1] == sys.executable
+    assert args[args.index("--implementation-track") + 1] == implementation_track
+    assert args[args.index("--track") + 1] == raw_track
+    assert "--implementation-supervisor-defaults" in args
+    assert args[-1] == "--detach"
+
+    assert runner.run(["--duration-seconds", "0.01"]) == 0
+    assert captured["argv"][-2:] == ("--duration-seconds", "0.01")
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:

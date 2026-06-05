@@ -60,6 +60,7 @@ __all__ = [
     "ConfiguredActionContractSyncRunner",
     "ConfiguredImplementationDaemonRunner",
     "ConfiguredMergeResolverRunner",
+    "ConfiguredMultiSupervisorCliRunner",
     "ConfiguredObjectiveBacklogRecorder",
     "ConfiguredRetryBudgetRecorder",
     "ConfiguredSupervisorEntrypoint",
@@ -91,6 +92,7 @@ __all__ = [
     "build_configured_merge_resolver_arg_parser",
     "build_configured_merge_resolver_runner",
     "build_configured_implementation_daemon_runner",
+    "build_configured_multi_supervisor_cli_runner",
     "build_configured_implementation_supervisor_entrypoint",
     "build_configured_supervisor_runtime",
     "build_configured_task_proposal_router_runner",
@@ -390,6 +392,8 @@ def __getattr__(name: str):
         return getattr(wrapper_utils, name)
     if name in {
         "common_supervisor_args_from_parsed_args",
+        "build_configured_multi_supervisor_cli_runner",
+        "ConfiguredMultiSupervisorCliRunner",
         "implementation_supervisor_common_args",
         "implementation_supervisor_track_spec",
         "parse_implementation_supervisor_track_spec",

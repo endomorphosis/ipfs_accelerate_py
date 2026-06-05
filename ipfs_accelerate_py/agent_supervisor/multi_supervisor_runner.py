@@ -49,6 +49,23 @@ class SupervisorTrack:
         )
 
 
+@dataclass(frozen=True)
+class ConfiguredMultiSupervisorCliRunner:
+    """Project-bound CLI argv for launching the reusable multi-supervisor runner."""
+
+    argv: tuple[str, ...]
+
+    def args(self) -> list[str]:
+        """Return the configured runner argv as a mutable list."""
+
+        return list(self.argv)
+
+    def run(self, extra_argv: Sequence[str] | None = None) -> int:
+        """Run the multi-supervisor CLI with configured args plus any overrides."""
+
+        return main([*self.argv, *(extra_argv or ())])
+
+
 class SupervisorRunInterrupted(Exception):
     """Raised internally when a signal requests orderly shutdown."""
 
@@ -137,6 +154,65 @@ def supervisor_track_payload(track: SupervisorTrack) -> dict[str, str]:
         "supervisor_pid_path": str(track.supervisor_pid_path),
         "daemon_pid_path": str(track.daemon_pid_path),
     }
+
+
+def build_configured_multi_supervisor_cli_runner(
+    *,
+    repo_root: Path | str,
+    duration_seconds: float | int | str = 28800.0,
+    heartbeat_interval_seconds: float | int | str | None = None,
+    stop_grace_seconds: float | int | str | None = None,
+    stamp: str = "",
+    master_dir: Path | str = Path("data/agent_supervisor"),
+    master_log: Path | str | None = None,
+    master_pid_path: Path | str | None = None,
+    label: str = "multi-supervisor",
+    python_executable: str = "python3",
+    implementation_supervisor_defaults: bool = False,
+    implementation_supervisor_command: str = "",
+    implementation_tracks: Sequence[str] = (),
+    tracks: Sequence[str] = (),
+    common_args: Sequence[str] = (),
+    detach: bool = False,
+) -> ConfiguredMultiSupervisorCliRunner:
+    """Build reusable multi-supervisor CLI argv from project-specific tracks."""
+
+    effective_stamp = stamp or utc_run_stamp()
+    argv = [
+        "--repo-root",
+        str(repo_root),
+        "--duration-seconds",
+        str(duration_seconds),
+        "--stamp",
+        effective_stamp,
+        "--master-dir",
+        str(master_dir),
+        "--label",
+        label,
+        "--python-executable",
+        python_executable,
+    ]
+    if heartbeat_interval_seconds is not None:
+        argv.extend(["--heartbeat-interval-seconds", str(heartbeat_interval_seconds)])
+    if stop_grace_seconds is not None:
+        argv.extend(["--stop-grace-seconds", str(stop_grace_seconds)])
+    if master_log is not None:
+        argv.extend(["--master-log", str(master_log)])
+    if master_pid_path is not None:
+        argv.extend(["--master-pid-path", str(master_pid_path)])
+    if implementation_supervisor_defaults:
+        argv.append("--implementation-supervisor-defaults")
+    if implementation_supervisor_command:
+        argv.extend(["--implementation-supervisor-command", implementation_supervisor_command])
+    for track in tracks:
+        argv.extend(["--track", str(track)])
+    for track in implementation_tracks:
+        argv.extend(["--implementation-track", str(track)])
+    for arg in common_args:
+        argv.extend(["--common-arg", str(arg)])
+    if detach:
+        argv.append("--detach")
+    return ConfiguredMultiSupervisorCliRunner(tuple(argv))
 
 
 def implementation_supervisor_common_args(
