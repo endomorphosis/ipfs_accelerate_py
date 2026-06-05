@@ -858,7 +858,7 @@ def test_implementation_supervisor_args_defaults_implement_without_removing_once
     assert implementation_supervisor_args(["--no-implement", "--once"]) == ["--no-implement", "--once"]
 
 
-def test_configured_implementation_supervisor_entrypoint_defaults_and_dispatches():
+def test_configured_implementation_supervisor_entrypoint_defaults_and_dispatches(monkeypatch):
     captured: dict[str, object] = {}
 
     def supervisor_main(argv: list[str]) -> str:
@@ -871,6 +871,9 @@ def test_configured_implementation_supervisor_entrypoint_defaults_and_dispatches
     assert entrypoint.with_defaults(["--once"]) == ["--implement", "--once"]
     assert entrypoint.with_defaults(["--no-implement", "--once"]) == ["--no-implement", "--once"]
     assert entrypoint.run(["--once"]) == "ran"
+    assert captured["argv"] == ["--implement", "--once"]
+    monkeypatch.setattr(sys, "argv", ["supervisor-autopilot", "--once"])
+    assert entrypoint.run() == "ran"
     assert captured["argv"] == ["--implement", "--once"]
 
 

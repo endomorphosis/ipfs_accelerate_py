@@ -277,10 +277,10 @@ class ConfiguredSupervisorEntrypoint:
 
         return self.default_args(list(argv))
 
-    def run(self, argv: Sequence[str]) -> Any:
+    def run(self, argv: Sequence[str] | None = None) -> Any:
         """Run the bound supervisor main after applying defaults."""
 
-        return self.supervisor_main(self.with_defaults(argv))
+        return self.supervisor_main(self.with_defaults(sys.argv[1:] if argv is None else argv))
 
 
 def build_configured_implementation_supervisor_entrypoint(
