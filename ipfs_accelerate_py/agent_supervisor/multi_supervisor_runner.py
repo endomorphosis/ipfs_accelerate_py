@@ -80,6 +80,16 @@ class ImplementationSupervisorTrackConfig:
         )
 
 
+@dataclass(frozen=True)
+class ImplementationSupervisorNamespaceTrackSpec:
+    """Minimal namespace-based inputs for one implementation-supervisor track."""
+
+    name: str
+    script_path: Path | str
+    namespace: str
+    state_prefix: str | None = None
+
+
 def implementation_supervisor_namespace_track_config(
     *,
     name: str,
@@ -94,6 +104,64 @@ def implementation_supervisor_namespace_track_config(
         script_path=script_path,
         state_dir=namespace_paths.state_dir,
         state_prefix=state_prefix or namespace_paths.namespace,
+    )
+
+
+def _implementation_supervisor_namespace_track_spec(
+    spec: (
+        ImplementationSupervisorNamespaceTrackSpec
+        | tuple[str, Path | str, str]
+        | tuple[str, Path | str, str, str]
+    ),
+) -> ImplementationSupervisorNamespaceTrackSpec:
+    if isinstance(spec, ImplementationSupervisorNamespaceTrackSpec):
+        return spec
+    if len(spec) == 3:
+        name, script_path, namespace = spec
+        state_prefix = None
+    elif len(spec) == 4:
+        name, script_path, namespace, state_prefix = spec
+    else:
+        raise ValueError(
+            "namespace track specs must have NAME|SCRIPT|NAMESPACE or "
+            "NAME|SCRIPT|NAMESPACE|STATE_PREFIX"
+        )
+    return ImplementationSupervisorNamespaceTrackSpec(
+        name=name,
+        script_path=script_path,
+        namespace=namespace,
+        state_prefix=state_prefix,
+    )
+
+
+def implementation_supervisor_namespace_track_configs(
+    *,
+    repo_root: Path | str,
+    track_specs: Sequence[
+        ImplementationSupervisorNamespaceTrackSpec
+        | tuple[str, Path | str, str]
+        | tuple[str, Path | str, str, str]
+    ],
+    data_root: Path | str = "data",
+) -> tuple[ImplementationSupervisorTrackConfig, ...]:
+    """Return implementation-supervisor track configs from namespace-based specs."""
+
+    from .wrapper_utils import agent_supervisor_namespace_paths
+
+    return tuple(
+        implementation_supervisor_namespace_track_config(
+            name=resolved_spec.name,
+            script_path=resolved_spec.script_path,
+            namespace_paths=agent_supervisor_namespace_paths(
+                repo_root,
+                resolved_spec.namespace,
+                data_root=data_root,
+            ),
+            state_prefix=resolved_spec.state_prefix,
+        )
+        for resolved_spec in (
+            _implementation_supervisor_namespace_track_spec(spec) for spec in track_specs
+        )
     )
 
 

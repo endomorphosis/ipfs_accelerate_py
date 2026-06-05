@@ -46,6 +46,7 @@ from ipfs_accelerate_py.agent_supervisor import multi_supervisor_runner
 from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     ConfiguredMultiSupervisorCliRunner,
     ConfiguredMultiSupervisorLauncher,
+    ImplementationSupervisorNamespaceTrackSpec,
     ImplementationSupervisorTrackConfig,
     build_arg_parser as build_multi_supervisor_arg_parser,
     build_configured_multi_supervisor_launcher,
@@ -57,6 +58,7 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
     implementation_supervisor_compact_track_specs,
     implementation_supervisor_common_args,
     implementation_supervisor_namespace_track_config,
+    implementation_supervisor_namespace_track_configs,
     implementation_supervisor_track_spec,
     parse_implementation_track_spec,
     parse_track_spec,
@@ -2008,6 +2010,47 @@ def test_implementation_supervisor_track_spec_uses_standard_state_layout():
         "supervisor_pid_path": "data/virtual_ai_os/state/virtual_ai_os_supervisor.pid",
         "daemon_pid_path": "data/virtual_ai_os/state/virtual_ai_os_managed_daemon.pid",
     }
+
+
+def test_implementation_supervisor_namespace_track_configs_builds_multiple_repo_tracks():
+    configs = implementation_supervisor_namespace_track_configs(
+        repo_root=Path("/repo"),
+        track_specs=(
+            ("VAI", "scripts/virtual_ai_os_todo_supervisor.py", "virtual_ai_os"),
+            (
+                "MGW",
+                "scripts/meta_glasses_display_todo_supervisor.py",
+                "meta_glasses_display_widgets",
+                "meta_glasses_display",
+            ),
+            ImplementationSupervisorNamespaceTrackSpec(
+                name="HAO",
+                script_path="scripts/hallucinate_multimodal_control_todo_supervisor.py",
+                namespace="hallucinate_multimodal_control",
+            ),
+        ),
+    )
+
+    assert configs == (
+        ImplementationSupervisorTrackConfig(
+            name="VAI",
+            script_path="scripts/virtual_ai_os_todo_supervisor.py",
+            state_dir=Path("/repo/data/virtual_ai_os/state"),
+            state_prefix="virtual_ai_os",
+        ),
+        ImplementationSupervisorTrackConfig(
+            name="MGW",
+            script_path="scripts/meta_glasses_display_todo_supervisor.py",
+            state_dir=Path("/repo/data/meta_glasses_display_widgets/state"),
+            state_prefix="meta_glasses_display",
+        ),
+        ImplementationSupervisorTrackConfig(
+            name="HAO",
+            script_path="scripts/hallucinate_multimodal_control_todo_supervisor.py",
+            state_dir=Path("/repo/data/hallucinate_multimodal_control/state"),
+            state_prefix="hallucinate_multimodal_control",
+        ),
+    )
 
 
 def test_implementation_supervisor_common_args_include_long_run_defaults():
