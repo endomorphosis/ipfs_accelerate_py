@@ -124,6 +124,12 @@ class AgentSupervisorNamespacePaths:
         value = getattr(self, key)
         return repo_relative_or_default(value, self.repo_root, default)
 
+    def discovery_output_path(self, default: str | None = None) -> str:
+        """Return the namespace discovery directory as repo-relative output text."""
+
+        fallback = default or str(Path("data") / self.namespace / "discovery")
+        return self.repo_relative_path("discovery_dir", fallback)
+
 
 def agent_supervisor_namespace_paths(
     repo_root: Path | str,

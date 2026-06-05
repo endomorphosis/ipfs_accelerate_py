@@ -313,6 +313,8 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         tmp_path / "data" / "agent_supervisor" / "objective_bundles" / "todo_vector_index.json"
     )
     assert namespace_paths.repo_relative_path("discovery_dir", "fallback") == "data/agent_supervisor/discovery"
+    assert namespace_paths.discovery_output_path() == "data/agent_supervisor/discovery"
+    assert namespace_paths.discovery_output_path("fallback") == "data/agent_supervisor/discovery"
     custom_namespace_paths = agent_supervisor_namespace_paths(
         tmp_path,
         "agent_supervisor",
@@ -326,6 +328,7 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert custom_namespace_paths.objective_todo_vector_index_path == (
         tmp_path / "runtime" / "agent_supervisor" / "bundles" / "index.json"
     )
+    assert custom_namespace_paths.discovery_output_path() == "runtime/agent_supervisor/discovery"
     assert AGENT_SUPERVISOR_DIRECTORY_BOOTSTRAP_KEYS == (
         "state_dir",
         "worktree_root",
