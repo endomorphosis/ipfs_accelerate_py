@@ -5,7 +5,12 @@ import subprocess
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+    ConfiguredCodebaseScanRecorder,
+    ConfiguredObjectiveBacklogRecorder,
     ConfiguredRetryBudgetRecorder,
+    build_namespace_codebase_scan_recorder,
+    build_namespace_objective_backlog_recorder,
+    build_namespace_retry_budget_recorder,
     build_task_blocks_ensurer,
     iter_jsonl,
     ensure_task_blocks_present,
@@ -18,6 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     record_retry_budget_findings,
     scan_codebase_findings,
 )
+from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
 
 
 def _git(cwd: Path, *args: str) -> str:
@@ -40,6 +46,92 @@ def _seed_repo(tmp_path: Path) -> Path:
     _git(repo, "config", "user.name", "Test User")
     _git(repo, "config", "user.email", "test@example.invalid")
     return repo
+
+
+def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
+    namespace_paths = agent_supervisor_namespace_paths(tmp_path, "agent_supervisor")
+    prepared: list[str] = []
+
+    objective_recorder = build_namespace_objective_backlog_recorder(
+        repo_root=tmp_path,
+        namespace_paths=namespace_paths,
+        objective_path=tmp_path / "objective.md",
+        todo_path=tmp_path / "todo.md",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        state_path=tmp_path / "state" / "state.json",
+        task_header_prefix_value="## EX-",
+        depends_on_if_present=("EX-001",),
+        min_open_tasks=2,
+        max_findings=3,
+        cooldown_seconds=60,
+        surplus_findings_per_goal=4,
+        surplus_min_terms_per_todo=2,
+        discovery_output_path="data/agent_supervisor/discovery",
+        commit_outputs=True,
+        commit_subject="EX: record objective findings",
+        prepare_environment=lambda: prepared.append("objective"),
+    )
+    codebase_recorder = build_namespace_codebase_scan_recorder(
+        repo_root=tmp_path,
+        namespace_paths=namespace_paths,
+        todo_path=tmp_path / "todo.md",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        state_path=tmp_path / "state" / "state.json",
+        task_header_prefix_value="## EX-",
+        depends_on_if_present=("EX-002",),
+        min_open_tasks=1,
+        max_findings=5,
+        cooldown_seconds=120,
+        discovery_output_path="data/agent_supervisor/discovery",
+        skip_prefixes=("data/agent_supervisor/state/",),
+        commit_outputs=True,
+        commit_subject="EX: record codebase findings",
+        prepare_environment=lambda: prepared.append("codebase"),
+    )
+    retry_recorder = build_namespace_retry_budget_recorder(
+        namespace_paths=namespace_paths,
+        todo_path=tmp_path / "todo.md",
+        events_path=tmp_path / "state" / "events.jsonl",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        task_header_prefix_value="## EX-",
+        validation_retry_budget=2,
+        merge_retry_budget=1,
+        implementation_retry_budget=0,
+        validation_depends_on_if_present=("EX-003",),
+        discovery_output_path="data/agent_supervisor/discovery",
+        strip_validation_failure_kind=True,
+        commit_outputs=True,
+        repo_root=tmp_path,
+        commit_subject="EX: record retry findings",
+        prepare_environment=lambda: prepared.append("retry"),
+    )
+
+    assert isinstance(objective_recorder, ConfiguredObjectiveBacklogRecorder)
+    assert objective_recorder.discovery_dir == namespace_paths.discovery_dir
+    assert objective_recorder.default_bundle_dir == namespace_paths.objective_bundle_dir
+    assert objective_recorder.default_dataset_dir == namespace_paths.objective_dataset_dir
+    assert objective_recorder.todo_vector_index_path == namespace_paths.objective_todo_vector_index_path
+    assert objective_recorder.depends_on_if_present == ("EX-001",)
+    assert objective_recorder.min_open_tasks == 2
+    assert objective_recorder.commit_subject == "EX: record objective findings"
+
+    assert isinstance(codebase_recorder, ConfiguredCodebaseScanRecorder)
+    assert codebase_recorder.discovery_dir == namespace_paths.discovery_dir
+    assert codebase_recorder.skip_prefixes == ("data/agent_supervisor/state/",)
+    assert codebase_recorder.depends_on_if_present == ("EX-002",)
+    assert codebase_recorder.max_findings == 5
+
+    assert isinstance(retry_recorder, ConfiguredRetryBudgetRecorder)
+    assert retry_recorder.discovery_dir == namespace_paths.discovery_dir
+    assert retry_recorder.validation_depends_on_if_present == ("EX-003",)
+    assert retry_recorder.validation_retry_budget == 2
+    assert retry_recorder.repo_root == tmp_path
+    assert retry_recorder.strip_validation_failure_kind is True
+
+    objective_recorder.prepare_environment()
+    codebase_recorder.prepare_environment()
+    retry_recorder.prepare_environment()
+    assert prepared == ["objective", "codebase", "retry"]
 
 
 def _write_todo(path: Path) -> None:

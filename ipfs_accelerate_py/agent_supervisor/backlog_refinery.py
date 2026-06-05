@@ -37,6 +37,7 @@ from .objective_graph import (
     safe_bundle_key,
 )
 from .todo_daemon.implementation_daemon import parse_task_file
+from .wrapper_utils import AgentSupervisorNamespacePaths
 
 
 logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.backlog_refinery")
@@ -2237,6 +2238,148 @@ class ConfiguredRetryBudgetRecorder:
                 },
             )
         )
+
+
+def build_namespace_objective_backlog_recorder(
+    *,
+    repo_root: Path | str,
+    namespace_paths: AgentSupervisorNamespacePaths,
+    objective_path: Path | str,
+    todo_path: Path | str,
+    strategy_path: Path | str,
+    state_path: Path | str | None = None,
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
+    depends_on_if_present: Sequence[str] = (),
+    min_open_tasks: int = DEFAULT_OBJECTIVE_SCAN_MIN_OPEN_TASKS,
+    max_findings: int = DEFAULT_OBJECTIVE_SCAN_MAX_FINDINGS,
+    cooldown_seconds: int = DEFAULT_OBJECTIVE_SCAN_COOLDOWN_SECONDS,
+    force: bool = False,
+    persist_ast_dataset: bool = True,
+    write_todo_vector_index: bool = True,
+    surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
+    surplus_min_terms_per_todo: int = DEFAULT_SURPLUS_MIN_TERMS_PER_TODO,
+    summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
+    discovery_output_path: str | None = None,
+    discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    commit_outputs: bool = False,
+    commit_subject: str = "Agent: record objective backlog findings",
+    prepare_environment: Callable[[], None] | None = None,
+) -> ConfiguredObjectiveBacklogRecorder:
+    """Build an objective recorder using standard namespace artifact paths."""
+
+    return ConfiguredObjectiveBacklogRecorder(
+        repo_root=Path(repo_root),
+        objective_path=Path(objective_path),
+        todo_path=Path(todo_path),
+        discovery_dir=namespace_paths.discovery_dir,
+        default_bundle_dir=namespace_paths.objective_bundle_dir,
+        default_dataset_dir=namespace_paths.objective_dataset_dir,
+        todo_vector_index_path=namespace_paths.objective_todo_vector_index_path,
+        strategy_path=Path(strategy_path),
+        state_path=Path(state_path) if state_path is not None else None,
+        task_header_prefix_value=task_header_prefix_value,
+        depends_on_if_present=tuple(depends_on_if_present),
+        min_open_tasks=min_open_tasks,
+        max_findings=max_findings,
+        cooldown_seconds=cooldown_seconds,
+        force=force,
+        persist_ast_dataset=persist_ast_dataset,
+        write_todo_vector_index=write_todo_vector_index,
+        surplus_findings_per_goal=surplus_findings_per_goal,
+        surplus_min_terms_per_todo=surplus_min_terms_per_todo,
+        summary_prefix=summary_prefix,
+        discovery_output_path=discovery_output_path,
+        discovery_output_path_default=discovery_output_path_default,
+        commit_outputs=commit_outputs,
+        commit_subject=commit_subject,
+        prepare_environment=prepare_environment,
+    )
+
+
+def build_namespace_codebase_scan_recorder(
+    *,
+    repo_root: Path | str,
+    namespace_paths: AgentSupervisorNamespacePaths,
+    todo_path: Path | str,
+    strategy_path: Path | str,
+    state_path: Path | str | None = None,
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
+    depends_on_if_present: Sequence[str] = (),
+    min_open_tasks: int = DEFAULT_CODEBASE_SCAN_MIN_OPEN_TASKS,
+    max_findings: int = DEFAULT_CODEBASE_SCAN_MAX_FINDINGS,
+    cooldown_seconds: int = DEFAULT_CODEBASE_SCAN_COOLDOWN_SECONDS,
+    force: bool = False,
+    discovery_output_path: str | None = None,
+    discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    skip_prefixes: Sequence[str] = CODEBASE_SCAN_SKIP_PREFIXES,
+    commit_outputs: bool = False,
+    commit_subject: str = "Agent: record codebase scan backlog findings",
+    prepare_environment: Callable[[], None] | None = None,
+) -> ConfiguredCodebaseScanRecorder:
+    """Build a codebase-scan recorder using a standard namespace discovery path."""
+
+    return ConfiguredCodebaseScanRecorder(
+        repo_root=Path(repo_root),
+        todo_path=Path(todo_path),
+        state_path=Path(state_path) if state_path is not None else None,
+        strategy_path=Path(strategy_path),
+        discovery_dir=namespace_paths.discovery_dir,
+        task_header_prefix_value=task_header_prefix_value,
+        depends_on_if_present=tuple(depends_on_if_present),
+        min_open_tasks=min_open_tasks,
+        max_findings=max_findings,
+        cooldown_seconds=cooldown_seconds,
+        force=force,
+        discovery_output_path=discovery_output_path,
+        discovery_output_path_default=discovery_output_path_default,
+        skip_prefixes=tuple(skip_prefixes),
+        commit_outputs=commit_outputs,
+        commit_subject=commit_subject,
+        prepare_environment=prepare_environment,
+    )
+
+
+def build_namespace_retry_budget_recorder(
+    *,
+    namespace_paths: AgentSupervisorNamespacePaths,
+    todo_path: Path | str,
+    events_path: Path | str,
+    strategy_path: Path | str,
+    task_header_prefix_value: str = DEFAULT_TASK_HEADER_PREFIX,
+    validation_retry_budget: int = DEFAULT_VALIDATION_RETRY_BUDGET,
+    merge_retry_budget: int = DEFAULT_MERGE_RETRY_BUDGET,
+    implementation_retry_budget: int = DEFAULT_IMPLEMENTATION_RETRY_BUDGET,
+    validation_depends_on_if_present: Sequence[str] = (),
+    validation_task_command_transform: Callable[[str], str] | None = None,
+    discovery_output_path: str | None = None,
+    discovery_output_path_default: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    strip_validation_failure_kind: bool = False,
+    commit_outputs: bool = False,
+    repo_root: Path | str | None = None,
+    commit_subject: str = "Agent: record retry-budget guardrail outputs",
+    prepare_environment: Callable[[], None] | None = None,
+) -> ConfiguredRetryBudgetRecorder:
+    """Build a retry-budget recorder using a standard namespace discovery path."""
+
+    return ConfiguredRetryBudgetRecorder(
+        todo_path=Path(todo_path),
+        events_path=Path(events_path),
+        strategy_path=Path(strategy_path),
+        discovery_dir=namespace_paths.discovery_dir,
+        task_header_prefix_value=task_header_prefix_value,
+        validation_retry_budget=validation_retry_budget,
+        merge_retry_budget=merge_retry_budget,
+        implementation_retry_budget=implementation_retry_budget,
+        validation_depends_on_if_present=tuple(validation_depends_on_if_present),
+        validation_task_command_transform=validation_task_command_transform,
+        discovery_output_path=discovery_output_path,
+        discovery_output_path_default=discovery_output_path_default,
+        strip_validation_failure_kind=strip_validation_failure_kind,
+        commit_outputs=commit_outputs,
+        repo_root=Path(repo_root) if repo_root is not None else None,
+        commit_subject=commit_subject,
+        prepare_environment=prepare_environment,
+    )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
