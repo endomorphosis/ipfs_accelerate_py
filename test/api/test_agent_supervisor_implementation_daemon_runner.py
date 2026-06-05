@@ -5,12 +5,15 @@ import logging
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
+    ConfiguredDaemonBootstrapRunner,
     ConfiguredImplementationDaemonRunner,
     DaemonLoopHook,
     ImplementationDaemonDefaults,
     ImplementationDaemonRunContext,
     apply_portal_implementation_daemon_defaults,
+    build_configured_daemon_bootstrap_runner,
     build_configured_implementation_daemon_runner,
+    build_namespace_daemon_bootstrap_runner,
     build_namespace_configured_implementation_daemon_runner,
     build_daemon_codebase_scan_refill_callback,
     build_daemon_objective_refill_callback,
@@ -309,6 +312,104 @@ def test_namespace_configured_daemon_runner_uses_namespace_defaults(tmp_path: Pa
     assert runner.default_objective_path == tmp_path / "objective.md"
     assert runner.default_objective_bundle_dir == namespace_paths.objective_bundle_dir
     assert runner.pass_complete_message == "namespace pass complete: %s"
+
+
+def test_configured_daemon_bootstrap_runner_dispatches_without_namespace(
+    monkeypatch,
+    tmp_path: Path,
+):
+    paths = {
+        "todo_path": tmp_path / "tasks.todo.md",
+        "state_dir": tmp_path / "state",
+        "worktree_root": tmp_path / "worktrees",
+    }
+    captured: dict[str, object] = {}
+
+    def fake_run_configured_from_bootstrap(self, argv, **kwargs):
+        captured["payload"] = {"self": self, "argv": tuple(argv), "kwargs": kwargs}
+        return {"ran": True}
+
+    monkeypatch.setattr(
+        ConfiguredImplementationDaemonRunner,
+        "run_configured_from_bootstrap",
+        fake_run_configured_from_bootstrap,
+    )
+    configured_runner = build_configured_implementation_daemon_runner(
+        repo_root=tmp_path,
+        logger=logging.getLogger("test-configured-bootstrap-daemon"),
+    )
+    bootstrap = build_configured_daemon_bootstrap_runner(
+        runner=configured_runner,
+        ensure_paths=lambda: paths,
+        task_prefix="## EX-",
+        state_prefix="example",
+        worktree_submodule_paths=("module-a",),
+    )
+
+    assert isinstance(bootstrap, ConfiguredDaemonBootstrapRunner)
+    assert bootstrap.run(["--once"]) == {"ran": True}
+
+    payload = captured["payload"]
+    assert payload["self"] is configured_runner
+    assert payload["argv"] == ("--once",)
+    assert payload["kwargs"]["ensure_paths"]() == paths
+    assert payload["kwargs"]["task_prefix"] == "## EX-"
+    assert payload["kwargs"]["state_prefix"] == "example"
+    assert payload["kwargs"]["worktree_submodule_paths"] == ("module-a",)
+
+
+def test_namespace_daemon_bootstrap_runner_dispatches_namespace_defaults(
+    monkeypatch,
+    tmp_path: Path,
+):
+    namespace_paths = agent_supervisor_namespace_paths(tmp_path, "agent_supervisor")
+    paths = {
+        "todo_path": tmp_path / "tasks.todo.md",
+        "state_dir": tmp_path / "state",
+        "worktree_root": tmp_path / "worktrees",
+        "objective_heap_path": tmp_path / "objective.md",
+        "objective_bundle_dir": tmp_path / "runtime-bundles",
+    }
+    captured: dict[str, object] = {}
+
+    def fake_run_namespace_configured_from_bootstrap(self, argv, **kwargs):
+        captured["payload"] = {"self": self, "argv": tuple(argv), "kwargs": kwargs}
+        return {"ran": True}
+
+    monkeypatch.setattr(
+        ConfiguredImplementationDaemonRunner,
+        "run_namespace_configured_from_bootstrap",
+        fake_run_namespace_configured_from_bootstrap,
+    )
+    bootstrap = build_namespace_daemon_bootstrap_runner(
+        repo_root=tmp_path,
+        logger=logging.getLogger("test-namespace-bootstrap-daemon"),
+        namespace_paths=namespace_paths,
+        ensure_paths=lambda: paths,
+        task_prefix="## EX-",
+        state_prefix="example",
+        default_worktree_submodule_paths=("module-a", "module-b"),
+        default_objective_path=tmp_path / "default-objective.md",
+        pass_complete_message="namespace pass complete: %s",
+        use_bootstrap_keys=True,
+        objective_path_key="objective_heap_path",
+    )
+
+    assert isinstance(bootstrap, ConfiguredDaemonBootstrapRunner)
+    assert bootstrap.runner.default_worktree_submodule_paths == ("module-a", "module-b")
+    assert bootstrap.runner.default_objective_path == tmp_path / "default-objective.md"
+    assert bootstrap.runner.pass_complete_message == "namespace pass complete: %s"
+    assert bootstrap.run(["--once"]) == {"ran": True}
+
+    payload = captured["payload"]
+    assert payload["argv"] == ("--once",)
+    assert payload["kwargs"]["ensure_paths"]() == paths
+    assert payload["kwargs"]["namespace_paths"] is namespace_paths
+    assert payload["kwargs"]["use_bootstrap_keys"] is True
+    assert payload["kwargs"]["task_prefix"] == "## EX-"
+    assert payload["kwargs"]["state_prefix"] == "example"
+    assert payload["kwargs"]["objective_path_key"] == "objective_heap_path"
+    assert payload["kwargs"]["worktree_submodule_paths"] == ("module-a", "module-b")
 
 
 def test_namespace_configured_daemon_bootstrap_applies_objective_bundle_defaults(

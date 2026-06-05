@@ -239,6 +239,113 @@ class ConfiguredImplementationDaemonRunner:
         )
 
 
+@dataclass(frozen=True)
+class ConfiguredDaemonBootstrapRunner:
+    """Reusable bootstrap/run wiring for a project implementation daemon wrapper."""
+
+    runner: ConfiguredImplementationDaemonRunner
+    ensure_paths: Callable[[], Mapping[str, Path | str]]
+    task_prefix: str
+    state_prefix: str
+    namespace_paths: AgentSupervisorNamespacePaths | None = None
+    use_bootstrap_keys: bool = False
+    enter_runtime_environment: Callable[[], Any] | None = None
+    enter_runtime_before_paths: bool = False
+    path_callbacks: Sequence[DaemonBootstrapPathCallback] = ()
+    hooks_factory: DaemonBootstrapHookFactory | None = None
+    hooks: Sequence[DaemonLoopHook] = ()
+    todo_path_key: str = "todo_path"
+    state_dir_key: str = "state_dir"
+    worktree_root_key: str = "worktree_root"
+    todo_path_flag: str = "--todo-path"
+    objective_path_key: str | None = None
+    objective_path: Path | str | None = None
+    objective_bundle_dir_key: str | None = None
+    objective_bundle_dir: Path | str | None = None
+    worktree_submodule_paths: Sequence[str] = ()
+    pass_complete_message: str | None = None
+
+    def run(self, argv: Sequence[str]) -> Any:
+        """Run the configured implementation daemon from bootstrap paths."""
+
+        kwargs: dict[str, Any] = {
+            "ensure_paths": self.ensure_paths,
+            "enter_runtime_environment": self.enter_runtime_environment,
+            "enter_runtime_before_paths": self.enter_runtime_before_paths,
+            "path_callbacks": self.path_callbacks,
+            "hooks_factory": self.hooks_factory,
+            "hooks": self.hooks,
+            "todo_path_key": self.todo_path_key,
+            "state_dir_key": self.state_dir_key,
+            "worktree_root_key": self.worktree_root_key,
+            "todo_path_flag": self.todo_path_flag,
+            "task_prefix": self.task_prefix,
+            "state_prefix": self.state_prefix,
+            "objective_path_key": self.objective_path_key,
+            "objective_path": self.objective_path,
+            "objective_bundle_dir_key": self.objective_bundle_dir_key,
+            "objective_bundle_dir": self.objective_bundle_dir,
+            "worktree_submodule_paths": self.worktree_submodule_paths,
+            "pass_complete_message": self.pass_complete_message,
+        }
+        if self.namespace_paths is not None:
+            kwargs["namespace_paths"] = self.namespace_paths
+            kwargs["use_bootstrap_keys"] = self.use_bootstrap_keys
+            return self.runner.run_namespace_configured_from_bootstrap(argv, **kwargs)
+        return self.runner.run_configured_from_bootstrap(argv, **kwargs)
+
+
+def build_configured_daemon_bootstrap_runner(
+    *,
+    runner: ConfiguredImplementationDaemonRunner,
+    ensure_paths: Callable[[], Mapping[str, Path | str]],
+    task_prefix: str,
+    state_prefix: str,
+    namespace_paths: AgentSupervisorNamespacePaths | None = None,
+    use_bootstrap_keys: bool = False,
+    enter_runtime_environment: Callable[[], Any] | None = None,
+    enter_runtime_before_paths: bool = False,
+    path_callbacks: Sequence[DaemonBootstrapPathCallback] = (),
+    hooks_factory: DaemonBootstrapHookFactory | None = None,
+    hooks: Sequence[DaemonLoopHook] = (),
+    todo_path_key: str = "todo_path",
+    state_dir_key: str = "state_dir",
+    worktree_root_key: str = "worktree_root",
+    todo_path_flag: str = "--todo-path",
+    objective_path_key: str | None = None,
+    objective_path: Path | str | None = None,
+    objective_bundle_dir_key: str | None = None,
+    objective_bundle_dir: Path | str | None = None,
+    worktree_submodule_paths: Sequence[str] = (),
+    pass_complete_message: str | None = None,
+) -> ConfiguredDaemonBootstrapRunner:
+    """Build reusable daemon bootstrap/run wiring for a project wrapper."""
+
+    return ConfiguredDaemonBootstrapRunner(
+        runner=runner,
+        ensure_paths=ensure_paths,
+        task_prefix=task_prefix,
+        state_prefix=state_prefix,
+        namespace_paths=namespace_paths,
+        use_bootstrap_keys=use_bootstrap_keys,
+        enter_runtime_environment=enter_runtime_environment,
+        enter_runtime_before_paths=enter_runtime_before_paths,
+        path_callbacks=tuple(path_callbacks),
+        hooks_factory=hooks_factory,
+        hooks=tuple(hooks),
+        todo_path_key=todo_path_key,
+        state_dir_key=state_dir_key,
+        worktree_root_key=worktree_root_key,
+        todo_path_flag=todo_path_flag,
+        objective_path_key=objective_path_key,
+        objective_path=objective_path,
+        objective_bundle_dir_key=objective_bundle_dir_key,
+        objective_bundle_dir=objective_bundle_dir,
+        worktree_submodule_paths=tuple(worktree_submodule_paths),
+        pass_complete_message=pass_complete_message,
+    )
+
+
 def build_configured_implementation_daemon_runner(
     *,
     repo_root: Path | str,
@@ -295,6 +402,76 @@ def build_namespace_configured_implementation_daemon_runner(
             else namespace_paths.objective_bundle_dir
         ),
         pass_complete_message=pass_complete_message,
+    )
+
+
+def build_namespace_daemon_bootstrap_runner(
+    *,
+    repo_root: Path | str,
+    logger: logging.Logger,
+    namespace_paths: AgentSupervisorNamespacePaths,
+    ensure_paths: Callable[[], Mapping[str, Path | str]],
+    task_prefix: str,
+    state_prefix: str,
+    default_worktree_submodule_paths: Sequence[str] | None = None,
+    default_objective_path: Path | str | None = None,
+    default_objective_bundle_dir: Path | str | None = None,
+    pass_complete_message: str = "Portal implementation daemon pass complete: %s",
+    use_bootstrap_keys: bool = False,
+    enter_runtime_environment: Callable[[], Any] | None = None,
+    enter_runtime_before_paths: bool = False,
+    path_callbacks: Sequence[DaemonBootstrapPathCallback] = (),
+    hooks_factory: DaemonBootstrapHookFactory | None = None,
+    hooks: Sequence[DaemonLoopHook] = (),
+    todo_path_key: str = "todo_path",
+    state_dir_key: str = "state_dir",
+    worktree_root_key: str = "worktree_root",
+    todo_path_flag: str = "--todo-path",
+    objective_path_key: str | None = None,
+    objective_path: Path | str | None = None,
+    objective_bundle_dir_key: str | None = None,
+    objective_bundle_dir: Path | str | None = None,
+    worktree_submodule_paths: Sequence[str] | None = None,
+    run_pass_complete_message: str | None = None,
+) -> ConfiguredDaemonBootstrapRunner:
+    """Build a namespace-scoped daemon bootstrap runner with reusable defaults."""
+
+    runner = build_namespace_configured_implementation_daemon_runner(
+        repo_root=repo_root,
+        logger=logger,
+        namespace_paths=namespace_paths,
+        default_worktree_submodule_paths=default_worktree_submodule_paths,
+        default_objective_path=default_objective_path,
+        default_objective_bundle_dir=default_objective_bundle_dir,
+        pass_complete_message=pass_complete_message,
+    )
+    effective_worktree_submodule_paths = (
+        tuple(worktree_submodule_paths)
+        if worktree_submodule_paths is not None
+        else tuple(default_worktree_submodule_paths or ())
+    )
+    return build_configured_daemon_bootstrap_runner(
+        runner=runner,
+        ensure_paths=ensure_paths,
+        namespace_paths=namespace_paths,
+        use_bootstrap_keys=use_bootstrap_keys,
+        enter_runtime_environment=enter_runtime_environment,
+        enter_runtime_before_paths=enter_runtime_before_paths,
+        path_callbacks=path_callbacks,
+        hooks_factory=hooks_factory,
+        hooks=hooks,
+        todo_path_key=todo_path_key,
+        state_dir_key=state_dir_key,
+        worktree_root_key=worktree_root_key,
+        todo_path_flag=todo_path_flag,
+        task_prefix=task_prefix,
+        state_prefix=state_prefix,
+        objective_path_key=objective_path_key,
+        objective_path=objective_path,
+        objective_bundle_dir_key=objective_bundle_dir_key,
+        objective_bundle_dir=objective_bundle_dir,
+        worktree_submodule_paths=effective_worktree_submodule_paths,
+        pass_complete_message=run_pass_complete_message,
     )
 
 
