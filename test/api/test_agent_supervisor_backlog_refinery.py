@@ -5,9 +5,11 @@ import subprocess
 from pathlib import Path
 
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+    ConfiguredBacklogRecorderBundle,
     ConfiguredCodebaseScanRecorder,
     ConfiguredObjectiveBacklogRecorder,
     ConfiguredRetryBudgetRecorder,
+    build_configured_backlog_recorder_bundle,
     build_namespace_codebase_scan_recorder,
     build_namespace_objective_backlog_recorder,
     build_namespace_retry_budget_recorder,
@@ -132,6 +134,78 @@ def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
     codebase_recorder.prepare_environment()
     retry_recorder.prepare_environment()
     assert prepared == ["objective", "codebase", "retry"]
+
+
+def test_configured_backlog_recorder_bundle_delegates_to_runtime_factories(monkeypatch, tmp_path):
+    captured: dict[str, dict[str, object]] = {}
+
+    def objective_recorder(**_: object) -> list[dict[str, object]]:
+        return [{"kind": "objective"}]
+
+    def codebase_recorder(**_: object) -> list[dict[str, object]]:
+        return [{"kind": "codebase"}]
+
+    def retry_recorder(**_: object) -> list[dict[str, object]]:
+        return [{"kind": "retry"}]
+
+    def daemon_factory(**kwargs: object) -> str:
+        captured["daemon"] = kwargs
+        return "daemon-hooks"
+
+    def supervisor_factory(**kwargs: object) -> str:
+        captured["supervisor"] = kwargs
+        return "supervisor-hooks"
+
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner."
+        "build_daemon_refill_hooks_factory_from_recorders",
+        daemon_factory,
+    )
+    monkeypatch.setattr(
+        "ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner."
+        "build_supervisor_refill_hooks_factory_from_recorders",
+        supervisor_factory,
+    )
+
+    bundle = build_configured_backlog_recorder_bundle(
+        objective_recorder=objective_recorder,
+        codebase_scan_recorder=codebase_recorder,
+        retry_budget_recorder=retry_recorder,
+    )
+
+    assert isinstance(bundle, ConfiguredBacklogRecorderBundle)
+    assert bundle.daemon_refill_hooks_factory(
+        discovery_dir=tmp_path / "discovery",
+        objective_path_key="objective_path",
+        repo_root=tmp_path,
+        retry_budget_extra_kwargs={"discovery_output_path": "data/discovery"},
+        scope_label="Example",
+        after_order=("retry-budget", "objective-goal"),
+    ) == "daemon-hooks"
+    assert bundle.supervisor_refill_hooks_factory(
+        discovery_dir_key="discovery_dir",
+        objective_path=tmp_path / "objective.md",
+        codebase_scan_extra_kwargs={"force": True},
+        scope_label="Example",
+        after_once_order=("retry-budget", "objective-goal"),
+    ) == "supervisor-hooks"
+
+    assert captured["daemon"]["objective_recorder"] is objective_recorder
+    assert captured["daemon"]["codebase_scan_recorder"] is codebase_recorder
+    assert captured["daemon"]["retry_budget_recorder"] is retry_recorder
+    assert captured["daemon"]["discovery_dir"] == tmp_path / "discovery"
+    assert captured["daemon"]["objective_path_key"] == "objective_path"
+    assert captured["daemon"]["repo_root"] == tmp_path
+    assert captured["daemon"]["retry_budget_extra_kwargs"] == {"discovery_output_path": "data/discovery"}
+    assert captured["daemon"]["after_order"] == ("retry-budget", "objective-goal")
+
+    assert captured["supervisor"]["objective_recorder"] is objective_recorder
+    assert captured["supervisor"]["codebase_scan_recorder"] is codebase_recorder
+    assert captured["supervisor"]["retry_budget_recorder"] is retry_recorder
+    assert captured["supervisor"]["discovery_dir_key"] == "discovery_dir"
+    assert captured["supervisor"]["objective_path"] == tmp_path / "objective.md"
+    assert captured["supervisor"]["codebase_scan_extra_kwargs"] == {"force": True}
+    assert captured["supervisor"]["after_once_order"] == ("retry-budget", "objective-goal")
 
 
 def _write_todo(path: Path) -> None:

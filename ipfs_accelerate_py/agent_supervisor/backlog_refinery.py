@@ -2240,6 +2240,126 @@ class ConfiguredRetryBudgetRecorder:
         )
 
 
+ConfiguredBacklogRecordCallback = Callable[..., list[dict[str, Any]]]
+ConfiguredBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
+
+
+@dataclass(frozen=True)
+class ConfiguredBacklogRecorderBundle:
+    """Reusable bridge from configured backlog recorders to runtime hook factories."""
+
+    objective_recorder: ConfiguredBacklogRecordCallback | None = None
+    codebase_scan_recorder: ConfiguredBacklogRecordCallback | None = None
+    retry_budget_recorder: ConfiguredBacklogRecordCallback | None = None
+
+    def daemon_refill_hooks_factory(
+        self,
+        *,
+        discovery_dir_key: str | None = None,
+        discovery_dir: Path | str | None = None,
+        objective_path_key: str | None = None,
+        objective_path: Path | str | None = None,
+        repo_root: Path | None = None,
+        objective_extra_kwargs: Mapping[str, Any] | None = None,
+        objective_extra_kwargs_factory: ConfiguredBootstrapExtraKwargsFactory | None = None,
+        codebase_scan_extra_kwargs: Mapping[str, Any] | None = None,
+        codebase_scan_extra_kwargs_factory: ConfiguredBootstrapExtraKwargsFactory | None = None,
+        retry_budget_extra_kwargs: Mapping[str, Any] | None = None,
+        retry_budget_extra_kwargs_factory: ConfiguredBootstrapExtraKwargsFactory | None = None,
+        scope_label: str = "",
+        before: bool = True,
+        after: bool = True,
+        after_order: Sequence[str] | None = None,
+        log_level: int = logging.WARNING,
+    ) -> Callable[[Mapping[str, Path | str]], tuple[Any, ...]]:
+        """Build daemon refill hooks from this bundle without repo-local wiring."""
+
+        from .implementation_daemon_runner import build_daemon_refill_hooks_factory_from_recorders
+
+        return build_daemon_refill_hooks_factory_from_recorders(
+            discovery_dir_key=discovery_dir_key,
+            discovery_dir=discovery_dir,
+            objective_recorder=self.objective_recorder,
+            codebase_scan_recorder=self.codebase_scan_recorder,
+            retry_budget_recorder=self.retry_budget_recorder,
+            objective_path_key=objective_path_key,
+            objective_path=objective_path,
+            repo_root=repo_root,
+            objective_extra_kwargs=objective_extra_kwargs,
+            objective_extra_kwargs_factory=objective_extra_kwargs_factory,
+            codebase_scan_extra_kwargs=codebase_scan_extra_kwargs,
+            codebase_scan_extra_kwargs_factory=codebase_scan_extra_kwargs_factory,
+            retry_budget_extra_kwargs=retry_budget_extra_kwargs,
+            retry_budget_extra_kwargs_factory=retry_budget_extra_kwargs_factory,
+            scope_label=scope_label,
+            before=before,
+            after=after,
+            after_order=after_order,
+            log_level=log_level,
+        )
+
+    def supervisor_refill_hooks_factory(
+        self,
+        *,
+        discovery_dir_key: str | None = None,
+        discovery_dir: Path | str | None = None,
+        objective_path_key: str | None = None,
+        objective_path: Path | str | None = None,
+        repo_root: Path | None = None,
+        objective_extra_kwargs: Mapping[str, Any] | None = None,
+        objective_extra_kwargs_factory: ConfiguredBootstrapExtraKwargsFactory | None = None,
+        codebase_scan_extra_kwargs: Mapping[str, Any] | None = None,
+        codebase_scan_extra_kwargs_factory: ConfiguredBootstrapExtraKwargsFactory | None = None,
+        retry_budget_extra_kwargs: Mapping[str, Any] | None = None,
+        retry_budget_extra_kwargs_factory: ConfiguredBootstrapExtraKwargsFactory | None = None,
+        scope_label: str = "",
+        before: bool = True,
+        after_once: bool = True,
+        after_once_order: Sequence[str] | None = None,
+        log_level: int = logging.WARNING,
+    ) -> Callable[[Mapping[str, Path | str]], tuple[Any, ...]]:
+        """Build supervisor refill hooks from this bundle without repo-local wiring."""
+
+        from .implementation_supervisor_runner import build_supervisor_refill_hooks_factory_from_recorders
+
+        return build_supervisor_refill_hooks_factory_from_recorders(
+            discovery_dir_key=discovery_dir_key,
+            discovery_dir=discovery_dir,
+            objective_recorder=self.objective_recorder,
+            codebase_scan_recorder=self.codebase_scan_recorder,
+            retry_budget_recorder=self.retry_budget_recorder,
+            objective_path_key=objective_path_key,
+            objective_path=objective_path,
+            repo_root=repo_root,
+            objective_extra_kwargs=objective_extra_kwargs,
+            objective_extra_kwargs_factory=objective_extra_kwargs_factory,
+            codebase_scan_extra_kwargs=codebase_scan_extra_kwargs,
+            codebase_scan_extra_kwargs_factory=codebase_scan_extra_kwargs_factory,
+            retry_budget_extra_kwargs=retry_budget_extra_kwargs,
+            retry_budget_extra_kwargs_factory=retry_budget_extra_kwargs_factory,
+            scope_label=scope_label,
+            before=before,
+            after_once=after_once,
+            after_once_order=after_once_order,
+            log_level=log_level,
+        )
+
+
+def build_configured_backlog_recorder_bundle(
+    *,
+    objective_recorder: ConfiguredBacklogRecordCallback | None = None,
+    codebase_scan_recorder: ConfiguredBacklogRecordCallback | None = None,
+    retry_budget_recorder: ConfiguredBacklogRecordCallback | None = None,
+) -> ConfiguredBacklogRecorderBundle:
+    """Collect configured backlog recorders for daemon/supervisor reuse."""
+
+    return ConfiguredBacklogRecorderBundle(
+        objective_recorder=objective_recorder,
+        codebase_scan_recorder=codebase_scan_recorder,
+        retry_budget_recorder=retry_budget_recorder,
+    )
+
+
 def build_namespace_objective_backlog_recorder(
     *,
     repo_root: Path | str,

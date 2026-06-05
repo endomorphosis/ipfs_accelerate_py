@@ -57,6 +57,7 @@ __all__ = [
     "BootstrapPathSpec",
     "CodebaseScanEnvSettings",
     "CodebaseFinding",
+    "ConfiguredBacklogRecorderBundle",
     "ConfiguredCodebaseScanRecorder",
     "ConfiguredActionContractSyncRunner",
     "ConfiguredDaemonBootstrapRunner",
@@ -94,6 +95,7 @@ __all__ = [
     "apply_environment_contract",
     "assign_goal_subgoal_packets",
     "build_bundle_task_payloads",
+    "build_configured_backlog_recorder_bundle",
     "build_configured_action_contract_sync_runner",
     "build_execution_packet",
     "build_execution_packets",
@@ -315,9 +317,11 @@ __all__ = [
 def __getattr__(name: str):
     if name in {
         "CodebaseFinding",
+        "ConfiguredBacklogRecorderBundle",
         "ConfiguredCodebaseScanRecorder",
         "ConfiguredObjectiveBacklogRecorder",
         "ConfiguredRetryBudgetRecorder",
+        "build_configured_backlog_recorder_bundle",
         "build_namespace_codebase_scan_recorder",
         "build_namespace_objective_backlog_recorder",
         "build_namespace_retry_budget_recorder",
