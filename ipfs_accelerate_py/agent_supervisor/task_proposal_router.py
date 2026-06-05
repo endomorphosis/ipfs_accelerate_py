@@ -430,6 +430,103 @@ def build_repo_task_proposal_router_runner(
     )
 
 
+def build_repo_task_proposal_route_runner(
+    *,
+    repo_root: Path | str,
+    task_board_stem: str,
+    task_board_dir: Path | str,
+    artifact_namespace: str,
+    task_header_prefix: str,
+    prompt_intro: str,
+    description: str,
+    task_id_help: str,
+    domain_outputs: Sequence[str] = (),
+    test_output: str = DEFAULT_TASK_PROPOSAL_TEST_OUTPUT,
+    requested_outputs: Sequence[str] | None = None,
+    no_open_task_message: str = "No open task found.",
+    task_board_option: str | None = None,
+    hidden_task_board_options: Sequence[str] = (),
+    hidden_standard_task_board_option: bool = False,
+    include_dry_run_flag: bool = False,
+    plan_stem: str | None = None,
+    plan_dir: Path | str | None = None,
+    artifact_dir: Path | str | None = None,
+    artifact_root: Path | str = "data",
+    artifact_leaf: Path | str = "llm_router",
+    bootstrap: BootstrapCallback | None = None,
+    runtime_package_names: Sequence[Path | str] = ("ipfs_accelerate", "ipfs_datasets"),
+    runtime_external_dir: Path | str = "external",
+    runtime_primary_package_names: Sequence[Path | str] | None = None,
+    runtime_env_var: str = "PYTHONPATH",
+    open_statuses: Sequence[str] = DEFAULT_OPEN_TASK_STATUSES,
+    plan_char_limit: int = 40000,
+    provider_env: str = "IPFS_DATASETS_PY_LLM_PROVIDER",
+    model_env: str = "IPFS_DATASETS_PY_LLM_MODEL",
+    default_model: str = "gpt-5.3-codex-spark",
+    default_max_new_tokens: int = 2048,
+    default_timeout_seconds: int = 300,
+) -> ConfiguredTaskProposalRouterRunner:
+    """Build a repo task-proposal runner from standard route inputs."""
+
+    from .wrapper_utils import task_board_path_option
+
+    route_paths = build_task_proposal_route_paths(
+        repo_root=repo_root,
+        task_board_stem=task_board_stem,
+        task_board_dir=task_board_dir,
+        plan_stem=plan_stem,
+        plan_dir=plan_dir,
+        artifact_dir=artifact_dir,
+        artifact_namespace=artifact_namespace,
+        artifact_root=artifact_root,
+        artifact_leaf=artifact_leaf,
+    )
+    effective_task_board_option = task_board_option or task_board_path_option()
+    effective_hidden_task_board_options = tuple(hidden_task_board_options)
+    standard_task_board_option = task_board_path_option()
+    if (
+        hidden_standard_task_board_option
+        and standard_task_board_option != effective_task_board_option
+        and standard_task_board_option not in effective_hidden_task_board_options
+    ):
+        effective_hidden_task_board_options = (
+            *effective_hidden_task_board_options,
+            standard_task_board_option,
+        )
+    effective_requested_outputs = tuple(
+        requested_outputs
+        if requested_outputs is not None
+        else standard_task_proposal_requested_outputs(*domain_outputs, test_output=test_output)
+    )
+    return build_repo_task_proposal_router_runner(
+        repo_root=repo_root,
+        task_board_path=route_paths.task_board_path,
+        task_header_prefix=task_header_prefix,
+        plan_path=route_paths.plan_path,
+        artifact_dir=route_paths.artifact_dir,
+        prompt_intro=prompt_intro,
+        requested_outputs=effective_requested_outputs,
+        description=description,
+        task_id_help=task_id_help,
+        no_open_task_message=no_open_task_message,
+        task_board_option=effective_task_board_option,
+        hidden_task_board_options=effective_hidden_task_board_options,
+        include_dry_run_flag=include_dry_run_flag,
+        bootstrap=bootstrap,
+        runtime_package_names=runtime_package_names,
+        runtime_external_dir=runtime_external_dir,
+        runtime_primary_package_names=runtime_primary_package_names,
+        runtime_env_var=runtime_env_var,
+        open_statuses=open_statuses,
+        plan_char_limit=plan_char_limit,
+        provider_env=provider_env,
+        model_env=model_env,
+        default_model=default_model,
+        default_max_new_tokens=default_max_new_tokens,
+        default_timeout_seconds=default_timeout_seconds,
+    )
+
+
 def select_proposal_task(
     tasks: Sequence[object],
     requested_task_id: str = "",

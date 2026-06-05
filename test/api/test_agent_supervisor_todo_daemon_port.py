@@ -34,6 +34,7 @@ from ipfs_accelerate_py.agent_supervisor import task_proposal_router
 from ipfs_accelerate_py.agent_supervisor.task_proposal_router import (
     ConfiguredTaskProposalRouterRunner,
     build_configured_task_proposal_router_runner,
+    build_repo_task_proposal_route_runner,
     build_repo_task_proposal_router_runner,
     run_configured_task_proposal_router_cli,
     standard_task_proposal_requested_outputs,
@@ -1413,6 +1414,40 @@ def test_build_repo_task_proposal_router_runner_uses_repo_runtime_bootstrap(tmp_
     assert runner.config.bootstrap is not None
     runner.config.bootstrap()
     assert bootstrapped == ["entered"]
+
+
+def test_build_repo_task_proposal_route_runner_derives_paths_and_outputs(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    runner = build_repo_task_proposal_route_runner(
+        repo_root=repo,
+        task_board_stem="ROADMAP",
+        task_board_dir="docs",
+        artifact_namespace="agent_supervisor",
+        task_header_prefix="## AUTO-",
+        prompt_intro="Help implement the test roadmap.",
+        domain_outputs=("runtime contracts to add",),
+        description="Test routed proposal router",
+        task_id_help="Task id",
+        task_board_option="--task-board-path",
+        hidden_standard_task_board_option=True,
+        include_dry_run_flag=True,
+    )
+
+    assert isinstance(runner, ConfiguredTaskProposalRouterRunner)
+    config = runner.config
+    assert config.router_config.repo_root == repo
+    assert config.router_config.task_board_path == repo / "docs" / "ROADMAP.todo.md"
+    assert config.router_config.plan_path == repo / "docs" / "ROADMAP.md"
+    assert config.router_config.artifact_dir == repo / "data" / "agent_supervisor" / "llm_router"
+    assert config.router_config.task_header_prefix == "## AUTO-"
+    assert config.task_board_option == "--task-board-path"
+    assert config.hidden_task_board_options == ("--todo-path",)
+    assert config.include_dry_run_flag is True
+    prompt = config.router_config.prompt_builder(type("Task", (), {})(), "Plan text")
+    assert "runtime contracts to add" in prompt
+    assert "tests and fixtures needed" in prompt
 
 
 def test_build_supervisor_runtime_operations_binds_project_wrapper(tmp_path, monkeypatch):
