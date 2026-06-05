@@ -145,6 +145,22 @@ def implementation_supervisor_compact_track_spec(
     )
 
 
+def implementation_supervisor_compact_track_specs(
+    track_configs: Sequence[tuple[str, Path | str, Path | str, str]],
+) -> tuple[str, ...]:
+    """Return compact implementation-track specs from structured track configs."""
+
+    return tuple(
+        implementation_supervisor_compact_track_spec(
+            name=name,
+            script_path=script_path,
+            state_dir=state_dir,
+            state_prefix=state_prefix,
+        )
+        for name, script_path, state_dir, state_prefix in track_configs
+    )
+
+
 def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
     """Parse ``NAME|SCRIPT|STATE_DIR|STATE_PREFIX`` implementation-track specs."""
 
