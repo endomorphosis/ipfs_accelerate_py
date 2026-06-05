@@ -242,6 +242,9 @@ def build_configured_multi_supervisor_cli_runner(
     implementation_supervisor_defaults: bool = False,
     implementation_supervisor_command: str = "",
     implementation_tracks: Sequence[str] = (),
+    implementation_track_configs: Sequence[
+        ImplementationSupervisorTrackConfig | tuple[str, Path | str, Path | str, str]
+    ] = (),
     tracks: Sequence[str] = (),
     common_args: Sequence[str] = (),
     detach: bool = False,
@@ -278,6 +281,8 @@ def build_configured_multi_supervisor_cli_runner(
     for track in tracks:
         argv.extend(["--track", str(track)])
     for track in implementation_tracks:
+        argv.extend(["--implementation-track", str(track)])
+    for track in implementation_supervisor_compact_track_specs(implementation_track_configs):
         argv.extend(["--implementation-track", str(track)])
     for arg in common_args:
         argv.extend(["--common-arg", str(arg)])

@@ -1445,6 +1445,12 @@ def test_configured_multi_supervisor_cli_runner_builds_base_args_and_dispatches(
 
     monkeypatch.setattr(multi_supervisor_runner, "main", fake_main)
     implementation_track = "VAI|scripts/vai.py|data/vai/state|vai"
+    implementation_track_config = ImplementationSupervisorTrackConfig(
+        name="MGW",
+        script_path="scripts/mgw.py",
+        state_dir="data/mgw/state",
+        state_prefix="mgw",
+    )
     raw_track = "RAW|scripts/raw.py|logs/raw.log|state/raw_supervisor.pid|state/raw_daemon.pid"
 
     runner = build_configured_multi_supervisor_cli_runner(
@@ -1461,6 +1467,7 @@ def test_configured_multi_supervisor_cli_runner_builds_base_args_and_dispatches(
         implementation_supervisor_defaults=True,
         implementation_supervisor_command="bash resolve.sh",
         implementation_tracks=(implementation_track,),
+        implementation_track_configs=(implementation_track_config,),
         tracks=(raw_track,),
         common_args=("--extra", "value"),
         detach=True,
@@ -1474,7 +1481,11 @@ def test_configured_multi_supervisor_cli_runner_builds_base_args_and_dispatches(
     assert args[args.index("--master-log") + 1] == "logs/master.log"
     assert args[args.index("--master-pid-path") + 1] == "state/master.pid"
     assert args[args.index("--python-executable") + 1] == sys.executable
-    assert args[args.index("--implementation-track") + 1] == implementation_track
+    implementation_track_values = [
+        args[index + 1] for index, value in enumerate(args) if value == "--implementation-track"
+    ]
+    assert implementation_track in implementation_track_values
+    assert "MGW|scripts/mgw.py|data/mgw/state|mgw" in implementation_track_values
     assert args[args.index("--track") + 1] == raw_track
     assert "--implementation-supervisor-defaults" in args
     assert args[-1] == "--detach"
