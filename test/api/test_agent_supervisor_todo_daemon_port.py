@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import shlex
+import signal
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -119,6 +120,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoopResult,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
+    ChildSummaryHealthSpec,
     ConfiguredSupervisorEntrypoint,
     RestartPolicy,
     SupervisedChildSpec,
@@ -126,11 +128,21 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     build_configured_implementation_supervisor_entrypoint,
     build_module_implementation_supervisor_entrypoint,
     build_supervisor_runtime_operations,
+    child_exit_should_restart,
+    install_stop_signal_handlers,
     implementation_supervisor_args,
+    launch_process_child,
     launch_supervised_child,
     repair_supervisor_runtime,
     supervisor_is_running,
     supervisor_runtime_paths,
+    supervised_child_group_succeeded,
+    supervised_child_succeeded,
+    summarize_child_summary_files,
+    timestamp_age_seconds,
+    terminate_process_group,
+    terminate_processes_with_grace,
+    terminate_process_with_grace,
     terminate_supervised_child,
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import (
@@ -1134,6 +1146,402 @@ def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, 
     assert forwarded[forwarded.index("--llm-merge-resolver-command") + 1] == "resolve-conflict"
     assert captured["kwargs"]["hooks"] == (hook,)
     assert captured["kwargs"]["pass_complete_message"] == "paths complete: %s"
+
+
+def test_supervisor_runtime_child_exit_restart_policy() -> None:
+    assert child_exit_should_restart(
+        exit_code=2,
+        restart_count=0,
+        restart_limit=3,
+    )
+    assert child_exit_should_restart(
+        exit_code=-signal.SIGKILL,
+        restart_count=2,
+        restart_limit=3,
+    )
+    assert not child_exit_should_restart(
+        exit_code=0,
+        restart_count=0,
+        restart_limit=3,
+    )
+    assert child_exit_should_restart(
+        exit_code=0,
+        restart_count=0,
+        restart_limit=3,
+        restart_on_clean_exit=True,
+    )
+    assert not child_exit_should_restart(
+        exit_code=None,
+        restart_count=0,
+        restart_limit=3,
+    )
+    assert not child_exit_should_restart(
+        exit_code=2,
+        restart_count=3,
+        restart_limit=3,
+    )
+    assert not child_exit_should_restart(
+        exit_code=2,
+        restart_count=0,
+        restart_limit=3,
+        stop_requested=True,
+    )
+
+
+def test_supervisor_runtime_child_success_accounting() -> None:
+    assert supervised_child_succeeded(
+        child_id="worker-1",
+        exit_code=0,
+        runner_terminated_child_ids=[],
+    )
+    assert not supervised_child_succeeded(
+        child_id="worker-1",
+        exit_code=0,
+        runner_terminated_child_ids=["worker-1"],
+    )
+    assert supervised_child_succeeded(
+        child_id="worker-1",
+        exit_code=-signal.SIGTERM,
+        runner_terminated_child_ids=["worker-1"],
+        allow_runner_terminated=True,
+    )
+    assert not supervised_child_succeeded(
+        child_id="worker-1",
+        exit_code=-signal.SIGTERM,
+        runner_terminated_child_ids=["worker-1"],
+        allow_runner_terminated=True,
+        stop_requested=True,
+    )
+    assert supervised_child_group_succeeded(
+        {
+            "worker-1": -signal.SIGTERM,
+            "worker-2": 0,
+        },
+        runner_terminated_child_ids=["worker-1"],
+        allow_runner_terminated=True,
+    )
+    assert not supervised_child_group_succeeded(
+        {
+            "worker-1": 2,
+            "worker-2": 0,
+        },
+        runner_terminated_child_ids=["worker-1"],
+        allow_runner_terminated=True,
+    )
+
+
+def test_supervisor_runtime_launch_process_child_normalizes_runtime_defaults(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    captured: dict[str, object] = {}
+    stdout_marker = object()
+    stderr_marker = object()
+
+    class FakeProcess:
+        pid = 2468
+
+        def __init__(self, command, **kwargs):
+            captured["command"] = command
+            captured["kwargs"] = kwargs
+
+    monkeypatch.setattr(supervisor_runtime.subprocess, "Popen", FakeProcess)
+    monkeypatch.setenv("SUPERVISOR_TEST_BASE", "base")
+
+    process = launch_process_child(
+        ("python", "worker.py"),
+        cwd=tmp_path,
+        env={"SUPERVISOR_TEST_EXTRA": 12},
+        stdin=None,
+        stdout=stdout_marker,
+        stderr=stderr_marker,
+        start_new_session=False,
+        text=True,
+    )
+
+    assert process.pid == 2468
+    assert captured["command"] == ["python", "worker.py"]
+    kwargs = captured["kwargs"]
+    assert kwargs["cwd"] == tmp_path
+    assert kwargs["env"]["SUPERVISOR_TEST_BASE"] == "base"
+    assert kwargs["env"]["SUPERVISOR_TEST_EXTRA"] == "12"
+    assert kwargs["stdin"] is None
+    assert kwargs["stdout"] is stdout_marker
+    assert kwargs["stderr"] is stderr_marker
+    assert kwargs["start_new_session"] is False
+    assert kwargs["text"] is True
+
+
+def test_supervisor_runtime_launch_supervised_child_uses_shared_launcher(
+    tmp_path,
+    monkeypatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    calls: list[dict[str, object]] = []
+
+    class FakeProcess:
+        pid = 3579
+
+    def fake_launch_process_child(command, **kwargs):
+        calls.append({"command": command, "kwargs": kwargs})
+        return FakeProcess()
+
+    monkeypatch.setattr(supervisor_runtime, "launch_process_child", fake_launch_process_child)
+
+    child = launch_supervised_child(
+        SupervisedChildSpec(
+            repo_root=repo,
+            command=("python", "worker.py"),
+            log_path=Path("logs/child.log"),
+            child_pid_path=Path("state/child.pid"),
+            env={"SUPERVISOR_TEST_EXTRA": "1"},
+            stdin_devnull=False,
+            start_new_session=False,
+        )
+    )
+
+    assert child.pid == 3579
+    assert (repo / "state" / "child.pid").read_text(encoding="utf-8").strip() == "3579"
+    assert len(calls) == 1
+    assert calls[0]["command"] == ("python", "worker.py")
+    kwargs = calls[0]["kwargs"]
+    assert kwargs["cwd"] == str(repo)
+    assert kwargs["env"] == {"SUPERVISOR_TEST_EXTRA": "1"}
+    assert kwargs["stdin"] is None
+    assert kwargs["stderr"] == subprocess.STDOUT
+    assert kwargs["start_new_session"] is False
+
+
+def test_supervisor_runtime_stop_signal_handlers_record_and_restore(
+    monkeypatch,
+) -> None:
+    handlers: dict[int, object] = {
+        signal.SIGINT: "previous-int",
+        signal.SIGTERM: "previous-term",
+    }
+    callbacks: list[tuple[int, object]] = []
+
+    def fake_getsignal(signum: int):
+        return handlers[signum]
+
+    def fake_signal(signum: int, handler):
+        handlers[signum] = handler
+
+    monkeypatch.setattr(supervisor_runtime.signal, "getsignal", fake_getsignal)
+    monkeypatch.setattr(supervisor_runtime.signal, "signal", fake_signal)
+
+    state = install_stop_signal_handlers(
+        on_signal=lambda signum, frame: callbacks.append((signum, frame))
+    )
+
+    installed_handler = handlers[signal.SIGTERM]
+    assert callable(installed_handler)
+    installed_handler(signal.SIGTERM, "frame")
+
+    assert state.stop_requested is True
+    assert state.stop_signal == signal.SIGTERM
+    assert state.signal_count == 1
+    assert state.received_at
+    assert callbacks == [(signal.SIGTERM, "frame")]
+
+    state.restore()
+
+    assert handlers == {
+        signal.SIGINT: "previous-int",
+        signal.SIGTERM: "previous-term",
+    }
+
+
+def test_supervisor_runtime_terminate_process_group_falls_back_to_child(
+    monkeypatch,
+) -> None:
+    calls: list[tuple[str, int, int]] = []
+
+    class FakeProcess:
+        pid = 1234
+
+        def poll(self):
+            return None
+
+        def send_signal(self, signum):
+            calls.append(("send_signal", self.pid, signum))
+
+    def fake_killpg(pid, signum):
+        calls.append(("killpg", pid, signum))
+        raise OSError("no process group")
+
+    monkeypatch.setattr(supervisor_runtime.os, "killpg", fake_killpg)
+
+    assert terminate_process_group(FakeProcess(), signal.SIGTERM)
+    assert calls == [
+        ("killpg", 1234, signal.SIGTERM),
+        ("send_signal", 1234, signal.SIGTERM),
+    ]
+
+
+def test_supervisor_runtime_terminate_process_with_grace_escalates(
+    monkeypatch,
+) -> None:
+    signals: list[tuple[int, int]] = []
+
+    class FakeProcess:
+        pid = 4321
+
+        def __init__(self):
+            self._exit_code = None
+            self._wait_calls = 0
+
+        def poll(self):
+            return self._exit_code
+
+        def wait(self, timeout=None):
+            self._wait_calls += 1
+            if self._wait_calls == 1:
+                raise subprocess.TimeoutExpired("fake", timeout)
+            self._exit_code = -signal.SIGKILL
+            return self._exit_code
+
+    def fake_killpg(pid, signum):
+        signals.append((pid, signum))
+
+    process = FakeProcess()
+    monkeypatch.setattr(supervisor_runtime.os, "killpg", fake_killpg)
+
+    result = terminate_process_with_grace(
+        process,
+        grace_seconds=0.0,
+        kill_wait_seconds=0.0,
+    )
+
+    assert result.pid == 4321
+    assert result.initial_exit_code is None
+    assert result.final_exit_code == -signal.SIGKILL
+    assert result.terminate_sent is True
+    assert result.kill_sent is True
+    assert result.timed_out is False
+    assert signals == [
+        (4321, signal.SIGTERM),
+        (4321, signal.SIGKILL),
+    ]
+
+
+def test_supervisor_runtime_terminate_processes_with_grace_signals_all_first(
+    monkeypatch,
+) -> None:
+    signals: list[tuple[int, int]] = []
+
+    class FakeProcess:
+        def __init__(self, pid: int, *, exit_code: int | None = None, waits_to_exit: int = 1):
+            self.pid = pid
+            self._exit_code = exit_code
+            self._wait_calls = 0
+            self._waits_to_exit = waits_to_exit
+
+        def poll(self):
+            return self._exit_code
+
+        def wait(self, timeout=None):
+            self._wait_calls += 1
+            if self._wait_calls < self._waits_to_exit:
+                raise subprocess.TimeoutExpired("fake", timeout)
+            if self._exit_code is None:
+                self._exit_code = -signal.SIGTERM
+            return self._exit_code
+
+    def fake_killpg(pid, signum):
+        signals.append((pid, signum))
+
+    monkeypatch.setattr(supervisor_runtime.os, "killpg", fake_killpg)
+
+    results = terminate_processes_with_grace(
+        [
+            ("first", FakeProcess(1001)),
+            ("second", FakeProcess(1002, waits_to_exit=2)),
+            ("done", FakeProcess(1003, exit_code=0)),
+        ],
+        grace_seconds=0.0,
+        kill_wait_seconds=0.0,
+    )
+
+    assert signals[:2] == [
+        (1001, signal.SIGTERM),
+        (1002, signal.SIGTERM),
+    ]
+    assert signals[2:] == [(1002, signal.SIGKILL)]
+    assert results["first"].terminate_sent is True
+    assert results["second"].kill_sent is True
+    assert results["done"].terminate_sent is False
+
+
+def test_supervisor_runtime_summarizes_child_status_files(tmp_path: Path) -> None:
+    active = tmp_path / "active.summary"
+    waiting = tmp_path / "waiting.summary"
+    active.write_text(
+        json.dumps(
+            {
+                "active_packet_claimed_todo_ids": ["todo-1"],
+                "active_packet_phase": "executing_codex_packet",
+                "codex_claimed_total": 2,
+                "codex_execution_count": 1,
+                "codex_scope": "bridge",
+                "heartbeat_at": "2026-06-05T00:00:00+00:00",
+                "latest_stop_reason": "waiting_for_program_synthesis_todos",
+                "worker_id": "worker-active",
+            }
+        ),
+        encoding="utf-8",
+    )
+    waiting.write_text(
+        json.dumps(
+            {
+                "active_packet_claimed_todo_ids": [],
+                "active_packet_phase": "idle",
+                "codex_claimed_total": 3,
+                "codex_execution_count": 4,
+                "codex_scope": "bridge",
+                "heartbeat_at": "2026-06-05T00:01:00+00:00",
+                "latest_stop_reason": "waiting_for_program_synthesis_todos",
+                "worker_id": "worker-waiting",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    health = summarize_child_summary_files(
+        [active, waiting, tmp_path / "missing.summary"],
+        spec=ChildSummaryHealthSpec(
+            numeric_total_fields=("codex_claimed_total", "codex_execution_count"),
+            scope_field="codex_scope",
+            waiting_reasons=frozenset({"waiting_for_program_synthesis_todos"}),
+        ),
+        stale_seconds=90.0,
+        now=datetime(2026, 6, 5, 0, 2, 0, tzinfo=timezone.utc).timestamp(),
+    )
+
+    assert health["summary_count"] == 2
+    assert health["active_count"] == 1
+    assert health["waiting_count"] == 1
+    assert health["stale_count"] == 1
+    assert health["stale_child_ids"] == ["worker-active"]
+    assert health["scope_counts"] == {"bridge": 2}
+    assert health["latest_stop_reasons"] == {"waiting_for_program_synthesis_todos": 2}
+    assert health["numeric_totals"] == {
+        "codex_claimed_total": 5,
+        "codex_execution_count": 5,
+    }
+    assert health["summary_age_seconds"] == {
+        "worker-active": 120.0,
+        "worker-waiting": 60.0,
+    }
+
+
+def test_supervisor_runtime_timestamp_age_seconds_accepts_iso_z() -> None:
+    now = datetime(2026, 6, 5, 0, 2, 0, tzinfo=timezone.utc).timestamp()
+
+    assert timestamp_age_seconds("2026-06-05T00:01:30Z", now=now) == pytest.approx(30.0)
+    assert timestamp_age_seconds("not-a-timestamp", now=now) is None
+    assert timestamp_age_seconds("", now=now) is None
 
 
 def test_build_configured_merge_resolver_runner_reuses_binding(tmp_path, monkeypatch):

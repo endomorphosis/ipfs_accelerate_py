@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import importlib
 import os
+import signal
 import subprocess
 import sys
 import time
+from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -14,7 +16,7 @@ from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
 from ..event_log import unique_backup_path
 from ..wrapper_utils import with_exclusive_flag_default
-from .core import now_iso, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
+from .core import now_iso, parse_timestamp, pid_alive, process_args, read_json, read_pid_file, remove_runtime_marker, terminate_pid_tree, write_json
 
 
 @dataclass(frozen=True)
@@ -66,7 +68,94 @@ class SupervisedChild:
     started_at: str = ""
 
 
+@dataclass(frozen=True)
+class ProcessTerminationResult:
+    """Result from terminating a supervisor-owned child process group."""
+
+    pid: int
+    initial_exit_code: Optional[int]
+    final_exit_code: Optional[int]
+    terminate_sent: bool = False
+    kill_sent: bool = False
+    timed_out: bool = False
+
+
+@dataclass(frozen=True)
+class ChildSummaryHealthSpec:
+    """Field mapping for summarizing supervisor child status files."""
+
+    active_ids_field: str = "active_packet_claimed_todo_ids"
+    active_phase_field: str = "active_packet_phase"
+    active_phases: frozenset[str] = frozenset(
+        {"claimed_program_synthesis_todos", "executing_codex_packet"}
+    )
+    latest_reason_field: str = "latest_stop_reason"
+    numeric_total_fields: tuple[str, ...] = ()
+    scope_field: str = "scope"
+    timestamp_fields: tuple[str, ...] = (
+        "heartbeat_at",
+        "active_packet_last_heartbeat_at",
+        "finished_at",
+        "created_at",
+        "started_at",
+    )
+    waiting_reasons: frozenset[str] = frozenset({"waiting_for_todos"})
+    worker_id_field: str = "worker_id"
+
+
+@dataclass
+class StopSignalState:
+    """Mutable stop request state installed by reusable signal handlers."""
+
+    previous_signal_handlers: dict[int, Any] = field(default_factory=dict)
+    received_at: Optional[str] = None
+    signal_count: int = 0
+    stop_requested: bool = False
+    stop_signal: Optional[int] = None
+
+    def mark_requested(self, signum: int) -> None:
+        self.stop_requested = True
+        self.stop_signal = int(signum)
+        self.signal_count += 1
+        self.received_at = now_iso()
+
+    def restore(self) -> None:
+        """Restore signal handlers captured during installation."""
+
+        for signum, handler in self.previous_signal_handlers.items():
+            signal.signal(signum, handler)
+
+
 DEFAULT_SUPERVISOR_RUNNING_STATES = frozenset({"running", "starting", "recycling", "restarting"})
+
+
+def launch_process_child(
+    command: Sequence[str],
+    *,
+    cwd: Path | str,
+    env: Optional[Mapping[str, object]] = None,
+    stdin: Any = subprocess.DEVNULL,
+    stdout: Any = None,
+    stderr: Any = None,
+    start_new_session: bool = True,
+    text: bool = False,
+) -> subprocess.Popen[Any]:
+    """Launch a supervisor-owned child process with normalized runtime defaults."""
+
+    child_env = dict(os.environ)
+    if env:
+        child_env.update({str(key): str(value) for key, value in env.items()})
+    kwargs = {
+        "cwd": cwd,
+        "env": child_env,
+        "stdin": stdin,
+        "stdout": stdout,
+        "stderr": stderr,
+        "start_new_session": start_new_session,
+    }
+    if text:
+        kwargs["text"] = True
+    return subprocess.Popen([str(part) for part in command], **kwargs)
 
 
 class SupervisorRuntimeEnsureCallback(Protocol):
@@ -356,14 +445,12 @@ def ensure_supervisor_running(
     command = [sys.executable, str(script_path), *launch_args]
     if prepare_environment is not None:
         prepare_environment()
-    env = dict(os.environ)
     paths["wrapper_out"].parent.mkdir(parents=True, exist_ok=True)
     out_handle = paths["wrapper_out"].open("ab")
     try:
-        process = subprocess.Popen(
+        process = launch_process_child(
             command,
             cwd=repo_root,
-            env=env,
             stdin=subprocess.DEVNULL,
             stdout=out_handle,
             stderr=subprocess.STDOUT,
@@ -469,6 +556,325 @@ def build_python_module_command(
     return tuple(command)
 
 
+def child_exit_should_restart(
+    *,
+    exit_code: Optional[int],
+    restart_count: int,
+    restart_limit: int,
+    stop_requested: bool = False,
+    restart_on_clean_exit: bool = False,
+) -> bool:
+    """Return whether a supervised child should be replaced after exit."""
+
+    if exit_code is None or stop_requested:
+        return False
+    try:
+        count = int(restart_count)
+    except (TypeError, ValueError):
+        count = 0
+    try:
+        limit = int(restart_limit)
+    except (TypeError, ValueError):
+        limit = 0
+    if count >= limit:
+        return False
+    if int(exit_code) == 0 and not restart_on_clean_exit:
+        return False
+    return True
+
+
+def install_stop_signal_handlers(
+    signals: Sequence[int] = (signal.SIGINT, signal.SIGTERM),
+    *,
+    on_signal: Optional[Callable[[int, Any], None]] = None,
+) -> StopSignalState:
+    """Install reusable stop-request signal handlers and return mutable state."""
+
+    state = StopSignalState()
+
+    def request_stop(signum: int, frame: Any) -> None:
+        state.mark_requested(signum)
+        if on_signal is not None:
+            on_signal(signum, frame)
+
+    for signum in signals:
+        signum_int = int(signum)
+        state.previous_signal_handlers[signum_int] = signal.getsignal(signum_int)
+        signal.signal(signum_int, request_stop)
+    return state
+
+
+def supervised_child_succeeded(
+    *,
+    child_id: str,
+    exit_code: Optional[int],
+    runner_terminated_child_ids: Sequence[str] = (),
+    stop_requested: bool = False,
+    allow_runner_terminated: bool = False,
+    runner_terminated_success_codes: frozenset[int] = frozenset(
+        {-signal.SIGTERM, -signal.SIGKILL}
+    ),
+) -> bool:
+    """Return whether one supervised child should count as successful."""
+
+    terminated_ids = {str(item) for item in runner_terminated_child_ids}
+    if exit_code == 0:
+        return allow_runner_terminated or str(child_id) not in terminated_ids
+    if not allow_runner_terminated or stop_requested:
+        return False
+    return bool(
+        str(child_id) in terminated_ids
+        and exit_code in runner_terminated_success_codes
+    )
+
+
+def supervised_child_group_succeeded(
+    exit_codes: Mapping[str, Optional[int]],
+    *,
+    runner_terminated_child_ids: Sequence[str] = (),
+    stop_requested: bool = False,
+    allow_runner_terminated: bool = False,
+    require_children: bool = True,
+) -> bool:
+    """Return whether all supervised children reached acceptable exits."""
+
+    if require_children and not exit_codes:
+        return False
+    return all(
+        supervised_child_succeeded(
+            child_id=child_id,
+            exit_code=exit_code,
+            runner_terminated_child_ids=runner_terminated_child_ids,
+            stop_requested=stop_requested,
+            allow_runner_terminated=allow_runner_terminated,
+        )
+        for child_id, exit_code in exit_codes.items()
+    )
+
+
+def child_summary_age_seconds(
+    path: Path,
+    data: Mapping[str, Any],
+    *,
+    timestamp_fields: Sequence[str] = (
+        "heartbeat_at",
+        "active_packet_last_heartbeat_at",
+        "finished_at",
+        "created_at",
+        "started_at",
+    ),
+    now: Optional[float] = None,
+) -> Optional[float]:
+    """Return the age of a child summary from known timestamps or mtime."""
+
+    now_epoch = time.time() if now is None else float(now)
+    for key in timestamp_fields:
+        age_seconds = timestamp_age_seconds(data.get(key), now=now_epoch)
+        if age_seconds is not None:
+            return age_seconds
+    try:
+        return max(0.0, now_epoch - path.stat().st_mtime)
+    except OSError:
+        return None
+
+
+def timestamp_age_seconds(value: Any, *, now: Optional[float] = None) -> Optional[float]:
+    """Return the age in seconds for an ISO timestamp-like value."""
+
+    parsed = parse_timestamp(value)
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    now_epoch = time.time() if now is None else float(now)
+    return max(0.0, now_epoch - parsed.timestamp())
+
+
+def summarize_child_summary_files(
+    paths: Sequence[Path],
+    *,
+    spec: ChildSummaryHealthSpec,
+    stale_seconds: float = 0.0,
+    now: Optional[float] = None,
+) -> dict[str, Any]:
+    """Summarize reusable health signals from supervisor child JSON files."""
+
+    summary_count = 0
+    active_count = 0
+    waiting_count = 0
+    scope_counts: Counter[str] = Counter()
+    latest_reasons: Counter[str] = Counter()
+    summary_age_seconds: dict[str, float] = {}
+    stale_child_ids: set[str] = set()
+    numeric_totals: dict[str, int] = {field: 0 for field in spec.numeric_total_fields}
+    threshold = max(0.0, float(stale_seconds))
+    for path in paths:
+        if not path.exists():
+            continue
+        data = read_json(path)
+        if not data:
+            continue
+        summary_count += 1
+        worker_id = str(data.get(spec.worker_id_field) or path.stem)
+        scope = str(data.get(spec.scope_field) or "unscoped")
+        scope_counts[scope] += 1
+        age_seconds = child_summary_age_seconds(
+            path,
+            data,
+            timestamp_fields=spec.timestamp_fields,
+            now=now,
+        )
+        if age_seconds is not None:
+            summary_age_seconds[worker_id] = round(float(age_seconds), 3)
+            if threshold > 0.0 and age_seconds >= threshold:
+                stale_child_ids.add(worker_id)
+        latest_reason = str(data.get(spec.latest_reason_field) or "")
+        if latest_reason:
+            latest_reasons[latest_reason] += 1
+        active_phase = str(data.get(spec.active_phase_field) or "")
+        active_ids = data.get(spec.active_ids_field) or []
+        has_active_work = bool(
+            active_phase in spec.active_phases
+            and isinstance(active_ids, list)
+            and active_ids
+        )
+        if has_active_work:
+            active_count += 1
+        if latest_reason in spec.waiting_reasons and not has_active_work:
+            waiting_count += 1
+        for field in spec.numeric_total_fields:
+            try:
+                numeric_totals[field] += int(data.get(field, 0) or 0)
+            except (TypeError, ValueError):
+                pass
+
+    return {
+        "active_count": active_count,
+        "latest_stop_reasons": dict(sorted(latest_reasons.items())),
+        "numeric_totals": dict(sorted(numeric_totals.items())),
+        "scope_counts": dict(sorted(scope_counts.items())),
+        "stale_child_ids": sorted(stale_child_ids),
+        "stale_count": len(stale_child_ids),
+        "summary_age_seconds": dict(sorted(summary_age_seconds.items())),
+        "summary_count": summary_count,
+        "waiting_count": waiting_count,
+    }
+
+
+def terminate_process_group(process: subprocess.Popen[Any], signum: int) -> bool:
+    """Signal a child process group, falling back to the child process itself."""
+
+    if process.poll() is not None:
+        return False
+    try:
+        os.killpg(process.pid, signum)
+        return True
+    except ProcessLookupError:
+        return False
+    except OSError:
+        try:
+            process.send_signal(signum)
+            return True
+        except OSError:
+            return False
+
+
+def terminate_process_with_grace(
+    process: subprocess.Popen[Any],
+    *,
+    grace_seconds: float = 10.0,
+    kill_wait_seconds: float = 5.0,
+    terminate_signal: int = signal.SIGTERM,
+    kill_signal: int = signal.SIGKILL,
+) -> ProcessTerminationResult:
+    """Terminate a child process group, escalating to kill after a grace period."""
+
+    pid = int(process.pid)
+    initial_exit_code = process.poll()
+    if initial_exit_code is not None:
+        return ProcessTerminationResult(
+            pid=pid,
+            initial_exit_code=int(initial_exit_code),
+            final_exit_code=int(initial_exit_code),
+        )
+
+    terminate_sent = terminate_process_group(process, terminate_signal)
+    kill_sent = False
+    timed_out = False
+    try:
+        process.wait(timeout=max(0.0, float(grace_seconds)))
+    except subprocess.TimeoutExpired:
+        kill_sent = terminate_process_group(process, kill_signal)
+        try:
+            process.wait(timeout=max(0.0, float(kill_wait_seconds)))
+        except subprocess.TimeoutExpired:
+            timed_out = True
+
+    final_exit_code = process.poll()
+    return ProcessTerminationResult(
+        pid=pid,
+        initial_exit_code=initial_exit_code,
+        final_exit_code=int(final_exit_code) if final_exit_code is not None else None,
+        terminate_sent=terminate_sent,
+        kill_sent=kill_sent,
+        timed_out=timed_out,
+    )
+
+
+def terminate_processes_with_grace(
+    processes: (
+        Mapping[str, Optional[subprocess.Popen[Any]]]
+        | Sequence[tuple[str, Optional[subprocess.Popen[Any]]]]
+    ),
+    *,
+    grace_seconds: float = 10.0,
+    kill_wait_seconds: float = 5.0,
+    terminate_signal: int = signal.SIGTERM,
+    kill_signal: int = signal.SIGKILL,
+) -> dict[str, ProcessTerminationResult]:
+    """Terminate many child process groups after signaling all active children first."""
+
+    items = processes.items() if isinstance(processes, Mapping) else processes
+    active: list[tuple[str, subprocess.Popen[Any], Optional[int], bool]] = []
+    results: dict[str, ProcessTerminationResult] = {}
+    for child_id, process in items:
+        if process is None:
+            continue
+        child_key = str(child_id)
+        initial_exit_code = process.poll()
+        if initial_exit_code is not None:
+            results[child_key] = ProcessTerminationResult(
+                pid=int(process.pid),
+                initial_exit_code=int(initial_exit_code),
+                final_exit_code=int(initial_exit_code),
+            )
+            continue
+        terminate_sent = terminate_process_group(process, terminate_signal)
+        active.append((child_key, process, initial_exit_code, terminate_sent))
+
+    for child_key, process, initial_exit_code, terminate_sent in active:
+        kill_sent = False
+        timed_out = False
+        try:
+            process.wait(timeout=max(0.0, float(grace_seconds)))
+        except subprocess.TimeoutExpired:
+            kill_sent = terminate_process_group(process, kill_signal)
+            try:
+                process.wait(timeout=max(0.0, float(kill_wait_seconds)))
+            except subprocess.TimeoutExpired:
+                timed_out = True
+        final_exit_code = process.poll()
+        results[child_key] = ProcessTerminationResult(
+            pid=int(process.pid),
+            initial_exit_code=initial_exit_code,
+            final_exit_code=int(final_exit_code) if final_exit_code is not None else None,
+            terminate_sent=terminate_sent,
+            kill_sent=kill_sent,
+            timed_out=timed_out,
+        )
+    return results
+
+
 def _prepare_marker_path(path: Path, *, remove_existing_file: bool) -> Optional[Path]:
     if path.is_symlink():
         path.unlink()
@@ -497,11 +903,10 @@ def launch_supervised_child(spec: SupervisedChildSpec) -> SupervisedChild:
         _prepare_marker_path(latest_log_path, remove_existing_file=True)
         latest_log_path.symlink_to(log_path.name)
 
-    env = dict(os.environ)
-    env.update({key: str(value) for key, value in spec.env.items()})
+    env = {key: str(value) for key, value in spec.env.items()}
     out_handle = log_path.open("ab")
     try:
-        process = subprocess.Popen(
+        process = launch_process_child(
             spec.command,
             cwd=str(spec.repo_root),
             env=env,
