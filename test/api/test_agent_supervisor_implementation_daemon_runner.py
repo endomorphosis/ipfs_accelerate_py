@@ -76,7 +76,14 @@ def test_implementation_state_paths_follow_state_prefix(tmp_path: Path):
 
 def test_apply_portal_implementation_daemon_defaults_preserves_user_values(tmp_path: Path):
     args = apply_portal_implementation_daemon_defaults(
-        ["--state-prefix", "custom", "--worktree-submodule-path", "user-module"],
+        [
+            "--state-prefix",
+            "custom",
+            "--worktree-submodule-path",
+            "user-module",
+            "--llm-merge-resolver-command",
+            "user-resolver",
+        ],
         defaults=ImplementationDaemonDefaults(
             todo_path=tmp_path / "tasks.todo.md",
             state_dir=tmp_path / "state",
@@ -85,6 +92,7 @@ def test_apply_portal_implementation_daemon_defaults_preserves_user_values(tmp_p
             worktree_root=tmp_path / "worktrees",
             objective_path=tmp_path / "objective.md",
             objective_bundle_dir=tmp_path / "bundles",
+            llm_merge_resolver_command="default-resolver",
             worktree_submodule_paths=("module-a", "module-b"),
         ),
     )
@@ -100,6 +108,7 @@ def test_apply_portal_implementation_daemon_defaults_preserves_user_values(tmp_p
     assert parsed.objective_path == tmp_path / "objective.md"
     assert parsed.objective_bundle_dir == tmp_path / "bundles"
     assert parsed.worktree_submodule_path == ["user-module"]
+    assert parsed.llm_merge_resolver_command == "user-resolver"
 
 
 def test_build_portal_implementation_daemon_from_args_applies_defaults(tmp_path: Path):
@@ -265,6 +274,7 @@ def test_configured_daemon_runner_resolves_bootstrap_paths(monkeypatch, tmp_path
         task_prefix="## EX-",
         state_prefix="example",
         objective_path_key="objective_path",
+        llm_merge_resolver_command=lambda: "resolver-command",
         pass_complete_message="complete: %s",
     )
 
@@ -281,6 +291,7 @@ def test_configured_daemon_runner_resolves_bootstrap_paths(monkeypatch, tmp_path
     assert captured["kwargs"]["task_prefix"] == "## EX-"
     assert captured["kwargs"]["state_prefix"] == "example"
     assert captured["kwargs"]["objective_path_key"] == "objective_path"
+    assert captured["kwargs"]["llm_merge_resolver_command"] == "resolver-command"
     assert captured["kwargs"]["hooks"] == (hook,)
     assert captured["kwargs"]["pass_complete_message"] == "complete: %s"
 

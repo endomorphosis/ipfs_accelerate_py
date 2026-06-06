@@ -1025,6 +1025,7 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
         todo_path_flag="--task-board",
         objective_path_key="objective_heap_path",
         objective_bundle_dir=tmp_path / "bundles",
+        llm_merge_resolver_command="resolve-conflict",
         worktree_submodule_paths=("packages/app", "external/lib"),
     )
 
@@ -1037,6 +1038,7 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
         todo_path_flag="--task-board",
         objective_path=tmp_path / "objective-heap.md",
         objective_bundle_dir=tmp_path / "bundles",
+        llm_merge_resolver_command="resolve-conflict",
         worktree_submodule_paths=("packages/app", "external/lib"),
     )
     assert apply_portal_implementation_daemon_defaults_from_paths(
@@ -1048,6 +1050,7 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
         todo_path_flag="--task-board",
         objective_path_key="objective_heap_path",
         objective_bundle_dir=tmp_path / "bundles",
+        llm_merge_resolver_command="resolve-conflict",
         worktree_submodule_paths=("packages/app", "external/lib"),
     ) == apply_portal_implementation_daemon_defaults(["--once"], defaults=defaults)
 
@@ -1113,6 +1116,7 @@ def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, 
         todo_path_flag="--task-board",
         objective_path_key="objective_heap_path",
         objective_bundle_dir_key="objective_bundle_dir",
+        llm_merge_resolver_command="resolve-conflict",
         worktree_submodule_paths=("external/path-default",),
         hooks=(hook,),
         pass_complete_message="paths complete: %s",
@@ -1127,6 +1131,7 @@ def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, 
     assert forwarded[forwarded.index("--worktree-root") + 1] == str(repo / "worktrees")
     assert forwarded[forwarded.index("--objective-path") + 1] == str(objective_path)
     assert forwarded[forwarded.index("--objective-bundle-dir") + 1] == str(bundle_dir)
+    assert forwarded[forwarded.index("--llm-merge-resolver-command") + 1] == "resolve-conflict"
     assert captured["kwargs"]["hooks"] == (hook,)
     assert captured["kwargs"]["pass_complete_message"] == "paths complete: %s"
 

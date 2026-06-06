@@ -43,6 +43,7 @@ DaemonRefillRecordCallback = Callable[..., Any]
 DaemonBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
 DaemonBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence["DaemonLoopHook"]]
 DaemonBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
+DaemonMergeResolverCommand = str | Callable[[], str]
 
 
 @dataclass(frozen=True)
@@ -104,6 +105,7 @@ class ConfiguredImplementationDaemonRunner:
         objective_path: Path | str | None = None,
         objective_bundle_dir_key: str | None = None,
         objective_bundle_dir: Path | str | None = None,
+        llm_merge_resolver_command: str = "",
         worktree_submodule_paths: Sequence[str] = (),
         hooks: Sequence[DaemonLoopHook] = (),
         pass_complete_message: str | None = None,
@@ -123,6 +125,7 @@ class ConfiguredImplementationDaemonRunner:
             objective_path=objective_path,
             objective_bundle_dir_key=objective_bundle_dir_key,
             objective_bundle_dir=objective_bundle_dir,
+            llm_merge_resolver_command=llm_merge_resolver_command,
             worktree_submodule_paths=worktree_submodule_paths,
         )
         return self.run_configured(
@@ -151,6 +154,7 @@ class ConfiguredImplementationDaemonRunner:
         objective_path: Path | str | None = None,
         objective_bundle_dir_key: str | None = None,
         objective_bundle_dir: Path | str | None = None,
+        llm_merge_resolver_command: DaemonMergeResolverCommand = "",
         worktree_submodule_paths: Sequence[str] = (),
         pass_complete_message: str | None = None,
     ) -> Any:
@@ -177,6 +181,7 @@ class ConfiguredImplementationDaemonRunner:
             objective_path=objective_path,
             objective_bundle_dir_key=objective_bundle_dir_key,
             objective_bundle_dir=objective_bundle_dir,
+            llm_merge_resolver_command=_resolved_daemon_merge_resolver_command(llm_merge_resolver_command),
             worktree_submodule_paths=worktree_submodule_paths,
             hooks=effective_hooks,
             pass_complete_message=pass_complete_message,
@@ -204,6 +209,7 @@ class ConfiguredImplementationDaemonRunner:
         objective_path: Path | str | None = None,
         objective_bundle_dir_key: str | None = None,
         objective_bundle_dir: Path | str | None = None,
+        llm_merge_resolver_command: DaemonMergeResolverCommand = "",
         worktree_submodule_paths: Sequence[str] = (),
         pass_complete_message: str | None = None,
     ) -> Any:
@@ -235,6 +241,7 @@ class ConfiguredImplementationDaemonRunner:
             objective_path=objective_path,
             objective_bundle_dir_key=resolved_objective_bundle_dir_key,
             objective_bundle_dir=resolved_objective_bundle_dir,
+            llm_merge_resolver_command=llm_merge_resolver_command,
             worktree_submodule_paths=worktree_submodule_paths,
             pass_complete_message=pass_complete_message,
         )
@@ -263,6 +270,7 @@ class ConfiguredDaemonBootstrapRunner:
     objective_path: Path | str | None = None
     objective_bundle_dir_key: str | None = None
     objective_bundle_dir: Path | str | None = None
+    llm_merge_resolver_command: DaemonMergeResolverCommand = ""
     worktree_submodule_paths: Sequence[str] = ()
     pass_complete_message: str | None = None
 
@@ -287,6 +295,7 @@ class ConfiguredDaemonBootstrapRunner:
             "objective_path": self.objective_path,
             "objective_bundle_dir_key": self.objective_bundle_dir_key,
             "objective_bundle_dir": self.objective_bundle_dir,
+            "llm_merge_resolver_command": self.llm_merge_resolver_command,
             "worktree_submodule_paths": self.worktree_submodule_paths,
             "pass_complete_message": self.pass_complete_message,
         }
@@ -318,6 +327,7 @@ def build_configured_daemon_bootstrap_runner(
     objective_path: Path | str | None = None,
     objective_bundle_dir_key: str | None = None,
     objective_bundle_dir: Path | str | None = None,
+    llm_merge_resolver_command: DaemonMergeResolverCommand = "",
     worktree_submodule_paths: Sequence[str] = (),
     pass_complete_message: str | None = None,
 ) -> ConfiguredDaemonBootstrapRunner:
@@ -343,6 +353,7 @@ def build_configured_daemon_bootstrap_runner(
         objective_path=objective_path,
         objective_bundle_dir_key=objective_bundle_dir_key,
         objective_bundle_dir=objective_bundle_dir,
+        llm_merge_resolver_command=llm_merge_resolver_command,
         worktree_submodule_paths=tuple(worktree_submodule_paths),
         pass_complete_message=pass_complete_message,
     )
@@ -433,6 +444,7 @@ def build_namespace_daemon_bootstrap_runner(
     objective_path: Path | str | None = None,
     objective_bundle_dir_key: str | None = None,
     objective_bundle_dir: Path | str | None = None,
+    llm_merge_resolver_command: DaemonMergeResolverCommand = "",
     worktree_submodule_paths: Sequence[str] | None = None,
     run_pass_complete_message: str | None = None,
 ) -> ConfiguredDaemonBootstrapRunner:
@@ -472,6 +484,7 @@ def build_namespace_daemon_bootstrap_runner(
         objective_path=objective_path,
         objective_bundle_dir_key=objective_bundle_dir_key,
         objective_bundle_dir=objective_bundle_dir,
+        llm_merge_resolver_command=llm_merge_resolver_command,
         worktree_submodule_paths=effective_worktree_submodule_paths,
         pass_complete_message=run_pass_complete_message,
     )
@@ -484,6 +497,12 @@ def _with_extra_kwargs(
     if extra_kwargs:
         kwargs.update(extra_kwargs)
     return kwargs
+
+
+def _resolved_daemon_merge_resolver_command(command: DaemonMergeResolverCommand) -> str:
+    if callable(command):
+        command = command()
+    return str(command or "").strip()
 
 
 def _extra_kwargs_from_factory(
@@ -510,6 +529,7 @@ class ImplementationDaemonDefaults:
     todo_path_flag: str = "--todo-path"
     objective_path: Path | None = None
     objective_bundle_dir: Path | None = None
+    llm_merge_resolver_command: str = ""
     worktree_submodule_paths: Sequence[str] = ()
 
 
@@ -543,6 +563,7 @@ def build_implementation_daemon_defaults_from_paths(
     objective_path: Path | str | None = None,
     objective_bundle_dir_key: str | None = None,
     objective_bundle_dir: Path | str | None = None,
+    llm_merge_resolver_command: str = "",
     worktree_submodule_paths: Sequence[str] = (),
 ) -> ImplementationDaemonDefaults:
     """Build reusable implementation-daemon defaults from resolved wrapper paths."""
@@ -560,6 +581,7 @@ def build_implementation_daemon_defaults_from_paths(
             key=objective_bundle_dir_key,
             value=objective_bundle_dir,
         ),
+        llm_merge_resolver_command=str(llm_merge_resolver_command or "").strip(),
         worktree_submodule_paths=worktree_submodule_paths,
     )
 
@@ -585,6 +607,8 @@ def apply_portal_implementation_daemon_defaults(
     args = with_default(args, "--worktree-root", str(defaults.worktree_root))
     args = _with_optional_default(args, "--objective-path", defaults.objective_path)
     args = _with_optional_default(args, "--objective-bundle-dir", defaults.objective_bundle_dir)
+    if defaults.llm_merge_resolver_command:
+        args = with_default(args, "--llm-merge-resolver-command", defaults.llm_merge_resolver_command)
     if defaults.worktree_submodule_paths:
         args = with_repeated_default(args, "--worktree-submodule-path", defaults.worktree_submodule_paths)
     return args
@@ -604,6 +628,7 @@ def apply_portal_implementation_daemon_defaults_from_paths(
     objective_path: Path | str | None = None,
     objective_bundle_dir_key: str | None = None,
     objective_bundle_dir: Path | str | None = None,
+    llm_merge_resolver_command: str = "",
     worktree_submodule_paths: Sequence[str] = (),
 ) -> list[str]:
     """Apply implementation-daemon CLI defaults directly from resolved wrapper paths."""
@@ -622,6 +647,7 @@ def apply_portal_implementation_daemon_defaults_from_paths(
             objective_path=objective_path,
             objective_bundle_dir_key=objective_bundle_dir_key,
             objective_bundle_dir=objective_bundle_dir,
+            llm_merge_resolver_command=llm_merge_resolver_command,
             worktree_submodule_paths=worktree_submodule_paths,
         ),
     )
