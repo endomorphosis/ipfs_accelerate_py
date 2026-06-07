@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import signal
 import shlex
 import shutil
 import subprocess
@@ -19,6 +20,7 @@ from typing import Any, Sequence
 from .core import pid_alive as _shared_pid_alive
 from .core import process_args as _shared_process_args
 from .engine import atomic_write_json as _shared_atomic_write_json
+from ..checkout_lock import checkout_lock_metadata, checkout_mutation_lock_path
 from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
 from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
 from .runner import TodoDaemonHooks, TodoDaemonRunner
@@ -1009,6 +1011,10 @@ class PortalImplementationDaemon:
                 "log_path": str(log_path),
                 "validation_result": validation_result,
             }
+            termination_result = self._implementation_returncode_detail(effective_returncode)
+            if termination_result:
+                result["termination_result"] = termination_result
+                self._record_implementation_termination(task, attempt, termination_result)
             if todo_update_result:
                 result["todo_update_result"] = todo_update_result
             self._record_event("implementation_finished", result)
@@ -1029,7 +1035,9 @@ class PortalImplementationDaemon:
                 "returncode": 124,
                 "log_path": str(log_path),
                 "error": "timeout",
+                "termination_result": self._implementation_returncode_detail(124),
             }
+            self._record_implementation_termination(task, attempt, result["termination_result"])
             self._record_event("implementation_finished", result)
             return result
         except Exception as exc:
@@ -1192,20 +1200,57 @@ class PortalImplementationDaemon:
     def _commit_generated_file_update(self, path: Path, *, task_id: str, subject: str) -> dict[str, Any]:
         """Commit a daemon-owned generated file and any parent gitlink updates."""
 
-        repo = self._git_toplevel_for_path(path.parent)
-        if repo is None:
-            return {"committed": False, "reason": "not_in_git_repo", "path": str(path)}
-        relative = self._relative_to_repo(repo, path)
-        if not relative:
-            return {"committed": False, "reason": "path_outside_repo", "path": str(path), "repo": str(repo)}
+        started_at = utc_now()
+        lock_path = self._repo_merge_lock_path()
+        lock_fd, lock_reason, existing_lock = self._try_acquire_lock(
+            lock_path,
+            lock_kind="merge",
+            owner_active=self._merge_lock_owner_is_active,
+        )
+        if lock_fd is None:
+            result: dict[str, Any] = {
+                "committed": False,
+                "reason": f"checkout_mutation_{lock_reason}",
+                "path": str(path),
+                "lock_path": str(lock_path),
+            }
+            if existing_lock:
+                result["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
+                result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
+                result["lock_owner_branch"] = str(existing_lock.get("branch") or "")
+            return result
 
-        result = self._commit_specific_path(repo, relative, subject=subject)
-        parent_results: list[dict[str, Any]] = []
-        if result.get("committed"):
-            parent_results = self._commit_parent_gitlink_updates(repo, task_id=task_id)
-        if parent_results:
-            result["parent_gitlink_commits"] = parent_results
-        return result
+        try:
+            self._write_lock_metadata(
+                lock_fd,
+                checkout_lock_metadata(
+                    kind="merge",
+                    repo_root=self.repo_root,
+                    task_id=task_id,
+                    branch="generated-file-update",
+                    extra={"operation": "commit_generated_file_update", "path": str(path), "started_at": started_at},
+                ),
+            )
+            repo = self._git_toplevel_for_path(path.parent)
+            if repo is None:
+                return {"committed": False, "reason": "not_in_git_repo", "path": str(path)}
+            relative = self._relative_to_repo(repo, path)
+            if not relative:
+                return {"committed": False, "reason": "path_outside_repo", "path": str(path), "repo": str(repo)}
+
+            result = self._commit_specific_path(repo, relative, subject=subject)
+            parent_results: list[dict[str, Any]] = []
+            if result.get("committed"):
+                parent_results = self._commit_parent_gitlink_updates(repo, task_id=task_id)
+            if parent_results:
+                result["parent_gitlink_commits"] = parent_results
+            return result
+        finally:
+            try:
+                if lock_path.exists():
+                    lock_path.unlink()
+            except OSError:
+                logger.warning("Failed to remove checkout mutation lock %s", lock_path)
 
     def _commit_parent_gitlink_updates(self, child_repo: Path, *, task_id: str) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
@@ -1230,6 +1275,16 @@ class PortalImplementationDaemon:
     def _commit_specific_path(self, repo: Path, relative: str, *, subject: str) -> dict[str, Any]:
         if not self._repo_relative_path_safe(relative):
             return {"committed": False, "reason": "unsafe_path", "repo": str(repo), "path": relative}
+        merge_head = self._git_merge_head_in_repo(repo)
+        if merge_head:
+            return {
+                "committed": False,
+                "reason": "repo_merge_in_progress",
+                "repo": str(repo),
+                "path": relative,
+                "merge_head": merge_head,
+                "unmerged_paths": sorted(self._unmerged_worktree_paths(repo)),
+            }
         unmerged = self._unmerged_worktree_paths(repo)
         if unmerged and relative not in unmerged:
             return {
@@ -1541,12 +1596,51 @@ class PortalImplementationDaemon:
             "cleanup_result": cleanup_result,
             "failed_preservation_result": failed_preservation_result,
         }
+        termination_result = self._implementation_returncode_detail(returncode)
+        if termination_result:
+            result["termination_result"] = termination_result
+            self._record_implementation_termination(task, attempt, termination_result)
         if exception_result:
             result["exception_result"] = exception_result
         if todo_update_result:
             result["todo_update_result"] = todo_update_result
         self._record_event("implementation_finished", result)
         return result
+
+    @staticmethod
+    def _implementation_returncode_detail(returncode: int | None) -> dict[str, Any]:
+        if returncode is None:
+            return {}
+        if int(returncode) == 124:
+            return {"termination_reason": "timeout", "timed_out": True}
+        if int(returncode) < 0:
+            signum = -int(returncode)
+            try:
+                signal_name = signal.Signals(signum).name
+            except ValueError:
+                signal_name = ""
+            return {
+                "termination_reason": "signal",
+                "terminated_by_signal": True,
+                "signal": signum,
+                "signal_name": signal_name,
+            }
+        return {}
+
+    def _record_implementation_termination(
+        self,
+        task: PortalTask,
+        attempt: int,
+        termination_result: dict[str, Any],
+    ) -> None:
+        self._record_event(
+            "implementation_terminated",
+            {
+                "task_id": task.task_id,
+                "attempt": attempt,
+                **termination_result,
+            },
+        )
 
     def _clear_active_execution_state(self, state: PortalTaskState) -> None:
         state.active_attempt = 0
@@ -3947,6 +4041,7 @@ class PortalImplementationDaemon:
         lock_kind: str,
         owner_active: Any,
     ) -> tuple[int | None, str, dict[str, Any] | None]:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
         for _ in range(2):
             try:
                 return os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY), "acquired", None
@@ -4098,11 +4193,20 @@ class PortalImplementationDaemon:
         return [line.strip() for line in result.stdout.splitlines() if line.strip()]
 
     def _repo_merge_lock_path(self) -> Path:
-        git_common_dir = self._run_git(["rev-parse", "--git-common-dir"], cwd=self.repo_root).stdout.strip()
-        path = Path(git_common_dir)
-        if not path.is_absolute():
-            path = self.repo_root / path
-        return path / "implementation-main-merge.lock"
+        return checkout_mutation_lock_path(self.repo_root)
+
+    @staticmethod
+    def _git_merge_head_in_repo(repo: Path) -> str:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", "MERGE_HEAD"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
 
     def _run_git(self, args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
         result = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=False)

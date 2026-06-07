@@ -60,6 +60,9 @@ DEFAULT_IMPLEMENTATION_RETRY_BUDGET = int(
 DEFAULT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS", "5")
 )
+DEFAULT_RECONCILIATION_GUARDRAIL_MAX_FINDINGS = int(
+    os.environ.get("IPFS_ACCELERATE_AGENT_RECONCILIATION_GUARDRAIL_MAX_FINDINGS", "3")
+)
 DEFAULT_TASK_ID_PREFIX = "AUTO-"
 DEFAULT_TASK_HEADER_PREFIX = "## AUTO-"
 CODEBASE_SCAN_MAX_FILE_BYTES = int(os.environ.get("IPFS_ACCELERATE_AGENT_CODEBASE_SCAN_MAX_FILE_BYTES", "262144"))
@@ -1021,6 +1024,603 @@ def dependency_guardrail_task_block(
 """
 
 
+def reconciliation_guardrail_records(
+    *,
+    reconciliation_result: Mapping[str, Any] | None = None,
+    cleanup_result: Mapping[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Return grouped cleanup/reconciliation blockers that need deliberate repair."""
+
+    records: list[dict[str, Any]] = []
+    reconciliation = dict(reconciliation_result or {})
+    cleanup = dict(cleanup_result or {})
+
+    if reconciliation.get("attempted") and reconciliation.get("main_checkout_dirty"):
+        candidate_count = int(reconciliation.get("candidate_count") or 0)
+        if candidate_count > 0:
+            status_short = [str(item) for item in reconciliation.get("main_status_short", []) if str(item).strip()]
+            main_dirty_evidence = (
+                dict(reconciliation.get("main_dirty_evidence") or {})
+                if isinstance(reconciliation.get("main_dirty_evidence"), Mapping)
+                else {}
+            )
+            candidates = [
+                {
+                    "branch": str(item.get("branch") or ""),
+                    "path": str(item.get("path") or ""),
+                    "target_ref": str(item.get("target_ref") or reconciliation.get("target_ref") or ""),
+                }
+                for item in reconciliation.get("candidates", [])
+                if isinstance(item, Mapping)
+            ]
+            fingerprint = sha1(
+                json.dumps(
+                    {
+                        "kind": "main_checkout_dirty",
+                        "status_short": status_short,
+                        "candidate_branches": [item["branch"] for item in candidates],
+                    },
+                    sort_keys=True,
+                ).encode("utf-8")
+            ).hexdigest()
+            records.append(
+                {
+                    "kind": "main_checkout_dirty",
+                    "priority": "P1",
+                    "track": "ops",
+                    "summary": f"Resolve dirty main checkout blocking {candidate_count} worktree merges",
+                    "fingerprint": fingerprint,
+                    "candidate_count": candidate_count,
+                    "status_short": status_short,
+                    "main_dirty_evidence": main_dirty_evidence,
+                    "samples": candidates[:20],
+                    "reason": "main_checkout_dirty",
+                    "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
+                }
+            )
+
+    dirty_groups: dict[str, dict[str, Any]] = {}
+    grouped_payload = cleanup.get("dirty_worktree_groups")
+    if isinstance(grouped_payload, Mapping) and grouped_payload:
+        for dirty_reason, payload in grouped_payload.items():
+            if not isinstance(payload, Mapping):
+                continue
+            dirty_groups[str(dirty_reason)] = {
+                "count": int(payload.get("count") or 0),
+                "samples": [dict(item) for item in payload.get("samples", []) if isinstance(item, Mapping)],
+            }
+    else:
+        for item in cleanup.get("skipped", []):
+            if not isinstance(item, Mapping) or str(item.get("reason") or "") != "dirty_worktree":
+                continue
+            dirty_redundancy = item.get("dirty_redundancy") or {}
+            dirty_reason = (
+                str(dirty_redundancy.get("reason") or "dirty_worktree")
+                if isinstance(dirty_redundancy, Mapping)
+                else "dirty_worktree"
+            )
+            group = dirty_groups.setdefault(dirty_reason, {"count": 0, "samples": []})
+            group["count"] += 1
+            if len(group["samples"]) < 20:
+                group["samples"].append(
+                    {
+                        "branch": str(item.get("branch") or ""),
+                        "path": str(item.get("path") or ""),
+                        "status_short": [str(line) for line in item.get("status_short", []) if str(line).strip()],
+                        "dirty_reason": dirty_reason,
+                        "dirty_evidence": dict(item.get("dirty_evidence") or {}),
+                    }
+                )
+
+    for dirty_reason, group in sorted(dirty_groups.items()):
+        samples = list(group.get("samples") or [])
+        count = int(group.get("count") or len(samples))
+        fingerprint = sha1(
+            json.dumps(
+                {
+                    "kind": "dirty_backlogged_worktree",
+                    "dirty_reason": dirty_reason,
+                    "branches": [item["branch"] for item in samples],
+                    "paths": [item["path"] for item in samples],
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        records.append(
+            {
+                "kind": "dirty_backlogged_worktree",
+                "priority": "P1" if dirty_reason == "unsupported_status" else "P2",
+                "track": "ops",
+                "summary": f"Resolve {count} dirty backlogged worktrees blocked by {dirty_reason}",
+                "fingerprint": fingerprint,
+                "candidate_count": count,
+                "status_short": [],
+                "samples": samples[:20],
+                "reason": dirty_reason,
+                "dedupe_key": f"reconciliation_guardrail:dirty_backlogged_worktree:{dirty_reason}",
+            }
+        )
+
+    return records
+
+
+def status_line_path(line: str) -> str:
+    path_text = line[3:].strip() if len(line) > 3 else line.strip()
+    if " -> " in path_text:
+        path_text = path_text.split(" -> ", 1)[-1].strip()
+    return path_text.rstrip("/")
+
+
+def reconciliation_guardrail_plan(record: Mapping[str, Any]) -> dict[str, Any]:
+    """Build a bounded reconciliation plan for a cleanup blocker record."""
+
+    kind = str(record.get("kind") or "")
+    reason = str(record.get("reason") or "")
+    samples = [dict(item) for item in record.get("samples", []) or [] if isinstance(item, Mapping)]
+    main_dirty_evidence = (
+        dict(record.get("main_dirty_evidence") or {})
+        if isinstance(record.get("main_dirty_evidence"), Mapping)
+        else {}
+    )
+    sample_status_paths: list[str] = []
+    for line in main_dirty_evidence.get("status_short", []) or []:
+        path = status_line_path(str(line))
+        if path and path not in sample_status_paths:
+            sample_status_paths.append(path)
+    for path in main_dirty_evidence.get("status_paths", []) or []:
+        path_text = str(path).strip()
+        if path_text and path_text not in sample_status_paths:
+            sample_status_paths.append(path_text)
+    for sample in samples:
+        for line in sample.get("status_short", []) or []:
+            path = status_line_path(str(line))
+            if path and path not in sample_status_paths:
+                sample_status_paths.append(path)
+        evidence = sample.get("dirty_evidence") or {}
+        if isinstance(evidence, Mapping):
+            for line in str(evidence.get("name_status") or "").splitlines():
+                parts = line.split("\t")
+                path = parts[-1].strip() if parts else ""
+                if path and path not in sample_status_paths:
+                    sample_status_paths.append(path)
+            for path in evidence.get("untracked_paths", []) or []:
+                path_text = str(path).strip()
+                if path_text and path_text not in sample_status_paths:
+                    sample_status_paths.append(path_text)
+
+    if kind == "main_checkout_dirty":
+        actions = [
+            {
+                "action": "classify_main_checkout_changes",
+                "scope": "repo_root",
+                "automation": "inspect git status, diff stats, submodule status, and generated artifacts before merges",
+            },
+            {
+                "action": "preserve_or_split_main_checkout_work",
+                "scope": "repo_root",
+                "automation": "commit intentional changes or convert unresolved changes into follow-up tasks; never discard unknown work",
+            },
+            {
+                "action": "rerun_worktree_reconciliation",
+                "scope": "backlogged_worktrees",
+                "automation": "rerun reconcile_backlogged_worktrees once the main checkout is clean enough to mutate",
+            },
+        ]
+    else:
+        actions = [
+            {
+                "action": "classify_dirty_worktree_group",
+                "scope": "sampled_worktrees",
+                "automation": "inspect sampled dirty statuses and compare against the target ref",
+            },
+            {
+                "action": "preserve_or_merge_backlogged_work",
+                "scope": "dirty_worktrees",
+                "automation": "merge valuable branch work, commit preserved changes, or file follow-up tasks for unresolved work",
+            },
+            {
+                "action": "rerun_cleanup_pass",
+                "scope": "worktree_root",
+                "automation": "rerun cleanup_backlogged_worktrees after preserving or merging dirty worktree content",
+            },
+        ]
+        if reason == "content_not_in_target":
+            actions.insert(
+                1,
+                {
+                    "action": "compare_dirty_content_to_target",
+                    "scope": "dirty_worktrees",
+                    "automation": "separate real unmerged content from generated duplicates before deleting worktrees",
+                },
+            )
+        elif reason == "unsupported_status":
+            actions.insert(
+                1,
+                {
+                    "action": "resolve_unsupported_statuses",
+                    "scope": "dirty_worktrees",
+                    "automation": "handle deletes, renames, unmerged paths, or unusual index states with an explicit resolver pass",
+                },
+            )
+
+    return {
+        "kind": kind,
+        "reason": reason,
+        "dedupe_key": str(record.get("dedupe_key") or ""),
+        "fingerprint": str(record.get("fingerprint") or ""),
+        "candidate_count": int(record.get("candidate_count") or 0),
+        "sample_count": len(samples),
+        "sample_branches": [str(item.get("branch") or "") for item in samples[:20] if str(item.get("branch") or "")],
+        "sample_worktrees": [str(item.get("path") or "") for item in samples[:20] if str(item.get("path") or "")],
+        "sample_status_paths": sample_status_paths[:40],
+        "main_dirty_evidence": main_dirty_evidence,
+        "actions": actions,
+        "safety_constraints": [
+            "Do not discard dirty or untracked content unless it is proven redundant with the target ref.",
+            "Prefer commits, merges, or explicit follow-up tasks over destructive cleanup.",
+            "Keep todo, objective, discovery, and strategy files parseable after reconciliation.",
+        ],
+        "success_signals": [
+            "candidate_count_decreases",
+            "dirty_worktree_group_count_decreases",
+            "main_checkout_dirty_becomes_false",
+            "cleanup_or_reconciliation_pass_processes_candidates",
+        ],
+    }
+
+
+def reconciliation_guardrail_plan_markdown(record: Mapping[str, Any]) -> str:
+    plan = reconciliation_guardrail_plan(record)
+    action_lines = [
+        f"- `{item['action']}`: {item['automation']}"
+        for item in plan.get("actions", [])
+        if isinstance(item, Mapping)
+    ]
+    constraint_lines = [f"- {item}" for item in plan.get("safety_constraints", [])]
+    signal_lines = [f"- `{item}`" for item in plan.get("success_signals", [])]
+    manifest = json.dumps(plan, indent=2, sort_keys=True)
+    return f"""## Reconciliation Plan
+
+Work surface: `{plan["candidate_count"]}` candidates, `{plan["sample_count"]}` sampled records.
+
+### Suggested Actions
+
+{chr(10).join(action_lines) or "- none"}
+
+### Safety Constraints
+
+{chr(10).join(constraint_lines) or "- none"}
+
+### Success Signals
+
+{chr(10).join(signal_lines) or "- none"}
+
+## Machine Readable Manifest
+
+```json
+{manifest}
+```
+"""
+
+
+def reconciliation_evidence_markdown(evidence: Mapping[str, Any] | None) -> str:
+    if not isinstance(evidence, Mapping) or not evidence:
+        return "- none"
+    lines: list[str] = []
+    path_categories = evidence.get("path_categories") or {}
+    if isinstance(path_categories, Mapping) and path_categories:
+        category_text = ", ".join(
+            f"{key}={value}" for key, value in sorted(path_categories.items())
+        )
+        lines.append(f"- Path categories: `{category_text}`")
+    status_paths = [str(item) for item in evidence.get("status_paths", []) if str(item).strip()]
+    if status_paths:
+        lines.append("- Status paths:")
+        lines.extend(f"  - `{item}`" for item in status_paths[:20])
+    for key, label in (
+        ("name_status", "Name status"),
+        ("staged_name_status", "Staged name status"),
+        ("diff_stat", "Diff stat"),
+        ("submodule_summary", "Submodule summary"),
+    ):
+        value = str(evidence.get(key) or "").strip()
+        if not value:
+            continue
+        lines.append(f"- {label}:")
+        lines.extend(f"  - `{line}`" for line in value.splitlines()[:20])
+    untracked_paths = [str(item) for item in evidence.get("untracked_paths", []) if str(item).strip()]
+    if untracked_paths:
+        lines.append("- Untracked paths:")
+        lines.extend(f"  - `{item}`" for item in untracked_paths[:20])
+    return "\n".join(lines) or "- none"
+
+
+def write_reconciliation_guardrail_discovery(
+    *,
+    discovery_dir: Path,
+    task_id: str,
+    record: Mapping[str, Any],
+) -> Path:
+    date = datetime.now(timezone.utc).date().isoformat()
+    fingerprint = str(record.get("fingerprint") or "")
+    path = discovery_dir / f"{date}-{task_id.lower()}-reconciliation-{fingerprint[:12]}.md"
+    write_reconciliation_guardrail_discovery_path(path=path, task_id=task_id, record=record, date=date)
+    return path
+
+
+def write_reconciliation_guardrail_discovery_path(
+    *,
+    path: Path,
+    task_id: str,
+    record: Mapping[str, Any],
+    date: str | None = None,
+) -> Path:
+    date = date or datetime.now(timezone.utc).date().isoformat()
+    fingerprint = str(record.get("fingerprint") or "")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    status_lines = "\n".join(f"- `{line}`" for line in record.get("status_short", []) or []) or "- none"
+    main_checkout_evidence = reconciliation_evidence_markdown(
+        record.get("main_dirty_evidence")
+        if isinstance(record.get("main_dirty_evidence"), Mapping)
+        else None
+    )
+    sample_lines = []
+    for sample in record.get("samples", []) or []:
+        if not isinstance(sample, Mapping):
+            continue
+        branch = str(sample.get("branch") or "unknown-branch")
+        path_text = str(sample.get("path") or "unknown-path")
+        status = "; ".join(str(line) for line in sample.get("status_short", []) or [])
+        suffix = f" status: `{status}`" if status else ""
+        sample_lines.append(f"- `{branch}` at `{path_text}`{suffix}")
+        evidence = sample.get("dirty_evidence") or {}
+        if isinstance(evidence, Mapping):
+            diff_stat = str(evidence.get("diff_stat") or "").strip()
+            name_status = str(evidence.get("name_status") or "").strip()
+            untracked_paths = [str(item) for item in evidence.get("untracked_paths", []) if str(item).strip()]
+            if name_status:
+                sample_lines.append("  - Name status:")
+                sample_lines.extend(f"    - `{line}`" for line in name_status.splitlines()[:12])
+            if diff_stat:
+                sample_lines.append("  - Diff stat:")
+                sample_lines.extend(f"    - `{line}`" for line in diff_stat.splitlines()[:12])
+            if untracked_paths:
+                sample_lines.append("  - Untracked paths:")
+                sample_lines.extend(f"    - `{path}`" for path in untracked_paths[:12])
+    samples = "\n".join(sample_lines) or "- none"
+    plan_markdown = reconciliation_guardrail_plan_markdown(record)
+    content = f"""# {task_id} Reconciliation Guardrail
+
+Date: {date}
+Fingerprint: {fingerprint}
+Kind: {record.get("kind")}
+Reason: {record.get("reason")}
+Candidate count: {record.get("candidate_count")}
+Priority: {record.get("priority")}
+Track: {record.get("track")}
+
+## Main Checkout Status
+
+{status_lines}
+
+## Main Checkout Evidence
+
+{main_checkout_evidence}
+
+## Sample Branches Or Worktrees
+
+{samples}
+
+## Why This Blocks Progress
+
+The implementation supervisor can only merge clean inactive implementation
+worktrees when the main checkout is safe to mutate. Dirty main checkouts and
+dirty backlogged worktrees are preserved until a deliberate reconciliation task
+decides whether to commit, merge, discard generated duplicates, or split
+unresolved work into follow-up tasks.
+
+## Suggested Repair
+
+Inspect the dirty paths and sampled worktrees, resolve any real work into
+reviewable commits or follow-up tasks, rerun the supervisor reconciliation pass,
+and verify that either the candidate merge count decreases or the dirty
+worktree cleanup skip count decreases.
+
+{plan_markdown.rstrip()}
+"""
+    path.write_text(content, encoding="utf-8")
+    return path
+
+
+def reconciliation_guardrail_task_block(
+    *,
+    task_id: str,
+    record: Mapping[str, Any],
+    discovery_path: Path,
+    todo_output_path: str,
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+) -> str:
+    outputs = [discovery_output_path, todo_output_path]
+    return f"""## {task_id} {record.get("summary")}
+
+- Status: todo
+- Completion: manual
+- Priority: {record.get("priority") or "P1"}
+- Track: {record.get("track") or "ops"}
+- Fingerprint: {record.get("fingerprint") or ""}
+- Dedupe key: {record.get("dedupe_key") or ""}
+- Depends on:
+- Outputs: {", ".join(outputs)}
+- Validation: test -f {shlex.quote(str(discovery_path))}
+- Acceptance: Reconciliation guardrail filed this because {record.get("candidate_count")} branch or worktree cleanup candidates are blocked by {record.get("reason")}. Use evidence and the machine-readable reconciliation plan in {discovery_path}, reconcile the dirty checkout or dirty worktree group deliberately, then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases.
+"""
+
+
+def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -> bool:
+    fingerprint = str(record.get("fingerprint") or "")
+    dedupe_key = str(record.get("dedupe_key") or "")
+    kind = str(record.get("kind") or "")
+    reason = str(record.get("reason") or "")
+    if fingerprint and fingerprint in block:
+        return True
+    if dedupe_key and dedupe_key in block:
+        return True
+    if kind == "main_checkout_dirty" and re.search(
+        r"^##\s+\S+\s+Resolve dirty main checkout blocking \d+ worktree merges",
+        block,
+        flags=re.MULTILINE,
+    ):
+        return True
+    if kind == "dirty_backlogged_worktree" and re.search(
+        rf"^##\s+\S+\s+Resolve \d+ dirty backlogged worktrees blocked by {re.escape(reason)}",
+        block,
+        flags=re.MULTILINE,
+    ):
+        return True
+    return False
+
+
+def task_blocks_with_spans(todo_text: str) -> list[tuple[int, int, str]]:
+    starts = [match.start() for match in re.finditer(r"^##\s+\S+", todo_text, flags=re.MULTILINE)]
+    blocks: list[tuple[int, int, str]] = []
+    for index, start in enumerate(starts):
+        end = starts[index + 1] if index + 1 < len(starts) else len(todo_text)
+        blocks.append((start, end, todo_text[start:end]))
+    return blocks
+
+
+def reconciliation_task_validation_path(block: str) -> Path | None:
+    match = re.search(r"^- Validation:\s+test -f\s+(.+?)\s*$", block, flags=re.MULTILINE)
+    if not match:
+        return None
+    raw_path = match.group(1).strip()
+    try:
+        parts = shlex.split(raw_path)
+    except ValueError:
+        parts = [raw_path]
+    if not parts:
+        return None
+    return Path(parts[0])
+
+
+def refresh_reconciliation_guardrail_block(
+    block: str,
+    record: Mapping[str, Any],
+) -> tuple[str, str, Path | None, bool]:
+    heading_match = re.match(r"^##\s+(\S+)\s+[^\n]*", block)
+    if not heading_match:
+        return block, "", None, False
+    task_id = heading_match.group(1)
+    changed = False
+    updated = re.sub(
+        r"^##\s+\S+\s+.*$",
+        f"## {task_id} {record.get('summary')}",
+        block,
+        count=1,
+        flags=re.MULTILINE,
+    )
+    if updated != block:
+        changed = True
+    block = updated
+    fingerprint = str(record.get("fingerprint") or "")
+    dedupe_key = str(record.get("dedupe_key") or "")
+    if fingerprint and re.search(r"^- Fingerprint:", block, flags=re.MULTILINE):
+        updated = re.sub(r"^- Fingerprint:.*$", f"- Fingerprint: {fingerprint}", block, count=1, flags=re.MULTILINE)
+        changed = changed or updated != block
+        block = updated
+    elif fingerprint:
+        updated = re.sub(r"^- Track:.*$", lambda match: f"{match.group(0)}\n- Fingerprint: {fingerprint}", block, count=1, flags=re.MULTILINE)
+        changed = changed or updated != block
+        block = updated
+    if dedupe_key and re.search(r"^- Dedupe key:", block, flags=re.MULTILINE):
+        updated = re.sub(r"^- Dedupe key:.*$", f"- Dedupe key: {dedupe_key}", block, count=1, flags=re.MULTILINE)
+        changed = changed or updated != block
+        block = updated
+    elif dedupe_key:
+        updated = re.sub(
+            r"^- Fingerprint:.*$",
+            lambda match: f"{match.group(0)}\n- Dedupe key: {dedupe_key}",
+            block,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        changed = changed or updated != block
+        block = updated
+    validation_path = reconciliation_task_validation_path(block)
+    if validation_path is not None:
+        replacement = (
+            f"- Acceptance: Reconciliation guardrail filed this because {record.get('candidate_count')} "
+            f"branch or worktree cleanup candidates are blocked by {record.get('reason')}. "
+            f"Use evidence and the machine-readable reconciliation plan in {validation_path}, "
+            "reconcile the dirty checkout or dirty worktree group deliberately, "
+            "then rerun the supervisor cleanup/reconciliation pass and confirm that the blocked candidate count decreases."
+        )
+        updated = re.sub(r"^- Acceptance:.*$", replacement, block, count=1, flags=re.MULTILINE)
+        changed = changed or updated != block
+        block = updated
+    return block, task_id, validation_path, changed
+
+
+def refresh_existing_reconciliation_guardrails(
+    *,
+    todo_text: str,
+    records: Sequence[Mapping[str, Any]],
+) -> tuple[str, list[dict[str, Any]]]:
+    blocks = task_blocks_with_spans(todo_text)
+    if not blocks:
+        return todo_text, []
+    replacements: dict[tuple[int, int], str] = {}
+    refreshes: list[dict[str, Any]] = []
+    for record in records:
+        for start, end, block in blocks:
+            if (start, end) in replacements:
+                block = replacements[(start, end)]
+            if not reconciliation_record_matches_block(block, record):
+                continue
+            refreshed_block, task_id, validation_path, changed = refresh_reconciliation_guardrail_block(block, record)
+            discovery_changed = False
+            if validation_path is not None and task_id:
+                try:
+                    before_discovery = validation_path.read_text(encoding="utf-8")
+                except OSError:
+                    before_discovery = ""
+                write_reconciliation_guardrail_discovery_path(
+                    path=validation_path,
+                    task_id=task_id,
+                    record=record,
+                )
+                try:
+                    after_discovery = validation_path.read_text(encoding="utf-8")
+                except OSError:
+                    after_discovery = ""
+                discovery_changed = before_discovery != after_discovery
+            if changed:
+                replacements[(start, end)] = refreshed_block
+            if changed or discovery_changed:
+                refreshes.append(
+                    {
+                        "follow_up_task_id": task_id,
+                        "fingerprint": str(record.get("fingerprint") or ""),
+                        "kind": str(record.get("kind") or ""),
+                        "reason": str(record.get("reason") or ""),
+                        "candidate_count": int(record.get("candidate_count") or 0),
+                        "discovery_path": str(validation_path or ""),
+                        "refreshed": True,
+                    }
+                )
+            break
+    if not replacements:
+        return todo_text, refreshes
+    pieces: list[str] = []
+    cursor = 0
+    for start, end, block in blocks:
+        pieces.append(todo_text[cursor:start])
+        pieces.append(replacements.get((start, end), block))
+        cursor = end
+    pieces.append(todo_text[cursor:])
+    return "".join(pieces), refreshes
+
+
 def iter_jsonl(path: Path) -> list[dict[str, Any]]:
     return read_jsonl_events(path, repair=True)
 
@@ -1601,6 +2201,126 @@ def record_dependency_guardrail_findings(
             strategy["last_dependency_guardrail_commit_results"] = commit_results
             write_json(strategy_path, strategy)
     return findings
+
+
+def record_reconciliation_guardrail_findings(
+    *,
+    todo_path: Path,
+    strategy_path: Path,
+    discovery_dir: Path,
+    reconciliation_result: Mapping[str, Any] | None = None,
+    cleanup_result: Mapping[str, Any] | None = None,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+    max_findings: int = DEFAULT_RECONCILIATION_GUARDRAIL_MAX_FINDINGS,
+    discovery_output_path: str = DEFAULT_DISCOVERY_OUTPUT_PATH,
+    commit_outputs: bool = False,
+    repo_root: Path | None = None,
+    commit_subject: str = "Agent: record reconciliation guardrail outputs",
+) -> list[dict[str, Any]]:
+    """Append deliberate cleanup tasks for blocked worktree reconciliation."""
+
+    if max_findings <= 0 or not todo_path.exists():
+        return []
+    todo_text = todo_path.read_text(encoding="utf-8")
+    strategy = load_strategy(strategy_path)
+    seen = {
+        str(item)
+        for item in strategy.get("reconciliation_guardrail_seen_fingerprints", [])
+        if str(item).strip()
+    }
+
+    def already_present(record: Mapping[str, Any]) -> bool:
+        fingerprint = str(record.get("fingerprint") or "")
+        dedupe_key = str(record.get("dedupe_key") or "")
+        if fingerprint and fingerprint in todo_text:
+            return True
+        if dedupe_key and dedupe_key in todo_text:
+            return True
+        kind = str(record.get("kind") or "")
+        reason = str(record.get("reason") or "")
+        if kind == "main_checkout_dirty" and "Resolve dirty main checkout blocking" in todo_text:
+            return True
+        if kind == "dirty_backlogged_worktree" and f"dirty backlogged worktrees blocked by {reason}" in todo_text:
+            return True
+        return False
+
+    all_records = reconciliation_guardrail_records(
+        reconciliation_result=reconciliation_result,
+        cleanup_result=cleanup_result,
+    )
+    refreshed_todo_text, refreshes = refresh_existing_reconciliation_guardrails(
+        todo_text=todo_text,
+        records=all_records,
+    )
+    if refreshes:
+        todo_text = refreshed_todo_text
+
+    records = [
+        record
+        for record in all_records
+        if str(record.get("fingerprint") or "") not in seen
+        and not already_present(record)
+    ][:max_findings]
+    if not records and not refreshes:
+        return []
+
+    try:
+        todo_output_path = todo_path.resolve().relative_to((repo_root or todo_path.parent).resolve()).as_posix()
+    except ValueError:
+        todo_output_path = todo_path.as_posix()
+    findings: list[dict[str, Any]] = []
+    generated_paths: list[Path] = []
+    for record in records:
+        follow_up_task_id = next_task_id(todo_text, task_prefix=task_prefix)
+        discovery_path = write_reconciliation_guardrail_discovery(
+            discovery_dir=discovery_dir,
+            task_id=follow_up_task_id,
+            record=record,
+        )
+        generated_paths.append(discovery_path)
+        task_block = reconciliation_guardrail_task_block(
+            task_id=follow_up_task_id,
+            record=record,
+            discovery_path=discovery_path,
+            todo_output_path=todo_output_path,
+            discovery_output_path=discovery_output_path,
+        )
+        todo_text = todo_text.rstrip() + "\n\n" + task_block.strip() + "\n"
+        findings.append(
+            {
+                "follow_up_task_id": follow_up_task_id,
+                "fingerprint": str(record.get("fingerprint") or ""),
+                "kind": str(record.get("kind") or ""),
+                "reason": str(record.get("reason") or ""),
+                "candidate_count": int(record.get("candidate_count") or 0),
+                "discovery_path": str(discovery_path),
+                "sample_count": len(record.get("samples", []) or []),
+            }
+        )
+
+    todo_path.write_text(todo_text, encoding="utf-8")
+    strategy["reconciliation_guardrail_seen_fingerprints"] = sorted(
+        seen | {str(record.get("fingerprint") or "") for record in records if record.get("fingerprint")}
+    )
+    strategy["last_reconciliation_guardrail_at"] = utc_now()
+    strategy["reconciliation_guardrail_findings"] = [*refreshes, *findings]
+    write_json(strategy_path, strategy)
+    if commit_outputs and (generated_paths or refreshes):
+        generated_paths.insert(0, todo_path)
+        generated_paths.extend(
+            Path(item["discovery_path"])
+            for item in refreshes
+            if str(item.get("discovery_path") or "").strip()
+        )
+        commit_results = commit_generated_outputs(
+            generated_paths,
+            repo_root=repo_root or todo_path.parent,
+            subject=commit_subject,
+        )
+        if commit_results:
+            strategy["last_reconciliation_guardrail_commit_results"] = commit_results
+            write_json(strategy_path, strategy)
+    return [*refreshes, *findings]
 
 
 def release_completed_guardrail_blocks(

@@ -26,6 +26,11 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
 from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
+from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+    reconciliation_guardrail_plan,
+    reconciliation_guardrail_records,
+    record_reconciliation_guardrail_findings,
+)
 from ipfs_accelerate_py.agent_supervisor import merge_resolver
 from ipfs_accelerate_py.agent_supervisor.merge_resolver import (
     ConfiguredMergeResolverRunner,
@@ -2436,6 +2441,20 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
             "hallucinate_app,swissknife",
             "--objective-interoperability-component-path",
             "hallucinate_app, external/ipfs_accelerate",
+            "--no-worktree-reconciliation",
+            "--worktree-reconciliation-max-merges",
+            "3",
+            "--worktree-reconciliation-dry-run",
+            "--no-worktree-scan-cache",
+            "--worktree-scan-cache-ttl-seconds",
+            "12",
+            "--worktree-scan-cache-path",
+            str(tmp_path / "scan-cache.json"),
+            "--no-reconciliation-guardrail",
+            "--reconciliation-guardrail-max-findings",
+            "2",
+            "--reconciliation-guardrail-discovery-output-path",
+            "data/reconciliation",
         ]
     )
     config = supervisor_config_from_args(
@@ -2454,6 +2473,15 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
     assert config.daemon_script_path == tmp_path / "daemon.py"
     assert config.supervisor_script_path == tmp_path / "supervisor.py"
     assert config.worktree_submodule_paths == ("submodule", "nested/path")
+    assert config.worktree_reconciliation_enabled is False
+    assert config.worktree_reconciliation_max_merges == 3
+    assert config.worktree_reconciliation_dry_run is True
+    assert config.worktree_scan_cache_enabled is False
+    assert config.worktree_scan_cache_ttl_seconds == 12
+    assert config.worktree_scan_cache_path == tmp_path / "scan-cache.json"
+    assert config.reconciliation_guardrail_enabled is False
+    assert config.reconciliation_guardrail_max_findings == 2
+    assert config.reconciliation_guardrail_discovery_output_path == "data/reconciliation"
     assert config.objective_interoperability_focus == ("hallucinate_app", "swissknife")
     assert config.objective_interoperability_component_paths == (
         "hallucinate_app",
@@ -6710,6 +6738,61 @@ def test_implementation_supervisor_invokes_llm_for_interrupted_main_checkout_mer
     assert events[-1]["type"] == "main_checkout_merge_state_repair"
 
 
+def test_implementation_supervisor_defers_merge_repair_when_checkout_lock_is_live(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "conflict.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/conflict")
+    target.write_text("feature\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "feature")
+    _git(repo, "checkout", "main")
+    target.write_text("main\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "main")
+    merge = subprocess.run(["git", "merge", "implementation/conflict"], cwd=repo, text=True, capture_output=True)
+    assert merge.returncode != 0
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+        )
+    )
+    supervisor._repo_merge_lock_path().write_text(
+        json.dumps(
+            {
+                "kind": "merge",
+                "pid": os.getpid(),
+                "owner_script": "",
+                "repo_root": str(repo.resolve()),
+                "task_id": "OTHER-1",
+                "branch": "implementation/other",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result["repaired"] is False
+    assert result["reason"] == "checkout_mutation_lock_exists"
+    assert result["lock_owner_task_id"] == "OTHER-1"
+    assert supervisor._git_merge_head(repo) != ""
+    assert supervisor._git_unmerged_paths(repo) == ["conflict.txt"]
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "main_checkout_merge_state_repair_deferred"
+
+
 def test_implementation_supervisor_deterministically_repairs_objective_heap_merge(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6780,6 +6863,103 @@ def test_implementation_supervisor_deterministically_repairs_objective_heap_merg
     assert _git(repo, "merge-base", "--is-ancestor", "implementation/objective-feature", "HEAD") == ""
 
 
+def test_implementation_daemon_refuses_path_commit_during_merge(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "conflict.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/conflict")
+    target.write_text("feature\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "feature")
+    _git(repo, "checkout", "main")
+    target.write_text("main\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "main")
+    merge = subprocess.run(["git", "merge", "implementation/conflict"], cwd=repo, text=True, capture_output=True)
+    assert merge.returncode != 0
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    result = daemon._commit_specific_path(repo, "conflict.txt", subject="should not partially commit")
+
+    assert result["committed"] is False
+    assert result["reason"] == "repo_merge_in_progress"
+    assert result["unmerged_paths"] == ["conflict.txt"]
+    assert _git(repo, "diff", "--name-only", "--diff-filter=U") == "conflict.txt"
+
+
+def test_implementation_daemon_defers_generated_commit_when_checkout_lock_is_live(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    generated = repo / "generated.md"
+    generated.write_text("seed\n", encoding="utf-8")
+    _git(repo, "add", "generated.md")
+    _git(repo, "commit", "-m", "seed")
+    generated.write_text("changed\n", encoding="utf-8")
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    daemon._repo_merge_lock_path().write_text(
+        json.dumps(
+            {
+                "kind": "merge",
+                "pid": os.getpid(),
+                "owner_script": "",
+                "repo_root": str(repo.resolve()),
+                "task_id": "OTHER-2",
+                "branch": "implementation/other",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = daemon._commit_generated_file_update(generated, task_id="ACCEL-2", subject="generated update")
+
+    assert result["committed"] is False
+    assert result["reason"] == "checkout_mutation_lock_exists"
+    assert result["lock_owner_task_id"] == "OTHER-2"
+    assert _git(repo, "status", "--porcelain", "--", "generated.md").startswith("M ")
+
+
+def test_implementation_daemon_classifies_signal_and_timeout_returncodes(tmp_path):
+    daemon = TodoImplementationDaemon(
+        todo_path=tmp_path / "todo.md",
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=tmp_path / "state" / "events.jsonl",
+        repo_root=tmp_path,
+    )
+
+    signal_result = daemon._implementation_returncode_detail(-15)
+    timeout_result = daemon._implementation_returncode_detail(124)
+
+    assert signal_result["termination_reason"] == "signal"
+    assert signal_result["signal"] == 15
+    assert signal_result["signal_name"] == "SIGTERM"
+    assert timeout_result == {"termination_reason": "timeout", "timed_out": True}
+    assert daemon._implementation_returncode_detail(1) == {}
+
+
 def test_implementation_supervisor_cleans_merged_backlogged_worktrees(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6825,6 +7005,488 @@ def test_implementation_supervisor_cleans_merged_backlogged_worktrees(tmp_path):
         check=False,
     )
     assert branch_exists.returncode != 0
+
+
+def test_implementation_supervisor_cleans_redundant_dirty_merged_worktree(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/redundant-clean")
+    marker.write_text("branch\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "branch change")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "implementation/redundant-clean")
+    (repo / "shared.py").write_text("already on main\n", encoding="utf-8")
+    _git(repo, "add", "shared.py")
+    _git(repo, "commit", "-m", "add shared file")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "redundant-clean"
+    _git(repo, "worktree", "add", str(worktree_path), "implementation/redundant-clean")
+    (worktree_path / "shared.py").write_text("already on main\n", encoding="utf-8")
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 1
+    assert result["removed"][0]["dirty_redundancy"]["redundant"] is True
+    assert not worktree_path.exists()
+
+
+def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    worktree_root = repo / "worktrees"
+    worktree_root.mkdir()
+    records = []
+    for index in range(25):
+        path = worktree_root / f"content-{index:02d}"
+        path.mkdir()
+        records.append({"worktree": str(path), "branch": f"refs/heads/implementation/content-{index:02d}", "HEAD": f"c{index}"})
+    for index in range(3):
+        path = worktree_root / f"unsupported-{index:02d}"
+        path.mkdir()
+        records.append({"worktree": str(path), "branch": f"refs/heads/implementation/unsupported-{index:02d}", "HEAD": f"u{index}"})
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    evidence_calls: list[str] = []
+    monkeypatch.setattr(supervisor, "_git_worktree_records", lambda _repo: records)
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(supervisor, "_git_ref_is_ancestor", lambda _repo, _ancestor, _descendant: True)
+    monkeypatch.setattr(supervisor, "_git_status_short", lambda path: [" M generated.txt"])
+
+    def fake_redundancy(path: Path, _dirty: list[str], _target_ref: str) -> dict[str, str]:
+        reason = "unsupported_status" if "unsupported" in path.name else "content_not_in_target"
+        return {"redundant": False, "reason": reason}
+
+    def fake_evidence(path: Path, _dirty: list[str]) -> dict[str, str]:
+        evidence_calls.append(path.name)
+        return {"diff_stat": f"{path.name} | 1 +"}
+
+    monkeypatch.setattr(supervisor, "_redundant_dirty_worktree_status", fake_redundancy)
+    monkeypatch.setattr(supervisor, "_dirty_worktree_evidence", fake_evidence)
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["dirty_worktree_groups"]["content_not_in_target"]["count"] == 25
+    assert result["dirty_worktree_groups"]["unsupported_status"]["count"] == 3
+    assert sum(1 for item in evidence_calls if item.startswith("content-")) == 20
+    assert sum(1 for item in evidence_calls if item.startswith("unsupported-")) == 3
+    assert result["dirty_worktree_groups"]["content_not_in_target"]["samples"][-1]["dirty_evidence"]
+
+
+def test_implementation_supervisor_reuses_cleanup_scan_cache_for_dirty_blockers(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "cached-dirty"
+    worktree_path.mkdir(parents=True)
+    records = [
+        {
+            "worktree": str(worktree_path),
+            "branch": "refs/heads/implementation/cached-dirty",
+            "HEAD": "abc123",
+        }
+    ]
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            worktree_scan_cache_ttl_seconds=60,
+        )
+    )
+    ancestry_calls = {"count": 0}
+    status_calls = {"count": 0}
+    monkeypatch.setattr(supervisor, "_git_worktree_records", lambda _repo: records)
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(supervisor, "_git_current_branch", lambda _repo: "main")
+    monkeypatch.setattr(supervisor, "_git_ref_commit", lambda _repo, _ref: "target-commit")
+
+    def fake_ancestor(_repo: Path, _ancestor: str, _descendant: str) -> bool:
+        ancestry_calls["count"] += 1
+        return True
+
+    def fake_status(_path: Path) -> list[str]:
+        status_calls["count"] += 1
+        return [" M generated.txt"]
+
+    monkeypatch.setattr(supervisor, "_git_ref_is_ancestor", fake_ancestor)
+    monkeypatch.setattr(supervisor, "_git_status_short", fake_status)
+    monkeypatch.setattr(
+        supervisor,
+        "_redundant_dirty_worktree_status",
+        lambda _path, _dirty, _target: {"redundant": False, "reason": "content_not_in_target"},
+    )
+    monkeypatch.setattr(supervisor, "_dirty_worktree_evidence", lambda _path, _dirty: {"diff_stat": "generated.txt | 1 +"})
+
+    first = supervisor.cleanup_backlogged_worktrees()
+    second = supervisor.cleanup_backlogged_worktrees()
+
+    assert first["scan_cache_hit_count"] == 0
+    assert first["scan_cache_written"] is True
+    assert second["scan_cache_hit_count"] == 1
+    assert second["dirty_worktree_groups"]["content_not_in_target"]["count"] == 1
+    assert second["dirty_worktree_groups"]["content_not_in_target"]["samples"][0]["dirty_evidence"]
+    assert ancestry_calls["count"] == 2
+    assert status_calls["count"] == 1
+
+
+def test_implementation_supervisor_reconciles_clean_backlogged_worktree(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-010-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    feature = repo / "feature.txt"
+    feature.write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "checkout", "main")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "accel-010-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 1
+    assert result["reconciled_count"] == 1
+    assert result["cleanup_count"] == 1
+    assert (repo / "feature.txt").read_text(encoding="utf-8") == "feature\n"
+    assert not worktree_path.exists()
+    branch_exists = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", branch_name],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert branch_exists.returncode != 0
+
+
+def test_implementation_supervisor_defers_worktree_reconciliation_when_main_dirty(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-011-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "checkout", "main")
+    (repo / "dirty.txt").write_text("dirty checkout\n", encoding="utf-8")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "accel-011-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 0
+    assert result["reconciled_count"] == 0
+    assert result["main_checkout_dirty"] is True
+    assert "dirty.txt" in result["main_dirty_evidence"]["status_paths"]
+    assert result["main_dirty_evidence"]["path_categories"]["untracked"] == 1
+    assert any(item["reason"] == "main_checkout_dirty" for item in result["skipped"])
+    assert worktree_path.exists()
+    assert not (repo / "feature.txt").exists()
+
+
+def test_implementation_supervisor_reuses_reconciliation_scan_cache_when_main_dirty(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "cached-candidate"
+    worktree_path.mkdir(parents=True)
+    records = [
+        {
+            "worktree": str(worktree_path),
+            "branch": "refs/heads/implementation/cached-candidate",
+            "HEAD": "def456",
+        }
+    ]
+
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+            worktree_root=worktree_root,
+            worktree_scan_cache_ttl_seconds=60,
+        )
+    )
+    ref_exists_calls = {"count": 0}
+    ancestry_calls = {"count": 0}
+    status_calls = {"count": 0}
+    monkeypatch.setattr(supervisor, "_git_worktree_records", lambda _repo: records)
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [])
+    monkeypatch.setattr(supervisor, "_git_current_branch", lambda _repo: "main")
+    monkeypatch.setattr(supervisor, "_git_ref_commit", lambda _repo, _ref: "target-commit")
+    monkeypatch.setattr(
+        supervisor,
+        "_main_status_for_worktree_reconciliation",
+        lambda _repo, _root: [" M dirty-main.txt"],
+    )
+
+    def fake_ref_exists(_repo: Path, _ref: str) -> bool:
+        ref_exists_calls["count"] += 1
+        return True
+
+    def fake_ancestor(_repo: Path, _ancestor: str, _descendant: str) -> bool:
+        ancestry_calls["count"] += 1
+        return False
+
+    def fake_status(_path: Path) -> list[str]:
+        status_calls["count"] += 1
+        return []
+
+    monkeypatch.setattr(supervisor, "_git_ref_exists", fake_ref_exists)
+    monkeypatch.setattr(supervisor, "_git_ref_is_ancestor", fake_ancestor)
+    monkeypatch.setattr(supervisor, "_git_status_short", fake_status)
+
+    first = supervisor.reconcile_backlogged_worktrees()
+    second = supervisor.reconcile_backlogged_worktrees()
+
+    assert first["candidate_count"] == 1
+    assert first["scan_cache_hit_count"] == 0
+    assert first["scan_cache_written"] is True
+    assert second["candidate_count"] == 1
+    assert second["scan_cache_hit_count"] == 1
+    assert any(item["reason"] == "main_checkout_dirty" and item.get("cached") for item in second["skipped"])
+    assert ref_exists_calls["count"] == 1
+    assert ancestry_calls["count"] == 2
+    assert status_calls["count"] == 1
+
+
+def test_implementation_supervisor_records_reconciliation_guardrail_for_dirty_main(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-012-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "checkout", "main")
+    (repo / "dirty.txt").write_text("dirty checkout\n", encoding="utf-8")
+    worktree_root = repo / "worktrees"
+    _git(repo, "worktree", "add", str(worktree_root / "accel-012-attempt-1-123"), branch_name)
+    (repo / "todo.md").write_text("# Agent Todos\n", encoding="utf-8")
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+    reconciliation = supervisor.reconcile_backlogged_worktrees()
+
+    findings = supervisor.record_reconciliation_guardrails(
+        reconciliation,
+        {"attempted": True, "skipped": []},
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["kind"] == "main_checkout_dirty"
+    todo_text = (repo / "todo.md").read_text(encoding="utf-8")
+    assert "Resolve dirty main checkout blocking 1 worktree merges" in todo_text
+    discovery_path = Path(findings[0]["discovery_path"])
+    assert discovery_path.exists()
+    discovery_text = discovery_path.read_text(encoding="utf-8")
+    assert "dirty.txt" in discovery_text
+    assert "## Main Checkout Evidence" in discovery_text
+    assert "Path categories: `untracked=" in discovery_text
+    manifest = json.loads(discovery_text.split("```json\n", 1)[1].split("\n```", 1)[0])
+    assert "dirty.txt" in manifest["main_dirty_evidence"]["status_paths"]
+    assert manifest["main_dirty_evidence"]["path_categories"]["untracked"] >= 1
+    strategy = json.loads((state_dir / "strategy.json").read_text(encoding="utf-8"))
+    assert strategy["reconciliation_guardrail_findings"][0]["follow_up_task_id"] == "PORTAL-001"
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "reconciliation_guardrail"
+
+
+def test_reconciliation_guardrail_records_use_full_dirty_group_counts():
+    records = reconciliation_guardrail_records(
+        cleanup_result={
+            "attempted": True,
+            "dirty_worktree_groups": {
+                "content_not_in_target": {
+                    "count": 77,
+                    "samples": [
+                        {
+                            "branch": "implementation/example",
+                            "path": "/tmp/worktrees/example",
+                            "status_short": [" M generated.txt"],
+                            "dirty_evidence": {
+                                "name_status": "M\tgenerated.txt",
+                                "diff_stat": "generated.txt | 2 ++",
+                            },
+                        }
+                    ],
+                }
+            },
+        }
+    )
+
+    assert len(records) == 1
+    assert records[0]["candidate_count"] == 77
+    assert records[0]["summary"] == "Resolve 77 dirty backlogged worktrees blocked by content_not_in_target"
+    assert records[0]["dedupe_key"] == "reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target"
+    assert records[0]["samples"][0]["dirty_evidence"]["name_status"] == "M\tgenerated.txt"
+    plan = reconciliation_guardrail_plan(records[0])
+    assert plan["candidate_count"] == 77
+    assert "generated.txt" in plan["sample_status_paths"]
+    assert any(item["action"] == "compare_dirty_content_to_target" for item in plan["actions"])
+
+
+def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "discovery"
+    stale_discovery = discovery_dir / "stale.md"
+    stale_discovery.parent.mkdir(parents=True)
+    stale_discovery.write_text(
+        "# ACCEL-001 Reconciliation Guardrail\n\n"
+        "Candidate count: 40\n",
+        encoding="utf-8",
+    )
+    todo_path.write_text(
+        "# Agent Todos\n\n"
+        "## ACCEL-001 Resolve 40 dirty backlogged worktrees blocked by content_not_in_target\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P2\n"
+        "- Track: ops\n"
+        f"- Validation: test -f {stale_discovery}\n"
+        "- Acceptance: Reconciliation guardrail filed this because 40 branch or worktree cleanup candidates are blocked by content_not_in_target.\n",
+        encoding="utf-8",
+    )
+
+    findings = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result={
+            "attempted": True,
+            "dirty_worktree_groups": {
+                "content_not_in_target": {
+                    "count": 77,
+                    "samples": [{"branch": "implementation/example", "path": "/tmp/example"}],
+                }
+            },
+        },
+        task_prefix="ACCEL-",
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["refreshed"] is True
+    updated_todo = todo_path.read_text(encoding="utf-8")
+    assert "ACCEL-002" not in updated_todo
+    assert "Resolve 77 dirty backlogged worktrees blocked by content_not_in_target" in updated_todo
+    assert "Dedupe key: reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target" in updated_todo
+    assert "machine-readable reconciliation plan" in updated_todo
+    discovery_text = stale_discovery.read_text(encoding="utf-8")
+    assert "Candidate count: 77" in discovery_text
+    assert "## Machine Readable Manifest" in discovery_text
+    manifest = json.loads(discovery_text.split("```json\n", 1)[1].split("\n```", 1)[0])
+    assert manifest["candidate_count"] == 77
+    assert manifest["dedupe_key"] == "reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target"
+    assert any(item["action"] == "compare_dirty_content_to_target" for item in manifest["actions"])
 
 
 def test_implementation_daemon_deterministically_repairs_objective_heap_merge(tmp_path):

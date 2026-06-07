@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
 import signal
@@ -9,17 +10,25 @@ import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from hashlib import sha1
 from pathlib import Path
-from typing import Any
+from typing import Any, Mapping
 
 REPO_ROOT = Path.cwd()
 
+from ..checkout_lock import (
+    checkout_lock_metadata,
+    checkout_lock_owner_is_active,
+    checkout_mutation_lock_path,
+)
 from ..event_log import append_jsonl_event, repair_jsonl_event_log, unique_backup_path
 from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
 from .core import ManagedDaemonSpec
 from .implementation_daemon import (
     DEFAULT_TRACKS,
     TASK_HEADER_PREFIX,
+    PortalImplementationDaemon,
+    PortalTask,
     PortalTaskState,
     load_json_dict,
     normalize_relative_path_list,
@@ -43,6 +52,9 @@ DEFAULT_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL = int(
 )
 DEFAULT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO", "3")
+)
+DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS = float(
+    os.environ.get("IPFS_ACCELERATE_AGENT_WORKTREE_SCAN_CACHE_TTL_SECONDS", "900")
 )
 
 
@@ -78,6 +90,12 @@ class PortalSupervisorConfig:
     use_ephemeral_worktree: bool = True
     worktree_root: Path | None = None
     worktree_submodule_paths: tuple[str, ...] = field(default_factory=tuple)
+    worktree_reconciliation_enabled: bool = True
+    worktree_reconciliation_max_merges: int = 1
+    worktree_reconciliation_dry_run: bool = False
+    worktree_scan_cache_enabled: bool = True
+    worktree_scan_cache_ttl_seconds: float = DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS
+    worktree_scan_cache_path: Path | None = None
     retry_budget_guardrail_enabled: bool = True
     retry_budget_discovery_dir: Path | None = None
     retry_budget_discovery_output_path: str = ""
@@ -92,6 +110,12 @@ class PortalSupervisorConfig:
     dependency_guardrail_max_findings: int = 5
     dependency_guardrail_commit_outputs: bool = False
     dependency_guardrail_commit_subject: str = "Agent: record dependency guardrail outputs"
+    reconciliation_guardrail_enabled: bool = True
+    reconciliation_guardrail_discovery_dir: Path | None = None
+    reconciliation_guardrail_discovery_output_path: str = ""
+    reconciliation_guardrail_max_findings: int = 3
+    reconciliation_guardrail_commit_outputs: bool = False
+    reconciliation_guardrail_commit_subject: str = "Agent: record reconciliation guardrail outputs"
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -194,10 +218,15 @@ class PortalImplementationSupervisor:
     def run_once(self) -> dict[str, Any]:
         event_log_repair = self.ensure_event_log_file()
         main_checkout_repair = self.repair_main_checkout_merge_state()
+        worktree_reconciliation = self.reconcile_backlogged_worktrees()
         worktree_cleanup = self.cleanup_backlogged_worktrees()
         strategy_file_repair = self.ensure_strategy_file()
         state_file_repair = self.ensure_state_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
+        reconciliation_findings = self.record_reconciliation_guardrails(
+            worktree_reconciliation,
+            worktree_cleanup,
+        )
         guardrail_releases = self.release_completed_guardrail_blocks()
         state = PortalTaskState.load(self.config.state_path)
         now_ts = time.time()
@@ -212,6 +241,7 @@ class PortalImplementationSupervisor:
                 "reason": reason,
                 "retry_budget_count": len(retry_budget_findings),
                 "dependency_guardrail_count": len(dependency_findings),
+                "reconciliation_guardrail_count": len(reconciliation_findings),
                 "strategy_generation": int(strategy.get("generation", 0)),
                 "active_task_id": state.active_task_id,
                 "state_repair": state_repair,
@@ -220,6 +250,7 @@ class PortalImplementationSupervisor:
                 "state_file_repair": state_file_repair,
                 "todo_board_repair": todo_board_repair,
                 "main_checkout_repair": main_checkout_repair,
+                "worktree_reconciliation": worktree_reconciliation,
                 "worktree_cleanup": worktree_cleanup,
                 "guardrail_unblock_count": len(guardrail_releases),
             }
@@ -247,6 +278,7 @@ class PortalImplementationSupervisor:
                 "completed_count": state.completed_count,
                 "retry_budget_count": len(retry_budget_findings),
                 "dependency_guardrail_count": len(dependency_findings),
+                "reconciliation_guardrail_count": len(reconciliation_findings),
                 "guardrail_unblock_count": len(guardrail_releases),
                 "objective_refill_count": objective_generated_count,
                 "objective_refined_goal_count": objective_refined_goal_count,
@@ -261,6 +293,7 @@ class PortalImplementationSupervisor:
             "completed_count": state.completed_count,
             "retry_budget_count": len(retry_budget_findings),
             "dependency_guardrail_count": len(dependency_findings),
+            "reconciliation_guardrail_count": len(reconciliation_findings),
             "guardrail_unblock_count": len(guardrail_releases),
             "objective_refill_count": objective_generated_count,
             "objective_refined_goal_count": objective_refined_goal_count,
@@ -272,6 +305,7 @@ class PortalImplementationSupervisor:
             "state_file_repair": state_file_repair,
             "todo_board_repair": todo_board_repair,
             "main_checkout_repair": main_checkout_repair,
+            "worktree_reconciliation": worktree_reconciliation,
             "worktree_cleanup": worktree_cleanup,
         }
 
@@ -400,9 +434,16 @@ class PortalImplementationSupervisor:
                 "main_checkout_merge_state_repaired",
                 detail=main_checkout_repair,
             )
+        worktree_reconciliation = self.reconcile_backlogged_worktrees()
+        if worktree_reconciliation.get("reconciled_count"):
+            self._record_event("backlogged_worktree_reconciliation", worktree_reconciliation)
         worktree_cleanup = self.cleanup_backlogged_worktrees()
         if worktree_cleanup.get("removed_count"):
             self._record_event("backlogged_worktree_cleanup", worktree_cleanup)
+        reconciliation_findings = self.record_reconciliation_guardrails(
+            worktree_reconciliation,
+            worktree_cleanup,
+        )
         state = PortalTaskState.load(self.config.state_path)
         stuck, reason = self.is_stuck(state, now_ts=time.time())
         if not stuck:
@@ -434,6 +475,59 @@ class PortalImplementationSupervisor:
         unmerged_paths = self._git_unmerged_paths(repo_root)
         if not merge_head and not unmerged_paths:
             return {"attempted": False, "repaired": False, "reason": "clean", "path": str(repo_root)}
+
+        lock_path = self._repo_merge_lock_path()
+        lock_fd, lock_reason, existing_lock = self._try_acquire_checkout_lock(lock_path)
+        if lock_fd is None:
+            result: dict[str, Any] = {
+                "attempted": True,
+                "repaired": False,
+                "path": str(repo_root),
+                "merge_in_progress": bool(merge_head),
+                "merge_head": merge_head,
+                "initial_unmerged_paths": unmerged_paths,
+                "status_short": self._git_status_short(repo_root),
+                "reason": f"checkout_mutation_{lock_reason}",
+                "lock_path": str(lock_path),
+            }
+            if existing_lock:
+                result["lock_owner_pid"] = int(existing_lock.get("pid") or 0)
+                result["lock_owner_task_id"] = str(existing_lock.get("task_id") or "")
+                result["lock_owner_branch"] = str(existing_lock.get("branch") or "")
+            self._record_event("main_checkout_merge_state_repair_deferred", result)
+            return result
+
+        self._write_checkout_lock_metadata(
+            lock_fd,
+            checkout_lock_metadata(
+                kind="merge",
+                repo_root=repo_root,
+                task_id=self._active_task_id_for_lock(),
+                branch="supervisor-main-checkout-repair",
+                extra={"operation": "repair_main_checkout_merge_state", "started_at": utc_now()},
+            ),
+        )
+        try:
+            return self._repair_main_checkout_merge_state_locked(
+                repo_root,
+                merge_head=merge_head,
+                unmerged_paths=unmerged_paths,
+            )
+        finally:
+            try:
+                if lock_path.exists():
+                    lock_path.unlink()
+            except OSError:
+                logger.warning("Failed to remove checkout mutation lock %s", lock_path)
+
+    def _repair_main_checkout_merge_state_locked(
+        self,
+        repo_root: Path,
+        *,
+        merge_head: str,
+        unmerged_paths: list[str],
+    ) -> dict[str, Any]:
+        """Resolve or abort an interrupted merge after acquiring the checkout lock."""
 
         result: dict[str, Any] = {
             "attempted": True,
@@ -518,6 +612,71 @@ class PortalImplementationSupervisor:
         result["merge_in_progress_after"] = bool(self._git_merge_head(repo_root))
         self._record_event("main_checkout_merge_state_repair", result)
         return result
+
+    def _active_task_id_for_lock(self) -> str:
+        try:
+            return PortalTaskState.load(self.config.state_path).active_task_id
+        except Exception:
+            return ""
+
+    def _repo_merge_lock_path(self) -> Path:
+        return checkout_mutation_lock_path(self.config.repo_root)
+
+    def _checkout_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
+        return checkout_lock_owner_is_active(
+            metadata,
+            expected_kind="merge",
+            expected_repo_root=self.config.repo_root,
+            process_command_line=process_command_line,
+            process_is_running=process_is_running,
+        )
+
+    def _try_acquire_checkout_lock(self, lock_path: Path) -> tuple[int | None, str, dict[str, Any] | None]:
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        for _ in range(2):
+            try:
+                return os.open(lock_path, os.O_CREAT | os.O_EXCL | os.O_WRONLY), "acquired", None
+            except FileExistsError:
+                existing = load_json_dict(lock_path)
+                if existing is not None and self._checkout_lock_owner_is_active(existing):
+                    return None, "lock_exists", existing
+                if not self._clear_stale_checkout_lock(lock_path, metadata=existing):
+                    return None, "lock_cleanup_failed", existing
+        existing = load_json_dict(lock_path)
+        if existing is not None and self._checkout_lock_owner_is_active(existing):
+            return None, "lock_exists", existing
+        return None, "lock_unavailable", existing
+
+    def _write_checkout_lock_metadata(self, lock_fd: int, metadata: dict[str, Any]) -> None:
+        try:
+            os.write(lock_fd, json.dumps(metadata, indent=2, sort_keys=True).encode("utf-8"))
+        finally:
+            os.close(lock_fd)
+
+    def _clear_stale_checkout_lock(self, lock_path: Path, *, metadata: dict[str, Any] | None) -> bool:
+        moved_directory_path = ""
+        try:
+            if lock_path.is_dir():
+                backup_path = unique_backup_path(lock_path, "directory-backup")
+                lock_path.rename(backup_path)
+                moved_directory_path = str(backup_path)
+            else:
+                lock_path.unlink()
+        except FileNotFoundError:
+            return True
+        except OSError:
+            logger.warning("Failed to remove stale checkout mutation lock %s", lock_path)
+            return False
+        event = {
+            "lock_path": str(lock_path),
+            "lock_owner_pid": int(metadata.get("pid") or 0) if metadata else 0,
+            "task_id": str(metadata.get("task_id") or "") if metadata else "",
+            "branch": str(metadata.get("branch") or "") if metadata else "",
+        }
+        if moved_directory_path:
+            event["moved_directory_path"] = moved_directory_path
+        self._record_event("checkout_mutation_lock_cleared", event)
+        return True
 
     def repair_generated_main_checkout_conflicts(self, repo_root: Path) -> list[dict[str, object]]:
         """Resolve configured append-only generated markdown conflicts without LLM calls."""
@@ -735,6 +894,480 @@ class PortalImplementationSupervisor:
             return ""
         return result.stdout.strip()
 
+    @staticmethod
+    def _git_ref_commit(repo_root: Path, ref: str) -> str:
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", f"{ref}^{{commit}}"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout.strip()
+
+    def _worktree_scan_cache_path(self) -> Path:
+        return self.config.worktree_scan_cache_path or (
+            self.config.state_dir / f"{self.config.state_prefix}_worktree_scan_cache.json"
+        )
+
+    def _load_worktree_scan_cache(self) -> dict[str, Any]:
+        if (
+            not self.config.worktree_scan_cache_enabled
+            or self.config.worktree_scan_cache_ttl_seconds <= 0
+        ):
+            return {"enabled": False, "entries": {}}
+        payload = load_json_dict(self._worktree_scan_cache_path())
+        entries = payload.get("entries") if isinstance(payload, dict) else {}
+        if not isinstance(entries, dict):
+            entries = {}
+        return {
+            "enabled": True,
+            "version": 1,
+            "entries": {
+                str(key): dict(value)
+                for key, value in entries.items()
+                if isinstance(value, dict)
+            },
+        }
+
+    def _write_worktree_scan_cache(self, cache: dict[str, Any]) -> bool:
+        if not cache.get("enabled") or not cache.get("_changed"):
+            return False
+        entries = cache.get("entries")
+        if not isinstance(entries, dict):
+            entries = {}
+        now = time.time()
+        ttl = max(float(self.config.worktree_scan_cache_ttl_seconds), 0.0)
+        max_age = max(ttl * 4, ttl + 3600.0)
+        pruned_entries = {
+            str(key): value
+            for key, value in entries.items()
+            if isinstance(value, dict)
+            and now - float(value.get("updated_at_epoch") or 0.0) <= max_age
+        }
+        path = self._worktree_scan_cache_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        write_json_atomic(
+            path,
+            {
+                "version": 1,
+                "updated_at_epoch": now,
+                "updated_at": utc_now(),
+                "entries": pruned_entries,
+            },
+        )
+        return True
+
+    @staticmethod
+    def _worktree_scan_cache_key(
+        *,
+        phase: str,
+        path: Path,
+        branch: str,
+        head: str,
+        target_signature: str,
+    ) -> str:
+        return sha1(
+            json.dumps(
+                {
+                    "phase": phase,
+                    "path": str(path),
+                    "branch": branch,
+                    "head": head,
+                    "target_signature": target_signature,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+
+    def _worktree_scan_cache_entry(
+        self,
+        cache: dict[str, Any],
+        *,
+        phase: str,
+        path: Path,
+        branch: str,
+        head: str,
+        target_signature: str,
+    ) -> dict[str, Any] | None:
+        if not cache.get("enabled"):
+            return None
+        key = self._worktree_scan_cache_key(
+            phase=phase,
+            path=path,
+            branch=branch,
+            head=head,
+            target_signature=target_signature,
+        )
+        entries = cache.get("entries")
+        entry = entries.get(key) if isinstance(entries, dict) else None
+        if not isinstance(entry, dict):
+            return None
+        if time.time() - float(entry.get("updated_at_epoch") or 0.0) > float(
+            self.config.worktree_scan_cache_ttl_seconds
+        ):
+            return None
+        return dict(entry)
+
+    def _store_worktree_scan_cache_entry(
+        self,
+        cache: dict[str, Any],
+        *,
+        phase: str,
+        path: Path,
+        branch: str,
+        head: str,
+        target_signature: str,
+        classification: str,
+        payload: Mapping[str, Any],
+    ) -> None:
+        if not cache.get("enabled"):
+            return
+        key = self._worktree_scan_cache_key(
+            phase=phase,
+            path=path,
+            branch=branch,
+            head=head,
+            target_signature=target_signature,
+        )
+        entries = cache.setdefault("entries", {})
+        if not isinstance(entries, dict):
+            cache["entries"] = entries = {}
+        now = time.time()
+        entries[key] = {
+            "phase": phase,
+            "path": str(path),
+            "branch": branch,
+            "head": head,
+            "target_signature": target_signature,
+            "classification": classification,
+            "payload": dict(payload),
+            "updated_at_epoch": now,
+            "updated_at": utc_now(),
+        }
+        cache["_changed"] = True
+
+    def reconcile_backlogged_worktrees(self) -> dict[str, Any]:
+        """Retry clean inactive implementation worktrees before cleanup."""
+
+        if not self.config.worktree_reconciliation_enabled:
+            return {"attempted": False, "reason": "worktree_reconciliation_disabled"}
+        worktree_root = self.config.worktree_root
+        if worktree_root is None:
+            return {"attempted": False, "reason": "worktree_root_not_configured"}
+
+        repo_root = self.config.repo_root
+        records = self._git_worktree_records(repo_root)
+        try:
+            root_resolved = worktree_root.resolve()
+        except OSError:
+            root_resolved = worktree_root
+        process_lines = self._list_process_commands()
+        active_worktree = ""
+        try:
+            active_worktree = PortalTaskState.load(self.config.state_path).active_worktree_path
+        except Exception:
+            active_worktree = ""
+        target_ref = self._git_current_branch(repo_root) or "HEAD"
+        target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
+        main_status = self._main_status_for_worktree_reconciliation(repo_root, worktree_root)
+        main_dirty_evidence = (
+            self._main_checkout_dirty_evidence(repo_root, main_status)
+            if main_status
+            else {}
+        )
+        max_merges = max(0, int(self.config.worktree_reconciliation_max_merges))
+        dry_run = bool(self.config.worktree_reconciliation_dry_run)
+        scan_cache = self._load_worktree_scan_cache()
+        scan_cache_hit_count = 0
+        candidates: list[dict[str, Any]] = []
+        processed: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+        reconciliation_daemon: PortalImplementationDaemon | None = None
+
+        for record in records:
+            path_text = str(record.get("worktree") or "")
+            if not path_text:
+                continue
+            path = Path(path_text)
+            try:
+                path_resolved = path.resolve()
+                path_resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+
+            branch = str(record.get("branch") or "").removeprefix("refs/heads/")
+            head = str(record.get("HEAD") or "")
+            detail: dict[str, Any] = {"path": str(path), "branch": branch, "head": head}
+            if active_worktree and path_resolved == Path(active_worktree).resolve():
+                skipped.append({**detail, "reason": "active_state_worktree"})
+                continue
+            if any(str(path_resolved) in line for line in process_lines):
+                skipped.append({**detail, "reason": "active_process"})
+                continue
+            cached_entry = self._worktree_scan_cache_entry(
+                scan_cache,
+                phase="reconciliation",
+                path=path_resolved,
+                branch=branch,
+                head=head,
+                target_signature=target_signature,
+            )
+            if cached_entry:
+                classification = str(cached_entry.get("classification") or "")
+                payload = dict(cached_entry.get("payload") or {})
+                if classification == "skip":
+                    skipped.append({**payload, "cached": True})
+                    scan_cache_hit_count += 1
+                    continue
+                if classification == "candidate" and (dry_run or main_status):
+                    candidate = {**payload, "cached": True}
+                    candidates.append(candidate)
+                    scan_cache_hit_count += 1
+                    if not dry_run:
+                        skipped.append({**candidate, "reason": "main_checkout_dirty", "status_short": main_status[:20]})
+                    continue
+            if not branch.startswith("implementation/"):
+                skip = {**detail, "reason": "non_implementation_branch"}
+                skipped.append(skip)
+                self._store_worktree_scan_cache_entry(
+                    scan_cache,
+                    phase="reconciliation",
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_signature=target_signature,
+                    classification="skip",
+                    payload=skip,
+                )
+                continue
+            if not self._git_ref_exists(repo_root, branch):
+                skip = {**detail, "reason": "implementation_branch_missing"}
+                skipped.append(skip)
+                self._store_worktree_scan_cache_entry(
+                    scan_cache,
+                    phase="reconciliation",
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_signature=target_signature,
+                    classification="skip",
+                    payload=skip,
+                )
+                continue
+
+            branch_merged = self._git_ref_is_ancestor(repo_root, branch, target_ref)
+            head_merged = bool(head) and self._git_ref_is_ancestor(repo_root, head, target_ref)
+            if branch_merged or head_merged:
+                skip = {**detail, "reason": "already_merged_cleanup_pass"}
+                skipped.append(skip)
+                self._store_worktree_scan_cache_entry(
+                    scan_cache,
+                    phase="reconciliation",
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_signature=target_signature,
+                    classification="skip",
+                    payload=skip,
+                )
+                continue
+            dirty = self._git_status_short(path) if path.exists() else []
+            if dirty:
+                skip = {**detail, "reason": "dirty_worktree", "status_short": dirty[:20]}
+                skipped.append(skip)
+                self._store_worktree_scan_cache_entry(
+                    scan_cache,
+                    phase="reconciliation",
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_signature=target_signature,
+                    classification="skip",
+                    payload=skip,
+                )
+                continue
+
+            candidate = {**detail, "target_ref": target_ref}
+            candidates.append(candidate)
+            self._store_worktree_scan_cache_entry(
+                scan_cache,
+                phase="reconciliation",
+                path=path_resolved,
+                branch=branch,
+                head=head,
+                target_signature=target_signature,
+                classification="candidate",
+                payload=candidate,
+            )
+            if dry_run:
+                continue
+            if main_status:
+                skipped.append({**candidate, "reason": "main_checkout_dirty", "status_short": main_status[:20]})
+                continue
+            if sum(1 for item in processed if item.get("merged")) >= max_merges:
+                skipped.append({**candidate, "reason": "reconciliation_limit_reached"})
+                continue
+
+            if reconciliation_daemon is None:
+                reconciliation_daemon = self._build_worktree_reconciliation_daemon()
+            task = self._worktree_reconciliation_task(branch)
+            merge_result = reconciliation_daemon._merge_branch_to_main(branch, task, 0)
+            cleanup_result: dict[str, Any] = {}
+            if merge_result.get("merged"):
+                cleanup_result = reconciliation_daemon._cleanup_merged_worktree(path, branch)
+            processed.append(
+                {
+                    **candidate,
+                    "merged": bool(merge_result.get("merged")),
+                    "merge_result": merge_result,
+                    "cleanup_result": cleanup_result,
+                }
+            )
+
+        result = {
+            "attempted": True,
+            "worktree_root": str(worktree_root),
+            "target_ref": target_ref,
+            "target_signature": target_signature,
+            "dry_run": dry_run,
+            "max_merges": max_merges,
+            "main_checkout_dirty": bool(main_status),
+            "main_status_short": main_status[:20],
+            "main_dirty_evidence": main_dirty_evidence,
+            "candidate_count": len(candidates),
+            "processed_count": len(processed),
+            "reconciled_count": sum(1 for item in processed if item.get("merged")),
+            "cleanup_count": sum(
+                1
+                for item in processed
+                if isinstance(item.get("cleanup_result"), dict)
+                and item["cleanup_result"].get("cleaned", False)
+            ),
+            "skipped_count": len(skipped),
+            "candidates": candidates[:50],
+            "processed": processed,
+            "skipped": skipped[:50],
+            "scan_cache_hit_count": scan_cache_hit_count,
+            "scan_cache_written": self._write_worktree_scan_cache(scan_cache),
+        }
+        if processed:
+            self._record_event("worktree_reconciliation", result)
+        return result
+
+    def _main_checkout_dirty_evidence(self, repo_root: Path, status_lines: list[str]) -> dict[str, Any]:
+        """Return bounded evidence for dirty main-checkout reconciliation blockers."""
+
+        path_categories: dict[str, int] = {}
+        status_paths: list[str] = []
+        for line in status_lines:
+            path = self._status_line_path(line)
+            if path and path not in status_paths:
+                status_paths.append(path)
+            category = self._status_line_category(line)
+            path_categories[category] = path_categories.get(category, 0) + 1
+        evidence: dict[str, Any] = {
+            "status_short": status_lines[:50],
+            "status_paths": status_paths[:50],
+            "path_categories": path_categories,
+        }
+        diff_stat = self._git_output(repo_root, ["diff", "--stat"], max_chars=4000)
+        if diff_stat:
+            evidence["diff_stat"] = diff_stat
+        name_status = self._git_output(repo_root, ["diff", "--name-status"], max_chars=4000)
+        if name_status:
+            evidence["name_status"] = name_status
+        staged_name_status = self._git_output(repo_root, ["diff", "--cached", "--name-status"], max_chars=4000)
+        if staged_name_status:
+            evidence["staged_name_status"] = staged_name_status
+        submodule_summary = self._git_output(repo_root, ["submodule", "summary", "--files"], max_chars=4000)
+        if submodule_summary:
+            evidence["submodule_summary"] = submodule_summary
+        untracked_paths = [
+            self._status_line_path(line)
+            for line in status_lines
+            if line[:2] == "??" and self._status_line_path(line)
+        ][:50]
+        if untracked_paths:
+            evidence["untracked_paths"] = untracked_paths
+        return evidence
+
+    @staticmethod
+    def _status_line_category(line: str) -> str:
+        code = line[:2]
+        if code == "??":
+            return "untracked"
+        if "U" in code:
+            return "unmerged"
+        if "D" in code:
+            return "deleted"
+        if "R" in code:
+            return "renamed"
+        if "A" in code:
+            return "added"
+        if "M" in code:
+            return "modified"
+        if code.strip():
+            return "other_dirty"
+        return "clean"
+
+    def _build_worktree_reconciliation_daemon(self) -> PortalImplementationDaemon:
+        return PortalImplementationDaemon(
+            todo_path=self.config.todo_path,
+            state_path=self.config.state_path,
+            strategy_path=self.config.strategy_path,
+            events_path=self.config.events_path,
+            repo_root=self.config.repo_root,
+            task_header_prefix=self.config.task_prefix,
+            implement=False,
+            implementation_command=self.config.implementation_command,
+            implementation_timeout=self.config.implementation_timeout,
+            use_ephemeral_worktree=False,
+            worktree_root=self.config.worktree_root,
+            worktree_submodule_paths=self.config.worktree_submodule_paths,
+            objective_path=self.config.objective_path,
+            objective_bundle_dir=self.config.objective_bundle_dir,
+            llm_merge_resolver_command=self.config.llm_merge_resolver_command,
+            llm_merge_resolver_timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
+        )
+
+    def _main_status_for_worktree_reconciliation(self, repo_root: Path, worktree_root: Path) -> list[str]:
+        status = self._git_status_short(repo_root)
+        try:
+            root_relative = worktree_root.resolve().relative_to(repo_root.resolve()).as_posix().rstrip("/")
+        except (OSError, ValueError):
+            return status
+        if not root_relative:
+            return status
+        return [
+            line
+            for line in status
+            if not self._status_line_targets_prefix(line, root_relative)
+        ]
+
+    @staticmethod
+    def _status_line_targets_prefix(line: str, relative_prefix: str) -> bool:
+        path_text = line[3:].strip() if len(line) > 3 else line.strip()
+        if " -> " in path_text:
+            path_text = path_text.split(" -> ", 1)[-1].strip()
+        path_text = path_text.rstrip("/")
+        return path_text == relative_prefix or path_text.startswith(f"{relative_prefix}/")
+
+    @staticmethod
+    def _worktree_reconciliation_task(branch: str) -> PortalTask:
+        task_fragment = branch.removeprefix("implementation/").split("-attempt-", 1)[0].strip()
+        task_id = task_fragment.upper() if task_fragment else "WORKTREE-RECONCILE"
+        return PortalTask(
+            task_id=task_id,
+            title=f"Reconcile backlogged implementation branch {branch}",
+            status="todo",
+            completion="manual",
+            priority="P2",
+            track="ops",
+        )
+
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
 
@@ -761,8 +1394,12 @@ class PortalImplementationSupervisor:
         except Exception:
             active_worktree = ""
         target_ref = self._git_current_branch(repo_root) or "HEAD"
+        target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
+        scan_cache = self._load_worktree_scan_cache()
+        scan_cache_hit_count = 0
         removed: list[dict[str, Any]] = []
         skipped: list[dict[str, Any]] = []
+        dirty_evidence_sample_counts: dict[str, int] = {}
 
         for record in records:
             path_text = str(record.get("worktree") or "")
@@ -783,22 +1420,72 @@ class PortalImplementationSupervisor:
 
             branch = str(record.get("branch") or "").removeprefix("refs/heads/")
             head = str(record.get("HEAD") or "")
+            cached_entry = self._worktree_scan_cache_entry(
+                scan_cache,
+                phase="cleanup",
+                path=path_resolved,
+                branch=branch,
+                head=head,
+                target_signature=target_signature,
+            )
+            if cached_entry:
+                classification = str(cached_entry.get("classification") or "")
+                payload = dict(cached_entry.get("payload") or {})
+                if classification == "skip":
+                    skipped.append({**payload, "cached": True})
+                    scan_cache_hit_count += 1
+                    continue
             branch_merged = bool(branch) and self._git_ref_is_ancestor(repo_root, branch, target_ref)
             head_merged = bool(head) and self._git_ref_is_ancestor(repo_root, head, target_ref)
             if not (branch_merged or head_merged):
-                skipped.append({"path": str(path), "branch": branch, "reason": "not_merged"})
+                skip = {"path": str(path), "branch": branch, "reason": "not_merged"}
+                skipped.append(skip)
+                self._store_worktree_scan_cache_entry(
+                    scan_cache,
+                    phase="cleanup",
+                    path=path_resolved,
+                    branch=branch,
+                    head=head,
+                    target_signature=target_signature,
+                    classification="skip",
+                    payload=skip,
+                )
                 continue
             dirty = self._git_status_short(path) if path.exists() else []
+            dirty_redundancy: dict[str, Any] = {}
             if dirty:
-                skipped.append(
-                    {
+                redundant_dirty = self._redundant_dirty_worktree_status(path, dirty, target_ref)
+                if redundant_dirty.get("redundant"):
+                    dirty_redundancy = redundant_dirty
+                    dirty = []
+                else:
+                    dirty_reason = self._dirty_redundancy_reason(redundant_dirty)
+                    evidence: dict[str, Any] = {}
+                    if dirty_evidence_sample_counts.get(dirty_reason, 0) < 20:
+                        evidence = self._dirty_worktree_evidence(path, dirty)
+                        dirty_evidence_sample_counts[dirty_reason] = (
+                            dirty_evidence_sample_counts.get(dirty_reason, 0) + 1
+                        )
+                    skip = {
                         "path": str(path),
                         "branch": branch,
                         "reason": "dirty_worktree",
                         "status_short": dirty[:20],
+                        "dirty_redundancy": redundant_dirty,
+                        "dirty_evidence": evidence,
                     }
-                )
-                continue
+                    skipped.append(skip)
+                    self._store_worktree_scan_cache_entry(
+                        scan_cache,
+                        phase="cleanup",
+                        path=path_resolved,
+                        branch=branch,
+                        head=head,
+                        target_signature=target_signature,
+                        classification="skip",
+                        payload=skip,
+                    )
+                    continue
 
             remove = subprocess.run(
                 ["git", "worktree", "remove", "--force", str(path)],
@@ -833,23 +1520,156 @@ class PortalImplementationSupervisor:
                     "stdout": remove.stdout[-4000:],
                     "stderr": remove.stderr[-4000:],
                     "branch_delete": branch_delete,
+                    "dirty_redundancy": dirty_redundancy,
                 }
             )
 
+        skip_summary = self._cleanup_skip_summary(skipped)
         result = {
             "attempted": True,
             "worktree_root": str(worktree_root),
+            "target_ref": target_ref,
+            "target_signature": target_signature,
             "prune_returncode": prune.returncode,
             "prune_stdout": prune.stdout[-4000:],
             "prune_stderr": prune.stderr[-4000:],
             "removed_count": sum(1 for item in removed if item.get("removed")),
             "skipped_count": len(skipped),
+            "skipped_reason_counts": skip_summary["reason_counts"],
+            "dirty_worktree_groups": skip_summary["dirty_worktree_groups"],
             "removed": removed,
             "skipped": skipped[:50],
+            "scan_cache_hit_count": scan_cache_hit_count,
+            "scan_cache_written": self._write_worktree_scan_cache(scan_cache),
         }
         if removed:
             self._record_event("merged_worktree_cleanup", result)
         return result
+
+    @staticmethod
+    def _dirty_redundancy_reason(dirty_redundancy: dict[str, Any]) -> str:
+        return str(dirty_redundancy.get("reason") or "dirty_worktree")
+
+    def _dirty_worktree_evidence(self, worktree_path: Path, status_lines: list[str]) -> dict[str, Any]:
+        """Return bounded evidence for dirty cleanup blockers without storing full patches."""
+
+        evidence: dict[str, Any] = {
+            "status_short": status_lines[:20],
+        }
+        diff_stat = self._git_output(worktree_path, ["diff", "--stat"], max_chars=4000)
+        if diff_stat:
+            evidence["diff_stat"] = diff_stat
+        name_status = self._git_output(worktree_path, ["diff", "--name-status"], max_chars=4000)
+        if name_status:
+            evidence["name_status"] = name_status
+        untracked_paths = [
+            self._status_line_path(line)
+            for line in status_lines
+            if line[:2] == "??" and self._status_line_path(line)
+        ][:20]
+        if untracked_paths:
+            evidence["untracked_paths"] = untracked_paths
+        return evidence
+
+    @staticmethod
+    def _cleanup_skip_summary(skipped: list[dict[str, Any]]) -> dict[str, Any]:
+        reason_counts: dict[str, int] = {}
+        dirty_worktree_groups: dict[str, dict[str, Any]] = {}
+        for item in skipped:
+            reason = str(item.get("reason") or "unknown")
+            reason_counts[reason] = reason_counts.get(reason, 0) + 1
+            if reason != "dirty_worktree":
+                continue
+            dirty_redundancy = item.get("dirty_redundancy") or {}
+            dirty_reason = (
+                str(dirty_redundancy.get("reason") or "dirty_worktree")
+                if isinstance(dirty_redundancy, dict)
+                else "dirty_worktree"
+            )
+            reason_key = f"dirty_worktree:{dirty_reason}"
+            reason_counts[reason_key] = reason_counts.get(reason_key, 0) + 1
+            group = dirty_worktree_groups.setdefault(
+                dirty_reason,
+                {
+                    "count": 0,
+                    "samples": [],
+                },
+            )
+            group["count"] += 1
+            if len(group["samples"]) < 20:
+                group["samples"].append(
+                    {
+                        "branch": str(item.get("branch") or ""),
+                        "path": str(item.get("path") or ""),
+                        "status_short": list(item.get("status_short") or []),
+                        "dirty_reason": dirty_reason,
+                        "dirty_evidence": dict(item.get("dirty_evidence") or {}),
+                    }
+                )
+        return {
+            "reason_counts": reason_counts,
+            "dirty_worktree_groups": dirty_worktree_groups,
+        }
+
+    @staticmethod
+    def _git_output(cwd: Path, args: list[str], *, max_chars: int = 4000) -> str:
+        result = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return ""
+        return result.stdout[-max_chars:].strip()
+
+    def _redundant_dirty_worktree_status(
+        self,
+        worktree_path: Path,
+        status_lines: list[str],
+        target_ref: str,
+    ) -> dict[str, Any]:
+        checked: list[dict[str, Any]] = []
+        for line in status_lines:
+            code = line[:2]
+            relative = self._status_line_path(line)
+            detail = {"status": code, "path": relative}
+            if not relative:
+                return {"redundant": False, "reason": "empty_status_path", "checked": checked}
+            if "D" in code or "?" in code.strip(" ?"):
+                return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
+            if code == "??" or "M" in code or "A" in code:
+                if not self._worktree_file_matches_ref(worktree_path, relative, target_ref):
+                    return {"redundant": False, "reason": "content_not_in_target", "checked": [*checked, detail]}
+                checked.append({**detail, "matches_target": True})
+                continue
+            return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
+        return {"redundant": True, "reason": "all_dirty_paths_match_target", "checked": checked}
+
+    @staticmethod
+    def _status_line_path(line: str) -> str:
+        path_text = line[3:].strip() if len(line) > 3 else line.strip()
+        if " -> " in path_text:
+            path_text = path_text.split(" -> ", 1)[-1].strip()
+        return path_text.rstrip("/")
+
+    def _worktree_file_matches_ref(self, worktree_path: Path, relative: str, target_ref: str) -> bool:
+        candidate = worktree_path / relative
+        if not candidate.is_file():
+            return False
+        result = subprocess.run(
+            ["git", "show", f"{target_ref}:{relative}"],
+            cwd=self.config.repo_root,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return False
+        try:
+            return candidate.read_bytes() == result.stdout
+        except OSError:
+            return False
 
     @staticmethod
     def _git_worktree_records(repo_root: Path) -> list[dict[str, str]]:
@@ -890,6 +1710,19 @@ class PortalImplementationSupervisor:
         return result.returncode == 0
 
     @staticmethod
+    def _git_ref_exists(repo_root: Path, ref: str) -> bool:
+        if not ref:
+            return False
+        result = subprocess.run(
+            ["git", "rev-parse", "--verify", "--quiet", ref],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return result.returncode == 0
+
+    @staticmethod
     def _list_process_commands() -> list[str]:
         result = subprocess.run(
             ["ps", "-eo", "args="],
@@ -906,7 +1739,11 @@ class PortalImplementationSupervisor:
 
         if self.config.todo_path.exists():
             if self.config.todo_path.is_dir():
-                if not (self.config.objective_refill_enabled or self.config.codebase_refill_enabled):
+                if not (
+                    self.config.objective_refill_enabled
+                    or self.config.codebase_refill_enabled
+                    or self.config.reconciliation_guardrail_enabled
+                ):
                     return {"created": False, "reason": "todo_path_is_directory", "path": str(self.config.todo_path)}
                 backup_path = unique_backup_path(self.config.todo_path, "directory-backup")
                 self.config.todo_path.rename(backup_path)
@@ -924,7 +1761,11 @@ class PortalImplementationSupervisor:
             try:
                 self.config.todo_path.read_text(encoding="utf-8")
             except UnicodeDecodeError:
-                if not (self.config.objective_refill_enabled or self.config.codebase_refill_enabled):
+                if not (
+                    self.config.objective_refill_enabled
+                    or self.config.codebase_refill_enabled
+                    or self.config.reconciliation_guardrail_enabled
+                ):
                     return {"created": False, "reason": "todo_text_decode_failed", "path": str(self.config.todo_path)}
                 backup_path = unique_backup_path(self.config.todo_path, "invalid-text")
                 self.config.todo_path.rename(backup_path)
@@ -946,7 +1787,11 @@ class PortalImplementationSupervisor:
                     "error": str(exc),
                 }
             return {"created": False, "reason": "exists", "path": str(self.config.todo_path)}
-        if not (self.config.objective_refill_enabled or self.config.codebase_refill_enabled):
+        if not (
+            self.config.objective_refill_enabled
+            or self.config.codebase_refill_enabled
+            or self.config.reconciliation_guardrail_enabled
+        ):
             return {"created": False, "reason": "refill_disabled", "path": str(self.config.todo_path)}
         self.config.todo_path.parent.mkdir(parents=True, exist_ok=True)
         write_text_atomic(self.config.todo_path, "# Agent Todos\n")
@@ -1094,6 +1939,60 @@ class PortalImplementationSupervisor:
         if findings:
             self._record_event(
                 "dependency_guardrail",
+                {
+                    "generated_count": len(findings),
+                    "todo_path": str(self.config.todo_path),
+                    "discovery_dir": str(discovery_dir),
+                    "findings": findings,
+                },
+            )
+        return findings
+
+    def record_reconciliation_guardrails(
+        self,
+        worktree_reconciliation: Mapping[str, Any],
+        worktree_cleanup: Mapping[str, Any],
+    ) -> list[dict[str, Any]]:
+        """Convert blocked checkout/worktree cleanup into deliberate repair tasks."""
+
+        if not self.config.reconciliation_guardrail_enabled:
+            return []
+        if not self.config.todo_path.exists():
+            return []
+
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            record_reconciliation_guardrail_findings,
+            task_id_prefix,
+        )
+
+        discovery_dir = (
+            self.config.reconciliation_guardrail_discovery_dir
+            or self.config.dependency_guardrail_discovery_dir
+            or self.config.retry_budget_discovery_dir
+            or self.config.state_dir.parent / "discovery"
+        )
+        discovery_output_path = self.config.reconciliation_guardrail_discovery_output_path
+        if not discovery_output_path:
+            try:
+                discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
+            except ValueError:
+                discovery_output_path = str(discovery_dir)
+        findings = record_reconciliation_guardrail_findings(
+            todo_path=self.config.todo_path,
+            strategy_path=self.config.strategy_path,
+            discovery_dir=discovery_dir,
+            reconciliation_result=worktree_reconciliation,
+            cleanup_result=worktree_cleanup,
+            task_prefix=task_id_prefix(self.config.task_prefix),
+            max_findings=self.config.reconciliation_guardrail_max_findings,
+            discovery_output_path=discovery_output_path,
+            commit_outputs=self.config.reconciliation_guardrail_commit_outputs,
+            repo_root=self.config.repo_root,
+            commit_subject=self.config.reconciliation_guardrail_commit_subject,
+        )
+        if findings:
+            self._record_event(
+                "reconciliation_guardrail",
                 {
                     "generated_count": len(findings),
                     "todo_path": str(self.config.todo_path),
@@ -1990,6 +2889,43 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--no-worktree-reconciliation",
+        dest="worktree_reconciliation_enabled",
+        action="store_false",
+        help="Disable supervisor retry/cleanup reconciliation for clean inactive implementation worktrees.",
+    )
+    parser.set_defaults(worktree_reconciliation_enabled=True)
+    parser.add_argument(
+        "--worktree-reconciliation-max-merges",
+        type=int,
+        default=1,
+        help="Maximum clean backlogged implementation branches to merge per supervisor pass.",
+    )
+    parser.add_argument(
+        "--worktree-reconciliation-dry-run",
+        action="store_true",
+        help="Classify clean backlogged implementation worktrees without merging or removing them.",
+    )
+    parser.add_argument(
+        "--no-worktree-scan-cache",
+        dest="worktree_scan_cache_enabled",
+        action="store_false",
+        help="Disable cached non-mutating worktree reconciliation/cleanup classifications.",
+    )
+    parser.set_defaults(worktree_scan_cache_enabled=True)
+    parser.add_argument(
+        "--worktree-scan-cache-ttl-seconds",
+        type=float,
+        default=DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS,
+        help="Seconds to reuse cached non-mutating worktree scan classifications; <=0 disables the cache.",
+    )
+    parser.add_argument(
+        "--worktree-scan-cache-path",
+        type=Path,
+        default=None,
+        help="JSON cache path for non-mutating worktree scan classifications. Defaults to the supervisor state dir.",
+    )
+    parser.add_argument(
         "--no-retry-budget-guardrail",
         dest="retry_budget_guardrail_enabled",
         action="store_false",
@@ -2033,6 +2969,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--dependency-guardrail-commit-subject",
         default="Agent: record dependency guardrail outputs",
+    )
+    parser.add_argument(
+        "--no-reconciliation-guardrail",
+        dest="reconciliation_guardrail_enabled",
+        action="store_false",
+        help="Disable conversion of blocked checkout/worktree reconciliation into ready cleanup tasks.",
+    )
+    parser.set_defaults(reconciliation_guardrail_enabled=True)
+    parser.add_argument("--reconciliation-guardrail-discovery-dir", type=Path, default=None)
+    parser.add_argument("--reconciliation-guardrail-discovery-output-path", default="")
+    parser.add_argument("--reconciliation-guardrail-max-findings", type=int, default=3)
+    parser.add_argument(
+        "--reconciliation-guardrail-commit-outputs",
+        action="store_true",
+        help="Commit generated reconciliation-guardrail todo/discovery outputs.",
+    )
+    parser.add_argument(
+        "--reconciliation-guardrail-commit-subject",
+        default="Agent: record reconciliation guardrail outputs",
     )
     parser.add_argument(
         "--codebase-refill-scan",
@@ -2244,6 +3199,12 @@ def supervisor_config_from_args(
         use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         worktree_submodule_paths=normalize_relative_path_list(resolved_worktree_submodule_paths),
+        worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
+        worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
+        worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,
+        worktree_scan_cache_enabled=args.worktree_scan_cache_enabled,
+        worktree_scan_cache_ttl_seconds=args.worktree_scan_cache_ttl_seconds,
+        worktree_scan_cache_path=args.worktree_scan_cache_path,
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
         retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,
@@ -2258,6 +3219,12 @@ def supervisor_config_from_args(
         dependency_guardrail_max_findings=args.dependency_guardrail_max_findings,
         dependency_guardrail_commit_outputs=args.dependency_guardrail_commit_outputs,
         dependency_guardrail_commit_subject=args.dependency_guardrail_commit_subject,
+        reconciliation_guardrail_enabled=args.reconciliation_guardrail_enabled,
+        reconciliation_guardrail_discovery_dir=args.reconciliation_guardrail_discovery_dir,
+        reconciliation_guardrail_discovery_output_path=args.reconciliation_guardrail_discovery_output_path,
+        reconciliation_guardrail_max_findings=args.reconciliation_guardrail_max_findings,
+        reconciliation_guardrail_commit_outputs=args.reconciliation_guardrail_commit_outputs,
+        reconciliation_guardrail_commit_subject=args.reconciliation_guardrail_commit_subject,
         codebase_refill_enabled=args.codebase_refill_scan,
         codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
         codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,
