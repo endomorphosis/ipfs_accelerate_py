@@ -1691,6 +1691,37 @@ def test_supervisor_runtime_summarizes_child_status_files(tmp_path: Path) -> Non
     }
 
 
+def test_supervisor_runtime_child_health_uses_updated_at_timestamp(
+    tmp_path: Path,
+) -> None:
+    worker = tmp_path / "worker.summary"
+    worker.write_text(
+        json.dumps(
+            {
+                "active_packet_claimed_todo_ids": [],
+                "active_packet_phase": "idle",
+                "heartbeat_at": "2026-06-05T00:00:00+00:00",
+                "latest_stop_reason": "waiting_for_program_synthesis_todos",
+                "updated_at": "2026-06-05T00:01:45+00:00",
+                "worker_id": "worker-updated",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    health = summarize_child_summary_files(
+        [worker],
+        spec=ChildSummaryHealthSpec(
+            waiting_reasons=frozenset({"waiting_for_program_synthesis_todos"}),
+        ),
+        stale_seconds=90.0,
+        now=datetime(2026, 6, 5, 0, 2, 0, tzinfo=timezone.utc).timestamp(),
+    )
+
+    assert health["summary_age_seconds"] == {"worker-updated": 15.0}
+    assert health["stale_count"] == 0
+
+
 def test_supervisor_runtime_timestamp_age_seconds_accepts_iso_z() -> None:
     now = datetime(2026, 6, 5, 0, 2, 0, tzinfo=timezone.utc).timestamp()
 

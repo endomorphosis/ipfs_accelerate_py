@@ -94,6 +94,7 @@ class ChildSummaryHealthSpec:
     scope_field: str = "scope"
     timestamp_fields: tuple[str, ...] = (
         "heartbeat_at",
+        "updated_at",
         "active_packet_last_heartbeat_at",
         "finished_at",
         "created_at",
@@ -658,20 +659,24 @@ def child_summary_age_seconds(
     *,
     timestamp_fields: Sequence[str] = (
         "heartbeat_at",
+        "updated_at",
         "active_packet_last_heartbeat_at",
         "finished_at",
         "created_at",
         "started_at",
     ),
     now: Optional[float] = None,
-) -> Optional[float]:
+    ) -> Optional[float]:
     """Return the age of a child summary from known timestamps or mtime."""
 
     now_epoch = time.time() if now is None else float(now)
+    ages: list[float] = []
     for key in timestamp_fields:
         age_seconds = timestamp_age_seconds(data.get(key), now=now_epoch)
         if age_seconds is not None:
-            return age_seconds
+            ages.append(age_seconds)
+    if ages:
+        return min(ages)
     try:
         return max(0.0, now_epoch - path.stat().st_mtime)
     except OSError:
