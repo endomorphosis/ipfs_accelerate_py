@@ -1864,6 +1864,94 @@ class PortalImplementationDaemon:
         except OSError:
             return False
 
+    def _git_absolute_dir(self, repo: Path) -> Path | None:
+        result = subprocess.run(
+            ["git", "rev-parse", "--absolute-git-dir"],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0 or not result.stdout.strip():
+            return None
+        return Path(result.stdout.strip()).resolve()
+
+    @staticmethod
+    def _submodule_relative_from_config(modules_dir: Path, config_path: Path) -> Path | None:
+        try:
+            relative_parent = config_path.parent.relative_to(modules_dir)
+        except ValueError:
+            return None
+        parts = [part for part in relative_parent.parts if part != "modules"]
+        if not parts:
+            return None
+        return Path(*parts)
+
+    def _repair_stale_submodule_worktree_configs(self, repo_path: Path) -> dict[str, Any]:
+        git_dir = self._git_absolute_dir(repo_path)
+        if git_dir is None:
+            return {"attempted": False, "reason": "git_dir_unavailable", "repo": str(repo_path)}
+        modules_dir = git_dir / "modules"
+        if not modules_dir.is_dir():
+            return {"attempted": False, "reason": "modules_dir_missing", "repo": str(repo_path)}
+
+        repairs: list[dict[str, Any]] = []
+        for config_path in sorted(modules_dir.rglob("config")):
+            module_relative = self._submodule_relative_from_config(modules_dir, config_path)
+            if module_relative is None:
+                continue
+            checkout_path = (repo_path / module_relative).resolve()
+            if not checkout_path.exists():
+                continue
+            current = subprocess.run(
+                ["git", "config", "--file", str(config_path), "--get", "core.worktree"],
+                cwd=repo_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if current.returncode != 0 or not current.stdout.strip():
+                continue
+            current_value = current.stdout.strip()
+            current_path = Path(current_value)
+            current_target = current_path if current_path.is_absolute() else (config_path.parent / current_path)
+            try:
+                if current_target.resolve().exists():
+                    continue
+            except OSError:
+                pass
+
+            new_value = os.path.relpath(checkout_path, config_path.parent.resolve())
+            update = subprocess.run(
+                ["git", "config", "--file", str(config_path), "core.worktree", new_value],
+                cwd=repo_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            repairs.append(
+                {
+                    "config_path": str(config_path),
+                    "module_path": str(module_relative),
+                    "old_worktree": current_value,
+                    "new_worktree": new_value,
+                    "repaired": update.returncode == 0,
+                    "returncode": update.returncode,
+                    "stdout": update.stdout[-4000:],
+                    "stderr": update.stderr[-4000:],
+                }
+            )
+
+        result = {
+            "attempted": True,
+            "repo": str(repo_path),
+            "repaired_count": sum(1 for item in repairs if item.get("repaired", False)),
+            "repairs": repairs,
+        }
+        if repairs:
+            self._record_event("stale_submodule_worktree_config_repair", result)
+        return result
+
     def _git_current_branch(self, cwd: Path) -> str:
         result = subprocess.run(
             ["git", "branch", "--show-current"],
@@ -2546,6 +2634,7 @@ class PortalImplementationDaemon:
         baseline_ref: str = "",
     ) -> dict[str, Any]:
         started_at = utc_now()
+        stale_submodule_worktree_config_repair = self._repair_stale_submodule_worktree_configs(self.repo_root)
         target_branch = self._main_branch_name()
         if baseline_ref and not self._git_ref_is_ancestor(baseline_ref, target_branch):
             result = {
@@ -2564,6 +2653,8 @@ class PortalImplementationDaemon:
                 "identical_untracked_paths": [],
                 "submodule_merge_results": [],
             }
+            if stale_submodule_worktree_config_repair.get("repairs"):
+                result["stale_submodule_worktree_config_repair"] = stale_submodule_worktree_config_repair
             self._record_event("merge_finished", result)
             return result
         merge_lock = self._repo_merge_lock_path()
@@ -2642,6 +2733,8 @@ class PortalImplementationDaemon:
                     "identical_untracked_paths": [],
                     "submodule_merge_results": [],
                 }
+                if stale_submodule_worktree_config_repair.get("repairs"):
+                    result["stale_submodule_worktree_config_repair"] = stale_submodule_worktree_config_repair
                 if llm_workspace_resolver:
                     result["llm_merge_resolver"] = llm_workspace_resolver
                 self._record_event("merge_finished", result)
@@ -2712,6 +2805,8 @@ class PortalImplementationDaemon:
                     "submodule_merge_results": [],
                 }
                 if dirty_overlap:
+                    if stale_submodule_worktree_config_repair.get("repairs"):
+                        result["stale_submodule_worktree_config_repair"] = stale_submodule_worktree_config_repair
                     if llm_merge_resolver:
                         result["llm_merge_resolver"] = llm_merge_resolver
                     self._record_event("merge_finished", result)
@@ -2832,6 +2927,8 @@ class PortalImplementationDaemon:
                 "deterministic_conflict_repair": deterministic_conflict_repair,
                 "submodule_merge_results": submodule_merge_results,
             }
+            if stale_submodule_worktree_config_repair.get("repairs"):
+                result["stale_submodule_worktree_config_repair"] = stale_submodule_worktree_config_repair
             if submodule_conflict_repair:
                 result["submodule_conflict_repair"] = submodule_conflict_repair
             if llm_workspace_resolver:
@@ -3176,6 +3273,7 @@ class PortalImplementationDaemon:
         attempt: int,
     ) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
+        stale_config_repair = self._repair_stale_submodule_worktree_configs(repo_path)
         relatives = self.worktree_submodule_paths if not parent_relative else tuple(self._declared_submodule_paths(repo_path))
         for relative in relatives:
             full_relative = f"{parent_relative.rstrip('/')}/{relative}" if parent_relative else relative
@@ -3186,6 +3284,18 @@ class PortalImplementationDaemon:
             if not self._git_ref_exists_in_repo(source, submodule_branch):
                 continue
             default_branch = self._submodule_default_branch(relative, source)
+            if self._git_ref_is_ancestor_in_repo(source, submodule_branch, default_branch):
+                result = {
+                    "path": full_relative,
+                    "branch": submodule_branch,
+                    "default_branch": default_branch,
+                    "merged": True,
+                    "reason": "already_merged",
+                }
+                if stale_config_repair.get("repairs"):
+                    result["stale_submodule_worktree_config_repair"] = stale_config_repair
+                results.append(result)
+                continue
             dirty = self._run_git(["status", "--porcelain"], cwd=source).stdout.strip()
             if dirty:
                 llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
@@ -3228,17 +3338,6 @@ class PortalImplementationDaemon:
                         }
                     )
                     continue
-            if self._git_ref_is_ancestor_in_repo(source, submodule_branch, default_branch):
-                results.append(
-                    {
-                        "path": full_relative,
-                        "branch": submodule_branch,
-                        "default_branch": default_branch,
-                        "merged": True,
-                        "reason": "already_merged",
-                    }
-                )
-                continue
             if self._git_current_branch(source) != default_branch:
                 checkout = subprocess.run(
                     ["git", "checkout", default_branch],

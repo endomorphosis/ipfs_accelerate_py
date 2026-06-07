@@ -8876,6 +8876,80 @@ def test_implementation_daemon_invokes_llm_resolver_for_dirty_submodule_checkout
     assert any(event["type"] == "submodule_checkout_blocker_resolved" for event in events)
 
 
+def test_implementation_daemon_skips_dirty_submodule_resolver_when_branch_already_merged(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    _git(submodule, "branch", "implementation/auto-001-submodule-libs-child")
+    (submodule / "child.txt").write_text("dirty but unrelated\n", encoding="utf-8")
+
+    capture_path = tmp_path / "unexpected-submodule-dirty-prompt.txt"
+    resolver_script = tmp_path / "unexpected_submodule_dirty_resolver.py"
+    resolver_script.write_text(
+        "import pathlib, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        llm_merge_resolver_command=(
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}"
+        ),
+        llm_merge_resolver_timeout_seconds=5,
+    )
+
+    results = daemon._merge_submodule_branches_to_main(
+        "implementation/auto-001",
+        task=PortalTask(
+            task_id="AUTO-001",
+            title="Skip already merged dirty submodule",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        attempt=1,
+    )
+
+    assert results == [
+        {
+            "path": "libs/child",
+            "branch": "implementation/auto-001-submodule-libs-child",
+            "default_branch": "main",
+            "merged": True,
+            "reason": "already_merged",
+        }
+    ]
+    assert not capture_path.exists()
+    assert (submodule / "child.txt").read_text(encoding="utf-8") == "dirty but unrelated\n"
+
+
+def test_implementation_daemon_repairs_stale_submodule_worktree_config(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    submodule_git_dir = Path(_git(submodule, "rev-parse", "--absolute-git-dir"))
+    stale_worktree = "../../../../../missing/worktree/libs/child"
+    _git(repo, "config", "--file", str(submodule_git_dir / "config"), "core.worktree", stale_worktree)
+
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+    )
+
+    result = daemon._repair_stale_submodule_worktree_configs(repo)
+
+    assert result["repaired_count"] == 1
+    assert result["repairs"][0]["module_path"] == "libs/child"
+    assert result["repairs"][0]["old_worktree"] == stale_worktree
+    assert _git(submodule, "status", "--short") == ""
+
+
 def test_implementation_daemon_commits_llm_resolved_merge(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
