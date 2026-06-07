@@ -8597,6 +8597,65 @@ def test_implementation_daemon_invokes_llm_resolver_for_dirty_checkout_blocker(t
     assert "Dirty paths: blocked.txt" in prompt
 
 
+def test_implementation_daemon_restores_generated_dirty_checkout_overlap_without_llm(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    discovery = repo / "data" / "track" / "discovery" / "generated.md"
+    todo = repo / "data" / "track" / "todo.md"
+    discovery.parent.mkdir(parents=True, exist_ok=True)
+    todo.write_text("# Agent Todos\n", encoding="utf-8")
+    discovery.write_text("base generated\n", encoding="utf-8")
+    _git(repo, "add", "data/track/todo.md", "data/track/discovery/generated.md")
+    _git(repo, "commit", "-m", "base generated output")
+    _git(repo, "checkout", "-b", "implementation/auto-generated")
+    discovery.write_text("branch generated\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "branch generated output")
+    _git(repo, "checkout", "main")
+    discovery.write_text("local generated\n", encoding="utf-8")
+
+    capture_path = tmp_path / "generated-dirty-resolver-prompt.txt"
+    resolver_script = tmp_path / "generated_dirty_resolver.py"
+    resolver_script.write_text(
+        "import pathlib, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo,
+        state_path=repo / "data" / "track" / "state" / "task_state.json",
+        strategy_path=repo / "data" / "track" / "state" / "strategy.json",
+        events_path=repo / "data" / "track" / "state" / "events.jsonl",
+        repo_root=repo,
+        llm_merge_resolver_command=(
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}"
+        ),
+        llm_merge_resolver_timeout_seconds=5,
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-generated",
+        PortalTask(
+            task_id="AUTO-GENERATED",
+            title="Merge generated dirty output",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["merged"] is True
+    assert result["restored_generated_dirty_overlap"][0]["path"] == "data/track/discovery/generated.md"
+    assert result["restored_generated_dirty_overlap"][0]["restored"] is True
+    assert discovery.read_text(encoding="utf-8") == "branch generated\n"
+    assert not capture_path.exists()
+
+
 def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

@@ -2477,14 +2477,24 @@ class PortalImplementationDaemon:
                 }
             if self._path_is_under(checked_out_path, merge_root):
                 dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
+                generated_restore = self._restore_generated_dirty_paths(
+                    checked_out_path,
+                    dirty_paths,
+                    reason="main_merge_worktree_dirty",
+                )
+                if generated_restore:
+                    dirty_paths = sorted(self._dirty_worktree_paths(checked_out_path))
                 if dirty_paths:
-                    return {
+                    result = {
                         "available": False,
                         "reason": "main_merge_worktree_dirty",
                         "target_branch": target_branch,
                         "worktree_path": str(checked_out_path),
                         "dirty_paths": dirty_paths,
                     }
+                    if generated_restore:
+                        result["generated_dirty_restore"] = generated_restore
+                    return result
                 self._run_git(["worktree", "remove", "--force", str(checked_out_path)], cwd=self.repo_root)
                 continue
             return {
@@ -2641,6 +2651,11 @@ class PortalImplementationDaemon:
             merge_workspace_ephemeral = bool(workspace_result.get("ephemeral", False))
             resolved_add_add_conflicts = self._resolve_generated_add_add_conflicts(cwd=merge_workspace)
             identical_untracked_paths = self._identical_untracked_merge_paths(branch_name, cwd=merge_workspace)
+            restored_generated_dirty_overlap = self._restore_generated_dirty_merge_overlap(
+                branch_name,
+                cwd=merge_workspace,
+                ignore_paths=set(identical_untracked_paths),
+            )
             dirty_overlap = self._dirty_merge_conflict_paths(
                 branch_name,
                 cwd=merge_workspace,
@@ -2693,6 +2708,7 @@ class PortalImplementationDaemon:
                     "used_ephemeral_main_worktree": merge_workspace_ephemeral,
                     "identical_untracked_paths": identical_untracked_paths,
                     "resolved_generated_conflicts": resolved_add_add_conflicts,
+                    "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
                     "submodule_merge_results": [],
                 }
                 if dirty_overlap:
@@ -2713,6 +2729,7 @@ class PortalImplementationDaemon:
                     "used_ephemeral_main_worktree": merge_workspace_ephemeral,
                     "started_at": started_at,
                     "resolved_generated_conflicts": resolved_add_add_conflicts,
+                    "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
                 },
             )
             command = [
@@ -2811,6 +2828,7 @@ class PortalImplementationDaemon:
                 "used_ephemeral_main_worktree": merge_workspace_ephemeral,
                 "identical_untracked_paths": identical_untracked_paths,
                 "resolved_generated_conflicts": resolved_add_add_conflicts,
+                "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
                 "deterministic_conflict_repair": deterministic_conflict_repair,
                 "submodule_merge_results": submodule_merge_results,
             }
@@ -3546,6 +3564,78 @@ class PortalImplementationDaemon:
         if ignore_paths:
             overlap -= ignore_paths
         return sorted(overlap)
+
+    def _restore_generated_dirty_merge_overlap(
+        self,
+        branch_name: str,
+        *,
+        cwd: Path | None = None,
+        ignore_paths: set[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        workspace = cwd or self.repo_root
+        dirty_paths = self._dirty_worktree_paths(workspace)
+        if not dirty_paths:
+            return []
+        overlap = dirty_paths & self._branch_changed_paths(branch_name)
+        if ignore_paths:
+            overlap -= ignore_paths
+        return self._restore_generated_dirty_paths(
+            workspace,
+            sorted(overlap),
+            reason="generated_dirty_merge_overlap",
+        )
+
+    def _restore_generated_dirty_paths(
+        self,
+        workspace: Path,
+        dirty_paths: Sequence[str],
+        *,
+        reason: str,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for relative in dirty_paths:
+            if not self._path_is_generated_status_output(relative):
+                continue
+            was_dirty = relative in self._dirty_worktree_paths(workspace)
+            self._restore_or_remove_generated_path_for_commit(workspace, relative)
+            still_dirty = relative in self._dirty_worktree_paths(workspace)
+            results.append(
+                {
+                    "path": relative,
+                    "restored": was_dirty and not still_dirty,
+                    "reason": reason,
+                }
+            )
+        if results:
+            self._record_event(
+                "generated_dirty_path_restore",
+                {"main_worktree_path": str(workspace), "reason": reason, "results": results},
+            )
+        return results
+
+    def _path_is_generated_status_output(self, relative: str) -> bool:
+        if self._path_is_generated_worktree_artifact(relative):
+            return True
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            generated_guardrail_status_filters,
+            path_is_generated_status_output,
+        )
+
+        discovery_dir = self.state_path.parent.parent / "discovery"
+        additional_paths = [path for path in (self.objective_path,) if path is not None]
+        additional_prefixes = [path for path in (self.objective_bundle_dir,) if path is not None]
+        generated_paths, generated_prefixes = generated_guardrail_status_filters(
+            todo_path=self.todo_path,
+            discovery_dir=discovery_dir,
+            repo_root=self.repo_root,
+            additional_generated_paths=additional_paths,
+            additional_generated_prefixes=additional_prefixes,
+        )
+        return path_is_generated_status_output(
+            relative,
+            generated_paths=generated_paths,
+            generated_prefixes=generated_prefixes,
+        )
 
     def _resolve_generated_add_add_conflicts(self, *, cwd: Path | None = None) -> list[dict[str, Any]]:
         workspace = cwd or self.repo_root
