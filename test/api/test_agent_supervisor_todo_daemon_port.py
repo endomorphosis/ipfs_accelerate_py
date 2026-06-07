@@ -2664,7 +2664,7 @@ def test_supervisor_reconciliation_only_disables_producers(tmp_path):
     assert config.worktree_reconciliation_enabled is True
     assert config.retry_budget_guardrail_enabled is False
     assert config.dependency_guardrail_enabled is False
-    assert config.reconciliation_guardrail_enabled is False
+    assert config.reconciliation_guardrail_enabled is True
     assert config.codebase_refill_enabled is False
     assert config.objective_refill_enabled is False
     assert config.llm_merge_resolver_command == ""

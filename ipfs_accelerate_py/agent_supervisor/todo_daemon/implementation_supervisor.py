@@ -3387,7 +3387,7 @@ def supervisor_config_from_args(
         dependency_guardrail_max_findings=args.dependency_guardrail_max_findings,
         dependency_guardrail_commit_outputs=args.dependency_guardrail_commit_outputs,
         dependency_guardrail_commit_subject=args.dependency_guardrail_commit_subject,
-        reconciliation_guardrail_enabled=args.reconciliation_guardrail_enabled and not reconciliation_only,
+        reconciliation_guardrail_enabled=args.reconciliation_guardrail_enabled,
         reconciliation_guardrail_discovery_dir=args.reconciliation_guardrail_discovery_dir,
         reconciliation_guardrail_discovery_output_path=args.reconciliation_guardrail_discovery_output_path,
         reconciliation_guardrail_max_findings=args.reconciliation_guardrail_max_findings,
