@@ -2767,6 +2767,54 @@ def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
     assert not pid_alive(pid)
 
 
+def test_multi_supervisor_runner_cleans_stale_daemon_pid_marker(tmp_path):
+    worker = tmp_path / "worker.py"
+    stale_pid = 999_999_999
+    worker.write_text(
+        "\n".join(
+            [
+                "import signal",
+                "import sys",
+                "import time",
+                "from pathlib import Path",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "Path('state').mkdir(exist_ok=True)",
+                f"Path('state/daemon.pid').write_text('{stale_pid}\\n', encoding='utf-8')",
+                "while True:",
+                "    time.sleep(0.05)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    track = parse_track_spec(
+        "T|worker.py|logs/{stamp}.log|state/supervisor.pid|state/daemon.pid",
+        stamp="RUN",
+    )
+
+    output: list[str] = []
+    result = run_supervisor_tracks(
+        [track],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=0.15,
+        heartbeat_interval_seconds=0.05,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="test runner",
+        output=output.append,
+    )
+
+    heartbeat_lines = [line for line in output if "heartbeat T" in line]
+    assert result["completed"] is True
+    assert heartbeat_lines
+    assert any("daemon_pid=unknown" in line for line in heartbeat_lines)
+    assert any(f"stale_daemon_pid={stale_pid}" in line for line in heartbeat_lines)
+    assert any("daemon_status=stale" in line for line in heartbeat_lines)
+    assert any("removed_stale_daemon_pid_file=true" in line for line in heartbeat_lines)
+    assert not (tmp_path / "state" / "daemon.pid").exists()
+
+
 def test_implementation_supervisor_track_spec_uses_standard_state_layout():
     namespace_paths = agent_supervisor_namespace_paths(Path("/repo"), "virtual_ai_os")
     config = ImplementationSupervisorTrackConfig(

@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Callable, Mapping, Sequence
 
-from .todo_daemon.core import pid_alive, read_pid_file, terminate_pid_tree
+from .todo_daemon.core import pid_alive, read_pid_file, remove_runtime_marker, terminate_pid_tree
 from .wrapper_utils import AgentSupervisorNamespacePaths, apply_env_defaults, env_str
 
 
@@ -671,6 +671,54 @@ def _default_output(message: str) -> None:
     print(message, flush=True)
 
 
+def _remove_stale_pid_marker_if_unchanged(pid_path: Path, stale_pid: int) -> bool:
+    """Remove a dead PID marker only if it still names the dead process."""
+
+    current_pid = read_pid_file(pid_path)
+    if current_pid != stale_pid or pid_alive(current_pid):
+        return False
+    return remove_runtime_marker(pid_path)
+
+
+def daemon_pid_health_fields(
+    pid_path: Path,
+    *,
+    cleanup_stale_marker: bool = False,
+) -> dict[str, object]:
+    """Return heartbeat fields for a managed daemon PID marker."""
+
+    daemon_pid = read_pid_file(pid_path)
+    if not daemon_pid:
+        return {"daemon_pid": None, "daemon_status": "missing"}
+    if pid_alive(daemon_pid):
+        return {"daemon_pid": daemon_pid, "daemon_status": "live"}
+    removed = False
+    if cleanup_stale_marker:
+        removed = _remove_stale_pid_marker_if_unchanged(pid_path, daemon_pid)
+    return {
+        "daemon_pid": None,
+        "daemon_status": "stale",
+        "stale_daemon_pid": daemon_pid,
+        "removed_stale_daemon_pid_file": removed,
+    }
+
+
+def format_daemon_heartbeat_fields(fields: Mapping[str, object]) -> str:
+    """Return compact daemon health fields for master heartbeat logs."""
+
+    daemon_pid = fields.get("daemon_pid")
+    parts = [f"daemon_pid={daemon_pid if daemon_pid else 'unknown'}"]
+    stale_pid = fields.get("stale_daemon_pid")
+    if stale_pid:
+        parts.append(f"stale_daemon_pid={stale_pid}")
+    status = fields.get("daemon_status")
+    if status and status != "live":
+        parts.append(f"daemon_status={status}")
+    if fields.get("removed_stale_daemon_pid_file"):
+        parts.append("removed_stale_daemon_pid_file=true")
+    return " ".join(parts)
+
+
 def start_track(
     track: SupervisorTrack,
     *,
@@ -793,11 +841,17 @@ def run_supervisor_tracks(
             for track in tracks:
                 process = processes.get(track.name)
                 resolved = track.resolve(resolved_repo_root)
-                daemon_pid = read_pid_file(resolved.daemon_pid_path)
+                daemon_fields = daemon_pid_health_fields(
+                    resolved.daemon_pid_path,
+                    cleanup_stale_marker=True,
+                )
                 if process is not None and process.poll() is None and pid_alive(process.pid):
                     _emit(
                         output,
-                        f"heartbeat {track.name} supervisor_pid={process.pid} daemon_pid={daemon_pid or 'unknown'}",
+                        (
+                            f"heartbeat {track.name} supervisor_pid={process.pid} "
+                            f"{format_daemon_heartbeat_fields(daemon_fields)}"
+                        ),
                     )
                     continue
                 old_pid = None if process is None else process.pid
