@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import time
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from hashlib import sha1
@@ -217,23 +218,154 @@ class PortalImplementationSupervisor:
         self.restart_count = 0
         self.last_start_at: float | None = None
 
+    def _supervisor_status_path(self) -> Path:
+        return self.config.state_dir / f"{self.config.state_prefix}_supervisor_status.json"
+
+    def _supervisor_maintenance_timeout_seconds(self) -> float:
+        return max(
+            float(self.config.stale_seconds),
+            float(self.config.implementation_timeout),
+            float(self.config.check_interval) * 4.0,
+            300.0,
+        )
+
+    def _write_supervisor_maintenance_status(
+        self,
+        phase: str,
+        *,
+        status: str,
+        started_at: str,
+        error: str = "",
+    ) -> None:
+        """Refresh supervisor status while recovery/refill work runs without a child daemon."""
+
+        status_path = self._supervisor_status_path()
+        payload = load_json_dict(status_path) or {}
+        now = utc_now()
+        timeout_seconds = self._supervisor_maintenance_timeout_seconds()
+        active = status == "running"
+        payload.update(
+            {
+                "schema": "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor",
+                "status": "agentic_maintenance_started" if active else f"agentic_maintenance_{status}",
+                "updated_at": now,
+                "supervisor_pid": os.getpid(),
+                "supervisor_pid_alive": True,
+                "daemon_pid": None,
+                "daemon_pid_alive": False,
+                "repo_root": str(self.config.repo_root),
+                "current_status_path": str(self.config.state_path),
+                "progress_path": str(self.config.state_path),
+                "state_path": str(self.config.state_path),
+                "child_pid_path": str(self._managed_daemon_pid_path()),
+                "supervisor_lock_path": str(
+                    self.config.state_dir / f"{self.config.state_prefix}_supervisor.lock"
+                ),
+                "task_prefix": self.config.task_prefix,
+                "state_prefix": self.config.state_prefix,
+                "last_agentic_maintenance_status": status,
+                "last_agentic_maintenance_phase": phase,
+                "last_agentic_maintenance_reason": f"recovery_phase:{phase}",
+                "active_agentic_maintenance_started_at": started_at if active else "",
+                "active_agentic_maintenance_timeout_seconds": timeout_seconds,
+                "agentic_timeout_seconds": timeout_seconds,
+                "agentic_stuck_maintenance_timeout_seconds": timeout_seconds,
+                "watchdog_stale_after_seconds": float(self.config.stale_seconds),
+                "watchdog_startup_grace_seconds": max(
+                    30.0,
+                    float(self.config.check_interval) * 2.0,
+                ),
+                "supervisor_heartbeat_seconds": max(0.01, float(self.config.check_interval)),
+            }
+        )
+        if error:
+            payload["last_agentic_maintenance_error"] = error[-1000:]
+        else:
+            payload.pop("last_agentic_maintenance_error", None)
+        write_json_atomic(status_path, payload)
+
+    def _begin_supervisor_maintenance_heartbeat(self, phase: str):
+        """Return phase-update and finish callbacks for long supervisor recovery passes."""
+
+        started_at = utc_now()
+        current = {"phase": phase}
+        stop_event = threading.Event()
+        interval = max(5.0, min(30.0, float(self.config.check_interval) / 2.0))
+
+        def write(status: str = "running", error: str = "") -> None:
+            try:
+                self._write_supervisor_maintenance_status(
+                    current["phase"],
+                    status=status,
+                    started_at=started_at,
+                    error=error,
+                )
+            except Exception:
+                logger.warning("Failed to update supervisor maintenance heartbeat", exc_info=True)
+
+        def heartbeat() -> None:
+            while not stop_event.wait(interval):
+                write()
+
+        thread = threading.Thread(
+            target=heartbeat,
+            name=f"{self.config.state_prefix}-supervisor-maintenance-heartbeat",
+            daemon=True,
+        )
+        write()
+        thread.start()
+
+        def update(next_phase: str) -> None:
+            current["phase"] = next_phase
+            write()
+
+        def finish(status: str = "completed", error: str = "") -> None:
+            write(status=status, error=error)
+            stop_event.set()
+            thread.join(timeout=1.0)
+
+        return update, finish
+
     def run_once(self) -> dict[str, Any]:
+        update_maintenance_phase, finish_maintenance = self._begin_supervisor_maintenance_heartbeat(
+            "run_once"
+        )
+        failed = False
+        try:
+            return self._run_once_with_maintenance(update_maintenance_phase)
+        except Exception as exc:
+            failed = True
+            finish_maintenance("failed", f"{type(exc).__name__}: {exc}")
+            raise
+        finally:
+            if not failed:
+                finish_maintenance("completed")
+
+    def _run_once_with_maintenance(self, update_maintenance_phase) -> dict[str, Any]:
+        update_maintenance_phase("event_log_repair")
         event_log_repair = self.ensure_event_log_file()
+        update_maintenance_phase("main_checkout_repair")
         main_checkout_repair = self.repair_main_checkout_merge_state()
+        update_maintenance_phase("worktree_reconciliation")
         worktree_reconciliation = self.reconcile_backlogged_worktrees()
+        update_maintenance_phase("worktree_cleanup")
         worktree_cleanup = self.cleanup_backlogged_worktrees()
+        update_maintenance_phase("strategy_state_repair")
         strategy_file_repair = self.ensure_strategy_file()
         state_file_repair = self.ensure_state_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
+        update_maintenance_phase("reconciliation_guardrails")
         reconciliation_findings = self.record_reconciliation_guardrails(
             worktree_reconciliation,
             worktree_cleanup,
         )
+        update_maintenance_phase("guardrail_releases")
         guardrail_releases = self.release_completed_guardrail_blocks()
         state = PortalTaskState.load(self.config.state_path)
         now_ts = time.time()
         stuck, reason = self.is_stuck(state, now_ts=now_ts)
         if stuck:
+            update_maintenance_phase("stuck_recovery")
             retry_budget_findings = self.record_retry_budget_guardrails()
             dependency_findings = self.record_dependency_guardrails()
             strategy = self.rewrite_strategy(state, reason)
@@ -256,8 +388,10 @@ class PortalImplementationSupervisor:
                 "worktree_cleanup": worktree_cleanup,
                 "guardrail_unblock_count": len(guardrail_releases),
             }
+        update_maintenance_phase("retry_dependency_guardrails")
         retry_budget_findings = self.record_retry_budget_guardrails()
         dependency_findings = self.record_dependency_guardrails()
+        update_maintenance_phase("objective_refill")
         objective_payload = self.refill_objective_backlog()
         objective_generated_count = int(objective_payload.get("generated_count") or 0)
         objective_refined_goal_count = len(objective_payload.get("refined_goal_ids") or [])
@@ -271,7 +405,9 @@ class PortalImplementationSupervisor:
             codebase_findings = []
             codebase_deferred_reason = "objective_refill_produced_goal_work"
         else:
+            update_maintenance_phase("codebase_refill")
             codebase_findings = self.refill_codebase_backlog()
+        update_maintenance_phase("supervisor_check_event")
         self._record_event(
             "supervisor_check",
             {

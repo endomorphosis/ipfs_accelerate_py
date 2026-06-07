@@ -3988,6 +3988,61 @@ def test_implementation_supervisor_repairs_malformed_state_file(tmp_path):
     assert any(event["type"] == "state_file_repaired" for event in events)
 
 
+def test_implementation_supervisor_run_once_refreshes_recovery_status(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed task
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation: test -f todo.md
+- Acceptance: Completed seed task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            objective_refill_enabled=True,
+        )
+    )
+    status_path = state_dir / "portal_supervisor_status.json"
+    observed_statuses = []
+
+    def fake_objective_refill():
+        observed_statuses.append(json.loads(status_path.read_text(encoding="utf-8")))
+        return {}
+
+    monkeypatch.setattr(supervisor, "refill_objective_backlog", fake_objective_refill)
+
+    supervisor.run_once()
+
+    assert observed_statuses
+    assert observed_statuses[0]["status"] == "agentic_maintenance_started"
+    assert observed_statuses[0]["last_agentic_maintenance_status"] == "running"
+    assert observed_statuses[0]["last_agentic_maintenance_phase"] == "objective_refill"
+    assert observed_statuses[0]["supervisor_pid_alive"] is True
+    assert observed_statuses[0]["daemon_pid_alive"] is False
+    assert observed_statuses[0]["active_agentic_maintenance_timeout_seconds"] >= 300.0
+    final_status = json.loads(status_path.read_text(encoding="utf-8"))
+    assert final_status["status"] == "agentic_maintenance_completed"
+    assert final_status["last_agentic_maintenance_status"] == "completed"
+
+
 def test_implementation_supervisor_check_records_worktree_summary_counts(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
