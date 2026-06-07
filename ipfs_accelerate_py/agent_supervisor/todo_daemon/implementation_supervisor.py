@@ -81,6 +81,7 @@ class PortalSupervisorConfig:
     daemon_interval: float = 300.0
     task_prefix: str = TASK_HEADER_PREFIX
     state_prefix: str = "portal"
+    reconciliation_only: bool = False
     implement: bool = False
     implementation_command: str = ""
     llm_merge_resolver_command: str = ""
@@ -2889,6 +2890,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--reconciliation-only",
+        action="store_true",
+        help=(
+            "Run only supervisor reconciliation/cleanup checks. This disables implementation, "
+            "retry/dependency/reconciliation guardrail writes, and objective/codebase refill scans."
+        ),
+    )
+    parser.add_argument(
         "--no-worktree-reconciliation",
         dest="worktree_reconciliation_enabled",
         action="store_false",
@@ -3178,6 +3187,8 @@ def supervisor_config_from_args(
     resolved_worktree_submodule_paths = (
         args.worktree_submodule_path if worktree_submodule_paths is None else worktree_submodule_paths
     )
+    reconciliation_only = bool(args.reconciliation_only)
+    implement = bool(args.implement and not reconciliation_only)
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -3190,13 +3201,14 @@ def supervisor_config_from_args(
         daemon_interval=args.daemon_interval,
         task_prefix=args.task_prefix,
         state_prefix=args.state_prefix,
-        implement=args.implement,
+        reconciliation_only=reconciliation_only,
+        implement=implement,
         implementation_command=args.implementation_command,
         llm_merge_resolver_command=args.llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
-        use_ephemeral_worktree=args.implement and not args.no_ephemeral_worktree,
+        use_ephemeral_worktree=implement and not args.no_ephemeral_worktree,
         worktree_root=args.worktree_root,
         worktree_submodule_paths=normalize_relative_path_list(resolved_worktree_submodule_paths),
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
@@ -3205,7 +3217,7 @@ def supervisor_config_from_args(
         worktree_scan_cache_enabled=args.worktree_scan_cache_enabled,
         worktree_scan_cache_ttl_seconds=args.worktree_scan_cache_ttl_seconds,
         worktree_scan_cache_path=args.worktree_scan_cache_path,
-        retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled,
+        retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,
         retry_budget_discovery_dir=args.retry_budget_discovery_dir,
         retry_budget_discovery_output_path=args.retry_budget_discovery_output_path,
         validation_retry_budget=args.validation_retry_budget,
@@ -3213,19 +3225,19 @@ def supervisor_config_from_args(
         implementation_retry_budget=args.implementation_retry_budget,
         retry_budget_commit_outputs=args.retry_budget_commit_outputs,
         retry_budget_commit_subject=args.retry_budget_commit_subject,
-        dependency_guardrail_enabled=args.dependency_guardrail_enabled,
+        dependency_guardrail_enabled=args.dependency_guardrail_enabled and not reconciliation_only,
         dependency_guardrail_discovery_dir=args.dependency_guardrail_discovery_dir,
         dependency_guardrail_discovery_output_path=args.dependency_guardrail_discovery_output_path,
         dependency_guardrail_max_findings=args.dependency_guardrail_max_findings,
         dependency_guardrail_commit_outputs=args.dependency_guardrail_commit_outputs,
         dependency_guardrail_commit_subject=args.dependency_guardrail_commit_subject,
-        reconciliation_guardrail_enabled=args.reconciliation_guardrail_enabled,
+        reconciliation_guardrail_enabled=args.reconciliation_guardrail_enabled and not reconciliation_only,
         reconciliation_guardrail_discovery_dir=args.reconciliation_guardrail_discovery_dir,
         reconciliation_guardrail_discovery_output_path=args.reconciliation_guardrail_discovery_output_path,
         reconciliation_guardrail_max_findings=args.reconciliation_guardrail_max_findings,
         reconciliation_guardrail_commit_outputs=args.reconciliation_guardrail_commit_outputs,
         reconciliation_guardrail_commit_subject=args.reconciliation_guardrail_commit_subject,
-        codebase_refill_enabled=args.codebase_refill_scan,
+        codebase_refill_enabled=args.codebase_refill_scan and not reconciliation_only,
         codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
         codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,
         codebase_scan_min_open_tasks=args.codebase_scan_min_open_tasks,
@@ -3236,7 +3248,7 @@ def supervisor_config_from_args(
         codebase_defer_when_objective_refills=args.codebase_defer_when_objective_refills,
         codebase_scan_commit_outputs=args.codebase_scan_commit_outputs,
         codebase_scan_commit_subject=args.codebase_scan_commit_subject,
-        objective_refill_enabled=args.objective_refill_scan,
+        objective_refill_enabled=args.objective_refill_scan and not reconciliation_only,
         objective_path=args.objective_path,
         objective_graph_path=args.objective_graph_path,
         objective_bundle_dir=args.objective_bundle_dir,

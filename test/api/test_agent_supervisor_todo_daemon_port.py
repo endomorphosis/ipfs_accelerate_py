@@ -2639,6 +2639,32 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
     )
 
 
+def test_supervisor_reconciliation_only_disables_producers(tmp_path):
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--implement",
+            "--reconciliation-only",
+            "--codebase-refill-scan",
+            "--objective-refill-scan",
+        ]
+    )
+    config = supervisor_config_from_args(args, repo_root=tmp_path)
+
+    assert config.reconciliation_only is True
+    assert config.implement is False
+    assert config.use_ephemeral_worktree is False
+    assert config.worktree_reconciliation_enabled is True
+    assert config.retry_budget_guardrail_enabled is False
+    assert config.dependency_guardrail_enabled is False
+    assert config.reconciliation_guardrail_enabled is False
+    assert config.codebase_refill_enabled is False
+    assert config.objective_refill_enabled is False
+
+
 def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):
     worker = tmp_path / "worker.py"
     worker.write_text(
