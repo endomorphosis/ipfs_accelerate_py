@@ -6926,6 +6926,55 @@ def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_pa
     assert events[-1]["completion_reason"] == "bundle_work_order"
 
 
+def test_implementation_daemon_commits_dirty_already_completed_todo_status(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Close generated status
+
+- Status: todo
+- Priority: P1
+- Track: ops
+- Outputs: data/evidence.md
+- Validation: test -f data/evidence.md
+- Acceptance: Commit the generated completion status.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed todo")
+    todo_path.write_text(
+        todo_path.read_text(encoding="utf-8").replace("- Status: todo", "- Status: completed"),
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+
+    result = daemon._mark_task_completed_in_todo("ACCEL-001")
+
+    assert result["updated"] is False
+    assert result["reason"] == "already_completed"
+    assert result["commit_result"]["committed"] is True
+    assert _git(repo, "status", "--porcelain", "--", "todo.md") == ""
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "todo_status_reconciled"
+    assert events[-1]["commit_result"]["committed"] is True
+
+
 def test_implementation_daemon_prefers_goal_packet_aggregate_as_primary_work(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

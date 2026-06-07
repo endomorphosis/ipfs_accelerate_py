@@ -1156,14 +1156,27 @@ class PortalImplementationDaemon:
             updated_task_ids.append(task_id)
 
         if not updated_task_ids:
-            return {
+            result = {
                 "updated": False,
                 "task_id": primary_task_id,
                 "reason": "already_completed",
+                "path": str(todo_path),
+                "completion_reason": completion_reason,
                 "updated_task_ids": [],
                 "already_completed_task_ids": already_completed_task_ids,
                 "missing_task_ids": missing_task_ids,
             }
+            if bundle_work_order is not None:
+                result["bundle_work_order"] = bundle_work_order
+            commit_result = self._commit_generated_file_update(
+                todo_path,
+                task_id=primary_task_id,
+                subject=f"{primary_task_id}: mark todo completed",
+            )
+            if commit_result and commit_result.get("reason") != "no_changes":
+                result["commit_result"] = commit_result
+                self._record_event("todo_status_reconciled", result)
+            return result
         tmp_path = todo_path.with_name(f".{todo_path.name}.tmp")
         try:
             tmp_path.write_text("".join(lines), encoding="utf-8")
