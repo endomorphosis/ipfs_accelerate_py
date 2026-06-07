@@ -1228,7 +1228,13 @@ class PortalImplementationDaemon:
                     repo_root=self.repo_root,
                     task_id=task_id,
                     branch="generated-file-update",
-                    extra={"operation": "commit_generated_file_update", "path": str(path), "started_at": started_at},
+                    extra={
+                        "operation": "commit_generated_file_update",
+                        "path": str(path),
+                        "started_at": started_at,
+                        "state_dir": str(self.state_path.parent.resolve()),
+                        "state_path": str(self.state_path.resolve()),
+                    },
                 ),
             )
             repo = self._git_toplevel_for_path(path.parent)
@@ -4196,6 +4202,8 @@ class PortalImplementationDaemon:
             "pid": os.getpid(),
             "owner_script": Path(sys.argv[0]).name,
             "repo_root": str(self.repo_root.resolve()),
+            "state_dir": str(self.state_path.parent.resolve()),
+            "state_path": str(self.state_path.resolve()),
             "task_id": task.task_id,
             "attempt": attempt,
             "branch": branch_name,
@@ -4212,7 +4220,40 @@ class PortalImplementationDaemon:
         repo_root = str(metadata.get("repo_root") or "")
         if repo_root and Path(repo_root).resolve() != self.repo_root.resolve():
             return False
-        return self._lock_owner_is_active(metadata, expected_kind="merge")
+        if not self._lock_owner_is_active(metadata, expected_kind="merge"):
+            return False
+        if self._lock_targets_current_daemon_state(metadata):
+            return self._lock_task_is_active(metadata)
+        return True
+
+    def _lock_targets_current_daemon_state(self, metadata: dict[str, Any]) -> bool:
+        state_path = str(metadata.get("state_path") or "")
+        if state_path:
+            try:
+                return Path(state_path).resolve() == self.state_path.resolve()
+            except OSError:
+                return False
+        state_dir = str(metadata.get("state_dir") or "")
+        if state_dir:
+            try:
+                return Path(state_dir).resolve() == self.state_path.parent.resolve()
+            except OSError:
+                return False
+        owner_script = str(metadata.get("owner_script") or "")
+        return bool(owner_script and owner_script == Path(sys.argv[0]).name)
+
+    def _lock_task_is_active(self, metadata: dict[str, Any]) -> bool:
+        task_id = str(metadata.get("task_id") or "")
+        if not task_id:
+            return True
+        try:
+            state = PortalTaskState.load(self.state_path)
+        except Exception:
+            return True
+        if state.active_task_id != task_id:
+            return False
+        branch = str(metadata.get("branch") or "")
+        return not branch or not state.active_branch or state.active_branch == branch
 
     def _lock_owner_is_active(self, metadata: dict[str, Any], *, expected_kind: str) -> bool:
         kind = str(metadata.get("kind") or "")

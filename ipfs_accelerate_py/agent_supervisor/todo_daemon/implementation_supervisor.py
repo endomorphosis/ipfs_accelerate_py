@@ -684,7 +684,12 @@ class PortalImplementationSupervisor:
                 repo_root=repo_root,
                 task_id=self._active_task_id_for_lock(),
                 branch="supervisor-main-checkout-repair",
-                extra={"operation": "repair_main_checkout_merge_state", "started_at": utc_now()},
+                extra={
+                    "operation": "repair_main_checkout_merge_state",
+                    "started_at": utc_now(),
+                    "state_dir": str(self.config.state_dir.resolve()),
+                    "state_path": str(self.config.state_path.resolve()),
+                },
             ),
         )
         try:
@@ -803,13 +808,51 @@ class PortalImplementationSupervisor:
         return checkout_mutation_lock_path(self.config.repo_root)
 
     def _checkout_lock_owner_is_active(self, metadata: dict[str, Any]) -> bool:
-        return checkout_lock_owner_is_active(
+        if not checkout_lock_owner_is_active(
             metadata,
             expected_kind="merge",
             expected_repo_root=self.config.repo_root,
             process_command_line=process_command_line,
             process_is_running=process_is_running,
-        )
+        ):
+            return False
+        if self._checkout_lock_targets_current_supervisor_state(metadata):
+            return self._checkout_lock_task_is_active(metadata)
+        return True
+
+    def _checkout_lock_targets_current_supervisor_state(self, metadata: dict[str, Any]) -> bool:
+        state_path = str(metadata.get("state_path") or "")
+        if state_path:
+            try:
+                return Path(state_path).resolve() == self.config.state_path.resolve()
+            except OSError:
+                return False
+        state_dir = str(metadata.get("state_dir") or "")
+        if state_dir:
+            try:
+                return Path(state_dir).resolve() == self.config.state_dir.resolve()
+            except OSError:
+                return False
+        owner_script = str(metadata.get("owner_script") or "")
+        owner_names = {
+            Path(path).name
+            for path in (self.config.daemon_script_path, self.config.supervisor_script_path)
+            if path is not None
+        }
+        return bool(owner_script and owner_script in owner_names)
+
+    def _checkout_lock_task_is_active(self, metadata: dict[str, Any]) -> bool:
+        task_id = str(metadata.get("task_id") or "")
+        if not task_id:
+            return True
+        try:
+            state = PortalTaskState.load(self.config.state_path)
+        except Exception:
+            return True
+        if state.active_task_id != task_id:
+            return False
+        branch = str(metadata.get("branch") or "")
+        return not branch or not state.active_branch or state.active_branch == branch
 
     def _try_acquire_checkout_lock(self, lock_path: Path) -> tuple[int | None, str, dict[str, Any] | None]:
         lock_path.parent.mkdir(parents=True, exist_ok=True)

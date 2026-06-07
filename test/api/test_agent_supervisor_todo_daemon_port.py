@@ -7753,6 +7753,63 @@ def test_implementation_supervisor_defers_merge_repair_when_checkout_lock_is_liv
     assert events[-1]["type"] == "main_checkout_merge_state_repair_deferred"
 
 
+def test_implementation_supervisor_clears_stale_same_state_checkout_lock(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "conflict.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/conflict")
+    target.write_text("feature\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "feature")
+    _git(repo, "checkout", "main")
+    target.write_text("main\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "main")
+    merge = subprocess.run(["git", "merge", "implementation/conflict"], cwd=repo, text=True, capture_output=True)
+    assert merge.returncode != 0
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+    supervisor._repo_merge_lock_path().write_text(
+        json.dumps(
+            {
+                "kind": "merge",
+                "pid": os.getpid(),
+                "owner_script": Path(sys.argv[0]).name,
+                "repo_root": str(repo.resolve()),
+                "state_dir": str(state_dir.resolve()),
+                "state_path": str((state_dir / "task_state.json").resolve()),
+                "task_id": "AUTO-404",
+                "branch": "implementation/stale",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result["repaired"] is True
+    assert result["reason"] == "merge_aborted_without_resolver"
+    assert supervisor._git_merge_head(repo) == ""
+    assert not supervisor._repo_merge_lock_path().exists()
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "checkout_mutation_lock_cleared" for event in events)
+
+
 def test_implementation_supervisor_deterministically_repairs_objective_heap_merge(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7899,6 +7956,53 @@ def test_implementation_daemon_defers_generated_commit_when_checkout_lock_is_liv
     assert result["reason"] == "checkout_mutation_lock_exists"
     assert result["lock_owner_task_id"] == "OTHER-2"
     assert _git(repo, "status", "--porcelain", "--", "generated.md").startswith("M ")
+
+
+def test_implementation_daemon_clears_stale_same_state_merge_lock_for_generated_commit(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    generated = repo / "generated.md"
+    generated.write_text("seed\n", encoding="utf-8")
+    _git(repo, "add", "generated.md")
+    _git(repo, "commit", "-m", "seed")
+    generated.write_text("changed\n", encoding="utf-8")
+
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+    )
+    daemon._repo_merge_lock_path().write_text(
+        json.dumps(
+            {
+                "kind": "merge",
+                "pid": os.getpid(),
+                "owner_script": Path(sys.argv[0]).name,
+                "repo_root": str(repo.resolve()),
+                "state_dir": str(state_dir.resolve()),
+                "state_path": str((state_dir / "task_state.json").resolve()),
+                "task_id": "ACCEL-404",
+                "branch": "implementation/stale",
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = daemon._commit_generated_file_update(generated, task_id="ACCEL-2", subject="generated update")
+
+    assert result["committed"] is True
+    assert result["commit"]
+    assert not daemon._repo_merge_lock_path().exists()
+    assert _git(repo, "status", "--porcelain", "--", "generated.md") == ""
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "merge_lock_cleared" for event in events)
 
 
 def test_implementation_daemon_classifies_signal_and_timeout_returncodes(tmp_path):
