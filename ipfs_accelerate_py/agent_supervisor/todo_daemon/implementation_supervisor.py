@@ -278,6 +278,22 @@ class PortalImplementationSupervisor:
                 "stuck": False,
                 "active_task_id": state.active_task_id,
                 "completed_count": state.completed_count,
+                "worktree_reconciliation_candidate_count": int(
+                    worktree_reconciliation.get("candidate_count") or 0
+                ),
+                "worktree_reconciliation_processed_count": int(
+                    worktree_reconciliation.get("processed_count") or 0
+                ),
+                "worktree_reconciliation_reconciled_count": int(
+                    worktree_reconciliation.get("reconciled_count") or 0
+                ),
+                "worktree_reconciliation_preflight_blocked_count": int(
+                    worktree_reconciliation.get("preflight_blocked_count") or 0
+                ),
+                "worktree_cleanup_removed_count": int(worktree_cleanup.get("removed_count") or 0),
+                "worktree_cleanup_dirty_group_count": len(
+                    worktree_cleanup.get("dirty_worktree_groups") or {}
+                ),
                 "retry_budget_count": len(retry_budget_findings),
                 "dependency_guardrail_count": len(dependency_findings),
                 "reconciliation_guardrail_count": len(reconciliation_findings),
@@ -1628,7 +1644,7 @@ class PortalImplementationSupervisor:
             "scan_cache_hit_count": scan_cache_hit_count,
             "scan_cache_written": self._write_worktree_scan_cache(scan_cache),
         }
-        if removed:
+        if removed or skip_summary["dirty_worktree_groups"]:
             self._record_event("merged_worktree_cleanup", result)
         return result
 

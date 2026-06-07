@@ -3796,6 +3796,59 @@ def test_implementation_supervisor_repairs_malformed_state_file(tmp_path):
     assert any(event["type"] == "state_file_repaired" for event in events)
 
 
+def test_implementation_supervisor_check_records_worktree_summary_counts(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            retry_budget_guardrail_enabled=False,
+            dependency_guardrail_enabled=False,
+            reconciliation_guardrail_enabled=False,
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "reconcile_backlogged_worktrees",
+        lambda: {
+            "candidate_count": 5,
+            "processed_count": 3,
+            "reconciled_count": 1,
+            "preflight_blocked_count": 2,
+        },
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "cleanup_backlogged_worktrees",
+        lambda: {
+            "removed_count": 4,
+            "dirty_worktree_groups": {"content_not_in_target": {"count": 7}},
+        },
+    )
+
+    supervisor.run_once()
+
+    events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    check = [event for event in events if event["type"] == "supervisor_check"][-1]
+    assert check["worktree_reconciliation_candidate_count"] == 5
+    assert check["worktree_reconciliation_processed_count"] == 3
+    assert check["worktree_reconciliation_reconciled_count"] == 1
+    assert check["worktree_reconciliation_preflight_blocked_count"] == 2
+    assert check["worktree_cleanup_removed_count"] == 4
+    assert check["worktree_cleanup_dirty_group_count"] == 1
+
+
 def test_implementation_supervisor_repairs_event_log_directory(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7268,13 +7321,14 @@ def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path
         path.mkdir()
         records.append({"worktree": str(path), "branch": f"refs/heads/implementation/unsupported-{index:02d}", "HEAD": f"u{index}"})
 
+    state_dir = repo / "state"
     supervisor = TodoImplementationSupervisor(
         TodoSupervisorConfig(
             todo_path=repo / "todo.md",
-            state_path=repo / "state" / "task_state.json",
-            strategy_path=repo / "state" / "strategy.json",
-            events_path=repo / "state" / "events.jsonl",
-            state_dir=repo / "state",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
             repo_root=repo,
             worktree_root=worktree_root,
         )
@@ -7303,6 +7357,13 @@ def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path
     assert sum(1 for item in evidence_calls if item.startswith("content-")) == 20
     assert sum(1 for item in evidence_calls if item.startswith("unsupported-")) == 3
     assert result["dirty_worktree_groups"]["content_not_in_target"]["samples"][-1]["dirty_evidence"]
+    events = [
+        json.loads(line)
+        for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["type"] == "merged_worktree_cleanup"
+    assert events[-1]["removed_count"] == 0
+    assert events[-1]["dirty_worktree_groups"]["content_not_in_target"]["count"] == 25
 
 
 def test_implementation_supervisor_reuses_cleanup_scan_cache_for_dirty_blockers(tmp_path, monkeypatch):
