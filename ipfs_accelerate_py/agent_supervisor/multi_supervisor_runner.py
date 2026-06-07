@@ -654,6 +654,8 @@ def implementation_supervisor_common_args(
     effective_llm_merge_resolver_command = llm_merge_resolver_command or implementation_command
     args = [
         "--implement",
+        "--objective-refill-scan",
+        "--codebase-refill-scan",
         "--stale-seconds",
         str(stale_seconds),
         "--check-interval",

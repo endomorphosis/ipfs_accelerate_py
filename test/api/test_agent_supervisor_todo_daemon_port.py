@@ -3041,6 +3041,8 @@ def test_multi_supervisor_common_args_from_parsed_defaults(monkeypatch):
     args = common_args_from_parsed_args(parsed)
     tracks = tracks_from_parsed_args(parsed)
 
+    assert "--objective-refill-scan" in args
+    assert "--codebase-refill-scan" in args
     assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
     assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "22"
