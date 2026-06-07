@@ -37,6 +37,7 @@ from .objective_graph import (
     safe_bundle_key,
 )
 from .todo_daemon.implementation_daemon import parse_task_file
+from .validation_commands import split_validation_commands
 from .wrapper_utils import AgentSupervisorNamespacePaths
 
 
@@ -2218,6 +2219,7 @@ def validation_retry_task_block(
     outputs = list(getattr(source_task, "outputs", []) or [])
     if discovery_output_path not in outputs:
         outputs.append(discovery_output_path)
+    validation_command = safe_retry_validation_command(failed_command, discovery_path=discovery_path)
     return f"""## {task_id} Resolve validation retry-budget failure for {source_task.task_id}
 
 - Status: todo
@@ -2226,9 +2228,25 @@ def validation_retry_task_block(
 - Track: ops
 - Depends on: {", ".join(depends_on)}
 - Outputs: {", ".join(outputs)}
-- Validation: {failed_command}
+- Validation: {validation_command}
 - Acceptance: Retry-budget guardrail filed this from repeated validation failures in {source_task.task_id}. Use evidence in {discovery_path} to fix the validation blocker, then mark this repair task completed so the supervisor can release {source_task.task_id} from strategy blocked_tasks.
 """
+
+
+def safe_retry_validation_command(command: str, *, discovery_path: Path) -> str:
+    """Return a parseable validation command for a retry-budget follow-up task."""
+
+    stripped = str(command or "").strip()
+    if stripped:
+        commands = split_validation_commands(stripped)
+        try:
+            for parsed_command in commands:
+                shlex.split(parsed_command)
+        except ValueError:
+            commands = []
+        if commands:
+            return stripped
+    return f"test -f {shlex.quote(str(discovery_path))}"
 
 
 def implementation_retry_task_block(

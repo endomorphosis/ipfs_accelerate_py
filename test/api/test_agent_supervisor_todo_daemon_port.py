@@ -5881,6 +5881,69 @@ def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):
     assert any(event["type"] == "retry_budget_guardrail" for event in supervisor_events)
 
 
+def test_validation_retry_budget_uses_safe_validation_when_failed_command_is_malformed(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Fix validation command
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.yml
+- Validation: python3 -c 'import pathlib, sys; p=pathlib.Path(sys.argv[1]); assert p.read_text()' src/runtime.yml
+- Acceptance: Fix the repeated validation blocker.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    events_path = state_dir / "auto_events.jsonl"
+    events_path.parent.mkdir(parents=True)
+    malformed_command = "python3 -c 'import pathlib, sys"
+    failure = {
+        "type": "implementation_finished",
+        "task_id": "AUTO-001",
+        "attempt": 1,
+        "returncode": 2,
+        "validation_result": {
+            "attempted": True,
+            "passed": False,
+            "failed_command": malformed_command,
+        },
+        "merge_result": {"attempted": False, "merged": False, "reason": "not_attempted"},
+        "log_path": "state/implementation_logs/auto-001-attempt-1.log",
+    }
+    events_path.write_text(json.dumps(failure) + "\n" + json.dumps({**failure, "attempt": 2}) + "\n", encoding="utf-8")
+    discovery_dir = repo / "discovery"
+    config = TodoSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "auto_task_state.json",
+        strategy_path=state_dir / "auto_strategy.json",
+        events_path=state_dir / "auto_supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        task_prefix="## AUTO-",
+        state_prefix="auto",
+        implementation_retry_budget=0,
+        validation_retry_budget=2,
+        merge_retry_budget=0,
+        retry_budget_discovery_dir=discovery_dir,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["retry_budget_count"] == 1
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert "## AUTO-002 Resolve validation retry-budget failure for AUTO-001" in todo_text
+    assert f"- Validation: test -f {discovery_dir}" in todo_text
+    assert malformed_command in next(discovery_dir.glob("*retry-budget.md")).read_text(encoding="utf-8")
+
+
 def test_implementation_supervisor_refines_objective_goals_before_generating_todos(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
