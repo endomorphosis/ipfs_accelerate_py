@@ -1200,6 +1200,7 @@ def scan_objective_gaps(
     objective_path: Path,
     max_findings: int = 10,
     seen_fingerprints: Iterable[str] = (),
+    force_goal_ids: Iterable[str] = (),
     embedding_min_score: float = DEFAULT_EMBEDDING_MIN_SCORE,
     summary_prefix: str = DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX,
     surplus_findings_per_goal: int = DEFAULT_SURPLUS_FINDINGS_PER_GOAL,
@@ -1225,6 +1226,7 @@ def scan_objective_gaps(
         embedding_min_score=embedding_min_score,
     )
     seen = {str(item) for item in seen_fingerprints if str(item).strip()}
+    forced_goal_ids = {str(item) for item in force_goal_ids if str(item).strip()}
     findings: list[ObjectiveFinding] = []
     candidate_limit = objective_scan_candidate_limit(
         max_findings=max_findings,
@@ -1247,7 +1249,8 @@ def scan_objective_gaps(
             min_terms_per_todo=surplus_min_terms_per_todo,
         ):
             fingerprint = objective_fingerprint(goal, candidate_missing_terms)
-            if fingerprint in seen:
+            forced_goal = goal.goal_id in forced_goal_ids
+            if fingerprint in seen and not forced_goal:
                 continue
             bundle_key = goal.bundle_key(candidate_missing_terms)
             finding = ObjectiveFinding(
@@ -1293,7 +1296,8 @@ def scan_objective_gaps(
                 ),
             )
             findings.append(finding)
-            seen.add(fingerprint)
+            if not forced_goal:
+                seen.add(fingerprint)
             if len(findings) >= candidate_limit:
                 break
         if len(findings) >= candidate_limit:
@@ -1565,6 +1569,7 @@ def generate_objective_todos(
     depends_on: Sequence[str] = (),
     max_findings: int = 10,
     seen_fingerprints: Iterable[str] = (),
+    force_goal_ids: Iterable[str] = (),
     persist_ast_dataset: bool = True,
     write_todo_vector_index: bool = True,
     todo_vector_index_path: Path | None = None,
@@ -1582,6 +1587,7 @@ def generate_objective_todos(
         objective_path=objective_path,
         max_findings=max_findings,
         seen_fingerprints=seen_fingerprints,
+        force_goal_ids=force_goal_ids,
         summary_prefix=summary_prefix,
         surplus_findings_per_goal=surplus_findings_per_goal,
         surplus_min_terms_per_todo=surplus_min_terms_per_todo,

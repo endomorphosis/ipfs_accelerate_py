@@ -256,6 +256,11 @@ def run_objective_daemon(args: argparse.Namespace) -> dict[str, Any]:
         depends_on=split_csv(args.depends_on),
         max_findings=args.max_findings,
         seen_fingerprints=seen_fingerprints,
+        force_goal_ids=[
+            *ensured_goal_ids,
+            *seeded_interoperability_goal_ids,
+            *refined_goal_ids,
+        ],
         persist_ast_dataset=not args.no_persist_ast_dataset,
         write_todo_vector_index=not getattr(args, "no_todo_vector_index", False),
         todo_vector_index_path=getattr(args, "todo_vector_index_path", None),

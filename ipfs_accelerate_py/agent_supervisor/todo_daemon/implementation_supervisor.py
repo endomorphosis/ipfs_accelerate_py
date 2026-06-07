@@ -400,10 +400,10 @@ class PortalImplementationSupervisor:
         if (
             self.config.codebase_defer_when_objective_refills
             and self.config.objective_refill_enabled
-            and (objective_generated_count > 0 or objective_refined_goal_count > 0 or objective_seeded_goal_count > 0)
+            and objective_generated_count > 0
         ):
             codebase_findings = []
-            codebase_deferred_reason = "objective_refill_produced_goal_work"
+            codebase_deferred_reason = "objective_refill_generated_todos"
         else:
             update_maintenance_phase("codebase_refill")
             codebase_findings = self.refill_codebase_backlog()

@@ -23,7 +23,7 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap
+from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap, scan_objective_gaps
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
 from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
@@ -5366,9 +5366,66 @@ def test_implementation_supervisor_defers_codebase_scan_when_objective_refills(t
     todo_text = todo_path.read_text(encoding="utf-8")
     assert result["objective_refill_count"] == 1
     assert result["codebase_refill_count"] == 0
-    assert result["codebase_deferred_reason"] == "objective_refill_produced_goal_work"
+    assert result["codebase_deferred_reason"] == "objective_refill_generated_todos"
     assert "Close objective gap" in todo_text
     assert "Resolve code annotation" not in todo_text
+
+
+def test_implementation_supervisor_runs_codebase_scan_after_goal_only_objective_refill(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed seed
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: Seed task.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md")
+    _git(repo, "commit", "-m", "seed completed board")
+    state_dir = repo / "state"
+    config = TodoSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        task_prefix="## AUTO-",
+        objective_refill_enabled=True,
+        codebase_refill_enabled=True,
+    )
+    supervisor = TodoImplementationSupervisor(config)
+    monkeypatch.setattr(
+        supervisor,
+        "refill_objective_backlog",
+        lambda: {"generated_count": 0, "seeded_interoperability_goal_ids": ["OBJ-G001"]},
+    )
+    monkeypatch.setattr(supervisor, "refill_codebase_backlog", lambda: [{"fingerprint": "scan"}])
+
+    result = supervisor.run_once()
+
+    assert result["objective_refill_count"] == 0
+    assert result["objective_seeded_interoperability_goal_count"] == 1
+    assert result["codebase_refill_count"] == 1
+    assert result["codebase_deferred_reason"] == ""
 
 
 def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, monkeypatch):
@@ -6589,6 +6646,29 @@ def test_objective_daemon_suppresses_existing_discovery_fingerprint(tmp_path):
     assert todo_path.read_text(encoding="utf-8").count("## ACCEL-001 ") == 1
 
 
+def test_objective_gap_force_goal_ids_bypasses_seen_fingerprint(tmp_path):
+    repo, objective_path, _todo_path = _seed_repo(tmp_path)
+
+    first = scan_objective_gaps(repo, objective_path=objective_path, max_findings=1)
+    suppressed = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        seen_fingerprints=[first[0].fingerprint],
+    )
+    forced = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        seen_fingerprints=[first[0].fingerprint],
+        force_goal_ids=[first[0].goal_id],
+    )
+
+    assert first[0].goal_id == "VAIOS-G010"
+    assert suppressed == []
+    assert [finding.goal_id for finding in forced] == ["VAIOS-G010"]
+
+
 def test_objective_daemon_creates_tracking_document_and_graph(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6874,6 +6954,13 @@ def test_objective_daemon_seeds_interoperability_goals_from_submodules(tmp_path)
     assert "interface_descriptor" in thought_kinds
     assert "mcp_descriptor" in thought_kinds
     assert "package_manifest" in thought_kinds
+
+    second = run_objective_daemon(args)
+    objective_text = objective_path.read_text(encoding="utf-8")
+
+    assert second["seeded_interoperability_goal_ids"] == []
+    assert objective_text.count("Interoperate hallucinate_app with swissknife") == 1
+    assert objective_text.count("Interoperate hallucinate_app with mcp_plus_plus") == 1
 
 
 def test_objective_daemon_seeds_all_interoperability_pairs_without_focus(tmp_path):

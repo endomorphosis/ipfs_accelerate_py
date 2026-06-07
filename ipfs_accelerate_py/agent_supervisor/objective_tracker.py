@@ -631,6 +631,16 @@ def interoperability_pairs(submodules: Sequence[str], *, focus: Sequence[str] = 
     return pairs
 
 
+def interoperability_pair_key(value: str | Sequence[str]) -> str:
+    """Return a stable key for an unordered interoperability component pair."""
+
+    if isinstance(value, str):
+        terms = split_terms(value)
+    else:
+        terms = [str(item).strip() for item in value if str(item).strip()]
+    return "\0".join(sorted(" ".join(term.split()).lower() for term in terms if term))
+
+
 def _component_pair_metadata(
     left: RepositoryComponent | None,
     right: RepositoryComponent | None,
@@ -686,7 +696,7 @@ def append_interoperability_goals(
     text = objective_path.read_text(encoding="utf-8")
     goals = parse_goal_heap(text)
     existing_pairs = {
-        " ".join(split_terms(str(goal.fields.get("interoperability_pair") or ""))).lower()
+        interoperability_pair_key(str(goal.fields.get("interoperability_pair") or ""))
         for goal in goals
         if str(goal.fields.get("interoperability_pair") or "").strip()
     }
@@ -705,7 +715,7 @@ def append_interoperability_goals(
         return current
 
     for left, right in pairs:
-        pair_key = " ".join(sorted((left, right))).lower()
+        pair_key = interoperability_pair_key((left, right))
         if pair_key in existing_pairs:
             continue
         goal_id = allocate_goal_id()
