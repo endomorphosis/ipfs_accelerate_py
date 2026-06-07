@@ -4973,6 +4973,7 @@ def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
         state_dir=state_dir,
         repo_root=repo,
         task_prefix="## AUTO-",
+        dependency_guardrail_enabled=False,
         codebase_refill_enabled=True,
         codebase_scan_discovery_dir=repo / "discovery",
         codebase_scan_min_open_tasks=0,
@@ -4988,6 +4989,92 @@ def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
     assert strategy["last_codebase_scan_mode"] == "drained_exhaustive"
     assert strategy["last_drained_codebase_scan_task_count"] == 1
     assert list((repo / "discovery").glob("*-auto-002-codebase-scan-*.md"))
+
+
+def test_implementation_supervisor_refills_no_ready_completed_queue(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        """def route_request(request):
+    # TODO: inspect no-ready supervisor refill
+    return request
+""",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed seed
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: Seed task.
+
+## AUTO-002 Waiting on unavailable prerequisite
+
+- Status: todo
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on: AUTO-999
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: Waiting task.
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "todo.md", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed no-ready backlog")
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    (state_dir / "task_state.json").write_text(
+        json.dumps(
+            {
+                "task_statuses": {"AUTO-001": "completed", "AUTO-002": "waiting"},
+                "completed_count": 1,
+                "ready_count": 0,
+                "waiting_count": 1,
+                "blocked_count": 0,
+                "task_count": 2,
+            }
+        ),
+        encoding="utf-8",
+    )
+    config = TodoSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        task_prefix="## AUTO-",
+        dependency_guardrail_enabled=False,
+        codebase_refill_enabled=True,
+        codebase_scan_discovery_dir=repo / "discovery",
+        codebase_scan_min_open_tasks=0,
+        codebase_scan_max_findings=1,
+        codebase_scan_cooldown_seconds=21600,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["codebase_refill_count"] == 1
+    assert "## AUTO-003 Resolve code annotation in src/runtime.py:2" in todo_path.read_text(encoding="utf-8")
+    strategy = json.loads((state_dir / "strategy.json").read_text(encoding="utf-8"))
+    assert strategy["last_codebase_scan_mode"] == "runnable_drained_exhaustive"
+    assert strategy["last_drained_codebase_scan_task_count"] == 2
 
 
 def test_implementation_supervisor_defers_codebase_scan_when_objective_refills(tmp_path):
@@ -7806,6 +7893,103 @@ def test_implementation_supervisor_records_reconciliation_guardrail_for_dirty_ma
     assert strategy["reconciliation_guardrail_findings"][0]["follow_up_task_id"] == "PORTAL-001"
     events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "reconciliation_guardrail"
+
+
+def test_reconciliation_guardrail_ignores_generated_dirty_main_evidence(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "discovery"
+    stale_discovery = discovery_dir / "stale.md"
+    stale_discovery.parent.mkdir(parents=True)
+    stale_discovery_text = "# ACCEL-001 Reconciliation Guardrail\n\nCandidate count: 2\n"
+    stale_discovery.write_text(stale_discovery_text, encoding="utf-8")
+    todo_text = (
+        "# Agent Todos\n\n"
+        "## ACCEL-001 Resolve dirty main checkout blocking 2 worktree merges\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P1\n"
+        "- Track: ops\n"
+        "- Fingerprint: original\n"
+        "- Dedupe key: reconciliation_guardrail:main_checkout_dirty\n"
+        "- Validation: test -f "
+        f"{stale_discovery}\n"
+        "- Acceptance: Existing guardrail.\n"
+    )
+    todo_path.write_text(todo_text, encoding="utf-8")
+
+    findings = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_dirty": True,
+            "candidate_count": 2,
+            "main_status_short": [" M discovery/stale.md", " M todo.md"],
+            "main_dirty_evidence": {
+                "status_short": [" M discovery/stale.md", " M todo.md"],
+                "status_paths": ["discovery/stale.md", "todo.md"],
+                "path_categories": {"modified": 2},
+                "name_status": "M\tdiscovery/stale.md\nM\ttodo.md",
+            },
+            "candidates": [{"branch": "implementation/example", "path": "/tmp/example"}],
+        },
+        task_prefix="ACCEL-",
+        repo_root=tmp_path,
+    )
+
+    assert findings == []
+    assert todo_path.read_text(encoding="utf-8") == todo_text
+    assert stale_discovery.read_text(encoding="utf-8") == stale_discovery_text
+
+
+def test_reconciliation_guardrail_filters_generated_submodule_todo_status(tmp_path):
+    repo = tmp_path / "repo"
+    todo_path = repo / "hallucinate_app" / "docs" / "todo.md"
+    todo_path.parent.mkdir(parents=True)
+    (repo / "hallucinate_app" / ".git").write_text("gitdir: ../.git/modules/hallucinate_app\n", encoding="utf-8")
+    (repo / "src").mkdir(parents=True)
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    discovery_dir = repo / "data" / "discovery"
+
+    findings = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=repo / "state" / "strategy.json",
+        discovery_dir=discovery_dir,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_dirty": True,
+            "candidate_count": 3,
+            "main_status_short": [
+                " m hallucinate_app",
+                " M data/discovery/existing.md",
+                " M src/runtime.py",
+            ],
+            "main_dirty_evidence": {
+                "status_short": [
+                    " m hallucinate_app",
+                    " M data/discovery/existing.md",
+                    " M src/runtime.py",
+                ],
+                "status_paths": ["hallucinate_app", "data/discovery/existing.md", "src/runtime.py"],
+                "path_categories": {"modified": 2, "other_dirty": 1},
+                "name_status": "M\thallucinate_app\nM\tdata/discovery/existing.md\nM\tsrc/runtime.py",
+            },
+            "candidates": [{"branch": "implementation/example", "path": "/tmp/example"}],
+        },
+        task_prefix="ACCEL-",
+        repo_root=repo,
+    )
+
+    assert len(findings) == 1
+    discovery_path = Path(findings[0]["discovery_path"])
+    manifest = json.loads(discovery_path.read_text(encoding="utf-8").split("```json\n", 1)[1].split("\n```", 1)[0])
+    evidence = manifest["main_dirty_evidence"]
+    assert evidence["status_paths"] == ["src/runtime.py"]
+    assert evidence["path_categories"] == {"modified": 1}
+    assert "hallucinate_app" in evidence["filtered_generated_status_paths"]
+    assert "data/discovery/existing.md" in evidence["filtered_generated_status_paths"]
 
 
 def test_reconciliation_guardrail_records_use_full_dirty_group_counts():

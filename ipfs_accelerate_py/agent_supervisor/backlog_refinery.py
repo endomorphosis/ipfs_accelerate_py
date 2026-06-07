@@ -318,6 +318,48 @@ def effective_open_task_count(
     return sum(1 for status in normalized.values() if status not in {"completed", "blocked"})
 
 
+def refill_state_counts(
+    todo_text: str,
+    *,
+    state_path: Path | None = None,
+    task_prefix: str = DEFAULT_TASK_ID_PREFIX,
+) -> dict[str, int]:
+    if state_path is None or not state_path.exists():
+        return {}
+    payload = load_json_dict(state_path)
+    statuses = payload.get("task_statuses")
+    if not isinstance(statuses, dict):
+        return {}
+    task_ids = set(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
+    normalized = {str(task_id): str(status).lower() for task_id, status in statuses.items()}
+    if set(normalized) != task_ids:
+        return {}
+    try:
+        state_task_count = int(payload.get("task_count") or 0)
+    except (TypeError, ValueError):
+        return {}
+    if state_task_count != len(task_ids):
+        return {}
+
+    def count(name: str, fallback: int) -> int:
+        try:
+            return int(payload.get(name))
+        except (TypeError, ValueError):
+            return fallback
+
+    completed = sum(1 for status in normalized.values() if status == "completed")
+    blocked = sum(1 for status in normalized.values() if status == "blocked")
+    ready = sum(1 for status in normalized.values() if status == "todo")
+    waiting = sum(1 for status in normalized.values() if status == "waiting")
+    return {
+        "task_count": state_task_count,
+        "completed_count": count("completed_count", completed),
+        "blocked_count": count("blocked_count", blocked),
+        "ready_count": count("ready_count", ready),
+        "waiting_count": count("waiting_count", waiting),
+    }
+
+
 def parse_iso_timestamp(value: str) -> datetime | None:
     if not value:
         return None
@@ -344,9 +386,16 @@ def should_refill_backlog(
 ) -> tuple[bool, str, int, int]:
     current_open = effective_open_task_count(todo_text, state_path=state_path, task_prefix=task_prefix)
     task_count = len(task_ids_from_todo_text(todo_text, task_prefix=task_prefix))
+    state_counts = refill_state_counts(todo_text, state_path=state_path, task_prefix=task_prefix)
+    no_ready_existing_work = (
+        bool(state_counts)
+        and int(state_counts.get("ready_count") or 0) == 0
+        and int(state_counts.get("completed_count") or 0) > 0
+        and (int(state_counts.get("waiting_count") or 0) > 0 or int(state_counts.get("blocked_count") or 0) > 0)
+    )
     if force:
         return True, "force", current_open, task_count
-    if current_open > min_open_tasks:
+    if current_open > min_open_tasks and not no_ready_existing_work:
         return False, "open_task_threshold", current_open, task_count
     drained = current_open == 0
     try:
@@ -355,12 +404,14 @@ def should_refill_backlog(
         last_drained_count = -1
     if drained and last_drained_count != task_count:
         return True, "drained_exhaustive", current_open, task_count
+    if no_ready_existing_work and last_drained_count != task_count:
+        return True, "runnable_drained_exhaustive", current_open, task_count
     last_scan_at = parse_iso_timestamp(str(strategy.get(last_scan_key) or ""))
     if last_scan_at is None:
-        return True, "low_backlog", current_open, task_count
+        return True, "runnable_drained_low_backlog" if no_ready_existing_work else "low_backlog", current_open, task_count
     elapsed = (datetime.now(timezone.utc) - last_scan_at).total_seconds()
     if elapsed >= cooldown_seconds:
-        return True, "low_backlog", current_open, task_count
+        return True, "runnable_drained_low_backlog" if no_ready_existing_work else "low_backlog", current_open, task_count
     return False, "cooldown", current_open, task_count
 
 
@@ -1028,6 +1079,8 @@ def reconciliation_guardrail_records(
     *,
     reconciliation_result: Mapping[str, Any] | None = None,
     cleanup_result: Mapping[str, Any] | None = None,
+    generated_status_paths: Sequence[str] = (),
+    generated_status_prefixes: Sequence[str] = (),
 ) -> list[dict[str, Any]]:
     """Return grouped cleanup/reconciliation blockers that need deliberate repair."""
 
@@ -1044,40 +1097,47 @@ def reconciliation_guardrail_records(
                 if isinstance(reconciliation.get("main_dirty_evidence"), Mapping)
                 else {}
             )
-            candidates = [
-                {
-                    "branch": str(item.get("branch") or ""),
-                    "path": str(item.get("path") or ""),
-                    "target_ref": str(item.get("target_ref") or reconciliation.get("target_ref") or ""),
-                }
-                for item in reconciliation.get("candidates", [])
-                if isinstance(item, Mapping)
-            ]
-            fingerprint = sha1(
-                json.dumps(
+            status_short, main_dirty_evidence = filter_generated_main_checkout_evidence(
+                status_short=status_short,
+                evidence=main_dirty_evidence,
+                generated_paths=generated_status_paths,
+                generated_prefixes=generated_status_prefixes,
+            )
+            if status_short:
+                candidates = [
+                    {
+                        "branch": str(item.get("branch") or ""),
+                        "path": str(item.get("path") or ""),
+                        "target_ref": str(item.get("target_ref") or reconciliation.get("target_ref") or ""),
+                    }
+                    for item in reconciliation.get("candidates", [])
+                    if isinstance(item, Mapping)
+                ]
+                fingerprint = sha1(
+                    json.dumps(
+                        {
+                            "kind": "main_checkout_dirty",
+                            "status_short": status_short,
+                            "candidate_branches": [item["branch"] for item in candidates],
+                        },
+                        sort_keys=True,
+                    ).encode("utf-8")
+                ).hexdigest()
+                records.append(
                     {
                         "kind": "main_checkout_dirty",
+                        "priority": "P1",
+                        "track": "ops",
+                        "summary": f"Resolve dirty main checkout blocking {candidate_count} worktree merges",
+                        "fingerprint": fingerprint,
+                        "candidate_count": candidate_count,
                         "status_short": status_short,
-                        "candidate_branches": [item["branch"] for item in candidates],
-                    },
-                    sort_keys=True,
-                ).encode("utf-8")
-            ).hexdigest()
-            records.append(
-                {
-                    "kind": "main_checkout_dirty",
-                    "priority": "P1",
-                    "track": "ops",
-                    "summary": f"Resolve dirty main checkout blocking {candidate_count} worktree merges",
-                    "fingerprint": fingerprint,
-                    "candidate_count": candidate_count,
-                    "status_short": status_short,
-                    "main_dirty_evidence": main_dirty_evidence,
-                    "samples": candidates[:20],
-                    "reason": "main_checkout_dirty",
-                    "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
-                }
-            )
+                        "main_dirty_evidence": main_dirty_evidence,
+                        "samples": candidates[:20],
+                        "reason": "main_checkout_dirty",
+                        "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
+                    }
+                )
 
     preflight_samples: list[dict[str, Any]] = []
     conflict_path_counts: dict[str, int] = {}
@@ -1205,6 +1265,168 @@ def status_line_path(line: str) -> str:
     if " -> " in path_text:
         path_text = path_text.split(" -> ", 1)[-1].strip()
     return path_text.rstrip("/")
+
+
+def status_line_category(line: str) -> str:
+    code = line[:2]
+    if code == "??":
+        return "untracked"
+    if "U" in code:
+        return "unmerged"
+    if "D" in code:
+        return "deleted"
+    if "R" in code:
+        return "renamed"
+    if "A" in code:
+        return "added"
+    if "M" in code:
+        return "modified"
+    if code.strip():
+        return "other_dirty"
+    return "clean"
+
+
+def normalize_status_path(path: str) -> str:
+    path_text = str(path).strip()
+    if " -> " in path_text:
+        path_text = path_text.split(" -> ", 1)[-1].strip()
+    return path_text.rstrip("/")
+
+
+def name_status_path(line: str) -> str:
+    parts = str(line).split("\t")
+    if len(parts) > 1:
+        return normalize_status_path(parts[-1])
+    return normalize_status_path(str(line).split(maxsplit=1)[-1] if str(line).split() else "")
+
+
+def path_is_generated_status_output(
+    path: str,
+    *,
+    generated_paths: Sequence[str] = (),
+    generated_prefixes: Sequence[str] = (),
+) -> bool:
+    path_text = normalize_status_path(path)
+    if not path_text:
+        return False
+    exact = {normalize_status_path(item) for item in generated_paths if normalize_status_path(item)}
+    if path_text in exact:
+        return True
+    for prefix in generated_prefixes:
+        prefix_text = normalize_status_path(str(prefix))
+        if not prefix_text:
+            continue
+        if path_text == prefix_text or path_text.startswith(prefix_text + "/"):
+            return True
+    return False
+
+
+def filter_generated_main_checkout_evidence(
+    *,
+    status_short: Sequence[str],
+    evidence: Mapping[str, Any],
+    generated_paths: Sequence[str] = (),
+    generated_prefixes: Sequence[str] = (),
+) -> tuple[list[str], dict[str, Any]]:
+    """Remove supervisor-generated todo/discovery output paths from dirty-main evidence."""
+
+    filtered_status: list[str] = []
+    filtered_paths: list[str] = []
+    removed_paths: list[str] = []
+    for line in status_short:
+        line_text = str(line)
+        path = status_line_path(line_text)
+        if path_is_generated_status_output(
+            path,
+            generated_paths=generated_paths,
+            generated_prefixes=generated_prefixes,
+        ):
+            if path and path not in removed_paths:
+                removed_paths.append(path)
+            continue
+        filtered_status.append(line_text)
+        if path and path not in filtered_paths:
+            filtered_paths.append(path)
+
+    filtered_evidence: dict[str, Any] = dict(evidence or {})
+    filtered_evidence["status_short"] = filtered_status[:50]
+    filtered_evidence["status_paths"] = filtered_paths[:50]
+    path_categories: dict[str, int] = {}
+    for line in filtered_status:
+        category = status_line_category(line)
+        path_categories[category] = path_categories.get(category, 0) + 1
+    filtered_evidence["path_categories"] = path_categories
+    for key in ("untracked_paths",):
+        values = []
+        for item in filtered_evidence.get(key, []) or []:
+            path = normalize_status_path(str(item))
+            if path and not path_is_generated_status_output(
+                path,
+                generated_paths=generated_paths,
+                generated_prefixes=generated_prefixes,
+            ):
+                values.append(path)
+            elif path and path not in removed_paths:
+                removed_paths.append(path)
+        if values:
+            filtered_evidence[key] = values[:50]
+        else:
+            filtered_evidence.pop(key, None)
+    for key in ("name_status", "staged_name_status"):
+        lines = []
+        for line in str(filtered_evidence.get(key) or "").splitlines():
+            path = name_status_path(line)
+            if path and path_is_generated_status_output(
+                path,
+                generated_paths=generated_paths,
+                generated_prefixes=generated_prefixes,
+            ):
+                if path not in removed_paths:
+                    removed_paths.append(path)
+                continue
+            if line.strip():
+                lines.append(line)
+        if lines:
+            filtered_evidence[key] = "\n".join(lines)
+        else:
+            filtered_evidence.pop(key, None)
+    if removed_paths:
+        filtered_evidence["filtered_generated_status_paths"] = removed_paths[:50]
+        filtered_evidence.pop("diff_stat", None)
+        filtered_evidence.pop("submodule_summary", None)
+    return filtered_status, filtered_evidence
+
+
+def relative_status_path(path: Path, *, repo_root: Path) -> str:
+    try:
+        return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    except (OSError, ValueError):
+        return path.as_posix()
+
+
+def generated_guardrail_status_filters(
+    *,
+    todo_path: Path,
+    discovery_dir: Path,
+    repo_root: Path,
+) -> tuple[list[str], list[str]]:
+    generated_paths: list[str] = []
+    generated_prefixes: list[str] = []
+    todo_relative = relative_status_path(todo_path, repo_root=repo_root)
+    if todo_relative:
+        generated_paths.append(todo_relative)
+    discovery_relative = relative_status_path(discovery_dir, repo_root=repo_root)
+    if discovery_relative:
+        generated_prefixes.append(discovery_relative)
+
+    parts = Path(todo_relative).parts
+    for end in range(1, len(parts)):
+        ancestor = Path(*parts[:end])
+        if ancestor.as_posix() in {".", ""}:
+            continue
+        if (repo_root / ancestor / ".git").exists():
+            generated_paths.append(ancestor.as_posix())
+    return list(dict.fromkeys(generated_paths)), list(dict.fromkeys(generated_prefixes))
 
 
 def reconciliation_guardrail_plan(record: Mapping[str, Any]) -> dict[str, Any]:
@@ -2372,9 +2594,17 @@ def record_reconciliation_guardrail_findings(
             return True
         return False
 
+    filter_repo_root = (repo_root or todo_path.parent).resolve()
+    generated_paths, generated_prefixes = generated_guardrail_status_filters(
+        todo_path=todo_path,
+        discovery_dir=discovery_dir,
+        repo_root=filter_repo_root,
+    )
     all_records = reconciliation_guardrail_records(
         reconciliation_result=reconciliation_result,
         cleanup_result=cleanup_result,
+        generated_status_paths=generated_paths,
+        generated_status_prefixes=generated_prefixes,
     )
     refreshed_todo_text, refreshes = refresh_existing_reconciliation_guardrails(
         todo_text=todo_text,
@@ -2594,12 +2824,12 @@ def record_codebase_scan_findings(
         repo_root,
         max_findings=max_findings,
         seen_fingerprints=seen,
-        exhaustive=mode == "drained_exhaustive",
+        exhaustive=mode.endswith("drained_exhaustive"),
         skip_prefixes=skip_prefixes,
     )
     strategy["last_codebase_scan_at"] = utc_now()
     strategy["last_codebase_scan_mode"] = mode
-    if current_open == 0:
+    if current_open == 0 or mode.endswith("drained_exhaustive"):
         strategy["last_drained_codebase_scan_task_count"] = task_count
     strategy["codebase_scan_seen_fingerprints"] = sorted(seen | {finding.fingerprint for finding in findings})
     if not findings:
@@ -2719,7 +2949,7 @@ def record_objective_backlog_findings(
     )
     strategy["last_objective_goal_scan_at"] = utc_now()
     strategy["last_objective_goal_scan_mode"] = mode
-    if current_open == 0:
+    if current_open == 0 or mode.endswith("drained_exhaustive"):
         strategy["last_drained_objective_goal_scan_task_count"] = task_count
     strategy["objective_goal_seen_fingerprints"] = sorted(
         seen | {record.finding.fingerprint for record in records}

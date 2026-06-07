@@ -2307,7 +2307,7 @@ class PortalImplementationSupervisor:
         strategy = load_strategy(self.config.strategy_path)
         strategy["last_objective_goal_scan_at"] = utc_now()
         strategy["last_objective_goal_scan_mode"] = mode
-        if current_open == 0:
+        if current_open == 0 or mode.endswith("drained_exhaustive"):
             strategy["last_drained_objective_goal_scan_task_count"] = task_count
         strategy["objective_goal_seen_fingerprints"] = sorted(discovery_fingerprints(discovery_dir))
         strategy["last_objective_refined_goal_ids"] = list(payload.get("refined_goal_ids") or [])
