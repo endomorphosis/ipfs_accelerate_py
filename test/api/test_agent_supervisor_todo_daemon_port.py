@@ -7304,6 +7304,63 @@ def test_implementation_supervisor_cleans_redundant_dirty_merged_worktree(tmp_pa
     assert not worktree_path.exists()
 
 
+def test_implementation_supervisor_cleans_merged_worktree_with_deleted_configured_submodule(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/submodule-clean")
+    marker.write_text("branch\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "branch change")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", "implementation/submodule-clean")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "submodule-clean"
+    _git(repo, "worktree", "add", str(worktree_path), "implementation/submodule-clean")
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            worktree_submodule_paths=("external/ipfs_datasets",),
+        )
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_git_status_short",
+        lambda path: [" D external/ipfs_datasets"] if path == worktree_path else [],
+    )
+    monkeypatch.setattr(
+        supervisor,
+        "_target_ref_has_path",
+        lambda relative, target_ref: relative == "external/ipfs_datasets" and target_ref == "main",
+    )
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 1
+    assert result["removed"][0]["dirty_redundancy"]["redundant"] is True
+    assert result["removed"][0]["dirty_redundancy"]["reason"] == (
+        "configured_submodule_deletions_match_target"
+    )
+    assert not worktree_path.exists()
+
+
 def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()

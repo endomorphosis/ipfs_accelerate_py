@@ -1733,12 +1733,17 @@ class PortalImplementationSupervisor:
         target_ref: str,
     ) -> dict[str, Any]:
         checked: list[dict[str, Any]] = []
+        configured_submodule_deletion = False
         for line in status_lines:
             code = line[:2]
             relative = self._status_line_path(line)
             detail = {"status": code, "path": relative}
             if not relative:
                 return {"redundant": False, "reason": "empty_status_path", "checked": checked}
+            if self._status_line_is_configured_submodule_deletion(code, relative, target_ref):
+                checked.append({**detail, "matches_target": True, "configured_submodule_deletion": True})
+                configured_submodule_deletion = True
+                continue
             if "D" in code or "?" in code.strip(" ?"):
                 return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
             if code == "??" or "M" in code or "A" in code:
@@ -1747,7 +1752,35 @@ class PortalImplementationSupervisor:
                 checked.append({**detail, "matches_target": True})
                 continue
             return {"redundant": False, "reason": "unsupported_status", "checked": [*checked, detail]}
-        return {"redundant": True, "reason": "all_dirty_paths_match_target", "checked": checked}
+        reason = (
+            "configured_submodule_deletions_match_target"
+            if configured_submodule_deletion
+            else "all_dirty_paths_match_target"
+        )
+        return {"redundant": True, "reason": reason, "checked": checked}
+
+    def _status_line_is_configured_submodule_deletion(
+        self,
+        code: str,
+        relative: str,
+        target_ref: str,
+    ) -> bool:
+        if code not in {" D", "D "}:
+            return False
+        relative = relative.rstrip("/")
+        if not any(relative == path.rstrip("/") for path in self.config.worktree_submodule_paths):
+            return False
+        return self._target_ref_has_path(relative, target_ref)
+
+    def _target_ref_has_path(self, relative: str, target_ref: str) -> bool:
+        result = subprocess.run(
+            ["git", "ls-tree", target_ref, "--", relative],
+            cwd=self.config.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        return result.returncode == 0 and bool(result.stdout.strip())
 
     @staticmethod
     def _status_line_path(line: str) -> str:
