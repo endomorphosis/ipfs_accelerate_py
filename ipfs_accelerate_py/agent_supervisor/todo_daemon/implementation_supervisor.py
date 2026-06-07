@@ -1462,6 +1462,106 @@ class PortalImplementationSupervisor:
             generated_prefixes=generated_prefixes,
         )
 
+    def _generated_only_dirty_worktree_status(
+        self,
+        worktree_path: Path,
+        status_lines: list[str],
+    ) -> dict[str, Any]:
+        """Classify stale worktree dirt that only touches supervisor-generated outputs."""
+
+        if not status_lines:
+            return {}
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            path_is_generated_status_output,
+        )
+
+        generated_paths, generated_prefixes = self._generated_main_checkout_status_filters()
+        checked: list[dict[str, Any]] = []
+        for line in status_lines:
+            code = line[:2]
+            relative = self._status_line_path(line)
+            detail = {"status": code, "path": relative}
+            if not relative:
+                return {}
+            if "U" in code or "R" in code or "C" in code:
+                return {}
+            if not (
+                code == "??"
+                or "M" in code
+                or "A" in code
+                or "D" in code
+            ):
+                return {}
+            if path_is_generated_status_output(
+                relative,
+                generated_paths=generated_paths,
+                generated_prefixes=generated_prefixes,
+            ):
+                checked.append({**detail, "generated_status_output": True})
+                continue
+            expanded_untracked_paths = self._expand_untracked_generated_status_dir(
+                worktree_path,
+                relative,
+                generated_paths=generated_paths,
+                generated_prefixes=generated_prefixes,
+            )
+            if not expanded_untracked_paths:
+                return {}
+            checked.append(
+                {
+                    **detail,
+                    "generated_status_output": True,
+                    "expanded_untracked_paths": expanded_untracked_paths[:50],
+                }
+            )
+        if not checked:
+            return {}
+        return {
+            "redundant": True,
+            "reason": "generated_only_status_paths_dropped",
+            "checked": checked,
+        }
+
+    @staticmethod
+    def _expand_untracked_generated_status_dir(
+        worktree_path: Path,
+        relative: str,
+        *,
+        generated_paths: list[str],
+        generated_prefixes: list[str],
+    ) -> list[str]:
+        """Expand a collapsed untracked directory if all contained files are generated outputs."""
+
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            path_is_generated_status_output,
+        )
+
+        candidate = worktree_path / relative
+        if not candidate.is_dir():
+            return []
+        expanded: list[str] = []
+        try:
+            children = sorted(candidate.rglob("*"))
+        except OSError:
+            return []
+        for child in children:
+            if child.is_dir():
+                continue
+            if not child.is_file():
+                return []
+            try:
+                child_relative = child.relative_to(worktree_path).as_posix()
+            except ValueError:
+                return []
+            if not path_is_generated_status_output(
+                child_relative,
+                generated_paths=generated_paths,
+                generated_prefixes=generated_prefixes,
+            ):
+                return []
+            expanded.append(child_relative)
+        return expanded
+
     @staticmethod
     def _status_line_category(line: str) -> str:
         code = line[:2]
@@ -1806,6 +1906,10 @@ class PortalImplementationSupervisor:
         status_lines: list[str],
         target_ref: str,
     ) -> dict[str, Any]:
+        generated_only = self._generated_only_dirty_worktree_status(worktree_path, status_lines)
+        if generated_only:
+            return generated_only
+
         checked: list[dict[str, Any]] = []
         configured_submodule_deletion = False
         for line in status_lines:

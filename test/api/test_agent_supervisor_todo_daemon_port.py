@@ -7539,6 +7539,115 @@ def test_implementation_supervisor_cleans_merged_worktree_with_deleted_configure
     assert not worktree_path.exists()
 
 
+def _merged_cleanup_worktree_fixture(
+    tmp_path: Path,
+    branch_name: str,
+) -> tuple[Path, Path, TodoImplementationSupervisor]:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+
+    files = {
+        "README.md": "base\n",
+        "docs/tasks.todo.md": "# Agent Todos\n",
+        "docs/objective.md": "# Objective Heap\n",
+        "state/objective_graph.json": "{}\n",
+        "src/app.py": "VALUE = 'base'\n",
+    }
+    for relative, content in files.items():
+        path = repo / relative
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+    _git(repo, "add", *files.keys())
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "README.md").write_text("branch\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "branch change")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / branch_name.rsplit("/", 1)[-1]
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+
+    supervisor_state = repo / "supervisor_state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "docs" / "tasks.todo.md",
+            state_path=supervisor_state / "task_state.json",
+            strategy_path=supervisor_state / "strategy.json",
+            events_path=supervisor_state / "events.jsonl",
+            state_dir=supervisor_state,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            reconciliation_guardrail_discovery_dir=repo / "data" / "ns" / "discovery",
+            codebase_scan_discovery_dir=repo / "data" / "ns" / "codebase-discovery",
+            objective_path=repo / "docs" / "objective.md",
+            objective_graph_path=repo / "state" / "objective_graph.json",
+            objective_bundle_dir=repo / "data" / "ns" / "bundles",
+            objective_dataset_dir=repo / "data" / "ns" / "datasets",
+            objective_discovery_dir=repo / "data" / "ns" / "objective-discovery",
+            objective_todo_vector_index_path=repo / "data" / "ns" / "bundles" / "todo_vector_index.json",
+        )
+    )
+    return repo, worktree_path, supervisor
+
+
+def test_implementation_supervisor_cleans_merged_worktree_with_generated_only_dirty_outputs(tmp_path):
+    _repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
+        tmp_path,
+        "implementation/generated-cleanup",
+    )
+    (worktree_path / "docs" / "tasks.todo.md").write_text("# Agent Todos\n\n- generated\n", encoding="utf-8")
+    (worktree_path / "docs" / "objective.md").write_text("# Objective Heap\n\n## Generated\n", encoding="utf-8")
+    (worktree_path / "state" / "objective_graph.json").unlink()
+    discovery_output = worktree_path / "data" / "ns" / "discovery" / "scan.md"
+    discovery_output.parent.mkdir(parents=True, exist_ok=True)
+    discovery_output.write_text("# Generated discovery\n", encoding="utf-8")
+    vector_output = worktree_path / "data" / "ns" / "bundles" / "todo_vector_index.json"
+    vector_output.parent.mkdir(parents=True, exist_ok=True)
+    vector_output.write_text("{}\n", encoding="utf-8")
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 1
+    dirty_redundancy = result["removed"][0]["dirty_redundancy"]
+    assert dirty_redundancy["redundant"] is True
+    assert dirty_redundancy["reason"] == "generated_only_status_paths_dropped"
+    checked_paths = {item["path"] for item in dirty_redundancy["checked"]}
+    assert "docs/tasks.todo.md" in checked_paths
+    assert "docs/objective.md" in checked_paths
+    assert "state/objective_graph.json" in checked_paths
+    expanded_paths = {
+        path
+        for item in dirty_redundancy["checked"]
+        for path in item.get("expanded_untracked_paths", [])
+    }
+    assert "data" in checked_paths
+    assert "data/ns/discovery/scan.md" in expanded_paths
+    assert "data/ns/bundles/todo_vector_index.json" in expanded_paths
+    assert not worktree_path.exists()
+
+
+def test_implementation_supervisor_keeps_merged_worktree_with_generated_and_source_dirty_paths(tmp_path):
+    _repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
+        tmp_path,
+        "implementation/generated-mixed",
+    )
+    (worktree_path / "docs" / "tasks.todo.md").write_text("# Agent Todos\n\n- generated\n", encoding="utf-8")
+    (worktree_path / "src" / "app.py").write_text("VALUE = 'local source change'\n", encoding="utf-8")
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 0
+    assert result["skipped_reason_counts"]["dirty_worktree"] == 1
+    assert result["dirty_worktree_groups"]["content_not_in_target"]["count"] == 1
+    assert worktree_path.exists()
+
+
 def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
