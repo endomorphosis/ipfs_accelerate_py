@@ -2648,6 +2648,8 @@ def test_supervisor_reconciliation_only_disables_producers(tmp_path):
             str(tmp_path / "state"),
             "--implement",
             "--reconciliation-only",
+            "--llm-merge-resolver-command",
+            "codex exec -",
             "--codebase-refill-scan",
             "--objective-refill-scan",
         ]
@@ -2663,6 +2665,26 @@ def test_supervisor_reconciliation_only_disables_producers(tmp_path):
     assert config.reconciliation_guardrail_enabled is False
     assert config.codebase_refill_enabled is False
     assert config.objective_refill_enabled is False
+    assert config.llm_merge_resolver_command == ""
+
+
+def test_supervisor_reconciliation_only_can_keep_resolver_when_allowed(tmp_path):
+    args = parse_implementation_supervisor_args(
+        [
+            "--todo-path",
+            str(tmp_path / "board.md"),
+            "--state-dir",
+            str(tmp_path / "state"),
+            "--reconciliation-only",
+            "--allow-reconciliation-only-llm-resolver",
+            "--llm-merge-resolver-command",
+            "codex exec -",
+        ]
+    )
+    config = supervisor_config_from_args(args, repo_root=tmp_path)
+
+    assert config.reconciliation_only is True
+    assert config.llm_merge_resolver_command == "codex exec -"
 
 
 def test_multi_supervisor_runner_parses_and_runs_short_track(tmp_path):

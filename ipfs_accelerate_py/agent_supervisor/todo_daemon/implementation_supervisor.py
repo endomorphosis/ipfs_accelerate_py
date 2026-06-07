@@ -2850,6 +2850,14 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "or 600 seconds; <=0 disables."
         ),
     )
+    parser.add_argument(
+        "--allow-reconciliation-only-llm-resolver",
+        action="store_true",
+        help=(
+            "Allow --reconciliation-only passes to invoke the configured LLM merge resolver. "
+            "By default reconciliation-only disables this to keep cleanup probes non-interactive."
+        ),
+    )
     parser.add_argument("--implementation-timeout", type=float, default=1800.0)
     parser.add_argument(
         "--implementation-log-stall-seconds",
@@ -3189,6 +3197,9 @@ def supervisor_config_from_args(
     )
     reconciliation_only = bool(args.reconciliation_only)
     implement = bool(args.implement and not reconciliation_only)
+    llm_merge_resolver_command = args.llm_merge_resolver_command
+    if reconciliation_only and not args.allow_reconciliation_only_llm_resolver:
+        llm_merge_resolver_command = ""
     return PortalSupervisorConfig(
         todo_path=args.todo_path,
         state_path=state_path or args.state_dir / f"{args.state_prefix}_task_state.json",
@@ -3204,7 +3215,7 @@ def supervisor_config_from_args(
         reconciliation_only=reconciliation_only,
         implement=implement,
         implementation_command=args.implementation_command,
-        llm_merge_resolver_command=args.llm_merge_resolver_command,
+        llm_merge_resolver_command=llm_merge_resolver_command,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         implementation_timeout=args.implementation_timeout,
         implementation_log_stall_seconds=args.implementation_log_stall_seconds,
