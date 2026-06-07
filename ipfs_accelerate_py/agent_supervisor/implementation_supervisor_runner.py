@@ -1578,7 +1578,13 @@ def run_portal_implementation_supervisor(
 ) -> Any:
     """Run a configured supervisor with optional local hooks and runtime repair."""
 
-    _run_hooks(hooks, phase="before", context=context, logger=logger)
+    if bool(getattr(context.parsed, "once", False)):
+        _run_hooks(hooks, phase="before", context=context, logger=logger)
+    elif hooks:
+        logger.debug(
+            "Skipping supervisor before hooks for long-running startup; "
+            "managed watchdog maintenance will run refill hooks after daemon launch."
+        )
     if ensure_running:
         if ensure_running_callback is None:
             return None

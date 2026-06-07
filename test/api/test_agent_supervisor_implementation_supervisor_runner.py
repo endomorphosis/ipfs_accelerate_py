@@ -220,6 +220,44 @@ def test_run_portal_implementation_supervisor_runs_before_and_after_once_hooks(c
     assert "after hook: ['after-result']" in caplog.text
 
 
+def test_run_portal_implementation_supervisor_skips_before_hooks_for_long_running_startup(caplog):
+    class FakeSupervisor:
+        def run_once(self) -> None:
+            calls.append("run_once")
+
+        def run_forever(self) -> dict[str, bool]:
+            calls.append("run_forever")
+            return {"running": True}
+
+    calls: list[str] = []
+    parsed = argparse.Namespace(once=False)
+    context = ImplementationSupervisorRunContext(
+        parsed=parsed,
+        config=object(),
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("supervisor-events.jsonl"),
+        daemon_events_path=Path("daemon-events.jsonl"),
+    )
+
+    def before(_ctx: ImplementationSupervisorRunContext) -> list[str]:
+        calls.append("before")
+        return ["before-result"]
+
+    logger = logging.getLogger("test-supervisor-long-running")
+    with caplog.at_level(logging.DEBUG, logger=logger.name):
+        result = run_portal_implementation_supervisor(
+            FakeSupervisor(),
+            context,
+            logger=logger,
+            hooks=(SupervisorRunHook("before", "before hook: %s", before),),
+        )
+
+    assert result == {"running": True}
+    assert calls == ["run_forever"]
+    assert "Skipping supervisor before hooks for long-running startup" in caplog.text
+
+
 def test_run_portal_implementation_supervisor_can_delegate_ensure_running():
     parsed = argparse.Namespace(once=False)
     context = ImplementationSupervisorRunContext(
@@ -243,6 +281,39 @@ def test_run_portal_implementation_supervisor_can_delegate_ensure_running():
     )
 
     assert result == {"state": "state.json"}
+
+
+def test_run_portal_implementation_supervisor_skips_before_hooks_for_ensure_running():
+    parsed = argparse.Namespace(once=False)
+    context = ImplementationSupervisorRunContext(
+        parsed=parsed,
+        config=object(),
+        state_path=Path("state.json"),
+        strategy_path=Path("strategy.json"),
+        events_path=Path("supervisor-events.jsonl"),
+        daemon_events_path=Path("daemon-events.jsonl"),
+    )
+    calls: list[str] = []
+
+    def before(_ctx: ImplementationSupervisorRunContext) -> list[str]:
+        calls.append("before")
+        return ["before-result"]
+
+    def ensure(ctx: ImplementationSupervisorRunContext) -> dict[str, str]:
+        calls.append("ensure")
+        return {"state": str(ctx.state_path)}
+
+    result = run_portal_implementation_supervisor(
+        object(),
+        context,
+        logger=logging.getLogger("test-supervisor-ensure-hooks"),
+        hooks=(SupervisorRunHook("before", "before hook: %s", before),),
+        ensure_running=True,
+        ensure_running_callback=ensure,
+    )
+
+    assert result == {"state": "state.json"}
+    assert calls == ["ensure"]
 
 
 def test_run_configured_portal_implementation_supervisor_builds_and_runs_once(tmp_path: Path):
