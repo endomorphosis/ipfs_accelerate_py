@@ -24,6 +24,7 @@ from .objective_graph import (
     split_terms,
     utc_now,
 )
+from .validation_commands import split_validation_commands
 
 
 DEFAULT_ULTIMATE_GOAL = (
@@ -215,10 +216,6 @@ def completion_evidence_summary(evidence: Mapping[str, Sequence[str]]) -> str:
         if compact_paths:
             parts.append(f"{term} => {compact_paths}")
     return "; ".join(parts)
-
-
-def split_validation_commands(value: str) -> list[str]:
-    return [item.strip() for item in str(value or "").split(";") if item.strip()]
 
 
 def run_goal_validation(

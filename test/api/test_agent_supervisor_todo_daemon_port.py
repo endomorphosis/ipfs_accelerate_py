@@ -24,9 +24,10 @@ from ipfs_accelerate_py.agent_supervisor.bundle_supervisor import (
     plan_bundle_lanes,
     run_bundle_supervisor,
 )
-from ipfs_accelerate_py.agent_supervisor.objective_graph import parse_goal_heap, scan_objective_gaps
+from ipfs_accelerate_py.agent_supervisor.objective_graph import ObjectiveGoal, parse_goal_heap, scan_objective_gaps
 from ipfs_accelerate_py.agent_supervisor.todo_vector_index import parse_todo_vector_records, write_todo_vector_index
-from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority
+from ipfs_accelerate_py.agent_supervisor.objective_tracker import fibonacci_priority, run_goal_validation
+from ipfs_accelerate_py.agent_supervisor.validation_commands import split_validation_commands
 from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     reconciliation_guardrail_plan,
     reconciliation_guardrail_records,
@@ -721,6 +722,24 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     assert rewrite_validation_commands(todo_path, lambda command: command.upper())
     assert "- Validation: FIRST; SECOND" in todo_path.read_text(encoding="utf-8")
     assert not rewrite_validation_commands(todo_path, lambda command: command)
+    quoted_python_validation = (
+        "python3 -c 'import pathlib, sys; "
+        'p=pathlib.Path(sys.argv[1]); assert p.read_text(encoding="utf-8").strip()'
+        "' src/config.yml"
+    )
+    todo_path.write_text(
+        f"# Tasks\n\n## TST-002 Build\n\n- Validation: {quoted_python_validation}; gradle test\n",
+        encoding="utf-8",
+    )
+    seen_commands: list[str] = []
+
+    def transform_command(command: str) -> str:
+        seen_commands.append(command)
+        return command if command.startswith("python3 -c") else command.upper()
+
+    assert rewrite_validation_commands(todo_path, transform_command)
+    assert seen_commands == [quoted_python_validation, "gradle test"]
+    assert f"- Validation: {quoted_python_validation}; GRADLE TEST" in todo_path.read_text(encoding="utf-8")
 
     first = tmp_path / "first"
     second = tmp_path / "second"
@@ -3657,6 +3676,42 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     assert captured["kwargs"]["timeout"] == 1
 
 
+def test_validation_command_splitter_preserves_quoted_semicolons():
+    inline_python = (
+        "python3 -c 'import pathlib, sys; "
+        'p=pathlib.Path(sys.argv[1]); assert p.read_text(encoding="utf-8").strip()'
+        "' external/ipfs_kit/.github/workflows/auto-doc-maintenance.yml"
+    )
+
+    assert split_validation_commands(f"{inline_python}; test -f proof.txt") == [
+        inline_python,
+        "test -f proof.txt",
+    ]
+
+
+def test_parse_task_file_preserves_quoted_validation_semicolons(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    inline_python = (
+        "python3 -c 'import pathlib, sys; "
+        'p=pathlib.Path(sys.argv[1]); assert p.read_text(encoding="utf-8").strip()'
+        "' src/config.yml"
+    )
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-001 Validate YAML
+
+- Status: todo
+- Validation: {inline_python}; test -f src/config.yml
+""",
+        encoding="utf-8",
+    )
+
+    task = parse_task_file(todo_path, task_header_prefix="## ACCEL-")[0]
+
+    assert task.validation == [inline_python, "test -f src/config.yml"]
+
+
 def test_implementation_daemon_clears_active_task_when_finished(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -6372,6 +6427,38 @@ def test_write_todo_vector_index_clusters_related_goal_tasks(tmp_path):
     assert records[0].related_task_ids == ["ACCEL-002"]
 
 
+def test_todo_vector_index_preserves_quoted_validation_semicolons(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "src" / "config.yml"
+    source.parent.mkdir()
+    source.write_text("enabled: true\n", encoding="utf-8")
+    inline_python = (
+        "python3 -c 'import pathlib, sys; "
+        'p=pathlib.Path(sys.argv[1]); assert p.read_text(encoding="utf-8").strip()'
+        "' src/config.yml"
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        f"""# Todos
+
+## ACCEL-001 Validate YAML config
+
+- Status: todo
+- Priority: P1
+- Track: ops
+- Outputs: src/config.yml
+- Validation: {inline_python}; test -f src/config.yml
+- Acceptance: Keep shell validation intact.
+""",
+        encoding="utf-8",
+    )
+
+    records = parse_todo_vector_records(repo_root=repo, todo_path=todo_path, task_header_prefix="## ACCEL-")
+
+    assert records[0].validation == [inline_python, "test -f src/config.yml"]
+
+
 def test_implementation_prompt_uses_compact_todo_vector_context(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7007,6 +7094,29 @@ def test_objective_daemon_creates_tracking_document_and_graph(tmp_path):
     }
     assert "missing_meta_display_bridge" in objective_path.read_text(encoding="utf-8")
     assert "## ACCEL-001 Close objective gap" in todo_path.read_text(encoding="utf-8")
+
+
+def test_run_goal_validation_preserves_quoted_validation_semicolons(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "src" / "config.yml"
+    source.parent.mkdir()
+    source.write_text("enabled: true\n", encoding="utf-8")
+    inline_python = (
+        "python3 -c 'import pathlib, sys; "
+        'p=pathlib.Path(sys.argv[1]); assert p.read_text(encoding="utf-8").strip()'
+        "' src/config.yml"
+    )
+    goal = ObjectiveGoal(
+        goal_id="VAIOS-G001",
+        title="Validate config evidence",
+        fields={"validation": f"{inline_python}; test -f src/config.yml"},
+    )
+
+    result = run_goal_validation(repo_root=repo, goal=goal)
+
+    assert result["passed"] is True
+    assert [item["command"] for item in result["results"]] == [inline_python, "test -f src/config.yml"]
 
 
 def test_objective_daemon_reconciles_completed_goals_from_evidence(tmp_path):

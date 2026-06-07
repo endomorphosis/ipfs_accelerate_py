@@ -23,6 +23,7 @@ from .engine import atomic_write_json as _shared_atomic_write_json
 from ..checkout_lock import checkout_lock_metadata, checkout_mutation_lock_path
 from ..event_log import append_jsonl_event, read_jsonl_events, repair_jsonl_event_log, unique_backup_path
 from ..merge_conflict_repair import resolve_append_only_markdown_conflicts
+from ..validation_commands import split_validation_commands
 from .runner import TodoDaemonHooks, TodoDaemonRunner
 
 REPO_ROOT = Path.cwd()
@@ -485,7 +486,7 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
                 track=str(metadata.get("track", "ops")).strip().lower(),
                 depends_on=split_csv(metadata.get("depends on", "")),
                 outputs=split_csv(metadata.get("outputs", "")),
-                validation=[item.strip() for item in metadata.get("validation", "").split(";") if item.strip()],
+                validation=split_validation_commands(metadata.get("validation", "")),
                 acceptance=str(metadata.get("acceptance", "")).strip(),
                 source_line=current_line,
                 metadata=dict(metadata),

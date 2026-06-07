@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, MutableMapping, Sequence
 
+from .validation_commands import split_validation_commands
+
 
 def with_default(argv: Sequence[str], flag: str, value: str) -> list[str]:
     """Prepend a default flag/value pair unless the caller already provided it."""
@@ -985,7 +987,7 @@ def rewrite_validation_commands(todo_path: Path, transform: Callable[[str], str]
             continue
         newline = "\n" if line.endswith("\n") else ""
         body = line[len("- Validation:") :].strip()
-        commands = [item.strip() for item in body.split(";")]
+        commands = split_validation_commands(body)
         updated_commands = [transform(command) for command in commands]
         if updated_commands != commands:
             changed = True

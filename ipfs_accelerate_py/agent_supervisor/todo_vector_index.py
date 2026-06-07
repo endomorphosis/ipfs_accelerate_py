@@ -30,6 +30,7 @@ from .objective_graph import (
     symbol_terms,
     text_embedding,
 )
+from .validation_commands import split_validation_commands
 
 
 DEFAULT_TODO_VECTOR_INDEX_SCHEMA = "ipfs_accelerate_py.agent_supervisor.todo_vector_index"
@@ -280,7 +281,7 @@ def parse_todo_vector_records(
             graph_depth=parse_int(fields.get("graph_depth"), 0),
             missing_evidence=missing_evidence,
             outputs=outputs,
-            validation=[item.strip() for item in str(fields.get("validation") or "").split(";") if item.strip()],
+            validation=split_validation_commands(str(fields.get("validation") or "")),
             acceptance=acceptance,
             embedding_query=str(fields.get("embedding_query") or "").strip(),
             ast_query=ast_query,
