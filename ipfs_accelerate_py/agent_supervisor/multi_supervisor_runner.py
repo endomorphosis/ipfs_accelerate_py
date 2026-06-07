@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import signal
 import subprocess
@@ -39,6 +40,7 @@ class SupervisorTrack:
     log_path: Path
     supervisor_pid_path: Path
     daemon_pid_path: Path
+    supervisor_status_path: Path | None = None
 
     def resolve(self, repo_root: Path) -> "SupervisorTrack":
         return SupervisorTrack(
@@ -47,6 +49,11 @@ class SupervisorTrack:
             log_path=_resolve_path(repo_root, self.log_path),
             supervisor_pid_path=_resolve_path(repo_root, self.supervisor_pid_path),
             daemon_pid_path=_resolve_path(repo_root, self.daemon_pid_path),
+            supervisor_status_path=(
+                _resolve_path(repo_root, self.supervisor_status_path)
+                if self.supervisor_status_path is not None
+                else None
+            ),
         )
 
 
@@ -242,21 +249,24 @@ def _resolve_path(repo_root: Path, path: Path) -> Path:
 
 
 def parse_track_spec(spec: str, *, stamp: str = "") -> SupervisorTrack:
-    """Parse ``NAME|SCRIPT|LOG|SUPERVISOR_PID|DAEMON_PID`` track specs."""
+    """Parse ``NAME|SCRIPT|LOG|SUPERVISOR_PID|DAEMON_PID[|SUPERVISOR_STATUS]`` specs."""
 
     rendered = spec.format(stamp=stamp) if stamp else spec
     parts = rendered.split("|")
-    if len(parts) != 5 or not parts[0].strip():
+    if len(parts) not in {5, 6} or not parts[0].strip():
         raise ValueError(
             "track specs must have NAME|SCRIPT|LOG|SUPERVISOR_PID|DAEMON_PID"
+            "[|SUPERVISOR_STATUS]"
         )
-    name, script, log, supervisor_pid, daemon_pid = (part.strip() for part in parts)
+    name, script, log, supervisor_pid, daemon_pid = (part.strip() for part in parts[:5])
+    supervisor_status = parts[5].strip() if len(parts) == 6 else ""
     return SupervisorTrack(
         name=name,
         script_path=Path(script),
         log_path=Path(log),
         supervisor_pid_path=Path(supervisor_pid),
         daemon_pid_path=Path(daemon_pid),
+        supervisor_status_path=Path(supervisor_status) if supervisor_status else None,
     )
 
 
@@ -329,7 +339,7 @@ def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> Supervisor
     if len(parts) != 4 or not parts[0]:
         raise ValueError("implementation track specs must have NAME|SCRIPT|STATE_DIR|STATE_PREFIX")
     name, script, state_dir, state_prefix = parts
-    return parse_track_spec(
+    track = parse_track_spec(
         implementation_supervisor_track_spec(
             name=name,
             script_path=script,
@@ -337,6 +347,14 @@ def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> Supervisor
             state_prefix=state_prefix,
         ),
         stamp=stamp,
+    )
+    return SupervisorTrack(
+        name=track.name,
+        script_path=track.script_path,
+        log_path=track.log_path,
+        supervisor_pid_path=track.supervisor_pid_path,
+        daemon_pid_path=track.daemon_pid_path,
+        supervisor_status_path=Path(state_dir) / f"{state_prefix}_supervisor_status.json",
     )
 
 
@@ -396,6 +414,7 @@ def build_configured_multi_supervisor_cli_runner(
     duration_seconds: float | int | str = 28800.0,
     duration_seconds_env_var: str = "",
     heartbeat_interval_seconds: float | int | str | None = None,
+    supervisor_status_stale_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
     stamp_env_var: str = "",
@@ -444,6 +463,8 @@ def build_configured_multi_supervisor_cli_runner(
     ]
     if heartbeat_interval_seconds is not None:
         argv.extend(["--heartbeat-interval-seconds", str(heartbeat_interval_seconds)])
+    if supervisor_status_stale_seconds is not None:
+        argv.extend(["--supervisor-status-stale-seconds", str(supervisor_status_stale_seconds)])
     if stop_grace_seconds is not None:
         argv.extend(["--stop-grace-seconds", str(stop_grace_seconds)])
     if master_log is not None:
@@ -480,6 +501,7 @@ def build_configured_multi_supervisor_launcher(
     duration_seconds: float | int | str = 28800.0,
     duration_seconds_env_var: str = "",
     heartbeat_interval_seconds: float | int | str | None = None,
+    supervisor_status_stale_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
     stamp_env_var: str = "",
@@ -509,6 +531,7 @@ def build_configured_multi_supervisor_launcher(
             duration_seconds=duration_seconds,
             duration_seconds_env_var=duration_seconds_env_var,
             heartbeat_interval_seconds=heartbeat_interval_seconds,
+            supervisor_status_stale_seconds=supervisor_status_stale_seconds,
             stop_grace_seconds=stop_grace_seconds,
             stamp=stamp,
             stamp_env_var=stamp_env_var,
@@ -545,6 +568,7 @@ def build_repo_implementation_multi_supervisor_launcher(
     duration_seconds: float | int | str = 28800.0,
     duration_seconds_env_var: str = "DURATION_SECONDS",
     heartbeat_interval_seconds: float | int | str | None = None,
+    supervisor_status_stale_seconds: float | int | str | None = None,
     stop_grace_seconds: float | int | str | None = None,
     stamp: str = "",
     stamp_env_var: str = "STAMP",
@@ -587,6 +611,7 @@ def build_repo_implementation_multi_supervisor_launcher(
         duration_seconds=duration_seconds,
         duration_seconds_env_var=duration_seconds_env_var,
         heartbeat_interval_seconds=heartbeat_interval_seconds,
+        supervisor_status_stale_seconds=supervisor_status_stale_seconds,
         stop_grace_seconds=stop_grace_seconds,
         stamp=stamp,
         stamp_env_var=stamp_env_var,
@@ -719,6 +744,117 @@ def format_daemon_heartbeat_fields(fields: Mapping[str, object]) -> str:
     return " ".join(parts)
 
 
+def _read_json_dict(path: Path | None) -> dict[str, object]:
+    if path is None:
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def _parse_status_timestamp(value: object) -> datetime | None:
+    if not value:
+        return None
+    text = str(value).strip().replace("Z", "+00:00")
+    if not text:
+        return None
+    try:
+        parsed = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _inferred_supervisor_status_path(track: SupervisorTrack) -> Path | None:
+    if track.supervisor_status_path is not None:
+        return track.supervisor_status_path
+    name = track.supervisor_pid_path.name
+    suffix = "_supervisor.pid"
+    if name.endswith(suffix):
+        prefix = name[: -len(suffix)]
+        return track.supervisor_pid_path.with_name(f"{prefix}_supervisor_status.json")
+    return None
+
+
+def _relative_or_absolute_path(repo_root: Path, value: object) -> Path | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    path = Path(text)
+    return path if path.is_absolute() else repo_root / path
+
+
+def supervisor_status_health_fields(
+    track: SupervisorTrack,
+    *,
+    repo_root: Path,
+    stale_seconds: float,
+) -> dict[str, object]:
+    """Return heartbeat fields for the wrapper supervisor status file."""
+
+    status_path = _inferred_supervisor_status_path(track)
+    if status_path is None:
+        return {"supervisor_status": "untracked"}
+    payload = _read_json_dict(status_path)
+    if not payload:
+        return {
+            "supervisor_status": "missing",
+            "supervisor_status_path": str(status_path),
+        }
+    updated_at = _parse_status_timestamp(payload.get("updated_at") or payload.get("heartbeat_at"))
+    if updated_at is None:
+        return {
+            "supervisor_status": "unknown",
+            "supervisor_status_path": str(status_path),
+        }
+    age_seconds = max(0.0, (datetime.now(timezone.utc) - updated_at).total_seconds())
+    if stale_seconds <= 0 or age_seconds <= stale_seconds:
+        return {
+            "supervisor_status": "live",
+            "supervisor_status_path": str(status_path),
+            "supervisor_status_age_seconds": round(age_seconds, 1),
+        }
+
+    child_state_path = _relative_or_absolute_path(
+        repo_root,
+        payload.get("current_status_path") or payload.get("progress_path") or payload.get("state_path"),
+    )
+    child_state = _read_json_dict(child_state_path)
+    active_task_id = str(child_state.get("active_task_id") or "").strip()
+    implementation_in_progress = bool(child_state.get("implementation_in_progress"))
+    active_child = bool(active_task_id or implementation_in_progress)
+    return {
+        "supervisor_status": "stale_active" if active_child else "stale",
+        "supervisor_status_path": str(status_path),
+        "supervisor_status_age_seconds": round(age_seconds, 1),
+        "supervisor_active_task_id": active_task_id,
+        "supervisor_child_in_progress": implementation_in_progress,
+        "restart_supervisor": not active_child,
+    }
+
+
+def format_supervisor_status_fields(fields: Mapping[str, object]) -> str:
+    """Return compact supervisor health fields for master heartbeat logs."""
+
+    status = fields.get("supervisor_status")
+    if not status or status == "untracked":
+        return ""
+    parts = [f"supervisor_status={status}"]
+    age = fields.get("supervisor_status_age_seconds")
+    if age is not None:
+        parts.append(f"supervisor_status_age_seconds={age}")
+    active_task_id = fields.get("supervisor_active_task_id")
+    if active_task_id:
+        parts.append(f"supervisor_active_task_id={active_task_id}")
+    if fields.get("restart_supervisor"):
+        parts.append("restart_supervisor=true")
+    return " ".join(parts)
+
+
 def start_track(
     track: SupervisorTrack,
     *,
@@ -797,6 +933,7 @@ def run_supervisor_tracks(
     common_args: Sequence[str],
     duration_seconds: float,
     heartbeat_interval_seconds: float = 60.0,
+    supervisor_status_stale_seconds: float = 600.0,
     stop_grace_seconds: float = 10.0,
     python_executable: str = "python3",
     master_pid_path: Path | None = None,
@@ -845,14 +982,48 @@ def run_supervisor_tracks(
                     resolved.daemon_pid_path,
                     cleanup_stale_marker=True,
                 )
+                supervisor_fields = supervisor_status_health_fields(
+                    resolved,
+                    repo_root=resolved_repo_root,
+                    stale_seconds=float(supervisor_status_stale_seconds),
+                )
                 if process is not None and process.poll() is None and pid_alive(process.pid):
+                    supervisor_summary = format_supervisor_status_fields(supervisor_fields)
+                    heartbeat_parts = [
+                        f"heartbeat {track.name} supervisor_pid={process.pid}",
+                        format_daemon_heartbeat_fields(daemon_fields),
+                    ]
+                    if supervisor_summary:
+                        heartbeat_parts.append(supervisor_summary)
                     _emit(
                         output,
-                        (
-                            f"heartbeat {track.name} supervisor_pid={process.pid} "
-                            f"{format_daemon_heartbeat_fields(daemon_fields)}"
-                        ),
+                        " ".join(heartbeat_parts),
                     )
+                    if supervisor_fields.get("restart_supervisor"):
+                        daemon_pid = daemon_fields.get("daemon_pid")
+                        _emit(
+                            output,
+                            (
+                                f"restarting stale {track.name} supervisor old_pid={process.pid} "
+                                f"daemon_pid={daemon_pid or 'unknown'} "
+                                f"supervisor_status_age_seconds="
+                                f"{supervisor_fields.get('supervisor_status_age_seconds')}"
+                            ),
+                        )
+                        _terminate_pid(process.pid, grace_seconds=stop_grace_seconds)
+                        if isinstance(daemon_pid, int):
+                            _terminate_pid(daemon_pid, grace_seconds=stop_grace_seconds)
+                        try:
+                            process.wait(timeout=max(0.1, stop_grace_seconds))
+                        except subprocess.TimeoutExpired:
+                            pass
+                        processes[track.name] = start_track(
+                            track,
+                            repo_root=resolved_repo_root,
+                            common_args=common_args,
+                            python_executable=python_executable,
+                            output=output,
+                        )
                     continue
                 old_pid = None if process is None else process.pid
                 _emit(output, f"restarting exited {track.name} supervisor old_pid={old_pid or 'none'}")
@@ -890,6 +1061,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--repo-root", type=Path, default=Path.cwd())
     parser.add_argument("--duration-seconds", type=float, default=28800.0)
     parser.add_argument("--heartbeat-interval-seconds", type=float, default=60.0)
+    parser.add_argument("--supervisor-status-stale-seconds", type=float, default=600.0)
     parser.add_argument("--stop-grace-seconds", type=float, default=10.0)
     parser.add_argument("--stamp", default=utc_run_stamp())
     parser.add_argument("--master-dir", type=Path, default=Path("data/agent_supervisor"))
@@ -1068,6 +1240,7 @@ def main(argv: list[str] | None = None) -> int:
             common_args=common_args_from_parsed_args(args),
             duration_seconds=args.duration_seconds,
             heartbeat_interval_seconds=args.heartbeat_interval_seconds,
+            supervisor_status_stale_seconds=args.supervisor_status_stale_seconds,
             stop_grace_seconds=args.stop_grace_seconds,
             python_executable=args.python_executable,
             master_pid_path=master_pid,

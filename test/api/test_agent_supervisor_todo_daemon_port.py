@@ -2815,6 +2815,59 @@ def test_multi_supervisor_runner_cleans_stale_daemon_pid_marker(tmp_path):
     assert not (tmp_path / "state" / "daemon.pid").exists()
 
 
+def test_multi_supervisor_runner_restarts_stale_idle_supervisor_status(tmp_path):
+    worker = tmp_path / "worker.py"
+    worker.write_text(
+        "\n".join(
+            [
+                "import json",
+                "import signal",
+                "import sys",
+                "import time",
+                "from pathlib import Path",
+                "signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))",
+                "Path('state').mkdir(exist_ok=True)",
+                "Path('state/task_state.json').write_text(",
+                "    json.dumps({'active_task_id': '', 'implementation_in_progress': False}),",
+                "    encoding='utf-8',",
+                ")",
+                "Path('state/example_supervisor_status.json').write_text(",
+                "    json.dumps({'updated_at': '2000-01-01T00:00:00+00:00', 'current_status_path': 'state/task_state.json'}),",
+                "    encoding='utf-8',",
+                ")",
+                "while True:",
+                "    time.sleep(0.05)",
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    track = parse_track_spec(
+        "T|worker.py|logs/{stamp}.log|state/example_supervisor.pid|state/example_managed_daemon.pid",
+        stamp="RUN",
+    )
+
+    output: list[str] = []
+    result = run_supervisor_tracks(
+        [track],
+        repo_root=tmp_path,
+        common_args=[],
+        duration_seconds=0.25,
+        heartbeat_interval_seconds=0.05,
+        supervisor_status_stale_seconds=0.01,
+        stop_grace_seconds=0.2,
+        python_executable=sys.executable,
+        label="test runner",
+        output=output.append,
+    )
+
+    assert result["completed"] is True
+    assert sum("started T supervisor" in line for line in output) >= 2
+    assert any("supervisor_status=stale" in line for line in output)
+    assert any("restart_supervisor=true" in line for line in output)
+    assert any("restarting stale T supervisor" in line for line in output)
+
+
 def test_implementation_supervisor_track_spec_uses_standard_state_layout():
     namespace_paths = agent_supervisor_namespace_paths(Path("/repo"), "virtual_ai_os")
     config = ImplementationSupervisorTrackConfig(
