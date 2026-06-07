@@ -1642,7 +1642,14 @@ class PortalImplementationDaemon:
             },
         )
 
-    def _clear_active_execution_state(self, state: PortalTaskState) -> None:
+    def _clear_active_execution_state(self, state: PortalTaskState, *, clear_task: bool = False) -> None:
+        if clear_task:
+            state.active_task_id = ""
+            state.active_task_title = ""
+            state.active_task_track = ""
+            state.active_task_started_at = ""
+            state.recommended_task_id = ""
+            state.recommended_actions = []
         state.active_attempt = 0
         state.active_phase = ""
         state.active_phase_started_at = ""
@@ -1718,7 +1725,7 @@ class PortalImplementationDaemon:
         state.implementation_in_progress = False
         state.heartbeat_at = finished_at
         state.last_progress_at = finished_at
-        self._clear_active_execution_state(state)
+        self._clear_active_execution_state(state, clear_task=True)
 
     def _create_seeded_worktree(
         self,

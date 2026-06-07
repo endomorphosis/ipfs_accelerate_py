@@ -3539,6 +3539,58 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     assert captured["kwargs"]["timeout"] == 1
 
 
+def test_implementation_daemon_clears_active_task_when_finished(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+    )
+    finished_at = datetime.now(timezone.utc).isoformat()
+    state = TodoTaskState(
+        active_task_id="ACCEL-001",
+        active_task_title="Complete stale active task cleanup",
+        active_task_track="runtime",
+        active_task_started_at="2026-06-07T00:00:00+00:00",
+        active_attempt=2,
+        active_phase="validating",
+        active_phase_started_at="2026-06-07T00:01:00+00:00",
+        active_phase_detail="pytest",
+        active_log_path=str(repo / "state" / "implementation.log"),
+        active_worktree_path=str(repo / "worktrees" / "accel-001"),
+        active_branch="implementation/accel-001",
+        implementation_in_progress=True,
+        recommended_task_id="ACCEL-001",
+        recommended_actions=["Run validation"],
+        last_implementation_task_id="ACCEL-001",
+        last_implementation_started_at="2026-06-07T00:00:00+00:00",
+        last_implementation_log_path=str(repo / "state" / "implementation.log"),
+    )
+
+    daemon._mark_implementation_finished(state, finished_at=finished_at)
+
+    assert state.active_task_id == ""
+    assert state.active_task_title == ""
+    assert state.active_task_track == ""
+    assert state.active_task_started_at == ""
+    assert state.active_attempt == 0
+    assert state.active_phase == ""
+    assert state.active_phase_detail == ""
+    assert state.active_log_path == ""
+    assert state.active_worktree_path == ""
+    assert state.active_branch == ""
+    assert state.implementation_in_progress is False
+    assert state.recommended_task_id == ""
+    assert state.recommended_actions == []
+    assert state.last_implementation_task_id == "ACCEL-001"
+    assert state.last_implementation_log_path.endswith("implementation.log")
+    assert state.heartbeat_at == finished_at
+    assert state.last_progress_at == finished_at
+
+
 def test_implementation_daemon_repairs_invalid_strategy_file(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
