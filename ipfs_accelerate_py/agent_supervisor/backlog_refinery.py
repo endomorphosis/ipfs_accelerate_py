@@ -1703,6 +1703,19 @@ def write_reconciliation_guardrail_discovery(
     return path
 
 
+def preserved_reconciliation_discovery_sections(existing_text: str) -> list[str]:
+    """Return manual resolution sections to carry across guardrail refreshes."""
+
+    preserved: list[str] = []
+    for match in re.finditer(r"^##\s+([^\n]+)\n.*?(?=^##\s+|\Z)", existing_text, flags=re.MULTILINE | re.DOTALL):
+        title = " ".join(match.group(1).strip().lower().split())
+        if title == "resolution" or title.startswith("resolution "):
+            section = match.group(0).strip()
+            if section:
+                preserved.append(section)
+    return preserved
+
+
 def write_reconciliation_guardrail_discovery_path(
     *,
     path: Path,
@@ -1713,6 +1726,11 @@ def write_reconciliation_guardrail_discovery_path(
     date = date or datetime.now(timezone.utc).date().isoformat()
     fingerprint = str(record.get("fingerprint") or "")
     path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        existing_text = path.read_text(encoding="utf-8")
+    except OSError:
+        existing_text = ""
+    preserved_sections = preserved_reconciliation_discovery_sections(existing_text)
     status_lines = "\n".join(f"- `{line}`" for line in record.get("status_short", []) or []) or "- none"
     main_checkout_evidence = reconciliation_evidence_markdown(
         record.get("main_dirty_evidence")
@@ -1787,6 +1805,8 @@ worktree cleanup skip count decreases.
 
 {plan_markdown.rstrip()}
 """
+    if preserved_sections:
+        content = content.rstrip() + "\n\n" + "\n\n".join(preserved_sections).rstrip() + "\n"
     path.write_text(content, encoding="utf-8")
     return path
 

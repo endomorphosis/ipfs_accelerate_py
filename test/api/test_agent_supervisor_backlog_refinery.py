@@ -24,6 +24,7 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     record_objective_backlog_findings,
     record_retry_budget_findings,
     scan_codebase_findings,
+    write_reconciliation_guardrail_discovery_path,
 )
 from ipfs_accelerate_py.agent_supervisor.wrapper_utils import agent_supervisor_namespace_paths
 
@@ -799,6 +800,58 @@ def test_backlog_refinery_keeps_block_when_dependency_guardrail_still_active(tmp
     strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
     assert strategy["blocked_tasks"] == ["AUTO-001"]
     assert strategy["dependency_guardrail_findings"][0]["source_task_id"] == "AUTO-001"
+
+
+def test_backlog_refinery_preserves_reconciliation_resolution_sections(tmp_path):
+    path = tmp_path / "discovery" / "reconciliation.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(
+        """# AUTO-010 Reconciliation Guardrail
+
+## Main Checkout Status
+
+- old
+
+## Resolution Evidence
+
+Manual cleanup reduced the stale worktree count from 81 to 20.
+
+## Reconciliation Plan
+
+old generated plan
+""",
+        encoding="utf-8",
+    )
+    record = {
+        "fingerprint": "abc123",
+        "kind": "main_checkout_dirty",
+        "reason": "main_checkout_dirty",
+        "candidate_count": 2,
+        "priority": "P1",
+        "track": "ops",
+        "status_short": [" M generated.md"],
+        "summary": "Resolve dirty main checkout blocking 2 worktree merges",
+        "dedupe_key": "reconciliation_guardrail:main_checkout_dirty",
+        "samples": [],
+    }
+
+    write_reconciliation_guardrail_discovery_path(
+        path=path,
+        task_id="AUTO-010",
+        record=record,
+        date="2026-06-07",
+    )
+    write_reconciliation_guardrail_discovery_path(
+        path=path,
+        task_id="AUTO-010",
+        record={**record, "candidate_count": 3},
+        date="2026-06-07",
+    )
+
+    text = path.read_text(encoding="utf-8")
+    assert "Candidate count: 3" in text
+    assert "Manual cleanup reduced the stale worktree count from 81 to 20." in text
+    assert text.count("## Resolution Evidence") == 1
 
 
 def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
