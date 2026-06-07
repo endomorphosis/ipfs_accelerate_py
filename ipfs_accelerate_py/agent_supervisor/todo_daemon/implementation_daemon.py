@@ -2774,6 +2774,18 @@ class PortalImplementationDaemon:
                 cwd=merge_workspace,
                 ignore_paths=set(identical_untracked_paths),
             )
+            generated_submodule_reconciliation = self._reconcile_generated_dirty_submodule_overlap(
+                merge_workspace,
+                dirty_overlap,
+                branch_name=branch_name,
+                task=task,
+            )
+            if generated_submodule_reconciliation:
+                dirty_overlap = self._dirty_merge_conflict_paths(
+                    branch_name,
+                    cwd=merge_workspace,
+                    ignore_paths=set(identical_untracked_paths),
+                )
             if dirty_overlap:
                 llm_merge_resolver = self._invoke_llm_merge_resolver_for_failed_merge(
                     workspace=merge_workspace,
@@ -2822,6 +2834,7 @@ class PortalImplementationDaemon:
                     "identical_untracked_paths": identical_untracked_paths,
                     "resolved_generated_conflicts": resolved_add_add_conflicts,
                     "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
+                    "generated_submodule_reconciliation": generated_submodule_reconciliation,
                     "submodule_merge_results": [],
                 }
                 if dirty_overlap:
@@ -2940,13 +2953,14 @@ class PortalImplementationDaemon:
                 "stdout": merge.stdout[-4000:],
                 "stderr": merge.stderr[-4000:],
                 "main_worktree_path": str(merge_workspace),
-                "used_ephemeral_main_worktree": merge_workspace_ephemeral,
-                "identical_untracked_paths": identical_untracked_paths,
-                "resolved_generated_conflicts": resolved_add_add_conflicts,
-                "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
-                "deterministic_conflict_repair": deterministic_conflict_repair,
-                "submodule_merge_results": submodule_merge_results,
-            }
+                    "used_ephemeral_main_worktree": merge_workspace_ephemeral,
+                    "identical_untracked_paths": identical_untracked_paths,
+                    "resolved_generated_conflicts": resolved_add_add_conflicts,
+                    "restored_generated_dirty_overlap": restored_generated_dirty_overlap,
+                    "generated_submodule_reconciliation": generated_submodule_reconciliation,
+                    "deterministic_conflict_repair": deterministic_conflict_repair,
+                    "submodule_merge_results": submodule_merge_results,
+                }
             if stale_submodule_worktree_config_repair.get("repairs"):
                 result["stale_submodule_worktree_config_repair"] = stale_submodule_worktree_config_repair
             if submodule_conflict_repair:
@@ -3703,6 +3717,219 @@ class PortalImplementationDaemon:
             sorted(overlap),
             reason="generated_dirty_merge_overlap",
         )
+
+    def _reconcile_generated_dirty_submodule_overlap(
+        self,
+        workspace: Path,
+        dirty_paths: Sequence[str],
+        *,
+        branch_name: str,
+        task: PortalTask,
+    ) -> list[dict[str, Any]]:
+        results: list[dict[str, Any]] = []
+        for relative in dirty_paths:
+            if not self._repo_relative_path_safe(relative):
+                continue
+            if not self._path_is_generated_status_output(relative):
+                continue
+            source = (workspace / relative).resolve()
+            if not self._is_git_worktree(source):
+                continue
+            status = self._run_git(["status", "--porcelain", "--untracked-files=all"], cwd=source).stdout.strip()
+            if not status:
+                continue
+            submodule_dirty_paths = self._dirty_status_paths(status)
+            generated_dirty_paths = [
+                path
+                for path in submodule_dirty_paths
+                if self._submodule_dirty_path_is_generated_status(relative, path)
+            ]
+            if set(generated_dirty_paths) != set(submodule_dirty_paths):
+                results.append(
+                    {
+                        "path": relative,
+                        "reconciled": False,
+                        "reason": "submodule_has_non_generated_dirty_paths",
+                        "dirty_paths": submodule_dirty_paths,
+                        "generated_dirty_paths": generated_dirty_paths,
+                    }
+                )
+                continue
+            current_branch = self._git_current_branch(source)
+            default_branch = self._submodule_default_branch(relative, source)
+            if current_branch and current_branch != default_branch:
+                results.append(
+                    {
+                        "path": relative,
+                        "reconciled": False,
+                        "reason": "submodule_not_on_default_branch",
+                        "current_branch": current_branch,
+                        "default_branch": default_branch,
+                    }
+                )
+                continue
+
+            generated_commit = self._commit_generated_submodule_paths(
+                source,
+                generated_dirty_paths,
+                subject=f"{task.task_id}: reconcile generated submodule status",
+            )
+            submodule_branch = self._submodule_worktree_branch_name(branch_name, relative)
+            submodule_merge: dict[str, Any] = {}
+            if self._git_ref_exists_in_repo(source, submodule_branch) and not self._git_ref_is_ancestor_in_repo(
+                source,
+                submodule_branch,
+                default_branch,
+            ):
+                submodule_merge = self._merge_generated_submodule_branch(
+                    source,
+                    submodule_branch,
+                    default_branch=default_branch,
+                )
+            parent_commit = self._commit_specific_path(
+                workspace,
+                relative,
+                subject=f"{task.task_id}: update generated submodule pointer",
+            )
+            reconciled = bool(parent_commit.get("committed") or parent_commit.get("reason") == "no_changes")
+            if submodule_merge and not submodule_merge.get("merged", False):
+                reconciled = False
+            result = {
+                "path": relative,
+                "reconciled": reconciled,
+                "reason": "generated_submodule_status_committed" if reconciled else "generated_submodule_commit_failed",
+                "dirty_paths": submodule_dirty_paths,
+                "generated_dirty_paths": generated_dirty_paths,
+                "generated_commit": generated_commit,
+                "submodule_branch": submodule_branch,
+                "submodule_merge": submodule_merge,
+                "parent_commit": parent_commit,
+            }
+            results.append(result)
+        if results:
+            self._record_event(
+                "generated_dirty_submodule_reconciliation",
+                {"main_worktree_path": str(workspace), "branch": branch_name, "results": results},
+            )
+        return results
+
+    def _submodule_dirty_path_is_generated_status(self, submodule_relative: str, dirty_path: str) -> bool:
+        if not self._repo_relative_path_safe(dirty_path):
+            return False
+        parent_relative = f"{submodule_relative.rstrip('/')}/{dirty_path.lstrip('/')}"
+        return (
+            self._path_is_generated_status_output(parent_relative)
+            or self._path_is_generated_status_output(dirty_path)
+            or self._path_is_generated_worktree_artifact(parent_relative)
+            or self._path_is_generated_worktree_artifact(dirty_path)
+        )
+
+    def _commit_generated_submodule_paths(self, repo: Path, relative_paths: Sequence[str], *, subject: str) -> dict[str, Any]:
+        safe_paths = [path for path in dict.fromkeys(relative_paths) if self._repo_relative_path_safe(path)]
+        if not safe_paths:
+            return {"committed": False, "reason": "no_safe_generated_paths", "repo": str(repo)}
+        add = subprocess.run(
+            ["git", "add", "--", *safe_paths],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if add.returncode != 0:
+            return {
+                "committed": False,
+                "reason": "git_add_failed",
+                "repo": str(repo),
+                "paths": safe_paths,
+                "returncode": add.returncode,
+                "stdout": add.stdout[-4000:],
+                "stderr": add.stderr[-4000:],
+            }
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--quiet", "--", *safe_paths],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if staged.returncode == 0:
+            return {"committed": False, "reason": "no_staged_changes", "repo": str(repo), "paths": safe_paths}
+        commit = subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Implementation Daemon",
+                "-c",
+                "user.email=implementation-daemon@example.invalid",
+                "commit",
+                "-m",
+                subject,
+                "--",
+                *safe_paths,
+            ],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if commit.returncode != 0:
+            return {
+                "committed": False,
+                "reason": "git_commit_failed",
+                "repo": str(repo),
+                "paths": safe_paths,
+                "returncode": commit.returncode,
+                "stdout": commit.stdout[-4000:],
+                "stderr": commit.stderr[-4000:],
+            }
+        commit_ref = self._run_git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        return {"committed": True, "repo": str(repo), "paths": safe_paths, "commit": commit_ref}
+
+    def _merge_generated_submodule_branch(
+        self,
+        repo: Path,
+        submodule_branch: str,
+        *,
+        default_branch: str,
+    ) -> dict[str, Any]:
+        merge_command = ["git", "merge", "--ff-only", submodule_branch]
+        merge = subprocess.run(
+            merge_command,
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        ff_only_result = {
+            "returncode": merge.returncode,
+            "stdout": merge.stdout[-4000:],
+            "stderr": merge.stderr[-4000:],
+        }
+        if merge.returncode != 0:
+            merge_command = ["git", "merge", "--no-ff", "--no-edit", submodule_branch]
+            merge = subprocess.run(
+                merge_command,
+                cwd=repo,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+        result = {
+            "branch": submodule_branch,
+            "default_branch": default_branch,
+            "merged": merge.returncode == 0,
+            "returncode": merge.returncode,
+            "command": merge_command,
+            "stdout": merge.stdout[-4000:],
+            "stderr": merge.stderr[-4000:],
+            "ff_only_result": ff_only_result,
+            "commit": "",
+        }
+        if merge.returncode == 0:
+            result["commit"] = self._run_git(["rev-parse", "HEAD"], cwd=repo).stdout.strip()
+        else:
+            result["merge_abort_result"] = self._abort_failed_merge(repo)
+        return result
 
     def _restore_generated_dirty_paths(
         self,

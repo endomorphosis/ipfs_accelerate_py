@@ -9511,6 +9511,79 @@ def test_implementation_daemon_restores_generated_dirty_checkout_overlap_without
     assert not capture_path.exists()
 
 
+def test_implementation_daemon_reconciles_generated_dirty_submodule_overlap_without_llm(tmp_path):
+    repo, submodule = _seed_parent_with_submodule(tmp_path)
+    submodule_todo = submodule / "docs" / "child.todo.md"
+    submodule_todo.parent.mkdir()
+    submodule_todo.write_text(
+        """# Child Todos
+
+## CHILD-001 Generated status
+
+- Status: todo
+- Fingerprint: base
+""",
+        encoding="utf-8",
+    )
+    _git(submodule, "add", "docs/child.todo.md")
+    _git(submodule, "commit", "-m", "seed generated child todo")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "record child todo")
+
+    _git(submodule, "checkout", "-b", "implementation/auto-001-submodule-libs-child")
+    (submodule / "child.txt").write_text("branch\n", encoding="utf-8")
+    _git(submodule, "commit", "-am", "AUTO-001: update child")
+    _git(repo, "checkout", "-b", "implementation/auto-001")
+    _git(repo, "add", "libs/child")
+    _git(repo, "commit", "-m", "AUTO-001: update child pointer")
+
+    _git(repo, "checkout", "main")
+    _git(submodule, "checkout", "main")
+    submodule_todo.write_text(submodule_todo.read_text(encoding="utf-8").replace("base", "main-dirty"), encoding="utf-8")
+    assert "libs/child" in _git(repo, "status", "--porcelain")
+
+    capture_path = tmp_path / "unexpected-generated-submodule-resolver-prompt.txt"
+    resolver_script = tmp_path / "unexpected_generated_submodule_resolver.py"
+    resolver_script.write_text(
+        "import pathlib, sys\n"
+        "pathlib.Path(sys.argv[1]).write_text(sys.stdin.read(), encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=submodule_todo,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["libs/child"],
+        llm_merge_resolver_command=(
+            f"{shlex.quote(sys.executable)} {shlex.quote(str(resolver_script))} {shlex.quote(str(capture_path))}"
+        ),
+        llm_merge_resolver_timeout_seconds=5,
+    )
+
+    result = daemon._merge_branch_to_main(
+        "implementation/auto-001",
+        PortalTask(
+            task_id="AUTO-001",
+            title="Reconcile generated submodule dirt",
+            status="todo",
+            completion="manual",
+            priority="P1",
+            track="ops",
+        ),
+        1,
+    )
+
+    assert result["merged"] is True
+    assert result["generated_submodule_reconciliation"][0]["reconciled"] is True
+    assert result["generated_submodule_reconciliation"][0]["generated_commit"]["committed"] is True
+    assert result["generated_submodule_reconciliation"][0]["submodule_merge"]["merged"] is True
+    assert not capture_path.exists()
+    assert _git(repo, "status", "--porcelain", "--", "libs/child") == ""
+    assert _git(submodule, "status", "--porcelain") == ""
+
+
 def test_implementation_daemon_repairs_dirty_managed_main_merge_worktree(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
