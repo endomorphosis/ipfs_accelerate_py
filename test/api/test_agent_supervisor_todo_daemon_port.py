@@ -2946,6 +2946,7 @@ def test_configured_multi_supervisor_cli_runner_builds_base_args_and_dispatches(
         python_executable=sys.executable,
         implementation_supervisor_defaults=True,
         implementation_supervisor_command="bash resolve.sh",
+        implementation_supervisor_llm_merge_resolver_command="bash merge-resolve.sh",
         implementation_tracks=(implementation_track,),
         implementation_track_configs=(implementation_track_config,),
         tracks=(raw_track,),
@@ -2961,6 +2962,11 @@ def test_configured_multi_supervisor_cli_runner_builds_base_args_and_dispatches(
     assert args[args.index("--master-log") + 1] == "logs/master.log"
     assert args[args.index("--master-pid-path") + 1] == "state/master.pid"
     assert args[args.index("--python-executable") + 1] == sys.executable
+    assert args[args.index("--implementation-supervisor-command") + 1] == "bash resolve.sh"
+    assert (
+        args[args.index("--implementation-supervisor-llm-merge-resolver-command") + 1]
+        == "bash merge-resolve.sh"
+    )
     implementation_track_values = [
         args[index + 1] for index, value in enumerate(args) if value == "--implementation-track"
     ]
@@ -3074,7 +3080,8 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
     args = launcher.args()
     assert isinstance(launcher, ConfiguredMultiSupervisorLauncher)
     assert args[args.index("--label") + 1] == "repo implementation run"
-    assert args[args.index("--implementation-supervisor-command") + 1] == (
+    assert "--implementation-supervisor-command" not in args
+    assert args[args.index("--implementation-supervisor-llm-merge-resolver-command") + 1] == (
         f"bash {tmp_path / 'scripts' / 'resolve.sh'}"
     )
     assert "--implementation-supervisor-defaults" in args
@@ -3113,7 +3120,8 @@ def test_repo_implementation_multi_supervisor_launcher_uses_packaged_resolver_de
     )
 
     args = launcher.args()
-    assert args[args.index("--implementation-supervisor-command") + 1] == (
+    assert "--implementation-supervisor-command" not in args
+    assert args[args.index("--implementation-supervisor-llm-merge-resolver-command") + 1] == (
         "python-test -m ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback"
     )
     assert llm_merge_resolver_fallback_command(python_executable="python-test") == (

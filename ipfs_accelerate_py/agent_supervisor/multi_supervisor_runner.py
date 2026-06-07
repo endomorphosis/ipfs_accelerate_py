@@ -406,6 +406,7 @@ def build_configured_multi_supervisor_cli_runner(
     python_executable: str = "python3",
     implementation_supervisor_defaults: bool = False,
     implementation_supervisor_command: str = "",
+    implementation_supervisor_llm_merge_resolver_command: str = "",
     implementation_tracks: Sequence[str] = (),
     implementation_track_configs: Sequence[
         ImplementationSupervisorTrackConfig | tuple[str, Path | str, Path | str, str]
@@ -453,6 +454,13 @@ def build_configured_multi_supervisor_cli_runner(
         argv.append("--implementation-supervisor-defaults")
     if implementation_supervisor_command:
         argv.extend(["--implementation-supervisor-command", implementation_supervisor_command])
+    if implementation_supervisor_llm_merge_resolver_command:
+        argv.extend(
+            [
+                "--implementation-supervisor-llm-merge-resolver-command",
+                implementation_supervisor_llm_merge_resolver_command,
+            ]
+        )
     for track in tracks:
         argv.extend(["--track", str(track)])
     for track in implementation_tracks:
@@ -482,6 +490,7 @@ def build_configured_multi_supervisor_launcher(
     python_executable: str = "python3",
     implementation_supervisor_defaults: bool = False,
     implementation_supervisor_command: str = "",
+    implementation_supervisor_llm_merge_resolver_command: str = "",
     implementation_tracks: Sequence[str] = (),
     implementation_track_configs: Sequence[
         ImplementationSupervisorTrackConfig | tuple[str, Path | str, Path | str, str]
@@ -510,6 +519,9 @@ def build_configured_multi_supervisor_launcher(
             python_executable=python_executable,
             implementation_supervisor_defaults=implementation_supervisor_defaults,
             implementation_supervisor_command=implementation_supervisor_command,
+            implementation_supervisor_llm_merge_resolver_command=(
+                implementation_supervisor_llm_merge_resolver_command
+            ),
             implementation_tracks=implementation_tracks,
             implementation_track_configs=implementation_track_configs,
             tracks=tracks,
@@ -529,6 +541,7 @@ def build_repo_implementation_multi_supervisor_launcher(
     ],
     resolver_script_path: Path | str = "",
     implementation_supervisor_command: str = "",
+    implementation_supervisor_llm_merge_resolver_command: str = "",
     duration_seconds: float | int | str = 28800.0,
     duration_seconds_env_var: str = "DURATION_SECONDS",
     heartbeat_interval_seconds: float | int | str | None = None,
@@ -553,11 +566,13 @@ def build_repo_implementation_multi_supervisor_launcher(
     from .llm_merge_resolver_fallback import llm_merge_resolver_fallback_command
     from .wrapper_utils import build_repo_runtime_environment_callbacks, repo_script_command
 
-    command = implementation_supervisor_command
-    if not command and resolver_script_path:
-        command = repo_script_command(repo_root, resolver_script_path)
-    if not command:
-        command = llm_merge_resolver_fallback_command(python_executable=python_executable)
+    llm_merge_resolver_command = implementation_supervisor_llm_merge_resolver_command
+    if not llm_merge_resolver_command and resolver_script_path:
+        llm_merge_resolver_command = repo_script_command(repo_root, resolver_script_path)
+    if not llm_merge_resolver_command:
+        llm_merge_resolver_command = llm_merge_resolver_fallback_command(
+            python_executable=python_executable
+        )
     effective_prepare_environment = prepare_environment
     if effective_prepare_environment is None and runtime_package_names is not None:
         runtime_environment = build_repo_runtime_environment_callbacks(
@@ -581,7 +596,8 @@ def build_repo_implementation_multi_supervisor_launcher(
         label=label,
         python_executable=python_executable,
         implementation_supervisor_defaults=True,
-        implementation_supervisor_command=command,
+        implementation_supervisor_command=implementation_supervisor_command,
+        implementation_supervisor_llm_merge_resolver_command=llm_merge_resolver_command,
         implementation_track_configs=implementation_track_configs,
         common_args=common_args,
         detach=detach,
