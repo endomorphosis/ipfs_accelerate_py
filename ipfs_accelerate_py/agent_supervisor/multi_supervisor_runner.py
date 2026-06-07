@@ -644,6 +644,7 @@ def implementation_supervisor_common_args(
     objective_scan_min_open_tasks: int = 20,
     objective_scan_max_findings: int = 12,
     objective_scan_cooldown_seconds: int = 900,
+    objective_refill_timeout_seconds: int = 600,
     objective_surplus_findings_per_goal: int = 6,
     objective_surplus_min_terms_per_todo: int = 4,
     codebase_scan_cooldown_seconds: int = 900,
@@ -674,6 +675,8 @@ def implementation_supervisor_common_args(
         str(objective_scan_max_findings),
         "--objective-scan-cooldown-seconds",
         str(objective_scan_cooldown_seconds),
+        "--objective-refill-timeout-seconds",
+        str(objective_refill_timeout_seconds),
         "--objective-surplus-findings-per-goal",
         str(objective_surplus_findings_per_goal),
         "--objective-surplus-min-terms-per-todo",
@@ -1103,6 +1106,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--implementation-supervisor-objective-scan-cooldown-seconds", type=int, default=900)
     parser.add_argument(
+        "--implementation-supervisor-objective-refill-timeout-seconds",
+        type=int,
+        default=_env_int("OBJECTIVE_REFILL_TIMEOUT_SECONDS", 600),
+    )
+    parser.add_argument(
         "--implementation-supervisor-objective-surplus-findings-per-goal",
         type=int,
         default=_env_int("OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL", 6),
@@ -1194,6 +1202,7 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                 objective_scan_min_open_tasks=args.implementation_supervisor_objective_scan_min_open_tasks,
                 objective_scan_max_findings=args.implementation_supervisor_objective_scan_max_findings,
                 objective_scan_cooldown_seconds=args.implementation_supervisor_objective_scan_cooldown_seconds,
+                objective_refill_timeout_seconds=args.implementation_supervisor_objective_refill_timeout_seconds,
                 objective_surplus_findings_per_goal=args.implementation_supervisor_objective_surplus_findings_per_goal,
                 objective_surplus_min_terms_per_todo=args.implementation_supervisor_objective_surplus_min_terms_per_todo,
                 codebase_scan_cooldown_seconds=args.implementation_supervisor_codebase_scan_cooldown_seconds,

@@ -59,6 +59,10 @@ DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS = float(
 )
 
 
+class ObjectiveRefillTimeoutError(TimeoutError):
+    """Raised when supervisor-owned objective refill exceeds its local budget."""
+
+
 def split_csv_values(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     items: list[str] = []
     for value in values:
@@ -154,6 +158,7 @@ class PortalSupervisorConfig:
     objective_scan_min_open_tasks: int = 0
     objective_scan_max_findings: int = 5
     objective_scan_cooldown_seconds: int = 21600
+    objective_refill_timeout_seconds: float = 0.0
     objective_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
     objective_max_refinement_children: int = 3
     objective_max_refinement_depth: int = 4
@@ -2512,6 +2517,32 @@ class PortalImplementationSupervisor:
             )
         return findings
 
+    def _run_objective_refill_with_timeout(self, run_objective_daemon, args: Any) -> dict[str, Any]:
+        timeout_seconds = float(self.config.objective_refill_timeout_seconds or 0.0)
+        if timeout_seconds <= 0.0:
+            return run_objective_daemon(args)
+        if threading.current_thread() is not threading.main_thread():
+            return run_objective_daemon(args)
+        if not hasattr(signal, "setitimer") or not hasattr(signal, "SIGALRM"):
+            return run_objective_daemon(args)
+        previous_timer = signal.getitimer(signal.ITIMER_REAL)
+        if previous_timer[0] > 0:
+            return run_objective_daemon(args)
+
+        def _handle_timeout(_signum, _frame):
+            raise ObjectiveRefillTimeoutError(
+                f"objective refill exceeded {timeout_seconds:.3f}s"
+            )
+
+        previous_handler = signal.getsignal(signal.SIGALRM)
+        try:
+            signal.signal(signal.SIGALRM, _handle_timeout)
+            signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+            return run_objective_daemon(args)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0.0)
+            signal.signal(signal.SIGALRM, previous_handler)
+
     def refill_objective_backlog(self) -> dict[str, Any]:
         """Refine the objective heap and feed todos when the backlog is low or drained."""
 
@@ -2581,56 +2612,87 @@ class PortalImplementationSupervisor:
             if str(item).strip()
         }
         seen_fingerprints.update(discovery_fingerprints(discovery_dir))
-        payload = run_objective_daemon(
-            Namespace(
-                repo_root=self.config.repo_root,
-                objective_path=objective_path,
-                todo_path=self.config.todo_path,
-                discovery_dir=discovery_dir,
-                bundle_dir=bundle_dir,
-                dataset_dir=dataset_dir,
-                graph_path=graph_path,
-                task_prefix=task_prefix,
-                objective_summary_prefix=(
-                    self.config.objective_summary_prefix or DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
-                ),
-                discovery_output_path=discovery_output_path,
-                depends_on=list(self.config.objective_scan_depends_on),
-                seen_fingerprint=sorted(seen_fingerprints),
-                repeat_existing=False,
-                max_findings=self.config.objective_scan_max_findings,
-                ensure_tracking_document=self.config.objective_ensure_tracking_document,
-                ultimate_goal=self.config.objective_ultimate_goal or DEFAULT_ULTIMATE_GOAL,
-                root_evidence=list(self.config.objective_root_evidence),
-                goal_prefix=self.config.objective_goal_prefix,
-                root_goal_id=self.config.objective_root_goal_id,
-                root_goal_title=self.config.objective_root_goal_title or DEFAULT_ROOT_GOAL_TITLE,
-                tracking_document_title=(
-                    self.config.objective_tracking_document_title or DEFAULT_TRACKING_DOCUMENT_TITLE
-                ),
-                refine_objective_heap=self.config.objective_refine_goals,
-                no_reconcile_goal_completion=not self.config.objective_reconcile_goal_completion,
-                seed_interoperability_goals=self.config.objective_seed_interoperability_goals,
-                interoperability_focus=list(self.config.objective_interoperability_focus),
-                interoperability_component_path=list(
-                    self.config.objective_interoperability_component_paths
-                    or self.config.worktree_submodule_paths
-                ),
-                max_interoperability_goals=self.config.objective_max_interoperability_goals,
-                max_refinement_children=self.config.objective_max_refinement_children,
-                max_refinement_depth=self.config.objective_max_refinement_depth,
-                no_persist_ast_dataset=not self.config.objective_persist_ast_dataset,
-                no_todo_vector_index=not self.config.objective_write_todo_vector_index,
-                todo_vector_index_path=self.config.objective_todo_vector_index_path,
-                surplus_findings_per_goal=self.config.objective_surplus_findings_per_goal,
-                surplus_min_terms_per_todo=self.config.objective_surplus_min_terms_per_todo,
-                submit_bundles=False,
-                queue_path=None,
-                queue_task_type="codex.todo_bundle",
-                queue_model_name="codex",
-                log_level="INFO",
-            )
+        objective_args = Namespace(
+            repo_root=self.config.repo_root,
+            objective_path=objective_path,
+            todo_path=self.config.todo_path,
+            discovery_dir=discovery_dir,
+            bundle_dir=bundle_dir,
+            dataset_dir=dataset_dir,
+            graph_path=graph_path,
+            task_prefix=task_prefix,
+            objective_summary_prefix=(
+                self.config.objective_summary_prefix or DEFAULT_OBJECTIVE_TASK_SUMMARY_PREFIX
+            ),
+            discovery_output_path=discovery_output_path,
+            depends_on=list(self.config.objective_scan_depends_on),
+            seen_fingerprint=sorted(seen_fingerprints),
+            repeat_existing=False,
+            max_findings=self.config.objective_scan_max_findings,
+            ensure_tracking_document=self.config.objective_ensure_tracking_document,
+            ultimate_goal=self.config.objective_ultimate_goal or DEFAULT_ULTIMATE_GOAL,
+            root_evidence=list(self.config.objective_root_evidence),
+            goal_prefix=self.config.objective_goal_prefix,
+            root_goal_id=self.config.objective_root_goal_id,
+            root_goal_title=self.config.objective_root_goal_title or DEFAULT_ROOT_GOAL_TITLE,
+            tracking_document_title=(
+                self.config.objective_tracking_document_title or DEFAULT_TRACKING_DOCUMENT_TITLE
+            ),
+            refine_objective_heap=self.config.objective_refine_goals,
+            no_reconcile_goal_completion=not self.config.objective_reconcile_goal_completion,
+            seed_interoperability_goals=self.config.objective_seed_interoperability_goals,
+            interoperability_focus=list(self.config.objective_interoperability_focus),
+            interoperability_component_path=list(
+                self.config.objective_interoperability_component_paths
+                or self.config.worktree_submodule_paths
+            ),
+            max_interoperability_goals=self.config.objective_max_interoperability_goals,
+            max_refinement_children=self.config.objective_max_refinement_children,
+            max_refinement_depth=self.config.objective_max_refinement_depth,
+            no_persist_ast_dataset=not self.config.objective_persist_ast_dataset,
+            no_todo_vector_index=not self.config.objective_write_todo_vector_index,
+            todo_vector_index_path=self.config.objective_todo_vector_index_path,
+            surplus_findings_per_goal=self.config.objective_surplus_findings_per_goal,
+            surplus_min_terms_per_todo=self.config.objective_surplus_min_terms_per_todo,
+            submit_bundles=False,
+            queue_path=None,
+            queue_task_type="codex.todo_bundle",
+            queue_model_name="codex",
+            log_level="INFO",
         )
+        try:
+            payload = self._run_objective_refill_with_timeout(run_objective_daemon, objective_args)
+        except ObjectiveRefillTimeoutError as exc:
+            strategy = load_strategy(self.config.strategy_path)
+            strategy["last_objective_goal_scan_at"] = utc_now()
+            strategy["last_objective_goal_scan_mode"] = f"{mode}_timeout"
+            strategy["last_objective_refill_timeout_at"] = utc_now()
+            strategy["last_objective_refill_timeout_seconds"] = float(
+                self.config.objective_refill_timeout_seconds or 0.0
+            )
+            strategy["last_objective_refill_timeout_error"] = str(exc)
+            write_json(self.config.strategy_path, strategy)
+            payload = {
+                "generated_count": 0,
+                "task_ids": [],
+                "refined_goal_ids": [],
+                "completed_goal_ids": [],
+                "seeded_interoperability_goal_ids": [],
+                "objective_refill_timed_out": True,
+                "objective_refill_timeout_seconds": float(
+                    self.config.objective_refill_timeout_seconds or 0.0
+                ),
+            }
+            self._record_event(
+                "objective_refill_timeout",
+                {
+                    "mode": mode,
+                    "objective_path": str(objective_path),
+                    "timeout_seconds": payload["objective_refill_timeout_seconds"],
+                    "error": str(exc),
+                },
+            )
+            return payload
 
         strategy = load_strategy(self.config.strategy_path)
         strategy["last_objective_goal_scan_at"] = utc_now()
@@ -3600,6 +3662,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--objective-scan-max-findings", type=int, default=5)
     parser.add_argument("--objective-scan-cooldown-seconds", type=int, default=21600)
     parser.add_argument(
+        "--objective-refill-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "Abort supervisor-owned objective refill after this many seconds. "
+            "A timed-out objective pass yields no todos so codebase refill can still run."
+        ),
+    )
+    parser.add_argument(
         "--objective-scan-depends-on",
         action="append",
         default=[],
@@ -3758,6 +3829,7 @@ def supervisor_config_from_args(
         objective_scan_min_open_tasks=args.objective_scan_min_open_tasks,
         objective_scan_max_findings=args.objective_scan_max_findings,
         objective_scan_cooldown_seconds=args.objective_scan_cooldown_seconds,
+        objective_refill_timeout_seconds=args.objective_refill_timeout_seconds,
         objective_scan_depends_on=split_csv_values(args.objective_scan_depends_on),
         objective_max_refinement_children=args.objective_max_refinement_children,
         objective_max_refinement_depth=args.objective_max_refinement_depth,

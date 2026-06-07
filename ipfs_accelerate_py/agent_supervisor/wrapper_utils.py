@@ -506,6 +506,7 @@ class ObjectiveRefillEnvSettings:
     min_open_tasks: int
     max_findings: int
     cooldown_seconds: int
+    timeout_seconds: int
     surplus_findings_per_goal: int
     surplus_min_terms_per_todo: int
 
@@ -527,6 +528,7 @@ class ObjectiveRefillEnvSettings:
             "objective_scan_min_open_tasks": self.min_open_tasks,
             "objective_scan_max_findings": self.max_findings,
             "objective_scan_cooldown_seconds": self.cooldown_seconds,
+            "objective_refill_timeout_seconds": self.timeout_seconds,
             "objective_surplus_findings_per_goal": self.surplus_findings_per_goal,
             "objective_surplus_min_terms_per_todo": self.surplus_min_terms_per_todo,
         }
@@ -538,6 +540,7 @@ def prefixed_objective_refill_env_settings(
     min_open_tasks: int = 20,
     max_findings: int = 12,
     cooldown_seconds: int = 900,
+    timeout_seconds: int = 600,
     surplus_findings_per_goal: int = 6,
     surplus_min_terms_per_todo: int = 4,
 ) -> ObjectiveRefillEnvSettings:
@@ -547,6 +550,7 @@ def prefixed_objective_refill_env_settings(
         min_open_tasks=prefixed_env_int(prefix, "OBJECTIVE_SCAN_MIN_OPEN_TASKS", min_open_tasks),
         max_findings=prefixed_env_int(prefix, "OBJECTIVE_SCAN_MAX_FINDINGS", max_findings),
         cooldown_seconds=prefixed_env_int(prefix, "OBJECTIVE_SCAN_COOLDOWN_SECONDS", cooldown_seconds),
+        timeout_seconds=prefixed_env_int(prefix, "OBJECTIVE_REFILL_TIMEOUT_SECONDS", timeout_seconds),
         surplus_findings_per_goal=prefixed_env_int(
             prefix,
             "OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL",

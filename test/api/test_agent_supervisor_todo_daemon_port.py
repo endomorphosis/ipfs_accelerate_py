@@ -8,6 +8,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -558,12 +559,14 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MIN_OPEN_TASKS", "21")
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MAX_FINDINGS", "13")
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_COOLDOWN_SECONDS", "901")
+    monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_REFILL_TIMEOUT_SECONDS", "601")
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SURPLUS_FINDINGS_PER_GOAL", "7")
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO", "5")
     assert prefixed_objective_refill_env_settings("WRAPPER_UTILS") == ObjectiveRefillEnvSettings(
         min_open_tasks=21,
         max_findings=13,
         cooldown_seconds=901,
+        timeout_seconds=601,
         surplus_findings_per_goal=7,
         surplus_min_terms_per_todo=5,
     )
@@ -579,6 +582,7 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         "objective_scan_min_open_tasks": 21,
         "objective_scan_max_findings": 13,
         "objective_scan_cooldown_seconds": 901,
+        "objective_refill_timeout_seconds": 601,
         "objective_surplus_findings_per_goal": 7,
         "objective_surplus_min_terms_per_todo": 5,
     }
@@ -2994,15 +2998,17 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
         implementation_command="bash resolve.sh",
         objective_scan_min_open_tasks=21,
         objective_scan_max_findings=13,
+        objective_refill_timeout_seconds=602,
         objective_surplus_findings_per_goal=8,
         objective_surplus_min_terms_per_todo=5,
     )
 
-    assert args[:3] == ["--implement", "--stale-seconds", "1800"]
+    assert args[:3] == ["--implement", "--objective-refill-scan", "--codebase-refill-scan"]
     assert args[args.index("--implementation-command") + 1] == "bash resolve.sh"
     assert args[args.index("--llm-merge-resolver-command") + 1] == "bash resolve.sh"
     assert args[args.index("--objective-scan-min-open-tasks") + 1] == "21"
     assert args[args.index("--objective-scan-max-findings") + 1] == "13"
+    assert args[args.index("--objective-refill-timeout-seconds") + 1] == "602"
     assert args[args.index("--objective-surplus-findings-per-goal") + 1] == "8"
     assert args[args.index("--objective-surplus-min-terms-per-todo") + 1] == "5"
     assert args[args.index("--codebase-scan-cooldown-seconds") + 1] == "900"
@@ -5546,6 +5552,94 @@ def test_implementation_supervisor_runs_codebase_scan_after_goal_only_objective_
     assert result["objective_seeded_interoperability_goal_count"] == 1
     assert result["codebase_refill_count"] == 1
     assert result["codebase_deferred_reason"] == ""
+
+
+def test_implementation_supervisor_runs_codebase_scan_after_objective_refill_timeout(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor import objective_daemon
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    source = repo / "src" / "runtime.py"
+    source.parent.mkdir()
+    source.write_text(
+        """def route_request(request):
+    # TODO: this would be found after objective timeout
+    return request
+""",
+        encoding="utf-8",
+    )
+    objective_path = repo / "objective-heap.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G001 Runtime objective
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: runtime
+- Priority: P1
+- Goal: Prove runtime integration before low-level scan work.
+- Evidence: missing_runtime_integration_contract
+- Outputs: src/runtime.py, tests
+- Validation: test -f objective-heap.md
+""",
+        encoding="utf-8",
+    )
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    _git(repo, "add", "todo.md", "objective-heap.md", "src/runtime.py")
+    _git(repo, "commit", "-m", "seed objective and scan finding")
+    state_dir = repo / "state"
+
+    def slow_objective_daemon(_args):
+        time.sleep(1.0)
+        return {"generated_count": 1, "task_ids": ["AUTO-999"]}
+
+    monkeypatch.setattr(objective_daemon, "run_objective_daemon", slow_objective_daemon)
+
+    config = TodoSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        task_prefix="## AUTO-",
+        objective_refill_enabled=True,
+        objective_path=objective_path,
+        objective_refill_timeout_seconds=0.05,
+        objective_scan_min_open_tasks=0,
+        objective_scan_max_findings=1,
+        objective_persist_ast_dataset=False,
+        codebase_refill_enabled=True,
+        codebase_scan_discovery_dir=repo / "discovery",
+        codebase_scan_min_open_tasks=0,
+        codebase_scan_max_findings=1,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    todo_text = todo_path.read_text(encoding="utf-8")
+    assert result["objective_refill_count"] == 0
+    assert result["codebase_refill_count"] == 1
+    assert "AUTO-999" not in todo_text
+    assert "Resolve code annotation" in todo_text
+    strategy = json.loads((state_dir / "strategy.json").read_text(encoding="utf-8"))
+    assert strategy["last_objective_goal_scan_mode"].endswith("_timeout")
+    assert strategy["last_objective_refill_timeout_seconds"] == 0.05
+    events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert any(event["type"] == "objective_refill_timeout" for event in events)
 
 
 def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, monkeypatch):
