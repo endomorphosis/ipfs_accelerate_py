@@ -2718,8 +2718,6 @@ def release_completed_guardrail_blocks(
         return []
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
-    if not blocked_tasks:
-        return []
 
     releases: list[dict[str, Any]] = []
     deduplicated_blocked_tasks = list(dict.fromkeys(blocked_tasks))
@@ -2741,6 +2739,51 @@ def release_completed_guardrail_blocks(
             for task_id in duplicate_ids
         )
         blocked_tasks = deduplicated_blocked_tasks
+
+    active_dependency_records = dependency_guardrail_records(
+        parse_task_file(todo_path, task_header_prefix(task_prefix))
+    )
+    active_dependency_fingerprints = {
+        str(record.get("fingerprint") or "")
+        for record in active_dependency_records
+        if str(record.get("fingerprint") or "").strip()
+    }
+    active_dependency_sources = {
+        str(record.get("source_task_id") or "")
+        for record in active_dependency_records
+        if str(record.get("source_task_id") or "").strip()
+    }
+    raw_dependency_findings = strategy.get("dependency_guardrail_findings")
+    if isinstance(raw_dependency_findings, list):
+        retained_dependency_findings: list[Any] = []
+        pruned_dependency_findings = False
+        for raw_record in raw_dependency_findings:
+            if not isinstance(raw_record, Mapping):
+                pruned_dependency_findings = True
+                continue
+            source_task_id = str(raw_record.get("source_task_id") or "")
+            follow_up_task_id = str(raw_record.get("follow_up_task_id") or "")
+            fingerprint = str(raw_record.get("fingerprint") or "")
+            if fingerprint and fingerprint not in active_dependency_fingerprints:
+                if source_task_id in active_dependency_sources:
+                    retained_dependency_findings.append(raw_record)
+                    continue
+                pruned_dependency_findings = True
+                if source_task_id:
+                    if source_task_id in blocked_tasks:
+                        blocked_tasks = [task_id for task_id in blocked_tasks if task_id != source_task_id]
+                    releases.append(
+                        {
+                            "source_task_id": source_task_id,
+                            "follow_up_task_id": follow_up_task_id,
+                            "guardrail_kind": "dependency_guardrail",
+                            "reason": "dependency_metadata_resolved",
+                        }
+                    )
+                continue
+            retained_dependency_findings.append(raw_record)
+        if pruned_dependency_findings:
+            strategy["dependency_guardrail_findings"] = retained_dependency_findings
 
     guardrail_groups = (
         ("retry_budget", strategy.get("retry_budget_findings")),

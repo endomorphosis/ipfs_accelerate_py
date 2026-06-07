@@ -672,6 +672,135 @@ def test_backlog_refinery_releases_completed_and_duplicate_stale_strategy_blocks
     assert strategy["blocked_tasks"] == ["AUTO-002"]
 
 
+def test_backlog_refinery_releases_stale_dependency_guardrail_after_metadata_repaired(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Metadata repaired
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Dependency metadata no longer blocks readiness.
+
+## AUTO-002 Resolve dependency guardrail for AUTO-001
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Stale repair task from a previous dependency guardrail.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "dependency_guardrail_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-002",
+                        "fingerprint": "stale",
+                        "missing_dependencies": ["AUTO-999"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "AUTO-002",
+            "guardrail_kind": "dependency_guardrail",
+            "reason": "dependency_metadata_resolved",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == []
+    assert strategy["dependency_guardrail_findings"] == []
+
+
+def test_backlog_refinery_keeps_block_when_dependency_guardrail_still_active(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Still missing dependency
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on: AUTO-999
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Dependency metadata is still impossible.
+
+## AUTO-002 Resolve dependency guardrail for AUTO-001
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Existing repair task.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps(
+            {
+                "blocked_tasks": ["AUTO-001"],
+                "dependency_guardrail_findings": [
+                    {
+                        "source_task_id": "AUTO-001",
+                        "follow_up_task_id": "AUTO-002",
+                        "fingerprint": "stale",
+                        "missing_dependencies": ["AUTO-404"],
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == []
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-001"]
+    assert strategy["dependency_guardrail_findings"][0]["source_task_id"] == "AUTO-001"
+
+
 def test_backlog_refinery_retry_budget_blocks_validation_loop(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"
