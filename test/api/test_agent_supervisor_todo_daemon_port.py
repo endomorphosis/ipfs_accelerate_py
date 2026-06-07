@@ -7803,6 +7803,47 @@ def test_reconciliation_guardrail_records_use_full_dirty_group_counts():
     assert any(item["action"] == "compare_dirty_content_to_target" for item in plan["actions"])
 
 
+def test_reconciliation_guardrail_records_preflight_merge_conflict_bundle():
+    records = reconciliation_guardrail_records(
+        reconciliation_result={
+            "attempted": True,
+            "processed": [
+                {
+                    "branch": "implementation/alpha",
+                    "path": "/tmp/worktrees/alpha",
+                    "target_ref": "main",
+                    "preflight_result": {
+                        "mergeable": False,
+                        "reason": "preflight_merge_conflict",
+                        "conflict_paths": ["docs/todo.md", "hallucinate_app"],
+                    },
+                },
+                {
+                    "branch": "implementation/beta",
+                    "path": "/tmp/worktrees/beta",
+                    "target_ref": "main",
+                    "preflight_result": {
+                        "mergeable": False,
+                        "reason": "preflight_merge_conflict",
+                        "conflict_paths": ["docs/todo.md"],
+                    },
+                },
+            ],
+        }
+    )
+
+    assert len(records) == 1
+    assert records[0]["kind"] == "preflight_merge_conflict"
+    assert records[0]["candidate_count"] == 2
+    assert records[0]["summary"] == "Resolve 2 preflight-conflicting backlogged worktree merges"
+    assert records[0]["dedupe_key"] == "reconciliation_guardrail:preflight_merge_conflict"
+    assert records[0]["conflict_path_counts"] == {"docs/todo.md": 2, "hallucinate_app": 1}
+    plan = reconciliation_guardrail_plan(records[0])
+    assert plan["top_conflict_paths"] == ["docs/todo.md", "hallucinate_app"]
+    assert "docs/todo.md" in plan["sample_status_paths"]
+    assert any(item["action"] == "bundle_preflight_conflicts_by_path" for item in plan["actions"])
+
+
 def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_path):
     todo_path = tmp_path / "todo.md"
     strategy_path = tmp_path / "state" / "strategy.json"
@@ -7893,6 +7934,76 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
         },
         task_prefix="ACCEL-",
     ) == []
+
+
+def test_reconciliation_guardrail_dedupes_preflight_conflict_when_count_changes(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "discovery"
+    stale_discovery = discovery_dir / "stale.md"
+    stale_discovery.parent.mkdir(parents=True)
+    stale_discovery.write_text(
+        "# ACCEL-001 Reconciliation Guardrail\n\n"
+        "Candidate count: 1\n",
+        encoding="utf-8",
+    )
+    todo_path.write_text(
+        "# Agent Todos\n\n"
+        "## ACCEL-001 Resolve 1 preflight-conflicting backlogged worktree merges\n\n"
+        "- Status: todo\n"
+        "- Completion: manual\n"
+        "- Priority: P1\n"
+        "- Track: ops\n"
+        "- Dedupe key: reconciliation_guardrail:preflight_merge_conflict\n"
+        "- Depends on:\n"
+        f"- Validation: test -f {stale_discovery}\n"
+        "- Acceptance: old\n",
+        encoding="utf-8",
+    )
+
+    findings = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        reconciliation_result={
+            "attempted": True,
+            "processed": [
+                {
+                    "branch": "implementation/alpha",
+                    "path": "/tmp/alpha",
+                    "target_ref": "main",
+                    "preflight_result": {
+                        "mergeable": False,
+                        "reason": "preflight_merge_conflict",
+                        "conflict_paths": ["docs/todo.md"],
+                    },
+                },
+                {
+                    "branch": "implementation/beta",
+                    "path": "/tmp/beta",
+                    "target_ref": "main",
+                    "preflight_result": {
+                        "mergeable": False,
+                        "reason": "preflight_merge_conflict",
+                        "conflict_paths": ["docs/todo.md", "hallucinate_app"],
+                    },
+                },
+            ],
+        },
+        task_prefix="ACCEL-",
+    )
+
+    assert len(findings) == 1
+    assert findings[0]["refreshed"] is True
+    updated_todo = todo_path.read_text(encoding="utf-8")
+    assert "ACCEL-002" not in updated_todo
+    assert "Resolve 2 preflight-conflicting backlogged worktree merges" in updated_todo
+    discovery_text = stale_discovery.read_text(encoding="utf-8")
+    assert "Candidate count: 2" in discovery_text
+    assert "`hallucinate_app`" in discovery_text
+    manifest = json.loads(discovery_text.split("```json\n", 1)[1].split("\n```", 1)[0])
+    assert manifest["conflict_path_counts"] == {"docs/todo.md": 2, "hallucinate_app": 1}
+    assert any(item["action"] == "resolve_code_or_submodule_conflicts_in_isolated_worktree" for item in manifest["actions"])
 
 
 def test_implementation_daemon_deterministically_repairs_objective_heap_merge(tmp_path):

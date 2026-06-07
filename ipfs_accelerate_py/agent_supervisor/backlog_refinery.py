@@ -1079,6 +1079,62 @@ def reconciliation_guardrail_records(
                 }
             )
 
+    preflight_samples: list[dict[str, Any]] = []
+    conflict_path_counts: dict[str, int] = {}
+    for item in reconciliation.get("processed", []) or []:
+        if not isinstance(item, Mapping):
+            continue
+        preflight_result = item.get("preflight_result") or {}
+        if not isinstance(preflight_result, Mapping):
+            continue
+        if preflight_result.get("mergeable") is not False:
+            continue
+        conflict_paths = [
+            str(path).strip()
+            for path in preflight_result.get("conflict_paths", []) or []
+            if str(path).strip()
+        ]
+        for path in conflict_paths:
+            conflict_path_counts[path] = conflict_path_counts.get(path, 0) + 1
+        preflight_samples.append(
+            {
+                "branch": str(item.get("branch") or preflight_result.get("branch") or ""),
+                "path": str(item.get("path") or ""),
+                "target_ref": str(item.get("target_ref") or preflight_result.get("target_ref") or ""),
+                "conflict_paths": conflict_paths[:20],
+                "reason": str(preflight_result.get("reason") or "preflight_merge_conflict"),
+            }
+        )
+    if preflight_samples:
+        fingerprint = sha1(
+            json.dumps(
+                {
+                    "kind": "preflight_merge_conflict",
+                    "branches": [item["branch"] for item in preflight_samples],
+                    "conflict_path_counts": conflict_path_counts,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()
+        records.append(
+            {
+                "kind": "preflight_merge_conflict",
+                "priority": "P1",
+                "track": "ops",
+                "summary": (
+                    f"Resolve {len(preflight_samples)} preflight-conflicting "
+                    "backlogged worktree merges"
+                ),
+                "fingerprint": fingerprint,
+                "candidate_count": len(preflight_samples),
+                "status_short": [],
+                "samples": preflight_samples[:20],
+                "reason": "preflight_merge_conflict",
+                "conflict_path_counts": conflict_path_counts,
+                "dedupe_key": "reconciliation_guardrail:preflight_merge_conflict",
+            }
+        )
+
     dirty_groups: dict[str, dict[str, Any]] = {}
     grouped_payload = cleanup.get("dirty_worktree_groups")
     if isinstance(grouped_payload, Mapping) and grouped_payload:
@@ -1172,6 +1228,10 @@ def reconciliation_guardrail_plan(record: Mapping[str, Any]) -> dict[str, Any]:
         if path_text and path_text not in sample_status_paths:
             sample_status_paths.append(path_text)
     for sample in samples:
+        for path in sample.get("conflict_paths", []) or []:
+            path_text = str(path).strip()
+            if path_text and path_text not in sample_status_paths:
+                sample_status_paths.append(path_text)
         for line in sample.get("status_short", []) or []:
             path = status_line_path(str(line))
             if path and path not in sample_status_paths:
@@ -1188,7 +1248,70 @@ def reconciliation_guardrail_plan(record: Mapping[str, Any]) -> dict[str, Any]:
                 if path_text and path_text not in sample_status_paths:
                     sample_status_paths.append(path_text)
 
-    if kind == "main_checkout_dirty":
+    conflict_path_counts: dict[str, int] = {}
+    top_conflict_paths: list[str] = []
+    safety_constraints = [
+        "Do not discard dirty or untracked content unless it is proven redundant with the target ref.",
+        "Prefer commits, merges, or explicit follow-up tasks over destructive cleanup.",
+        "Keep todo, objective, discovery, and strategy files parseable after reconciliation.",
+    ]
+    success_signals = [
+        "candidate_count_decreases",
+        "dirty_worktree_group_count_decreases",
+        "main_checkout_dirty_becomes_false",
+        "cleanup_or_reconciliation_pass_processes_candidates",
+    ]
+
+    if kind == "preflight_merge_conflict":
+        conflict_path_counts = {
+            str(path): int(count)
+            for path, count in (
+                record.get("conflict_path_counts") or {}
+                if isinstance(record.get("conflict_path_counts"), Mapping)
+                else {}
+            ).items()
+        }
+        top_conflict_paths = [
+            path
+            for path, _count in sorted(
+                conflict_path_counts.items(),
+                key=lambda item: (-item[1], item[0]),
+            )
+        ]
+        actions = [
+            {
+                "action": "bundle_preflight_conflicts_by_path",
+                "scope": "backlogged_worktrees",
+                "automation": "group blocked branches by shared conflict paths before resolving individual branches",
+            },
+            {
+                "action": "resolve_markdown_and_discovery_conflicts_deterministically",
+                "scope": "append_only_docs",
+                "automation": "use deterministic append-only markdown/objective/todo merge repair where conflict paths are documentation or discovery files",
+            },
+            {
+                "action": "resolve_code_or_submodule_conflicts_in_isolated_worktree",
+                "scope": "code_and_gitlinks",
+                "automation": "stage conflicts in a temporary reconciliation worktree or invoke the configured LLM resolver before mutating main",
+            },
+            {
+                "action": "rerun_worktree_reconciliation",
+                "scope": "backlogged_worktrees",
+                "automation": "rerun reconcile_backlogged_worktrees and confirm preflight_blocked_count decreases",
+            },
+        ]
+        safety_constraints = [
+            "Do not run conflict-producing merges directly in main without a preflight or isolated resolver plan.",
+            "Preserve submodule gitlink intent explicitly; never pick a gitlink side without recording why.",
+            "Keep todo, objective, discovery, and strategy files parseable after reconciliation.",
+        ]
+        success_signals = [
+            "preflight_blocked_count_decreases",
+            "conflict_path_count_decreases",
+            "reconciled_count_increases",
+            "main_checkout_dirty_becomes_false",
+        ]
+    elif kind == "main_checkout_dirty":
         actions = [
             {
                 "action": "classify_main_checkout_changes",
@@ -1253,19 +1376,12 @@ def reconciliation_guardrail_plan(record: Mapping[str, Any]) -> dict[str, Any]:
         "sample_branches": [str(item.get("branch") or "") for item in samples[:20] if str(item.get("branch") or "")],
         "sample_worktrees": [str(item.get("path") or "") for item in samples[:20] if str(item.get("path") or "")],
         "sample_status_paths": sample_status_paths[:40],
+        "conflict_path_counts": conflict_path_counts,
+        "top_conflict_paths": top_conflict_paths[:20],
         "main_dirty_evidence": main_dirty_evidence,
         "actions": actions,
-        "safety_constraints": [
-            "Do not discard dirty or untracked content unless it is proven redundant with the target ref.",
-            "Prefer commits, merges, or explicit follow-up tasks over destructive cleanup.",
-            "Keep todo, objective, discovery, and strategy files parseable after reconciliation.",
-        ],
-        "success_signals": [
-            "candidate_count_decreases",
-            "dirty_worktree_group_count_decreases",
-            "main_checkout_dirty_becomes_false",
-            "cleanup_or_reconciliation_pass_processes_candidates",
-        ],
+        "safety_constraints": safety_constraints,
+        "success_signals": success_signals,
     }
 
 
@@ -1373,6 +1489,10 @@ def write_reconciliation_guardrail_discovery_path(
         status = "; ".join(str(line) for line in sample.get("status_short", []) or [])
         suffix = f" status: `{status}`" if status else ""
         sample_lines.append(f"- `{branch}` at `{path_text}`{suffix}")
+        conflict_paths = [str(path).strip() for path in sample.get("conflict_paths", []) or [] if str(path).strip()]
+        if conflict_paths:
+            sample_lines.append("  - Conflict paths:")
+            sample_lines.extend(f"    - `{path}`" for path in conflict_paths[:12])
         evidence = sample.get("dirty_evidence") or {}
         if isinstance(evidence, Mapping):
             diff_stat = str(evidence.get("diff_stat") or "").strip()
@@ -1473,6 +1593,12 @@ def reconciliation_record_matches_block(block: str, record: Mapping[str, Any]) -
         return True
     if kind == "dirty_backlogged_worktree" and re.search(
         rf"^##\s+\S+\s+Resolve \d+ dirty backlogged worktrees blocked by {re.escape(reason)}",
+        block,
+        flags=re.MULTILINE,
+    ):
+        return True
+    if kind == "preflight_merge_conflict" and re.search(
+        r"^##\s+\S+\s+Resolve \d+ preflight-conflicting backlogged worktree merges",
         block,
         flags=re.MULTILINE,
     ):
@@ -2241,6 +2367,8 @@ def record_reconciliation_guardrail_findings(
         if kind == "main_checkout_dirty" and "Resolve dirty main checkout blocking" in todo_text:
             return True
         if kind == "dirty_backlogged_worktree" and f"dirty backlogged worktrees blocked by {reason}" in todo_text:
+            return True
+        if kind == "preflight_merge_conflict" and "preflight-conflicting backlogged worktree merges" in todo_text:
             return True
         return False
 
