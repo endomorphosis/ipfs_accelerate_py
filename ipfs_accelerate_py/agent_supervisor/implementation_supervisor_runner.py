@@ -679,6 +679,7 @@ class CodebaseRefillDefaults:
     codebase_scan_min_open_tasks: int | None = None
     codebase_scan_max_findings: int | None = None
     codebase_scan_cooldown_seconds: int | None = None
+    codebase_refill_timeout_seconds: int | None = None
     codebase_scan_skip_prefixes: Sequence[str] = ()
     refill_scan: bool = True
 
@@ -760,6 +761,7 @@ def build_codebase_refill_defaults_from_paths(
     codebase_scan_min_open_tasks: int | None = None,
     codebase_scan_max_findings: int | None = None,
     codebase_scan_cooldown_seconds: int | None = None,
+    codebase_refill_timeout_seconds: int | None = None,
     codebase_scan_skip_prefixes: Sequence[str] = (),
     refill_scan: bool = True,
 ) -> CodebaseRefillDefaults:
@@ -775,6 +777,7 @@ def build_codebase_refill_defaults_from_paths(
         codebase_scan_min_open_tasks=codebase_scan_min_open_tasks,
         codebase_scan_max_findings=codebase_scan_max_findings,
         codebase_scan_cooldown_seconds=codebase_scan_cooldown_seconds,
+        codebase_refill_timeout_seconds=codebase_refill_timeout_seconds,
         codebase_scan_skip_prefixes=codebase_scan_skip_prefixes,
         refill_scan=refill_scan,
     )
@@ -874,6 +877,7 @@ def build_codebase_refill_defaults_factory(
     codebase_scan_min_open_tasks: int | None = None,
     codebase_scan_max_findings: int | None = None,
     codebase_scan_cooldown_seconds: int | None = None,
+    codebase_refill_timeout_seconds: int | None = None,
     codebase_scan_skip_prefixes: Sequence[str] = (),
     refill_scan: bool = True,
 ) -> SupervisorBootstrapFactory:
@@ -892,6 +896,7 @@ def build_codebase_refill_defaults_factory(
             codebase_scan_min_open_tasks=codebase_scan_min_open_tasks,
             codebase_scan_max_findings=codebase_scan_max_findings,
             codebase_scan_cooldown_seconds=codebase_scan_cooldown_seconds,
+            codebase_refill_timeout_seconds=codebase_refill_timeout_seconds,
             codebase_scan_skip_prefixes=codebase_scan_skip_prefixes,
             refill_scan=refill_scan,
         )
@@ -963,6 +968,7 @@ def build_namespace_codebase_refill_defaults_factory(
     codebase_scan_min_open_tasks: int | None = None,
     codebase_scan_max_findings: int | None = None,
     codebase_scan_cooldown_seconds: int | None = None,
+    codebase_refill_timeout_seconds: int | None = None,
     codebase_scan_skip_prefixes: Sequence[str] = (),
     refill_scan: bool = True,
 ) -> SupervisorBootstrapFactory:
@@ -976,6 +982,7 @@ def build_namespace_codebase_refill_defaults_factory(
         codebase_scan_min_open_tasks=codebase_scan_min_open_tasks,
         codebase_scan_max_findings=codebase_scan_max_findings,
         codebase_scan_cooldown_seconds=codebase_scan_cooldown_seconds,
+        codebase_refill_timeout_seconds=codebase_refill_timeout_seconds,
         codebase_scan_skip_prefixes=codebase_scan_skip_prefixes,
         refill_scan=refill_scan,
     )
@@ -1094,6 +1101,11 @@ def apply_portal_implementation_supervisor_defaults(
             args,
             "--codebase-scan-cooldown-seconds",
             codebase.codebase_scan_cooldown_seconds,
+        )
+        args = _with_optional_default(
+            args,
+            "--codebase-refill-timeout-seconds",
+            codebase.codebase_refill_timeout_seconds,
         )
         if codebase.codebase_scan_skip_prefixes:
             args = with_repeated_default(

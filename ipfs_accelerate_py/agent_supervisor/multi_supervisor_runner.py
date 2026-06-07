@@ -648,6 +648,7 @@ def implementation_supervisor_common_args(
     objective_surplus_findings_per_goal: int = 6,
     objective_surplus_min_terms_per_todo: int = 4,
     codebase_scan_cooldown_seconds: int = 900,
+    codebase_refill_timeout_seconds: int = 600,
     llm_merge_resolver_timeout_seconds: int = 1800,
 ) -> list[str]:
     """Return standard common args for long-running implementation supervisors."""
@@ -683,6 +684,8 @@ def implementation_supervisor_common_args(
         str(objective_surplus_min_terms_per_todo),
         "--codebase-scan-cooldown-seconds",
         str(codebase_scan_cooldown_seconds),
+        "--codebase-refill-timeout-seconds",
+        str(codebase_refill_timeout_seconds),
         "--llm-merge-resolver-timeout-seconds",
         str(llm_merge_resolver_timeout_seconds),
     ]
@@ -1121,6 +1124,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=_env_int("OBJECTIVE_SURPLUS_MIN_TERMS_PER_TODO", 4),
     )
     parser.add_argument("--implementation-supervisor-codebase-scan-cooldown-seconds", type=int, default=900)
+    parser.add_argument(
+        "--implementation-supervisor-codebase-refill-timeout-seconds",
+        type=int,
+        default=_env_int("CODEBASE_REFILL_TIMEOUT_SECONDS", 600),
+    )
     parser.add_argument("--implementation-supervisor-llm-merge-resolver-command", default="")
     parser.add_argument("--implementation-supervisor-llm-merge-resolver-timeout-seconds", type=int, default=1800)
     parser.add_argument("--detach", action="store_true")
@@ -1206,6 +1214,7 @@ def common_args_from_parsed_args(args: argparse.Namespace) -> list[str]:
                 objective_surplus_findings_per_goal=args.implementation_supervisor_objective_surplus_findings_per_goal,
                 objective_surplus_min_terms_per_todo=args.implementation_supervisor_objective_surplus_min_terms_per_todo,
                 codebase_scan_cooldown_seconds=args.implementation_supervisor_codebase_scan_cooldown_seconds,
+                codebase_refill_timeout_seconds=args.implementation_supervisor_codebase_refill_timeout_seconds,
                 llm_merge_resolver_timeout_seconds=args.implementation_supervisor_llm_merge_resolver_timeout_seconds,
             )
         )

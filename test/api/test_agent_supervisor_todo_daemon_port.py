@@ -540,10 +540,12 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
     monkeypatch.setenv("WRAPPER_UTILS_CODEBASE_SCAN_MIN_OPEN_TASKS", "6")
     monkeypatch.setenv("WRAPPER_UTILS_CODEBASE_SCAN_MAX_FINDINGS", "8")
     monkeypatch.setenv("WRAPPER_UTILS_CODEBASE_SCAN_COOLDOWN_SECONDS", "120")
+    monkeypatch.setenv("WRAPPER_UTILS_CODEBASE_REFILL_TIMEOUT_SECONDS", "601")
     assert prefixed_codebase_scan_env_settings("WRAPPER_UTILS") == CodebaseScanEnvSettings(
         min_open_tasks=6,
         max_findings=8,
         cooldown_seconds=120,
+        timeout_seconds=601,
     )
     codebase_settings = prefixed_codebase_scan_env_settings("WRAPPER_UTILS")
     assert codebase_settings.recorder_kwargs() == {
@@ -555,6 +557,7 @@ def test_wrapper_utils_apply_defaults_and_runtime_paths(monkeypatch, tmp_path):
         "codebase_scan_min_open_tasks": 6,
         "codebase_scan_max_findings": 8,
         "codebase_scan_cooldown_seconds": 120,
+        "codebase_refill_timeout_seconds": 601,
     }
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MIN_OPEN_TASKS", "21")
     monkeypatch.setenv("WRAPPER_UTILS_OBJECTIVE_SCAN_MAX_FINDINGS", "13")
@@ -1945,6 +1948,7 @@ def test_build_refill_defaults_from_paths(tmp_path):
         codebase_scan_min_open_tasks=3,
         codebase_scan_max_findings=8,
         codebase_scan_cooldown_seconds=120,
+        codebase_refill_timeout_seconds=601,
         codebase_scan_skip_prefixes=("data/", "scripts/"),
     )
 
@@ -1970,6 +1974,7 @@ def test_build_refill_defaults_from_paths(tmp_path):
         codebase_scan_min_open_tasks=3,
         codebase_scan_max_findings=8,
         codebase_scan_cooldown_seconds=120,
+        codebase_refill_timeout_seconds=601,
         codebase_scan_skip_prefixes=("data/", "scripts/"),
     )
 
@@ -1995,6 +2000,7 @@ def test_build_namespace_refill_defaults_factories(tmp_path):
         codebase_scan_min_open_tasks=2,
         codebase_scan_max_findings=5,
         codebase_scan_cooldown_seconds=180,
+        codebase_refill_timeout_seconds=602,
         codebase_scan_skip_prefixes=("data/agent_supervisor/state/",),
     )
 
@@ -2020,6 +2026,7 @@ def test_build_namespace_refill_defaults_factories(tmp_path):
         codebase_scan_min_open_tasks=2,
         codebase_scan_max_findings=5,
         codebase_scan_cooldown_seconds=180,
+        codebase_refill_timeout_seconds=602,
         codebase_scan_skip_prefixes=("data/agent_supervisor/state/",),
     )
 
@@ -3001,6 +3008,7 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
         objective_refill_timeout_seconds=602,
         objective_surplus_findings_per_goal=8,
         objective_surplus_min_terms_per_todo=5,
+        codebase_refill_timeout_seconds=603,
     )
 
     assert args[:3] == ["--implement", "--objective-refill-scan", "--codebase-refill-scan"]
@@ -3012,6 +3020,7 @@ def test_implementation_supervisor_common_args_include_long_run_defaults():
     assert args[args.index("--objective-surplus-findings-per-goal") + 1] == "8"
     assert args[args.index("--objective-surplus-min-terms-per-todo") + 1] == "5"
     assert args[args.index("--codebase-scan-cooldown-seconds") + 1] == "900"
+    assert args[args.index("--codebase-refill-timeout-seconds") + 1] == "603"
 
 
 def test_implementation_multi_supervisor_env_defaults_are_reusable():
@@ -5692,6 +5701,67 @@ def test_implementation_supervisor_records_codebase_refill_failures(tmp_path, mo
     failure = [event for event in events if event["type"] == "codebase_refill_failed"][-1]
     assert failure["error_type"] == "FileNotFoundError"
     assert "vanished worktree" in failure["error"]
+
+
+def test_implementation_supervisor_records_codebase_refill_timeout(tmp_path, monkeypatch):
+    from ipfs_accelerate_py.agent_supervisor import backlog_refinery
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Completed seed
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: README.md
+- Validation: test -f README.md
+- Acceptance: Seed task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+
+    def slow_refill(**_kwargs):
+        time.sleep(1.0)
+        return [{"follow_up_task_id": "AUTO-999"}]
+
+    monkeypatch.setattr(backlog_refinery, "record_codebase_scan_findings", slow_refill)
+    config = TodoSupervisorConfig(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "supervisor_events.jsonl",
+        state_dir=state_dir,
+        repo_root=repo,
+        task_prefix="## AUTO-",
+        codebase_refill_enabled=True,
+        codebase_scan_discovery_dir=repo / "discovery",
+        codebase_scan_min_open_tasks=0,
+        codebase_scan_max_findings=1,
+        codebase_scan_cooldown_seconds=21600,
+        codebase_refill_timeout_seconds=0.05,
+    )
+
+    result = TodoImplementationSupervisor(config).run_once()
+
+    assert result["codebase_refill_count"] == 0
+    strategy = json.loads((state_dir / "strategy.json").read_text(encoding="utf-8"))
+    assert strategy["last_codebase_scan_mode"].endswith("_timeout")
+    assert strategy["last_codebase_refill_timeout_seconds"] == 0.05
+    assert strategy["last_drained_codebase_scan_task_count"] == 1
+    events = [
+        json.loads(line)
+        for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    timeout = [event for event in events if event["type"] == "codebase_refill_timeout"][-1]
+    assert timeout["mode"] == "drained_exhaustive"
+    assert timeout["timeout_seconds"] == 0.05
 
 
 def test_implementation_supervisor_records_retry_budget_guardrail(tmp_path):

@@ -463,6 +463,7 @@ class CodebaseScanEnvSettings:
     min_open_tasks: int
     max_findings: int
     cooldown_seconds: int
+    timeout_seconds: int
 
     def recorder_kwargs(self) -> dict[str, int]:
         """Return keyword arguments for scan/backlog recorder defaults."""
@@ -480,6 +481,7 @@ class CodebaseScanEnvSettings:
             "codebase_scan_min_open_tasks": self.min_open_tasks,
             "codebase_scan_max_findings": self.max_findings,
             "codebase_scan_cooldown_seconds": self.cooldown_seconds,
+            "codebase_refill_timeout_seconds": self.timeout_seconds,
         }
 
 
@@ -489,6 +491,7 @@ def prefixed_codebase_scan_env_settings(
     min_open_tasks: int = 5,
     max_findings: int = 5,
     cooldown_seconds: int = 21600,
+    timeout_seconds: int = 600,
 ) -> CodebaseScanEnvSettings:
     """Return codebase-scan settings from conventional prefixed environment variables."""
 
@@ -496,6 +499,7 @@ def prefixed_codebase_scan_env_settings(
         min_open_tasks=prefixed_env_int(prefix, "CODEBASE_SCAN_MIN_OPEN_TASKS", min_open_tasks),
         max_findings=prefixed_env_int(prefix, "CODEBASE_SCAN_MAX_FINDINGS", max_findings),
         cooldown_seconds=prefixed_env_int(prefix, "CODEBASE_SCAN_COOLDOWN_SECONDS", cooldown_seconds),
+        timeout_seconds=prefixed_env_int(prefix, "CODEBASE_REFILL_TIMEOUT_SECONDS", timeout_seconds),
     )
 
 

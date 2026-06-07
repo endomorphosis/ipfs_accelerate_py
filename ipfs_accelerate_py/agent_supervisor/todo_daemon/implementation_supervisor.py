@@ -63,6 +63,10 @@ class ObjectiveRefillTimeoutError(TimeoutError):
     """Raised when supervisor-owned objective refill exceeds its local budget."""
 
 
+class CodebaseRefillTimeoutError(TimeoutError):
+    """Raised when supervisor-owned codebase refill exceeds its local budget."""
+
+
 def split_csv_values(values: list[str] | tuple[str, ...]) -> tuple[str, ...]:
     items: list[str] = []
     for value in values:
@@ -129,6 +133,7 @@ class PortalSupervisorConfig:
     codebase_scan_min_open_tasks: int = 0
     codebase_scan_max_findings: int = 5
     codebase_scan_cooldown_seconds: int = 21600
+    codebase_refill_timeout_seconds: float = 0.0
     codebase_scan_depends_on: tuple[str, ...] = field(default_factory=tuple)
     codebase_scan_skip_prefixes: tuple[str, ...] = field(default_factory=tuple)
     codebase_defer_when_objective_refills: bool = True
@@ -2517,31 +2522,51 @@ class PortalImplementationSupervisor:
             )
         return findings
 
-    def _run_objective_refill_with_timeout(self, run_objective_daemon, args: Any) -> dict[str, Any]:
-        timeout_seconds = float(self.config.objective_refill_timeout_seconds or 0.0)
+    def _run_supervisor_call_with_timeout(
+        self,
+        *,
+        phase: str,
+        timeout_seconds: float,
+        timeout_error: type[TimeoutError],
+        callback,
+    ):
         if timeout_seconds <= 0.0:
-            return run_objective_daemon(args)
+            return callback()
         if threading.current_thread() is not threading.main_thread():
-            return run_objective_daemon(args)
+            return callback()
         if not hasattr(signal, "setitimer") or not hasattr(signal, "SIGALRM"):
-            return run_objective_daemon(args)
+            return callback()
         previous_timer = signal.getitimer(signal.ITIMER_REAL)
         if previous_timer[0] > 0:
-            return run_objective_daemon(args)
+            return callback()
 
         def _handle_timeout(_signum, _frame):
-            raise ObjectiveRefillTimeoutError(
-                f"objective refill exceeded {timeout_seconds:.3f}s"
-            )
+            raise timeout_error(f"{phase} exceeded {timeout_seconds:.3f}s")
 
         previous_handler = signal.getsignal(signal.SIGALRM)
         try:
             signal.signal(signal.SIGALRM, _handle_timeout)
             signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
-            return run_objective_daemon(args)
+            return callback()
         finally:
             signal.setitimer(signal.ITIMER_REAL, 0.0)
             signal.signal(signal.SIGALRM, previous_handler)
+
+    def _run_objective_refill_with_timeout(self, run_objective_daemon, args: Any) -> dict[str, Any]:
+        return self._run_supervisor_call_with_timeout(
+            phase="objective refill",
+            timeout_seconds=float(self.config.objective_refill_timeout_seconds or 0.0),
+            timeout_error=ObjectiveRefillTimeoutError,
+            callback=lambda: run_objective_daemon(args),
+        )
+
+    def _run_codebase_refill_with_timeout(self, callback) -> list[dict[str, Any]]:
+        return self._run_supervisor_call_with_timeout(
+            phase="codebase refill",
+            timeout_seconds=float(self.config.codebase_refill_timeout_seconds or 0.0),
+            timeout_error=CodebaseRefillTimeoutError,
+            callback=callback,
+        )
 
     def refill_objective_backlog(self) -> dict[str, Any]:
         """Refine the objective heap and feed todos when the backlog is low or drained."""
@@ -2758,10 +2783,15 @@ class PortalImplementationSupervisor:
 
         from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
             CODEBASE_SCAN_SKIP_PREFIXES,
+            load_strategy,
             record_codebase_scan_findings,
+            should_refill_backlog,
             task_id_prefix,
+            write_json,
         )
 
+        if not self.config.todo_path.exists():
+            return []
         discovery_dir = self.config.codebase_scan_discovery_dir or self.config.state_dir.parent / "discovery"
         discovery_output_path = self.config.codebase_scan_discovery_output_path
         if not discovery_output_path:
@@ -2769,14 +2799,30 @@ class PortalImplementationSupervisor:
                 discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
             except ValueError:
                 discovery_output_path = str(discovery_dir)
-        try:
-            findings = record_codebase_scan_findings(
+        task_prefix = task_id_prefix(self.config.task_prefix)
+        todo_text = self.config.todo_path.read_text(encoding="utf-8")
+        strategy = load_strategy(self.config.strategy_path)
+        should_scan, mode, current_open, task_count = should_refill_backlog(
+            todo_text=todo_text,
+            state_path=self.config.state_path,
+            strategy=strategy,
+            last_scan_key="last_codebase_scan_at",
+            last_drained_scan_task_count_key="last_drained_codebase_scan_task_count",
+            task_prefix=task_prefix,
+            min_open_tasks=self.config.codebase_scan_min_open_tasks,
+            cooldown_seconds=self.config.codebase_scan_cooldown_seconds,
+        )
+        if not should_scan:
+            return []
+
+        def run_refill() -> list[dict[str, Any]]:
+            return record_codebase_scan_findings(
                 todo_path=self.config.todo_path,
                 state_path=self.config.state_path,
                 strategy_path=self.config.strategy_path,
                 discovery_dir=discovery_dir,
                 repo_root=self.config.repo_root,
-                task_prefix=task_id_prefix(self.config.task_prefix),
+                task_prefix=task_prefix,
                 depends_on=self.config.codebase_scan_depends_on,
                 min_open_tasks=self.config.codebase_scan_min_open_tasks,
                 max_findings=self.config.codebase_scan_max_findings,
@@ -2786,6 +2832,33 @@ class PortalImplementationSupervisor:
                 commit_outputs=self.config.codebase_scan_commit_outputs,
                 commit_subject=self.config.codebase_scan_commit_subject,
             )
+
+        try:
+            findings = self._run_codebase_refill_with_timeout(run_refill)
+        except CodebaseRefillTimeoutError as exc:
+            strategy = load_strategy(self.config.strategy_path)
+            strategy["last_codebase_scan_at"] = utc_now()
+            strategy["last_codebase_scan_mode"] = f"{mode}_timeout"
+            strategy["last_codebase_refill_timeout_at"] = utc_now()
+            strategy["last_codebase_refill_timeout_seconds"] = float(
+                self.config.codebase_refill_timeout_seconds or 0.0
+            )
+            strategy["last_codebase_refill_timeout_error"] = str(exc)
+            if current_open == 0 or mode.endswith("drained_exhaustive"):
+                strategy["last_drained_codebase_scan_task_count"] = task_count
+            write_json(self.config.strategy_path, strategy)
+            self._record_event(
+                "codebase_refill_timeout",
+                {
+                    "mode": mode,
+                    "todo_path": str(self.config.todo_path),
+                    "discovery_dir": str(discovery_dir),
+                    "repo_root": str(self.config.repo_root),
+                    "timeout_seconds": float(self.config.codebase_refill_timeout_seconds or 0.0),
+                    "error": str(exc),
+                },
+            )
+            return []
         except Exception as exc:
             failure = {
                 "todo_path": str(self.config.todo_path),
@@ -3565,6 +3638,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--codebase-scan-max-findings", type=int, default=5)
     parser.add_argument("--codebase-scan-cooldown-seconds", type=int, default=21600)
     parser.add_argument(
+        "--codebase-refill-timeout-seconds",
+        type=float,
+        default=0.0,
+        help=(
+            "Abort supervisor-owned codebase refill after this many seconds. "
+            "A timed-out codebase pass yields no todos and records a cooldown marker."
+        ),
+    )
+    parser.add_argument(
         "--codebase-scan-depends-on",
         action="append",
         default=[],
@@ -3798,6 +3880,7 @@ def supervisor_config_from_args(
         codebase_scan_min_open_tasks=args.codebase_scan_min_open_tasks,
         codebase_scan_max_findings=args.codebase_scan_max_findings,
         codebase_scan_cooldown_seconds=args.codebase_scan_cooldown_seconds,
+        codebase_refill_timeout_seconds=args.codebase_refill_timeout_seconds,
         codebase_scan_depends_on=split_csv_values(args.codebase_scan_depends_on),
         codebase_scan_skip_prefixes=tuple(args.codebase_scan_skip_prefix),
         codebase_defer_when_objective_refills=args.codebase_defer_when_objective_refills,
