@@ -7765,6 +7765,57 @@ def test_implementation_supervisor_defers_worktree_reconciliation_when_main_dirt
     assert not (repo / "feature.txt").exists()
 
 
+def test_implementation_supervisor_ignores_generated_objective_heap_dirty_main(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "implementation_plan" / "docs" / "objective-heap.md"
+    objective_path.parent.mkdir(parents=True)
+    objective_path.write_text("# Objective\n", encoding="utf-8")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md", "implementation_plan/docs/objective-heap.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-011-attempt-1-456"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("feature\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "checkout", "main")
+    objective_path.write_text("# Objective\n\n## Generated goal\n", encoding="utf-8")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "accel-011-attempt-1-456"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            objective_path=objective_path,
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 1
+    assert result["main_checkout_dirty"] is False
+    assert result["main_status_short"] == []
+    assert result["raw_main_checkout_dirty"] is True
+    assert "implementation_plan/docs/objective-heap.md" in result["raw_main_dirty_evidence"]["status_paths"]
+    assert "implementation_plan/docs/objective-heap.md" in result["main_dirty_evidence"]["filtered_generated_status_paths"]
+    assert (repo / "feature.txt").exists()
+    assert objective_path.read_text(encoding="utf-8") == "# Objective\n\n## Generated goal\n"
+
+
 def test_implementation_supervisor_reuses_reconciliation_scan_cache_when_main_dirty(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -7942,6 +7993,41 @@ def test_reconciliation_guardrail_ignores_generated_dirty_main_evidence(tmp_path
     assert findings == []
     assert todo_path.read_text(encoding="utf-8") == todo_text
     assert stale_discovery.read_text(encoding="utf-8") == stale_discovery_text
+
+
+def test_reconciliation_guardrail_ignores_generated_objective_heap_status(tmp_path):
+    todo_path = tmp_path / "todo.md"
+    strategy_path = tmp_path / "state" / "strategy.json"
+    discovery_dir = tmp_path / "discovery"
+    objective_path = tmp_path / "implementation_plan" / "docs" / "objective-heap.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    objective_path.parent.mkdir(parents=True)
+    objective_path.write_text("# Objective\n", encoding="utf-8")
+
+    findings = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        reconciliation_result={
+            "attempted": True,
+            "main_checkout_dirty": True,
+            "candidate_count": 2,
+            "main_status_short": [" M implementation_plan/docs/objective-heap.md"],
+            "main_dirty_evidence": {
+                "status_short": [" M implementation_plan/docs/objective-heap.md"],
+                "status_paths": ["implementation_plan/docs/objective-heap.md"],
+                "path_categories": {"modified": 1},
+                "name_status": "M\timplementation_plan/docs/objective-heap.md",
+            },
+            "candidates": [{"branch": "implementation/example", "path": "/tmp/example"}],
+        },
+        task_prefix="ACCEL-",
+        repo_root=tmp_path,
+        additional_generated_status_paths=(objective_path,),
+    )
+
+    assert findings == []
+    assert todo_path.read_text(encoding="utf-8") == "# Agent Todos\n"
 
 
 def test_reconciliation_guardrail_filters_generated_submodule_todo_status(tmp_path):

@@ -1090,11 +1090,15 @@ class PortalImplementationSupervisor:
             active_worktree = ""
         target_ref = self._git_current_branch(repo_root) or "HEAD"
         target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
-        main_status = self._main_status_for_worktree_reconciliation(repo_root, worktree_root)
-        main_dirty_evidence = (
-            self._main_checkout_dirty_evidence(repo_root, main_status)
-            if main_status
+        raw_main_status = self._main_status_for_worktree_reconciliation(repo_root, worktree_root)
+        raw_main_dirty_evidence = (
+            self._main_checkout_dirty_evidence(repo_root, raw_main_status)
+            if raw_main_status
             else {}
+        )
+        main_status, main_dirty_evidence = self._filter_generated_main_checkout_status(
+            raw_main_status,
+            raw_main_dirty_evidence,
         )
         max_merges = max(0, int(self.config.worktree_reconciliation_max_merges))
         dry_run = bool(self.config.worktree_reconciliation_dry_run)
@@ -1282,6 +1286,9 @@ class PortalImplementationSupervisor:
             "main_checkout_dirty": bool(main_status),
             "main_status_short": main_status[:20],
             "main_dirty_evidence": main_dirty_evidence,
+            "raw_main_checkout_dirty": bool(raw_main_status),
+            "raw_main_status_short": raw_main_status[:20],
+            "raw_main_dirty_evidence": raw_main_dirty_evidence,
             "candidate_count": len(candidates),
             "processed_count": len(processed),
             "reconciled_count": sum(1 for item in processed if item.get("merged")),
@@ -1396,6 +1403,65 @@ class PortalImplementationSupervisor:
             evidence["untracked_paths"] = untracked_paths
         return evidence
 
+    def _generated_main_checkout_status_filters(self) -> tuple[list[str], list[str]]:
+        """Return supervisor-generated dirty paths that should not block reconciliation."""
+
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            generated_guardrail_status_filters,
+        )
+
+        discovery_dir = self._reconciliation_guardrail_discovery_dir()
+        additional_paths = [
+            path
+            for path in (
+                self.config.objective_path,
+                self.config.objective_graph_path,
+                self.config.objective_todo_vector_index_path,
+            )
+            if path is not None
+        ]
+        additional_prefixes = [
+            path
+            for path in (
+                self.config.retry_budget_discovery_dir,
+                self.config.dependency_guardrail_discovery_dir,
+                self.config.reconciliation_guardrail_discovery_dir,
+                self.config.codebase_scan_discovery_dir,
+                self.config.objective_bundle_dir,
+                self.config.objective_dataset_dir,
+                self.config.objective_discovery_dir,
+            )
+            if path is not None
+        ]
+        return generated_guardrail_status_filters(
+            todo_path=self.config.todo_path,
+            discovery_dir=discovery_dir,
+            repo_root=self.config.repo_root,
+            additional_generated_paths=additional_paths,
+            additional_generated_prefixes=additional_prefixes,
+        )
+
+    def _filter_generated_main_checkout_status(
+        self,
+        status_lines: list[str],
+        evidence: Mapping[str, Any],
+    ) -> tuple[list[str], dict[str, Any]]:
+        """Filter deterministic supervisor output from main dirty evidence."""
+
+        if not status_lines:
+            return [], dict(evidence or {})
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            filter_generated_main_checkout_evidence,
+        )
+
+        generated_paths, generated_prefixes = self._generated_main_checkout_status_filters()
+        return filter_generated_main_checkout_evidence(
+            status_short=status_lines,
+            evidence=evidence,
+            generated_paths=generated_paths,
+            generated_prefixes=generated_prefixes,
+        )
+
     @staticmethod
     def _status_line_category(line: str) -> str:
         code = line[:2]
@@ -1433,6 +1499,14 @@ class PortalImplementationSupervisor:
             objective_bundle_dir=self.config.objective_bundle_dir,
             llm_merge_resolver_command=self.config.llm_merge_resolver_command,
             llm_merge_resolver_timeout_seconds=self.config.llm_merge_resolver_timeout_seconds,
+        )
+
+    def _reconciliation_guardrail_discovery_dir(self) -> Path:
+        return (
+            self.config.reconciliation_guardrail_discovery_dir
+            or self.config.dependency_guardrail_discovery_dir
+            or self.config.retry_budget_discovery_dir
+            or self.config.state_dir.parent / "discovery"
         )
 
     def _main_status_for_worktree_reconciliation(self, repo_root: Path, worktree_root: Path) -> list[str]:
@@ -2100,18 +2174,14 @@ class PortalImplementationSupervisor:
             task_id_prefix,
         )
 
-        discovery_dir = (
-            self.config.reconciliation_guardrail_discovery_dir
-            or self.config.dependency_guardrail_discovery_dir
-            or self.config.retry_budget_discovery_dir
-            or self.config.state_dir.parent / "discovery"
-        )
+        discovery_dir = self._reconciliation_guardrail_discovery_dir()
         discovery_output_path = self.config.reconciliation_guardrail_discovery_output_path
         if not discovery_output_path:
             try:
                 discovery_output_path = discovery_dir.resolve().relative_to(self.config.repo_root.resolve()).as_posix()
             except ValueError:
                 discovery_output_path = str(discovery_dir)
+        generated_paths, generated_prefixes = self._generated_main_checkout_status_filters()
         findings = record_reconciliation_guardrail_findings(
             todo_path=self.config.todo_path,
             strategy_path=self.config.strategy_path,
@@ -2124,6 +2194,8 @@ class PortalImplementationSupervisor:
             commit_outputs=self.config.reconciliation_guardrail_commit_outputs,
             repo_root=self.config.repo_root,
             commit_subject=self.config.reconciliation_guardrail_commit_subject,
+            additional_generated_status_paths=generated_paths,
+            additional_generated_status_prefixes=generated_prefixes,
         )
         if findings:
             self._record_event(

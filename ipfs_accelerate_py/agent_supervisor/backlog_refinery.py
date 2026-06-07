@@ -1404,11 +1404,20 @@ def relative_status_path(path: Path, *, repo_root: Path) -> str:
         return path.as_posix()
 
 
+def generated_status_filter_path(path: Path | str, *, repo_root: Path) -> str:
+    candidate = Path(path)
+    if candidate.is_absolute():
+        return relative_status_path(candidate, repo_root=repo_root)
+    return normalize_status_path(str(path))
+
+
 def generated_guardrail_status_filters(
     *,
     todo_path: Path,
     discovery_dir: Path,
     repo_root: Path,
+    additional_generated_paths: Sequence[Path | str] = (),
+    additional_generated_prefixes: Sequence[Path | str] = (),
 ) -> tuple[list[str], list[str]]:
     generated_paths: list[str] = []
     generated_prefixes: list[str] = []
@@ -1418,6 +1427,14 @@ def generated_guardrail_status_filters(
     discovery_relative = relative_status_path(discovery_dir, repo_root=repo_root)
     if discovery_relative:
         generated_prefixes.append(discovery_relative)
+    for path in additional_generated_paths:
+        relative = generated_status_filter_path(path, repo_root=repo_root)
+        if relative:
+            generated_paths.append(relative)
+    for prefix in additional_generated_prefixes:
+        relative = generated_status_filter_path(prefix, repo_root=repo_root)
+        if relative:
+            generated_prefixes.append(relative)
 
     parts = Path(todo_relative).parts
     for end in range(1, len(parts)):
@@ -2564,6 +2581,8 @@ def record_reconciliation_guardrail_findings(
     commit_outputs: bool = False,
     repo_root: Path | None = None,
     commit_subject: str = "Agent: record reconciliation guardrail outputs",
+    additional_generated_status_paths: Sequence[Path | str] = (),
+    additional_generated_status_prefixes: Sequence[Path | str] = (),
 ) -> list[dict[str, Any]]:
     """Append deliberate cleanup tasks for blocked worktree reconciliation."""
 
@@ -2599,6 +2618,8 @@ def record_reconciliation_guardrail_findings(
         todo_path=todo_path,
         discovery_dir=discovery_dir,
         repo_root=filter_repo_root,
+        additional_generated_paths=additional_generated_status_paths,
+        additional_generated_prefixes=additional_generated_status_prefixes,
     )
     all_records = reconciliation_guardrail_records(
         reconciliation_result=reconciliation_result,
