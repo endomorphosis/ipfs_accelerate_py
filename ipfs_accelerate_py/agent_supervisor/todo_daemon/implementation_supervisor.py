@@ -94,6 +94,7 @@ class PortalSupervisorConfig:
     worktree_reconciliation_enabled: bool = True
     worktree_reconciliation_max_merges: int = 1
     worktree_reconciliation_dry_run: bool = False
+    worktree_reconciliation_preflight_enabled: bool = True
     worktree_scan_cache_enabled: bool = True
     worktree_scan_cache_ttl_seconds: float = DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS
     worktree_scan_cache_path: Path | None = None
@@ -1212,6 +1213,33 @@ class PortalImplementationSupervisor:
                 skipped.append({**candidate, "reason": "reconciliation_limit_reached"})
                 continue
 
+            preflight_result: dict[str, Any] = {}
+            if self.config.worktree_reconciliation_preflight_enabled:
+                preflight_result = self._preflight_worktree_reconciliation_merge(
+                    repo_root,
+                    target_ref=target_ref,
+                    branch=branch,
+                )
+                if not preflight_result.get("mergeable", False):
+                    processed.append(
+                        {
+                            **candidate,
+                            "merged": False,
+                            "preflight_result": preflight_result,
+                            "merge_result": {
+                                "attempted": False,
+                                "merged": False,
+                                "returncode": preflight_result.get("returncode"),
+                                "branch": branch,
+                                "target_ref": target_ref,
+                                "reason": "preflight_merge_conflict",
+                                "stdout": preflight_result.get("stdout", ""),
+                                "stderr": preflight_result.get("stderr", ""),
+                            },
+                        }
+                    )
+                    continue
+
             if reconciliation_daemon is None:
                 reconciliation_daemon = self._build_worktree_reconciliation_daemon()
             task = self._worktree_reconciliation_task(branch)
@@ -1241,6 +1269,12 @@ class PortalImplementationSupervisor:
             "candidate_count": len(candidates),
             "processed_count": len(processed),
             "reconciled_count": sum(1 for item in processed if item.get("merged")),
+            "preflight_blocked_count": sum(
+                1
+                for item in processed
+                if isinstance(item.get("preflight_result"), dict)
+                and not item["preflight_result"].get("mergeable", False)
+            ),
             "cleanup_count": sum(
                 1
                 for item in processed
@@ -1257,6 +1291,57 @@ class PortalImplementationSupervisor:
         if processed:
             self._record_event("worktree_reconciliation", result)
         return result
+
+    def _preflight_worktree_reconciliation_merge(
+        self,
+        repo_root: Path,
+        *,
+        target_ref: str,
+        branch: str,
+    ) -> dict[str, Any]:
+        """Check branch mergeability without mutating the main checkout."""
+
+        command = ["git", "merge-tree", "--write-tree", target_ref, branch]
+        started_at = utc_now()
+        result = subprocess.run(
+            command,
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        output = "\n".join(part for part in (result.stdout, result.stderr) if part)
+        payload: dict[str, Any] = {
+            "attempted": True,
+            "mergeable": result.returncode == 0,
+            "returncode": result.returncode,
+            "target_ref": target_ref,
+            "branch": branch,
+            "command": command,
+            "started_at": started_at,
+            "finished_at": utc_now(),
+            "stdout": result.stdout[-4000:],
+            "stderr": result.stderr[-4000:],
+        }
+        if result.returncode == 0:
+            payload["tree"] = result.stdout.strip().splitlines()[0] if result.stdout.strip() else ""
+            return payload
+        payload["reason"] = "preflight_merge_conflict"
+        payload["conflict_paths"] = self._merge_tree_conflict_paths(output)
+        return payload
+
+    @staticmethod
+    def _merge_tree_conflict_paths(output: str) -> list[str]:
+        paths: list[str] = []
+        for line in output.splitlines():
+            path = ""
+            if "Merge conflict in " in line:
+                path = line.rsplit("Merge conflict in ", 1)[-1].strip()
+            elif line.startswith("CONFLICT ") and " in " in line:
+                path = line.rsplit(" in ", 1)[-1].strip()
+            if path and path not in paths:
+                paths.append(path)
+        return paths
 
     def _main_checkout_dirty_evidence(self, repo_root: Path, status_lines: list[str]) -> dict[str, Any]:
         """Return bounded evidence for dirty main-checkout reconciliation blockers."""
@@ -2924,6 +3009,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Classify clean backlogged implementation worktrees without merging or removing them.",
     )
     parser.add_argument(
+        "--no-worktree-reconciliation-preflight",
+        dest="worktree_reconciliation_preflight_enabled",
+        action="store_false",
+        help=(
+            "Disable non-mutating merge-tree preflight before merging a backlogged "
+            "implementation branch into the main checkout."
+        ),
+    )
+    parser.set_defaults(worktree_reconciliation_preflight_enabled=True)
+    parser.add_argument(
         "--no-worktree-scan-cache",
         dest="worktree_scan_cache_enabled",
         action="store_false",
@@ -3225,6 +3320,7 @@ def supervisor_config_from_args(
         worktree_reconciliation_enabled=args.worktree_reconciliation_enabled,
         worktree_reconciliation_max_merges=args.worktree_reconciliation_max_merges,
         worktree_reconciliation_dry_run=args.worktree_reconciliation_dry_run,
+        worktree_reconciliation_preflight_enabled=args.worktree_reconciliation_preflight_enabled,
         worktree_scan_cache_enabled=args.worktree_scan_cache_enabled,
         worktree_scan_cache_ttl_seconds=args.worktree_scan_cache_ttl_seconds,
         worktree_scan_cache_path=args.worktree_scan_cache_path,

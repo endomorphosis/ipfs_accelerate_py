@@ -2595,6 +2595,7 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
             "--worktree-reconciliation-max-merges",
             "3",
             "--worktree-reconciliation-dry-run",
+            "--no-worktree-reconciliation-preflight",
             "--no-worktree-scan-cache",
             "--worktree-scan-cache-ttl-seconds",
             "12",
@@ -2626,6 +2627,7 @@ def test_supervisor_config_from_args_applies_embedding_overrides(tmp_path):
     assert config.worktree_reconciliation_enabled is False
     assert config.worktree_reconciliation_max_merges == 3
     assert config.worktree_reconciliation_dry_run is True
+    assert config.worktree_reconciliation_preflight_enabled is False
     assert config.worktree_scan_cache_enabled is False
     assert config.worktree_scan_cache_ttl_seconds == 12
     assert config.worktree_scan_cache_path == tmp_path / "scan-cache.json"
@@ -7418,6 +7420,57 @@ def test_implementation_supervisor_reconciles_clean_backlogged_worktree(tmp_path
         check=False,
     )
     assert branch_exists.returncode != 0
+
+
+def test_implementation_supervisor_preflights_conflicting_backlogged_worktree(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    marker = repo / "README.md"
+    marker.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-010-conflict-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    marker.write_text("branch change\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "feature branch")
+    _git(repo, "checkout", "main")
+    marker.write_text("main change\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "main change")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "accel-010-conflict-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+        )
+    )
+
+    result = supervisor.reconcile_backlogged_worktrees()
+
+    assert result["candidate_count"] == 1
+    assert result["processed_count"] == 1
+    assert result["reconciled_count"] == 0
+    assert result["preflight_blocked_count"] == 1
+    assert result["processed"][0]["merge_result"]["reason"] == "preflight_merge_conflict"
+    assert result["processed"][0]["preflight_result"]["mergeable"] is False
+    assert "README.md" in result["processed"][0]["preflight_result"]["conflict_paths"]
+    assert marker.read_text(encoding="utf-8") == "main change\n"
+    assert not (repo / ".git" / "MERGE_HEAD").exists()
+    assert worktree_path.exists()
 
 
 def test_implementation_supervisor_defers_worktree_reconciliation_when_main_dirty(tmp_path):
