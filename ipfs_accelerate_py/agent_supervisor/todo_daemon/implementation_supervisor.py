@@ -217,6 +217,7 @@ class PortalImplementationSupervisor:
         self.config = config
         self.restart_count = 0
         self.last_start_at: float | None = None
+        self._last_supervisor_maintenance_at: float = 0.0
 
     def _supervisor_status_path(self) -> Path:
         return self.config.state_dir / f"{self.config.state_prefix}_supervisor_status.json"
@@ -236,14 +237,16 @@ class PortalImplementationSupervisor:
         status: str,
         started_at: str,
         error: str = "",
+        daemon_pid: int | None = None,
     ) -> None:
-        """Refresh supervisor status while recovery/refill work runs without a child daemon."""
+        """Refresh supervisor status while recovery/refill work is running."""
 
         status_path = self._supervisor_status_path()
         payload = load_json_dict(status_path) or {}
         now = utc_now()
         timeout_seconds = self._supervisor_maintenance_timeout_seconds()
         active = status == "running"
+        daemon_alive = bool(daemon_pid and process_is_running(int(daemon_pid)))
         payload.update(
             {
                 "schema": "ipfs_accelerate_py.agent_supervisor.todo_implementation_supervisor.supervisor",
@@ -251,8 +254,8 @@ class PortalImplementationSupervisor:
                 "updated_at": now,
                 "supervisor_pid": os.getpid(),
                 "supervisor_pid_alive": True,
-                "daemon_pid": None,
-                "daemon_pid_alive": False,
+                "daemon_pid": int(daemon_pid) if daemon_pid else None,
+                "daemon_pid_alive": daemon_alive,
                 "repo_root": str(self.config.repo_root),
                 "current_status_path": str(self.config.state_path),
                 "progress_path": str(self.config.state_path),
@@ -268,6 +271,7 @@ class PortalImplementationSupervisor:
                 "last_agentic_maintenance_reason": f"recovery_phase:{phase}",
                 "active_agentic_maintenance_started_at": started_at if active else "",
                 "active_agentic_maintenance_timeout_seconds": timeout_seconds,
+                "active_agentic_maintenance_has_daemon": bool(daemon_pid),
                 "agentic_timeout_seconds": timeout_seconds,
                 "agentic_stuck_maintenance_timeout_seconds": timeout_seconds,
                 "watchdog_stale_after_seconds": float(self.config.stale_seconds),
@@ -284,7 +288,7 @@ class PortalImplementationSupervisor:
             payload.pop("last_agentic_maintenance_error", None)
         write_json_atomic(status_path, payload)
 
-    def _begin_supervisor_maintenance_heartbeat(self, phase: str):
+    def _begin_supervisor_maintenance_heartbeat(self, phase: str, *, daemon_pid: int | None = None):
         """Return phase-update and finish callbacks for long supervisor recovery passes."""
 
         started_at = utc_now()
@@ -299,6 +303,7 @@ class PortalImplementationSupervisor:
                     status=status,
                     started_at=started_at,
                     error=error,
+                    daemon_pid=daemon_pid,
                 )
             except Exception:
                 logger.warning("Failed to update supervisor maintenance heartbeat", exc_info=True)
@@ -581,45 +586,56 @@ class PortalImplementationSupervisor:
         _child: Any,
         _current_status: dict[str, Any],
     ) -> SupervisorLoopDecision:
-        self.ensure_event_log_file()
-        main_checkout_repair = self.repair_main_checkout_merge_state()
+        now_monotonic = time.monotonic()
+        min_interval = max(1.0, float(self.config.check_interval))
+        if now_monotonic - self._last_supervisor_maintenance_at < min_interval:
+            return SupervisorLoopDecision.keep_running()
+
+        state = PortalTaskState.load(self.config.state_path)
+        stuck, reason = self.is_stuck(state, now_ts=time.time())
+        if state.active_task_id and not stuck:
+            return SupervisorLoopDecision.keep_running()
+
+        self._last_supervisor_maintenance_at = now_monotonic
+        daemon_pid = int(getattr(_child, "pid", 0) or 0) or None
+        update_maintenance_phase, finish_maintenance = self._begin_supervisor_maintenance_heartbeat(
+            "watchdog",
+            daemon_pid=daemon_pid,
+        )
+        failed = False
+        try:
+            result = self._run_once_with_maintenance(update_maintenance_phase)
+        except Exception as exc:
+            failed = True
+            message = f"{type(exc).__name__}: {exc}"
+            finish_maintenance("failed", message)
+            logger.warning("Supervisor maintenance hook failed; leaving child alive", exc_info=True)
+            self._record_event(
+                "supervisor_maintenance_failed",
+                {
+                    "phase": "watchdog",
+                    "error_type": type(exc).__name__,
+                    "error": str(exc),
+                },
+            )
+            return SupervisorLoopDecision.keep_running()
+        finally:
+            self._last_supervisor_maintenance_at = time.monotonic()
+            if not failed:
+                finish_maintenance("completed")
+
+        main_checkout_repair = dict(result.get("main_checkout_repair") or {})
         if main_checkout_repair.get("repaired"):
             return SupervisorLoopDecision.recycle(
                 "main_checkout_merge_state_repaired",
                 detail=main_checkout_repair,
             )
-        worktree_reconciliation = self.reconcile_backlogged_worktrees()
-        if worktree_reconciliation.get("reconciled_count"):
-            self._record_event("backlogged_worktree_reconciliation", worktree_reconciliation)
-        worktree_cleanup = self.cleanup_backlogged_worktrees()
-        if worktree_cleanup.get("removed_count"):
-            self._record_event("backlogged_worktree_cleanup", worktree_cleanup)
-        reconciliation_findings = self.record_reconciliation_guardrails(
-            worktree_reconciliation,
-            worktree_cleanup,
-        )
-        state = PortalTaskState.load(self.config.state_path)
-        stuck, reason = self.is_stuck(state, now_ts=time.time())
-        if not stuck:
-            self.ensure_strategy_file()
-            self.ensure_state_file()
-            self.ensure_todo_board_for_refill()
-            self.release_completed_guardrail_blocks()
-            self.record_retry_budget_guardrails()
-            self.record_dependency_guardrails()
-            self.refill_objective_backlog()
-            self.refill_codebase_backlog()
-            return SupervisorLoopDecision.keep_running()
-        self.ensure_strategy_file()
-        self.ensure_state_file()
-        self.ensure_todo_board_for_refill()
-        self.release_completed_guardrail_blocks()
-        self.record_retry_budget_guardrails()
-        self.record_dependency_guardrails()
-        self.rewrite_strategy(state, reason)
-        active_task_id = state.active_task_id
-        self.repair_blocked_progress_state(state, reason, now_ts=time.time())
-        return SupervisorLoopDecision.recycle(reason, detail={"active_task_id": active_task_id})
+        if result.get("stuck"):
+            return SupervisorLoopDecision.recycle(
+                str(result.get("reason") or "stuck_progress"),
+                detail={"active_task_id": result.get("active_task_id") or ""},
+            )
+        return SupervisorLoopDecision.keep_running()
 
     def repair_main_checkout_merge_state(self) -> dict[str, Any]:
         """Resolve or abort an interrupted merge in the shared repository checkout."""

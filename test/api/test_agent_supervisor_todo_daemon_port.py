@@ -4045,6 +4045,126 @@ def test_implementation_supervisor_run_once_refreshes_recovery_status(tmp_path, 
     assert final_status["last_agentic_maintenance_status"] == "completed"
 
 
+def test_implementation_supervisor_watchdog_refreshes_child_maintenance_status(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+        )
+    )
+
+    update_phase, finish = supervisor._begin_supervisor_maintenance_heartbeat(
+        "watchdog",
+        daemon_pid=os.getpid(),
+    )
+    update_phase("objective_refill")
+    finish("completed")
+
+    status = json.loads((state_dir / "portal_supervisor_status.json").read_text(encoding="utf-8"))
+    assert status["daemon_pid"] == os.getpid()
+    assert status["daemon_pid_alive"] is True
+    assert status["active_agentic_maintenance_has_daemon"] is True
+    assert status["last_agentic_maintenance_phase"] == "objective_refill"
+    assert status["last_agentic_maintenance_status"] == "completed"
+
+
+def test_implementation_supervisor_watchdog_throttles_maintenance(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    TodoTaskState(ready_count=0, completed_count=1).save(state_dir / "task_state.json")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            check_interval=60,
+        )
+    )
+    calls = []
+
+    def fake_maintenance(_update_phase):
+        calls.append("maintenance")
+        return {"stuck": False, "main_checkout_repair": {"repaired": False}}
+
+    class Child:
+        pid = os.getpid()
+
+    monkeypatch.setattr(supervisor, "_run_once_with_maintenance", fake_maintenance)
+
+    first = supervisor._supervisor_loop_watchdog_decision(None, Child(), {})
+    second = supervisor._supervisor_loop_watchdog_decision(None, Child(), {})
+
+    assert first.action == "continue"
+    assert second.action == "continue"
+    assert calls == ["maintenance"]
+
+
+def test_implementation_supervisor_watchdog_skips_active_progress_maintenance(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    now = datetime.now(timezone.utc)
+    TodoTaskState(
+        active_task_id="AUTO-001",
+        active_task_title="Active task",
+        active_task_track="ops",
+        active_task_started_at=now.isoformat(),
+        active_attempt=1,
+        active_phase="implementing",
+        active_phase_started_at=now.isoformat(),
+        implementation_in_progress=True,
+        last_implementation_task_id="AUTO-001",
+        last_implementation_started_at=now.isoformat(),
+        heartbeat_at=now.isoformat(),
+        last_progress_at=now.isoformat(),
+        ready_count=1,
+    ).save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            check_interval=60,
+        )
+    )
+    calls = []
+
+    class Child:
+        pid = os.getpid()
+
+    monkeypatch.setattr(
+        supervisor,
+        "_run_once_with_maintenance",
+        lambda _update_phase: calls.append("maintenance") or {"stuck": False},
+    )
+
+    decision = supervisor._supervisor_loop_watchdog_decision(None, Child(), {})
+
+    assert decision.action == "continue"
+    assert calls == []
+
+
 def test_implementation_supervisor_check_records_worktree_summary_counts(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
