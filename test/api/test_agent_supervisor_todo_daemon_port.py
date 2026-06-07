@@ -7638,6 +7638,43 @@ def test_reconciliation_guardrail_dedupes_dirty_group_when_count_changes(tmp_pat
     assert manifest["dedupe_key"] == "reconciliation_guardrail:dirty_backlogged_worktree:content_not_in_target"
     assert any(item["action"] == "compare_dirty_content_to_target" for item in manifest["actions"])
 
+    stale_discovery.write_text("# stale discovery without manifest\nCandidate count: 77\n", encoding="utf-8")
+    discovery_only_refresh = record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result={
+            "attempted": True,
+            "dirty_worktree_groups": {
+                "content_not_in_target": {
+                    "count": 77,
+                    "samples": [{"branch": "implementation/example", "path": "/tmp/example"}],
+                }
+            },
+        },
+        task_prefix="ACCEL-",
+    )
+    assert len(discovery_only_refresh) == 1
+    assert discovery_only_refresh[0]["refreshed"] is True
+    assert todo_path.read_text(encoding="utf-8") == updated_todo
+    assert "## Machine Readable Manifest" in stale_discovery.read_text(encoding="utf-8")
+
+    assert record_reconciliation_guardrail_findings(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        discovery_dir=discovery_dir,
+        cleanup_result={
+            "attempted": True,
+            "dirty_worktree_groups": {
+                "content_not_in_target": {
+                    "count": 77,
+                    "samples": [{"branch": "implementation/example", "path": "/tmp/example"}],
+                }
+            },
+        },
+        task_prefix="ACCEL-",
+    ) == []
+
 
 def test_implementation_daemon_deterministically_repairs_objective_heap_merge(tmp_path):
     repo = tmp_path / "repo"
