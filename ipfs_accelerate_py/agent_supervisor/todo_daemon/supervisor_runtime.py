@@ -779,6 +779,92 @@ def terminate_process_group(process: subprocess.Popen[Any], signum: int) -> bool
             return False
 
 
+def _captured_process_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return str(value)
+
+
+def run_process_group_capture(
+    command: Sequence[str],
+    *,
+    cwd: Path | str,
+    env: Optional[Mapping[str, object]] = None,
+    input_text: Optional[str] = None,
+    timeout_seconds: float,
+    kill_wait_seconds: float = 5.0,
+    start_new_session: bool = True,
+    text: bool = True,
+) -> dict[str, Any]:
+    """Run a child process group, capturing output and killing leaks on timeout."""
+
+    started = time.time()
+    process: Optional[subprocess.Popen[Any]] = None
+    try:
+        input_value: Any = input_text
+        if input_text is not None and not text:
+            input_value = input_text.encode("utf-8")
+        process = launch_process_child(
+            command,
+            cwd=cwd,
+            env=env,
+            stdin=subprocess.PIPE if input_text is not None else None,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            start_new_session=start_new_session,
+            text=text,
+        )
+        stdout, stderr = process.communicate(
+            input=input_value,
+            timeout=max(1.0, float(timeout_seconds)),
+        )
+        return {
+            "duration_seconds": round(time.time() - started, 3),
+            "exit_code": process.returncode,
+            "status": "completed",
+            "stderr": _captured_process_text(stderr),
+            "stdout": _captured_process_text(stdout),
+        }
+    except OSError as exc:
+        return {
+            "duration_seconds": round(time.time() - started, 3),
+            "exit_code": None,
+            "status": "failed",
+            "stderr": str(exc),
+            "stdout": "",
+        }
+    except subprocess.TimeoutExpired as exc:
+        stdout: Any = exc.stdout
+        stderr: Any = exc.stderr
+        if process is not None:
+            terminate_process_group(process, signal.SIGTERM)
+            try:
+                stdout, stderr = process.communicate(
+                    timeout=max(0.0, float(kill_wait_seconds))
+                )
+            except subprocess.TimeoutExpired as term_exc:
+                stdout = term_exc.stdout if term_exc.stdout is not None else stdout
+                stderr = term_exc.stderr if term_exc.stderr is not None else stderr
+                terminate_process_group(process, signal.SIGKILL)
+                try:
+                    stdout, stderr = process.communicate(
+                        timeout=max(0.0, float(kill_wait_seconds))
+                    )
+                except subprocess.TimeoutExpired as kill_exc:
+                    stdout = kill_exc.stdout if kill_exc.stdout is not None else stdout
+                    stderr = kill_exc.stderr if kill_exc.stderr is not None else stderr
+        return {
+            "duration_seconds": round(time.time() - started, 3),
+            "exit_code": process.returncode if process is not None else None,
+            "status": "timeout",
+            "stderr": _captured_process_text(stderr),
+            "stdout": _captured_process_text(stdout),
+            "timeout_seconds": float(timeout_seconds),
+        }
+
+
 def terminate_process_with_grace(
     process: subprocess.Popen[Any],
     *,
@@ -852,17 +938,49 @@ def terminate_processes_with_grace(
         terminate_sent = terminate_process_group(process, terminate_signal)
         active.append((child_key, process, initial_exit_code, terminate_sent))
 
+    deadline = time.time() + max(0.0, float(grace_seconds))
+    kill_candidates: list[tuple[str, subprocess.Popen[Any], Optional[int], bool]] = []
     for child_key, process, initial_exit_code, terminate_sent in active:
-        kill_sent = False
+        try:
+            process.wait(timeout=max(0.0, deadline - time.time()))
+        except subprocess.TimeoutExpired:
+            pass
+        final_exit_code = process.poll()
+        if final_exit_code is None:
+            kill_candidates.append(
+                (child_key, process, initial_exit_code, terminate_sent)
+            )
+            continue
+        results[child_key] = ProcessTerminationResult(
+            pid=int(process.pid),
+            initial_exit_code=initial_exit_code,
+            final_exit_code=int(final_exit_code) if final_exit_code is not None else None,
+            terminate_sent=terminate_sent,
+            kill_sent=False,
+            timed_out=False,
+        )
+
+    kill_results: list[
+        tuple[str, subprocess.Popen[Any], Optional[int], bool, bool]
+    ] = []
+    for child_key, process, initial_exit_code, terminate_sent in kill_candidates:
+        kill_results.append(
+            (
+                child_key,
+                process,
+                initial_exit_code,
+                terminate_sent,
+                terminate_process_group(process, kill_signal),
+            )
+        )
+
+    kill_deadline = time.time() + max(0.0, float(kill_wait_seconds))
+    for child_key, process, initial_exit_code, terminate_sent, kill_sent in kill_results:
         timed_out = False
         try:
-            process.wait(timeout=max(0.0, float(grace_seconds)))
+            process.wait(timeout=max(0.0, kill_deadline - time.time()))
         except subprocess.TimeoutExpired:
-            kill_sent = terminate_process_group(process, kill_signal)
-            try:
-                process.wait(timeout=max(0.0, float(kill_wait_seconds)))
-            except subprocess.TimeoutExpired:
-                timed_out = True
+            timed_out = True
         final_exit_code = process.poll()
         results[child_key] = ProcessTerminationResult(
             pid=int(process.pid),

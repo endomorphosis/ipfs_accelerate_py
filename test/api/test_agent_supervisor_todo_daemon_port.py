@@ -139,6 +139,7 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     launch_process_child,
     launch_supervised_child,
     repair_supervisor_runtime,
+    run_process_group_capture,
     supervisor_is_running,
     supervisor_runtime_paths,
     supervised_child_group_succeeded,
@@ -1318,6 +1319,105 @@ def test_supervisor_runtime_launch_supervised_child_uses_shared_launcher(
     assert kwargs["start_new_session"] is False
 
 
+def test_supervisor_runtime_run_process_group_capture_completes(tmp_path: Path) -> None:
+    result = run_process_group_capture(
+        [sys.executable, "-c", "print('ok')"],
+        cwd=tmp_path,
+        timeout_seconds=5.0,
+    )
+
+    assert result["status"] == "completed"
+    assert result["exit_code"] == 0
+    assert result["stdout"].strip() == "ok"
+    assert result["stderr"] == ""
+
+
+def test_supervisor_runtime_run_process_group_capture_passes_stdin(
+    tmp_path: Path,
+) -> None:
+    result = run_process_group_capture(
+        [sys.executable, "-c", "import sys; print(sys.stdin.read().upper())"],
+        cwd=tmp_path,
+        input_text="hello",
+        timeout_seconds=5.0,
+    )
+
+    assert result["status"] == "completed"
+    assert result["stdout"].strip() == "HELLO"
+
+
+def test_supervisor_runtime_run_process_group_capture_times_out_and_kills_group(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    signals: list[tuple[int, int]] = []
+
+    class FakeProcess:
+        pid = 5432
+        returncode = None
+
+        def __init__(self):
+            self.calls = 0
+
+        def poll(self):
+            return self.returncode
+
+        def send_signal(self, signum):
+            signals.append((self.pid, signum))
+
+        def communicate(self, input=None, timeout=None):
+            self.calls += 1
+            if self.calls < 3:
+                raise subprocess.TimeoutExpired("fake", timeout)
+            self.returncode = -signal.SIGKILL
+            return "late stdout", "late stderr"
+
+    process = FakeProcess()
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "launch_process_child",
+        lambda command, **kwargs: process,
+    )
+    monkeypatch.setattr(
+        supervisor_runtime.os,
+        "killpg",
+        lambda pid, signum: signals.append((pid, signum)),
+    )
+
+    result = run_process_group_capture(
+        ["fake"],
+        cwd=tmp_path,
+        timeout_seconds=1.0,
+        kill_wait_seconds=0.0,
+    )
+
+    assert result["status"] == "timeout"
+    assert result["exit_code"] == -signal.SIGKILL
+    assert result["stdout"] == "late stdout"
+    assert result["stderr"] == "late stderr"
+    assert signals == [(5432, signal.SIGTERM), (5432, signal.SIGKILL)]
+
+
+def test_supervisor_runtime_run_process_group_capture_reports_launch_failure(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    def fail_launch(command, **kwargs):
+        raise OSError("missing command")
+
+    monkeypatch.setattr(supervisor_runtime, "launch_process_child", fail_launch)
+
+    result = run_process_group_capture(
+        ["missing"],
+        cwd=tmp_path,
+        timeout_seconds=1.0,
+    )
+
+    assert result["status"] == "failed"
+    assert result["exit_code"] is None
+    assert "missing command" in result["stderr"]
+
+
 def test_supervisor_runtime_stop_signal_handlers_record_and_restore(
     monkeypatch,
 ) -> None:
@@ -1477,6 +1577,56 @@ def test_supervisor_runtime_terminate_processes_with_grace_signals_all_first(
     assert results["first"].terminate_sent is True
     assert results["second"].kill_sent is True
     assert results["done"].terminate_sent is False
+
+
+def test_supervisor_runtime_terminate_processes_with_grace_uses_shared_deadline(
+    monkeypatch,
+) -> None:
+    clock = {"now": 100.0}
+    signals: list[tuple[int, int]] = []
+    waits: list[tuple[int, float | None]] = []
+
+    class FakeProcess:
+        def __init__(self, pid: int):
+            self.pid = pid
+
+        def poll(self):
+            return None
+
+        def wait(self, timeout=None):
+            waits.append((self.pid, timeout))
+            if self.pid == 2001 and len(waits) == 1:
+                clock["now"] += float(timeout or 0.0)
+            raise subprocess.TimeoutExpired("fake", timeout)
+
+    def fake_time():
+        return clock["now"]
+
+    def fake_killpg(pid, signum):
+        signals.append((pid, signum))
+
+    monkeypatch.setattr(supervisor_runtime.time, "time", fake_time)
+    monkeypatch.setattr(supervisor_runtime.os, "killpg", fake_killpg)
+
+    results = terminate_processes_with_grace(
+        [
+            ("first", FakeProcess(2001)),
+            ("second", FakeProcess(2002)),
+        ],
+        grace_seconds=5.0,
+        kill_wait_seconds=0.0,
+    )
+
+    assert waits[0] == (2001, pytest.approx(5.0))
+    assert waits[1] == (2002, pytest.approx(0.0))
+    assert signals == [
+        (2001, signal.SIGTERM),
+        (2002, signal.SIGTERM),
+        (2001, signal.SIGKILL),
+        (2002, signal.SIGKILL),
+    ]
+    assert results["first"].timed_out is True
+    assert results["second"].timed_out is True
 
 
 def test_supervisor_runtime_summarizes_child_status_files(tmp_path: Path) -> None:
