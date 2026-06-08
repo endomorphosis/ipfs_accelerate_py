@@ -19,6 +19,7 @@ import os
 import re
 import shlex
 import subprocess
+import time
 from dataclasses import asdict, dataclass, fields
 from datetime import datetime, timezone
 from hashlib import sha1
@@ -57,6 +58,9 @@ DEFAULT_VALIDATION_RETRY_BUDGET = int(os.environ.get("IPFS_ACCELERATE_AGENT_VALI
 DEFAULT_MERGE_RETRY_BUDGET = int(os.environ.get("IPFS_ACCELERATE_AGENT_MERGE_RETRY_BUDGET", "3"))
 DEFAULT_IMPLEMENTATION_RETRY_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_IMPLEMENTATION_RETRY_BUDGET", "3")
+)
+DEFAULT_STALE_GIT_LOCK_SECONDS = float(
+    os.environ.get("IPFS_ACCELERATE_AGENT_STALE_GIT_LOCK_SECONDS", "300")
 )
 DEFAULT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_DEPENDENCY_GUARDRAIL_MAX_FINDINGS", "5")
@@ -579,6 +583,162 @@ def git_status_porcelain(repo: Path) -> list[str]:
     return [line.rstrip() for line in result.stdout.splitlines() if line.strip()]
 
 
+def git_dir_for_repo(repo: Path) -> Path | None:
+    """Return the resolved git metadata directory for a worktree."""
+
+    result = subprocess.run(
+        ["git", "rev-parse", "--git-dir"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return None
+    git_dir = Path(result.stdout.strip())
+    if not git_dir.is_absolute():
+        git_dir = repo / git_dir
+    return git_dir.resolve()
+
+
+def git_index_lock_path(repo: Path) -> Path | None:
+    git_dir = git_dir_for_repo(repo)
+    if git_dir is None:
+        return None
+    return git_dir / "index.lock"
+
+
+def _path_inside(child: Path, parent: Path) -> bool:
+    try:
+        child.resolve().relative_to(parent.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _cmdline_has_git_process(cmdline: str) -> bool:
+    if not cmdline:
+        return False
+    for token in cmdline.replace("\x00", " ").split():
+        name = Path(token).name
+        if name == "git" or name.startswith("git-"):
+            return True
+    return False
+
+
+def active_git_processes_for_repo(repo: Path, git_dir: Path) -> list[dict[str, Any]]:
+    """Best-effort check for active git processes that could own a lock."""
+
+    proc_root = Path("/proc")
+    if not proc_root.exists():
+        return []
+    repo = repo.resolve()
+    git_dir = git_dir.resolve()
+    active: list[dict[str, Any]] = []
+    current_pid = os.getpid()
+    for entry in proc_root.iterdir():
+        if not entry.name.isdigit():
+            continue
+        try:
+            pid = int(entry.name)
+        except ValueError:
+            continue
+        if pid == current_pid:
+            continue
+        try:
+            raw_cmdline = (entry / "cmdline").read_bytes()
+        except OSError:
+            continue
+        cmdline = raw_cmdline.decode("utf-8", errors="replace").replace("\x00", " ").strip()
+        if not _cmdline_has_git_process(cmdline):
+            continue
+        cwd_text = ""
+        try:
+            cwd = Path(os.readlink(entry / "cwd")).resolve()
+            cwd_text = str(cwd)
+        except OSError:
+            cwd = None
+        mentions_repo = str(repo) in cmdline or str(git_dir) in cmdline
+        cwd_matches = bool(cwd and (_path_inside(cwd, repo) or _path_inside(cwd, git_dir)))
+        if mentions_repo or cwd_matches:
+            active.append({"pid": pid, "cwd": cwd_text, "cmdline": cmdline[:500]})
+    return active
+
+
+def repair_stale_git_index_lock(
+    repo: Path,
+    *,
+    stale_seconds: float = DEFAULT_STALE_GIT_LOCK_SECONDS,
+) -> dict[str, Any]:
+    """Remove an inactive stale ``index.lock`` for one git worktree.
+
+    Git leaves ``index.lock`` behind when an add/commit process crashes. The
+    supervisor can safely remove it only when the lock is old enough and there
+    is no active git process associated with the same worktree/git directory.
+    """
+
+    repo = repo.resolve()
+    lock_path = git_index_lock_path(repo)
+    if lock_path is None:
+        return {"attempted": False, "repo": str(repo), "reason": "not_git_repo"}
+    if not lock_path.exists():
+        return {"attempted": False, "repo": str(repo), "lock_path": str(lock_path), "reason": "no_lock"}
+    try:
+        stat = lock_path.stat()
+    except OSError as exc:
+        return {
+            "attempted": True,
+            "repo": str(repo),
+            "lock_path": str(lock_path),
+            "removed": False,
+            "reason": "lock_stat_failed",
+            "error": str(exc),
+        }
+    age_seconds = max(0.0, time.time() - stat.st_mtime)
+    git_dir = lock_path.parent
+    active_processes = active_git_processes_for_repo(repo, git_dir)
+    if active_processes:
+        return {
+            "attempted": True,
+            "repo": str(repo),
+            "lock_path": str(lock_path),
+            "removed": False,
+            "reason": "active_git_process",
+            "age_seconds": age_seconds,
+            "active_processes": active_processes[:10],
+        }
+    if age_seconds < float(stale_seconds):
+        return {
+            "attempted": True,
+            "repo": str(repo),
+            "lock_path": str(lock_path),
+            "removed": False,
+            "reason": "lock_not_stale",
+            "age_seconds": age_seconds,
+            "stale_seconds": stale_seconds,
+        }
+    try:
+        lock_path.unlink()
+    except OSError as exc:
+        return {
+            "attempted": True,
+            "repo": str(repo),
+            "lock_path": str(lock_path),
+            "removed": False,
+            "reason": "lock_unlink_failed",
+            "age_seconds": age_seconds,
+            "error": str(exc),
+        }
+    return {
+        "attempted": True,
+        "repo": str(repo),
+        "lock_path": str(lock_path),
+        "removed": True,
+        "reason": "stale_lock_removed",
+        "age_seconds": age_seconds,
+    }
+
+
 def _resolve_existing_path_for_git_root(path: Path) -> Path:
     current = path
     while not current.exists() and current.parent != current:
@@ -800,6 +960,7 @@ def commit_generated_dirty_outputs(
     subject: str = "Agent: commit generated supervisor outputs",
     include_clean_submodule_gitlinks: bool = True,
     max_paths: int = 200,
+    stale_git_lock_seconds: float = DEFAULT_STALE_GIT_LOCK_SECONDS,
 ) -> dict[str, Any]:
     """Commit safe supervisor-generated dirt across nested git roots.
 
@@ -818,8 +979,24 @@ def commit_generated_dirty_outputs(
     remaining_budget = max(0, int(max_paths))
     results: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
+    lock_repairs: list[dict[str, Any]] = []
     selected_path_count = 0
     for git_root in roots:
+        lock_repair = repair_stale_git_index_lock(
+            git_root,
+            stale_seconds=stale_git_lock_seconds,
+        )
+        if lock_repair.get("attempted"):
+            lock_repairs.append(lock_repair)
+        if lock_repair.get("attempted") and not lock_repair.get("removed"):
+            skipped.append(
+                {
+                    "repo": str(git_root),
+                    "reason": str(lock_repair.get("reason") or "git_index_lock_blocked"),
+                    "lock_repair": lock_repair,
+                }
+            )
+            continue
         status = git_status_porcelain(git_root)
         if not status:
             continue
@@ -888,6 +1065,7 @@ def commit_generated_dirty_outputs(
         "selected_path_count": selected_path_count,
         "committed_count": sum(1 for item in results if item.get("committed")),
         "results": results,
+        "lock_repairs": lock_repairs,
         "skipped": skipped[:50],
         "remaining_status_short": final_status[:50],
         "remaining_status_count": len(final_status),

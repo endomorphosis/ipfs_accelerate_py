@@ -160,6 +160,7 @@ class ConfiguredSupervisorRuntime:
         generated_dirty_repair_commit_subject: str | None = None,
         generated_dirty_repair_include_submodule_gitlinks: bool = True,
         generated_dirty_repair_max_paths: int | None = None,
+        generated_dirty_repair_stale_lock_seconds: float | None = None,
         objective: "ObjectiveRefillDefaults | None" = None,
         codebase: "CodebaseRefillDefaults | None" = None,
         hooks: Sequence[SupervisorRunHook] = (),
@@ -192,6 +193,7 @@ class ConfiguredSupervisorRuntime:
                 generated_dirty_repair_include_submodule_gitlinks
             ),
             generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
+            generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
             objective=objective,
             codebase=codebase,
         )
@@ -238,6 +240,7 @@ class ConfiguredSupervisorRuntime:
         generated_dirty_repair_commit_subject: str | None = None,
         generated_dirty_repair_include_submodule_gitlinks: bool = True,
         generated_dirty_repair_max_paths: int | None = None,
+        generated_dirty_repair_stale_lock_seconds: float | None = None,
         once_complete_message: str = "Portal implementation supervisor check complete: %s",
         ensure_running_message: str = "Supervisor ensure complete: %s",
         repair_runtime: bool = True,
@@ -285,6 +288,7 @@ class ConfiguredSupervisorRuntime:
                 generated_dirty_repair_include_submodule_gitlinks
             ),
             generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
+            generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
             objective=objective,
             codebase=codebase,
             hooks=effective_hooks,
@@ -352,6 +356,7 @@ class ConfiguredSupervisorBootstrapRunner:
     generated_dirty_repair_commit_subject: str | None = None
     generated_dirty_repair_include_submodule_gitlinks: bool = True
     generated_dirty_repair_max_paths: int | None = None
+    generated_dirty_repair_stale_lock_seconds: float | None = None
     once_complete_message: str = "Portal implementation supervisor check complete: %s"
     ensure_running_message: str = "Supervisor ensure complete: %s"
     repair_runtime: bool = True
@@ -395,6 +400,7 @@ class ConfiguredSupervisorBootstrapRunner:
                 self.generated_dirty_repair_include_submodule_gitlinks
             ),
             generated_dirty_repair_max_paths=self.generated_dirty_repair_max_paths,
+            generated_dirty_repair_stale_lock_seconds=self.generated_dirty_repair_stale_lock_seconds,
             once_complete_message=self.once_complete_message,
             ensure_running_message=self.ensure_running_message,
             repair_runtime=self.repair_runtime,
@@ -431,6 +437,7 @@ def build_configured_supervisor_bootstrap_runner(
     generated_dirty_repair_commit_subject: str | None = None,
     generated_dirty_repair_include_submodule_gitlinks: bool = True,
     generated_dirty_repair_max_paths: int | None = None,
+    generated_dirty_repair_stale_lock_seconds: float | None = None,
     once_complete_message: str = "Portal implementation supervisor check complete: %s",
     ensure_running_message: str = "Supervisor ensure complete: %s",
     repair_runtime: bool = True,
@@ -466,6 +473,7 @@ def build_configured_supervisor_bootstrap_runner(
         generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
         generated_dirty_repair_include_submodule_gitlinks=generated_dirty_repair_include_submodule_gitlinks,
         generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
+        generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
         once_complete_message=once_complete_message,
         ensure_running_message=ensure_running_message,
         repair_runtime=repair_runtime,
@@ -576,6 +584,7 @@ def build_script_supervisor_bootstrap_runner(
     generated_dirty_repair_commit_subject: str | None = None,
     generated_dirty_repair_include_submodule_gitlinks: bool = True,
     generated_dirty_repair_max_paths: int | None = None,
+    generated_dirty_repair_stale_lock_seconds: float | None = None,
     once_complete_message: str = "Portal implementation supervisor check complete: %s",
     ensure_running_message: str = "Supervisor ensure complete: %s",
     repair_runtime: bool = True,
@@ -623,6 +632,7 @@ def build_script_supervisor_bootstrap_runner(
             generated_dirty_repair_include_submodule_gitlinks
         ),
         generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
+        generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
         once_complete_message=once_complete_message,
         ensure_running_message=ensure_running_message,
         repair_runtime=repair_runtime,
@@ -649,6 +659,7 @@ class ImplementationSupervisorDefaults:
     generated_dirty_repair_commit_subject: str | None = None
     generated_dirty_repair_include_submodule_gitlinks: bool = True
     generated_dirty_repair_max_paths: int | None = None
+    generated_dirty_repair_stale_lock_seconds: float | None = None
 
 
 def _path_from_mapping(paths: Mapping[str, Path | str], key: str) -> Path:
@@ -686,6 +697,7 @@ def build_implementation_supervisor_defaults_from_paths(
     generated_dirty_repair_commit_subject: str | None = None,
     generated_dirty_repair_include_submodule_gitlinks: bool = True,
     generated_dirty_repair_max_paths: int | None = None,
+    generated_dirty_repair_stale_lock_seconds: float | None = None,
 ) -> ImplementationSupervisorDefaults:
     """Build reusable implementation-supervisor defaults from resolved wrapper paths."""
 
@@ -705,6 +717,7 @@ def build_implementation_supervisor_defaults_from_paths(
         generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
         generated_dirty_repair_include_submodule_gitlinks=generated_dirty_repair_include_submodule_gitlinks,
         generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
+        generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
     )
 
 
@@ -1091,6 +1104,11 @@ def apply_portal_implementation_supervisor_defaults(
         "--generated-dirty-max-paths",
         defaults.generated_dirty_repair_max_paths,
     )
+    args = _with_optional_default(
+        args,
+        "--generated-dirty-stale-lock-seconds",
+        defaults.generated_dirty_repair_stale_lock_seconds,
+    )
 
     if objective is not None:
         if objective.refill_scan:
@@ -1210,6 +1228,7 @@ def apply_portal_implementation_supervisor_defaults_from_paths(
     generated_dirty_repair_commit_subject: str | None = None,
     generated_dirty_repair_include_submodule_gitlinks: bool = True,
     generated_dirty_repair_max_paths: int | None = None,
+    generated_dirty_repair_stale_lock_seconds: float | None = None,
     objective: ObjectiveRefillDefaults | None = None,
     codebase: CodebaseRefillDefaults | None = None,
 ) -> list[str]:
@@ -1236,6 +1255,7 @@ def apply_portal_implementation_supervisor_defaults_from_paths(
                 generated_dirty_repair_include_submodule_gitlinks
             ),
             generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
+            generated_dirty_repair_stale_lock_seconds=generated_dirty_repair_stale_lock_seconds,
         ),
         objective=objective,
         codebase=codebase,

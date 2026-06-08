@@ -131,6 +131,7 @@ class PortalSupervisorConfig:
     generated_dirty_repair_commit_subject: str = "Agent: commit generated supervisor outputs"
     generated_dirty_repair_include_submodule_gitlinks: bool = True
     generated_dirty_repair_max_paths: int = 200
+    generated_dirty_repair_stale_lock_seconds: float = 300.0
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -391,6 +392,8 @@ class PortalImplementationSupervisor:
             dependency_findings = self.record_dependency_guardrails()
             strategy = self.rewrite_strategy(state, reason)
             state_repair = self.repair_blocked_progress_state(state, reason, now_ts=now_ts)
+            update_maintenance_phase("post_stuck_generated_dirty_repair")
+            post_stuck_generated_dirty_repair = self.repair_generated_dirty_checkouts()
             return {
                 "stuck": True,
                 "reason": reason,
@@ -406,6 +409,7 @@ class PortalImplementationSupervisor:
                 "todo_board_repair": todo_board_repair,
                 "main_checkout_repair": main_checkout_repair,
                 "generated_dirty_repair": generated_dirty_repair,
+                "post_stuck_generated_dirty_repair": post_stuck_generated_dirty_repair,
                 "worktree_reconciliation": worktree_reconciliation,
                 "worktree_cleanup": worktree_cleanup,
                 "guardrail_unblock_count": len(guardrail_releases),
@@ -1686,6 +1690,7 @@ class PortalImplementationSupervisor:
             subject=self.config.generated_dirty_repair_commit_subject,
             include_clean_submodule_gitlinks=self.config.generated_dirty_repair_include_submodule_gitlinks,
             max_paths=self.config.generated_dirty_repair_max_paths,
+            stale_git_lock_seconds=self.config.generated_dirty_repair_stale_lock_seconds,
         )
         if result.get("committed_count") or result.get("selected_path_count"):
             self._record_event("generated_dirty_checkout_repair", result)
@@ -3729,6 +3734,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Maximum dirty generated paths to stage per repair pass.",
     )
     parser.add_argument(
+        "--generated-dirty-stale-lock-seconds",
+        type=float,
+        default=300.0,
+        help=(
+            "Minimum age before generated-dirty repair may remove an inactive "
+            "Git index.lock in a candidate repository."
+        ),
+    )
+    parser.add_argument(
         "--codebase-refill-scan",
         action="store_true",
         help="Append codebase-scan follow-up tasks when the supervised backlog is low or drained.",
@@ -3995,6 +4009,7 @@ def supervisor_config_from_args(
             args.generated_dirty_repair_include_submodule_gitlinks
         ),
         generated_dirty_repair_max_paths=args.generated_dirty_max_paths,
+        generated_dirty_repair_stale_lock_seconds=args.generated_dirty_stale_lock_seconds,
         codebase_refill_enabled=args.codebase_refill_scan and not reconciliation_only,
         codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
         codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,

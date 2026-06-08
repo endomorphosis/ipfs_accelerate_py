@@ -52,6 +52,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
             generated_dirty_repair_enabled=True,
             generated_dirty_repair_commit_subject="EX: commit generated outputs",
             generated_dirty_repair_max_paths=17,
+            generated_dirty_repair_stale_lock_seconds=42.0,
         ),
         objective=ObjectiveRefillDefaults(
             objective_path=tmp_path / "objective.md",
@@ -95,6 +96,7 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert parsed.generated_dirty_repair_enabled is True
     assert parsed.generated_dirty_commit_subject == "EX: commit generated outputs"
     assert parsed.generated_dirty_max_paths == 17
+    assert parsed.generated_dirty_stale_lock_seconds == 42.0
 
 
 def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_path: Path):

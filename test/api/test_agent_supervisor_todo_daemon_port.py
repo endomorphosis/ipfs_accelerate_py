@@ -4552,6 +4552,66 @@ def test_implementation_supervisor_repairs_stale_merge_resolver_without_worker(t
     assert any(event["type"] == "worktree_phase_without_worker" for event in events)
 
 
+def test_implementation_supervisor_repairs_generated_dirty_after_stuck_recovery(
+    monkeypatch, tmp_path
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    state_dir.mkdir()
+    state_path = state_dir / "task_state.json"
+    now = datetime.now(timezone.utc)
+    old = now.replace(year=2000)
+    TodoTaskState(
+        active_task_id="AUTO-001",
+        active_task_title="Stale merge resolver",
+        active_task_track="ops",
+        active_task_started_at=old.isoformat(),
+        active_attempt=1,
+        active_phase="merge_resolver",
+        active_phase_started_at=old.isoformat(),
+        active_phase_detail="merge_conflict",
+        implementation_in_progress=True,
+        last_implementation_task_id="AUTO-001",
+        last_implementation_started_at=old.isoformat(),
+        heartbeat_at=now.isoformat(),
+        last_progress_at=now.isoformat(),
+        ready_count=1,
+    ).save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            check_interval=1,
+            stale_seconds=3600,
+            generated_dirty_repair_enabled=True,
+        )
+    )
+    repair_calls: list[int] = []
+
+    def fake_generated_repair() -> dict[str, object]:
+        repair_calls.append(len(repair_calls) + 1)
+        return {
+            "attempted": True,
+            "selected_path_count": 1,
+            "committed_count": 1,
+            "call_index": repair_calls[-1],
+        }
+
+    monkeypatch.setattr(supervisor, "repair_generated_dirty_checkouts", fake_generated_repair)
+
+    result = supervisor.run_once()
+
+    assert result["stuck"] is True
+    assert repair_calls == [1, 2]
+    assert result["generated_dirty_repair"]["call_index"] == 1
+    assert result["post_stuck_generated_dirty_repair"]["call_index"] == 2
+
+
 def test_implementation_supervisor_repairs_implementation_without_worker(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()

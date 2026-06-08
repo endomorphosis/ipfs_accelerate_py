@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 from pathlib import Path
 
@@ -52,6 +53,13 @@ def _seed_repo(tmp_path: Path) -> Path:
     return repo
 
 
+def _git_dir(cwd: Path) -> Path:
+    git_dir = Path(_git(cwd, "rev-parse", "--git-dir"))
+    if not git_dir.is_absolute():
+        git_dir = cwd / git_dir
+    return git_dir.resolve()
+
+
 def test_commit_generated_dirty_outputs_commits_nested_repo_and_parent_gitlink(tmp_path):
     source = tmp_path / "source"
     source.mkdir()
@@ -94,6 +102,46 @@ def test_commit_generated_dirty_outputs_commits_nested_repo_and_parent_gitlink(t
     assert "unknown.txt" in root_status
     assert "hallucinate_app" not in root_status
     assert "data/discovery/generated.md" not in root_status
+
+
+def test_commit_generated_dirty_outputs_repairs_stale_nested_index_lock(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    _git(source, "init")
+    _git(source, "checkout", "-b", "main")
+    _git(source, "config", "user.name", "Test User")
+    _git(source, "config", "user.email", "test@example.invalid")
+    (source / "docs").mkdir()
+    (source / "docs" / "todo.md").write_text("# Todos\n", encoding="utf-8")
+    _git(source, "add", "docs/todo.md")
+    _git(source, "commit", "-m", "seed submodule")
+
+    repo = _seed_repo(tmp_path)
+    (repo / "README.md").write_text("root\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "seed root")
+    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app")
+    _git(repo, "commit", "-am", "add submodule")
+
+    nested = repo / "hallucinate_app"
+    lock_path = _git_dir(nested) / "index.lock"
+    lock_path.write_text("stale lock\n", encoding="utf-8")
+    os.utime(lock_path, (0, 0))
+    (nested / "docs" / "todo.md").write_text("# Todos\n\n## Generated\n", encoding="utf-8")
+
+    result = commit_generated_dirty_outputs(
+        repo_root=repo,
+        generated_paths=("hallucinate_app/docs/todo.md",),
+        candidate_git_roots=(nested,),
+        subject="Agent: commit generated outputs",
+        stale_git_lock_seconds=1.0,
+    )
+
+    assert not lock_path.exists()
+    assert any(item.get("removed") for item in result["lock_repairs"])
+    assert result["committed_count"] == 2
+    assert result["selected_path_count"] == 2
+    assert "hallucinate_app" not in _git(repo, "status", "--short")
 
 
 def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
