@@ -104,6 +104,65 @@ def test_commit_generated_dirty_outputs_commits_nested_repo_and_parent_gitlink(t
     assert "data/discovery/generated.md" not in root_status
 
 
+def test_commit_generated_dirty_outputs_repairs_recursive_clean_gitlinks(tmp_path):
+    leaf_source = tmp_path / "leaf-source"
+    leaf_source.mkdir()
+    _git(leaf_source, "init")
+    _git(leaf_source, "checkout", "-b", "main")
+    _git(leaf_source, "config", "user.name", "Test User")
+    _git(leaf_source, "config", "user.email", "test@example.invalid")
+    (leaf_source / "leaf.txt").write_text("base\n", encoding="utf-8")
+    _git(leaf_source, "add", "leaf.txt")
+    _git(leaf_source, "commit", "-m", "seed leaf")
+
+    parent_source = tmp_path / "parent-source"
+    parent_source.mkdir()
+    _git(parent_source, "init")
+    _git(parent_source, "checkout", "-b", "main")
+    _git(parent_source, "config", "user.name", "Test User")
+    _git(parent_source, "config", "user.email", "test@example.invalid")
+    (parent_source / "README.md").write_text("parent\n", encoding="utf-8")
+    _git(parent_source, "add", "README.md")
+    _git(parent_source, "commit", "-m", "seed parent")
+    _git(
+        parent_source,
+        "-c",
+        "protocol.file.allow=always",
+        "submodule",
+        "add",
+        str(leaf_source),
+        "vendor/leaf",
+    )
+    _git(parent_source, "commit", "-am", "add leaf submodule")
+
+    repo = _seed_repo(tmp_path)
+    (repo / "README.md").write_text("root\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "seed root")
+    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(parent_source), "modules/parent")
+    _git(repo, "-c", "protocol.file.allow=always", "submodule", "update", "--init", "--recursive")
+    _git(repo, "commit", "-am", "add parent submodule")
+
+    nested_leaf = repo / "modules" / "parent" / "vendor" / "leaf"
+    _git(nested_leaf, "config", "user.name", "Test User")
+    _git(nested_leaf, "config", "user.email", "test@example.invalid")
+    (nested_leaf / "leaf.txt").write_text("updated\n", encoding="utf-8")
+    _git(nested_leaf, "commit", "-am", "update leaf")
+
+    result = commit_generated_dirty_outputs(
+        repo_root=repo,
+        subject="Agent: repair nested gitlinks",
+    )
+
+    assert result["committed_count"] == 2
+    assert result["selected_path_count"] == 2
+    parent = repo / "modules" / "parent"
+    assert _git(parent, "log", "-1", "--pretty=%s") == "Agent: repair nested gitlinks"
+    assert _git(repo, "log", "-1", "--pretty=%s") == "Agent: repair nested gitlinks"
+    assert _git(parent, "status", "--porcelain") == ""
+    assert _git(repo, "status", "--porcelain") == ""
+
+
 def test_commit_generated_dirty_outputs_repairs_stale_nested_index_lock(tmp_path):
     source = tmp_path / "source"
     source.mkdir()

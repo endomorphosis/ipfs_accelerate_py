@@ -836,7 +836,33 @@ def _git_root_candidates_for_dirty_generated_outputs(
         path_text = normalize_status_path(relative)
         if path_text:
             add(repo_root / path_text)
+    for submodule_root in _initialized_submodule_git_roots(repo_root):
+        add(submodule_root)
     return sorted(roots, key=lambda path: len(path.resolve().parts), reverse=True)
+
+
+def _initialized_submodule_git_roots(repo_root: Path) -> list[Path]:
+    """Return initialized submodule worktree roots under ``repo_root``."""
+
+    result = subprocess.run(
+        ["git", "submodule", "foreach", "--quiet", "--recursive", "pwd"],
+        cwd=repo_root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    roots: list[Path] = []
+    for line in result.stdout.splitlines():
+        path_text = line.strip()
+        if not path_text:
+            continue
+        path = Path(path_text)
+        if not path.is_absolute():
+            path = repo_root / path
+        roots.append(path)
+    return roots
 
 
 def _path_is_gitlink(repo: Path, relative: str) -> bool:
