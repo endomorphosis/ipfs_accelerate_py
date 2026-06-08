@@ -564,6 +564,337 @@ def commit_generated_outputs(paths: Sequence[Path], *, repo_root: Path, subject:
     return results
 
 
+def git_status_porcelain(repo: Path) -> list[str]:
+    """Return short porcelain status lines, including untracked files."""
+
+    result = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=all"],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return []
+    return [line.rstrip() for line in result.stdout.splitlines() if line.strip()]
+
+
+def _resolve_existing_path_for_git_root(path: Path) -> Path:
+    current = path
+    while not current.exists() and current.parent != current:
+        current = current.parent
+    return current
+
+
+def _relative_filter_for_git_root(
+    relative: str,
+    *,
+    repo_root: Path,
+    git_root: Path,
+) -> str:
+    path_text = normalize_status_path(relative)
+    if not path_text:
+        return ""
+    try:
+        full_path = (repo_root / path_text).resolve()
+        root = git_root.resolve()
+    except OSError:
+        return ""
+    if full_path == root:
+        return ""
+    try:
+        return full_path.relative_to(root).as_posix()
+    except ValueError:
+        return ""
+
+
+def generated_status_filters_for_git_root(
+    *,
+    repo_root: Path,
+    git_root: Path,
+    generated_paths: Sequence[str] = (),
+    generated_prefixes: Sequence[str] = (),
+) -> tuple[list[str], list[str]]:
+    """Convert repo-root-relative generated filters to one git root."""
+
+    if git_root.resolve() == repo_root.resolve():
+        return (
+            [normalize_status_path(path) for path in generated_paths if normalize_status_path(path)],
+            [normalize_status_path(path) for path in generated_prefixes if normalize_status_path(path)],
+        )
+    return (
+        list(
+            dict.fromkeys(
+                rel
+                for rel in (
+                    _relative_filter_for_git_root(path, repo_root=repo_root, git_root=git_root)
+                    for path in generated_paths
+                )
+                if rel
+            )
+        ),
+        list(
+            dict.fromkeys(
+                rel
+                for rel in (
+                    _relative_filter_for_git_root(path, repo_root=repo_root, git_root=git_root)
+                    for path in generated_prefixes
+                )
+                if rel
+            )
+        ),
+    )
+
+
+def _git_root_candidates_for_dirty_generated_outputs(
+    *,
+    repo_root: Path,
+    generated_paths: Sequence[str],
+    generated_prefixes: Sequence[str],
+    candidate_git_roots: Sequence[Path | str],
+) -> list[Path]:
+    roots: list[Path] = []
+    seen: set[str] = set()
+
+    def add(candidate: Path) -> None:
+        top = git_toplevel_for_path(_resolve_existing_path_for_git_root(candidate))
+        if top is None:
+            return
+        try:
+            top.resolve().relative_to(repo_root.resolve())
+        except ValueError:
+            return
+        key = str(top.resolve())
+        if key not in seen:
+            seen.add(key)
+            roots.append(top.resolve())
+
+    add(repo_root)
+    for candidate in candidate_git_roots:
+        add(repo_root / candidate if not Path(candidate).is_absolute() else Path(candidate))
+    for relative in [*generated_paths, *generated_prefixes]:
+        path_text = normalize_status_path(relative)
+        if path_text:
+            add(repo_root / path_text)
+    return sorted(roots, key=lambda path: len(path.resolve().parts), reverse=True)
+
+
+def _path_is_gitlink(repo: Path, relative: str) -> bool:
+    if not repo_relative_path_safe(relative):
+        return False
+    result = subprocess.run(
+        ["git", "ls-files", "--stage", "--", relative],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return False
+    return any(line.startswith("160000 ") for line in result.stdout.splitlines())
+
+
+def _clean_child_git_root(repo: Path, relative: str) -> str:
+    child = repo / relative
+    child_root = git_toplevel_for_path(child)
+    if child_root is None:
+        return ""
+    if git_status_porcelain(child_root):
+        return ""
+    return str(child_root)
+
+
+def _status_line_is_clean_gitlink_update(repo: Path, line: str) -> tuple[bool, str]:
+    code = line[:2]
+    relative = status_line_path(line)
+    if not relative or "U" in code or "R" in code or "C" in code:
+        return False, ""
+    if code == "??" or not _path_is_gitlink(repo, relative):
+        return False, ""
+    child_root = _clean_child_git_root(repo, relative)
+    return bool(child_root), child_root
+
+
+def _commit_selected_dirty_paths(repo: Path, paths: Sequence[str], *, subject: str) -> dict[str, Any]:
+    selected_paths = [path for path in dict.fromkeys(paths) if repo_relative_path_safe(path)]
+    if not selected_paths:
+        return {
+            "committed": False,
+            "reason": "no_safe_paths",
+            "repo": str(repo),
+            "selected_paths": [],
+        }
+    add = subprocess.run(
+        ["git", "add", "--", *selected_paths],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if add.returncode != 0:
+        return {
+            "committed": False,
+            "reason": "git_add_failed",
+            "repo": str(repo),
+            "selected_paths": selected_paths,
+            "returncode": add.returncode,
+            "stdout": add.stdout[-4000:],
+            "stderr": add.stderr[-4000:],
+        }
+    staged = subprocess.run(
+        ["git", "diff", "--cached", "--quiet", "--", *selected_paths],
+        cwd=repo,
+        check=False,
+    )
+    if staged.returncode == 0:
+        return {
+            "committed": False,
+            "reason": "no_staged_changes",
+            "repo": str(repo),
+            "selected_paths": selected_paths,
+        }
+    commit = subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Agent Supervisor",
+            "-c",
+            "user.email=agent-supervisor@example.invalid",
+            "commit",
+            "-m",
+            subject,
+            "--",
+            *selected_paths,
+        ],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if commit.returncode != 0:
+        return {
+            "committed": False,
+            "reason": "git_commit_failed",
+            "repo": str(repo),
+            "selected_paths": selected_paths,
+            "returncode": commit.returncode,
+            "stdout": commit.stdout[-4000:],
+            "stderr": commit.stderr[-4000:],
+        }
+    ref = subprocess.run(["git", "rev-parse", "HEAD"], cwd=repo, text=True, capture_output=True, check=False)
+    return {
+        "committed": True,
+        "repo": str(repo),
+        "selected_paths": selected_paths,
+        "commit": ref.stdout.strip(),
+        "stdout": commit.stdout[-4000:],
+    }
+
+
+def commit_generated_dirty_outputs(
+    *,
+    repo_root: Path,
+    generated_paths: Sequence[str] = (),
+    generated_prefixes: Sequence[str] = (),
+    candidate_git_roots: Sequence[Path | str] = (),
+    subject: str = "Agent: commit generated supervisor outputs",
+    include_clean_submodule_gitlinks: bool = True,
+    max_paths: int = 200,
+) -> dict[str, Any]:
+    """Commit safe supervisor-generated dirt across nested git roots.
+
+    The repair is deliberately conservative: it stages only paths matching the
+    generated-output filters, plus clean submodule gitlink pointer updates when
+    requested. Unknown dirty files are reported but left untouched.
+    """
+
+    repo_root = repo_root.resolve()
+    roots = _git_root_candidates_for_dirty_generated_outputs(
+        repo_root=repo_root,
+        generated_paths=generated_paths,
+        generated_prefixes=generated_prefixes,
+        candidate_git_roots=candidate_git_roots,
+    )
+    remaining_budget = max(0, int(max_paths))
+    results: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
+    selected_path_count = 0
+    for git_root in roots:
+        status = git_status_porcelain(git_root)
+        if not status:
+            continue
+        unmerged = sorted(unmerged_worktree_paths(git_root))
+        if unmerged:
+            skipped.append(
+                {
+                    "repo": str(git_root),
+                    "reason": "repo_has_unmerged_paths",
+                    "unmerged_paths": unmerged[:50],
+                }
+            )
+            continue
+        repo_generated_paths, repo_generated_prefixes = generated_status_filters_for_git_root(
+            repo_root=repo_root,
+            git_root=git_root,
+            generated_paths=generated_paths,
+            generated_prefixes=generated_prefixes,
+        )
+        selected: list[str] = []
+        selected_reasons: dict[str, str] = {}
+        for line in status:
+            if remaining_budget <= 0:
+                break
+            code = line[:2]
+            relative = status_line_path(line)
+            if not relative or not repo_relative_path_safe(relative):
+                continue
+            if "U" in code or "R" in code or "C" in code:
+                continue
+            if path_is_generated_status_output(
+                relative,
+                generated_paths=repo_generated_paths,
+                generated_prefixes=repo_generated_prefixes,
+            ):
+                selected.append(relative)
+                selected_reasons[relative] = "generated_output"
+                remaining_budget -= 1
+                continue
+            if include_clean_submodule_gitlinks:
+                gitlink, child_root = _status_line_is_clean_gitlink_update(git_root, line)
+                if gitlink:
+                    selected.append(relative)
+                    selected_reasons[relative] = f"clean_submodule_gitlink:{child_root}"
+                    remaining_budget -= 1
+        if not selected:
+            skipped.append(
+                {
+                    "repo": str(git_root),
+                    "reason": "no_safe_dirty_paths",
+                    "status_short": status[:50],
+                }
+            )
+            continue
+        result = _commit_selected_dirty_paths(git_root, selected, subject=subject)
+        result["selected_reasons"] = selected_reasons
+        result["status_short_before"] = status[:50]
+        selected_path_count += len(selected)
+        results.append(result)
+
+    final_status = git_status_porcelain(repo_root)
+    return {
+        "attempted": True,
+        "repo_root": str(repo_root),
+        "git_root_count": len(roots),
+        "selected_path_count": selected_path_count,
+        "committed_count": sum(1 for item in results if item.get("committed")),
+        "results": results,
+        "skipped": skipped[:50],
+        "remaining_status_short": final_status[:50],
+        "remaining_status_count": len(final_status),
+        "max_paths": max_paths,
+    }
+
+
 def repo_relative_path_safe(relative: str) -> bool:
     if not relative or relative.startswith("/") or "\0" in relative:
         return False

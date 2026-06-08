@@ -156,6 +156,10 @@ class ConfiguredSupervisorRuntime:
         max_restarts: int | str = 0,
         llm_merge_resolver_command: str = "",
         worktree_submodule_paths: Sequence[str] = (),
+        generated_dirty_repair_enabled: bool = False,
+        generated_dirty_repair_commit_subject: str | None = None,
+        generated_dirty_repair_include_submodule_gitlinks: bool = True,
+        generated_dirty_repair_max_paths: int | None = None,
         objective: "ObjectiveRefillDefaults | None" = None,
         codebase: "CodebaseRefillDefaults | None" = None,
         hooks: Sequence[SupervisorRunHook] = (),
@@ -182,6 +186,12 @@ class ConfiguredSupervisorRuntime:
             max_restarts=max_restarts,
             llm_merge_resolver_command=llm_merge_resolver_command,
             worktree_submodule_paths=worktree_submodule_paths,
+            generated_dirty_repair_enabled=generated_dirty_repair_enabled,
+            generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
+            generated_dirty_repair_include_submodule_gitlinks=(
+                generated_dirty_repair_include_submodule_gitlinks
+            ),
+            generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
             objective=objective,
             codebase=codebase,
         )
@@ -224,6 +234,10 @@ class ConfiguredSupervisorRuntime:
         max_restarts: int | str = 0,
         llm_merge_resolver_command: str = "",
         worktree_submodule_paths: Sequence[str] = (),
+        generated_dirty_repair_enabled: bool = False,
+        generated_dirty_repair_commit_subject: str | None = None,
+        generated_dirty_repair_include_submodule_gitlinks: bool = True,
+        generated_dirty_repair_max_paths: int | None = None,
         once_complete_message: str = "Portal implementation supervisor check complete: %s",
         ensure_running_message: str = "Supervisor ensure complete: %s",
         repair_runtime: bool = True,
@@ -265,6 +279,12 @@ class ConfiguredSupervisorRuntime:
             max_restarts=max_restarts,
             llm_merge_resolver_command=llm_merge_resolver_command,
             worktree_submodule_paths=worktree_submodule_paths,
+            generated_dirty_repair_enabled=generated_dirty_repair_enabled,
+            generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
+            generated_dirty_repair_include_submodule_gitlinks=(
+                generated_dirty_repair_include_submodule_gitlinks
+            ),
+            generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
             objective=objective,
             codebase=codebase,
             hooks=effective_hooks,
@@ -328,6 +348,10 @@ class ConfiguredSupervisorBootstrapRunner:
     max_restarts: int | str = 0
     llm_merge_resolver_command: SupervisorMergeResolverCommand = ""
     worktree_submodule_paths: Sequence[str] = ()
+    generated_dirty_repair_enabled: bool = False
+    generated_dirty_repair_commit_subject: str | None = None
+    generated_dirty_repair_include_submodule_gitlinks: bool = True
+    generated_dirty_repair_max_paths: int | None = None
     once_complete_message: str = "Portal implementation supervisor check complete: %s"
     ensure_running_message: str = "Supervisor ensure complete: %s"
     repair_runtime: bool = True
@@ -365,6 +389,12 @@ class ConfiguredSupervisorBootstrapRunner:
             max_restarts=self.max_restarts,
             llm_merge_resolver_command=self._resolved_llm_merge_resolver_command(),
             worktree_submodule_paths=self.worktree_submodule_paths,
+            generated_dirty_repair_enabled=self.generated_dirty_repair_enabled,
+            generated_dirty_repair_commit_subject=self.generated_dirty_repair_commit_subject,
+            generated_dirty_repair_include_submodule_gitlinks=(
+                self.generated_dirty_repair_include_submodule_gitlinks
+            ),
+            generated_dirty_repair_max_paths=self.generated_dirty_repair_max_paths,
             once_complete_message=self.once_complete_message,
             ensure_running_message=self.ensure_running_message,
             repair_runtime=self.repair_runtime,
@@ -397,6 +427,10 @@ def build_configured_supervisor_bootstrap_runner(
     max_restarts: int | str = 0,
     llm_merge_resolver_command: SupervisorMergeResolverCommand = "",
     worktree_submodule_paths: Sequence[str] = (),
+    generated_dirty_repair_enabled: bool = False,
+    generated_dirty_repair_commit_subject: str | None = None,
+    generated_dirty_repair_include_submodule_gitlinks: bool = True,
+    generated_dirty_repair_max_paths: int | None = None,
     once_complete_message: str = "Portal implementation supervisor check complete: %s",
     ensure_running_message: str = "Supervisor ensure complete: %s",
     repair_runtime: bool = True,
@@ -428,6 +462,10 @@ def build_configured_supervisor_bootstrap_runner(
         max_restarts=max_restarts,
         llm_merge_resolver_command=llm_merge_resolver_command,
         worktree_submodule_paths=tuple(worktree_submodule_paths),
+        generated_dirty_repair_enabled=generated_dirty_repair_enabled,
+        generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
+        generated_dirty_repair_include_submodule_gitlinks=generated_dirty_repair_include_submodule_gitlinks,
+        generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
         once_complete_message=once_complete_message,
         ensure_running_message=ensure_running_message,
         repair_runtime=repair_runtime,
@@ -534,6 +572,10 @@ def build_script_supervisor_bootstrap_runner(
     max_restarts: int | str = 0,
     llm_merge_resolver_command: SupervisorMergeResolverCommand = "",
     worktree_submodule_paths: Sequence[str] = (),
+    generated_dirty_repair_enabled: bool = False,
+    generated_dirty_repair_commit_subject: str | None = None,
+    generated_dirty_repair_include_submodule_gitlinks: bool = True,
+    generated_dirty_repair_max_paths: int | None = None,
     once_complete_message: str = "Portal implementation supervisor check complete: %s",
     ensure_running_message: str = "Supervisor ensure complete: %s",
     repair_runtime: bool = True,
@@ -575,6 +617,12 @@ def build_script_supervisor_bootstrap_runner(
         max_restarts=max_restarts,
         llm_merge_resolver_command=llm_merge_resolver_command,
         worktree_submodule_paths=worktree_submodule_paths,
+        generated_dirty_repair_enabled=generated_dirty_repair_enabled,
+        generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
+        generated_dirty_repair_include_submodule_gitlinks=(
+            generated_dirty_repair_include_submodule_gitlinks
+        ),
+        generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
         once_complete_message=once_complete_message,
         ensure_running_message=ensure_running_message,
         repair_runtime=repair_runtime,
@@ -597,6 +645,10 @@ class ImplementationSupervisorDefaults:
     max_restarts: int | str = 0
     llm_merge_resolver_command: str = ""
     worktree_submodule_paths: Sequence[str] = ()
+    generated_dirty_repair_enabled: bool = False
+    generated_dirty_repair_commit_subject: str | None = None
+    generated_dirty_repair_include_submodule_gitlinks: bool = True
+    generated_dirty_repair_max_paths: int | None = None
 
 
 def _path_from_mapping(paths: Mapping[str, Path | str], key: str) -> Path:
@@ -630,6 +682,10 @@ def build_implementation_supervisor_defaults_from_paths(
     max_restarts: int | str = 0,
     llm_merge_resolver_command: str = "",
     worktree_submodule_paths: Sequence[str] = (),
+    generated_dirty_repair_enabled: bool = False,
+    generated_dirty_repair_commit_subject: str | None = None,
+    generated_dirty_repair_include_submodule_gitlinks: bool = True,
+    generated_dirty_repair_max_paths: int | None = None,
 ) -> ImplementationSupervisorDefaults:
     """Build reusable implementation-supervisor defaults from resolved wrapper paths."""
 
@@ -645,6 +701,10 @@ def build_implementation_supervisor_defaults_from_paths(
         max_restarts=max_restarts,
         llm_merge_resolver_command=llm_merge_resolver_command,
         worktree_submodule_paths=worktree_submodule_paths,
+        generated_dirty_repair_enabled=generated_dirty_repair_enabled,
+        generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
+        generated_dirty_repair_include_submodule_gitlinks=generated_dirty_repair_include_submodule_gitlinks,
+        generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
     )
 
 
@@ -1016,6 +1076,21 @@ def apply_portal_implementation_supervisor_defaults(
         args = with_default(args, "--llm-merge-resolver-command", defaults.llm_merge_resolver_command)
     if defaults.worktree_submodule_paths:
         args = with_repeated_default(args, "--worktree-submodule-path", defaults.worktree_submodule_paths)
+    if defaults.generated_dirty_repair_enabled:
+        args = with_flag_default(args, "--auto-commit-generated-dirty")
+    if defaults.generated_dirty_repair_commit_subject:
+        args = with_default(
+            args,
+            "--generated-dirty-commit-subject",
+            defaults.generated_dirty_repair_commit_subject,
+        )
+    if not defaults.generated_dirty_repair_include_submodule_gitlinks:
+        args = with_flag_default(args, "--no-generated-dirty-submodule-gitlinks")
+    args = _with_optional_default(
+        args,
+        "--generated-dirty-max-paths",
+        defaults.generated_dirty_repair_max_paths,
+    )
 
     if objective is not None:
         if objective.refill_scan:
@@ -1131,6 +1206,10 @@ def apply_portal_implementation_supervisor_defaults_from_paths(
     max_restarts: int | str = 0,
     llm_merge_resolver_command: str = "",
     worktree_submodule_paths: Sequence[str] = (),
+    generated_dirty_repair_enabled: bool = False,
+    generated_dirty_repair_commit_subject: str | None = None,
+    generated_dirty_repair_include_submodule_gitlinks: bool = True,
+    generated_dirty_repair_max_paths: int | None = None,
     objective: ObjectiveRefillDefaults | None = None,
     codebase: CodebaseRefillDefaults | None = None,
 ) -> list[str]:
@@ -1151,6 +1230,12 @@ def apply_portal_implementation_supervisor_defaults_from_paths(
             max_restarts=max_restarts,
             llm_merge_resolver_command=llm_merge_resolver_command,
             worktree_submodule_paths=worktree_submodule_paths,
+            generated_dirty_repair_enabled=generated_dirty_repair_enabled,
+            generated_dirty_repair_commit_subject=generated_dirty_repair_commit_subject,
+            generated_dirty_repair_include_submodule_gitlinks=(
+                generated_dirty_repair_include_submodule_gitlinks
+            ),
+            generated_dirty_repair_max_paths=generated_dirty_repair_max_paths,
         ),
         objective=objective,
         codebase=codebase,

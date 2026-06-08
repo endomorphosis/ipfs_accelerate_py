@@ -127,6 +127,10 @@ class PortalSupervisorConfig:
     reconciliation_guardrail_max_findings: int = 3
     reconciliation_guardrail_commit_outputs: bool = False
     reconciliation_guardrail_commit_subject: str = "Agent: record reconciliation guardrail outputs"
+    generated_dirty_repair_enabled: bool = False
+    generated_dirty_repair_commit_subject: str = "Agent: commit generated supervisor outputs"
+    generated_dirty_repair_include_submodule_gitlinks: bool = True
+    generated_dirty_repair_max_paths: int = 200
     codebase_refill_enabled: bool = False
     codebase_scan_discovery_dir: Path | None = None
     codebase_scan_discovery_output_path: str = ""
@@ -361,6 +365,8 @@ class PortalImplementationSupervisor:
         event_log_repair = self.ensure_event_log_file()
         update_maintenance_phase("main_checkout_repair")
         main_checkout_repair = self.repair_main_checkout_merge_state()
+        update_maintenance_phase("generated_dirty_repair")
+        generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("worktree_reconciliation")
         worktree_reconciliation = self.reconcile_backlogged_worktrees()
         update_maintenance_phase("worktree_cleanup")
@@ -399,6 +405,7 @@ class PortalImplementationSupervisor:
                 "state_file_repair": state_file_repair,
                 "todo_board_repair": todo_board_repair,
                 "main_checkout_repair": main_checkout_repair,
+                "generated_dirty_repair": generated_dirty_repair,
                 "worktree_reconciliation": worktree_reconciliation,
                 "worktree_cleanup": worktree_cleanup,
                 "guardrail_unblock_count": len(guardrail_releases),
@@ -422,6 +429,8 @@ class PortalImplementationSupervisor:
         else:
             update_maintenance_phase("codebase_refill")
             codebase_findings = self.refill_codebase_backlog()
+        update_maintenance_phase("post_refill_generated_dirty_repair")
+        post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("supervisor_check_event")
         self._record_event(
             "supervisor_check",
@@ -454,6 +463,12 @@ class PortalImplementationSupervisor:
                 "objective_seeded_interoperability_goal_count": objective_seeded_goal_count,
                 "codebase_refill_count": len(codebase_findings),
                 "codebase_deferred_reason": codebase_deferred_reason,
+                "generated_dirty_repair_committed_count": int(
+                    generated_dirty_repair.get("committed_count") or 0
+                ),
+                "post_refill_generated_dirty_repair_committed_count": int(
+                    post_refill_generated_dirty_repair.get("committed_count") or 0
+                ),
             },
         )
         return {
@@ -474,6 +489,8 @@ class PortalImplementationSupervisor:
             "state_file_repair": state_file_repair,
             "todo_board_repair": todo_board_repair,
             "main_checkout_repair": main_checkout_repair,
+            "generated_dirty_repair": generated_dirty_repair,
+            "post_refill_generated_dirty_repair": post_refill_generated_dirty_repair,
             "worktree_reconciliation": worktree_reconciliation,
             "worktree_cleanup": worktree_cleanup,
         }
@@ -1645,6 +1662,34 @@ class PortalImplementationSupervisor:
             additional_generated_paths=additional_paths,
             additional_generated_prefixes=additional_prefixes,
         )
+
+    def repair_generated_dirty_checkouts(self) -> dict[str, Any]:
+        """Commit safe generated supervisor outputs so reconciliation can proceed."""
+
+        if not self.config.generated_dirty_repair_enabled:
+            return {"attempted": False, "reason": "generated_dirty_repair_disabled"}
+        generated_paths, generated_prefixes = self._generated_main_checkout_status_filters()
+        candidate_git_roots = [
+            self.config.repo_root / relative
+            for relative in self.config.worktree_submodule_paths
+            if str(relative).strip()
+        ]
+        from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
+            commit_generated_dirty_outputs,
+        )
+
+        result = commit_generated_dirty_outputs(
+            repo_root=self.config.repo_root,
+            generated_paths=generated_paths,
+            generated_prefixes=generated_prefixes,
+            candidate_git_roots=candidate_git_roots,
+            subject=self.config.generated_dirty_repair_commit_subject,
+            include_clean_submodule_gitlinks=self.config.generated_dirty_repair_include_submodule_gitlinks,
+            max_paths=self.config.generated_dirty_repair_max_paths,
+        )
+        if result.get("committed_count") or result.get("selected_path_count"):
+            self._record_event("generated_dirty_checkout_repair", result)
+        return result
 
     def _filter_generated_main_checkout_status(
         self,
@@ -3657,6 +3702,33 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default="Agent: record reconciliation guardrail outputs",
     )
     parser.add_argument(
+        "--auto-commit-generated-dirty",
+        dest="generated_dirty_repair_enabled",
+        action="store_true",
+        help=(
+            "Commit safe supervisor-generated dirty todo/discovery/objective outputs before "
+            "worktree reconciliation and after refill generation."
+        ),
+    )
+    parser.set_defaults(generated_dirty_repair_enabled=False)
+    parser.add_argument(
+        "--generated-dirty-commit-subject",
+        default="Agent: commit generated supervisor outputs",
+    )
+    parser.add_argument(
+        "--no-generated-dirty-submodule-gitlinks",
+        dest="generated_dirty_repair_include_submodule_gitlinks",
+        action="store_false",
+        help="Do not commit clean submodule gitlink updates during generated dirty repair.",
+    )
+    parser.set_defaults(generated_dirty_repair_include_submodule_gitlinks=True)
+    parser.add_argument(
+        "--generated-dirty-max-paths",
+        type=int,
+        default=200,
+        help="Maximum dirty generated paths to stage per repair pass.",
+    )
+    parser.add_argument(
         "--codebase-refill-scan",
         action="store_true",
         help="Append codebase-scan follow-up tasks when the supervised backlog is low or drained.",
@@ -3917,6 +3989,12 @@ def supervisor_config_from_args(
         reconciliation_guardrail_max_findings=args.reconciliation_guardrail_max_findings,
         reconciliation_guardrail_commit_outputs=args.reconciliation_guardrail_commit_outputs,
         reconciliation_guardrail_commit_subject=args.reconciliation_guardrail_commit_subject,
+        generated_dirty_repair_enabled=args.generated_dirty_repair_enabled,
+        generated_dirty_repair_commit_subject=args.generated_dirty_commit_subject,
+        generated_dirty_repair_include_submodule_gitlinks=(
+            args.generated_dirty_repair_include_submodule_gitlinks
+        ),
+        generated_dirty_repair_max_paths=args.generated_dirty_max_paths,
         codebase_refill_enabled=args.codebase_refill_scan and not reconciliation_only,
         codebase_scan_discovery_dir=args.codebase_scan_discovery_dir,
         codebase_scan_discovery_output_path=args.codebase_scan_discovery_output_path,

@@ -49,6 +49,9 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
             supervisor_script_path=tmp_path / "supervisor.py",
             llm_merge_resolver_command="codex exec -",
             worktree_submodule_paths=("module-a", "module-b"),
+            generated_dirty_repair_enabled=True,
+            generated_dirty_repair_commit_subject="EX: commit generated outputs",
+            generated_dirty_repair_max_paths=17,
         ),
         objective=ObjectiveRefillDefaults(
             objective_path=tmp_path / "objective.md",
@@ -83,11 +86,15 @@ def test_apply_portal_implementation_supervisor_defaults_preserves_user_values(t
     assert "--objective-refill-scan" in args
     assert "--objective-seed-interoperability-goals" in args
     assert "--codebase-refill-scan" in args
+    assert "--auto-commit-generated-dirty" in args
     parsed = parse_args(args)
     assert parsed.todo_path == tmp_path / "tasks.todo.md"
     assert parsed.state_prefix == "custom"
     assert parsed.objective_scan_max_findings == 99
     assert parsed.codebase_scan_cooldown_seconds == 120
+    assert parsed.generated_dirty_repair_enabled is True
+    assert parsed.generated_dirty_commit_subject == "EX: commit generated outputs"
+    assert parsed.generated_dirty_max_paths == 17
 
 
 def test_build_supervisor_refill_default_factories_resolve_bootstrap_paths(tmp_path: Path):

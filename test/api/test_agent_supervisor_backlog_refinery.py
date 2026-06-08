@@ -14,6 +14,7 @@ from ipfs_accelerate_py.agent_supervisor.backlog_refinery import (
     build_namespace_objective_backlog_recorder,
     build_namespace_retry_budget_recorder,
     build_task_blocks_ensurer,
+    commit_generated_dirty_outputs,
     iter_jsonl,
     ensure_task_blocks_present,
     load_strategy,
@@ -49,6 +50,50 @@ def _seed_repo(tmp_path: Path) -> Path:
     _git(repo, "config", "user.name", "Test User")
     _git(repo, "config", "user.email", "test@example.invalid")
     return repo
+
+
+def test_commit_generated_dirty_outputs_commits_nested_repo_and_parent_gitlink(tmp_path):
+    source = tmp_path / "source"
+    source.mkdir()
+    _git(source, "init")
+    _git(source, "checkout", "-b", "main")
+    _git(source, "config", "user.name", "Test User")
+    _git(source, "config", "user.email", "test@example.invalid")
+    (source / "docs").mkdir()
+    (source / "docs" / "todo.md").write_text("# Todos\n", encoding="utf-8")
+    _git(source, "add", "docs/todo.md")
+    _git(source, "commit", "-m", "seed submodule")
+
+    repo = _seed_repo(tmp_path)
+    (repo / "README.md").write_text("root\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "seed root")
+    _git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(source), "hallucinate_app")
+    _git(repo, "commit", "-am", "add submodule")
+
+    nested = repo / "hallucinate_app"
+    (nested / "docs" / "todo.md").write_text("# Todos\n\n## Generated\n", encoding="utf-8")
+    discovery = repo / "data" / "discovery" / "generated.md"
+    discovery.parent.mkdir(parents=True)
+    discovery.write_text("# Generated\n", encoding="utf-8")
+    (repo / "unknown.txt").write_text("preserve me\n", encoding="utf-8")
+
+    result = commit_generated_dirty_outputs(
+        repo_root=repo,
+        generated_paths=("hallucinate_app/docs/todo.md",),
+        generated_prefixes=("data/discovery",),
+        candidate_git_roots=(nested,),
+        subject="Agent: commit generated outputs",
+    )
+
+    assert result["committed_count"] == 2
+    assert result["selected_path_count"] == 3
+    assert _git(nested, "log", "-1", "--pretty=%s") == "Agent: commit generated outputs"
+    assert _git(repo, "log", "-1", "--pretty=%s") == "Agent: commit generated outputs"
+    root_status = _git(repo, "status", "--short")
+    assert "unknown.txt" in root_status
+    assert "hallucinate_app" not in root_status
+    assert "data/discovery/generated.md" not in root_status
 
 
 def test_namespace_recorder_factories_bind_standard_paths(tmp_path):
