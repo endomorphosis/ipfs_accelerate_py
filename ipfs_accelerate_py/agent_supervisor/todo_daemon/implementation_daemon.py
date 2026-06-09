@@ -3080,6 +3080,27 @@ class PortalImplementationDaemon:
             "stdout": abort.stdout[-4000:],
             "stderr": abort.stderr[-4000:],
         }
+        if abort.returncode != 0 and (
+            self._git_merge_head_in_repo(cwd) or self._unmerged_worktree_paths(cwd)
+        ):
+            reset = subprocess.run(
+                ["git", "reset", "--merge"],
+                cwd=cwd,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            fallback = {
+                "attempted": True,
+                "reset": reset.returncode == 0,
+                "returncode": reset.returncode,
+                "stdout": reset.stdout[-4000:],
+                "stderr": reset.stderr[-4000:],
+            }
+            result["reset_merge_fallback"] = fallback
+            if reset.returncode == 0:
+                result["aborted"] = True
+                result["reason"] = "reset_merge_fallback"
         self._record_event("failed_merge_aborted", {"worktree_path": str(cwd), **result})
         return result
 

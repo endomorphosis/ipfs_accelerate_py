@@ -5517,6 +5517,63 @@ def test_implementation_daemon_recovers_missing_inflight_before_merge_reconcilia
     assert any(event["type"] == "implementation_state_recovered" for event in events)
 
 
+def test_implementation_supervisor_recovers_missing_inflight_before_worktree_reconciliation(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Agent Todos\n", encoding="utf-8")
+    state_dir = repo / "state"
+    state_path = state_dir / "task_state.json"
+    active_worktree = repo / "worktrees" / "accel-999-attempt-1"
+    TodoTaskState(
+        active_task_id="ACCEL-999",
+        active_task_title="Stale implementation task",
+        active_task_track="ops",
+        active_task_started_at="2026-06-07T00:00:00+00:00",
+        active_attempt=1,
+        active_phase="implementing",
+        active_phase_started_at="2026-06-07T00:00:00+00:00",
+        active_worktree_path=str(active_worktree),
+        active_branch="implementation/accel-999-attempt-1",
+        implementation_in_progress=True,
+        last_implementation_task_id="ACCEL-999",
+        last_implementation_started_at="2026-06-07T00:00:00+00:00",
+    ).save(state_path)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_path,
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=repo / "worktrees",
+        )
+    )
+    supervisor._list_process_commands = lambda: []  # type: ignore[method-assign]
+
+    def assert_state_recovered_before_reconcile():
+        recovered = TodoTaskState.load(state_path)
+        assert recovered.implementation_in_progress is False
+        assert recovered.active_worktree_path == ""
+        assert recovered.active_branch == ""
+        return {"attempted": True, "candidate_count": 0, "processed_count": 0, "reconciled_count": 0}
+
+    supervisor.reconcile_backlogged_worktrees = assert_state_recovered_before_reconcile  # type: ignore[method-assign]
+    supervisor.cleanup_backlogged_worktrees = lambda: {"attempted": True, "removed_count": 0}  # type: ignore[method-assign]
+
+    result = supervisor.run_once()
+
+    assert result["stale_active_state_repair"]["repaired"] is True
+    assert result["stale_active_state_repair"]["active_task_id"] == "ACCEL-999"
+    recovered = TodoTaskState.load(state_path)
+    assert recovered.active_task_id == "ACCEL-999"
+    assert recovered.implementation_in_progress is False
+    assert recovered.active_worktree_path == ""
+    events = [json.loads(line) for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "stale_active_execution_state_repaired" for event in events)
+
+
 def test_implementation_daemon_limits_merge_reconciliation_per_pass(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -8233,6 +8290,63 @@ def test_implementation_supervisor_aborts_interrupted_main_checkout_merge(tmp_pa
     assert result["repaired"] is True
     assert result["reason"] == "merge_aborted_without_resolver"
     assert result["abort_result"]["aborted"] is True
+    assert supervisor._git_merge_head(repo) == ""
+    assert supervisor._git_unmerged_paths(repo) == []
+    assert target.read_text(encoding="utf-8") == "main\n"
+
+
+def test_implementation_supervisor_aborts_interrupted_main_checkout_merge_with_reset_fallback(
+    tmp_path,
+    monkeypatch,
+):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    target = repo / "conflict.txt"
+    target.write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "conflict.txt")
+    _git(repo, "commit", "-m", "base")
+    _git(repo, "checkout", "-b", "implementation/conflict")
+    target.write_text("feature\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "feature")
+    _git(repo, "checkout", "main")
+    target.write_text("main\n", encoding="utf-8")
+    _git(repo, "commit", "-am", "main")
+    merge = subprocess.run(["git", "merge", "implementation/conflict"], cwd=repo, text=True, capture_output=True)
+    assert merge.returncode != 0
+
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import (
+        implementation_supervisor as implementation_supervisor_module,
+    )
+
+    real_run = implementation_supervisor_module.subprocess.run
+
+    def fail_merge_abort(command, *args, **kwargs):
+        if list(command) == ["git", "merge", "--abort"]:
+            return subprocess.CompletedProcess(command, 1, "", "simulated abort failure")
+        return real_run(command, *args, **kwargs)
+
+    monkeypatch.setattr(implementation_supervisor_module.subprocess, "run", fail_merge_abort)
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=repo / "state" / "task_state.json",
+            strategy_path=repo / "state" / "strategy.json",
+            events_path=repo / "state" / "events.jsonl",
+            state_dir=repo / "state",
+            repo_root=repo,
+        )
+    )
+
+    result = supervisor.repair_main_checkout_merge_state()
+
+    assert result["repaired"] is True
+    assert result["abort_result"]["aborted"] is True
+    assert result["abort_result"]["returncode"] == 1
+    assert result["abort_result"]["reset_merge_fallback"]["reset"] is True
     assert supervisor._git_merge_head(repo) == ""
     assert supervisor._git_unmerged_paths(repo) == []
     assert target.read_text(encoding="utf-8") == "main\n"

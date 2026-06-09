@@ -364,6 +364,10 @@ class PortalImplementationSupervisor:
     def _run_once_with_maintenance(self, update_maintenance_phase) -> dict[str, Any]:
         update_maintenance_phase("event_log_repair")
         event_log_repair = self.ensure_event_log_file()
+        update_maintenance_phase("state_file_repair")
+        state_file_repair = self.ensure_state_file()
+        update_maintenance_phase("stale_active_state_repair")
+        stale_active_state_repair = self.repair_stale_active_execution_state()
         update_maintenance_phase("main_checkout_repair")
         main_checkout_repair = self.repair_main_checkout_merge_state()
         update_maintenance_phase("generated_dirty_repair")
@@ -374,7 +378,6 @@ class PortalImplementationSupervisor:
         worktree_cleanup = self.cleanup_backlogged_worktrees()
         update_maintenance_phase("strategy_state_repair")
         strategy_file_repair = self.ensure_strategy_file()
-        state_file_repair = self.ensure_state_file()
         todo_board_repair = self.ensure_todo_board_for_refill()
         update_maintenance_phase("reconciliation_guardrails")
         reconciliation_findings = self.record_reconciliation_guardrails(
@@ -406,6 +409,7 @@ class PortalImplementationSupervisor:
                 "event_log_repair": event_log_repair,
                 "strategy_file_repair": strategy_file_repair,
                 "state_file_repair": state_file_repair,
+                "stale_active_state_repair": stale_active_state_repair,
                 "todo_board_repair": todo_board_repair,
                 "main_checkout_repair": main_checkout_repair,
                 "generated_dirty_repair": generated_dirty_repair,
@@ -491,6 +495,7 @@ class PortalImplementationSupervisor:
             "event_log_repair": event_log_repair,
             "strategy_file_repair": strategy_file_repair,
             "state_file_repair": state_file_repair,
+            "stale_active_state_repair": stale_active_state_repair,
             "todo_board_repair": todo_board_repair,
             "main_checkout_repair": main_checkout_repair,
             "generated_dirty_repair": generated_dirty_repair,
@@ -819,6 +824,82 @@ class PortalImplementationSupervisor:
         self._record_event("main_checkout_merge_state_repair", result)
         return result
 
+    def repair_stale_active_execution_state(self, *, now_ts: float | None = None) -> dict[str, Any]:
+        """Clear dead active execution markers before worktree repair passes."""
+
+        state = PortalTaskState.load(self.config.state_path)
+        active_fields = {
+            "active_task_id": state.active_task_id,
+            "active_task_title": state.active_task_title,
+            "active_task_track": state.active_task_track,
+            "active_task_started_at": state.active_task_started_at,
+            "active_attempt": state.active_attempt,
+            "active_phase": state.active_phase,
+            "active_phase_started_at": state.active_phase_started_at,
+            "active_phase_detail": state.active_phase_detail,
+            "active_log_path": state.active_log_path,
+            "active_worktree_path": state.active_worktree_path,
+            "active_branch": state.active_branch,
+            "implementation_in_progress": state.implementation_in_progress,
+        }
+        if not state.implementation_in_progress or not state.active_worktree_path:
+            return {
+                "repaired": False,
+                "reason": "no_active_worktree_execution_state",
+                "active_task_id": state.active_task_id,
+            }
+
+        daemon_pid = self._read_managed_daemon_pid()
+        if daemon_pid and process_is_running(daemon_pid):
+            command_line = process_command_line(daemon_pid)
+            if self._managed_daemon_matches_command_line(command_line):
+                return {
+                    "repaired": False,
+                    "reason": "managed_daemon_running",
+                    "daemon_pid": daemon_pid,
+                    "active_task_id": state.active_task_id,
+                }
+
+        process_lines = self._list_process_commands()
+        active_worktree = state.active_worktree_path.strip()
+        if active_worktree and any(active_worktree in line for line in process_lines):
+            return {
+                "repaired": False,
+                "reason": "active_worktree_process_running",
+                "active_worktree_path": active_worktree,
+                "active_task_id": state.active_task_id,
+            }
+        active_branch = state.active_branch.strip()
+        if active_branch and any(active_branch in line for line in process_lines):
+            return {
+                "repaired": False,
+                "reason": "active_branch_process_running",
+                "active_branch": active_branch,
+                "active_task_id": state.active_task_id,
+            }
+
+        repaired_at = utc_now()
+        state.active_attempt = 0
+        state.active_phase = ""
+        state.active_phase_started_at = ""
+        state.active_phase_detail = ""
+        state.active_log_path = ""
+        state.active_worktree_path = ""
+        state.active_branch = ""
+        state.implementation_in_progress = False
+        state.heartbeat_at = repaired_at
+        state.last_progress_at = repaired_at
+        state.save(self.config.state_path)
+        result = {
+            "repaired": True,
+            "reason": "managed_daemon_process_missing",
+            "daemon_pid": daemon_pid or 0,
+            "repaired_at": repaired_at,
+            **active_fields,
+        }
+        self._record_event("stale_active_execution_state_repaired", result)
+        return result
+
     def _active_task_id_for_lock(self) -> str:
         try:
             return PortalTaskState.load(self.config.state_path).active_task_id
@@ -1078,13 +1159,33 @@ class PortalImplementationSupervisor:
             capture_output=True,
             check=False,
         )
-        return {
+        result = {
             "attempted": True,
             "aborted": abort.returncode == 0,
             "returncode": abort.returncode,
             "stdout": abort.stdout[-4000:],
             "stderr": abort.stderr[-4000:],
         }
+        if abort.returncode != 0 and (self._git_merge_head(repo_root) or self._git_unmerged_paths(repo_root)):
+            reset = subprocess.run(
+                ["git", "reset", "--merge"],
+                cwd=repo_root,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            fallback = {
+                "attempted": True,
+                "reset": reset.returncode == 0,
+                "returncode": reset.returncode,
+                "stdout": reset.stdout[-4000:],
+                "stderr": reset.stderr[-4000:],
+            }
+            result["reset_merge_fallback"] = fallback
+            if reset.returncode == 0:
+                result["aborted"] = True
+                result["reason"] = "reset_merge_fallback"
+        return result
 
     @staticmethod
     def _git_merge_head(repo_root: Path) -> str:
