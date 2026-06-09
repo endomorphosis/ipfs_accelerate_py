@@ -141,11 +141,23 @@ def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _copilot_has_auth() -> bool:
+    """Return whether the local Copilot CLI has non-interactive auth available."""
+
+    if any(os.environ.get(name) for name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")):
+        return True
+    gh = shutil.which("gh")
+    if not gh:
+        return False
+    completed = subprocess.run([gh, "auth", "status"], text=True, capture_output=True, check=False)
+    return completed.returncode == 0
+
+
 def _copilot_fallback_command(*, codex: str | None, copilot: str, workspace_path: Path) -> list[str]:
-        return [
-                "bash",
-                "-lc",
-                """
+    return [
+        "bash",
+        "-lc",
+        """
 prompt_file=$(mktemp)
 trap 'rm -f "$prompt_file"' EXIT
 cat > "$prompt_file"
@@ -162,11 +174,11 @@ if [[ -n "$codex_bin" ]]; then
 fi
 exec "$copilot_bin" --silent --allow-all-tools --allow-all-paths --no-ask-user --autopilot --prompt "$(cat "$prompt_file")"
 """,
-                "bash",
-                codex or "",
-                copilot,
-                str(workspace_path),
-        ]
+        "bash",
+        codex or "",
+        copilot,
+        str(workspace_path),
+    ]
 
 
 def split_csv(value: str) -> list[str]:
@@ -4768,7 +4780,7 @@ class PortalImplementationDaemon:
             return shlex.split(env_command)
         codex = shutil.which("codex")
         copilot = shutil.which("copilot")
-        if copilot:
+        if copilot and _copilot_has_auth():
             return _copilot_fallback_command(codex=codex, copilot=copilot, workspace_path=workspace_path)
         if codex:
             return [

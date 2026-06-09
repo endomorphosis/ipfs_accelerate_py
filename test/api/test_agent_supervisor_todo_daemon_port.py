@@ -101,6 +101,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import
     build_objective_refill_defaults_from_paths,
 )
 from ipfs_accelerate_py.agent_supervisor import implementation_supervisor_runner
+from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_daemon as implementation_daemon_module
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.implementation_daemon import (
     PortalTask,
     TodoTaskState,
@@ -1101,6 +1102,65 @@ def test_build_implementation_daemon_defaults_from_paths(tmp_path):
         llm_merge_resolver_command="resolve-conflict",
         worktree_submodule_paths=("packages/app", "external/lib"),
     ) == apply_portal_implementation_daemon_defaults(["--once"], defaults=defaults)
+
+
+def test_implementation_daemon_skips_unauthenticated_copilot_fallback(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: f"/usr/local/bin/{name}" if name in {"codex", "copilot"} else None,
+    )
+    monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: False)
+
+    command = daemon._build_implementation_command(repo)
+
+    assert command == [
+        "/usr/local/bin/codex",
+        "exec",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        str(repo),
+        "-",
+    ]
+
+
+def test_implementation_daemon_uses_authenticated_copilot_fallback(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text("# Todos\n", encoding="utf-8")
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+
+    monkeypatch.setattr(
+        implementation_daemon_module.shutil,
+        "which",
+        lambda name: f"/usr/local/bin/{name}" if name in {"codex", "copilot"} else None,
+    )
+    monkeypatch.setattr(implementation_daemon_module, "_copilot_has_auth", lambda: True)
+
+    command = daemon._build_implementation_command(repo)
+
+    assert command[:2] == ["bash", "-lc"]
+    assert "falling back to copilot" in command[2]
+    assert command[3:] == ["bash", "/usr/local/bin/codex", "/usr/local/bin/copilot", str(repo)]
 
 
 def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, monkeypatch):
@@ -3375,6 +3435,45 @@ def test_llm_merge_resolver_fallback_module_uses_codex_first(tmp_path):
 
     assert completed.returncode == 0, completed.stderr
     assert codex_log.read_text(encoding="utf-8") == "resolve this conflict"
+
+
+def test_llm_merge_resolver_fallback_skips_unauthenticated_copilot(tmp_path):
+    codex_bin = tmp_path / "codex"
+    copilot_bin = tmp_path / "copilot"
+    copilot_log = tmp_path / "copilot.log"
+    codex_bin.write_text("#!/bin/bash\nexit 42\n", encoding="utf-8")
+    copilot_bin.write_text(f"#!/bin/bash\nprintf invoked > {shlex.quote(str(copilot_log))}\n", encoding="utf-8")
+    codex_bin.chmod(0o755)
+    copilot_bin.chmod(0o755)
+    env = {
+        **os.environ,
+        "PYTHONPATH": str(Path(__file__).resolve().parents[2]),
+        "CODEX_BIN": str(codex_bin),
+        "COPILOT_BIN": str(copilot_bin),
+        "COPILOT_GITHUB_TOKEN": "",
+        "GH_TOKEN": "",
+        "GITHUB_TOKEN": "",
+        "PATH": str(tmp_path),
+        "AGENT_RESOLVER_LOCK_BYPASS": "1",
+    }
+
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ipfs_accelerate_py.agent_supervisor.llm_merge_resolver_fallback",
+            str(tmp_path),
+        ],
+        input="resolve this conflict",
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert completed.returncode == 42
+    assert "copilot fallback is not authenticated" in completed.stderr
+    assert not copilot_log.exists()
 
 
 def _seed_parent_with_submodule(tmp_path: Path) -> tuple[Path, Path]:

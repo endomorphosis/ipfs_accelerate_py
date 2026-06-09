@@ -99,10 +99,23 @@ def _run_codex(prompt: str, workspace: Path) -> int | None:
     return completed.returncode
 
 
+def _copilot_has_auth() -> bool:
+    if any(os.environ.get(name) for name in ("COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN")):
+        return True
+    gh = shutil.which("gh")
+    if not gh:
+        return False
+    completed = subprocess.run([gh, "auth", "status"], text=True, capture_output=True, check=False)
+    return completed.returncode == 0
+
+
 def _run_copilot(prompt: str, workspace: Path) -> int:
     copilot_bin = os.environ.get("COPILOT_BIN", "").strip() or shutil.which("copilot")
     if not copilot_bin:
         print("no copilot fallback binary available for merge resolution", file=sys.stderr)
+        return 127
+    if not _copilot_has_auth():
+        print("copilot fallback is not authenticated for merge resolution", file=sys.stderr)
         return 127
     completed = subprocess.run(
         [
@@ -138,7 +151,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         codex_result = _run_codex(prompt, workspace)
         if codex_result == 0:
             return 0
-        return _run_copilot(prompt, workspace)
+        copilot_result = _run_copilot(prompt, workspace)
+        if copilot_result == 127 and codex_result is not None:
+            return codex_result
+        return copilot_result
     finally:
         if lock_handle is not None:
             lock_handle.close()
