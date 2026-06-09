@@ -50,6 +50,10 @@ PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3}
 DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS = 1800.0
 LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND"
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
+DAEMON_MERGE_RECONCILIATION_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGE_RECONCILIATION_MAX"
+DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX = 3
+DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
+DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
 NO_CHANGE_SELECTION_PENALTY = 50
 UNRESOLVED_MERGE_SELECTION_PENALTY = 1000
@@ -57,6 +61,16 @@ SHARED_WORKTREE_PATHS = ("wallet_interface/ui/node_modules",)
 DEFAULT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET = int(
     os.environ.get("IPFS_ACCELERATE_AGENT_TODO_VECTOR_CONTEXT_TOKEN_BUDGET", "260")
 )
+
+
+def _env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 
 
 def normalize_relative_path_list(values: Any) -> tuple[str, ...]:
@@ -541,6 +555,7 @@ class PortalImplementationDaemon:
         objective_bundle_dir: Path | None = None,
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
+        merge_reconciliation_max_merges: int | None = None,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -562,6 +577,11 @@ class PortalImplementationDaemon:
             else os.environ.get(LLM_MERGE_RESOLVER_COMMAND_ENV, "")
         ).strip()
         self.llm_merge_resolver_timeout_seconds = llm_merge_resolver_timeout_seconds
+        self.merge_reconciliation_max_merges = (
+            _env_int(DAEMON_MERGE_RECONCILIATION_MAX_ENV, DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX)
+            if merge_reconciliation_max_merges is None
+            else int(merge_reconciliation_max_merges)
+        )
         configured_submodules = (
             DEFAULT_WORKTREE_SUBMODULE_PATHS
             if worktree_submodule_paths is None
@@ -714,11 +734,26 @@ class PortalImplementationDaemon:
         status_completed_task_ids = {task.task_id for task in tasks if task.status == "completed"}
         strategy_blocked_task_ids = {str(task_id) for task_id in strategy.get("blocked_tasks", [])}
         merge_skip_task_ids = status_completed_task_ids | strategy_blocked_task_ids
+        live_inflight_implementation = self._find_live_inflight_implementation()
+        if previous.implementation_in_progress and live_inflight_implementation is None:
+            recovered_state = PortalTaskState.load(self.state_path)
+            self._clear_active_execution_state(recovered_state)
+            recovered_state.save(self.state_path)
+            self._record_event(
+                "implementation_state_recovered",
+                {
+                    "task_id": previous.active_task_id or previous.last_implementation_task_id,
+                    "attempt": previous.active_attempt,
+                    "reason": "inflight_process_missing",
+                    "worktree_path": previous.active_worktree_path,
+                    "branch": previous.active_branch,
+                },
+            )
+            previous = recovered_state
         merge_reconciliation = self._reconcile_failed_merges(skip_task_ids=merge_skip_task_ids)
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
         recent_outcomes = self._latest_implementation_finished_by_task()
         successfully_merged_task_ids = self._successfully_merged_task_ids()
-        live_inflight_implementation = self._find_live_inflight_implementation()
 
         previous_completed = set(previous.completed_task_ids)
         completed_set: set[str] = set()
@@ -799,19 +834,6 @@ class PortalImplementationDaemon:
         state.last_merge_commit = previous.last_merge_commit
         state.last_merge_returncode = previous.last_merge_returncode
         state.last_merge_error = previous.last_merge_error
-        if previous.implementation_in_progress and live_inflight_implementation is None:
-            self._clear_active_execution_state(state)
-            self._record_event(
-                "implementation_state_recovered",
-                {
-                    "task_id": previous.active_task_id or previous.last_implementation_task_id,
-                    "attempt": previous.active_attempt,
-                    "reason": "inflight_process_missing",
-                    "worktree_path": previous.active_worktree_path,
-                    "branch": previous.active_branch,
-                },
-            )
-
         if selected is not None:
             if state.active_task_id != selected.task_id:
                 state.active_task_started_at = now
@@ -4218,7 +4240,13 @@ class PortalImplementationDaemon:
     def _reconcile_failed_merges(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
         results: list[dict[str, Any]] = []
         target_branch = self._main_branch_name()
-        for event in self._failed_merge_candidates(skip_task_ids=skip_task_ids):
+        candidates = self._failed_merge_candidates(skip_task_ids=skip_task_ids)
+        max_merges = int(self.merge_reconciliation_max_merges)
+        if max_merges > 0:
+            selected_candidates = candidates[:max_merges]
+        else:
+            selected_candidates = candidates
+        for event in selected_candidates:
             task_id = str(event.get("task_id") or "")
             attempt = int(event.get("attempt") or 0)
             branch = str(event.get("branch") or "")
@@ -4304,6 +4332,16 @@ class PortalImplementationDaemon:
             }
             self._record_event("merge_reconciled", result)
             results.append(result)
+        if max_merges > 0 and len(candidates) > len(selected_candidates):
+            self._record_event(
+                "merge_reconciliation_deferred",
+                {
+                    "candidate_count": len(candidates),
+                    "processed_count": len(selected_candidates),
+                    "deferred_count": len(candidates) - len(selected_candidates),
+                    "max_merges": max_merges,
+                },
+            )
         return results
 
     def _failed_merge_candidates(self, *, skip_task_ids: set[str] | None = None) -> list[dict[str, Any]]:
@@ -5560,6 +5598,26 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             f"Defaults to {LLM_MERGE_RESOLVER_TIMEOUT_ENV} or 600 seconds; <=0 disables."
         ),
     )
+    parser.add_argument(
+        "--merge-reconciliation-max-merges",
+        type=int,
+        default=None,
+        help=(
+            "Maximum failed-merge reconciliation candidates to process per daemon pass. "
+            f"Defaults to {DAEMON_MERGE_RECONCILIATION_MAX_ENV} or "
+            f"{DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX}; <=0 disables the cap."
+        ),
+    )
+    parser.add_argument(
+        "--daemon-hook-timeout-seconds",
+        type=float,
+        default=None,
+        help=(
+            "Maximum seconds for each configured before/after daemon hook. "
+            f"Defaults to {DAEMON_HOOK_TIMEOUT_ENV} or {DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS}; "
+            "<=0 disables hook timeouts."
+        ),
+    )
     parser.add_argument("--implementation-timeout", type=float, default=DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS)
     parser.add_argument(
         "--no-ephemeral-worktree",
@@ -5634,6 +5692,7 @@ def main(argv: list[str] | None = None) -> None:
         objective_bundle_dir=args.objective_bundle_dir,
         llm_merge_resolver_command=args.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
+        merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
     )
     while True:
         result = daemon.run_once()

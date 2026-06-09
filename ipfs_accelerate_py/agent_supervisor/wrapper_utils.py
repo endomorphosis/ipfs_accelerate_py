@@ -758,7 +758,14 @@ def default_llm_merge_resolver_command(
     *,
     primary_env_var: str = "",
     fallback_env_var: str = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
-    codex_args: Sequence[str] = ("exec", "--dangerously-bypass-approvals-and-sandbox", "-C", ".", "-"),
+    codex_args: Sequence[str] = (
+        "exec",
+        "--ignore-user-config",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        ".",
+        "-",
+    ),
 ) -> str:
     """Return the configured merge-resolver command, falling back to Codex when available."""
 
@@ -780,7 +787,14 @@ def build_default_llm_merge_resolver_command_callback(
     *,
     primary_env_var: str = "",
     fallback_env_var: str = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
-    codex_args: Sequence[str] = ("exec", "--dangerously-bypass-approvals-and-sandbox", "-C", ".", "-"),
+    codex_args: Sequence[str] = (
+        "exec",
+        "--ignore-user-config",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        ".",
+        "-",
+    ),
 ) -> Callable[[], str]:
     """Build a no-argument callback for resolving the default LLM merge command."""
 
@@ -799,7 +813,14 @@ def build_prefixed_default_llm_merge_resolver_command_callback(
     setting: str = "LLM_MERGE_RESOLVER_COMMAND",
     *,
     fallback_env_var: str = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND",
-    codex_args: Sequence[str] = ("exec", "--dangerously-bypass-approvals-and-sandbox", "-C", ".", "-"),
+    codex_args: Sequence[str] = (
+        "exec",
+        "--ignore-user-config",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "-C",
+        ".",
+        "-",
+    ),
 ) -> Callable[[], str]:
     """Build a merge-resolver command callback from a prefixed environment setting."""
 

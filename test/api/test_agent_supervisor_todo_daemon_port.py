@@ -919,6 +919,10 @@ def test_default_llm_merge_resolver_command_prefers_env(monkeypatch):
     monkeypatch.delenv("IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMAND")
     monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/codex" if name == "codex" else None)
     assert default_llm_merge_resolver_command(codex_args=("exec", "-")) == "/usr/bin/codex exec -"
+    assert (
+        default_llm_merge_resolver_command()
+        == "/usr/bin/codex exec --ignore-user-config --dangerously-bypass-approvals-and-sandbox -C . -"
+    )
 
 
 def test_wrapper_utils_android_validation_environment_contract(tmp_path):
@@ -1178,6 +1182,43 @@ def test_build_configured_implementation_daemon_runner_reuses_binding(tmp_path, 
     assert forwarded[forwarded.index("--llm-merge-resolver-command") + 1] == "resolve-conflict"
     assert captured["kwargs"]["hooks"] == (hook,)
     assert captured["kwargs"]["pass_complete_message"] == "paths complete: %s"
+
+
+def test_daemon_hooks_timeout_and_continue(tmp_path):
+    events_path = tmp_path / "state" / "events.jsonl"
+    parsed = argparse.Namespace(daemon_hook_timeout_seconds=0.01)
+    context = implementation_daemon_runner.ImplementationDaemonRunContext(
+        parsed=parsed,
+        state_path=tmp_path / "state" / "task_state.json",
+        strategy_path=tmp_path / "state" / "strategy.json",
+        events_path=events_path,
+    )
+    calls: list[str] = []
+    hooks = (
+        implementation_daemon_runner.DaemonLoopHook(
+            "before",
+            "slow hook: %s",
+            lambda _context: time.sleep(1),
+        ),
+        implementation_daemon_runner.DaemonLoopHook(
+            "before",
+            "fast hook: %s",
+            lambda _context: calls.append("fast") or {"ok": True},
+        ),
+    )
+
+    implementation_daemon_runner._run_hooks(  # pylint: disable=protected-access
+        hooks,
+        phase="before",
+        context=context,
+        logger=logging.getLogger("test-daemon-hook-timeout"),
+    )
+
+    assert calls == ["fast"]
+    events = [json.loads(line) for line in events_path.read_text(encoding="utf-8").splitlines()]
+    assert events[0]["type"] == "daemon_hook_timeout"
+    assert events[0]["phase"] == "before"
+    assert events[0]["timeout_seconds"] == 0.01
 
 
 def test_supervisor_runtime_child_exit_restart_policy() -> None:
@@ -3603,6 +3644,7 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
         worktree_submodule_paths=["packages/app,external/lib", "vendor/tools"],
         objective_path=repo / "objective-heap.md",
         objective_bundle_dir=repo / "objective_bundles",
+        merge_reconciliation_max_merges=7,
     )
 
     assert daemon.worktree_submodule_paths == ("packages/app", "external/lib", "vendor/tools")
@@ -3610,6 +3652,7 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     assert daemon.llm_merge_resolver_timeout_seconds == 5
     assert daemon.objective_path == repo / "objective-heap.md"
     assert daemon.objective_bundle_dir == repo / "objective_bundles"
+    assert daemon.merge_reconciliation_max_merges == 7
 
     args = parse_implementation_daemon_args(
         [
@@ -3627,6 +3670,8 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
             str(repo / "objective-heap.md"),
             "--objective-bundle-dir",
             str(repo / "objective_bundles"),
+            "--merge-reconciliation-max-merges",
+            "9",
         ]
     )
     assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
@@ -3634,6 +3679,7 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     assert args.llm_merge_resolver_timeout_seconds == 5
     assert args.objective_path == repo / "objective-heap.md"
     assert args.objective_bundle_dir == repo / "objective_bundles"
+    assert args.merge_reconciliation_max_merges == 9
 
 
 def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monkeypatch):
@@ -5307,6 +5353,117 @@ def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
     ]
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "merge_reconcile_exception"
+
+
+def test_implementation_daemon_recovers_missing_inflight_before_merge_reconciliation(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Ready task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Ready task.
+""",
+        encoding="utf-8",
+    )
+    state_path = repo / "state" / "task_state.json"
+    TodoTaskState(
+        active_task_id="ACCEL-999",
+        active_task_title="Stale validating task",
+        active_task_track="ops",
+        active_task_started_at="2026-06-07T00:00:00+00:00",
+        active_attempt=2,
+        active_phase="validating",
+        active_phase_started_at="2026-06-07T00:01:00+00:00",
+        active_phase_detail="pytest",
+        implementation_in_progress=True,
+        last_implementation_task_id="ACCEL-999",
+        last_implementation_started_at="2026-06-07T00:00:00+00:00",
+    ).save(state_path)
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_path,
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    daemon._find_live_inflight_implementation = lambda: None  # type: ignore[method-assign]
+
+    def assert_state_recovered_before_reconcile(*, skip_task_ids=None):
+        recovered = TodoTaskState.load(state_path)
+        assert recovered.implementation_in_progress is False
+        assert recovered.active_phase == ""
+        return []
+
+    daemon._reconcile_failed_merges = assert_state_recovered_before_reconcile  # type: ignore[method-assign]
+
+    result = daemon.run_once()
+
+    assert result["ready_count"] == 1
+    recovered = TodoTaskState.load(state_path)
+    assert recovered.implementation_in_progress is False
+    assert recovered.active_task_id == "ACCEL-001"
+    assert recovered.active_phase == ""
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "implementation_state_recovered" for event in events)
+
+
+def test_implementation_daemon_limits_merge_reconciliation_per_pass(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        merge_reconciliation_max_merges=2,
+    )
+    events = [
+        {
+            "task_id": f"ACCEL-{index:03d}",
+            "attempt": 1,
+            "branch": f"implementation/accel-{index:03d}",
+            "implementation_commit": f"commit{index}",
+            "title": "Recover failed merge",
+        }
+        for index in range(1, 5)
+    ]
+    merged_branches: list[str] = []
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: events  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
+    daemon._git_ref_exists = lambda ref: True  # type: ignore[method-assign]
+
+    def fake_merge(branch, task, attempt, baseline_ref=""):
+        merged_branches.append(branch)
+        return {"merged": False, "reason": "test_conflict"}
+
+    daemon._merge_branch_to_main = fake_merge  # type: ignore[method-assign]
+
+    result = daemon._reconcile_failed_merges()
+
+    assert [item["task_id"] for item in result] == ["ACCEL-001", "ACCEL-002"]
+    assert merged_branches == ["implementation/accel-001", "implementation/accel-002"]
+    recorded_events = [
+        json.loads(line)
+        for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    deferred = [event for event in recorded_events if event["type"] == "merge_reconciliation_deferred"][-1]
+    assert deferred["candidate_count"] == 4
+    assert deferred["processed_count"] == 2
+    assert deferred["deferred_count"] == 2
 
 
 def test_implementation_daemon_reconciles_merge_lock_deferrals(tmp_path):

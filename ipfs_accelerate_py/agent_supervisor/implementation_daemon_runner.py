@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import os
+import signal
 import sys
 import time
 from dataclasses import dataclass
@@ -16,6 +17,15 @@ from .wrapper_utils import (
     with_default,
     with_repeated_default,
 )
+from .event_log import append_jsonl_event
+
+
+DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
+DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
+
+
+class DaemonHookTimeoutError(TimeoutError):
+    """Raised when a daemon before/after hook exceeds its bounded runtime."""
 
 
 @dataclass(frozen=True)
@@ -44,6 +54,16 @@ DaemonBootstrapPathCallback = Callable[[Mapping[str, Path | str]], Any]
 DaemonBootstrapHookFactory = Callable[[Mapping[str, Path | str]], Sequence["DaemonLoopHook"]]
 DaemonBootstrapExtraKwargsFactory = Callable[[Mapping[str, Path | str]], Mapping[str, Any] | None]
 DaemonMergeResolverCommand = str | Callable[[], str]
+
+
+def _env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
 
 
 @dataclass(frozen=True)
@@ -1049,6 +1069,7 @@ def build_portal_implementation_daemon_from_args(
         objective_bundle_dir=parsed.objective_bundle_dir or default_objective_bundle_dir,
         llm_merge_resolver_command=parsed.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=parsed.llm_merge_resolver_timeout_seconds,
+        merge_reconciliation_max_merges=parsed.merge_reconciliation_max_merges,
     )
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
 
@@ -1060,12 +1081,53 @@ def _run_hooks(
     context: ImplementationDaemonRunContext,
     logger: logging.Logger,
 ) -> None:
+    timeout_seconds = getattr(context.parsed, "daemon_hook_timeout_seconds", None)
+    if timeout_seconds is None:
+        timeout_seconds = _env_float(DAEMON_HOOK_TIMEOUT_ENV, DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS)
     for hook in hooks:
         if hook.phase != phase:
             continue
-        result = hook.callback(context)
+        try:
+            result = _run_hook_callback_with_timeout(
+                hook.callback,
+                context,
+                timeout_seconds=float(timeout_seconds or 0.0),
+            )
+        except DaemonHookTimeoutError as exc:
+            payload = {
+                "phase": hook.phase,
+                "message": hook.message,
+                "timeout_seconds": float(timeout_seconds or 0.0),
+                "error": str(exc),
+            }
+            append_jsonl_event(context.events_path, "daemon_hook_timeout", payload)
+            logger.warning("Daemon hook timed out: %s", payload)
+            continue
         if result:
             logger.log(hook.log_level, hook.message, result)
+
+
+def _run_hook_callback_with_timeout(
+    callback: DaemonLoopHookCallback,
+    context: ImplementationDaemonRunContext,
+    *,
+    timeout_seconds: float,
+) -> Any:
+    if timeout_seconds <= 0.0:
+        return callback(context)
+
+    def _handle_timeout(_signum, _frame):
+        raise DaemonHookTimeoutError(f"daemon hook exceeded {timeout_seconds:.3f}s")
+
+    previous_handler = signal.getsignal(signal.SIGALRM)
+    previous_timer = signal.getitimer(signal.ITIMER_REAL)
+    try:
+        signal.signal(signal.SIGALRM, _handle_timeout)
+        signal.setitimer(signal.ITIMER_REAL, timeout_seconds)
+        return callback(context)
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, previous_timer[0], previous_timer[1])
+        signal.signal(signal.SIGALRM, previous_handler)
 
 
 def run_portal_implementation_daemon_loop(
