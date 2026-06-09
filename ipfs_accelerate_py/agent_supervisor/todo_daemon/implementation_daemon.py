@@ -2586,10 +2586,10 @@ class PortalImplementationDaemon:
         safe = "".join(character if character.isalnum() or character in "-._" else "-" for character in ref)
         return safe.strip("-") or "main"
 
-    def _git_worktree_entries(self) -> list[dict[str, str]]:
+    def _git_worktree_entries_for_repo(self, cwd: Path) -> list[dict[str, str]]:
         result = subprocess.run(
             ["git", "worktree", "list", "--porcelain"],
-            cwd=self.repo_root,
+            cwd=cwd,
             text=True,
             capture_output=True,
             check=False,
@@ -2609,6 +2609,26 @@ class PortalImplementationDaemon:
         if current:
             entries.append(current)
         return entries
+
+    def _git_worktree_entries(self) -> list[dict[str, str]]:
+        return self._git_worktree_entries_for_repo(self.repo_root)
+
+    @staticmethod
+    def _path_compare_key(path: Path) -> Path:
+        try:
+            return path.resolve(strict=False)
+        except OSError:
+            return path.absolute()
+
+    def _worktree_path_registered_in_repo(self, cwd: Path, worktree_path: Path) -> bool:
+        expected = self._path_compare_key(worktree_path)
+        for entry in self._git_worktree_entries_for_repo(cwd):
+            registered = entry.get("worktree")
+            if not registered:
+                continue
+            if self._path_compare_key(Path(registered)) == expected:
+                return True
+        return False
 
     def _branch_checked_out_worktree_paths(self, branch_name: str) -> list[Path]:
         paths: list[Path] = []
@@ -3655,6 +3675,24 @@ class PortalImplementationDaemon:
         )
         return result.returncode == 0
 
+    @staticmethod
+    def _submodule_cleanup_failures(cleanup: list[dict[str, Any]]) -> list[str]:
+        failures: list[str] = []
+        for item in cleanup:
+            before = len(failures)
+            path = str(item.get("path") or "")
+            prefix = f"{path}: " if path else ""
+            for error in item.get("errors") or []:
+                error_text = str(error).strip()
+                if error_text:
+                    failures.append(f"{prefix}{error_text}")
+            nested_cleanup = item.get("nested_submodule_cleanup") or []
+            if isinstance(nested_cleanup, list):
+                failures.extend(PortalImplementationDaemon._submodule_cleanup_failures(nested_cleanup))
+            if item.get("cleaned") is False and len(failures) == before:
+                failures.append(f"{prefix}cleanup incomplete")
+        return failures
+
     def _cleanup_merged_worktree(self, worktree_path: Path | None, branch_name: str) -> dict[str, Any]:
         started_at = utc_now()
         removed_worktree = False
@@ -3664,7 +3702,9 @@ class PortalImplementationDaemon:
         try:
             if worktree_path is not None:
                 submodule_cleanup = self._cleanup_worktree_submodules(worktree_path, branch_name)
-            if worktree_path is not None and worktree_path.exists():
+            if worktree_path is not None and (
+                worktree_path.exists() or self._worktree_path_registered_in_repo(self.repo_root, worktree_path)
+            ):
                 self._run_git(["worktree", "remove", "--force", str(worktree_path)], cwd=self.repo_root)
                 removed_worktree = True
             if self._git_ref_exists(branch_name):
@@ -3672,6 +3712,7 @@ class PortalImplementationDaemon:
                 deleted_branch = True
         except RuntimeError as exc:
             errors.append(str(exc))
+        errors.extend(self._submodule_cleanup_failures(submodule_cleanup))
 
         if errors:
             result = {
@@ -3721,12 +3762,14 @@ class PortalImplementationDaemon:
             deleted_branch = False
             nested_cleanup: list[dict[str, Any]] = []
             errors: list[str] = []
-            if self._is_git_worktree(target):
-                nested_cleanup = self._cleanup_worktree_submodules(
-                    target,
-                    branch_name,
-                    parent_relative=full_relative,
-                )
+            target_is_registered_worktree = self._worktree_path_registered_in_repo(source, target)
+            if self._is_git_worktree(target) or target_is_registered_worktree:
+                if target.exists():
+                    nested_cleanup = self._cleanup_worktree_submodules(
+                        target,
+                        branch_name,
+                        parent_relative=full_relative,
+                    )
                 remove = subprocess.run(
                     ["git", "worktree", "remove", "--force", str(target)],
                     cwd=source,
@@ -3753,13 +3796,14 @@ class PortalImplementationDaemon:
                     deleted_branch = True
                 else:
                     errors.append((delete.stderr or delete.stdout).strip())
+            nested_failures = self._submodule_cleanup_failures(nested_cleanup)
             results.append(
                 {
                     "path": full_relative,
                     "branch": submodule_branch,
                     "removed_worktree": removed_worktree,
                     "deleted_branch": deleted_branch,
-                    "cleaned": not errors,
+                    "cleaned": not errors and not nested_failures,
                     "errors": errors,
                     "nested_submodule_cleanup": nested_cleanup,
                 }
@@ -4407,8 +4451,14 @@ class PortalImplementationDaemon:
                 results.append(result)
                 continue
             cleanup_result = {}
+            cleanup_cleaned = True
             if merge_result.get("merged"):
                 cleanup_result = self._cleanup_merged_worktree(worktree_path, branch)
+                cleanup_cleaned = bool(cleanup_result.get("cleaned", False))
+            resolved = bool(merge_result.get("merged")) and cleanup_cleaned
+            reason = "merge_retried" if resolved else "merge_retry_failed"
+            if merge_result.get("merged") and not cleanup_cleaned:
+                reason = "cleanup_retry_failed"
             result = {
                 "task_id": task_id,
                 "attempt": attempt,
@@ -4416,8 +4466,8 @@ class PortalImplementationDaemon:
                 "implementation_commit": implementation_commit,
                 "merge_ref": merge_ref,
                 "merge_ref_source": merge_ref_source,
-                "resolved": bool(merge_result.get("merged")),
-                "reason": "merge_retried",
+                "resolved": resolved,
+                "reason": reason,
                 "merge_result": merge_result,
                 "cleanup_result": cleanup_result,
             }
@@ -4469,7 +4519,9 @@ class PortalImplementationDaemon:
             merge_result = event.get("merge_result") or {}
             if not isinstance(merge_result, dict):
                 continue
-            if not self._merge_result_needs_reconciliation(merge_result):
+            cleanup = event.get("cleanup_result") or {}
+            cleanup_failed = isinstance(cleanup, dict) and bool(cleanup) and not cleanup.get("cleaned", False)
+            if not cleanup_failed and not self._merge_result_needs_reconciliation(merge_result):
                 continue
             key = (task_id, implementation_commit)
             candidates[key] = event

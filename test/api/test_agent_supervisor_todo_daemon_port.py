@@ -5643,6 +5643,50 @@ def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_pat
     assert events[-1]["type"] == "merge_reconciled"
 
 
+def test_implementation_daemon_reconciled_merge_requires_cleanup_success(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "task_id": "ACCEL-006",
+        "attempt": 1,
+        "branch": "implementation/accel-006",
+        "implementation_commit": "abc123",
+        "worktree_path": str(repo / "worktrees" / "accel-006"),
+        "title": "Retry merge cleanup",
+    }
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
+    daemon._git_ref_exists = lambda ref: ref == "implementation/accel-006"  # type: ignore[method-assign]
+    daemon._merge_branch_to_main = lambda branch, task, attempt, baseline_ref="": {  # type: ignore[method-assign]
+        "merged": True,
+        "merge_commit": "merge456",
+    }
+    daemon._cleanup_merged_worktree = lambda worktree_path, branch: {  # type: ignore[method-assign]
+        "cleaned": False,
+        "branch": branch,
+        "worktree_path": str(worktree_path or ""),
+        "error": "submodule cleanup failed",
+    }
+
+    result = daemon._reconcile_failed_merges()
+
+    assert result[0]["resolved"] is False
+    assert result[0]["reason"] == "cleanup_retry_failed"
+    assert result[0]["cleanup_result"]["error"] == "submodule cleanup failed"
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "merge_reconciled"
+    assert events[-1]["resolved"] is False
+
+
 def test_implementation_daemon_recovers_missing_inflight_before_merge_reconciliation(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -5889,6 +5933,128 @@ def test_implementation_daemon_retries_cleanup_failures_for_already_merged_branc
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "merge_reconciled"
     assert events[-1]["resolved"] is False
+
+
+def test_implementation_daemon_discovers_cleanup_failed_successful_merge(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "type": "implementation_finished",
+        "task_id": "ACCEL-007",
+        "attempt": 1,
+        "branch": "implementation/accel-007",
+        "implementation_commit": "abc123",
+        "worktree_path": str(repo / "worktrees" / "accel-007"),
+        "validation_result": {"attempted": True, "passed": True},
+        "merge_result": {
+            "attempted": True,
+            "merged": True,
+            "branch": "implementation/accel-007",
+            "merge_commit": "merge456",
+        },
+        "cleanup_result": {
+            "cleaned": False,
+            "error": "branch still checked out in submodule worktree",
+        },
+    }
+
+    daemon._iter_events = lambda: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: True  # type: ignore[method-assign]
+
+    assert daemon._failed_merge_candidates() == [event]
+
+
+def test_implementation_daemon_parent_cleanup_fails_when_submodule_cleanup_fails(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    daemon._cleanup_worktree_submodules = lambda worktree_path, branch_name: [  # type: ignore[method-assign]
+        {
+            "path": "external/lib",
+            "branch": "implementation/accel-008-submodule-external-lib",
+            "removed_worktree": False,
+            "deleted_branch": False,
+            "cleaned": False,
+            "errors": ["cannot delete branch checked out by worktree"],
+            "nested_submodule_cleanup": [],
+        }
+    ]
+    daemon._worktree_path_registered_in_repo = lambda cwd, worktree_path: False  # type: ignore[method-assign]
+    daemon._git_ref_exists = lambda ref: False  # type: ignore[method-assign]
+
+    result = daemon._cleanup_merged_worktree(repo / "worktrees" / "accel-008", "implementation/accel-008")
+
+    assert result["cleaned"] is False
+    assert "external/lib" in result["error"]
+    assert "cannot delete branch" in result["error"]
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert events[-1]["type"] == "cleanup_finished"
+    assert events[-1]["cleaned"] is False
+
+
+def test_implementation_daemon_removes_registered_submodule_worktree_even_when_detection_fails(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "external" / "lib"
+    source.mkdir(parents=True)
+    _git(source, "init")
+    _git(source, "checkout", "-b", "main")
+    _git(source, "config", "user.name", "Test User")
+    _git(source, "config", "user.email", "test@example.invalid")
+    (source / "file.txt").write_text("base\n", encoding="utf-8")
+    _git(source, "add", "file.txt")
+    _git(source, "commit", "-m", "base")
+    branch_name = "implementation/accel-009"
+    submodule_branch = f"{branch_name}-submodule-external-lib"
+    _git(source, "branch", submodule_branch, "main")
+    target = repo / "worktrees" / "accel-009" / "external" / "lib"
+    target.parent.mkdir(parents=True)
+    _git(source, "worktree", "add", str(target), submodule_branch)
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        worktree_submodule_paths=["external/lib"],
+    )
+    original_is_git_worktree = daemon._is_git_worktree
+
+    def fake_is_git_worktree(path):
+        if path == target:
+            return False
+        return original_is_git_worktree(path)
+
+    monkeypatch.setattr(daemon, "_is_git_worktree", fake_is_git_worktree)
+
+    result = daemon._cleanup_worktree_submodules(repo / "worktrees" / "accel-009", branch_name)
+
+    assert result[0]["cleaned"] is True
+    assert result[0]["removed_worktree"] is True
+    assert result[0]["deleted_branch"] is True
+    assert not daemon._worktree_path_registered_in_repo(source, target)
+    ref_check = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", submodule_branch],
+        cwd=source,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert ref_check.returncode != 0
 
 
 def test_implementation_supervisor_refills_drained_codebase_backlog(tmp_path):
