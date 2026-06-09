@@ -390,6 +390,7 @@ def implementation_multi_supervisor_env_defaults(
     *,
     python_unbuffered: bool | int | str | None = True,
     codex_merge_resolver_timeout_seconds: int | str | None = 60,
+    copilot_merge_resolver_timeout_seconds: int | str | None = 60,
     prefer_copilot_merge_resolver: bool | int | str | None = None,
 ) -> dict[str, str]:
     """Return reusable environment defaults for long-running implementation supervisors."""
@@ -400,6 +401,10 @@ def implementation_multi_supervisor_env_defaults(
     if codex_merge_resolver_timeout_seconds is not None:
         defaults["CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
             codex_merge_resolver_timeout_seconds
+        )
+    if copilot_merge_resolver_timeout_seconds is not None:
+        defaults["COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS"] = _env_default_value(
+            copilot_merge_resolver_timeout_seconds
         )
     if prefer_copilot_merge_resolver is not None:
         defaults["PREFER_COPILOT_MERGE_RESOLVER"] = _env_default_value(
