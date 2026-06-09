@@ -194,6 +194,36 @@ def normalize_task_header_prefix(value: str) -> str:
     return f"## {stripped}"
 
 
+RETRY_BUDGET_REPAIR_TITLE_RE = re.compile(
+    r"^Resolve\s+(?P<kind>validation|implementation|merge)\s+retry-budget\s+failure\s+for\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\b",
+    re.IGNORECASE,
+)
+RETRY_BUDGET_REPAIR_ACCEPTANCE_RE = re.compile(
+    r"\b(?:release|remove)\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\s+from\s+(?:the\s+)?strategy\s+blocked_tasks\b",
+    re.IGNORECASE,
+)
+
+
+def retry_budget_repair_source(task: Any) -> tuple[str, str]:
+    """Return ``(source_task_id, failure_kind)`` for generated retry repairs."""
+
+    title_match = RETRY_BUDGET_REPAIR_TITLE_RE.search(str(getattr(task, "title", "") or ""))
+    acceptance_match = RETRY_BUDGET_REPAIR_ACCEPTANCE_RE.search(str(getattr(task, "acceptance", "") or ""))
+    if not title_match or not acceptance_match:
+        return "", ""
+    source_task_id = str(title_match.group("source") or "").strip()
+    acceptance_source = str(acceptance_match.group("source") or "").strip()
+    if source_task_id != acceptance_source:
+        return "", ""
+    return source_task_id, str(title_match.group("kind") or "retry").strip().lower()
+
+
+def is_retry_budget_repair_task(task: Any) -> bool:
+    """Return whether a task is itself a generated retry-budget repair."""
+
+    return bool(retry_budget_repair_source(task)[0])
+
+
 def write_text_atomic(path: Path, content: str, *, encoding: str = "utf-8") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.is_dir():
@@ -5523,6 +5553,7 @@ Rules:
             )
         }
         deprioritized = {str(item) for item in strategy.get("deprioritized_tasks", [])}
+        blocked_strategy_task_ids = {str(item) for item in strategy.get("blocked_tasks", [])}
 
         def sort_key(task: PortalTask) -> tuple[Any, ...]:
             selection_penalty = 0
@@ -5530,11 +5561,13 @@ Rules:
                 selection_penalty += UNRESOLVED_MERGE_SELECTION_PENALTY
             if self._task_has_recent_no_change_outcome(task.task_id, recent_outcomes):
                 selection_penalty += NO_CHANGE_SELECTION_PENALTY
+            retry_repair_source_id, _failure_kind = retry_budget_repair_source(task)
             vector_rank = self._todo_vector_selection_rank(task, vector_context)
             work_surface_rank = self._task_work_surface_rank(task)
             return (
                 selection_penalty,
                 PRIORITY_ORDER.get(task.priority, 99),
+                0 if retry_repair_source_id in blocked_strategy_task_ids else 1,
                 1 if task.task_id in deprioritized else 0,
                 focus_order.get(task.track, len(focus_order)),
                 *vector_rank,

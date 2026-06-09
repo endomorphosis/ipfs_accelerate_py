@@ -7003,6 +7003,69 @@ def test_implementation_daemon_prefers_larger_goal_work_without_vector_index(tmp
     assert selected.task_id == "ACCEL-002"
 
 
+def test_implementation_daemon_prefers_retry_repair_for_blocked_source(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Original blocked task
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/runtime.py
+- Validation: test -f src/runtime.py
+- Acceptance: Original blocked task.
+
+## ACCEL-002 Resolve implementation retry-budget failure for ACCEL-001
+
+- Status: todo
+- Priority: P1
+- Track: ops
+- Outputs: discovery
+- Validation: test -f data/discovery/accel-002.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in ACCEL-001. Use evidence in data/discovery/accel-002.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release ACCEL-001 from strategy blocked_tasks.
+
+## ACCEL-010 Unrelated runtime cleanup
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Outputs: src/cleanup.py
+- Validation: test -f src/cleanup.py
+- Acceptance: Unrelated ready task.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+    )
+    tasks = parse_task_file(todo_path, task_header_prefix="## ACCEL-")
+
+    selected = daemon._select_next_task(
+        tasks,
+        {
+            "ACCEL-001": "blocked",
+            "ACCEL-002": "ready",
+            "ACCEL-010": "ready",
+        },
+        {"blocked_tasks": ["ACCEL-001"]},
+        {},
+        {},
+    )
+
+    assert selected is not None
+    assert selected.task_id == "ACCEL-002"
+
+
 def test_implementation_daemon_marks_bundle_work_order_children_completed(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
