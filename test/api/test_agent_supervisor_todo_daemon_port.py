@@ -5585,6 +5585,8 @@ def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
             "attempt": 3,
             "branch": "implementation/accel-002",
             "implementation_commit": "abc123",
+            "merge_ref": "implementation/accel-002",
+            "merge_ref_source": "branch",
             "resolved": False,
             "reason": "merge_reconcile_exception",
             "exception_type": "RuntimeError",
@@ -5593,6 +5595,52 @@ def test_implementation_daemon_records_merge_reconcile_exception(tmp_path):
     ]
     events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
     assert events[-1]["type"] == "merge_reconcile_exception"
+
+
+def test_implementation_daemon_reconciles_missing_branch_from_commit_ref(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    daemon = TodoImplementationDaemon(
+        todo_path=repo / "todo.md",
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+    )
+    event = {
+        "task_id": "ACCEL-005",
+        "attempt": 1,
+        "branch": "implementation/accel-005",
+        "implementation_commit": "abc123",
+        "title": "Recover missing branch merge",
+    }
+    merged_refs: list[str] = []
+
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
+    daemon._git_ref_exists = lambda ref: ref == "abc123"  # type: ignore[method-assign]
+
+    def fake_merge(ref, task, attempt, baseline_ref=""):
+        merged_refs.append(ref)
+        return {"merged": True, "merge_commit": "merge456"}
+
+    daemon._merge_branch_to_main = fake_merge  # type: ignore[method-assign]
+    daemon._cleanup_merged_worktree = lambda worktree_path, branch: {  # type: ignore[method-assign]
+        "cleaned": True,
+        "branch": branch,
+        "worktree_path": str(worktree_path or ""),
+    }
+
+    result = daemon._reconcile_failed_merges()
+
+    assert merged_refs == ["abc123"]
+    assert result[0]["resolved"] is True
+    assert result[0]["merge_ref"] == "abc123"
+    assert result[0]["merge_ref_source"] == "implementation_commit"
+    events = [json.loads(line) for line in (repo / "state" / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "merge_reconcile_ref_recovered" for event in events)
+    assert events[-1]["type"] == "merge_reconciled"
 
 
 def test_implementation_daemon_recovers_missing_inflight_before_merge_reconciliation(tmp_path):

@@ -4333,14 +4333,38 @@ class PortalImplementationDaemon:
                 self._record_event("merge_reconciled", result)
                 results.append(result)
                 continue
-            if not branch or not self._git_ref_exists(branch):
+            branch_exists = bool(branch and self._git_ref_exists(branch))
+            merge_ref = branch if branch_exists else ""
+            merge_ref_source = "branch" if branch_exists else ""
+            if not merge_ref and self._git_ref_exists(implementation_commit):
+                merge_ref = implementation_commit
+                merge_ref_source = "implementation_commit"
+                self._record_event(
+                    "merge_reconcile_ref_recovered",
+                    {
+                        "task_id": task_id,
+                        "attempt": attempt,
+                        "branch": branch,
+                        "implementation_commit": implementation_commit,
+                        "merge_ref": merge_ref,
+                        "merge_ref_source": merge_ref_source,
+                        "reason": "implementation_branch_missing",
+                    },
+                )
+            if not merge_ref:
                 result = {
                     "task_id": task_id,
                     "attempt": attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
+                    "merge_ref": "",
+                    "merge_ref_source": "",
                     "resolved": False,
-                    "reason": "implementation_branch_missing",
+                    "reason": (
+                        "implementation_branch_missing"
+                        if branch or not implementation_commit
+                        else "implementation_ref_missing"
+                    ),
                 }
                 self._record_event("merge_reconcile_skipped", result)
                 results.append(result)
@@ -4357,11 +4381,11 @@ class PortalImplementationDaemon:
             self._mark_long_running_phase(
                 task_id=task_id,
                 phase="merge_reconciliation",
-                detail=branch,
+                detail=merge_ref,
             )
             try:
                 merge_result = self._merge_branch_to_main(
-                    branch,
+                    merge_ref,
                     task,
                     attempt,
                     baseline_ref=str(event.get("baseline_ref") or ""),
@@ -4372,6 +4396,8 @@ class PortalImplementationDaemon:
                     "attempt": attempt,
                     "branch": branch,
                     "implementation_commit": implementation_commit,
+                    "merge_ref": merge_ref,
+                    "merge_ref_source": merge_ref_source,
                     "resolved": False,
                     "reason": "merge_reconcile_exception",
                     "exception_type": type(exc).__name__,
@@ -4388,6 +4414,8 @@ class PortalImplementationDaemon:
                 "attempt": attempt,
                 "branch": branch,
                 "implementation_commit": implementation_commit,
+                "merge_ref": merge_ref,
+                "merge_ref_source": merge_ref_source,
                 "resolved": bool(merge_result.get("merged")),
                 "reason": "merge_retried",
                 "merge_result": merge_result,
