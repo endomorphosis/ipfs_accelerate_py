@@ -903,6 +903,72 @@ def test_backlog_refinery_releases_historical_completed_retry_repairs(tmp_path):
     assert strategy["blocked_tasks"] == []
 
 
+def test_backlog_refinery_releases_orphaned_block_without_repair_path(tmp_path):
+    repo = _seed_repo(tmp_path)
+    todo_path = repo / "todo.md"
+    strategy_path = repo / "state" / "strategy.json"
+    todo_path.write_text(
+        """# Agent Todos
+
+## AUTO-001 Resolve merge retry-budget failure for AUTO-099
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: Merge retry-budget guardrail filed this from repeated merge failures in AUTO-099. Use evidence in data/discovery/auto-001.md to fix the merge blocker, verify the intended implementation changes are committed in their owning repository or submodule, run `ipfs-accelerate-agent-merge-resolver --events-path ... --apply` when the conflict is semantic, then remove AUTO-099 from the strategy blocked_tasks list so the original backlog item can continue without an indefinite retry loop.
+
+## AUTO-002 Source with pending repair
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f todo.md
+- Acceptance: This task must remain blocked until AUTO-003 completes.
+
+## AUTO-003 Resolve implementation retry-budget failure for AUTO-002
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+- Depends on:
+- Outputs: discovery
+- Validation: test -f todo.md
+- Acceptance: Implementation retry-budget guardrail filed this from repeated implementation failures in AUTO-002. Use evidence in data/discovery/auto-003.md to fix the setup, runtime, or timeout blocker, then mark this repair task completed so the supervisor can release AUTO-002 from strategy blocked_tasks.
+""",
+        encoding="utf-8",
+    )
+    strategy_path.parent.mkdir(parents=True, exist_ok=True)
+    strategy_path.write_text(
+        json.dumps({"blocked_tasks": ["AUTO-001", "AUTO-002"], "retry_budget_findings": []}),
+        encoding="utf-8",
+    )
+
+    releases = release_completed_guardrail_blocks(
+        todo_path=todo_path,
+        strategy_path=strategy_path,
+        task_prefix="AUTO-",
+    )
+
+    assert releases == [
+        {
+            "source_task_id": "AUTO-001",
+            "follow_up_task_id": "",
+            "guardrail_kind": "stale_strategy_block",
+            "reason": "no_guardrail_repair_path",
+        }
+    ]
+    strategy = json.loads(strategy_path.read_text(encoding="utf-8"))
+    assert strategy["blocked_tasks"] == ["AUTO-002"]
+
+
 def test_backlog_refinery_releases_stale_dependency_guardrail_after_metadata_repaired(tmp_path):
     repo = _seed_repo(tmp_path)
     todo_path = repo / "todo.md"

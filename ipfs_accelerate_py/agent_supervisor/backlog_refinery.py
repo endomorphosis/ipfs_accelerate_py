@@ -3280,7 +3280,7 @@ RETRY_BUDGET_REPAIR_TITLE_RE = re.compile(
     re.IGNORECASE,
 )
 RETRY_BUDGET_REPAIR_ACCEPTANCE_RE = re.compile(
-    r"\brelease\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\s+from\s+strategy\s+blocked_tasks\b",
+    r"\b(?:release|remove)\s+(?P<source>[A-Z][A-Z0-9]*-\d+)\s+from\s+(?:the\s+)?strategy\s+blocked_tasks\b",
     re.IGNORECASE,
 )
 
@@ -3332,6 +3332,18 @@ def release_completed_guardrail_blocks(
         return []
     tasks = parse_task_file(todo_path, task_header_prefix(task_prefix))
     completed_retry_repairs = completed_retry_budget_repairs_by_source(tasks)
+    retry_budget_repair_task_ids = {
+        str(getattr(task, "task_id", "") or "")
+        for task in tasks
+        if retry_budget_repair_source(task)[0]
+    }
+    pending_retry_repair_sources = {
+        source_task_id
+        for task in tasks
+        if str(getattr(task, "status", "") or "").lower() != "completed"
+        for source_task_id, _failure_kind in (retry_budget_repair_source(task),)
+        if source_task_id
+    }
     strategy = load_strategy(strategy_path)
     blocked_tasks = [str(item) for item in strategy.get("blocked_tasks", []) if str(item).strip()]
 
@@ -3405,6 +3417,7 @@ def release_completed_guardrail_blocks(
         ("retry_budget", strategy.get("retry_budget_findings")),
         ("dependency_guardrail", strategy.get("dependency_guardrail_findings")),
     )
+    active_guardrail_sources: set[str] = set()
     for guardrail_kind, raw_records in guardrail_groups:
         if not isinstance(raw_records, list):
             continue
@@ -3415,6 +3428,7 @@ def release_completed_guardrail_blocks(
             follow_up_task_id = str(raw_record.get("follow_up_task_id") or "")
             if not source_task_id or not follow_up_task_id:
                 continue
+            active_guardrail_sources.add(source_task_id)
             if source_task_id not in blocked_tasks:
                 continue
             if statuses.get(follow_up_task_id) != "completed":
@@ -3443,6 +3457,26 @@ def release_completed_guardrail_blocks(
                 "guardrail_kind": "retry_budget",
                 "failure_kind": str(repair.get("failure_kind") or ""),
                 "reason": "historical_retry_repair_completed",
+            }
+        )
+
+    for source_task_id in list(blocked_tasks):
+        status = statuses.get(source_task_id)
+        if status is None or status == "completed":
+            continue
+        if source_task_id not in retry_budget_repair_task_ids:
+            continue
+        if source_task_id in active_guardrail_sources or source_task_id in active_dependency_sources:
+            continue
+        if source_task_id in pending_retry_repair_sources:
+            continue
+        blocked_tasks = [task_id for task_id in blocked_tasks if task_id != source_task_id]
+        releases.append(
+            {
+                "source_task_id": source_task_id,
+                "follow_up_task_id": "",
+                "guardrail_kind": "stale_strategy_block",
+                "reason": "no_guardrail_repair_path",
             }
         )
 
