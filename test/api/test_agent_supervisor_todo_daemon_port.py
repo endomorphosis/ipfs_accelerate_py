@@ -125,14 +125,17 @@ from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_runtime
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_loop import (
     SupervisorLoop,
     SupervisorLoopConfig,
+    SupervisorLoopDecision,
     SupervisorLoopResult,
 )
 from ipfs_accelerate_py.agent_supervisor.todo_daemon.supervisor_runtime import (
     ChildSummaryHealthSpec,
     ConfiguredSupervisorEntrypoint,
     RestartPolicy,
+    SupervisedChild,
     SupervisedChildSpec,
     background_supervisor_args,
+    adopt_supervised_child,
     build_configured_implementation_supervisor_entrypoint,
     build_module_implementation_supervisor_entrypoint,
     build_supervisor_runtime_operations,
@@ -1444,6 +1447,94 @@ def test_supervisor_runtime_launch_supervised_child_uses_shared_launcher(
     assert kwargs["stdin"] is None
     assert kwargs["stderr"] == subprocess.STDOUT
     assert kwargs["start_new_session"] is False
+
+
+def test_supervisor_runtime_adopts_matching_child_pid_marker(tmp_path, monkeypatch) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    pid_path = repo / "state" / "child.pid"
+    pid_path.parent.mkdir()
+    pid_path.write_text("2468\n", encoding="utf-8")
+
+    monkeypatch.setattr(supervisor_runtime, "pid_alive", lambda pid: int(pid) == 2468)
+    monkeypatch.setattr(
+        supervisor_runtime,
+        "process_args",
+        lambda pid: "python worker.py --state-dir state --implement" if int(pid) == 2468 else "",
+    )
+
+    child = adopt_supervised_child(
+        SupervisedChildSpec(
+            repo_root=repo,
+            command=("python", "worker.py", "--state-dir", "state", "--implement"),
+            log_path=Path("logs/child.log"),
+            child_pid_path=Path("state/child.pid"),
+        )
+    )
+
+    assert child is not None
+    assert child.pid == 2468
+    assert child.child_pid_path == pid_path
+
+
+def test_supervisor_loop_adopts_existing_child_before_launch(tmp_path, monkeypatch) -> None:
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import supervisor_loop as supervisor_loop_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    spec = ManagedDaemonSpec(
+        name="test-daemon",
+        schema="test.daemon",
+        repo_root=repo,
+        daemon_dir=state_dir,
+        runner=("python", "worker.py"),
+        status_path=state_dir / "daemon_status.json",
+        supervisor_status_path=state_dir / "supervisor_status.json",
+        supervisor_pid_path=state_dir / "supervisor.pid",
+        child_pid_path=state_dir / "child.pid",
+        supervisor_out_path=state_dir / "supervisor.out",
+        ensure_status_path=state_dir / "ensure_status.json",
+        ensure_check_path=state_dir / "ensure_check.json",
+    )
+    adopted = SupervisedChild(
+        pid=2468,
+        command=("python", "worker.py"),
+        log_path=state_dir / "child.log",
+        child_pid_path=state_dir / "child.pid",
+    )
+
+    monkeypatch.setattr(supervisor_loop_module, "adopt_supervised_child", lambda _spec: adopted)
+    monkeypatch.setattr(
+        supervisor_loop_module,
+        "launch_supervised_child",
+        lambda _spec: pytest.fail("supervisor loop launched a duplicate child"),
+    )
+    monkeypatch.setattr(supervisor_loop_module, "_poll_child_exit", lambda _child: None)
+    monkeypatch.setattr(supervisor_loop_module, "terminate_supervised_child", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(supervisor_loop_module, "wait_for_child_exit", lambda _child: 0)
+
+    loop = SupervisorLoop(
+        SupervisorLoopConfig(
+            spec=spec,
+            command=("python", "worker.py"),
+            log_prefix="child",
+            heartbeat_seconds=0.01,
+            poll_seconds=0.01,
+            watchdog_startup_grace_seconds=0,
+            max_restarts=1,
+        ),
+        watchdog_hook=lambda _loop, child, _status: SupervisorLoopDecision.stop(
+            f"adopted {child.pid}",
+            status="adopted_stop",
+        ),
+        sleep=lambda _seconds: None,
+    )
+
+    result = loop.run()
+
+    assert result.status == "adopted_stop"
+    assert result.last_recycle_reason == "adopted 2468"
 
 
 def test_supervisor_runtime_run_process_group_capture_completes(tmp_path: Path) -> None:
@@ -4511,6 +4602,56 @@ def test_implementation_supervisor_repairs_directory_managed_pid_path(tmp_path):
         for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
     ]
     assert events[-1]["type"] == "managed_daemon_pid_file_repaired"
+
+
+def test_implementation_supervisor_repoints_mismatched_managed_pid_to_matching_daemon(
+    tmp_path,
+    monkeypatch,
+):
+    from ipfs_accelerate_py.agent_supervisor.todo_daemon import implementation_supervisor as supervisor_module
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    state_dir = repo / "state"
+    todo_path = repo / "todo.md"
+    daemon_script = repo / "daemon.py"
+    pid_path = state_dir / "portal_managed_daemon.pid"
+    pid_path.parent.mkdir(parents=True)
+    pid_path.write_text("111\n", encoding="utf-8")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=todo_path,
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "supervisor_events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            daemon_script_path=daemon_script,
+            implement=True,
+        )
+    )
+    matching_command = (
+        f"python {daemon_script} --state-dir {state_dir} --state-prefix portal "
+        f"--todo-path {todo_path} --implement"
+    )
+
+    monkeypatch.setattr(supervisor_module, "process_is_running", lambda pid: int(pid) in {111, 222})
+    monkeypatch.setattr(
+        supervisor_module,
+        "process_command_line",
+        lambda pid: (
+            f"python {daemon_script} --state-dir {state_dir} --state-prefix portal "
+            f"--todo-path {todo_path}"
+        ),
+    )
+    monkeypatch.setattr(supervisor, "_list_process_details", lambda: [(111, "wrong daemon"), (222, matching_command)])
+
+    result = supervisor.ensure_managed_daemon_pid_file()
+
+    assert result["repaired"] is True
+    assert result["reason"] == "managed_pid_command_mismatch_replaced_with_matching_daemon"
+    assert result["replacement_pid"] == 222
+    assert pid_path.read_text(encoding="utf-8").strip() == "222"
 
 
 def test_implementation_supervisor_repairs_stale_managed_pid_file(tmp_path):

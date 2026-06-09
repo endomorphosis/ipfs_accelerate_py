@@ -2393,15 +2393,32 @@ class PortalImplementationSupervisor:
 
     @staticmethod
     def _list_process_commands() -> list[str]:
+        return [command for _pid, command in PortalImplementationSupervisor._list_process_details()]
+
+    @staticmethod
+    def _list_process_details() -> list[tuple[int, str]]:
         result = subprocess.run(
-            ["ps", "-eo", "args="],
+            ["ps", "-eo", "pid=,args="],
             text=True,
             capture_output=True,
             check=False,
         )
         if result.returncode != 0:
             return []
-        return [line.strip() for line in result.stdout.splitlines() if line.strip()]
+        details: list[tuple[int, str]] = []
+        for line in result.stdout.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            pid_text, _separator, command = stripped.partition(" ")
+            try:
+                pid = int(pid_text)
+            except ValueError:
+                continue
+            command = command.strip()
+            if command:
+                details.append((pid, command))
+        return details
 
     def ensure_todo_board_for_refill(self) -> dict[str, Any]:
         """Create an empty todo board when refill machinery is expected to populate it."""
@@ -3403,6 +3420,18 @@ class PortalImplementationSupervisor:
         except (OSError, ValueError):
             return None
 
+    def _find_matching_managed_daemon_pid(self, *, exclude_pids: set[int] | None = None) -> int | None:
+        excluded = set(exclude_pids or set())
+        excluded.add(os.getpid())
+        for pid, command_line in self._list_process_details():
+            if pid in excluded:
+                continue
+            if not process_is_running(pid):
+                continue
+            if self._managed_daemon_matches_command_line(command_line):
+                return int(pid)
+        return None
+
     def ensure_managed_daemon_pid_file(self) -> dict[str, Any]:
         """Remove stale or malformed managed-daemon PID state before adoption."""
 
@@ -3466,6 +3495,18 @@ class PortalImplementationSupervisor:
                 self._record_event("managed_daemon_pid_file_repaired", result)
             return result
         if not process_is_running(pid):
+            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
+            if replacement_pid:
+                write_text_atomic(pid_path, f"{replacement_pid}\n")
+                result = {
+                    "repaired": True,
+                    "reason": "stale_managed_pid_replaced_with_matching_daemon",
+                    "path": str(pid_path),
+                    "stale_pid": pid,
+                    "replacement_pid": replacement_pid,
+                }
+                self._record_event("managed_daemon_pid_file_repaired", result)
+                return result
             try:
                 pid_path.unlink()
                 result = {
@@ -3487,6 +3528,18 @@ class PortalImplementationSupervisor:
             return result
         command_line = process_command_line(pid)
         if not self._managed_daemon_matches_command_line(command_line):
+            replacement_pid = self._find_matching_managed_daemon_pid(exclude_pids={pid})
+            if replacement_pid:
+                write_text_atomic(pid_path, f"{replacement_pid}\n")
+                result = {
+                    "repaired": True,
+                    "reason": "managed_pid_command_mismatch_replaced_with_matching_daemon",
+                    "path": str(pid_path),
+                    "pid": pid,
+                    "replacement_pid": replacement_pid,
+                }
+                self._record_event("managed_daemon_pid_file_repaired", result)
+                return result
             try:
                 pid_path.unlink()
                 result = {
