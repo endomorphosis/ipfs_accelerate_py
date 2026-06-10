@@ -366,6 +366,8 @@ class PortalImplementationSupervisor:
         event_log_repair = self.ensure_event_log_file()
         update_maintenance_phase("state_file_repair")
         state_file_repair = self.ensure_state_file()
+        update_maintenance_phase("stale_worktree_detection")
+        stale_worktree_detection = self.detect_stale_worktrees()
         update_maintenance_phase("stale_active_state_repair")
         stale_active_state_repair = self.repair_stale_active_execution_state()
         update_maintenance_phase("main_checkout_repair")
@@ -410,6 +412,7 @@ class PortalImplementationSupervisor:
                 "strategy_file_repair": strategy_file_repair,
                 "state_file_repair": state_file_repair,
                 "stale_active_state_repair": stale_active_state_repair,
+                "stale_worktree_detection": stale_worktree_detection,
                 "todo_board_repair": todo_board_repair,
                 "main_checkout_repair": main_checkout_repair,
                 "generated_dirty_repair": generated_dirty_repair,
@@ -458,6 +461,8 @@ class PortalImplementationSupervisor:
                 "worktree_reconciliation_preflight_blocked_count": int(
                     worktree_reconciliation.get("preflight_blocked_count") or 0
                 ),
+                "stale_worktree_detected_count": int(stale_worktree_detection.get("stale_count") or 0),
+                "stale_worktree_remedy_count": int(stale_worktree_detection.get("remedy_count") or 0),
                 "worktree_cleanup_removed_count": int(worktree_cleanup.get("removed_count") or 0),
                 "worktree_cleanup_dirty_group_count": len(
                     worktree_cleanup.get("dirty_worktree_groups") or {}
@@ -496,6 +501,7 @@ class PortalImplementationSupervisor:
             "strategy_file_repair": strategy_file_repair,
             "state_file_repair": state_file_repair,
             "stale_active_state_repair": stale_active_state_repair,
+            "stale_worktree_detection": stale_worktree_detection,
             "todo_board_repair": todo_board_repair,
             "main_checkout_repair": main_checkout_repair,
             "generated_dirty_repair": generated_dirty_repair,
@@ -1393,6 +1399,243 @@ class PortalImplementationSupervisor:
             "updated_at": utc_now(),
         }
         cache["_changed"] = True
+
+    @staticmethod
+    def _path_age_seconds(path: Path, *, now_ts: float) -> float | None:
+        try:
+            return max(0.0, now_ts - path.stat().st_mtime)
+        except OSError:
+            return None
+
+    @staticmethod
+    def _timestamp_age_seconds(value: str, *, now_ts: float) -> float | None:
+        parsed = parse_timestamp(value)
+        if parsed is None:
+            return None
+        return max(0.0, now_ts - parsed.timestamp())
+
+    @staticmethod
+    def _git_ahead_behind(repo_root: Path, left_ref: str, right_ref: str) -> dict[str, Any]:
+        if not left_ref or not right_ref:
+            return {"available": False, "ahead": 0, "behind": 0, "reason": "missing_ref"}
+        result = subprocess.run(
+            ["git", "rev-list", "--left-right", "--count", f"{left_ref}...{right_ref}"],
+            cwd=repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return {
+                "available": False,
+                "ahead": 0,
+                "behind": 0,
+                "returncode": result.returncode,
+                "stderr": result.stderr[-4000:],
+            }
+        parts = result.stdout.strip().split()
+        if len(parts) < 2:
+            return {"available": False, "ahead": 0, "behind": 0, "reason": "unexpected_output"}
+        try:
+            left_only = int(parts[0])
+            right_only = int(parts[1])
+        except ValueError:
+            return {"available": False, "ahead": 0, "behind": 0, "reason": "non_integer_output"}
+        return {"available": True, "ahead": right_only, "behind": left_only}
+
+    def _active_worktree_stale_signal(
+        self,
+        state: PortalTaskState,
+        *,
+        target_ref: str,
+        now_ts: float,
+        process_lines: list[str],
+    ) -> dict[str, Any] | None:
+        active_worktree = state.active_worktree_path.strip()
+        if not state.implementation_in_progress or not active_worktree:
+            return None
+        active_branch = state.active_branch.strip()
+        log_path = Path(state.active_log_path) if state.active_log_path else None
+        log_age_seconds = self._path_age_seconds(log_path, now_ts=now_ts) if log_path is not None else None
+        phase_age_seconds = self._timestamp_age_seconds(state.active_phase_started_at, now_ts=now_ts)
+        heartbeat_age_seconds = self._timestamp_age_seconds(state.heartbeat_at, now_ts=now_ts)
+        path_owned_by_process = any(active_worktree in line for line in process_lines)
+        branch_owned_by_process = bool(active_branch) and any(active_branch in line for line in process_lines)
+        daemon_pid = self._read_managed_daemon_pid()
+        daemon_running = bool(daemon_pid and process_is_running(daemon_pid))
+        daemon_matches = False
+        if daemon_running and daemon_pid:
+            daemon_matches = self._managed_daemon_matches_command_line(process_command_line(daemon_pid))
+        owner_running = daemon_matches or path_owned_by_process or branch_owned_by_process
+        stalled_log = (
+            log_age_seconds is None
+            or log_age_seconds > max(float(self.config.implementation_log_stall_seconds), 0.0)
+        )
+        state_old_enough = (
+            (phase_age_seconds is not None and phase_age_seconds > max(float(self.config.stale_seconds), 0.0))
+            or (heartbeat_age_seconds is not None and heartbeat_age_seconds > max(float(self.config.stale_seconds), 0.0))
+        )
+        reasons: list[str] = []
+        if not owner_running:
+            reasons.append("active_worktree_owner_missing")
+        if stalled_log and state_old_enough:
+            reasons.append("active_log_stalled")
+        ahead_behind = (
+            self._git_ahead_behind(self.config.repo_root, target_ref, active_branch)
+            if active_branch
+            else {"available": False, "ahead": 0, "behind": 0, "reason": "missing_active_branch"}
+        )
+        git_stale_context = not owner_running or (stalled_log and state_old_enough)
+        if git_stale_context and int(ahead_behind.get("behind") or 0) > 0:
+            reasons.append("active_branch_behind_target")
+        if git_stale_context and int(ahead_behind.get("ahead") or 0) > 0:
+            reasons.append("active_branch_has_unmerged_commits")
+        if not reasons:
+            return None
+        return {
+            "path": active_worktree,
+            "branch": active_branch,
+            "head": state.active_task_id,
+            "kind": "active_state",
+            "reasons": reasons,
+            "remedy": "repair_stale_active_execution_state_then_reconcile",
+            "owner_running": owner_running,
+            "daemon_pid": daemon_pid or 0,
+            "daemon_running": daemon_running,
+            "daemon_matches": daemon_matches,
+            "active_log_path": state.active_log_path,
+            "active_log_age_seconds": log_age_seconds,
+            "active_phase_age_seconds": phase_age_seconds,
+            "heartbeat_age_seconds": heartbeat_age_seconds,
+            "ahead_behind": ahead_behind,
+        }
+
+    def detect_stale_worktrees(self, *, now_ts: float | None = None) -> dict[str, Any]:
+        """Detect remedyable worktrees using git, process, and log movement signals."""
+
+        worktree_root = self.config.worktree_root
+        if worktree_root is None:
+            return {"attempted": False, "reason": "worktree_root_not_configured"}
+        now = time.time() if now_ts is None else float(now_ts)
+        repo_root = self.config.repo_root
+        records = self._git_worktree_records(repo_root)
+        try:
+            root_resolved = worktree_root.resolve()
+        except OSError:
+            root_resolved = worktree_root
+        process_lines = self._list_process_commands()
+        state = PortalTaskState.load(self.config.state_path)
+        active_worktree = state.active_worktree_path.strip()
+        target_ref = self._git_current_branch(repo_root) or "HEAD"
+        target_signature = self._git_ref_commit(repo_root, target_ref) or target_ref
+        stale_items: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        active_signal = self._active_worktree_stale_signal(
+            state,
+            target_ref=target_ref,
+            now_ts=now,
+            process_lines=process_lines,
+        )
+        if active_signal:
+            stale_items.append(active_signal)
+
+        for record in records:
+            path_text = str(record.get("worktree") or "")
+            if not path_text:
+                continue
+            path = Path(path_text)
+            try:
+                path_resolved = path.resolve()
+                path_resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+            branch = str(record.get("branch") or "").removeprefix("refs/heads/")
+            head = str(record.get("HEAD") or "")
+            detail: dict[str, Any] = {
+                "path": str(path),
+                "branch": branch,
+                "head": head,
+                "kind": "worktree",
+            }
+            if active_worktree and path_resolved == Path(active_worktree).resolve():
+                skipped.append({**detail, "reason": "active_state_worktree"})
+                continue
+            if any(str(path_resolved) in line for line in process_lines):
+                skipped.append({**detail, "reason": "active_process"})
+                continue
+            if not self._worktree_branch_is_reconcilable(branch):
+                skipped.append({**detail, "reason": "non_reconcilable_branch"})
+                continue
+
+            reasons: list[str] = []
+            branch_exists = self._git_ref_exists(repo_root, branch)
+            branch_merged = branch_exists and self._git_ref_is_ancestor(repo_root, branch, target_ref)
+            head_merged = bool(head) and self._git_ref_is_ancestor(repo_root, head, target_ref)
+            if branch_merged:
+                reasons.append("branch_already_merged")
+            elif head_merged:
+                reasons.append("head_already_merged")
+            ahead_behind = (
+                self._git_ahead_behind(repo_root, target_ref, branch)
+                if branch_exists
+                else {"available": False, "ahead": 0, "behind": 0, "reason": "branch_missing"}
+            )
+            ahead = int(ahead_behind.get("ahead") or 0)
+            behind = int(ahead_behind.get("behind") or 0)
+            if ahead > 0:
+                reasons.append("branch_has_unmerged_commits")
+            if behind > 0:
+                reasons.append("branch_behind_target")
+            dirty = self._git_status_short(path) if path.exists() else []
+            if dirty:
+                reasons.append("dirty_inactive_worktree")
+            worktree_age_seconds = self._path_age_seconds(path, now_ts=now)
+            if worktree_age_seconds is not None and worktree_age_seconds > max(float(self.config.stale_seconds), 0.0):
+                if ahead > 0 or behind > 0 or dirty or branch_merged or head_merged:
+                    reasons.append("calendar_age_supports_git_staleness")
+            if not reasons:
+                skipped.append({**detail, "reason": "no_stale_signal"})
+                continue
+            remedy = "reconcile_backlogged_worktrees"
+            if branch_merged or head_merged:
+                remedy = "cleanup_backlogged_worktrees"
+            if dirty:
+                remedy = "rescue_dirty_worktree_then_reconcile"
+            stale_items.append(
+                {
+                    **detail,
+                    "reasons": sorted(set(reasons)),
+                    "remedy": remedy,
+                    "branch_exists": branch_exists,
+                    "branch_merged": branch_merged,
+                    "head_merged": head_merged,
+                    "ahead_behind": ahead_behind,
+                    "dirty": bool(dirty),
+                    "status_short": dirty[:20],
+                    "worktree_age_seconds": worktree_age_seconds,
+                }
+            )
+
+        reason_counts: dict[str, int] = {}
+        for item in stale_items:
+            for reason in item.get("reasons") or []:
+                reason_counts[str(reason)] = reason_counts.get(str(reason), 0) + 1
+        result = {
+            "attempted": True,
+            "worktree_root": str(worktree_root),
+            "target_ref": target_ref,
+            "target_signature": target_signature,
+            "stale_count": len(stale_items),
+            "remedy_count": sum(1 for item in stale_items if item.get("remedy")),
+            "reason_counts": reason_counts,
+            "stale": stale_items[:50],
+            "skipped_count": len(skipped),
+            "skipped": skipped[:50],
+        }
+        if stale_items:
+            self._record_event("stale_worktree_detection", result)
+        return result
 
     def reconcile_backlogged_worktrees(self) -> dict[str, Any]:
         """Retry clean inactive implementation worktrees before cleanup."""

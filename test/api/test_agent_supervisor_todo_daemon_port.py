@@ -9299,6 +9299,92 @@ def _merged_cleanup_worktree_fixture(
     return repo, worktree_path, supervisor
 
 
+def test_implementation_supervisor_detects_stale_worktree_from_git_and_dirty_signals(tmp_path):
+    repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
+        tmp_path,
+        "implementation/stale-signal-dirty",
+    )
+    (worktree_path / "src" / "app.py").write_text("VALUE = 'dirty stale signal'\n", encoding="utf-8")
+
+    result = supervisor.detect_stale_worktrees()
+
+    assert result["stale_count"] == 1
+    stale = result["stale"][0]
+    assert stale["path"] == str(worktree_path)
+    assert stale["remedy"] == "rescue_dirty_worktree_then_reconcile"
+    assert "branch_already_merged" in stale["reasons"]
+    assert "dirty_inactive_worktree" in stale["reasons"]
+    assert stale["dirty"] is True
+    events = [
+        json.loads(line)
+        for line in (repo / "supervisor_state" / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert events[-1]["type"] == "stale_worktree_detection"
+    assert events[-1]["reason_counts"]["dirty_inactive_worktree"] == 1
+
+
+def test_implementation_supervisor_does_not_mark_active_worktree_stale_from_calendar_only(tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/calendar-only"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "active.txt").write_text("active branch work\n", encoding="utf-8")
+    _git(repo, "add", "active.txt")
+    _git(repo, "commit", "-m", "active branch work")
+    _git(repo, "checkout", "main")
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "calendar-only"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    state_dir = repo / "state"
+    log_path = state_dir / "implementation.log"
+    log_path.parent.mkdir(parents=True)
+    log_path.write_text("still moving\n", encoding="utf-8")
+    old_timestamp = "2000-01-01T00:00:00+00:00"
+    TodoTaskState(
+        active_task_id="ACCEL-123",
+        active_task_title="Calendar age is not enough",
+        active_task_track="ops",
+        active_task_started_at=old_timestamp,
+        active_attempt=1,
+        active_phase="implementing",
+        active_phase_started_at=old_timestamp,
+        active_phase_detail="running",
+        active_log_path=str(log_path),
+        active_worktree_path=str(worktree_path),
+        active_branch=branch_name,
+        implementation_in_progress=True,
+        heartbeat_at=old_timestamp,
+        last_progress_at=old_timestamp,
+    ).save(state_dir / "task_state.json")
+    supervisor = TodoImplementationSupervisor(
+        TodoSupervisorConfig(
+            todo_path=repo / "todo.md",
+            state_path=state_dir / "task_state.json",
+            strategy_path=state_dir / "strategy.json",
+            events_path=state_dir / "events.jsonl",
+            state_dir=state_dir,
+            repo_root=repo,
+            worktree_root=worktree_root,
+            stale_seconds=60,
+            implementation_log_stall_seconds=60,
+        )
+    )
+    monkeypatch.setattr(supervisor, "_list_process_commands", lambda: [f"worker --worktree {worktree_path}"])
+    monkeypatch.setattr(supervisor, "_read_managed_daemon_pid", lambda: 0)
+
+    result = supervisor.detect_stale_worktrees(now_ts=time.time())
+
+    assert result["stale_count"] == 0
+    assert any(item["reason"] == "active_state_worktree" for item in result["skipped"])
+
+
 def test_implementation_supervisor_cleans_merged_worktree_with_generated_only_dirty_outputs(tmp_path):
     _repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
         tmp_path,
