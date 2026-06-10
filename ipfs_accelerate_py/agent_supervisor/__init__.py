@@ -639,3 +639,10 @@ def __getattr__(name: str):
 
         return getattr(task_proposal_router, name)
     raise AttributeError(name)
+from .codex_failure_policy import (
+    COMPLETED_PATCH_STATUSES,
+    TRANSIENT_MAIN_APPLY_STATUSES,
+    TRANSIENT_PATCH_STATUSES,
+    CodexProgramOutcome,
+    classify_codex_program_outcome,
+)
