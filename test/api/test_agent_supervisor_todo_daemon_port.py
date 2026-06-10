@@ -9346,9 +9346,58 @@ def test_implementation_supervisor_keeps_merged_worktree_with_generated_and_sour
     result = supervisor.cleanup_backlogged_worktrees()
 
     assert result["removed_count"] == 0
-    assert result["skipped_reason_counts"]["dirty_worktree"] == 1
-    assert result["dirty_worktree_groups"]["content_not_in_target"]["count"] == 1
+    assert result["skipped_reason_counts"]["dirty_worktree_rescued"] == 1
+    assert result["skipped"][0]["rescue_result"]["preserved"] is True
     assert worktree_path.exists()
+
+
+def test_implementation_supervisor_rescues_dirty_merged_worktree(tmp_path):
+    repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
+        tmp_path,
+        "implementation/rescue-dirty-cleanup",
+    )
+    (worktree_path / "src" / "app.py").write_text("VALUE = 'rescued dirty content'\n", encoding="utf-8")
+
+    result = supervisor.cleanup_backlogged_worktrees()
+
+    assert result["removed_count"] == 0
+    assert result["skipped_reason_counts"]["dirty_worktree_rescued"] == 1
+    rescue_result = result["skipped"][0]["rescue_result"]
+    assert rescue_result["preserved"] is True
+    assert rescue_result["rescue_branch"].startswith("rescue/worktree/")
+    assert worktree_path.exists()
+    current_branch = _git(worktree_path, "branch", "--show-current")
+    assert current_branch == rescue_result["rescue_branch"]
+    assert _git(repo, "show", f"{current_branch}:src/app.py") == "VALUE = 'rescued dirty content'"
+
+
+def test_implementation_supervisor_merges_rescued_worktree_and_deletes_it(tmp_path):
+    repo, worktree_path, supervisor = _merged_cleanup_worktree_fixture(
+        tmp_path,
+        "implementation/rescue-dirty-merge",
+    )
+    (worktree_path / "src" / "app.py").write_text("VALUE = 'rescued and merged'\n", encoding="utf-8")
+
+    cleanup_result = supervisor.cleanup_backlogged_worktrees()
+    rescue_branch = cleanup_result["skipped"][0]["rescue_result"]["rescue_branch"]
+    supervisor._main_status_for_worktree_reconciliation = lambda repo_root, worktree_root: []  # type: ignore[method-assign]
+
+    reconcile_result = supervisor.reconcile_backlogged_worktrees()
+
+    assert reconcile_result["reconciled_count"] == 1
+    assert reconcile_result["cleanup_count"] == 1
+    assert reconcile_result["processed"][0]["branch"] == rescue_branch
+    assert reconcile_result["processed"][0]["cleanup_result"]["cleaned"] is True
+    assert not worktree_path.exists()
+    assert (repo / "src" / "app.py").read_text(encoding="utf-8") == "VALUE = 'rescued and merged'\n"
+    rescue_branch_exists = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", rescue_branch],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert rescue_branch_exists.returncode != 0
 
 
 def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path, monkeypatch):
@@ -9396,6 +9445,11 @@ def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path
 
     monkeypatch.setattr(supervisor, "_redundant_dirty_worktree_status", fake_redundancy)
     monkeypatch.setattr(supervisor, "_dirty_worktree_evidence", fake_evidence)
+    monkeypatch.setattr(
+        supervisor,
+        "_rescue_dirty_worktree",
+        lambda _path, **_kwargs: {"attempted": True, "preserved": False, "reason": "simulated_rescue_failure"},
+    )
 
     result = supervisor.cleanup_backlogged_worktrees()
 
@@ -9413,7 +9467,7 @@ def test_implementation_supervisor_caps_dirty_worktree_evidence_samples(tmp_path
     assert events[-1]["dirty_worktree_groups"]["content_not_in_target"]["count"] == 25
 
 
-def test_implementation_supervisor_reuses_cleanup_scan_cache_for_dirty_blockers(tmp_path, monkeypatch):
+def test_implementation_supervisor_rechecks_cleanup_scan_cache_for_dirty_blockers(tmp_path, monkeypatch):
     repo = tmp_path / "repo"
     repo.mkdir()
     _git(repo, "init")
@@ -9464,17 +9518,22 @@ def test_implementation_supervisor_reuses_cleanup_scan_cache_for_dirty_blockers(
         lambda _path, _dirty, _target: {"redundant": False, "reason": "content_not_in_target"},
     )
     monkeypatch.setattr(supervisor, "_dirty_worktree_evidence", lambda _path, _dirty: {"diff_stat": "generated.txt | 1 +"})
+    monkeypatch.setattr(
+        supervisor,
+        "_rescue_dirty_worktree",
+        lambda _path, **_kwargs: {"attempted": True, "preserved": False, "reason": "simulated_rescue_failure"},
+    )
 
     first = supervisor.cleanup_backlogged_worktrees()
     second = supervisor.cleanup_backlogged_worktrees()
 
     assert first["scan_cache_hit_count"] == 0
     assert first["scan_cache_written"] is True
-    assert second["scan_cache_hit_count"] == 1
+    assert second["scan_cache_hit_count"] == 0
     assert second["dirty_worktree_groups"]["content_not_in_target"]["count"] == 1
     assert second["dirty_worktree_groups"]["content_not_in_target"]["samples"][0]["dirty_evidence"]
-    assert ancestry_calls["count"] == 2
-    assert status_calls["count"] == 1
+    assert ancestry_calls["count"] == 4
+    assert status_calls["count"] == 2
 
 
 def test_implementation_supervisor_reconciles_clean_backlogged_worktree(tmp_path):

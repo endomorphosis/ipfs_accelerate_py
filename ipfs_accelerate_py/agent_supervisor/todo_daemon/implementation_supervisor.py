@@ -1468,17 +1468,24 @@ class PortalImplementationSupervisor:
                 classification = str(cached_entry.get("classification") or "")
                 payload = dict(cached_entry.get("payload") or {})
                 if classification == "skip":
-                    skipped.append({**payload, "cached": True})
-                    scan_cache_hit_count += 1
-                    continue
-                if classification == "candidate" and (dry_run or main_status):
+                    if payload.get("reason") == "dirty_worktree":
+                        pass
+                    else:
+                        skipped.append({**payload, "cached": True})
+                        scan_cache_hit_count += 1
+                        continue
+                elif classification == "candidate" and (dry_run or main_status):
                     candidate = {**payload, "cached": True}
                     candidates.append(candidate)
                     scan_cache_hit_count += 1
                     if not dry_run:
                         skipped.append({**candidate, "reason": "main_checkout_dirty", "status_short": main_status[:20]})
                     continue
-            if not branch.startswith("implementation/"):
+                else:
+                    skipped.append({**payload, "cached": True})
+                    scan_cache_hit_count += 1
+                    continue
+            if not self._worktree_branch_is_reconcilable(branch):
                 skip = {**detail, "reason": "non_implementation_branch"}
                 skipped.append(skip)
                 self._store_worktree_scan_cache_entry(
@@ -1525,19 +1532,44 @@ class PortalImplementationSupervisor:
                 continue
             dirty = self._git_status_short(path) if path.exists() else []
             if dirty:
-                skip = {**detail, "reason": "dirty_worktree", "status_short": dirty[:20]}
-                skipped.append(skip)
-                self._store_worktree_scan_cache_entry(
-                    scan_cache,
-                    phase="reconciliation",
-                    path=path_resolved,
+                rescue_result = self._rescue_dirty_worktree(
+                    path,
                     branch=branch,
                     head=head,
-                    target_signature=target_signature,
-                    classification="skip",
-                    payload=skip,
+                    target_ref=target_ref,
+                    status_lines=dirty,
+                    reason="reconciliation_dirty_worktree",
                 )
-                continue
+                if rescue_result.get("preserved"):
+                    branch = str(rescue_result.get("rescue_branch") or branch)
+                    head = str(rescue_result.get("rescue_commit") or head)
+                    detail = {
+                        **detail,
+                        "branch": branch,
+                        "head": head,
+                        "rescued_from_branch": record.get("branch", ""),
+                        "rescue_result": rescue_result,
+                    }
+                    path_resolved = path.resolve()
+                else:
+                    skip = {
+                        **detail,
+                        "reason": "dirty_worktree",
+                        "status_short": dirty[:20],
+                        "rescue_result": rescue_result,
+                    }
+                    skipped.append(skip)
+                    self._store_worktree_scan_cache_entry(
+                        scan_cache,
+                        phase="reconciliation",
+                        path=path_resolved,
+                        branch=branch,
+                        head=head,
+                        target_signature=target_signature,
+                        classification="skip",
+                        payload=skip,
+                    )
+                    continue
 
             candidate = {**detail, "target_ref": target_ref}
             candidates.append(candidate)
@@ -1989,7 +2021,10 @@ class PortalImplementationSupervisor:
 
     @staticmethod
     def _worktree_reconciliation_task(branch: str) -> PortalTask:
-        task_fragment = branch.removeprefix("implementation/").split("-attempt-", 1)[0].strip()
+        if branch.startswith("rescue/worktree/"):
+            task_fragment = branch.removeprefix("rescue/worktree/").split("-", 1)[0].strip()
+        else:
+            task_fragment = branch.removeprefix("implementation/").split("-attempt-", 1)[0].strip()
         task_id = task_fragment.upper() if task_fragment else "WORKTREE-RECONCILE"
         return PortalTask(
             task_id=task_id,
@@ -1999,6 +2034,217 @@ class PortalImplementationSupervisor:
             priority="P2",
             track="ops",
         )
+
+    @staticmethod
+    def _worktree_branch_is_reconcilable(branch: str) -> bool:
+        return branch.startswith("implementation/") or branch.startswith("rescue/worktree/")
+
+    @staticmethod
+    def _worktree_branch_can_delete_after_merge(branch: str) -> bool:
+        return PortalImplementationSupervisor._worktree_branch_is_reconcilable(branch)
+
+    @staticmethod
+    def _safe_rescue_branch_fragment(value: str) -> str:
+        normalized = []
+        for char in value.strip().strip("/").replace("\\", "/"):
+            if char.isalnum() or char in {".", "_", "-"}:
+                normalized.append(char)
+            elif char == "/":
+                normalized.append("-")
+            else:
+                normalized.append("-")
+        fragment = "".join(normalized).strip(".-")
+        while "--" in fragment:
+            fragment = fragment.replace("--", "-")
+        return fragment[:96] or "worktree"
+
+    def _rescue_dirty_worktree(
+        self,
+        worktree_path: Path,
+        *,
+        branch: str,
+        head: str,
+        target_ref: str,
+        status_lines: list[str],
+        reason: str,
+    ) -> dict[str, Any]:
+        """Commit dirty inactive worktree content to a rescue branch for later merge."""
+
+        started_at = utc_now()
+        if not worktree_path.exists():
+            return {
+                "attempted": True,
+                "preserved": False,
+                "reason": "worktree_path_missing",
+                "path": str(worktree_path),
+                "branch": branch,
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+        if not branch and not head:
+            return {
+                "attempted": True,
+                "preserved": False,
+                "reason": "missing_branch_and_head",
+                "path": str(worktree_path),
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+
+        fingerprint = sha1(
+            json.dumps(
+                {
+                    "branch": branch,
+                    "head": head,
+                    "path": str(worktree_path),
+                    "status": status_lines,
+                },
+                sort_keys=True,
+            ).encode("utf-8")
+        ).hexdigest()[:12]
+        rescue_branch = (
+            f"rescue/worktree/{self._safe_rescue_branch_fragment(branch or worktree_path.name)}-{fingerprint}"
+        )
+
+        checkout = subprocess.run(
+            ["git", "checkout", "-B", rescue_branch],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if checkout.returncode != 0:
+            result = {
+                "attempted": True,
+                "preserved": False,
+                "reason": "checkout_rescue_branch_failed",
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": rescue_branch,
+                "returncode": checkout.returncode,
+                "stdout": checkout.stdout[-4000:],
+                "stderr": checkout.stderr[-4000:],
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescue_failed", result)
+            return result
+
+        add = subprocess.run(
+            ["git", "add", "-A"],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if add.returncode != 0:
+            result = {
+                "attempted": True,
+                "preserved": False,
+                "reason": "stage_rescue_changes_failed",
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": rescue_branch,
+                "returncode": add.returncode,
+                "stdout": add.stdout[-4000:],
+                "stderr": add.stderr[-4000:],
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescue_failed", result)
+            return result
+
+        staged = subprocess.run(
+            ["git", "diff", "--cached", "--quiet"],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if staged.returncode == 0:
+            rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
+            result = {
+                "attempted": True,
+                "preserved": True,
+                "reason": "no_staged_rescue_delta",
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": rescue_branch,
+                "rescue_commit": rescue_commit,
+                "status_short": status_lines[:20],
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescued", result)
+            return result
+
+        commit = subprocess.run(
+            [
+                "git",
+                "-c",
+                "user.name=Implementation Supervisor",
+                "-c",
+                "user.email=implementation-supervisor@example.invalid",
+                "commit",
+                "-m",
+                f"Rescue dirty worktree {branch or worktree_path.name}",
+                "-m",
+                f"Original branch: {branch or '(detached)'}",
+                "-m",
+                f"Original HEAD: {head or '(unknown)'}",
+                "-m",
+                f"Cleanup reason: {reason}",
+            ],
+            cwd=worktree_path,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        if commit.returncode != 0:
+            result = {
+                "attempted": True,
+                "preserved": False,
+                "reason": "commit_rescue_changes_failed",
+                "path": str(worktree_path),
+                "branch": branch,
+                "head": head,
+                "target_ref": target_ref,
+                "rescue_branch": rescue_branch,
+                "returncode": commit.returncode,
+                "stdout": commit.stdout[-4000:],
+                "stderr": commit.stderr[-4000:],
+                "started_at": started_at,
+                "finished_at": utc_now(),
+            }
+            self._record_event("dirty_worktree_rescue_failed", result)
+            return result
+
+        rescue_commit = self._git_ref_commit(worktree_path, "HEAD")
+        result = {
+            "attempted": True,
+            "preserved": bool(rescue_commit),
+            "reason": "dirty_worktree_committed_to_rescue_branch",
+            "path": str(worktree_path),
+            "branch": branch,
+            "head": head,
+            "target_ref": target_ref,
+            "rescue_branch": rescue_branch,
+            "rescue_commit": rescue_commit,
+            "status_short": status_lines[:20],
+            "returncode": commit.returncode,
+            "stdout": commit.stdout[-4000:],
+            "stderr": commit.stderr[-4000:],
+            "started_at": started_at,
+            "finished_at": utc_now(),
+        }
+        self._record_event("dirty_worktree_rescued", result)
+        return result
 
     def cleanup_backlogged_worktrees(self) -> dict[str, Any]:
         """Remove inactive implementation worktrees whose branches are already merged."""
@@ -2064,6 +2310,13 @@ class PortalImplementationSupervisor:
                 classification = str(cached_entry.get("classification") or "")
                 payload = dict(cached_entry.get("payload") or {})
                 if classification == "skip":
+                    if payload.get("reason") == "dirty_worktree":
+                        pass
+                    else:
+                        skipped.append({**payload, "cached": True})
+                        scan_cache_hit_count += 1
+                        continue
+                else:
                     skipped.append({**payload, "cached": True})
                     scan_cache_hit_count += 1
                     continue
@@ -2098,6 +2351,27 @@ class PortalImplementationSupervisor:
                         dirty_evidence_sample_counts[dirty_reason] = (
                             dirty_evidence_sample_counts.get(dirty_reason, 0) + 1
                         )
+                    rescue_result = self._rescue_dirty_worktree(
+                        path,
+                        branch=branch,
+                        head=head,
+                        target_ref=target_ref,
+                        status_lines=dirty,
+                        reason=f"cleanup_dirty_worktree:{dirty_reason}",
+                    )
+                    if rescue_result.get("preserved"):
+                        skipped.append(
+                            {
+                                "path": str(path),
+                                "branch": branch,
+                                "reason": "dirty_worktree_rescued",
+                                "status_short": dirty[:20],
+                                "dirty_redundancy": redundant_dirty,
+                                "dirty_evidence": evidence,
+                                "rescue_result": rescue_result,
+                            }
+                        )
+                        continue
                     skip = {
                         "path": str(path),
                         "branch": branch,
@@ -2127,7 +2401,11 @@ class PortalImplementationSupervisor:
                 check=False,
             )
             branch_delete: dict[str, Any] = {}
-            if remove.returncode == 0 and branch.startswith("implementation/") and branch_merged:
+            if (
+                remove.returncode == 0
+                and self._worktree_branch_can_delete_after_merge(branch)
+                and branch_merged
+            ):
                 delete = subprocess.run(
                     ["git", "branch", "-D", branch],
                     cwd=repo_root,
