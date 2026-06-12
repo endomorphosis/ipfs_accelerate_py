@@ -34,6 +34,14 @@ TERMINAL_VALIDATION_PATCH_PREFIXES = ("main_apply_validation_failed",)
 
 TERMINAL_TARGET_METRIC_REGRESSION_PREFIX = "main_apply_target_metric_regression"
 
+TARGET_METRIC_UNAVAILABLE_REASONS = frozenset(
+    {
+        "target_metric_unavailable",
+        "main_apply_target_metric_unavailable",
+        "main_apply_target_metric_unavailable_rolled_back",
+    }
+)
+
 
 @dataclass(frozen=True)
 class CodexProgramOutcome:
@@ -41,6 +49,7 @@ class CodexProgramOutcome:
 
     action: str
     reason: Optional[str] = None
+    rescue: bool = False
 
     @property
     def completed(self) -> bool:
@@ -53,6 +62,10 @@ class CodexProgramOutcome:
     @property
     def failed_validation(self) -> bool:
         return self.action == "failed_validation"
+
+    @property
+    def needs_rescue(self) -> bool:
+        return self.failed_validation and self.rescue
 
 
 def _normalized(value: Any) -> str:
@@ -94,11 +107,34 @@ def classify_codex_program_outcome(
         return CodexProgramOutcome("completed")
 
     target_metric_status = _normalized(report.get("target_metric_status"))
+    report_reason = _normalized(
+        report.get("failure_reason")
+        or report.get("reason")
+        or report.get("status_reason")
+        or report.get("error")
+    )
+    if (
+        patch in TARGET_METRIC_UNAVAILABLE_REASONS
+        or report_reason in TARGET_METRIC_UNAVAILABLE_REASONS
+        or target_metric_status == "unavailable"
+    ):
+        reason = "target_metric_unavailable"
+        if _transient_budget_exhausted(
+            transient_failure_count=transient_failure_count,
+            max_transient_failures=max_transient_failures,
+        ):
+            return CodexProgramOutcome("failed_validation", reason, rescue=True)
+        return CodexProgramOutcome("requeue", reason)
+
     if patch.startswith(TERMINAL_TARGET_METRIC_REGRESSION_PREFIX) or target_metric_status == "regressed":
-        return CodexProgramOutcome("failed_validation", "target_metric_regression")
+        return CodexProgramOutcome("failed_validation", "target_metric_regression", rescue=True)
 
     if any(patch.startswith(prefix) for prefix in TERMINAL_VALIDATION_PATCH_PREFIXES):
-        return CodexProgramOutcome("failed_validation", patch or "main_apply_validation_failed")
+        return CodexProgramOutcome(
+            "failed_validation",
+            patch or "main_apply_validation_failed",
+            rescue=True,
+        )
 
     if patch.startswith("main_apply_baseline_validation_failed"):
         reason = "main_apply_baseline_validation_failed"
@@ -106,7 +142,7 @@ def classify_codex_program_outcome(
             transient_failure_count=transient_failure_count,
             max_transient_failures=max_transient_failures,
         ):
-            return CodexProgramOutcome("failed_validation", reason)
+            return CodexProgramOutcome("failed_validation", reason, rescue=True)
         return CodexProgramOutcome("requeue", reason)
 
     if exec_status == "transient_failure":
@@ -115,7 +151,7 @@ def classify_codex_program_outcome(
             transient_failure_count=transient_failure_count,
             max_transient_failures=max_transient_failures,
         ):
-            return CodexProgramOutcome("failed_validation", reason)
+            return CodexProgramOutcome("failed_validation", reason, rescue=True)
         return CodexProgramOutcome("requeue", reason)
 
     if patch in TRANSIENT_PATCH_STATUSES or main_apply in TRANSIENT_MAIN_APPLY_STATUSES:
@@ -124,7 +160,7 @@ def classify_codex_program_outcome(
             transient_failure_count=transient_failure_count,
             max_transient_failures=max_transient_failures,
         ):
-            return CodexProgramOutcome("failed_validation", reason)
+            return CodexProgramOutcome("failed_validation", reason, rescue=True)
         return CodexProgramOutcome("requeue", reason)
 
     if (
@@ -137,12 +173,12 @@ def classify_codex_program_outcome(
             transient_failure_count=transient_failure_count,
             max_transient_failures=max_transient_failures,
         ):
-            return CodexProgramOutcome("failed_validation", reason)
+            return CodexProgramOutcome("failed_validation", reason, rescue=True)
         return CodexProgramOutcome("requeue", reason)
 
     if exec_status in {"failed", "timeout"}:
-        return CodexProgramOutcome("failed_validation", f"codex_exec_{exec_status}")
+        return CodexProgramOutcome("failed_validation", f"codex_exec_{exec_status}", rescue=True)
 
     if patch:
-        return CodexProgramOutcome("failed_validation", patch)
-    return CodexProgramOutcome("failed_validation", "patch_not_created")
+        return CodexProgramOutcome("failed_validation", patch, rescue=True)
+    return CodexProgramOutcome("failed_validation", "patch_not_created", rescue=True)

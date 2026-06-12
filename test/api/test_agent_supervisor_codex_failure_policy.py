@@ -70,8 +70,10 @@ def test_validation_failures_and_metric_regressions_remain_terminal():
     )
 
     assert validation.failed_validation
+    assert validation.needs_rescue
     assert validation.reason == "main_apply_validation_failed_rolled_back"
     assert regression.failed_validation
+    assert regression.needs_rescue
     assert regression.reason == "target_metric_regression"
 
 
@@ -92,4 +94,29 @@ def test_baseline_validation_failures_are_transient_until_budget_exhausted():
     assert outcome.requeue
     assert outcome.reason == "main_apply_baseline_validation_failed"
     assert exhausted.failed_validation
+    assert exhausted.needs_rescue
     assert exhausted.reason == "main_apply_baseline_validation_failed"
+
+
+def test_target_metric_unavailable_requeues_then_rescues():
+    unavailable = classify_codex_program_outcome(
+        codex_exec_status="success",
+        patch_status="main_apply_target_metric_unavailable_rolled_back",
+        validation_report={"target_metric_status": "unavailable"},
+        transient_failure_count=1,
+        max_transient_failures=3,
+    )
+    exhausted = classify_codex_program_outcome(
+        codex_exec_status="success",
+        patch_status="main_apply_target_metric_unavailable_rolled_back",
+        validation_report={"target_metric_status": "unavailable"},
+        transient_failure_count=3,
+        max_transient_failures=3,
+    )
+
+    assert unavailable.requeue
+    assert unavailable.reason == "target_metric_unavailable"
+    assert not unavailable.needs_rescue
+    assert exhausted.failed_validation
+    assert exhausted.needs_rescue
+    assert exhausted.reason == "target_metric_unavailable"
