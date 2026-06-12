@@ -77,6 +77,22 @@ def test_validation_failures_and_metric_regressions_remain_terminal():
     assert regression.reason == "target_metric_regression"
 
 
+def test_applied_patch_with_failed_validation_is_rescueable_failure():
+    outcome = classify_codex_program_outcome(
+        codex_exec_status="success",
+        patch_status="applied_to_main",
+        main_apply_status="applied",
+        validation_report={
+            "main_apply_validation_status": "failed",
+            "status": "failed",
+        },
+    )
+
+    assert outcome.failed_validation
+    assert outcome.needs_rescue
+    assert outcome.reason == "main_apply_validation_failed"
+
+
 def test_baseline_validation_failures_are_transient_until_budget_exhausted():
     outcome = classify_codex_program_outcome(
         codex_exec_status="success",

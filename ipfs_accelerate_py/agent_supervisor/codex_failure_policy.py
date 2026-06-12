@@ -80,6 +80,17 @@ def _transient_budget_exhausted(
     return int(transient_failure_count) >= max(0, int(max_transient_failures))
 
 
+def _validation_failed(report: Mapping[str, Any]) -> bool:
+    return any(
+        _normalized(report.get(key)) == "failed"
+        for key in (
+            "status",
+            "main_apply_validation_status",
+            "validation_status",
+        )
+    )
+
+
 def classify_codex_program_outcome(
     *,
     codex_exec_status: str,
@@ -102,9 +113,6 @@ def classify_codex_program_outcome(
     patch = _normalized(patch_status)
     main_apply = _normalized(main_apply_status)
     report = dict(validation_report or {})
-
-    if patch in COMPLETED_PATCH_STATUSES or main_apply == "applied":
-        return CodexProgramOutcome("completed")
 
     target_metric_status = _normalized(report.get("target_metric_status"))
     report_reason = _normalized(
@@ -129,13 +137,6 @@ def classify_codex_program_outcome(
     if patch.startswith(TERMINAL_TARGET_METRIC_REGRESSION_PREFIX) or target_metric_status == "regressed":
         return CodexProgramOutcome("failed_validation", "target_metric_regression", rescue=True)
 
-    if any(patch.startswith(prefix) for prefix in TERMINAL_VALIDATION_PATCH_PREFIXES):
-        return CodexProgramOutcome(
-            "failed_validation",
-            patch or "main_apply_validation_failed",
-            rescue=True,
-        )
-
     if patch.startswith("main_apply_baseline_validation_failed"):
         reason = "main_apply_baseline_validation_failed"
         if _transient_budget_exhausted(
@@ -144,6 +145,23 @@ def classify_codex_program_outcome(
         ):
             return CodexProgramOutcome("failed_validation", reason, rescue=True)
         return CodexProgramOutcome("requeue", reason)
+
+    if any(patch.startswith(prefix) for prefix in TERMINAL_VALIDATION_PATCH_PREFIXES):
+        return CodexProgramOutcome(
+            "failed_validation",
+            patch or "main_apply_validation_failed",
+            rescue=True,
+        )
+
+    if _validation_failed(report):
+        return CodexProgramOutcome(
+            "failed_validation",
+            "main_apply_validation_failed",
+            rescue=True,
+        )
+
+    if patch in COMPLETED_PATCH_STATUSES or main_apply == "applied":
+        return CodexProgramOutcome("completed")
 
     if exec_status == "transient_failure":
         reason = "codex_exec_transient_failure"
