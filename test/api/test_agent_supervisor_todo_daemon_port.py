@@ -3168,6 +3168,18 @@ def test_implementation_supervisor_track_spec_uses_standard_state_layout():
         "supervisor_pid_path": "data/virtual_ai_os/state/virtual_ai_os_supervisor.pid",
         "daemon_pid_path": "data/virtual_ai_os/state/virtual_ai_os_managed_daemon.pid",
     }
+    lanes = multi_supervisor_runner.expand_implementation_track_lanes(
+        compact_spec,
+        stamp="RUN",
+        lanes_per_track=2,
+    )
+    assert [lane.name for lane in lanes] == ["VAI-0", "VAI-1"]
+    assert lanes[0].log_path == Path("data/virtual_ai_os/state/lane-0/virtual_ai_os_lane_0_8h_run_RUN.log")
+    assert lanes[1].supervisor_pid_path == Path(
+        "data/virtual_ai_os/state/lane-1/virtual_ai_os_lane_1_supervisor.pid"
+    )
+    assert lanes[0].extra_args == ("--task-shard-count", "2", "--task-shard-index", "0")
+    assert lanes[1].extra_args == ("--task-shard-count", "2", "--task-shard-index", "1")
 
 
 def test_implementation_supervisor_namespace_track_configs_builds_multiple_repo_tracks():
@@ -3835,6 +3847,8 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
         objective_path=repo / "objective-heap.md",
         objective_bundle_dir=repo / "objective_bundles",
         merge_reconciliation_max_merges=7,
+        task_shard_count=3,
+        task_shard_index=1,
     )
 
     assert daemon.worktree_submodule_paths == ("packages/app", "external/lib", "vendor/tools")
@@ -3843,6 +3857,8 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     assert daemon.objective_path == repo / "objective-heap.md"
     assert daemon.objective_bundle_dir == repo / "objective_bundles"
     assert daemon.merge_reconciliation_max_merges == 7
+    assert daemon.task_shard_count == 3
+    assert daemon.task_shard_index == 1
 
     args = parse_implementation_daemon_args(
         [
@@ -3862,6 +3878,10 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
             str(repo / "objective_bundles"),
             "--merge-reconciliation-max-merges",
             "9",
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            "2",
         ]
     )
     assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
@@ -3870,6 +3890,8 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     assert args.objective_path == repo / "objective-heap.md"
     assert args.objective_bundle_dir == repo / "objective_bundles"
     assert args.merge_reconciliation_max_merges == 9
+    assert args.task_shard_count == 4
+    assert args.task_shard_index == 2
 
 
 def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monkeypatch):
@@ -3910,6 +3932,55 @@ def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monke
     assert result["passed"] is True
     assert captured["kwargs"]["stdin"] == subprocess.DEVNULL
     assert captured["kwargs"]["timeout"] == 1
+
+
+def test_implementation_daemon_selects_only_configured_task_shard(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-000 Even task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-001 Odd task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+
+## ACCEL-002 Another even task
+
+- Status: todo
+- Completion: manual
+- Priority: P1
+- Track: ops
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state.json",
+        strategy_path=repo / "strategy.json",
+        events_path=repo / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        task_shard_count=2,
+        task_shard_index=1,
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(repo / "state.json")
+
+    assert result["active_task_id"] == "ACCEL-001"
+    assert state.recommended_task_id == "ACCEL-001"
+    assert state.ready_count == 3
 
 
 def test_validation_command_splitter_preserves_quoted_semicolons():

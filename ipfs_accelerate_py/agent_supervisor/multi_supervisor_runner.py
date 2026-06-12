@@ -41,6 +41,7 @@ class SupervisorTrack:
     supervisor_pid_path: Path
     daemon_pid_path: Path
     supervisor_status_path: Path | None = None
+    extra_args: tuple[str, ...] = ()
 
     def resolve(self, repo_root: Path) -> "SupervisorTrack":
         return SupervisorTrack(
@@ -54,6 +55,7 @@ class SupervisorTrack:
                 if self.supervisor_status_path is not None
                 else None
             ),
+            extra_args=self.extra_args,
         )
 
 
@@ -356,6 +358,49 @@ def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> Supervisor
         daemon_pid_path=track.daemon_pid_path,
         supervisor_status_path=Path(state_dir) / f"{state_prefix}_supervisor_status.json",
     )
+
+
+def expand_implementation_track_lanes(spec: str, *, stamp: str = "", lanes_per_track: int = 1) -> list[SupervisorTrack]:
+    """Return one or more deterministic shard lanes for an implementation-track spec."""
+
+    lanes = max(1, int(lanes_per_track))
+    if lanes == 1:
+        return [parse_implementation_track_spec(spec, stamp=stamp)]
+
+    parts = [part.strip() for part in spec.split("|")]
+    if len(parts) != 4 or not parts[0]:
+        raise ValueError("implementation track specs must have NAME|SCRIPT|STATE_DIR|STATE_PREFIX")
+    name, script, state_dir, state_prefix = parts
+    tracks: list[SupervisorTrack] = []
+    for index in range(lanes):
+        lane_state_dir = Path(state_dir) / f"lane-{index}"
+        lane_state_prefix = f"{state_prefix}_lane_{index}"
+        track = parse_implementation_track_spec(
+            implementation_supervisor_compact_track_spec(
+                name=f"{name}-{index}",
+                script_path=script,
+                state_dir=lane_state_dir,
+                state_prefix=lane_state_prefix,
+            ),
+            stamp=stamp,
+        )
+        tracks.append(
+            SupervisorTrack(
+                name=track.name,
+                script_path=track.script_path,
+                log_path=track.log_path,
+                supervisor_pid_path=track.supervisor_pid_path,
+                daemon_pid_path=track.daemon_pid_path,
+                supervisor_status_path=track.supervisor_status_path,
+                extra_args=(
+                    "--task-shard-count",
+                    str(lanes),
+                    "--task-shard-index",
+                    str(index),
+                ),
+            )
+        )
+    return tracks
 
 
 def supervisor_track_payload(track: SupervisorTrack) -> dict[str, str]:
@@ -881,7 +926,7 @@ def start_track(
     resolved = track.resolve(repo_root)
     resolved.log_path.parent.mkdir(parents=True, exist_ok=True)
     resolved.supervisor_pid_path.parent.mkdir(parents=True, exist_ok=True)
-    command = [python_executable, str(resolved.script_path), *common_args]
+    command = [python_executable, str(resolved.script_path), *common_args, *resolved.extra_args]
     out_handle = resolved.log_path.open("ab")
     try:
         process = subprocess.Popen(
@@ -1136,6 +1181,15 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--implementation-supervisor-llm-merge-resolver-command", default="")
     parser.add_argument("--implementation-supervisor-llm-merge-resolver-timeout-seconds", type=int, default=1800)
+    parser.add_argument(
+        "--implementation-supervisor-lanes-per-track",
+        type=int,
+        default=_env_int("IMPLEMENTATION_SUPERVISOR_LANES_PER_TRACK", 1),
+        help=(
+            "Launch N deterministic shard lanes for each implementation track. "
+            "Each lane gets isolated state/worktree paths and task-shard args; merges remain serialized."
+        ),
+    )
     parser.add_argument("--detach", action="store_true")
     return parser
 
@@ -1231,10 +1285,14 @@ def tracks_from_parsed_args(args: argparse.Namespace) -> list[SupervisorTrack]:
     """Return supervisor tracks from raw and compact parsed track specs."""
 
     tracks = [parse_track_spec(track, stamp=args.stamp) for track in args.track]
-    tracks.extend(
-        parse_implementation_track_spec(track, stamp=args.stamp)
-        for track in args.implementation_track
-    )
+    for track in args.implementation_track:
+        tracks.extend(
+            expand_implementation_track_lanes(
+                track,
+                stamp=args.stamp,
+                lanes_per_track=args.implementation_supervisor_lanes_per_track,
+            )
+        )
     return tracks
 
 

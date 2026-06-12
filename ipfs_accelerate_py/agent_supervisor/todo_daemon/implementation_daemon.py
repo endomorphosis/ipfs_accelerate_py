@@ -598,6 +598,8 @@ class PortalImplementationDaemon:
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
         merge_reconciliation_max_merges: int | None = None,
+        task_shard_count: int = 1,
+        task_shard_index: int = 0,
     ) -> None:
         self.todo_path = todo_path
         self.state_path = state_path
@@ -624,12 +626,26 @@ class PortalImplementationDaemon:
             if merge_reconciliation_max_merges is None
             else int(merge_reconciliation_max_merges)
         )
+        self.task_shard_count = max(1, int(task_shard_count))
+        self.task_shard_index = int(task_shard_index)
+        if self.task_shard_index < 0 or self.task_shard_index >= self.task_shard_count:
+            raise ValueError("task_shard_index must be in range [0, task_shard_count)")
         configured_submodules = (
             DEFAULT_WORKTREE_SUBMODULE_PATHS
             if worktree_submodule_paths is None
             else normalize_relative_path_list(worktree_submodule_paths)
         )
         self.worktree_submodule_paths = configured_submodules
+
+    def _task_belongs_to_shard(self, task_id: str) -> bool:
+        """Return whether this daemon lane should implement ``task_id``."""
+
+        if self.task_shard_count <= 1:
+            return True
+        match = re.search(r"(\d+)$", task_id)
+        if match is None:
+            return self.task_shard_index == 0
+        return int(match.group(1)) % self.task_shard_count == self.task_shard_index
 
     def load_strategy(self) -> dict[str, Any]:
         defaults = {
@@ -835,7 +851,14 @@ class PortalImplementationDaemon:
                 continue
             resolved_statuses[task.task_id] = "ready"
 
-        selected = self._select_next_task(tasks, resolved_statuses, strategy, unresolved_merge_failures, recent_outcomes)
+        selectable_tasks = [task for task in tasks if self._task_belongs_to_shard(task.task_id)]
+        selected = self._select_next_task(
+            selectable_tasks,
+            resolved_statuses,
+            strategy,
+            unresolved_merge_failures,
+            recent_outcomes,
+        )
         state = PortalTaskState.load(self.state_path)
         state.heartbeat_at = now
         if newly_completed or not state.last_progress_at:
@@ -5755,6 +5778,18 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--task-shard-count",
+        type=int,
+        default=1,
+        help="Number of deterministic task-ID shards for parallel daemon lanes. Defaults to 1.",
+    )
+    parser.add_argument(
+        "--task-shard-index",
+        type=int,
+        default=0,
+        help="Zero-based shard index implemented by this daemon lane. Defaults to 0.",
+    )
+    parser.add_argument(
         "--daemon-hook-timeout-seconds",
         type=float,
         default=None,
@@ -5839,6 +5874,8 @@ def main(argv: list[str] | None = None) -> None:
         llm_merge_resolver_command=args.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
+        task_shard_count=args.task_shard_count,
+        task_shard_index=args.task_shard_index,
     )
     while True:
         result = daemon.run_once()
