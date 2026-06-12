@@ -4772,6 +4772,9 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
         worktree_submodule_paths=("packages/app", "external/lib"),
         objective_path=repo / "objective-heap.md",
         objective_bundle_dir=repo / "objective_bundles",
+        merge_reconciliation_max_merges=0,
+        task_shard_count=2,
+        task_shard_index=1,
         daemon_script_path=daemon_script,
     )
     supervisor = TodoImplementationSupervisor(config)
@@ -4786,6 +4789,9 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert command[command.index("--llm-merge-resolver-timeout-seconds") + 1] == "5"
     assert command[command.index("--objective-path") + 1] == str(repo / "objective-heap.md")
     assert command[command.index("--objective-bundle-dir") + 1] == str(repo / "objective_bundles")
+    assert command[command.index("--merge-reconciliation-max-merges") + 1] == "0"
+    assert command[command.index("--task-shard-count") + 1] == "2"
+    assert command[command.index("--task-shard-index") + 1] == "1"
 
     args = parse_implementation_supervisor_args(
         [
@@ -4819,6 +4825,12 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
             str(repo / "objective-heap.md"),
             "--objective-bundle-dir",
             str(repo / "objective_bundles"),
+            "--merge-reconciliation-max-merges",
+            "0",
+            "--task-shard-count",
+            "2",
+            "--task-shard-index",
+            "1",
         ]
     )
     assert args.worktree_submodule_path == ["packages/app", "external/lib,vendor/tools"]
@@ -4833,6 +4845,9 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert args.dependency_guardrail_max_findings == 2
     assert args.objective_path == repo / "objective-heap.md"
     assert args.objective_bundle_dir == repo / "objective_bundles"
+    assert args.merge_reconciliation_max_merges == 0
+    assert args.task_shard_count == 2
+    assert args.task_shard_index == 1
 
 
 def test_implementation_supervisor_does_not_recycle_active_merge_resolver(tmp_path):
