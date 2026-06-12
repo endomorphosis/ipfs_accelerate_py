@@ -546,7 +546,7 @@ def build_configured_multi_supervisor_cli_runner(
     for track in implementation_supervisor_compact_track_specs(implementation_track_configs):
         argv.extend(["--implementation-track", str(track)])
     for arg in common_args:
-        argv.extend(["--common-arg", str(arg)])
+        argv.append(f"--common-arg={arg}")
     if detach:
         argv.append("--detach")
     return ConfiguredMultiSupervisorCliRunner(tuple(argv))
