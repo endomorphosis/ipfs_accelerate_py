@@ -357,6 +357,12 @@ def parse_implementation_track_spec(spec: str, *, stamp: str = "") -> Supervisor
         supervisor_pid_path=track.supervisor_pid_path,
         daemon_pid_path=track.daemon_pid_path,
         supervisor_status_path=Path(state_dir) / f"{state_prefix}_supervisor_status.json",
+        extra_args=(
+            "--state-dir",
+            str(state_dir),
+            "--state-prefix",
+            str(state_prefix),
+        ),
     )
 
 
@@ -393,6 +399,7 @@ def expand_implementation_track_lanes(spec: str, *, stamp: str = "", lanes_per_t
                 daemon_pid_path=track.daemon_pid_path,
                 supervisor_status_path=track.supervisor_status_path,
                 extra_args=(
+                    *track.extra_args,
                     "--task-shard-count",
                     str(lanes),
                     "--task-shard-index",

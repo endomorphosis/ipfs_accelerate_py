@@ -3178,8 +3178,26 @@ def test_implementation_supervisor_track_spec_uses_standard_state_layout():
     assert lanes[1].supervisor_pid_path == Path(
         "data/virtual_ai_os/state/lane-1/virtual_ai_os_lane_1_supervisor.pid"
     )
-    assert lanes[0].extra_args == ("--task-shard-count", "2", "--task-shard-index", "0")
-    assert lanes[1].extra_args == ("--task-shard-count", "2", "--task-shard-index", "1")
+    assert lanes[0].extra_args == (
+        "--state-dir",
+        "data/virtual_ai_os/state/lane-0",
+        "--state-prefix",
+        "virtual_ai_os_lane_0",
+        "--task-shard-count",
+        "2",
+        "--task-shard-index",
+        "0",
+    )
+    assert lanes[1].extra_args == (
+        "--state-dir",
+        "data/virtual_ai_os/state/lane-1",
+        "--state-prefix",
+        "virtual_ai_os_lane_1",
+        "--task-shard-count",
+        "2",
+        "--task-shard-index",
+        "1",
+    )
 
 
 def test_implementation_supervisor_namespace_track_configs_builds_multiple_repo_tracks():
