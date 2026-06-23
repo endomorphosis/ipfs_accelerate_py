@@ -1088,6 +1088,9 @@ def build_portal_implementation_daemon_from_args(
         llm_merge_resolver_command=parsed.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=parsed.llm_merge_resolver_timeout_seconds,
         merge_reconciliation_max_merges=parsed.merge_reconciliation_max_merges,
+        merged_worktree_cleanup_max=parsed.merged_worktree_cleanup_max,
+        task_shard_count=parsed.task_shard_count,
+        task_shard_index=parsed.task_shard_index,
     )
     return daemon, ImplementationDaemonRunContext(parsed=parsed, **state_paths)
 

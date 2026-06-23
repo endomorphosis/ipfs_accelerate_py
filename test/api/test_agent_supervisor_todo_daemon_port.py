@@ -93,6 +93,7 @@ from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     build_daemon_objective_refill_callback,
     build_configured_implementation_daemon_runner,
     build_implementation_daemon_defaults_from_paths,
+    build_portal_implementation_daemon_from_args,
 )
 from ipfs_accelerate_py.agent_supervisor import implementation_daemon_runner
 from ipfs_accelerate_py.agent_supervisor.implementation_supervisor_runner import (
@@ -3949,6 +3950,34 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     assert args.codebase_scan_cooldown_seconds == 900
     assert args.task_shard_count == 4
     assert args.task_shard_index == 2
+
+
+def test_configured_daemon_builder_preserves_shard_and_cleanup_args(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    args = parse_implementation_daemon_args(
+        [
+            "--todo-path",
+            str(repo / "todo.md"),
+            "--state-dir",
+            str(repo / "state"),
+            "--state-prefix",
+            "agent_lane_1",
+            "--merged-worktree-cleanup-max",
+            "13",
+            "--task-shard-count",
+            "4",
+            "--task-shard-index",
+            "2",
+        ]
+    )
+
+    daemon, context = build_portal_implementation_daemon_from_args(args, repo_root=repo)
+
+    assert context.parsed is args
+    assert daemon.merged_worktree_cleanup_max == 13
+    assert daemon.task_shard_count == 4
+    assert daemon.task_shard_index == 2
 
 
 def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
