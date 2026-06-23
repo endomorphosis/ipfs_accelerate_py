@@ -32,6 +32,7 @@ logger = logging.getLogger("ipfs_accelerate_py.agent_supervisor.todo_daemon.impl
 
 TASK_HEADER_PREFIX = "## PORTAL-"
 DEFAULT_TRACKS = [
+    "launch",
     "platform",
     "agent",
     "graphrag",
@@ -104,6 +105,23 @@ def normalize_relative_path_list(values: Any) -> tuple[str, ...]:
             if path not in paths:
                 paths.append(path)
     return tuple(paths)
+
+
+def normalize_focus_tracks(values: Any) -> list[str]:
+    """Normalize scheduler focus tracks while keeping launch-readiness first."""
+
+    if values is None:
+        raw_values: list[Any] = list(DEFAULT_TRACKS)
+    elif isinstance(values, str):
+        raw_values = values.split(",")
+    else:
+        try:
+            raw_values = list(values)
+        except TypeError:
+            raw_values = [values]
+
+    configured = [str(item).strip().lower() for item in raw_values if str(item).strip()]
+    return list(dict.fromkeys(["launch", *configured, *DEFAULT_TRACKS]))
 
 
 DEFAULT_WORKTREE_SUBMODULE_PATHS = normalize_relative_path_list(
@@ -696,7 +714,7 @@ class PortalImplementationDaemon:
             )
             return repaired
         merged = {**defaults, **payload}
-        merged["focus_tracks"] = [str(item).lower() for item in merged.get("focus_tracks", DEFAULT_TRACKS)]
+        merged["focus_tracks"] = normalize_focus_tracks(merged.get("focus_tracks", DEFAULT_TRACKS))
         merged["blocked_tasks"] = [str(item) for item in merged.get("blocked_tasks", [])]
         merged["deprioritized_tasks"] = [str(item) for item in merged.get("deprioritized_tasks", [])]
         return merged
@@ -5890,9 +5908,7 @@ Rules:
         vector_context = self._todo_vector_selection_context(tasks, ready_task_ids)
         focus_order = {
             track: index
-            for index, track in enumerate(
-                [str(item).lower() for item in strategy.get("focus_tracks", DEFAULT_TRACKS)]
-            )
+            for index, track in enumerate(normalize_focus_tracks(strategy.get("focus_tracks", DEFAULT_TRACKS)))
         }
         deprioritized = {str(item) for item in strategy.get("deprioritized_tasks", [])}
         blocked_strategy_task_ids = {str(item) for item in strategy.get("blocked_tasks", [])}
