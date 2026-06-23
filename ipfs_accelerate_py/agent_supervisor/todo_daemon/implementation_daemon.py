@@ -822,6 +822,7 @@ class PortalImplementationDaemon:
         merge_reconciliation = self._reconcile_failed_merges(skip_task_ids=merge_skip_task_ids)
         merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
+        unresolved_merge_failure_task_ids = set(unresolved_merge_failures)
         recent_outcomes = self._latest_implementation_finished_by_task()
         successfully_merged_task_ids = self._successfully_merged_task_ids()
 
@@ -834,10 +835,9 @@ class PortalImplementationDaemon:
         for task in tasks:
             existing_outputs = [item for item in task.outputs if (self.repo_root / item).exists()]
             task_artifacts[task.task_id] = existing_outputs
-            unresolved_merge_failure = (
-                task.task_id in unresolved_merge_failures
-                or self._has_unresolved_merge_failure(task, previous)
-            )
+            if self._has_unresolved_merge_failure(task, previous):
+                unresolved_merge_failure_task_ids.add(task.task_id)
+            unresolved_merge_failure = task.task_id in unresolved_merge_failure_task_ids
             artifact_complete = (
                 task.completion == "artifact"
                 and bool(task.outputs)
@@ -855,6 +855,9 @@ class PortalImplementationDaemon:
                     newly_completed.append(task.task_id)
                 continue
             if task.task_id in strategy.get("blocked_tasks", []) or task.status == "blocked":
+                resolved_statuses[task.task_id] = "blocked"
+                continue
+            if task.task_id in unresolved_merge_failure_task_ids:
                 resolved_statuses[task.task_id] = "blocked"
                 continue
             unresolved_deps = [dep for dep in task.depends_on if dep not in completed_set]

@@ -6210,6 +6210,73 @@ def test_implementation_daemon_reconciles_merge_lock_deferrals(tmp_path):
     assert daemon._unresolved_merge_failures_by_task()["ACCEL-003"] == event
 
 
+def test_implementation_daemon_blocks_unresolved_merge_failures_instead_of_retry_loop(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Todos
+
+## ACCEL-001 Stale merge task
+
+- Status: todo
+- Priority: P1
+- Track: runtime
+- Depends on:
+- Outputs: src/runtime.py
+- Validation: test -f src/runtime.py
+- Acceptance: Do not retry unresolved failed merges forever.
+""",
+        encoding="utf-8",
+    )
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=repo / "state" / "task_state.json",
+        strategy_path=repo / "state" / "strategy.json",
+        events_path=repo / "state" / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        implement=True,
+    )
+    event = {
+        "type": "implementation_finished",
+        "task_id": "ACCEL-001",
+        "attempt": 1,
+        "branch": "implementation/accel-001",
+        "implementation_commit": "abc123",
+        "validation_result": {"attempted": True, "passed": True},
+        "merge_result": {
+            "attempted": True,
+            "merged": False,
+            "reason": "conflict",
+            "branch": "implementation/accel-001",
+        },
+    }
+
+    daemon._reconcile_failed_merges = lambda skip_task_ids=None: []  # type: ignore[method-assign]
+    daemon._cleanup_already_merged_worktrees = lambda: []  # type: ignore[method-assign]
+    daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
+    daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]
+    daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
+    daemon._latest_implementation_finished_by_task = lambda: {}  # type: ignore[method-assign]
+    daemon._successfully_merged_task_ids = lambda: set()  # type: ignore[method-assign]
+    daemon._run_implementation = lambda *args, **kwargs: pytest.fail(  # type: ignore[method-assign]
+        "unresolved merge task should not run implementation"
+    )
+
+    result = daemon.run_once()
+    state = TodoTaskState.load(daemon.state_path)
+    events = daemon._iter_events()
+
+    assert result["active_task_id"] == ""
+    assert result["ready_count"] == 0
+    assert result["blocked_count"] == 1
+    assert result["implementation_result"] is None
+    assert state.task_statuses["ACCEL-001"] == "blocked"
+    assert state.blocked_task_ids == ["ACCEL-001"]
+    assert not [event for event in events if event["type"] == "implementation_skipped"]
+
+
 def test_implementation_daemon_retries_cleanup_failures_for_already_merged_branch(tmp_path):
     repo = tmp_path / "repo"
     repo.mkdir()
