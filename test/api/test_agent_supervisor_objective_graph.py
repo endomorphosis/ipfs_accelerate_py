@@ -239,6 +239,44 @@ def test_objective_graph_scanner_semantic_ast_bundles_implicit_goals(tmp_path):
     assert findings[0].parallel_lane == findings[0].bundle_key
 
 
+def test_objective_graph_appends_playwright_validation_for_launch_goals(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective-heap.md"
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G697 Production launch readiness gate
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: launch
+- Priority: P0
+- Bundle: objective/launch/production-readiness-gate
+- Goal: Prove phone, desktop, Swissknife, Hallucinate App, and Meta glasses launch readiness.
+- Evidence: launch_readiness_receipt_v1
+- Outputs: tests
+- Validation: test -f objective-heap.md
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective-heap.md")
+    _git(repo, "commit", "-m", "seed launch objective")
+
+    findings = scan_objective_gaps(repo, objective_path=objective_path, max_findings=1)
+
+    assert len(findings) == 1
+    validation = findings[0].validation
+    assert validation.startswith("test -f objective-heap.md && ")
+    assert "npm --prefix swissknife run test:e2e:meta-glasses" in validation
+    assert "npm --prefix hallucinate_app run test:e2e -- multimodal-control-surface.spec.ts" in validation
+
+
 def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"

@@ -47,6 +47,16 @@ DEFAULT_SCAN_OVERSAMPLE_MULTIPLIER = int(
 )
 DEFAULT_TASK_PREFIX = "AUTO-"
 DEFAULT_AST_DATASET_MAX_CHARS = int(os.environ.get("IPFS_ACCELERATE_AGENT_AST_DATASET_MAX_CHARS", "1000000"))
+LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND = (
+    "(test ! -f swissknife/package.json || npm --prefix swissknife run test:e2e:meta-glasses) && "
+    "(test ! -f hallucinate_app/package.json || "
+    "npm --prefix hallucinate_app run test:e2e -- multimodal-control-surface.spec.ts)"
+)
+LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS = (
+    "test:e2e:meta-glasses",
+    "meta-glasses-virtual-os.spec.ts",
+    "multimodal-control-surface.spec.ts",
+)
 SCAN_SUFFIXES = {
     ".cjs",
     ".css",
@@ -668,6 +678,32 @@ def objective_goal_work_surface(goal: ObjectiveGoal) -> int:
     interface_count = len(split_terms(str(goal.fields.get("interfaces") or goal.fields.get("interface_contracts") or "")))
     submodule_count = len(split_terms(str(goal.fields.get("submodules") or goal.fields.get("interoperability_pair") or "")))
     return evidence_count * 4 + output_count * 2 + ast_count + interface_count * 3 + submodule_count * 3
+
+
+def objective_goal_requires_launch_playwright_validation(goal: ObjectiveGoal) -> bool:
+    """Return whether a goal represents the launch slice that needs browser proof."""
+
+    fields = goal.fields
+    track = str(fields.get("track") or "").strip().lower()
+    bundle = str(fields.get("bundle") or "").strip().lower()
+    haystack = " ".join([goal.goal_id, goal.title, *fields.values()]).lower()
+    if track == "launch" or bundle.startswith("objective/launch/"):
+        return True
+    return all(term in haystack for term in ("phone", "desktop", "swissknife", "meta glasses"))
+
+
+def objective_goal_validation(goal: ObjectiveGoal, fallback_validation: str) -> str:
+    """Return validation for generated work from an objective goal."""
+
+    validation = str(goal.fields.get("validation") or fallback_validation).strip()
+    if not objective_goal_requires_launch_playwright_validation(goal):
+        return validation
+    lowered = validation.lower()
+    if any(marker in lowered for marker in LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS):
+        return validation
+    if not validation:
+        return LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND
+    return f"{validation} && {LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND}"
 
 
 def canonical_interoperability_component(value: str) -> str:
@@ -1305,7 +1341,10 @@ def scan_objective_gaps(
                 evidence_methods=evidence_methods(present),
                 objective_path=repo_relative_path(repo_root, objective_path),
                 outputs=split_terms(str(fields.get("outputs") or "")),
-                validation=str(fields.get("validation") or f"test -f {repo_relative_path(repo_root, objective_path)}"),
+                validation=objective_goal_validation(
+                    goal,
+                    f"test -f {repo_relative_path(repo_root, objective_path)}",
+                ),
                 goal=str(fields.get("goal") or ""),
                 refinement=str(fields.get("refinement") or ""),
                 gap_task=str(fields.get("gap_task") or ""),
