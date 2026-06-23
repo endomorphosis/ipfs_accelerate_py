@@ -52,6 +52,8 @@ LLM_MERGE_RESOLVER_COMMAND_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_COMMA
 LLM_MERGE_RESOLVER_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_LLM_MERGE_RESOLVER_TIMEOUT_SECONDS"
 DAEMON_MERGE_RECONCILIATION_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGE_RECONCILIATION_MAX"
 DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX = 3
+DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX"
+DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX = 25
 DAEMON_HOOK_TIMEOUT_ENV = "IPFS_ACCELERATE_AGENT_DAEMON_HOOK_TIMEOUT_SECONDS"
 DEFAULT_DAEMON_HOOK_TIMEOUT_SECONDS = 60.0
 RECENT_NO_CHANGE_COOLDOWN_SECONDS = 1800.0
@@ -598,6 +600,7 @@ class PortalImplementationDaemon:
         llm_merge_resolver_command: str | None = None,
         llm_merge_resolver_timeout_seconds: float | None = None,
         merge_reconciliation_max_merges: int | None = None,
+        merged_worktree_cleanup_max: int | None = None,
         task_shard_count: int = 1,
         task_shard_index: int = 0,
     ) -> None:
@@ -625,6 +628,11 @@ class PortalImplementationDaemon:
             _env_int(DAEMON_MERGE_RECONCILIATION_MAX_ENV, DEFAULT_DAEMON_MERGE_RECONCILIATION_MAX)
             if merge_reconciliation_max_merges is None
             else int(merge_reconciliation_max_merges)
+        )
+        self.merged_worktree_cleanup_max = (
+            _env_int(DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV, DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX)
+            if merged_worktree_cleanup_max is None
+            else int(merged_worktree_cleanup_max)
         )
         self.task_shard_count = max(1, int(task_shard_count))
         self.task_shard_index = int(task_shard_index)
@@ -809,6 +817,7 @@ class PortalImplementationDaemon:
             )
             previous = recovered_state
         merge_reconciliation = self._reconcile_failed_merges(skip_task_ids=merge_skip_task_ids)
+        merged_worktree_cleanup = self._cleanup_already_merged_worktrees()
         unresolved_merge_failures = self._unresolved_merge_failures_by_task(skip_task_ids=merge_skip_task_ids)
         recent_outcomes = self._latest_implementation_finished_by_task()
         successfully_merged_task_ids = self._successfully_merged_task_ids()
@@ -973,6 +982,7 @@ class PortalImplementationDaemon:
             "events_path": str(self.events_path),
             "implementation_result": implementation_result,
             "merge_reconciliation": merge_reconciliation,
+            "merged_worktree_cleanup": merged_worktree_cleanup,
             "event_log_repair": event_log_repair,
             "state_file_repair": state_file_repair,
         }
@@ -3716,6 +3726,122 @@ class PortalImplementationDaemon:
                 failures.append(f"{prefix}cleanup incomplete")
         return failures
 
+    @staticmethod
+    def _managed_cleanup_branch(branch_name: str) -> bool:
+        return branch_name.startswith("implementation/") or branch_name.startswith("rescue/worktree/")
+
+    def _cleanup_already_merged_worktrees(self) -> dict[str, Any]:
+        """Continuously drain inactive worktrees whose branches are already merged."""
+
+        max_cleanups = max(0, int(self.merged_worktree_cleanup_max))
+        if max_cleanups <= 0:
+            return {"attempted": False, "reason": "merged_worktree_cleanup_disabled"}
+
+        prune = subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=self.repo_root,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        try:
+            root_resolved = self.worktree_root.resolve()
+        except OSError:
+            root_resolved = self.worktree_root
+        try:
+            active_worktree = PortalTaskState.load(self.state_path).active_worktree_path
+        except Exception:
+            active_worktree = ""
+        active_resolved: Path | None = None
+        if active_worktree:
+            try:
+                active_resolved = Path(active_worktree).resolve()
+            except OSError:
+                active_resolved = Path(active_worktree)
+
+        process_lines = self._list_process_commands()
+        target_branch = self._main_branch_name()
+        removed: list[dict[str, Any]] = []
+        skipped: list[dict[str, Any]] = []
+
+        for entry in self._git_worktree_entries():
+            if len(removed) >= max_cleanups:
+                break
+            path_text = str(entry.get("worktree") or "")
+            if not path_text:
+                continue
+            worktree_path = Path(path_text)
+            try:
+                worktree_resolved = worktree_path.resolve()
+                worktree_resolved.relative_to(root_resolved)
+            except (OSError, ValueError):
+                continue
+
+            branch_name = str(entry.get("branch") or "").removeprefix("refs/heads/")
+            detail = {"worktree_path": str(worktree_path), "branch": branch_name}
+            if active_resolved is not None and worktree_resolved == active_resolved:
+                skipped.append({**detail, "reason": "active_state_worktree"})
+                continue
+            if any(str(worktree_resolved) in line for line in process_lines):
+                skipped.append({**detail, "reason": "active_process"})
+                continue
+            if not self._managed_cleanup_branch(branch_name):
+                skipped.append({**detail, "reason": "unmanaged_branch"})
+                continue
+            if not self._git_ref_exists(branch_name):
+                skipped.append({**detail, "reason": "branch_missing"})
+                continue
+            if not self._git_ref_is_ancestor(branch_name, target_branch):
+                skipped.append({**detail, "reason": "branch_not_merged"})
+                continue
+
+            status = subprocess.run(
+                ["git", "status", "--porcelain", "--untracked-files=all"],
+                cwd=worktree_path,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+            if status.returncode != 0:
+                skipped.append(
+                    {
+                        **detail,
+                        "reason": "status_failed",
+                        "returncode": status.returncode,
+                        "stderr": status.stderr[-4000:],
+                    }
+                )
+                continue
+            if status.stdout.strip():
+                skipped.append(
+                    {
+                        **detail,
+                        "reason": "dirty_worktree",
+                        "status_short": status.stdout.splitlines()[:20],
+                    }
+                )
+                continue
+
+            cleanup_result = self._cleanup_merged_worktree(worktree_path, branch_name)
+            removed.append({**detail, "cleanup_result": cleanup_result})
+
+        result = {
+            "attempted": True,
+            "worktree_root": str(self.worktree_root),
+            "target_branch": target_branch,
+            "max_cleanups": max_cleanups,
+            "prune_returncode": prune.returncode,
+            "prune_stdout": prune.stdout[-4000:],
+            "prune_stderr": prune.stderr[-4000:],
+            "removed_count": sum(1 for item in removed if item["cleanup_result"].get("cleaned", False)),
+            "skipped_count": len(skipped),
+            "removed": removed,
+            "skipped": skipped[:50],
+        }
+        if removed:
+            self._record_event("merged_worktree_cleanup", result)
+        return result
+
     def _cleanup_merged_worktree(self, worktree_path: Path | None, branch_name: str) -> dict[str, Any]:
         started_at = utc_now()
         removed_worktree = False
@@ -5778,6 +5904,16 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--merged-worktree-cleanup-max",
+        type=int,
+        default=None,
+        help=(
+            "Maximum already-merged implementation worktrees to remove per daemon pass. "
+            f"Defaults to {DAEMON_MERGED_WORKTREE_CLEANUP_MAX_ENV} or "
+            f"{DEFAULT_DAEMON_MERGED_WORKTREE_CLEANUP_MAX}; <=0 disables daemon-side cleanup."
+        ),
+    )
+    parser.add_argument(
         "--task-shard-count",
         type=int,
         default=1,
@@ -5874,6 +6010,7 @@ def main(argv: list[str] | None = None) -> None:
         llm_merge_resolver_command=args.llm_merge_resolver_command or None,
         llm_merge_resolver_timeout_seconds=args.llm_merge_resolver_timeout_seconds,
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
+        merged_worktree_cleanup_max=args.merged_worktree_cleanup_max,
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
     )

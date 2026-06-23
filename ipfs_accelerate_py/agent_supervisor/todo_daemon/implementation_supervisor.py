@@ -108,6 +108,7 @@ class PortalSupervisorConfig:
     worktree_scan_cache_ttl_seconds: float = DEFAULT_WORKTREE_SCAN_CACHE_TTL_SECONDS
     worktree_scan_cache_path: Path | None = None
     merge_reconciliation_max_merges: int | None = None
+    daemon_merged_worktree_cleanup_max: int | None = None
     task_shard_count: int = 1
     task_shard_index: int = 0
     retry_budget_guardrail_enabled: bool = True
@@ -3939,6 +3940,13 @@ class PortalImplementationSupervisor:
                     str(self.config.merge_reconciliation_max_merges),
                 ]
             )
+        if self.config.daemon_merged_worktree_cleanup_max is not None:
+            command.extend(
+                [
+                    "--merged-worktree-cleanup-max",
+                    str(self.config.daemon_merged_worktree_cleanup_max),
+                ]
+            )
         command.extend(
             [
                 "--task-shard-count",
@@ -4345,6 +4353,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--daemon-merged-worktree-cleanup-max",
+        type=int,
+        default=None,
+        help=(
+            "Maximum already-merged implementation worktrees for the managed implementation daemon "
+            "to remove per pass. Defaults to the daemon setting."
+        ),
+    )
+    parser.add_argument(
         "--task-shard-count",
         type=int,
         default=1,
@@ -4698,6 +4715,7 @@ def supervisor_config_from_args(
         worktree_scan_cache_ttl_seconds=args.worktree_scan_cache_ttl_seconds,
         worktree_scan_cache_path=args.worktree_scan_cache_path,
         merge_reconciliation_max_merges=args.merge_reconciliation_max_merges,
+        daemon_merged_worktree_cleanup_max=args.daemon_merged_worktree_cleanup_max,
         task_shard_count=args.task_shard_count,
         task_shard_index=args.task_shard_index,
         retry_budget_guardrail_enabled=args.retry_budget_guardrail_enabled and not reconciliation_only,

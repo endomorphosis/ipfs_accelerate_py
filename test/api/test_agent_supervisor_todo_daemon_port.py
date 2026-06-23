@@ -3268,6 +3268,7 @@ def test_implementation_multi_supervisor_env_defaults_are_reusable():
     assert implementation_multi_supervisor_env_defaults() == {
         "PYTHONUNBUFFERED": "1",
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
     }
     assert implementation_multi_supervisor_env_defaults(
         python_unbuffered=False,
@@ -3276,6 +3277,7 @@ def test_implementation_multi_supervisor_env_defaults_are_reusable():
     ) == {
         "PYTHONUNBUFFERED": "0",
         "CODEX_MERGE_RESOLVER_TIMEOUT_SECONDS": "0",
+        "COPILOT_MERGE_RESOLVER_TIMEOUT_SECONDS": "60",
         "PREFER_COPILOT_MERGE_RESOLVER": "1",
     }
 
@@ -3476,8 +3478,8 @@ def test_repo_implementation_multi_supervisor_launcher_uses_repo_defaults(tmp_pa
     )
     assert "--implementation-supervisor-defaults" in args
     assert args[args.index("--implementation-track") + 1] == "VAI|scripts/vai.py|data/vai/state|vai"
-    assert args[args.index("--common-arg") + 1] == "--flag"
-    assert args[args.index("--common-arg", args.index("--common-arg") + 1) + 1] == "value"
+    assert "--common-arg=--flag" in args
+    assert "--common-arg=value" in args
 
     assert launcher.run(["--duration-seconds", "0.01"]) == 0
     assert os.environ["MULTI_SUPERVISOR_REPO_DEFAULT"] == "1"
@@ -3865,6 +3867,7 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
         objective_path=repo / "objective-heap.md",
         objective_bundle_dir=repo / "objective_bundles",
         merge_reconciliation_max_merges=7,
+        merged_worktree_cleanup_max=11,
         task_shard_count=3,
         task_shard_index=1,
     )
@@ -3875,6 +3878,7 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     assert daemon.objective_path == repo / "objective-heap.md"
     assert daemon.objective_bundle_dir == repo / "objective_bundles"
     assert daemon.merge_reconciliation_max_merges == 7
+    assert daemon.merged_worktree_cleanup_max == 11
     assert daemon.task_shard_count == 3
     assert daemon.task_shard_index == 1
 
@@ -3896,6 +3900,8 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
             str(repo / "objective_bundles"),
             "--merge-reconciliation-max-merges",
             "9",
+            "--merged-worktree-cleanup-max",
+            "13",
             "--task-shard-count",
             "4",
             "--task-shard-index",
@@ -3908,8 +3914,74 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     assert args.objective_path == repo / "objective-heap.md"
     assert args.objective_bundle_dir == repo / "objective_bundles"
     assert args.merge_reconciliation_max_merges == 9
+    assert args.merged_worktree_cleanup_max == 13
     assert args.task_shard_count == 4
     assert args.task_shard_index == 2
+
+
+def test_implementation_daemon_run_once_cleans_already_merged_worktree(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "base")
+    branch_name = "implementation/accel-001-attempt-1-123"
+    _git(repo, "checkout", "-b", branch_name)
+    (repo / "feature.txt").write_text("merged worktree payload\n", encoding="utf-8")
+    _git(repo, "add", "feature.txt")
+    _git(repo, "commit", "-m", "ACCEL-001: add feature")
+    _git(repo, "checkout", "main")
+    _git(repo, "merge", "--no-ff", "--no-edit", branch_name)
+    worktree_root = repo / "worktrees"
+    worktree_path = worktree_root / "accel-001-attempt-1-123"
+    _git(repo, "worktree", "add", str(worktree_path), branch_name)
+    todo_path = repo / "todo.md"
+    todo_path.write_text(
+        """# Agent Todos
+
+## ACCEL-001 Completed task
+
+- Status: completed
+- Completion: manual
+- Priority: P2
+- Track: ops
+- Depends on:
+- Outputs: feature.txt
+- Validation: test -f feature.txt
+- Acceptance: Feature has already merged.
+""",
+        encoding="utf-8",
+    )
+    state_dir = repo / "state"
+    daemon = TodoImplementationDaemon(
+        todo_path=todo_path,
+        state_path=state_dir / "task_state.json",
+        strategy_path=state_dir / "strategy.json",
+        events_path=state_dir / "events.jsonl",
+        repo_root=repo,
+        task_header_prefix="## ACCEL-",
+        worktree_root=worktree_root,
+        merged_worktree_cleanup_max=5,
+    )
+
+    result = daemon.run_once()
+
+    assert result["merged_worktree_cleanup"]["removed_count"] == 1
+    assert not worktree_path.exists()
+    branch_exists = subprocess.run(
+        ["git", "rev-parse", "--verify", "--quiet", branch_name],
+        cwd=repo,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    assert branch_exists.returncode != 0
+    events = [json.loads(line) for line in (state_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert any(event["type"] == "merged_worktree_cleanup" for event in events)
 
 
 def test_implementation_daemon_runs_validation_non_interactively(tmp_path, monkeypatch):
@@ -4791,6 +4863,7 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
         objective_path=repo / "objective-heap.md",
         objective_bundle_dir=repo / "objective_bundles",
         merge_reconciliation_max_merges=0,
+        daemon_merged_worktree_cleanup_max=17,
         task_shard_count=2,
         task_shard_index=1,
         daemon_script_path=daemon_script,
@@ -4808,6 +4881,7 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert command[command.index("--objective-path") + 1] == str(repo / "objective-heap.md")
     assert command[command.index("--objective-bundle-dir") + 1] == str(repo / "objective_bundles")
     assert command[command.index("--merge-reconciliation-max-merges") + 1] == "0"
+    assert command[command.index("--merged-worktree-cleanup-max") + 1] == "17"
     assert command[command.index("--task-shard-count") + 1] == "2"
     assert command[command.index("--task-shard-index") + 1] == "1"
 
@@ -4845,6 +4919,8 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
             str(repo / "objective_bundles"),
             "--merge-reconciliation-max-merges",
             "0",
+            "--daemon-merged-worktree-cleanup-max",
+            "19",
             "--task-shard-count",
             "2",
             "--task-shard-index",
@@ -4864,6 +4940,7 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert args.objective_path == repo / "objective-heap.md"
     assert args.objective_bundle_dir == repo / "objective_bundles"
     assert args.merge_reconciliation_max_merges == 0
+    assert args.daemon_merged_worktree_cleanup_max == 19
     assert args.task_shard_count == 2
     assert args.task_shard_index == 1
 
