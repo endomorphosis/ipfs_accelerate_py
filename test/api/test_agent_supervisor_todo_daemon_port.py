@@ -3839,25 +3839,33 @@ def test_implementation_supervisor_recovers_after_child_loop_restart_exhaustion(
     supervisor.ensure_event_log_file = lambda: {"repaired": False, "reason": "valid"}
     supervisor.repair_main_checkout_merge_state = lambda: {"attempted": False, "repaired": False, "reason": "clean"}
     supervisor.ensure_managed_daemon_pid_file = lambda: {"adopted": False, "reason": "not_running"}
-    supervisor.run_once = lambda: {"stuck": False, "recovered": True}
+    run_once_calls: list[bool] = []
+
+    def fake_run_once(*, include_refill=True):
+        run_once_calls.append(include_refill)
+        return {"stuck": False, "recovered": True}
+
+    supervisor.run_once = fake_run_once
     supervisor._supervisor_loop_recovery_delay_seconds = lambda: 0.0
 
     supervisor.run_forever()
 
     assert RecoveringLoop.calls == 2
+    assert run_once_calls == [False, True]
     events = [
         json.loads(line)
         for line in (state_dir / "supervisor_events.jsonl").read_text(encoding="utf-8").splitlines()
         if line.strip()
     ]
     assert [event["type"] for event in events] == [
+        "supervisor_preflight_maintenance_pass",
         "supervisor_loop_finished",
         "supervisor_loop_recovery_pass",
         "supervisor_loop_restarting_after_recovery",
         "supervisor_loop_finished",
     ]
-    assert events[0]["status"] == "max_restarts_reached"
-    assert events[1]["recovery"]["recovered"] is True
+    assert events[1]["status"] == "max_restarts_reached"
+    assert events[2]["recovery"]["recovered"] is True
     assert events[-1]["status"] == "stopped"
 
 
@@ -6421,7 +6429,8 @@ def test_implementation_daemon_reconciles_merge_lock_deferrals(tmp_path):
     daemon._git_ref_is_ancestor = lambda ancestor, descendant: False  # type: ignore[method-assign]
 
     assert daemon._failed_merge_candidates() == [event]
-    assert daemon._unresolved_merge_failures_by_task()["ACCEL-003"] == event
+    assert daemon._transient_merge_deferrals_by_task()["ACCEL-003"] == event
+    assert "ACCEL-003" not in daemon._unresolved_merge_failures_by_task()
 
 
 def test_implementation_daemon_blocks_unresolved_merge_failures_instead_of_retry_loop(tmp_path):
@@ -6467,7 +6476,7 @@ def test_implementation_daemon_blocks_unresolved_merge_failures_instead_of_retry
         },
     }
 
-    daemon._reconcile_failed_merges = lambda skip_task_ids=None: []  # type: ignore[method-assign]
+    daemon._reconcile_failed_merges = lambda **_kwargs: []  # type: ignore[method-assign]
     daemon._cleanup_already_merged_worktrees = lambda: []  # type: ignore[method-assign]
     daemon._failed_merge_candidates = lambda skip_task_ids=None: [event]  # type: ignore[method-assign]
     daemon._main_branch_name = lambda: "main"  # type: ignore[method-assign]

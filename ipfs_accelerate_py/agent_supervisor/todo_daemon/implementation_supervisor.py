@@ -356,13 +356,16 @@ class PortalImplementationSupervisor:
 
         return update, finish
 
-    def run_once(self) -> dict[str, Any]:
+    def run_once(self, *, include_refill: bool = True) -> dict[str, Any]:
         update_maintenance_phase, finish_maintenance = self._begin_supervisor_maintenance_heartbeat(
             "run_once"
         )
         failed = False
         try:
-            return self._run_once_with_maintenance(update_maintenance_phase)
+            return self._run_once_with_maintenance(
+                update_maintenance_phase,
+                include_refill=include_refill,
+            )
         except Exception as exc:
             failed = True
             finish_maintenance("failed", f"{type(exc).__name__}: {exc}")
@@ -371,7 +374,12 @@ class PortalImplementationSupervisor:
             if not failed:
                 finish_maintenance("completed")
 
-    def _run_once_with_maintenance(self, update_maintenance_phase) -> dict[str, Any]:
+    def _run_once_with_maintenance(
+        self,
+        update_maintenance_phase,
+        *,
+        include_refill: bool = True,
+    ) -> dict[str, Any]:
         update_maintenance_phase("event_log_repair")
         event_log_repair = self.ensure_event_log_file()
         update_maintenance_phase("state_file_repair")
@@ -437,22 +445,31 @@ class PortalImplementationSupervisor:
         update_maintenance_phase("retry_dependency_guardrails")
         retry_budget_findings = self.record_retry_budget_guardrails()
         dependency_findings = self.record_dependency_guardrails()
-        update_maintenance_phase("objective_refill")
-        objective_payload = self.refill_objective_backlog()
-        objective_generated_count = int(objective_payload.get("generated_count") or 0)
-        objective_refined_goal_count = len(objective_payload.get("refined_goal_ids") or [])
-        objective_seeded_goal_count = len(objective_payload.get("seeded_interoperability_goal_ids") or [])
-        codebase_deferred_reason = ""
-        if (
-            self.config.codebase_defer_when_objective_refills
-            and self.config.objective_refill_enabled
-            and objective_generated_count > 0
-        ):
-            codebase_findings = []
-            codebase_deferred_reason = "objective_refill_generated_todos"
+        if include_refill:
+            update_maintenance_phase("objective_refill")
+            objective_payload = self.refill_objective_backlog()
+            objective_generated_count = int(objective_payload.get("generated_count") or 0)
+            objective_refined_goal_count = len(objective_payload.get("refined_goal_ids") or [])
+            objective_seeded_goal_count = len(objective_payload.get("seeded_interoperability_goal_ids") or [])
+            codebase_deferred_reason = ""
+            if (
+                self.config.codebase_defer_when_objective_refills
+                and self.config.objective_refill_enabled
+                and objective_generated_count > 0
+            ):
+                codebase_findings = []
+                codebase_deferred_reason = "objective_refill_generated_todos"
+            else:
+                update_maintenance_phase("codebase_refill")
+                codebase_findings = self.refill_codebase_backlog()
         else:
-            update_maintenance_phase("codebase_refill")
-            codebase_findings = self.refill_codebase_backlog()
+            update_maintenance_phase("preflight_refill_deferred")
+            objective_payload = {}
+            objective_generated_count = 0
+            objective_refined_goal_count = 0
+            objective_seeded_goal_count = 0
+            codebase_findings = []
+            codebase_deferred_reason = "preflight_refill_deferred_until_daemon_loop"
         update_maintenance_phase("post_refill_generated_dirty_repair")
         post_refill_generated_dirty_repair = self.repair_generated_dirty_checkouts()
         update_maintenance_phase("supervisor_check_event")
@@ -538,7 +555,7 @@ class PortalImplementationSupervisor:
         self.repair_main_checkout_merge_state()
         self.ensure_managed_daemon_pid_file()
         try:
-            preflight = self.run_once()
+            preflight = self.run_once(include_refill=False)
         except Exception as exc:
             self._record_event(
                 "supervisor_preflight_maintenance_failed",
