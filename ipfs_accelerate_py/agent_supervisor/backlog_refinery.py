@@ -1335,6 +1335,12 @@ def scan_validation_for_path(root_relative: str) -> str:
     return f"test -f {quoted}"
 
 
+def annotation_scan_text(line: str) -> str:
+    """Remove path-like tokens that should not count as TODO annotations."""
+
+    return re.sub(r"(?i)[A-Za-z0-9_./-]*\.todo\.md\b", "", line)
+
+
 def scan_findings_in_file(path: Path, *, repo_root: Path) -> list[CodebaseFinding]:
     root_relative = root_relative_path(repo_root, path)
     try:
@@ -1355,9 +1361,10 @@ def scan_findings_in_file(path: Path, *, repo_root: Path) -> list[CodebaseFindin
         kind = ""
         priority = "P2"
         summary = ""
-        if re.search(r"\b(todo|fixme|hack|xxx)\b", stripped, flags=re.IGNORECASE):
+        annotation_text = annotation_scan_text(stripped)
+        if re.search(r"\b(todo|fixme|hack|xxx)\b", annotation_text, flags=re.IGNORECASE):
             kind = "annotated_followup"
-            priority = "P2" if re.search(r"\b(fixme|hack|xxx)\b", stripped, flags=re.IGNORECASE) else "P3"
+            priority = "P2" if re.search(r"\b(fixme|hack|xxx)\b", annotation_text, flags=re.IGNORECASE) else "P3"
             summary = f"Resolve code annotation in {root_relative}:{index}"
         elif re.search(r"\bexcept\s*:\s*$", stripped) or re.search(r"\bexcept\s+Exception\b", stripped):
             window = "\n".join(lines[index : min(len(lines), index + 3)]).lower()
