@@ -37,3 +37,4 @@
 [submodule "ipfs_accelerate_py/mcplusplus"]
 	path = ipfs_accelerate_py/mcplusplus
 	url = https://github.com/endomorphosis/Mcp-Plus-Plus.git
+	branch = main
