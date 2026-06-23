@@ -534,11 +534,14 @@ def parse_task_file(path: Path, task_header_prefix: str = TASK_HEADER_PREFIX) ->
                 continue
             key, value = stripped[2:].split(":", 1)
             metadata[key.strip().lower()] = value.strip()
+        if not metadata:
+            metadata["blocked reason"] = "empty task metadata"
+        default_status = "blocked" if metadata.get("blocked reason") == "empty task metadata" else "todo"
         tasks.append(
             PortalTask(
                 task_id=current_id,
                 title=current_title,
-                status=normalize_status(metadata.get("status", "todo")),
+                status=normalize_status(metadata.get("status", default_status)),
                 completion=str(metadata.get("completion", "manual")).strip().lower(),
                 priority=str(metadata.get("priority", "P2")).strip().upper(),
                 track=str(metadata.get("track", "ops")).strip().lower(),

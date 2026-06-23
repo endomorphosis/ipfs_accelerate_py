@@ -105,11 +105,20 @@ CODEBASE_SCAN_SKIP_PARTS = {
     "test-results",
 }
 CODEBASE_SCAN_SKIP_PREFIXES = (
+    "archive/",
+    "backup/",
+    "cleanup-archive/",
     "data/agent_supervisor/discovery/",
     "data/agent_supervisor/objective_bundles/",
     "data/agent_supervisor/objective_datasets/",
     "data/agent_supervisor/state/",
     "data/agent_supervisor/worktrees/",
+    "external/ipfs_accelerate/test/duckdb_api/",
+    "external/ipfs_accelerate/test/generators/",
+    "external/ipfs_accelerate/test/huggingface_transformers/",
+    "external/ipfs_accelerate/test/skills/",
+    "external/ipfs_kit/archive/",
+    "external/ipfs_kit/backup/",
 )
 
 

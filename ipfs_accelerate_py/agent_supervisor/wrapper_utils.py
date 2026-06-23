@@ -1044,15 +1044,14 @@ def android_validation_environment_contract(
     missing: list[str] = []
 
     java_binary = local_jdk / jdk_java_path
-    if java_binary.exists():
-        env["JAVA_HOME"] = str(local_jdk)
-        path_entries.append(str(local_jdk / jdk_bin_path))
-    else:
+    env["JAVA_HOME"] = str(local_jdk)
+    path_entries.append(str(local_jdk / jdk_bin_path))
+    if not java_binary.exists():
         missing.append(str(java_binary))
 
+    env["ANDROID_HOME"] = str(local_android_sdk)
+    env["ANDROID_SDK_ROOT"] = str(local_android_sdk)
     if local_android_sdk.exists():
-        env["ANDROID_HOME"] = str(local_android_sdk)
-        env["ANDROID_SDK_ROOT"] = str(local_android_sdk)
         for candidate in android_sdk_tool_dirs:
             candidate_path = local_android_sdk / candidate
             if candidate_path.exists():
