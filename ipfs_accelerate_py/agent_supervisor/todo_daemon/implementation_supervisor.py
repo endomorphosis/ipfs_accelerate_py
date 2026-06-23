@@ -3933,6 +3933,32 @@ class PortalImplementationSupervisor:
                 command.extend(["--objective-path", str(self.config.objective_path)])
             if self.config.objective_bundle_dir is not None:
                 command.extend(["--objective-bundle-dir", str(self.config.objective_bundle_dir)])
+        if self.config.objective_refill_enabled:
+            command.extend(
+                [
+                    "--objective-scan-min-open-tasks",
+                    str(self.config.objective_scan_min_open_tasks),
+                    "--objective-scan-max-findings",
+                    str(self.config.objective_scan_max_findings),
+                    "--objective-scan-cooldown-seconds",
+                    str(self.config.objective_scan_cooldown_seconds),
+                    "--objective-surplus-findings-per-goal",
+                    str(self.config.objective_surplus_findings_per_goal),
+                    "--objective-surplus-min-terms-per-todo",
+                    str(self.config.objective_surplus_min_terms_per_todo),
+                ]
+            )
+        if self.config.codebase_refill_enabled:
+            command.extend(
+                [
+                    "--codebase-scan-min-open-tasks",
+                    str(self.config.codebase_scan_min_open_tasks),
+                    "--codebase-scan-max-findings",
+                    str(self.config.codebase_scan_max_findings),
+                    "--codebase-scan-cooldown-seconds",
+                    str(self.config.codebase_scan_cooldown_seconds),
+                ]
+            )
         if self.config.merge_reconciliation_max_merges is not None:
             command.extend(
                 [

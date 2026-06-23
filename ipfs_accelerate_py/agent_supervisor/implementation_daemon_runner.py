@@ -769,6 +769,16 @@ def build_daemon_objective_refill_callback(
             kwargs["objective_path"] = resolved_objective_path
         if repo_root is not None:
             kwargs["repo_root"] = repo_root
+        for attr, key in (
+            ("objective_scan_min_open_tasks", "min_open_tasks"),
+            ("objective_scan_max_findings", "max_findings"),
+            ("objective_scan_cooldown_seconds", "cooldown_seconds"),
+            ("objective_surplus_findings_per_goal", "surplus_findings_per_goal"),
+            ("objective_surplus_min_terms_per_todo", "surplus_min_terms_per_todo"),
+        ):
+            value = getattr(ctx.parsed, attr, None)
+            if value is not None:
+                kwargs[key] = value
         return callback(**_with_extra_kwargs(kwargs, extra_kwargs))
 
     return hook
@@ -793,6 +803,14 @@ def build_daemon_codebase_scan_refill_callback(
         }
         if repo_root is not None:
             kwargs["repo_root"] = repo_root
+        for attr, key in (
+            ("codebase_scan_min_open_tasks", "min_open_tasks"),
+            ("codebase_scan_max_findings", "max_findings"),
+            ("codebase_scan_cooldown_seconds", "cooldown_seconds"),
+        ):
+            value = getattr(ctx.parsed, attr, None)
+            if value is not None:
+                kwargs[key] = value
         return callback(**_with_extra_kwargs(kwargs, extra_kwargs))
 
     return hook

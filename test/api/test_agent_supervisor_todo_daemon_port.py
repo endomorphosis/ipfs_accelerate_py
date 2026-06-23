@@ -81,8 +81,11 @@ from ipfs_accelerate_py.agent_supervisor.multi_supervisor_runner import (
 from ipfs_accelerate_py.agent_supervisor.implementation_daemon_runner import (
     ConfiguredImplementationDaemonRunner,
     ImplementationDaemonDefaults,
+    ImplementationDaemonRunContext,
     apply_portal_implementation_daemon_defaults,
     apply_portal_implementation_daemon_defaults_from_paths,
+    build_daemon_codebase_scan_refill_callback,
+    build_daemon_objective_refill_callback,
     build_configured_implementation_daemon_runner,
     build_implementation_daemon_defaults_from_paths,
 )
@@ -3902,6 +3905,22 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
             "9",
             "--merged-worktree-cleanup-max",
             "13",
+            "--objective-scan-min-open-tasks",
+            "20",
+            "--objective-scan-max-findings",
+            "6",
+            "--objective-scan-cooldown-seconds",
+            "900",
+            "--objective-surplus-findings-per-goal",
+            "2",
+            "--objective-surplus-min-terms-per-todo",
+            "4",
+            "--codebase-scan-min-open-tasks",
+            "20",
+            "--codebase-scan-max-findings",
+            "0",
+            "--codebase-scan-cooldown-seconds",
+            "900",
             "--task-shard-count",
             "4",
             "--task-shard-index",
@@ -3915,8 +3934,69 @@ def test_implementation_daemon_accepts_configured_submodule_paths(tmp_path):
     assert args.objective_bundle_dir == repo / "objective_bundles"
     assert args.merge_reconciliation_max_merges == 9
     assert args.merged_worktree_cleanup_max == 13
+    assert args.objective_scan_min_open_tasks == 20
+    assert args.objective_scan_max_findings == 6
+    assert args.objective_scan_cooldown_seconds == 900
+    assert args.objective_surplus_findings_per_goal == 2
+    assert args.objective_surplus_min_terms_per_todo == 4
+    assert args.codebase_scan_min_open_tasks == 20
+    assert args.codebase_scan_max_findings == 0
+    assert args.codebase_scan_cooldown_seconds == 900
     assert args.task_shard_count == 4
     assert args.task_shard_index == 2
+
+
+def test_daemon_refill_callbacks_honor_cli_scan_overrides(tmp_path):
+    parsed = argparse.Namespace(
+        todo_path=tmp_path / "tasks.todo.md",
+        task_prefix="## EX-",
+        objective_path=None,
+        objective_scan_min_open_tasks=20,
+        objective_scan_max_findings=6,
+        objective_scan_cooldown_seconds=900,
+        objective_surplus_findings_per_goal=2,
+        objective_surplus_min_terms_per_todo=4,
+        codebase_scan_min_open_tasks=20,
+        codebase_scan_max_findings=0,
+        codebase_scan_cooldown_seconds=900,
+    )
+    context = ImplementationDaemonRunContext(
+        parsed=parsed,
+        state_path=tmp_path / "state.json",
+        strategy_path=tmp_path / "strategy.json",
+        events_path=tmp_path / "events.jsonl",
+    )
+    captured: dict[str, dict[str, object]] = {}
+
+    def recorder(label: str):
+        def callback(**kwargs: object) -> list[str]:
+            captured[label] = kwargs
+            return [label]
+
+        return callback
+
+    objective_hook = build_daemon_objective_refill_callback(
+        recorder("objective"),
+        discovery_dir=tmp_path / "discovery",
+        objective_path=tmp_path / "objective.md",
+        repo_root=tmp_path,
+    )
+    codebase_hook = build_daemon_codebase_scan_refill_callback(
+        recorder("codebase"),
+        discovery_dir=tmp_path / "discovery",
+        repo_root=tmp_path,
+    )
+
+    assert objective_hook(context) == ["objective"]
+    assert codebase_hook(context) == ["codebase"]
+    assert captured["objective"]["min_open_tasks"] == 20
+    assert captured["objective"]["max_findings"] == 6
+    assert captured["objective"]["cooldown_seconds"] == 900
+    assert captured["objective"]["surplus_findings_per_goal"] == 2
+    assert captured["objective"]["surplus_min_terms_per_todo"] == 4
+    assert captured["codebase"]["min_open_tasks"] == 20
+    assert captured["codebase"]["max_findings"] == 0
+    assert captured["codebase"]["cooldown_seconds"] == 900
 
 
 def test_implementation_daemon_run_once_cleans_already_merged_worktree(tmp_path):
@@ -4862,6 +4942,16 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
         worktree_submodule_paths=("packages/app", "external/lib"),
         objective_path=repo / "objective-heap.md",
         objective_bundle_dir=repo / "objective_bundles",
+        objective_refill_enabled=True,
+        objective_scan_min_open_tasks=20,
+        objective_scan_max_findings=6,
+        objective_scan_cooldown_seconds=900,
+        objective_surplus_findings_per_goal=2,
+        objective_surplus_min_terms_per_todo=4,
+        codebase_refill_enabled=True,
+        codebase_scan_min_open_tasks=20,
+        codebase_scan_max_findings=0,
+        codebase_scan_cooldown_seconds=900,
         merge_reconciliation_max_merges=0,
         daemon_merged_worktree_cleanup_max=17,
         task_shard_count=2,
@@ -4880,6 +4970,14 @@ def test_implementation_supervisor_passes_configured_submodule_paths(tmp_path):
     assert command[command.index("--llm-merge-resolver-timeout-seconds") + 1] == "5"
     assert command[command.index("--objective-path") + 1] == str(repo / "objective-heap.md")
     assert command[command.index("--objective-bundle-dir") + 1] == str(repo / "objective_bundles")
+    assert command[command.index("--objective-scan-min-open-tasks") + 1] == "20"
+    assert command[command.index("--objective-scan-max-findings") + 1] == "6"
+    assert command[command.index("--objective-scan-cooldown-seconds") + 1] == "900"
+    assert command[command.index("--objective-surplus-findings-per-goal") + 1] == "2"
+    assert command[command.index("--objective-surplus-min-terms-per-todo") + 1] == "4"
+    assert command[command.index("--codebase-scan-min-open-tasks") + 1] == "20"
+    assert command[command.index("--codebase-scan-max-findings") + 1] == "0"
+    assert command[command.index("--codebase-scan-cooldown-seconds") + 1] == "900"
     assert command[command.index("--merge-reconciliation-max-merges") + 1] == "0"
     assert command[command.index("--merged-worktree-cleanup-max") + 1] == "17"
     assert command[command.index("--task-shard-count") + 1] == "2"

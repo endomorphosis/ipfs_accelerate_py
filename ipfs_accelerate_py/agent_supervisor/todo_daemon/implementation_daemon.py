@@ -5938,6 +5938,54 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "<=0 disables hook timeouts."
         ),
     )
+    parser.add_argument(
+        "--objective-scan-min-open-tasks",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill minimum open backlog threshold.",
+    )
+    parser.add_argument(
+        "--objective-scan-max-findings",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill maximum generated findings; <=0 disables findings.",
+    )
+    parser.add_argument(
+        "--objective-scan-cooldown-seconds",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill cooldown seconds.",
+    )
+    parser.add_argument(
+        "--objective-surplus-findings-per-goal",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill surplus findings per goal.",
+    )
+    parser.add_argument(
+        "--objective-surplus-min-terms-per-todo",
+        type=int,
+        default=None,
+        help="Override daemon objective-refill minimum evidence terms per generated todo.",
+    )
+    parser.add_argument(
+        "--codebase-scan-min-open-tasks",
+        type=int,
+        default=None,
+        help="Override daemon codebase-scan minimum open backlog threshold.",
+    )
+    parser.add_argument(
+        "--codebase-scan-max-findings",
+        type=int,
+        default=None,
+        help="Override daemon codebase-scan maximum generated findings; <=0 disables findings.",
+    )
+    parser.add_argument(
+        "--codebase-scan-cooldown-seconds",
+        type=int,
+        default=None,
+        help="Override daemon codebase-scan cooldown seconds.",
+    )
     parser.add_argument("--implementation-timeout", type=float, default=DEFAULT_IMPLEMENTATION_TIMEOUT_SECONDS)
     parser.add_argument(
         "--no-ephemeral-worktree",
