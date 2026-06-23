@@ -57,6 +57,7 @@ LAUNCH_PLAYWRIGHT_VALIDATION_MARKERS = (
     "meta-glasses-virtual-os.spec.ts",
     "multimodal-control-surface.spec.ts",
 )
+LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE = "launch Playwright validation gate"
 SCAN_SUFFIXES = {
     ".cjs",
     ".css",
@@ -706,6 +707,14 @@ def objective_goal_validation(goal: ObjectiveGoal, fallback_validation: str) -> 
     return f"{validation} && {LAUNCH_PLAYWRIGHT_VALIDATION_COMMAND}"
 
 
+def objective_goal_validation_gap_terms(goal: ObjectiveGoal) -> list[str]:
+    """Return synthetic evidence terms for forced validation-gate work."""
+
+    if not objective_goal_requires_launch_playwright_validation(goal):
+        return []
+    return [LAUNCH_PLAYWRIGHT_VALIDATION_GATE_EVIDENCE]
+
+
 def canonical_interoperability_component(value: str) -> str:
     """Return a stable component key for interoperability dedupe."""
 
@@ -1314,8 +1323,15 @@ def scan_objective_gaps(
     for goal in scheduled_goals:
         terms = goal.required_evidence
         missing_terms = [term for term in terms if not evidence.get(term)]
+        forced_goal = goal.goal_id in forced_goal_ids
+        validation_gap = False
         if not missing_terms:
-            continue
+            if not forced_goal:
+                continue
+            missing_terms = objective_goal_validation_gap_terms(goal)
+            if not missing_terms:
+                continue
+            validation_gap = True
         fields = goal.fields
         present = {term: evidence.get(term, []) for term in terms if evidence.get(term)}
         explicit_bundle = bool(str(fields.get("bundle") or "").strip())
@@ -1324,9 +1340,10 @@ def scan_objective_gaps(
             surplus_findings_per_goal=surplus_findings_per_goal,
             min_terms_per_todo=surplus_min_terms_per_todo,
         ):
+            if validation_gap:
+                candidate_kind = "validation_gate"
             fingerprint = objective_fingerprint(goal, candidate_missing_terms)
-            forced_goal = goal.goal_id in forced_goal_ids
-            if fingerprint in seen and not forced_goal:
+            if fingerprint in seen and (validation_gap or not forced_goal):
                 continue
             bundle_key = goal.bundle_key(candidate_missing_terms)
             finding = ObjectiveFinding(
@@ -1347,7 +1364,12 @@ def scan_objective_gaps(
                 ),
                 goal=str(fields.get("goal") or ""),
                 refinement=str(fields.get("refinement") or ""),
-                gap_task=str(fields.get("gap_task") or ""),
+                gap_task=(
+                    "Run and repair the launch readiness validation gate until the phone, desktop, "
+                    "Swissknife, Hallucinate App, and Meta glasses Playwright checks pass."
+                    if validation_gap
+                    else str(fields.get("gap_task") or "")
+                ),
                 parent_goal_ids=goal.parent_goal_ids,
                 graph_depth=int(graph["depths"].get(goal.goal_id, 0)),
                 bundle_key=bundle_key,
@@ -1367,7 +1389,7 @@ def scan_objective_gaps(
                 merge_family=objective_surplus_group(goal),
                 merge_role=candidate_kind,
                 work_item_count=len(candidate_missing_terms),
-                work_scope="goal_subgoal_multi_evidence_batch",
+                work_scope="launch_validation_gate" if validation_gap else "goal_subgoal_multi_evidence_batch",
                 todo_vector_key=objective_todo_vector_key(
                     goal,
                     candidate_missing_terms,

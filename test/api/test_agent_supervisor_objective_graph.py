@@ -277,6 +277,65 @@ def test_objective_graph_appends_playwright_validation_for_launch_goals(tmp_path
     assert "npm --prefix hallucinate_app run test:e2e -- multimodal-control-surface.spec.ts" in validation
 
 
+def test_objective_graph_generates_forced_launch_validation_gate_when_evidence_present(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init")
+    _git(repo, "checkout", "-b", "main")
+    _git(repo, "config", "user.name", "Test User")
+    _git(repo, "config", "user.email", "test@example.invalid")
+    objective_path = repo / "objective-heap.md"
+    readiness = repo / "docs" / "launch" / "phone_desktop_glasses_readiness.md"
+    readiness.parent.mkdir(parents=True)
+    readiness.write_text(
+        "launch_readiness_receipt_v1 covers phone desktop Swissknife Meta glasses readiness.\n",
+        encoding="utf-8",
+    )
+    objective_path.write_text(
+        """# Objective Heap
+
+## VAIOS-G697 Production launch readiness gate
+
+- Status: active
+- Parent:
+- Fib priority: 1
+- Track: launch
+- Priority: P0
+- Bundle: objective/launch/production-readiness-gate
+- Goal: Prove phone, desktop, Swissknife, Hallucinate App, and Meta glasses launch readiness.
+- Evidence: docs/launch/phone_desktop_glasses_readiness.md
+- Outputs: docs/launch/phone_desktop_glasses_readiness.md, tests
+- Validation: test -f docs/launch/phone_desktop_glasses_readiness.md
+""",
+        encoding="utf-8",
+    )
+    _git(repo, "add", "objective-heap.md", "docs/launch/phone_desktop_glasses_readiness.md")
+    _git(repo, "commit", "-m", "seed launch objective")
+
+    unforced = scan_objective_gaps(repo, objective_path=objective_path, max_findings=1)
+    forced = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        force_goal_ids=["VAIOS-G697"],
+    )
+    assert len(forced) == 1
+    suppressed = scan_objective_gaps(
+        repo,
+        objective_path=objective_path,
+        max_findings=1,
+        force_goal_ids=["VAIOS-G697"],
+        seen_fingerprints=[forced[0].fingerprint],
+    )
+
+    assert unforced == []
+    assert forced[0].candidate_kind == "validation_gate"
+    assert forced[0].missing_evidence == ["launch Playwright validation gate"]
+    assert forced[0].work_scope == "launch_validation_gate"
+    assert "npm --prefix swissknife run test:e2e:meta-glasses" in forced[0].validation
+    assert suppressed == []
+
+
 def test_generate_objective_todos_writes_bundle_shards_and_payloads(tmp_path):
     repo, objective_path, todo_path = _seed_repo(tmp_path)
     discovery_dir = repo / "data" / "agent_supervisor" / "discovery"
